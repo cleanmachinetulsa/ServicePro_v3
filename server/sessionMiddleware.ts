@@ -25,6 +25,9 @@ const pgPool = new pg.Pool({
  * Shared session middleware for both Express and Socket.IO
  * This ensures consistent session handling across HTTP and WebSocket connections
  */
+// Detect if running on Replit (always HTTPS even in dev)
+const isReplit = process.env.REPL_ID !== undefined || process.env.REPL_SLUG !== undefined;
+
 export const sessionMiddleware = session({
   store: new PgSession({
     pool: pgPool,
@@ -37,8 +40,8 @@ export const sessionMiddleware = session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true, // Prevents JavaScript access (XSS protection)
-    secure: process.env.NODE_ENV === 'production', // Only require HTTPS in production
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'lax' for dev, 'none' for production
+    secure: isReplit || process.env.NODE_ENV === 'production', // Always secure on Replit
+    sameSite: (isReplit || process.env.NODE_ENV === 'production') ? 'none' : 'lax', // 'none' for Replit/production
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (extended session)
     path: '/', // Ensure cookie is available on all paths
   },
