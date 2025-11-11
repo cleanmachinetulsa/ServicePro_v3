@@ -27,11 +27,21 @@ export default function ShowcasePage() {
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("overview");
   const [scrollY, setScrollY] = useState(0);
+  const [viewportSize, setViewportSize] = useState({ width: 1920, height: 1080 });
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+      const handleResize = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
   }, []);
 
   return (
@@ -51,8 +61,8 @@ export default function ShowcasePage() {
             key={i}
             className="absolute w-2 h-2 bg-blue-500/20 rounded-full"
             animate={{
-              x: [Math.random() * window.innerWidth, Math.random() * window.innerWidth],
-              y: [Math.random() * window.innerHeight, Math.random() * window.innerHeight],
+              x: [Math.random() * viewportSize.width, Math.random() * viewportSize.width],
+              y: [Math.random() * viewportSize.height, Math.random() * viewportSize.height],
             }}
             transition={{
               duration: Math.random() * 20 + 10,
