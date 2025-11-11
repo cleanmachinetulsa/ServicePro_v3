@@ -180,31 +180,9 @@ function Router() {
   const [currentLocation] = useLocation();
   const [activeLocation, setActiveLocation] = useState(currentLocation);
   const [pendingLocation, setPendingLocation] = useState<string | null>(null);
-  const navigationHistory = useRef<string[]>([currentLocation]);
-  const historyIndex = useRef(0);
-  const direction = useRef<'forward' | 'back'>('forward');
 
   useEffect(() => {
     if (currentLocation !== activeLocation) {
-      // Check if this is a back navigation (location exists earlier in history)
-      const previousIndex = navigationHistory.current.findIndex(
-        (loc, idx) => idx < historyIndex.current && loc === currentLocation
-      );
-      
-      if (previousIndex !== -1) {
-        // Going back in history
-        direction.current = 'back';
-        historyIndex.current = previousIndex;
-      } else {
-        // Going forward (new page or re-visiting)
-        direction.current = 'forward';
-        historyIndex.current++;
-        navigationHistory.current = [
-          ...navigationHistory.current.slice(0, historyIndex.current),
-          currentLocation
-        ];
-      }
-      
       setPendingLocation(currentLocation);
     }
   }, [currentLocation, activeLocation]);
@@ -224,7 +202,7 @@ function Router() {
           <PageTransition 
             key={activeLocation} 
             phase="outgoing" 
-            direction={direction.current}
+            direction="forward"
           >
             {renderRoutes(activeLocation)}
           </PageTransition>
@@ -234,7 +212,7 @@ function Router() {
         <PageTransition 
           key={pendingLocation || activeLocation} 
           phase="incoming" 
-          direction={direction.current}
+          direction="forward"
         >
           {renderRoutes(pendingLocation || activeLocation)}
         </PageTransition>
