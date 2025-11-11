@@ -1,0 +1,73 @@
+service-worker.js:11 [ServiceWorker] Installing...
+service-worker.js:15 [ServiceWorker] Caching app shell
+service-worker.js:19 [ServiceWorker] Installed successfully
+service-worker.js:30 [ServiceWorker] Activating...
+service-worker.js:42 [ServiceWorker] Activated successfully
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+(anonymous) @ service-worker.js:63
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+(anonymous) @ service-worker.js:63
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+(anonymous) @ service-worker.js:63
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+(anonymous) @ service-worker.js:63
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+(anonymous) @ service-worker.js:63
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+(anonymous) @ service-worker.js:89
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+client:536 WebSocket connection to 'wss://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/?token=yAn485BMP1vc' failed: 
+setupWebSocket @ client:536
+client:536 Uncaught (in promise) SyntaxError: Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=yAn485BMP1vc' is invalid.
+    at setupWebSocket (client:536:19)
+    at fallback (client:509:16)
+    at WebSocket.<anonymous> (client:555:7)
+chunk-RPCDYKBN.js?v=9c22a123:21551 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+main.tsx:13 [PWA] Service Worker registered successfully: https://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/
+manifest.json:1 Manifest: Line: 1, column: 1, Syntax error.
+messages:1 <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+messages.tsx:166 [MESSAGES] Connected to WebSocket
+service-worker.js:89 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:89:19
+usePushNotifications.ts:45 [Push] Current browser notification permission: granted
+usePushNotifications.ts:50 [Push] Existing subscription: Found
+api/push/test:1  Failed to load resource: the server responded with a status of 401 (Unauthorized)
+usePushNotifications.ts:204 [Push] Test notification error: Error: Failed to send test notification
+    at Object.sendTestNotification (usePushNotifications.ts:199:15)
+    at async onClick (notifications-settings.tsx:565:41)
+sendTestNotification @ usePushNotifications.ts:204
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19

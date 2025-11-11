@@ -1,0 +1,39 @@
+git push origin mai# Install git filter-repo (best tool for this)
+pip install git-filter-repo
+
+# Remove the large files from entire git history
+git filter-repo --path my-complete-project.tar.gz --invert-paths
+git filter-repo --path attached_assets/ServicePro_repo_dev_1762400198653.gz --invert-paths
+
+# Force push the cleaned history
+git push origin main --force
+Writing objects: 100% (408/408), 527.38 MiB | 3.88 MiB/s, done.
+Total 408 (delta 205), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (205/205), completed with 67 local objects.
+remote: error: Trace: a4054ef07f8c34a9e26a7a99c8a24bf635633403277d5948d73aa92b9830f6f5
+remote: error: See https://gh.io/lfs for more information.
+remote: error: File attached_assets/ServicePro_repo_dev_1762400198653.gz is 100.14 MB; this exceeds GitHub's file size limit of 100.00 MB
+remote: error: File my-complete-project.tar.gz is 414.65 MB; this exceeds GitHub's file size limit of 100.00 MB
+remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.
+To https://github.com/cleanmachinetulsa/CleanMachineAppOfficial
+ ! [remote rejected] main -> main (pre-receive hook declined)
+error: failed to push some refs to 'https://github.com/cleanmachinetulsa/CleanMachineAppOfficial'
+~/workspace$ # Remove the large files from git tracking
+~/workspace$ git rm --cached my-complete-project.tar.gz
+fatal: pathspec 'my-complete-project.tar.gz' did not match any files
+~/workspace$ git rm --cached attached_assets/ServicePro_repo_dev_1762400198653.gz
+fatal: pathspec 'attached_assets/ServicePro_repo_dev_1762400198653.gz' did not match any files
+~/workspace$ 
+~/workspace$ # Commit the removal
+~/workspace$ git commit -m "Remove large archive files from git"
+On branch main
+Your branch is ahead of 'origin/main' by 40 commits.
+  (use "git push" to publish your local commits)
+
+nothing to commit, working tree clean
+~/workspace$ 
+~/workspace$ # Now push
+~/workspace$ git push origin mai# Install git filter-repo (best tool for this)
+bash: syntax error near unexpected token `('
+~/workspace$ pip install git-filter-repo
+Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  Install Replit's Python tools [y/n]  

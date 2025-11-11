@@ -1,0 +1,38 @@
+
+Campaign description
+I run a local mobile auto detailing business. This number is used to confirm appointments, send reminders, let clients know I’m en route, and answer customer questions. Messages are always 1-on-1 and initiated by the customer or sent after clear consent through my intake form or chatbot
+Describe what you will be using this campaign for.
+The campaign submission has been reviewed and it was rejected because of provided Opt-in information. 
+Learn more
+Sample message #1
+Hey John, just confirming your Clean Machine Auto Detail appointment for 2PM tomorrow at 123 Main St. Text back if anything changes.
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #2
+I’m on the way! Should arrive in 15–20 minutes. Please make sure your driveway and water hookup are accessible
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #3
+Clean Machine Auto Detail here — just a reminder about your upcoming appointment on Thursday at 11:00 AM. Let us know if you need to reschedule
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #4
+Thanks for your booking today! Want to upgrade to a ceramic protection package next time? Here’s the info: cleanmachinetulsa.com/protect
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #5
+Hey Sarah, we just wrapped up your detail. Let us know if you'd like to book again for next month — we offer returning customer discounts.
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Message contents
+Messages will include embedded links.
+Messages will include phone numbers.
+Messages include content related to direct lending or other loan arrangement.
+Messages include age-gated content as defined by Carrier and CTIA guidelines
+How do end-users consent to receive messages? (40-2048 characters)
+Customers consent to SMS when they:
+
+1. Book an appointment by phone - We verbally confirm they agree to receive text updates
+2. Book through our web chat assistant - They're shown an opt-in notice before messaging
+3. Request service information - They provide their phone number and agree to SMS contact
+
+All customers receive an initial opt-in confirmation message with STOP instructions. We only send appointment-related updates (confirmations, reminders, arrival times) - never unsolicited marketing.
+This field should describe how end users opt-in to the campaign, therefore giving consent to the sender to receive their messages. If multiple opt-in methods can be used for the same campaign, they must all be listed. 
+Learn more
+I agree the above information is correct. I agree to a $15 Campaign vetting fee upon resubmission. Learn more about the vetting fee
+

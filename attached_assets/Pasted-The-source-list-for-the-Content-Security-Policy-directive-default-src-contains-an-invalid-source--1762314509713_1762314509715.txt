@@ -1,0 +1,130 @@
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+CleanMachineChatbot:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+CleanMachineChatbot:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+CleanMachineChatbot:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+b257e744987e02fc.js:2 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+b257e744987e02fc.js:2 Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+b257e744987e02fc.js:2 [LaunchDarkly] LaunchDarkly client initialized
+CleanMachineChatbot:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+stallwart.build.js:1 stallwart: failed ping 1
+ed1e693c96a75807.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'ambient-light-sensor'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'battery'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'layout-animations'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'legacy-image-formats'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'navigation-override'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'oversized-images'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'publickey-credentials'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'speaker-selection'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'unoptimized-images'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'unsized-media'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'pointer-lock'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+z @ ed1e693c96a75807.js:2
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'ambient-light-sensor'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'battery'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'execution-while-not-rendered'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'layout-animations'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'legacy-image-formats'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'navigation-override'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'oversized-images'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'publickey-credentials'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'speaker-selection'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'unoptimized-images'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Unrecognized feature: 'unsized-media'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Allow attribute will take precedence over 'allowfullscreen'.
+1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=%3Ar1t%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.
+client:536 WebSocket connection to 'wss://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/?token=VZJihzaMYZdZ' failed: 
+setupWebSocket @ client:536
+workspace_iframe.html:32 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+client:536 WebSocket connection to 'wss://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/?token=VZJihzaMYZdZ' failed: 
+setupWebSocket @ client:536
+client:536 Uncaught (in promise) SyntaxError: Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=VZJihzaMYZdZ' is invalid.
+    at setupWebSocket (client:536:19)
+    at fallback (client:509:16)
+    at WebSocket.<anonymous> (client:555:7)
+main.tsx:13 [PWA] Service Worker registered successfully: https://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 3
+stallwart.build.js:1 stallwart: failed ping 4
+stallwart.build.js:1 stallwart: failed ping 5
+stallwart.build.js:1 stallwart: session stalled
+Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type ‘allow pasting’ below and press Enter to allow pasting.
+notification.permission
+VM1585:1 Uncaught ReferenceError: notification is not defined
+    at <anonymous>:1:1
+(anonymous) @ VM1585:1

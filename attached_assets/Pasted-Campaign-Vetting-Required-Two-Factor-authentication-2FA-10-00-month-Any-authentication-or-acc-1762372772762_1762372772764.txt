@@ -1,0 +1,109 @@
+Campaign Vetting Required
+Two-Factor authentication (2FA)
+
+($10.00/month)
+
+Any authentication or account verification such as OTP.
+
+Account Notification
+
+($10.00/month)
+
+Notifications about the status of an account or related to being a part of an account.
+
+Customer Care
+
+($10.00/month)
+
+Support, account management, and other avenues of customer interaction.
+
+Delivery Notification
+
+($10.00/month)
+
+Information about the status of a delivery.
+
+Fraud Alert Messaging
+
+($10.00/month)
+
+Messaging about potential fraudulent activity such as spending alerts.
+
+Higher Education
+
+($10.00/month)
+
+Message campaigns from colleges, universities, and other education institutions.
+
+Low Volume Mixed
+
+($1.50/month)
+
+The Low Volume Mixed Campaign use case can be used to send messages of multiple use cases such as Customer Care and Delivery Notification, but it is on the lowest throughput tier regardless of the Brand's Trust Score. Due to the lower cost, it is recommended for customers with the Low Volume Standard Brand, as well as Standard Brand customers who do not need high throughput.
+
+Marketing
+
+($10.00/month)
+
+Promotional content such as sales and limited time offers.
+
+Mixed
+
+($10.00/month)
+
+A campaign that covers multiple use cases such as Customer Care and Delivery Notifications. Note - mixed campaigns are likely to have lower throughput and a higher cost per message.
+
+Polling and voting
+
+($10.00/month)
+
+For conducting polling and voting, such as customer surveys. Not for political use.
+
+Public Service Announcement
+
+($10.00/month)
+
+PSAs to raise audience awareness about a given topic.
+
+Security Alert
+
+($10.00/month)
+
+Notification of a compromised system (software or hardware related).
+
+Campaign Vetting and Carrier Post Approval Required
+Agents and Franchises
+
+($30.00/month)
+
+Brands that have multiple agents, franchises or offices in the same brand vertical, but require individual localized numbers per agent/location/office. Note: Franchises/businesses with a separate EIN should register as a separate brand. Maximum 5000 numbers per Campaign.
+
+Emergency
+
+($5.00/month)
+
+Notification services designed to support public safety/health during natural disasters, armed conflicts, pandemics, and other national or regional emergencies.
+
+K-12 Education
+
+($10.00/month)
+
+For messaging platforms that support schools from grades K-12 and distance learning centers.
+
+Proxy
+
+($10.00/month)
+
+Peer-to-peer app-based group messaging with proxy/pooled numbers. Supporting personalized services and non-exposure of personal numbers for enterprise or A2P communications. A phone number is assigned to a conversation (e.g. end-user/agent pair), rather than to a single business or individual. Both parties to the conversation send text messages to that number, which acts as a relay and protects the privacy of both users' personal numbers.
+
+Social
+
+($10.00/month)
+
+Communication between public figures/influencers and their communities.
+
+Sweepstake
+
+($10.00/month)
+
+All sweepstakes-related messaging.

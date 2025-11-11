@@ -1,0 +1,443 @@
+# 🔧 REPLIT META-PROMPT: UPGRADE & IMPLEMENT THE CLEAN MACHINE INVOICE SYSTEM
+
+You are a **staff+ full-stack engineer** and **DX-obsessed architect**. Read the full build spec at the bottom of this prompt and then produce a **crisper, safer, and more executable plan** with improved architecture, security, DX, and QA. Your output must be **directly actionable** in a repo like a Replit monorepo (Vite/React client + Node/Express/Drizzle server) and should include small initial code stubs to bootstrap the work.
+
+---
+
+## 🎯 Your Mission (what to output)
+Return **exactly** the following sections, in order:
+
+1) **Executive Summary (bullet points, ≤10 bullets)**
+   - What you will build, the key risks, and the top improvements over the original spec.
+
+2) **Architecture & Data Flow Diagram (ASCII)**
+   - Show request/response + webhook flows: Dashboard → API → DB → Email → Stripe Webhooks → DB → Email/SMS.
+
+3) **Decisions & Rationale**
+   - Email templating approach (MJML vs hand-coded HTML) and why.
+   - Link security (HMAC-signed pay links, TTL).
+   - Stripe integration approach (Payment Intents + Elements).
+   - Background jobs (BullMQ/Upstash or lightweight queue) for email sending and webhook processing.
+   - Error handling, idempotency, and logging strategy.
+   - Testing stack (Playwright + mocked email + Stripe test mode).
+
+4) **Schema Revision (Drizzle)**
+   - Provide a **drop-in Drizzle schema** snippet that extends the current `invoices` table exactly as specified, with correct types (`numeric` mapping), indexes, and a safe migration note.
+   - Include `invoice_items` Zod type & TS types.
+
+5) **API Contract (typed with Zod)**
+   - For each endpoint listed in the spec, provide:
+     - Route, method, request schema, response schema, possible error codes.
+     - Idempotency guidance (e.g., `Idempotency-Key` header on POST).
+
+6) **Email System Plan**
+   - Template strategy (preheader, text-only alt, image alt text, responsive table layout, brand colors).
+   - Subject lines + preheaders (3 options).
+   - Accessibility notes (semantic tables, font sizes, tap targets).
+   - Fallbacks for Outlook/Gmail quirks.
+   - Where to store compiled HTML (build step vs runtime compile).
+
+7) **Security & Compliance**
+   - HMAC for `/pay/:token` links (`invoiceId`, `exp`, `sig`), example signing/verification TS.
+   - Webhook signature verification + replay protection.
+   - PII minimization (only what’s needed in emails/logs).
+   - Rate limiting (per-IP + per-user) for invoice APIs.
+
+8) **UX: Invoice Manager Page**
+   - Component/layout map using shadcn/ui (Table, Dialog, Combobox, Cards).
+   - React Query keys and cache strategy.
+   - Form validation with React Hook Form + Zod.
+   - Empty/loading/error states.
+   - Accessibility notes (keyboard navigation, aria labels).
+
+9) **Customer Selector Combobox**
+   - Debounced search API contract (`/api/customers?query=`).
+   - Fuzzy match by name/phone, “recent first”.
+   - Auto-populate of email/phone on selection.
+
+10) **Stripe Integration Details**
+    - Webhook handlers for `payment_intent.succeeded|payment_failed|canceled` (pseudocode).
+    - Mapping to invoice status; awarding points **after payment success**.
+    - Elements checkout flow on `/pay/:token`.
+    - Idempotent updates (dedupe by `payment_intent.id`).
+
+11) **Loyalty & Upsell Strategy**
+    - Points: award timing (post-payment), rounding rules, edge cases (partial payments/refunds).
+    - Dynamic upsells: DB-driven with rules (service tags, spend thresholds, “promo of week” flag).
+
+12) **E2E & Integration Tests (Playwright)**
+    - Test matrix (desktop/mobile, light/dark not required for email).
+    - Local email capture (e.g., MailHog/ethereal) and assertions.
+    - Stripe test cards scenarios.
+    - Deterministic fixtures & CI notes.
+
+13) **Performance & Ops**
+    - N+1 avoidance, indexes, pagination.
+    - Background queue for bulk sends.
+    - Logging (pino) and trace IDs across API/worker.
+    - Feature flags for staged rollout.
+
+14) **Deliverables & Milestones**
+    - 4 short milestones (each 0.5–1 day of work).
+    - For Milestone 1, include **copy-pasteable starter code stubs** (see below).
+    - Definition of Done checklist aligned to SUCCESS CRITERIA.
+
+15) **Open Questions (Actionable)**
+    - Up to 10 concise questions that would materially change the plan; include **default assumptions** so work can proceed without answers.
+
+---
+
+## 🧰 Starter Code Stubs (return these as fenced code blocks)
+
+> Provide minimal, compilable snippets that the developer can paste in immediately. Keep them short and focused.
+
+1. **Drizzle schema extension** (TypeScript)
+```ts
+// shared/schema.ts (excerpt)
+import { pgTable, serial, integer, text, varchar, timestamp, numeric, jsonb, index } from "drizzle-orm/pg-core";
+
+export const invoices = pgTable("invoices", {
+  id: serial("id").primaryKey(),
+  appointmentId: integer("appointment_id"),
+  customerId: integer("customer_id"),
+  amount: text("amount"), // legacy; keep for now, will derive from totals
+  serviceDescription: text("service_description"),
+  status: varchar("status", { length: 20 }).default("unpaid"), // unpaid|paid|partial|failed|canceled
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  paidAt: timestamp("paid_at"),
+  notes: text("notes"),
+
+  // New fields
+  invoiceNumber: varchar("invoice_number", { length: 50 }).notNull().unique(),
+  invoiceItems: jsonb("invoice_items").notNull(), // [{ service, quantity, price }]
+  subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
+  tax: numeric("tax", { precision: 12, scale: 2 }).notNull(),
+  total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+  loyaltyPointsAwarded: integer("loyalty_points_awarded"),
+  emailSentAt: timestamp("email_sent_at"),
+  smsSentAt: timestamp("sms_sent_at"),
+}, (t) => ({
+  invoiceNumberIdx: index("invoices_invoice_number_idx").on(t.invoiceNumber),
+  customerStatusIdx: index("invoices_customer_status_idx").on(t.customerId, t.status),
+}));
+Zod types for invoice items
+
+ts
+Copy code
+// shared/validators.ts
+import { z } from "zod";
+
+export const InvoiceItemZ = z.object({
+  service: z.string().min(1),
+  quantity: z.number().int().positive(),
+  price: z.number().nonnegative(), // dollars
+});
+
+export const CreateInvoiceZ = z.object({
+  appointmentId: z.number().int().optional(),
+  customerId: z.number().int(),
+  invoiceNumber: z.string().min(8),
+  items: z.array(InvoiceItemZ).min(1),
+  taxRate: z.number().nonnegative().default(0.085),
+  notes: z.string().max(2000).optional(),
+  send: z.object({
+    email: z.boolean().default(true),
+    sms: z.boolean().default(false),
+  }).default({ email: true, sms: false }),
+});
+export type CreateInvoiceInput = z.infer<typeof CreateInvoiceZ>;
+Secure pay link signer / verifier
+
+ts
+Copy code
+// server/security/paylink.ts
+import crypto from "crypto";
+
+const ALG = "sha256";
+const TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+
+export function signPayToken(invoiceId: number, now = Math.floor(Date.now()/1000)) {
+  const exp = now + TTL_SECONDS;
+  const payload = `${invoiceId}.${exp}`;
+  const sig = crypto.createHmac(ALG, process.env.PAYLINK_SECRET!).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+export function verifyPayToken(token: string, now = Math.floor(Date.now()/1000)) {
+  const [idStr, expStr, sig] = token.split(".");
+  if (!idStr || !expStr || !sig) return { ok: false as const, reason: "malformed" };
+  const payload = `${idStr}.${expStr}`;
+  const expected = crypto.createHmac(ALG, process.env.PAYLINK_SECRET!).update(payload).digest("base64url");
+  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) return { ok: false as const, reason: "bad_sig" };
+  if (now > parseInt(expStr, 10)) return { ok: false as const, reason: "expired" };
+  return { ok: true as const, invoiceId: parseInt(idStr, 10) };
+}
+Express webhook skeleton
+
+ts
+Copy code
+// server/paymentHandler.ts (excerpt)
+import express from "express";
+import Stripe from "stripe";
+import { db } from "./db";
+import { invoices } from "../shared/schema";
+import { eq } from "drizzle-orm";
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" });
+export const router = express.Router();
+
+router.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  let event: Stripe.Event;
+  try {
+    const sig = req.headers["stripe-signature"] as string;
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
+  } catch (err) {
+    return res.status(400).send(`Webhook Error: ${(err as Error).message}`);
+  }
+
+  switch (event.type) {
+    case "payment_intent.succeeded": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const inv = await db.query.invoices.findFirst({ where: eq(invoices.stripePaymentIntentId, pi.id) });
+      if (inv && inv.status !== "paid") {
+        // idempotent update
+        await db.update(invoices).set({ status: "paid", paidAt: new Date() }).where(eq(invoices.id, inv.id));
+        // TODO: award loyalty points, send receipt email
+      }
+      break;
+    }
+    case "payment_intent.payment_failed":
+    case "payment_intent.canceled": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const inv = await db.query.invoices.findFirst({ where: eq(invoices.stripePaymentIntentId, pi.id) });
+      if (inv) {
+        await db.update(invoices).set({ status: event.type.endsWith("failed") ? "failed" : "canceled" }).where(eq(invoices.id, inv.id));
+        // TODO: notify customer/owner
+      }
+      break;
+    }
+    default:
+      // ignore
+  }
+  res.json({ received: true });
+});
+Client: Invoice Manager page shell
+
+tsx
+Copy code
+// client/src/pages/invoice-manager.tsx
+import { useQuery } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+// TODO: import Table, Dialog, Combobox, DateRangePicker
+
+export default function InvoiceManagerPage() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["invoices", { page: 1 }],
+    queryFn: async () => (await fetch("/api/invoices")).json(),
+  });
+
+  return (
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-semibold">Invoice Manager</h1>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="p-4">Total Revenue<br/><span className="text-xl font-bold">{data?.stats?.totalRevenue ?? "$0"}</span></Card>
+        <Card className="p-4">Unpaid Outstanding<br/><span className="text-xl font-bold">{data?.stats?.unpaid ?? "$0"}</span></Card>
+        <Card className="p-4">Invoices Sent (30d)<br/><span className="text-xl font-bold">{data?.stats?.sent30d ?? 0}</span></Card>
+        <Card className="p-4">Avg Invoice (30d)<br/><span className="text-xl font-bold">{data?.stats?.avg30d ?? "$0"}</span></Card>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-3">
+        <Button>Create New Invoice</Button>
+        {/* TODO: filters (date range, status, search) */}
+      </div>
+
+      {/* Table */}
+      <div className="mt-4">
+        {isLoading ? "Loading…" : error ? "Error loading invoices" : (
+          <div>{/* TODO: shadcn Table with pagination, actions */}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+Email template renderer entry (stub)
+
+ts
+Copy code
+// server/emailTemplates/invoice.ts
+export type InvoiceEmailData = {
+  invoiceNumber: string;
+  customerName: string;
+  customerEmail: string;
+  serviceDate: string;
+  vehicle?: { make: string; model: string; year: number };
+  items: Array<{ service: string; quantity: number; price: number }>;
+  subtotal: number;
+  tax: number;
+  total: number;
+  loyaltyPoints: { earned: number; newBalance: number };
+  stripePaymentUrl: string;
+  venmoUsername: string;
+  cashappUsername: string;
+  paypalUsername: string;
+  upsell?: { title: string; description: string; ctaText: string; ctaUrl: string };
+  notes?: string;
+};
+
+export async function renderInvoiceEmail(data: InvoiceEmailData): Promise<string> {
+  // TODO: implement with compiled MJML or hand-coded HTML tables
+  const currency = (n: number) => `$${n.toFixed(2)}`;
+  return `
+  <!DOCTYPE html>
+  <html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <title>Invoice ${data.invoiceNumber}</title></head>
+  <body style="margin:0;background:#f5f6f8;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f6f8;padding:24px 0;">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+          <tr><td style="padding:20px;background:#1e40af;color:#fff;border-bottom:1px solid #e5e7eb;">
+            <h1 style="margin:0;font-size:20px;line-height:1.2;">Clean Machine Auto Detail</h1>
+            <div style="font-size:14px;opacity:.9;">Your Invoice • ${data.invoiceNumber}</div>
+          </td></tr>
+
+          <tr><td style="padding:20px;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e7eb;border-radius:6px;">
+              <tr><td style="padding:12px 16px;font-size:14px;">
+                <strong>${data.customerName}</strong><br/>
+                Service date: ${data.serviceDate}<br/>
+                ${data.vehicle ? `${data.vehicle.year} ${data.vehicle.make} ${data.vehicle.model}<br/>` : ``}
+              </td></tr>
+            </table>
+          </td></tr>
+
+          <tr><td style="padding:0 20px 20px;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e7eb;border-radius:6px;">
+              <tr style="background:#f9fafb;">
+                <th align="left" style="padding:10px 12px;font-size:13px;">Service</th>
+                <th align="right" style="padding:10px 12px;font-size:13px;">Qty</th>
+                <th align="right" style="padding:10px 12px;font-size:13px;">Price</th>
+              </tr>
+              ${data.items.map(i => `
+                <tr>
+                  <td style="padding:10px 12px;border-top:1px solid #e5e7eb;">${i.service}</td>
+                  <td align="right" style="padding:10px 12px;border-top:1px solid #e5e7eb;">${i.quantity}</td>
+                  <td align="right" style="padding:10px 12px;border-top:1px solid #e5e7eb;">${currency(i.price)}</td>
+                </tr>
+              `).join("")}
+              <tr><td colspan="3" style="padding:10px 12px;border-top:1px solid #e5e7eb;">
+                <table width="100%" cellspacing="0" cellpadding="0">
+                  <tr><td align="right" style="font-size:13px;">Subtotal:</td><td align="right" style="font-size:13px;width:120px;">${currency(data.subtotal)}</td></tr>
+                  <tr><td align="right" style="font-size:13px;">Tax:</td><td align="right" style="font-size:13px;">${currency(data.tax)}</td></tr>
+                  <tr><td align="right" style="font-size:15px;font-weight:bold;">TOTAL:</td><td align="right" style="font-size:15px;font-weight:bold;">${currency(data.total)}</td></tr>
+                </table>
+              </td></tr>
+            </table>
+          </td></tr>
+
+          <tr><td style="padding:0 20px 20px;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e7eb;border-radius:6px;">
+              <tr><td style="padding:14px 16px;font-size:14px;">
+                🎉 You earned <strong>${data.loyaltyPoints.earned}</strong> points! New balance: <strong>${data.loyaltyPoints.newBalance}</strong>.
+              </td></tr>
+            </table>
+          </td></tr>
+
+          <tr><td style="padding:0 20px 20px;">
+            <a href="${data.stripePaymentUrl}" style="display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:12px 18px;border-radius:4px;font-weight:bold;">Pay with Stripe</a>
+            <div style="font-size:12px;color:#374151;margin-top:10px;">
+              Other options: Venmo <strong>${data.venmoUsername}</strong> · CashApp <strong>${data.cashappUsername}</strong> · PayPal <strong>${data.paypalUsername}</strong>
+            </div>
+          </td></tr>
+
+          ${data.upsell ? `
+          <tr><td style="padding:0 20px 20px;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e7eb;border-radius:6px;background:#faf5ff;">
+              <tr><td style="padding:14px 16px;font-size:14px;">
+                <strong>${data.upsell.title}</strong><br/>
+                <span>${data.upsell.description}</span><br/><br/>
+                <a href="${data.upsell.ctaUrl}" style="display:inline-block;background:#9333ea;color:#fff;text-decoration:none;padding:10px 14px;border-radius:4px;">${data.upsell.ctaText}</a>
+              </td></tr>
+            </table>
+          </td></tr>` : ``}
+
+          ${data.notes ? `
+          <tr><td style="padding:0 20px 20px;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;">
+              <tr><td style="padding:12px 16px;font-size:13px;">${data.notes}</td></tr>
+            </table>
+          </td></tr>` : ``}
+
+          <tr><td style="padding:0 20px 24px;font-size:12px;color:#6b7280;">
+            Questions? Just reply to this email.
+            <div style="margin-top:8px;">© ${new Date().getFullYear()} Clean Machine Auto Detail</div>
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body></html>`;
+}
+🧪 Non-Blocking Improvements You Should Make (bake into the plan)
+Add plain-text fallback for every email and ensure SPF/DKIM/DMARC are configured (note to verify in docs, not code here).
+
+Email screenshot testing via tools (mention options) plus manual spot checks.
+
+Resend logic with reason codes and throttling.
+
+Partial payments support (optional flag) and correct loyalty calculation.
+
+PDF receipt generation (queueable; future milestone).
+
+✅ Output Format Rules
+Use clear markdown headers.
+
+Keep code blocks compilable and minimal.
+
+Bold any defaults/assumptions you introduce.
+
+Never say “it depends” without a proposed default.
+
+End with a Milestone 1 commit checklist (copy-pasteable bullet list of files to add/modify).
+
+📎 Environment Variables to Assume (add if missing)
+ini
+Copy code
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+VITE_STRIPE_PUBLIC_KEY=
+VENMO_USERNAME=@cleanmachinetulsa
+CASHAPP_USERNAME=$CleanMachineTulsa
+CLIENT_BASE_URL=https://cleanmachine.com
+PAYLINK_SECRET=replace_me_with_long_random_string
+📜 ORIGINAL SPEC (ingest and improve)
+<<<BEGIN_SPEC
+[PASTE OF USER SPEC BELOW — already included in this message for convenience]
+
+📧 INVOICE SYSTEM BUILD PROMPT - FOR CHATGPT REVIEW
+
+CLEAN MACHINE AUTO DETAIL - INVOICE EMAIL SYSTEM
+Full-Stack Implementation Specification
+PROJECT CONTEXT
+Clean Machine is an auto detailing SaaS with existing appointment email templates that are production-quality HTML with full branding. The invoice system currently sends plain-text emails that are far below the quality standard of appointment emails. We need to upgrade the entire invoice workflow to exceed appointment email quality.
+OBJECTIVE
+Build a comprehensive invoice management system with:
+
+Beautiful branded invoice emails (better than appointment emails)
+
+Invoice Manager dashboard page (full CRUD + analytics)
+
+Customer selector in invoice modal (prevent wrong-customer sends)
+
+Stripe integration (payment webhooks, status tracking)
+
+E2E testing (automated invoice flow validation)
+
+PART 1: BRANDED INVOICE EMAIL TEMPLATE
+…[TRUNCATED FOR BREVITY IN THIS META-PROMPT — The full spec from the user’s message should be considered part of input]…
+END OF BUILD SPECIFICATION
+
+END_SPEC

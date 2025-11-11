@@ -1,0 +1,112 @@
+You are an expert product+platform architect and staff-level full-stack engineer tasked with producing a complete, production-grade plan to fuse two Replit apps into ONE whitelabel “super-system” that a non-technical business owner can use out of the box.
+
+## Context (read carefully)
+
+* We currently have two related apps:
+
+  1. **Clean Machine (CM)** — verticalized mobile auto-detailing app with deep, battle-tested logic: scheduling, weather-aware rescheduling, service-area checks, missed-call SMS + voicemail → text, Google Calendar integration, technician onboarding, knowledge-base replies, and rich SMS templates. It also has a **Technician Bio + Photo + “Improve with AI” Bio Coach** feature that injects technician profile + ETA into On-The-Way messages.
+  2. **ServicePro (SP)** — the “universal” version designed to be whitelabeled for any service business (lawn care, pet grooming, house cleaning, etc.). It emphasizes an **onboarding wizard**, data presets (**industry packs**), and a goal of **zero-code setup** for non-technical users.
+
+* Immediate goals:
+
+  * **Merge the best of CM into SP without breaking SP’s onboarding-first flow**, via a **Core SDK** and **ports/adapters** so logic is reusable and provider-agnostic.
+  * Transform SP into a **multi-tenant whitelabel SaaS** with:
+
+    * Per-tenant isolation and encryption (row-level isolation, Secrets Vault).
+    * First-run **Onboarding Wizard** (Twilio/A2P, Stripe, Google Maps, OpenAI, Email) with **Test buttons** and a **Preflight checklist** that must go all-green before Go Live.
+    * **Embeddable agent widget** (JS snippet → iframe) to drop into any website.
+    * **Landing-page generator validator**: stable schema, endpoint mapping checks, “dry-run” sandbox.
+    * **Third-party/gift billing** flows (payer approval, deposits, invoices) with role-aware notifications.
+    * Feature flags for everything (safe rollout; instant rollback).
+  * Maintain an additive approach (no destructive rewrites of working parts).
+
+* Product bar:
+
+  * “God-tier” polish: highly reliable, self-healing, clear logs, excellent docs.
+  * Non-technical customers: “copy key, click test, see green check.”
+  * We plan to **make millions** — assume scale, security, compliance, and supportability matter.
+
+## Historical constraints & expectations
+
+* We work in Replit today; prefer a **monorepo** that can still run locally and in Replit.
+* We are okay creating a small “Core” package and mounting it in the app.
+* Existing logic uses Twilio, Stripe, Google Maps, OpenAI, Google Calendar; we want per-tenant keys.
+* We already designed: Technician Bios + AI coach; Third-party payer/gift billing; Industry packs; Whitelabel wizard; Widget; Validator.
+
+## Your task
+
+Produce a *complete* implementation plan that is **at least as thorough** as a senior staff engineer’s architecture doc and **more**. Do **not** summarize; **author** the plan. Include all of the following:
+
+### 1) Architecture & Code Organization
+
+* Monorepo layout (packages, folders) with justifications.
+* **Core SDK** boundaries (scheduler, weather rescheduler, telephony glue, maps, templates, KB, technician bios, third-party billing rules) and the **ports/adapters** pattern.
+* How SP consumes Core (import vs. internal API), and how we keep SP’s onboarding-driven UX intact.
+* Tenant isolation strategy (row-level scoping; middleware; public widget tokens).
+* Secrets Vault design (encryption at rest; key rotation; least privilege).
+
+### 2) Data Model & Migrations
+
+* Precise schema changes: add `tenant_id` to relevant tables; composite indexes; backfill steps; idempotent migrations; safe rollback.
+* Authorizations, invoices, contacts, jobs, technicians, messages, notifications — detail tenant scoping and lifecycle.
+* Data retention & PII minimization; export/delete flows per tenant; audit trails.
+
+### 3) Onboarding Wizard (zero-code)
+
+* Step-by-step flow (Business Basics → Industry Pack → Twilio with A2P helper → Stripe → Maps → OpenAI → Email → **Preflight**).
+* Each step must include: field validation, “Paste your key”, **Test button**, expected success criteria, and friendly error remediation.
+* A2P: brand/campaign prefill, Messaging Service attach, webhook signature verification, deliverability checks.
+* Preflight must block Go Live until all critical checks are green; include a printable PDF of the configuration for the tenant.
+
+### 4) Embeddable Widget
+
+* Public JS loader and iframe app. Token shape/scopes, CORS, sandbox, rate limits.
+* Theming from tenant settings; industry-pack-aware flows: lead capture, SMS kickoff, quote, booking stub, deposit, voicemail, KB Q&A.
+* Web-safe fallbacks for MMS size issues; progressive enhancement.
+
+### 5) Landing-Page Generator Validator
+
+* Canonical JSON schema with versioning; how the validator checks endpoint mapping, service keys, links.
+* “Dry-run” rendering sandbox that never sends messages; QA checklist output.
+
+### 6) Feature Flags & Industry Packs
+
+* Flags for AI Bio Coach, OTW photos, third-party billing, widget, validator, etc.
+* Pack structure: services, durations, buffers, copy templates, scheduler defaults, weather thresholds; safe “reset to defaults.”
+
+### 7) Security, Compliance, and Privacy
+
+* RLS enforcement; encryption; PII handling; consent capture; audit logging.
+* Webhook signing; idempotency; replay protection; rate limiting; CORS; CSP.
+* Tenant export/delete; data portability; uptime/error budgets; incident playbooks.
+
+### 8) Observability & SRE
+
+* Structured logs; request correlation; webhook traces; delivery receipts.
+* Metrics: onboarding conversion, preflight pass rate, A2P deliverability, deposit conversion, schedule fill, CSAT.
+* Alerting & runbooks; chaos/failure drills; rollback strategy.
+
+### 9) CI/CD & Testing
+
+* Tests: unit, contract (ports), integration (onboarding end-to-end), async webhook sims (Twilio/Stripe), snapshot tests for templates.
+* Seed fixtures to make the demo tenant go green in minutes.
+* Blue/green deploy plan with database migration gates.
+
+### 10) Risk Register & Mitigations
+
+* Data migration risk; A2P delays; webhook misconfig; rate limits; multi-tenant leakage; cost blowups.
+* Mitigation playbooks and feature-flagged rollouts.
+
+### 11) Delivery Plan, Timeline, Resourcing
+
+* Phases, durations, critical path, and what can run in parallel.
+* Roles: platform, product, QA, DevRel/docs.
+* “Definition of Done” checklists for each phase.
+
+### 12) Stretch Enhancements (optional but welcomed)
+
+* Multi-locale/i18n, SLA tiers, subaccounts, theme marketplace, usage-based billing, AI-assisted copy for templates beyond bios, etc.
+
+**Tone & format:** Explicit, prescriptive, implementation-ready. Use headings, tables, and code/config snippets where helpful. Provide a nav-friendly structure so we can hand this to an engineer team and start building tomorrow.
+
+Output: a single, standalone document (no questions), ready for immediate execution.

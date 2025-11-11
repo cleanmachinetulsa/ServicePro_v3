@@ -1,0 +1,196 @@
+curl -X POST http://localhost:5000/api/chat/send-business-message \
+jq: error: syntax error, unexpected end of file, expecting FORMAT or QQSTRING_START or '[' (Unix shell quoting issues?) at <top-level>, line 1:
+.[0].store_paths.                
+jq: 1 compile error
+Error: printing results
+
+Caused by:
+    Broken pipe (os error 32)
+
+Location:
+    src/bin/search/main.rs:116:71
+
+/nix/store/5xsp4qyik2wra2blp5am49yp7yp7wi6q-curl-8.7.1-bin
+Adding curl to .replit
+/tmp/nix-shell-1501-886383513/rc: line 3: import: command not found
+import: command not installed. Multiple versions of this command were found in Nix.
+Select one to run (or press Ctrl-C to cancel):
+  -H "Content-Type: application/json" \
+jq: error: syntax error, unexpected end of file, expecting FORMAT or QQSTRING_START or '[' (Unix shell quoting issues?) at <top-level>, line 1:
+.[0].store_paths.                
+jq: 1 compile error
+error:
+       … while evaluating the attribute 'AAAAAASomeThingsFailToEvaluate'
+         at /nix/store/pp028rj4l81sm4bs36l9mx80602m8kq4-nixpkgs-24.05-src/pkgs/top-level/all-packages.nix:106:3:
+          105|   ### Evaluating the entire Nixpkgs naively will fail, make failure fast
+          106|   AAAAAASomeThingsFailToEvaluate = throw ''
+             |   ^
+          107|     Please be informed that this pseudo-package is not the only part
+
+       … while calling the 'throw' builtin
+         at /nix/store/pp028rj4l81sm4bs36l9mx80602m8kq4-nixpkgs-24.05-src/pkgs/top-level/all-packages.nix:106:36:
+          105|   ### Evaluating the entire Nixpkgs naively will fail, make failure fast
+          106|   AAAAAASomeThingsFailToEvaluate = throw ''
+             |                                    ^
+          107|     Please be informed that this pseudo-package is not the only part
+
+       error: Please be informed that this pseudo-package is not the only part
+       of Nixpkgs that fails to evaluate. You should not evaluate
+       entire Nixpkgs without some special measures to handle failing
+       packages, like using pkgs/top-level/release-attrpaths-superset.nix.
+Failed to install nixpkgs..
+import: command not found
+bash: /bin: Is a directory
+bash: API_FIXES_REQUIRED.md: command not found
+bash: API_FIXES_REQUIRED.md: command not found
+bash: API_FIXES_REQUIRED.md: command not found
+bash: API_FIXES_REQUIRED.md: command not found
+bash: API_FIXES_REQUIRED.md: command not found
+bash: attached_assets/: Is a directory
+bash: syntax error near unexpected token `('
+bash: syntax error near unexpected token `'\n=== Weather Alert + Reschedule Protocol Test ===\n''
+bash: //: Is a directory
+bash: const: command not found
+bash: name:: command not found
+bash: phone:: command not found
+bash: email:: command not found
+bash: address:: command not found
+bash: service:: command not found
+bash: addOns:: command not found
+bash: vehicleInfo:: command not found
+bash: syntax error near unexpected token `}'
+bash: //: Is a directory
+bash: const: command not found
+bash: syntax error near unexpected token `'📋 Test Scenario:''
+bash: syntax error near unexpected token ``Customer: ${testCustomer.name}`'
+bash: syntax error near unexpected token ``Phone: ${testCustomer.phone}`'
+bash: syntax error near unexpected token ``Email: ${testCustomer.email}`'
+bash: syntax error near unexpected token ``Service: ${testCustomer.service}`'
+bash: syntax error near unexpected token ``Add-ons: ${testCustomer.addOns.join(', ')}\n`'
+bash: syntax error near unexpected token `('
+bash: const: command not found
+bash: syntax error near unexpected token `('
+bash: syntax error near unexpected token `appointmentDate.getDate'
+bash: syntax error near unexpected token `10,'
+bash: syntax error near unexpected token `('
+bash: weekday:: command not found
+bash: month:: command not found
+bash: day:: command not found
+bash: hour:: command not found
+bash: minute:: command not found
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token ``\n🌧️  Testing: ${testScenario.name}`'
+bash: syntax error near unexpected token ``Appointment: ${formattedTime}`'
+bash: syntax error near unexpected token ``Rain Probability: ${testScenario.rainChance}%\n`'
+bash: //: Is a directory
+bash: const: command not found
+bash: needsReschedule:: command not found
+bash: weatherRiskLevel:: command not found
+bash: urgency:: command not found
+bash: testScenario.level: command not found
+bash: testScenario.level: command not found
+bash: syntax error near unexpected token `('
+bash: forecastData:: command not found
+bash: syntax error near unexpected token `('
+bash: syntax error near unexpected token `('
+bash: chanceOfRain:: command not found
+bash: temperature:: command not found
+bash: isRainy:: command not found
+bash: severity:: command not found
+bash: testScenario.level: command not found
+bash: testScenario.level: command not found
+bash: syntax error near unexpected token `}'
+bash: ]: command not found
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `'Weather Risk Assessment:''
+bash: syntax error near unexpected token ``- Risk Level: ${mockWeatherCheck.weatherRiskLevel.toUpperCase()}`'
+bash: syntax error near unexpected token ``- Needs Reschedule: ${mockWeatherCheck.needsReschedule ? 'YES ⚠️' : 'NO ✓'}`'
+bash: syntax error near unexpected token ``- Urgency: ${mockWeatherCheck.urgency}`'
+bash: syntax error near unexpected token ``- Recommendation: ${mockWeatherCheck.recommendation}\n`'
+try: command not installed, but was located via Nix.
+package: try  0.2.0  Lets you run a command and inspect its effects before changing your live system
+Would you like to run try from Nix and add it to your project? [Yn]: bash: syntax error near unexpected token `'📤 Sending weather alert with reschedule link...\n''
+bash: syntax error near unexpected token `('
+bash: syntax error near unexpected token `('
+bash: formattedTime:: command not found
+bash: vehicleInfo:: command not found
+bash: },: command not found
+bash: mockWeatherCheck: command not found
+bash: syntax error near unexpected token `)'
+bash: syntax error near unexpected token `'✅ Notification Results:''
+bash: syntax error near unexpected token ``- SMS Sent: ${notificationResult.sms ? '✅ SUCCESS' : '❌ FAILED'}`'
+bash: syntax error near unexpected token ``- Email Sent: ${notificationResult.email ? '✅ SUCCESS' : '❌ FAILED'}\n`'
+bash: syntax error near unexpected token `{'
+bash: const: command not found
+bash: cleanmachine: command not found
+bash: https://${replSlug}.replit.app/schedule?phone=${encodeURIComponent(testCustomer.phone)}: bad substitution
+bash: ${encodeURIComponent(testCustomer.service)}: bad substitution
+bash: ${encodeURIComponent(testCustomer.name)}: bad substitution
+bash: const: command not found
+bash: syntax error near unexpected token `'📱 SMS SENT TO YOUR PHONE!''
+bash: syntax error near unexpected token ``\n🔗 Reschedule Link (pre-filled with customer info):`'
+bash: syntax error near unexpected token `rescheduleUrl'
+bash: syntax error near unexpected token `'\nThe link includes:''
+bash: syntax error near unexpected token ``  • Customer name: ${testCustomer.name}`'
+bash: syntax error near unexpected token ``  • Phone number: ${testCustomer.phone}`'
+bash: syntax error near unexpected token ``  • Service: ${testCustomer.service}`'
+bash: syntax error near unexpected token `'\n✅ Customer can click link and immediately see available dates!''
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `'\n''
+bash: syntax error near unexpected token `'TEST SUMMARY''
+bash: syntax error near unexpected token `'='.repeat'
+bash: syntax error near unexpected token ``Customer: ${testCustomer.name} (${testCustomer.phone})`'
+bash: syntax error near unexpected token ``Appointment: ${formattedTime}`'
+bash: syntax error near unexpected token ``Weather Risk: ${mockWeatherCheck.weatherRiskLevel.toUpperCase()} (${testScenario.rainChance}% rain)`'
+bash: syntax error near unexpected token ``SMS Alert: ${notificationResult.sms ? '✅ SENT' : '❌ NOT SENT'}`'
+bash: syntax error near unexpected token ``Reschedule Link: ${notificationResult.sms ? '✅ INCLUDED' : '❌ NOT INCLUDED'}`'
+bash: syntax error near unexpected token `'='.repeat'
+bash: syntax error near unexpected token `{'
+bash: syntax error near unexpected token `'\n📲 CHECK YOUR PHONE NOW!''
+bash: syntax error near unexpected token `'   You should receive an SMS with:''
+bash: syntax error near unexpected token `'   1. Weather alert message''
+bash: syntax error near unexpected token `'   2. Direct reschedule link with pre-filled info''
+bash: syntax error near unexpected token `'   3. Options to RESCHEDULE or KEEP appointment''
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `'\n❌ TEST FAILED:','
+bash: throw: command not found
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `}'
+bash: /bin: Is a directory
+bash: 30,: command not found
+bash: attached_assets/: Is a directory
+bash: syntax error near unexpected token `:'
+bash: syntax error near unexpected token `level'
+bash: syntax error near unexpected token `return'
+bash: syntax error near unexpected token `return'
+bash: syntax error near unexpected token `return'
+bash: syntax error near unexpected token `return'
+bash: default:: command not found
+bash: command substitution: line 1: syntax error near unexpected token `('
+bash: command substitution: line 1: `Weather conditions are acceptable (${rainChance}% rain).'
+bash: return: can only `return' from a function or sourced script
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `}'
+bash: /bin: Is a directory
+bash: 30,: command not found
+bash: attached_assets/: Is a directory
+bash: syntax error near unexpected token `:'
+bash: syntax error near unexpected token `return'
+bash: syntax error near unexpected token `return'
+bash: syntax error near unexpected token `return'
+bash: syntax error near unexpected token `return'
+bash: return: Mostly clear: numeric argument required
+bash: return: can only `return' from a function or sourced script
+bash: syntax error near unexpected token `}'
+bash: //: Is a directory
+bash: syntax error near unexpected token `.then'
+bash: syntax error near unexpected token `'\n✅ Weather + Reschedule Protocol Test Complete!''
+bash: syntax error near unexpected token `'   Check your phone for the SMS with reschedule link.\n''
+bash: syntax error near unexpected token `0'
+bash: syntax error near unexpected token `}'
+bash: syntax error near unexpected token `('
+bash: syntax error near unexpected token `'\n❌ Test execution failed:','
+bash: syntax error near unexpected token `1'
+bash: syntax error near unexpected token `}'
+~/workspace$ 

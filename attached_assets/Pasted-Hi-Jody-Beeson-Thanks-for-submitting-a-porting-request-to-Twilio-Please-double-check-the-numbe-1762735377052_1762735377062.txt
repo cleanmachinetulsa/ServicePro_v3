@@ -1,0 +1,65 @@
+Hi Jody Beeson,
+
+Thanks for submitting a porting request to Twilio.
+
+**Please double check the numbers listed at the bottom of this email to ensure the accuracy and completeness of your port request and that all numbers were submitted successfully.**
+
+The status of each outstanding port request is displayed in the numbers tab of your Twilio [Dashboard](http://twilio.com/console/phone-numbers/porting-requests), you can access it by clicking [here](https://twilio.com/console/phone-numbers/porting-requests).
+
+**Porting Timelines for voice and sms porting:**
+Please note that we may need to reach out to you during the process for more information, and we will use this email thread to provide you with updates.
+
+1. For requests of **less than 50** numbers it can typically take **5-11 days**.
+3. For requests of **50 or more** numbers the process might take **1-6 weeks**.
+3. **SMS can take up to 3 business days** after the porting date to be activated within the Twilio network as all carriers must update their routing records.
+4. Consider that timelines might be extended if the port is temporarily rejected by any telecom carriers/underlying carriers involved.
+
+**Number configuration:**
+Each number must be configured prior to the porting process to avoid downtime. To ensure continuity of service, you should visit the status page on your Twilio [Dashboard](http://twilio.com/console/phone-numbers/porting-requests) as soon as you submit the port request and configure a voice URL, messaging URL, and/or SIP trunk for each number.
+
+The steps of the porting process are as follows:
+
+Step 1 - Submit documentation to Twilio - **Successfully completed.**
+Step 2 - Twilio will submit the port request to the carriers based on the data and information you’ve provided.
+Step 3 - Twilio will follow up with the carriers and/or you if more information is required.
+Step 4 - Twilio will receive the date on which your number(s) will port and notify you via email.
+Step 5 - Your phone number(s) will port and Twilio will test to ensure voice is working.
+
+If you have questions about this at any point, please do not hesitate to reply to this email.
+
+The Port Request SID shown below is the unique identifier for this port request; please include it in your future inquiries.
+
+**IMPORTANT:** Compliance requirement for US messaging. A registration will be required for each 10DLC and Toll-free number sending SMS/MMS messages to the US. Learn more about A2P 10DLC registration or Toll-free verification for Ported Numbers [here](https://support.twilio.com/hc/en-us/articles/19613116154907-Toll-Free-Verification-for-Hosted-and-Ported-Numbers) (https://support.twilio.com/hc/en-us/articles/19613116154907-Toll-Free-Verification-for-Hosted-and-Ported-Numbers).
+
+Sincerely,
+The Twilio Porting Team
+http://twilio.com
+
+For answers to frequently asked porting questions visit:
+http://www.twilio.com/help/faq/porting
+
+--------------------------
+
+The information for your porting request is:
+Account SID: AC4002a2c9479bb0d1468d9353d53fe3fe
+Port Request SID: PX72838ae9cd7d335efa324f7b96050ce4
+Name: Jody Beeson
+Address: 4644 S troost AVE
+City: Tulsa
+State: OK
+Postal Code: 74105
+
+FAILURES (0):
+None
+
+SUCCESSES (1):
+
+Wireless:
++19188565304
+
+-------------------------
+Your Twilio Ticket ID # 24068062
+View your ticket in Help Center: https://help.twilio.com/tickets/24068062
+Encoded ID # [0415G1-YRR7X]
+
+This email is a service from Twilio. Delivered by Zendesk.

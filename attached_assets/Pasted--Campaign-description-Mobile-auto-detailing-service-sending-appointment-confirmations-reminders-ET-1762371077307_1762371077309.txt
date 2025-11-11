@@ -1,0 +1,41 @@
+
+Campaign description
+Mobile auto detailing service sending appointment confirmations, reminders, ETAs, and follow-ups. Customers opt in via checkbox on our booking forms (cleanmachinetulsa.com/sms-consent). Reply STOP to opt out.
+Describe what you will be using this campaign for.
+Sample message #1
+I consent to receive SMS text messages from Clean Machine Auto Detail, including appointment confirmations, reminders, and service updates. Message and data rates may apply. Reply STOP to opt out at any time.
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #2
+Hi [Name], your Clean Machine appointment is confirmed for [Date] at [Time] at [Address]. We'll send a reminder 24 hours before. Reply STOP to opt out.
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #3
+Hi [Name], I'm on my way to [Address]! ETA is approximately [Time]. See you soon!
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #4
+Thank you for choosing Clean Machine! Your [Service] is complete. We'd love your feedback - reply or call us anytime.
+
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Sample message #5
+Hi [Name], it's been a while! Ready to book your next detail? Reply YES or visit cleanmachinetulsa.com to schedule.
+
+
+Provide an example of a message that you will be sending with this campaign. This message sample will be used by carriers to help identify your traffic.
+Message contents
+Messages will include embedded links.
+Messages will include phone numbers.
+Messages include content related to direct lending or other loan arrangement.
+Messages include age-gated content as defined by Carrier and CTIA guidelines
+How do end-users consent to receive messages? (40-2048 characters)
+Customers consent to SMS when they:
+
+1. Book an appointment by phone - We verbally confirm they agree to receive text updates
+2. Book through our web chat assistant - They're shown an opt-in notice before messaging
+3. Request service information - They provide their phone number and agree to SMS contact
+
+All customers receive an initial opt-in confirmation message with STOP instructions. We only send appointment-related updates (confirmations, reminders, arrival times) - never unsolicited marketing.
+This field should describe how end users opt-in to the campaign, therefore giving consent to the sender to receive their messages. If multiple opt-in methods can be used for the same campaign, they must all be listed. 
+Learn more
+The campaign submission has been reviewed and rejected due to issues verifying the Call to Action (CTA) provided for the campaign. 
+Learn more
+I agree the above information is correct. I agree to a $15 Campaign vetting fee upon resubmission. Learn more about the vetting fee
+

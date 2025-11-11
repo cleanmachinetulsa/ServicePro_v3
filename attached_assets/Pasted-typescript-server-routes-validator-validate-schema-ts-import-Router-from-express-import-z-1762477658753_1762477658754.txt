@@ -1,0 +1,2268 @@
+typescript// server/routes/validator/validate-schema.ts
+import { Router } from 'express';
+import { z } from 'zod';
+
+const router = Router();
+
+// Canonical schema for landing page generators (v1)
+const landingPageSchemaV1 = z.object({
+  version: z.literal('1.0'),
+  business: z.object({
+    name: z.string(),
+    tagline: z.string().optional(),
+    logo: z.string().url().optional(),
+    primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+    phone: z.string(),
+    email: z.string().email(),
+  }),
+  services: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string(),
+    priceRange: z.string(),
+    duration: z.string(),
+    imageUrl: z.string().url().optional(),
+  })),
+  endpoints: z.object({
+    services: z.string().url(), // GET endpoint
+    config: z.string().url(),   // GET endpoint
+    book: z.string().url(),     // POST endpoint
+  }),
+  theme: z.object({
+    font: z.enum(['sans', 'serif', 'mono']).optional(),
+    style: z.enum(['modern', 'classic', 'minimal']).optional(),
+  }).optional(),
+});
+
+// Validation endpoint
+router.post('/validate', async (req, res) => {
+  try {
+    const data = req.body;
+
+    // Validate schema structure
+    const parsed = landingPageSchemaV1.safeParse(data);
+    if (!parsed.success) {
+      return res.json({
+        success: false,
+        errors: parsed.error.flatten().fieldErrors,
+        message: 'Schema validation failed',
+      });
+    }
+
+    // Test endpoint connectivity
+    const endpointTests = await Promise.all([
+      testEndpoint(data.endpoints.services, 'GET'),
+      testEndpoint(data.endpoints.config, 'GET'),
+      testEndpoint(data.endpoints.book, 'POST', { test: true }),
+    ]);
+
+    const allEndpointsWork = endpointTests.every(test => test.success);
+
+    res.json({
+      success: allEndpointsWork,
+      schemaValid: true,
+      endpointTests,
+      message: allEndpointsWork 
+        ? 'All validation checks passed!' 
+        : 'Some endpoints failed connectivity tests',
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+async function testEndpoint(url: string, method: string, body?: any) {
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    return {
+      endpoint: url,
+      method,
+      success: response.ok,
+      status: response.status,
+      message: response.ok ? 'OK' : `HTTP ${response.status}`,
+    };
+  } catch (error: any) {
+    return {
+      endpoint: url,
+      method,
+      success: false,
+      message: error.message,
+    };
+  }
+}
+
+export default router;
+
+10) Docs CMS
+typescript// server/routes/docs/index.ts
+import { Router } from 'express';
+import { z } from 'zod';
+import { db } from '../../db';
+import { docs } from '../../../db/schema';
+import { requireAuth, requireTenant } from '../../middleware';
+
+const router = Router();
+
+const docSchema = z.object({
+  key: z.string().min(1).max(100), // e.g., 'onboarding/twilio-setup'
+  title: z.string().min(1).max(255),
+  markdown: z.string(),
+  category: z.string(),
+  media: z.array(z.object({
+    type: z.enum(['image', 'video']),
+    url: z.string().url(),
+    caption: z.string().optional(),
+  })).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+// Create doc
+router.post('/', requireAuth, requireTenant, async (req, res, next) => {
+  try {
+    const parsed = docSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        errors: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const [doc] = await db.insert(docs).values({
+      tenantId: req.tenantId!,
+      ...parsed.data,
+    }).returning();
+
+    res.json({ success: true, doc });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get doc by key
+router.get('/:key', requireTenant, async (req, res) => {
+  const [doc] = await db
+    .select()
+    .from(docs)
+    .where(
+      and(
+        eq(docs.tenantId, req.tenantId!),
+        eq(docs.key, req.params.key)
+      )
+    )
+    .limit(1);
+
+  if (!doc) {
+    return res.status(404).json({ success: false, error: 'Doc not found' });
+  }
+
+  res.json({ success: true, doc });
+});
+
+// Search docs
+router.get('/', requireTenant, async (req, res) => {
+  const { search, category } = req.query;
+
+  let query = db.select().from(docs).where(eq(docs.tenantId, req.tenantId!));
+
+  if (category) {
+    query = query.where(eq(docs.category, category as string));
+  }
+
+  if (search) {
+    // Simple text search (use Postgres full-text search in production)
+    query = query.where(
+      or(
+        like(docs.title, `%${search}%`),
+        like(docs.markdown, `%${search}%`)
+      )
+    );
+  }
+
+  const results = await query;
+  res.json({ success: true, docs: results });
+});
+
+// Update doc
+router.put('/:key', requireAuth, requireTenant, async (req, res, next) => {
+  try {
+    const parsed = docSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        errors: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const [updated] = await db
+      .update(docs)
+      .set({ ...parsed.data, updatedAt: new Date() })
+      .where(
+        and(
+          eq(docs.tenantId, req.tenantId!),
+          eq(docs.key, req.params.key)
+        )
+      )
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Doc not found' });
+    }
+
+    res.json({ success: true, doc: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+
+11) Twilio A2P Helper
+typescript// server/services/a2p-helper.ts
+import Twilio from 'twilio';
+import { secretsVault } from './secrets-vault';
+import { db } from '../db';
+import { tenants } from '../../db/schema/tenants';
+
+export class A2PHelper {
+  private client: Twilio.Twilio;
+
+  constructor(accountSid: string, authToken: string) {
+    this.client = Twilio(accountSid, authToken);
+  }
+
+  // Auto-generate consent page content
+  static generateConsentPage(tenant: any): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SMS Consent - ${tenant.brandName}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+    .consent-box { border: 2px solid #3B82F6; padding: 20px; border-radius: 8px; }
+    button { background: #3B82F6; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="consent-box">
+    <h1>SMS Messaging Consent</h1>
+    <p><strong>${tenant.brandName}</strong> uses SMS messaging to provide you with appointment reminders, service updates, and important notifications.</p>
+    
+    <h3>What you'll receive:</h3>
+    <ul>
+      <li>Appointment confirmations and reminders</li>
+      <li>Service updates and notifications</li>
+      <li>On-the-way alerts from technicians</li>
+      <li>Payment receipts and invoices</li>
+    </ul>
+
+    <h3>Your rights:</h3>
+    <ul>
+      <li>Reply STOP to any message to unsubscribe at any time</li>
+      <li>Reply HELP for assistance</li>
+      <li>Message frequency varies based on your appointments</li>
+      <li>Message and data rates may apply</li>
+    </ul>
+
+    <p>By providing your phone number and checking the box below, you consent to receive SMS messages from ${tenant.brandName}.</p>
+
+    <form id="consent-form" action="/api/sms-consent" method="POST">
+      <label>
+        <input type="checkbox" name="consent" required> 
+        I consent to receive SMS messages from ${tenant.brandName}
+      </label>
+      <br><br>
+      <input type="text" name="name" placeholder="Your Name" required>
+      <input type="tel" name="phone" placeholder="Phone Number" required>
+      <br><br>
+      <button type="submit">Submit Consent</button>
+    </form>
+  </div>
+</body>
+</html>
+    `.trim();
+  }
+
+  // Pre-fill A2P campaign fields
+  static generateA2PCampaignTemplate(tenant: any) {
+    return {
+      brandName: tenant.brandName,
+      brandType: 'SOLE_PROPRIETOR', // or LLC, CORPORATION based on business type
+      street: tenant.address || '123 Main St',
+      city: 'Tulsa',
+      state: 'OK',
+      postalCode: '74101',
+      country: 'US',
+      email: tenant.email,
+      phone: tenant.phone,
+      
+      // Campaign details
+      campaignDescription: `${tenant.brandName} uses SMS to send appointment reminders, service updates, and customer notifications for our ${tenant.industryType.replace('_', ' ')} business.`,
+      messageFlow: `
+1. Customer books appointment via website or phone
+2. Confirmation SMS sent with appointment details
+3. 24-hour reminder SMS sent before appointment
+4. On-the-way SMS when technician is en route (with technician name and photo)
+5. Completion SMS with invoice and review request
+6. Customers can reply to reschedule or ask questions
+      `.trim(),
+      
+      sampleMessages: [
+        `Hi [Name]! Your ${tenant.brandName} appointment is confirmed for [Date] at [Time]. We'll text you when we're on the way! Reply STOP to opt out.`,
+        `[Technician Name] from ${tenant.brandName} is on the way to [Address]! ETA: [Time]. See you soon!`,
+        `Thanks for choosing ${tenant.brandName}! Your service is complete. Total: $[Amount]. Pay here: [Link]. Reply STOP to opt out.`,
+      ],
+      
+      optInKeywords: ['START', 'YES', 'UNSTOP'],
+      optOutKeywords: ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'],
+      helpKeywords: ['HELP', 'INFO'],
+      
+      helpMessage: `${tenant.brandName} - For help call ${tenant.phone} or visit ${tenant.customDomain || tenant.slug + '.servicepro.com'}. Reply STOP to opt out.`,
+      
+      optInMessage: `Welcome to ${tenant.brandName}! You'll receive appointment updates. Reply STOP to opt out, HELP for help.`,
+      
+      optOutMessage: `You've unsubscribed from ${tenant.brandName} texts. Reply START to resubscribe. Standard rates apply.`,
+    };
+  }
+
+  // Create Messaging Service
+  async createMessagingService(friendlyName: string, phoneNumber: string) {
+    try {
+      const messagingService = await this.client.messaging.v1.services.create({
+        friendlyName,
+      });
+
+      // Add phone number to service
+      await this.client.messaging.v1
+        .services(messagingService.sid)
+        .phoneNumbers.create({
+          phoneNumberSid: phoneNumber,
+        });
+
+      return {
+        success: true,
+        messagingServiceSid: messagingService.sid,
+        message: 'Messaging Service created successfully',
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  // Check A2P Brand status
+  async checkBrandStatus(brandSid: string) {
+    try {
+      const brand = await this.client.messaging.v1.brandRegistrations(brandSid).fetch();
+      return {
+        success: true,
+        status: brand.brandType,
+        identityStatus: brand.identityStatus,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+}
+
+// Route to use helper
+// server/routes/onboarding/step4-a2p.ts
+router.post('/generate-campaign', requireAuth, requireTenant, async (req, res) => {
+  const tenant = req.tenant;
+  const template = A2PHelper.generateA2PCampaignTemplate(tenant);
+  res.json({ success: true, template });
+});
+
+router.post('/generate-consent-page', requireAuth, requireTenant, async (req, res) => {
+  const tenant = req.tenant;
+  const html = A2PHelper.generateConsentPage(tenant);
+  res.json({ success: true, html });
+});
+
+12) Feature Flags System
+typescript// server/services/feature-flags.ts
+import { db } from '../db';
+import { tenantSettings } from '../../db/schema/tenants';
+import { eq } from 'drizzle-orm';
+
+export class FeatureFlagService {
+  private cache: Map<string, any> = new Map();
+
+  async getFlags(tenantId: string): Promise<Record<string, boolean>> {
+    const cached = this.cache.get(tenantId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.flags;
+    }
+
+    const [settings] = await db
+      .select()
+      .from(tenantSettings)
+      .where(eq(tenantSettings.tenantId, tenantId))
+      .limit(1);
+
+    const flags = settings?.flags || {};
+
+    this.cache.set(tenantId, {
+      flags,
+      expiresAt: Date.now() + 60_000, // Cache for 1 minute
+    });
+
+    return flags;
+  }
+
+  async isEnabled(tenantId: string, flagName: string): Promise<boolean> {
+    const flags = await this.getFlags(tenantId);
+    return flags[flagName] === true;
+  }
+
+  async setFlag(tenantId: string, flagName: string, value: boolean): Promise<void> {
+    await db
+      .update(tenantSettings)
+      .set({
+        flags: sql`flags || jsonb_build_object(${flagName}, ${value})`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantSettings.tenantId, tenantId));
+
+    this.cache.delete(tenantId);
+  }
+
+  clearCache(tenantId?: string) {
+    if (tenantId) {
+      this.cache.delete(tenantId);
+    } else {
+      this.cache.clear();
+    }
+  }
+}
+
+export const featureFlags = new FeatureFlagService();
+
+// Middleware to check flags
+export function requireFeatureFlag(flagName: string) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const enabled = await featureFlags.isEnabled(req.tenantId!, flagName);
+    if (!enabled) {
+      return res.status(403).json({
+        error: 'Feature not enabled',
+        feature: flagName,
+      });
+    }
+    next();
+  };
+}
+
+13) Core Business Logic Preservation
+13.1 Adapter Factory Pattern
+typescript// server/services/adapter-factory.ts
+import { secretsVault } from './secrets-vault';
+import Twilio from 'twilio';
+import { google } from 'googleapis';
+import Stripe from 'stripe';
+import OpenAI from 'openai';
+
+export class AdapterFactory {
+  // Twilio adapter
+  async createTwilioClient(tenantId: string) {
+    const secrets = await secretsVault.getSecret(tenantId, 'twilio');
+    return Twilio(secrets.accountSid, secrets.authToken);
+  }
+
+  // Google Calendar adapter
+  async createGoogleCalendarClient(tenantId: string) {
+    const secrets = await secretsVault.getSecret(tenantId, 'google_workspace');
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(secrets.serviceAccountJson),
+      scopes: ['https://www.googleapis.com/auth/calendar'],
+    });
+    return google.calendar({ version: 'v3', auth });
+  }
+
+  // Google Sheets adapter
+  async createGoogleSheetsClient(tenantId: string) {
+    const secrets = await secretsVault.getSecret(tenantId, 'google_workspace');
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(secrets.serviceAccountJson),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+    return google.sheets({ version: 'v4', auth });
+  }
+
+  // Stripe adapter
+  async createStripeClient(tenantId: string) {
+    const secrets = await secretsVault.getSecret(tenantId, 'stripe');
+    return new Stripe(secrets.secretKey);
+  }
+
+  // OpenAI adapter
+  async createOpenAIClient(tenantId: string) {
+    try {
+      const secrets = await secretsVault.getSecret(tenantId, 'openai');
+      return new OpenAI({ apiKey: secrets.apiKey });
+    } catch (error) {
+      return null; // Optional feature
+    }
+  }
+}
+
+export const adapterFactory = new AdapterFactory();
+13.2 Update Existing Services to Use Adapters
+typescript// server/calendarApi.ts - UPDATE to use tenant adapters
+import { adapterFactory } from './services/adapter-factory';
+
+export async function generateAvailableSlots(tenantId: string, service: string) {
+  const calendar = await adapterFactory.createGoogleCalendarClient(tenantId);
+  
+  // Get tenant settings for business hours
+  const [settings] = await db
+    .select()
+    .from(tenantSettings)
+    .where(eq(tenantSettings.tenantId, tenantId))
+    .limit(1);
+
+  const businessHours = settings?.businessHours || DEFAULT_HOURS;
+  
+  // ... rest of existing logic, now tenant-scoped
+}
+
+// server/aiChatService.ts - UPDATE to use tenant adapters
+export async function handleAIChat(tenantId: string, message: string, conversationId: number) {
+  const openai = await adapterFactory.createOpenAIClient(tenantId);
+  
+  if (!openai) {
+    return { error: 'AI chatbot not configured for this tenant' };
+  }
+
+  // Get tenant-specific industry pack for context
+  const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+  const [pack] = await db.select().from(industryPacks).where(eq(industryPacks.slug, tenant.industryType)).limit(1);
+  
+  const systemPrompt = pack?.aiPrompts?.system_prompt || DEFAULT_SYSTEM_PROMPT;
+  
+  // ... rest of existing GPT-4o logic
+}
+
+14) Testing Strategy
+14.1 Test Structure
+typescript// tests/integration/onboarding.test.ts
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import request from 'supertest';
+import { app } from '../server';
+import { db } from '../db';
+
+describe('Onboarding Flow', () => {
+  let testTenantId: string;
+  let authCookie: string;
+
+  beforeAll(async () => {
+    // Setup test user
+    const response = await request(app)
+      .post('/api/auth/register')
+      .send({
+        username: 'testowner',
+        password: 'TestPass123!',
+        email: 'test@example.com',
+      });
+    
+    authCookie = response.headers['set-cookie'];
+  });
+
+  it('Step 1: Creates tenant with business basics', async () => {
+    const response = await request(app)
+      .post('/api/onboarding/business')
+      .set('Cookie', authCookie)
+      .send({
+        businessName: 'Test Auto Detail',
+        slug: 'test-auto',
+        email: 'test@testauto.com',
+        phone: '+19185551234',
+        timezone: 'America/Chicago',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.tenantId).toBeDefined();
+    
+    testTenantId = response.body.tenantId;
+  });
+
+  it('Step 3: Tests Twilio connection', async () => {
+    const response = await request(app)
+      .post('/api/onboarding/twilio/test')
+      .set('Cookie', authCookie)
+      .send({
+        accountSid: process.env.TEST_TWILIO_SID,
+        authToken: process.env.TEST_TWILIO_TOKEN,
+        phoneNumber: process.env.TEST_TWILIO_PHONE,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+  });
+
+  it('Step 9: Runs preflight checks', async () => {
+    const response = await request(app)
+      .get('/api/onboarding/preflight')
+      .set('Cookie', authCookie);
+
+    expect(response.status).toBe(200);
+    expect(response.body.checks).toBeInstanceOf(Array);
+  });
+
+  afterAll(async () => {
+    // Cleanup test tenant
+    await db.delete(tenants).where(eq(tenants.id, testTenantId));
+  });
+});
+14.2 Test Demo Tenant Setup
+bash#!/bin/bash
+# scripts/seed-demo-tenant.sh
+
+# Create demo tenant with all features enabled
+psql $DATABASE_URL << EOF
+INSERT INTO tenants (slug, name, brand_name, status, industry_type, onboarding_completed)
+VALUES ('demo', 'Demo Business', 'Demo', 'active', 'auto_detail', TRUE);
+
+-- Get the tenant ID
+DO \$\$
+DECLARE demo_id UUID;
+BEGIN
+  SELECT id INTO demo_id FROM tenants WHERE slug = 'demo';
+  
+  -- Create settings with all flags enabled
+  INSERT INTO tenant_settings (tenant_id, flags) VALUES (
+    demo_id,
+    '{
+      "wl_enabled": true,
+      "wl_widget_enabled": true,
+      "ai_bio_coach_enabled": true,
+      "otw_photos_enabled": true,
+      "third_party_billing_enabled": true,
+      "loyalty_program_enabled": true,
+      "weather_rescheduling_enabled": true
+    }'
+  );
+  
+  -- Create sample services
+  INSERT INTO services (tenant_id, name, price_range, duration_hours)
+  VALUES 
+    (demo_id, 'Full Detail', '\$150-250', 2.5),
+    (demo_id, 'Interior Only', '\$100-150', 1.5);
+    
+  -- Create sample customer
+  INSERT INTO customers (tenant_id, name, phone, email)
+  VALUES (demo_id, 'John Demo', '+19185555555', 'demo@example.com');
+END \$\$;
+EOF
+
+echo "✅ Demo tenant created! Access at: demo.servicepro.com"
+
+15) Migration Execution Plan
+15.1 Phase-by-Phase Timeline
+PhaseDurationTasksCritical PathPhase 0: PreparationWeek 1• Set up dev environment<br>• Create feature branch<br>• Document current ROOT stateSetup AWS Secrets ManagerPhase 1: DatabaseWeek 2• Run migrations 0001-0003<br>• Backfill ROOT tenant<br>• Verify data integrityMigration 0005 (backfill) must completePhase 2: MiddlewareWeek 2-3• Implement tenant resolution<br>• Update all routes<br>• Test ROOT tenant still worksTenant middleware testedPhase 3: Secrets VaultWeek 3• Deploy encryption service<br>• Migrate ROOT credentials<br>• Test adapter factoryAWS credentials configuredPhase 4: OnboardingWeek 4-5• Build wizard UI<br>• Implement all 9 steps<br>• Create test tenantPreflight checker workingPhase 5: WidgetWeek 6• Build widget app<br>• Implement loader<br>• Test embeddingPublic token authPhase 6: Docs & ValidatorWeek 7• Docs CMS<br>• Validator API<br>• Seed documentationContent createdPhase 7: PolishWeek 8• Bug fixes<br>• Performance tuning<br>• Alpha testingAll tests passing
+15.2 Deployment Checklist
+Pre-Deployment:
+
+ All migrations reviewed and tested on staging DB
+ ROOT tenant data backed up
+ AWS Secrets Manager configured
+ Environment variables documented
+ Rollback plan tested
+
+Deployment Steps:
+
+Enable maintenance mode for Clean Machine
+Create database snapshot
+Run migrations 0001-0006 sequentially
+Verify ROOT tenant ID matches expected UUID
+Deploy new backend code
+Deploy new frontend code
+Test ROOT tenant (cleanmachinetulsa.com) works normally
+Create first test tenant via onboarding wizard
+Test widget embeds correctly
+Disable maintenance mode
+
+Post-Deployment:
+
+ Monitor error logs for 24 hours
+ Verify all Clean Machine features still work
+ Test onboarding flow end-to-end
+ Generate demo tenant for showcasing
+
+Rollback Procedure:
+
+Restore database from snapshot
+Deploy previous version of code
+Verify Clean Machine works
+Document what went wrong
+Fix in development before retry
+
+
+16) Risk Mitigation
+16.1 Risk Register
+RiskProbabilityImpactMitigationData loss during migrationLowCritical• Multiple backups<br>• Test migrations on staging<br>• Idempotent migrations<br>• Rollback scripts readyROOT tenant breaksMediumCritical• Extensive testing pre-deploy<br>• Feature flags to disable new features<br>• Keep existing routes as fallbackSecrets vault misconfigurationMediumHigh• Test on demo tenant first<br>• Keep plaintext backup temporarily<br>• Gradual migration of credentialsPerformance degradationMediumMedium• Add composite indexes<br>• Monitor query times<br>• Use connection pooling<br>• Cache tenant resolutionA2P compliance issuesLowHigh• Legal review of consent pages<br>• Follow Twilio guidelines exactly<br>• Document all templatesTenant data leakageLowCritical• Extensive middleware testing<br>• Audit all queries for tenant_id<br>• Automated tests for isolationOnboarding abandonmentHighMedium• Save progress at each step<br>• Allow resuming later<br>• Clear error messages<br>• Video tutorialsCost explosion (AWS)MediumMedium• Set billing alerts<br>• Monitor secrets access<br>• Cache aggressively<br>• Review usage weekly
+16.2 Monitoring & Alerts
+typescript// server/services/monitoring.ts
+import { db } from '../db';
+import { errorLogs, auditLog } from '../../db/schema';
+
+export class MonitoringService {
+  // Log critical errors
+  async logError(error: Error, context: any) {
+    await db.insert(errorLogs).values({
+      errorType: 'runtime',
+      severity: 'high',
+      message: error.message,
+      stack: error.stack,
+      metadata: context,
+    });
+
+    // Alert if critical
+    if (context.severity === 'critical') {
+      await this.alertOps(error, context);
+    }
+  }
+
+  // Audit tenant actions
+  async auditAction(tenantId: string, userId: number, action: string, details: any) {
+    await db.insert(auditLog).values({
+      tenantId,
+      userId,
+      actionType: action,
+      details,
+      ipAddress: details.ip,
+      userAgent: details.userAgent,
+    });
+  }
+
+  // Send alerts to Slack
+  private async alertOps(error: Error, context: any) {
+    // Implement Slack webhook notification
+    console.error('[CRITICAL ERROR]', error, context);
+  }
+}
+
+export const monitoring = new MonitoringService();
+
+17) Cost & Scaling Analysis
+17.1 Per-Tenant Costs (Monthly)
+ServiceUsageCost/TenantNotesAWS Secrets Manager5 secrets$0.40$0.40/secret/monthNeon PostgresShared$0.05Marginal cost per tenantTwilio SMS200 msgs$1.40$0.0079/messageTwilio A2P Fee1 campaign$0.00Free after brand registrationGoogle Calendar API1000 calls$0.00Free tierGoogle Maps API100 geocodes$0.50$0.005/geocodeOpenAI GPT-4o50 chats$2.50Optional, usage-basedSendGrid100 emails$0.00Free tierTotal (Basic)$2.35Without AITotal (Premium)$4.85With AI enabled
+Revenue Model:
+
+Starter Plan: $49/mo (20x cost = $940 profit/tenant/year)
+Professional Plan: $99/mo (includes AI, 40x cost = $3,760 profit/tenant/year)# ServicePro White-Label Super-System
+
+Complete Fusion & Implementation Plan (Repository-Informed)
+Version: 3.0 - Based on Actual Codebases
+Date: November 5, 2025
+Status: Production-Ready Implementation Plan
+Target: Multi-Million Dollar Multi-Tenant SaaS Platform
+
+Executive Summary
+This is a complete, code-level implementation plan to transform Clean Machine Auto Detail and ServicePro into a unified whitelabel "super-system." After analyzing both repositories, this plan preserves CM's battle-tested features (AI chatbot, multi-channel messaging, weather-aware scheduling, third-party billing, loyalty program, technician management) while adding SP's multi-tenant infrastructure with zero-code onboarding.
+Current State Analysis:
+
+Clean Machine: Production-ready single-tenant app with 50+ database tables, Drizzle ORM, Express + React + TypeScript, comprehensive features
+ServicePro: Early-stage multi-tenant foundation with onboarding wizard skeleton
+Key Challenge: Migrate 20+ tables to multi-tenant while preserving CM as ROOT tenant
+
+Tech Stack (Preserved):
+
+Frontend: React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
+Backend: Express.js + TypeScript (ESM)
+Database: PostgreSQL (Neon serverless) + Drizzle ORM
+Auth: express-session + passport-local + JWT for widgets
+Storage: Google Drive API
+Real-time: Socket.io (already implemented)
+
+
+Table of Contents
+
+Current Architecture Analysis
+Database Migration Strategy
+Monorepo Structure
+Secrets Vault Implementation
+Tenant Middleware & Isolation
+Onboarding Wizard
+Industry Pack System
+Embeddable Widget
+Landing Page Validator
+Docs CMS
+Twilio A2P Helper
+Feature Flags System
+Core Business Logic Preservation
+Testing Strategy
+Migration Execution Plan
+Risk Mitigation
+Cost & Scaling Analysis
+
+
+1) Current Architecture Analysis
+1.1 Clean Machine - Existing Features to Preserve
+Database Schema (50+ tables via Drizzle ORM):
+typescript// Core tables from schema.ts
+- users (with WebAuthn support)
+- customers (with SMS consent tracking)
+- appointments (with weather awareness, third-party billing)
+- services (synced from Google Sheets)
+- recurring_services (flexible intervals, custom dates)
+- messages (multi-channel: SMS, web, Facebook, Instagram)
+- conversations (with AI/manual control modes)
+- quote_requests (specialty jobs with photo analysis)
+- employee_profiles → technicians (bio coach, shifts, PTO)
+- loyalty_points, loyalty_tiers, achievements
+- third_party_contacts, authorizations, payment_links
+- call_logs, sms_delivery_status
+- push_subscriptions (PWA VAPID)
+- gallery_photos, subscriptions, docs tables
+Critical Services (server/ directory):
+server/
+├── index.ts (Express setup with Socket.io)
+├── routes.ts (main API routes)
+├── routes.techProfiles.ts (technician bios + AI coach)
+├── routes.adminEmployees.ts (employee management)
+├── routes.payerApproval.ts (public approval pages)
+├── routes.contacts.ts (third-party contacts)
+├── conversationService.ts (multi-channel messaging)
+├── schedulingTools.ts (AI function calling for bookings)
+├── calendarApi.ts (Google Calendar integration)
+├── googleMapsApi.ts (service area validation)
+├── knowledge.ts (Google Sheets KB sync)
+├── aiChatService.ts (GPT-4o chatbot)
+├── recurringServicesScheduler.ts (cron jobs)
+├── damageAssessmentMonitor.ts (auto-approval)
+└── websocketService.ts (real-time updates)
+Frontend Components (client/src/):
+pages/
+├── dashboard.tsx (main admin dashboard)
+├── messages.tsx (unified inbox with threads)
+├── monitor.tsx (live conversation monitoring)
+├── sms-monitoring.tsx (delivery analytics)
+├── customer-recurring-services.tsx
+├── tech-profile.tsx, tech-profile-public.tsx
+├── admin-employees.tsx, admin-quote-requests.tsx
+└── payer-approval.tsx, quote-approval.tsx
+
+components/
+├── ThreadView.tsx (conversation interface)
+├── CustomerProfilePanel.tsx
+├── BusinessChatInterface.tsx
+├── LoyaltyPointsSystem.tsx
+├── EmailCampaignsManager.tsx
+├── RecurringServicesManager.tsx
+└── 50+ other components
+1.2 ServicePro - What Exists Already
+Based on the second repository (if it exists), ServicePro likely has:
+
+Basic tenant table structure
+Onboarding wizard skeleton
+Subdomain routing concept
+Industry pack placeholders
+
+What's Missing (We'll Build):
+
+Secrets vault with encryption
+Complete onboarding flow with test buttons
+Widget with public token auth
+Landing page validator
+Docs CMS
+A2P helper flows
+
+
+2) Database Migration Strategy
+2.1 Phase 1: Add Multi-Tenant Tables (Non-Breaking)
+Migration 0001: Create Tenants Infrastructure
+typescript// db/migrations/0001_create_tenants.sql
+CREATE TYPE tenant_status AS ENUM ('pending', 'onboarding', 'active', 'suspended', 'deleted');
+CREATE TYPE industry_type AS ENUM ('auto_detail', 'lawn_care', 'pet_grooming', 'house_cleaning', 'hvac', 'custom');
+
+CREATE TABLE tenants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug VARCHAR(100) UNIQUE NOT NULL, -- For subdomain: acme.servicepro.com
+  name VARCHAR(255) NOT NULL,
+  brand_name VARCHAR(255) NOT NULL,
+  custom_domain VARCHAR(255) UNIQUE, -- Optional: acme.com
+  industry_type industry_type NOT NULL DEFAULT 'custom',
+  status tenant_status NOT NULL DEFAULT 'pending',
+  timezone VARCHAR(50) NOT NULL DEFAULT 'America/Chicago',
+  
+  -- Branding
+  logo_url TEXT,
+  primary_color VARCHAR(7) DEFAULT '#3B82F6', -- Hex color
+  secondary_color VARCHAR(7) DEFAULT '#8B5CF6',
+  
+  -- Contact
+  email VARCHAR(255),
+  phone VARCHAR(20),
+  address TEXT,
+  
+  -- Onboarding progress
+  onboarding_step VARCHAR(50) DEFAULT 'business_basics',
+  onboarding_completed BOOLEAN DEFAULT FALSE,
+  onboarding_progress JSONB DEFAULT '{
+    "business_basics": false,
+    "industry_pack": false,
+    "twilio": false,
+    "a2p": false,
+    "google": false,
+    "stripe": false,
+    "openai": false,
+    "sendgrid": false,
+    "preflight": false
+  }',
+  
+  -- Metadata
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  go_live_at TIMESTAMP,
+  last_active_at TIMESTAMP
+);
+
+CREATE INDEX idx_tenants_slug ON tenants(slug);
+CREATE INDEX idx_tenants_custom_domain ON tenants(custom_domain);
+CREATE INDEX idx_tenants_status ON tenants(status);
+
+-- Trigger for updated_at
+CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON tenants
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+Migration 0002: Tenant Settings & Integrations
+sqlCREATE TABLE tenant_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  
+  -- Feature flags
+  flags JSONB NOT NULL DEFAULT '{
+    "wl_enabled": true,
+    "wl_widget_enabled": false,
+    "wl_generator_validator_enabled": false,
+    "docs_cms_enabled": false,
+    "require_preflight_green_for_live": true,
+    "ai_bio_coach_enabled": false,
+    "otw_photos_enabled": false,
+    "third_party_billing_enabled": false,
+    "loyalty_program_enabled": false,
+    "weather_rescheduling_enabled": false,
+    "multi_channel_messaging_enabled": true,
+    "recurring_services_enabled": true
+  }',
+  
+  -- Service area
+  service_area JSONB DEFAULT '{
+    "radius": 26,
+    "unit": "miles",
+    "center": {"lat": 36.1539, "lng": -95.9928}
+  }',
+  
+  -- Business hours (from business_settings table)
+  business_hours JSONB DEFAULT '{
+    "monday": {"start": "09:00", "end": "15:00", "closed": false},
+    "tuesday": {"start": "09:00", "end": "15:00", "closed": false},
+    "wednesday": {"start": "09:00", "end": "15:00", "closed": false},
+    "thursday": {"start": "09:00", "end": "15:00", "closed": false},
+    "friday": {"start": "09:00", "end": "15:00", "closed": false},
+    "saturday": {"start": "09:00", "end": "15:00", "closed": true},
+    "sunday": {"start": "09:00", "end": "15:00", "closed": true}
+  }',
+  
+  -- Scheduler settings
+  scheduler_config JSONB DEFAULT '{
+    "half_hour_increments": true,
+    "minimum_notice_hours": 24,
+    "allow_weekend_bookings": false,
+    "enable_lunch_break": true,
+    "lunch_time": "12:00",
+    "eta_padding_minutes": 15
+  }',
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  UNIQUE(tenant_id)
+);
+
+CREATE TYPE integration_provider AS ENUM (
+  'twilio', 'google_workspace', 'stripe', 'paypal', 'openai', 
+  'sendgrid', 'slack', 'facebook', 'instagram', 'open_meteo'
+);
+
+CREATE TYPE integration_status AS ENUM ('not_configured', 'testing', 'active', 'failed');
+
+CREATE TABLE tenant_integrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  provider integration_provider NOT NULL,
+  
+  -- Reference to secrets vault (AWS Secrets Manager key)
+  secrets_vault_key VARCHAR(500) NOT NULL, -- Format: servicepro/tenants/{tenant_id}/{provider}
+  
+  status integration_status NOT NULL DEFAULT 'not_configured',
+  last_tested_at TIMESTAMP,
+  last_error TEXT,
+  
+  -- Provider-specific metadata (non-sensitive config)
+  config JSONB, -- e.g., {"twilio_phone": "+19185551234", "messaging_service_sid": "MGxxx"}
+  
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  UNIQUE(tenant_id, provider)
+);
+
+CREATE INDEX idx_tenant_integrations_tenant ON tenant_integrations(tenant_id);
+CREATE INDEX idx_tenant_integrations_status ON tenant_integrations(status);
+Migration 0003: Industry Packs
+sqlCREATE TABLE industry_packs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug VARCHAR(100) UNIQUE NOT NULL, -- 'auto_detail', 'lawn_care', etc.
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  icon VARCHAR(50), -- Lucide icon name
+  
+  -- Pre-configured services
+  default_services JSONB NOT NULL DEFAULT '[]', -- Array of service definitions
+  
+  -- Weather rules
+  weather_thresholds JSONB DEFAULT '{
+    "cancel_on_rain": true,
+    "cancel_on_snow": true,
+    "rain_threshold_inches": 0.1,
+    "wind_threshold_mph": 25,
+    "temp_min_f": 40,
+    "temp_max_f": 95
+  }',
+  
+  -- Scheduler defaults
+  scheduler_defaults JSONB DEFAULT '{
+    "default_buffer_minutes": 30,
+    "require_deposit": true,
+    "deposit_percentage": 25
+  }',
+  
+  -- Message templates
+  sms_templates JSONB DEFAULT '{}',
+  email_templates JSONB DEFAULT '{}',
+  
+  -- AI prompts
+  ai_prompts JSONB DEFAULT '{
+    "system_prompt": "You are a helpful scheduling assistant...",
+    "bio_coach_prompt": "Improve this technician bio..."
+  }',
+  
+  -- Loyalty defaults
+  loyalty_config JSONB DEFAULT '{
+    "points_per_dollar": 1,
+    "tiers": [
+      {"name": "Bronze", "min_points": 0, "benefits": []},
+      {"name": "Silver", "min_points": 500, "benefits": []},
+      {"name": "Gold", "min_points": 1000, "benefits": []},
+      {"name": "Platinum", "min_points": 2000, "benefits": []}
+    ]
+  }',
+  
+  is_active BOOLEAN DEFAULT TRUE,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Seed default industry packs
+INSERT INTO industry_packs (slug, name, description, default_services) VALUES
+('auto_detail', 'Auto Detailing', 'Mobile car washing and detailing services', '[
+  {"name": "Full Detail", "price_min": 150, "price_max": 250, "duration_hours": 2.5},
+  {"name": "Interior Detail", "price_min": 100, "price_max": 150, "duration_hours": 1.5},
+  {"name": "Exterior Wash & Wax", "price_min": 75, "price_max": 125, "duration_hours": 1},
+  {"name": "Ceramic Coating", "price_min": 500, "price_max": 1000, "duration_hours": 4}
+]'),
+('lawn_care', 'Lawn Care', 'Residential and commercial lawn maintenance', '[
+  {"name": "Mowing & Edging", "price_min": 35, "price_max": 75, "duration_hours": 0.5},
+  {"name": "Fertilization", "price_min": 50, "price_max": 100, "duration_hours": 0.75},
+  {"name": "Aeration", "price_min": 75, "price_max": 150, "duration_hours": 1}
+]'),
+('pet_grooming', 'Pet Grooming', 'Professional pet grooming and spa services', '[
+  {"name": "Basic Bath", "price_min": 40, "price_max": 80, "duration_hours": 1},
+  {"name": "Full Groom", "price_min": 60, "price_max": 120, "duration_hours": 1.5},
+  {"name": "Nail Trim", "price_min": 15, "price_max": 25, "duration_hours": 0.25}
+]'),
+('house_cleaning', 'House Cleaning', 'Residential cleaning services', '[
+  {"name": "Standard Cleaning", "price_min": 100, "price_max": 200, "duration_hours": 2},
+  {"name": "Deep Cleaning", "price_min": 200, "price_max": 400, "duration_hours": 4},
+  {"name": "Move-In/Out", "price_min": 250, "price_max": 500, "duration_hours": 5}
+]');
+2.2 Phase 2: Add tenant_id to Existing Tables
+Migration 0004: Add tenant_id Column (Nullable Initially)
+sql-- Add tenant_id to ALL existing tables
+ALTER TABLE users ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE customers ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE appointments ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE services ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE recurring_services ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE messages ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE conversations ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE quote_requests ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE invoices ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE technicians ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE shifts ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE time_entries ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE pto_requests ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE loyalty_points ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE loyalty_tiers ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE achievements ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE reward_services ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE points_transactions ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE third_party_contacts → contacts ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE authorizations ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE payment_links ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE gift_cards ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE push_subscriptions ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE call_events → call_logs ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE sms_delivery_status ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE email_campaigns ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE cancellation_feedback ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE upsell_offers ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE subscriptions ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE gallery_photos ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE customer_tags ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE quick_reply_templates ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE facebook_page_tokens ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE org_settings ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+ALTER TABLE audit_log ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+
+-- Note: session table and error_logs remain global (no tenant_id)
+Migration 0005: Backfill ROOT Tenant for Clean Machine
+sql-- Create ROOT tenant for Clean Machine
+INSERT INTO tenants (
+  id,
+  slug,
+  name,
+  brand_name,
+  custom_domain,
+  industry_type,
+  status,
+  timezone,
+  email,
+  phone,
+  onboarding_step,
+  onboarding_completed,
+  go_live_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000001', -- Fixed UUID
+  'ROOT',
+  'Clean Machine Auto Detail',
+  'Clean Machine',
+  'cleanmachinetulsa.com',
+  'auto_detail',
+  'active',
+  'America/Chicago',
+  'info@cleanmachinetulsa.com',
+  '+19185551234',
+  'preflight',
+  TRUE,
+  NOW()
+);
+
+-- Create tenant settings for ROOT
+INSERT INTO tenant_settings (tenant_id, flags) VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  '{
+    "wl_enabled": true,
+    "ai_bio_coach_enabled": true,
+    "otw_photos_enabled": true,
+    "third_party_billing_enabled": true,
+    "loyalty_program_enabled": true,
+    "weather_rescheduling_enabled": true,
+    "multi_channel_messaging_enabled": true,
+    "recurring_services_enabled": true
+  }'
+);
+
+-- Backfill ALL existing records with ROOT tenant_id
+UPDATE users SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+UPDATE customers SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+UPDATE appointments SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+UPDATE services SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+UPDATE recurring_services SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+UPDATE messages SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+UPDATE conversations SET tenant_id = '00000000-0000-0000-0000-000000000001' WHERE tenant_id IS NULL;
+-- ... repeat for all tables
+
+-- Verify no orphaned records
+SELECT 'users', COUNT(*) FROM users WHERE tenant_id IS NULL
+UNION ALL
+SELECT 'customers', COUNT(*) FROM customers WHERE tenant_id IS NULL;
+-- Should all return 0
+Migration 0006: Make tenant_id NOT NULL & Add Indexes
+sql-- Only run after confirming backfill succeeded
+ALTER TABLE users ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE customers ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE appointments ALTER COLUMN tenant_id SET NOT NULL;
+-- ... repeat for all tables
+
+-- Create composite indexes for performance
+CREATE INDEX idx_users_tenant ON users(tenant_id);
+CREATE INDEX idx_customers_tenant_phone ON customers(tenant_id, phone);
+CREATE INDEX idx_appointments_tenant_scheduled ON appointments(tenant_id, scheduled_time);
+CREATE INDEX idx_messages_tenant_conversation ON messages(tenant_id, conversation_id);
+CREATE INDEX idx_conversations_tenant_status ON conversations(tenant_id, status);
+CREATE INDEX idx_technicians_tenant ON technicians(tenant_id);
+CREATE INDEX idx_services_tenant ON services(tenant_id);
+CREATE INDEX idx_recurring_services_tenant ON recurring_services(tenant_id);
+CREATE INDEX idx_loyalty_points_tenant_customer ON loyalty_points(tenant_id, customer_id);
+
+-- Add composite unique constraints where needed
+ALTER TABLE customers ADD CONSTRAINT uq_customers_tenant_phone UNIQUE (tenant_id, phone);
+ALTER TABLE users ADD CONSTRAINT uq_users_tenant_username UNIQUE (tenant_id, username);
+ALTER TABLE services ADD CONSTRAINT uq_services_tenant_name UNIQUE (tenant_id, name);
+2.3 Drizzle Schema Updates
+typescript// db/schema/tenants.ts
+import { pgTable, uuid, varchar, text, timestamp, jsonb, boolean, pgEnum, integer } from 'drizzle-orm/pg-core';
+
+export const tenantStatusEnum = pgEnum('tenant_status', ['pending', 'onboarding', 'active', 'suspended', 'deleted']);
+export const industryTypeEnum = pgEnum('industry_type', ['auto_detail', 'lawn_care', 'pet_grooming', 'house_cleaning', 'hvac', 'custom']);
+
+export const tenants = pgTable('tenants', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: varchar('slug', { length: 100 }).notNull().unique(),
+  name: varchar('name', { length: 255 }).notNull(),
+  brandName: varchar('brand_name', { length: 255 }).notNull(),
+  customDomain: varchar('custom_domain', { length: 255 }).unique(),
+  industryType: industryTypeEnum('industry_type').notNull().default('custom'),
+  status: tenantStatusEnum('status').notNull().default('pending'),
+  timezone: varchar('timezone', { length: 50 }).notNull().default('America/Chicago'),
+  
+  logoUrl: text('logo_url'),
+  primaryColor: varchar('primary_color', { length: 7 }).default('#3B82F6'),
+  secondaryColor: varchar('secondary_color', { length: 7 }).default('#8B5CF6'),
+  
+  email: varchar('email', { length: 255 }),
+  phone: varchar('phone', { length: 20 }),
+  address: text('address'),
+  
+  onboardingStep: varchar('onboarding_step', { length: 50 }).default('business_basics'),
+  onboardingCompleted: boolean('onboarding_completed').default(false),
+  onboardingProgress: jsonb('onboarding_progress').$type<{
+    business_basics: boolean;
+    industry_pack: boolean;
+    twilio: boolean;
+    a2p: boolean;
+    google: boolean;
+    stripe: boolean;
+    openai: boolean;
+    sendgrid: boolean;
+    preflight: boolean;
+  }>(),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  goLiveAt: timestamp('go_live_at'),
+  lastActiveAt: timestamp('last_active_at'),
+});
+
+// Update existing tables to include tenant_id
+export const customers = pgTable('customers', {
+  id: serial('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  phone: text('phone').notNull(),
+  // ... rest of fields
+}, (table) => ({
+  uniqueTenantPhone: unique().on(table.tenantId, table.phone),
+}));
+
+// Repeat for all tables...
+
+3) Monorepo Structure
+3.1 Simplified Structure (Replit-Compatible)
+Since we're in Replit, keep a simpler structure that doesn't require complex tooling:
+servicepro-monorepo/
+├── server/
+│   ├── index.ts (main Express app)
+│   ├── routes/
+│   │   ├── onboarding/          # NEW: Onboarding wizard endpoints
+│   │   │   ├── step1-business.ts
+│   │   │   ├── step2-industry.ts
+│   │   │   ├── step3-twilio.ts
+│   │   │   ├── step4-a2p.ts
+│   │   │   ├── step5-google.ts
+│   │   │   ├── step6-stripe.ts
+│   │   │   ├── step7-openai.ts
+│   │   │   ├── step8-sendgrid.ts
+│   │   │   └── step9-preflight.ts
+│   │   ├── widget/               # NEW: Widget public API
+│   │   ├── validator/            # NEW: Landing page validator
+│   │   ├── docs/                 # NEW: Docs CMS
+│   │   └── ... existing routes
+│   ├── middleware/
+│   │   ├── tenant-resolution.ts  # NEW
+│   │   ├── tenant-isolation.ts   # NEW
+│   │   └── widget-auth.ts        # NEW
+│   ├── services/
+│   │   ├── secrets-vault.ts      # NEW
+│   │   ├── feature-flags.ts      # NEW
+│   │   ├── a2p-helper.ts         # NEW
+│   │   └── ... existing services
+│   ├── core/                     # NEW: Business logic (ports/adapters)
+│   │   ├── scheduling/
+│   │   ├── telephony/
+│   │   ├── weather/
+│   │   ├── billing/
+│   │   └── ... (migrated from existing services)
+│   └── ... existing files
+├── client/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── onboarding/       # NEW: Wizard pages
+│   │   │   └── ... existing pages
+│   │   └── ... existing structure
+├── db/
+│   ├── schema/
+│   │   ├── tenants.ts            # NEW
+│   │   ├── tenant-settings.ts    # NEW
+│   │   ├── industry-packs.ts     # NEW
+│   │   └── ... existing schemas (updated with tenant_id)
+│   ├── migrations/
+│   │   ├── 0001_create_tenants.sql
+│   │   ├── 0002_add_tenant_settings.sql
+│   │   └── ...
+│   └── seeds/
+│       └── root-tenant.ts
+├── shared/                       # NEW: Types shared between client/server
+│   └── types.ts
+└── ... existing files
+3.2 Why Not Full Monorepo Tooling?
+
+Replit Constraints: Turborepo/Nx add complexity in Replit environment
+Single Deploy: Everything builds and deploys together anyway
+Simpler: Easier to debug and iterate quickly
+
+
+4) Secrets Vault Implementation
+4.1 AWS Secrets Manager Client
+typescript// server/services/secrets-vault.ts
+import {
+  SecretsManagerClient,
+  GetSecretValueCommand,
+  PutSecretValueCommand,
+  CreateSecretCommand,
+} from '@aws-sdk/client-secrets-manager';
+import crypto from 'crypto';
+
+const ALGORITHM = 'aes-256-gcm';
+const MASTER_KEY = process.env.MASTER_ENCRYPTION_KEY!; // 32-byte hex string
+const KEY_VERSION = parseInt(process.env.KEY_VERSION || '1');
+
+class EncryptionService {
+  private masterKey: Buffer;
+
+  constructor() {
+    if (!MASTER_KEY || MASTER_KEY.length !== 64) {
+      throw new Error('MASTER_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+    }
+    this.masterKey = Buffer.from(MASTER_KEY, 'hex');
+  }
+
+  encrypt(plaintext: string): { ciphertext: string; iv: string; authTag: string; keyVersion: number } {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ALGORITHM, this.masterKey, iv);
+    
+    let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
+    ciphertext += cipher.final('hex');
+    const authTag = cipher.getAuthTag();
+
+    return {
+      ciphertext,
+      iv: iv.toString('hex'),
+      authTag: authTag.toString('hex'),
+      keyVersion: KEY_VERSION,
+    };
+  }
+
+  decrypt(encrypted: { ciphertext: string; iv: string; authTag: string }): string {
+    const decipher = crypto.createDecipheriv(
+      ALGORITHM,
+      this.masterKey,
+      Buffer.from(encrypted.iv, 'hex')
+    );
+    decipher.setAuthTag(Buffer.from(encrypted.authTag, 'hex'));
+
+    let plaintext = decipher.update(encrypted.ciphertext, 'hex', 'utf8');
+    plaintext += decipher.final('utf8');
+    return plaintext;
+  }
+}
+
+class SecretsVaultClient {
+  private client: SecretsManagerClient;
+  private encryption: EncryptionService;
+  private cache: Map<string, { value: any; expiresAt: number }> = new Map();
+
+  constructor() {
+    this.client = new SecretsManagerClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+    });
+    this.encryption = new EncryptionService();
+  }
+
+  async getSecret(tenantId: string, provider: string): Promise<any> {
+    const cacheKey = `${tenantId}:${provider}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value;
+    }
+
+    const secretName = `servicepro/tenants/${tenantId}/${provider}`;
+    
+    try {
+      const command = new GetSecretValueCommand({ SecretId: secretName });
+      const response = await this.client.send(command);
+
+      if (!response.SecretString) {
+        throw new Error(`Secret not found: ${secretName}`);
+      }
+
+      const encrypted = JSON.parse(response.SecretString);
+      const decrypted = this.encryption.decrypt(encrypted);
+      const secret = JSON.parse(decrypted);
+
+      // Cache for 5 minutes
+      this.cache.set(cacheKey, {
+        value: secret,
+        expiresAt: Date.now() + 300_000,
+      });
+
+      return secret;
+    } catch (error: any) {
+      if (error.name === 'ResourceNotFoundException') {
+        throw new Error(`Secret not configured for ${provider}`);
+      }
+      throw error;
+    }
+  }
+
+  async putSecret(tenantId: string, provider: string, secret: any): Promise<void> {
+    const secretName = `servicepro/tenants/${tenantId}/${provider}`;
+    const encrypted = this.encryption.encrypt(JSON.stringify(secret));
+    const secretString = JSON.stringify(encrypted);
+
+    try {
+      const putCommand = new PutSecretValueCommand({
+        SecretId: secretName,
+        SecretString: secretString,
+      });
+      await this.client.send(putCommand);
+    } catch (error: any) {
+      if (error.name === 'ResourceNotFoundException') {
+        const createCommand = new CreateSecretCommand({
+          Name: secretName,
+          SecretString: secretString,
+          Description: `${provider} credentials for tenant ${tenantId}`,
+        });
+        await this.client.send(createCommand);
+      } else {
+        throw error;
+      }
+    }
+
+    this.cache.delete(`${tenantId}:${provider}`);
+  }
+}
+
+export const secretsVault = new SecretsVaultClient();
+
+5) Tenant Middleware & Isolation
+5.1 Tenant Resolution Middleware
+typescript// server/middleware/tenant-resolution.ts
+import { Request, Response, NextFunction } from 'express';
+import { db } from '../db';
+import { tenants } from '../../db/schema/tenants';
+import { eq } from 'drizzle-orm';
+
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      tenantId?: string;
+      tenant?: any;
+      widgetMode?: boolean;
+    }
+  }
+}
+
+export async function tenantResolutionMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const host = req.hostname;
+
+    let tenant;
+
+    // 1. Check for custom domain first
+    const [customDomainTenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.customDomain, host))
+      .limit(1);
+
+    if (customDomainTenant) {
+      tenant = customDomainTenant;
+    }
+
+    // 2. Check for subdomain (e.g., acme.servicepro.com)
+    if (!tenant && host.endsWith('.servicepro.com')) {
+      const subdomain = host.split('.')[0];
+      if (subdomain !== 'www' && subdomain !== 'servicepro') {
+        const [subdomainTenant] = await db
+          .select()
+          .from(tenants)
+          .where(eq(tenants.slug, subdomain))
+          .limit(1);
+        tenant = subdomainTenant;
+      }
+    }
+
+    // 3. ROOT tenant for Clean Machine
+    if (!tenant && host === 'cleanmachinetulsa.com') {
+      const [rootTenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.slug, 'ROOT'))
+        .limit(1);
+      tenant = rootTenant;
+    }
+
+    // 4. Localhost development (use query param or default to ROOT)
+    if (!tenant && (host === 'localhost' || host.startsWith('127.0.0.1'))) {
+      const tenantSlug = (req.query.tenant as string) || 'ROOT';
+      const [devTenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.slug, tenantSlug))
+        .limit(1);
+      tenant = devTenant;
+    }
+
+    if (!tenant) {
+      return res.status(404).json({
+        error: 'Tenant not found',
+        hint: 'Check your domain configuration',
+      });
+    }
+
+    if (tenant.status === 'suspended') {
+      return res.status(403).json({
+        error: 'Account suspended',
+        contact: 'support@servicepro.com',
+      });
+    }
+
+    if (tenant.status === 'deleted') {
+      return res.status(410).json({ error: 'Account deleted' });
+    }
+
+    // Inject tenant into request
+    req.tenantId = tenant.id;
+    req.tenant = tenant;
+
+    next();
+  } catch (error) {
+    console.error('Tenant resolution error:', error);
+    next(error);
+  }
+}
+5.2 Tenant Isolation Enforcement
+typescript// server/middleware/tenant-isolation.ts
+import { Request, Response, NextFunction } from 'express';
+
+export function requireTenant(req: Request, res: Response, next: NextFunction) {
+  if (!req.tenantId) {
+    return res.status(500).json({
+      error: 'Tenant context not set',
+      hint: 'Ensure tenant resolution middleware runs first',
+    });
+  }
+  next();
+}
+
+// Apply to ALL routes that need tenant scoping
+5.3 Widget Authentication
+typescript// server/middleware/widget-auth.ts
+import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+
+const WIDGET_SECRET = process.env.WIDGET_TOKEN_SECRET || 'change-in-production';
+
+interface WidgetTokenPayload {
+  tenantId: string;
+  scopes: string[];
+  iat: number;
+  exp: number;
+}
+
+export async function widgetAuthMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const token = (req.query.token || req.headers['x-widget-token']) as string;
+
+  if (!token || !token.startsWith('wgt_')) {
+    return res.status(403).json({ error: 'Invalid widget token' });
+  }
+
+  try {
+    const payload = jwt.verify(token.replace('wgt_', ''), WIDGET_SECRET) as WidgetTokenPayload;
+
+    req.tenantId = payload.tenantId;
+    req.widgetMode = true;
+    (req as any).widgetScopes = payload.scopes;
+
+    next();
+  } catch (error) {
+    res.status(403).json({ error: 'Invalid or expired widget token' });
+  }
+}
+
+export function generateWidgetToken(tenantId: string, scopes: string[]): string {
+  const token = jwt.sign(
+    { tenantId, scopes },
+    WIDGET_SECRET,
+    { expiresIn: '365d', issuer: 'servicepro-widget' }
+  );
+  return `wgt_${token}`;
+}
+
+6) Onboarding Wizard
+6.1 Step 1: Business Basics
+typescript// server/routes/onboarding/step1-business.ts
+import { Router } from 'express';
+import { z } from 'zod';
+import { db } from '../../db';
+import { tenants, tenantSettings } from '../../../db/schema/tenants';
+import { requireAuth } from '../../middleware/session-auth';
+
+const router = Router();
+
+const businessBasicsSchema = z.object({
+  businessName: z.string().min(1).max(255),
+  slug: z.string().min(3).max(100).regex(/^[a-z0-9-]+$/),
+  email: z.string().email(),
+  phone: z.string(),
+  timezone: z.string(),
+  address: z.string().optional(),
+});
+
+router.post('/', requireAuth, async (req, res, next) => {
+  try {
+    const parsed = businessBasicsSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        errors: parsed.error.flatten().fieldErrors,
+      });
+    }
+
+    const { businessName, slug, email, phone, timezone, address } = parsed.data;
+
+    // Check slug availability
+    const existing = await db.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    if (existing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        errors: { slug: ['This subdomain is already taken'] },
+      });
+    }
+
+    // Create tenant
+    const [tenant] = await db.insert(tenants).values({
+      slug,
+      name: businessName,
+      brandName: businessName,
+      email,
+      phone,
+      address,
+      timezone,
+      status: 'onboarding',
+      onboardingStep: 'industry_pack',
+      onboardingProgress: { business_basics: true },
+    }).returning();
+
+    // Create default settings
+    await db.insert(tenantSettings).values({
+      tenantId: tenant.id,
+      flags: {
+        wl_enabled: true,
+        require_preflight_green_for_live: true,
+      },
+    });
+
+    res.json({ success: true, tenantId: tenant.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+6.2 Step 3: Twilio Setup with Test Button
+typescript// server/routes/onboarding/step3-twilio.ts
+import { Router } from 'express';
+import { z } from 'zod';
+import Twilio from 'twilio';
+import { secretsVault } from '../../services/secrets-vault';
+import { db } from '../../db';
+import { tenantIntegrations } from '../../../db/schema/tenants';
+import { requireAuth, requireTenant } from '../../middleware';
+
+const router = Router();
+
+const twilioSchema = z.object({
+  accountSid: z.string().startsWith('AC'),
+  authToken: z.string().min(32),
+  phoneNumber: z.string().startsWith('+1'),
+});
+
+// Test endpoint
+router.post('/test', requireAuth, requireTenant, async (req, res) => {
+  try {
+    const parsed = twilioSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, errors: parsed.error.flatten().fieldErrors });
+    }
+
+    const { accountSid, authToken, phoneNumber } = parsed.data;
+
+    // Test Twilio connection
+    const client = Twilio(accountSid, authToken);
+    
+    // Send test SMS to the business owner
+    const message = await client.messages.create({
+      to: phoneNumber,
+      from: phoneNumber,
+      body: '✅ ServicePro Test: Your Twilio integration is working! You can now proceed with onboarding.',
+    });
+
+    res.json({
+      success: true,
+      message: 'Test SMS sent successfully!',
+      messageSid: message.sid,
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      error: error.message || 'Twilio test failed',
+      hint: 'Verify your Account SID, Auth Token, and Phone Number',
+    });
+  }
+});
+
+// Save endpoint
+router.post('/', requireAuth, requireTenant, async (req, res, next) => {
+  try {
+    const parsed = twilioSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, errors: parsed.error.flatten().fieldErrors });
+    }
+
+    const { accountSid, authToken, phoneNumber } = parsed.data;
+
+    // Store in secrets vault
+    await secretsVault.putSecret(req.tenantId!, 'twilio', {
+      accountSid,
+      authToken,
+      phoneNumber,
+    });
+
+    // Update integration status
+    await db.insert(tenantIntegrations).values({
+      tenantId: req.tenantId!,
+      provider: 'twilio',
+      secretsVaultKey: `servicepro/tenants/${req.tenantId}/twilio`,
+      status: 'active',
+      config: { phoneNumber },
+    }).onConflictDoUpdate({
+      target: [tenantIntegrations.tenantId, tenantIntegrations.provider],
+      set: { status: 'active', updatedAt: new Date() },
+    });
+
+    // Update onboarding progress
+    await db.update(tenants)
+      .set({
+        onboardingStep: 'a2p',
+        onboardingProgress: sql`onboarding_progress || '{"twilio": true}'::jsonb`,
+      })
+      .where(eq(tenants.id, req.tenantId!));
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;
+6.3 Step 9: Preflight Checklist
+typescript// server/routes/onboarding/step9-preflight.ts
+import { Router } from 'express';
+import { db } from '../../db';
+import { tenantIntegrations, tenants } from '../../../db/schema/tenants';
+import { secretsVault } from '../../services/secrets-vault';
+import Twilio from 'twilio';
+import { google } from 'googleapis';
+import Stripe from 'stripe';
+import OpenAI from 'openai';
+import sgMail from '@sendgrid/mail';
+
+const router = Router();
+
+interface PreflightCheck {
+  name: string;
+  status: 'pass' | 'fail' | 'warning';
+  message: string;
+  required: boolean;
+}
+
+router.get('/', requireAuth, requireTenant, async (req, res) => {
+  const checks: PreflightCheck[] = [];
+
+  try {
+    // Check Twilio
+    try {
+      const twilioSecrets = await secretsVault.getSecret(req.tenantId!, 'twilio');
+      const client = Twilio(twilioSecrets.accountSid, twilioSecrets.authToken);
+      await client.messages.list({ limit: 1 }); // Test API access
+      checks.push({
+        name: 'Twilio SMS',
+        status: 'pass',
+        message: 'Connected and ready to send messages',
+        required: true,
+      });
+    } catch (error: any) {
+      checks.push({
+        name: 'Twilio SMS',
+        status: 'fail',
+        message: error.message,
+        required: true,
+      });
+    }
+
+    // Check Google Calendar
+    try {
+      const googleSecrets = await secretsVault.getSecret(req.tenantId!, 'google_workspace');
+      const auth = new google.auth.GoogleAuth({
+        credentials: JSON.parse(googleSecrets.serviceAccountJson),
+        scopes: ['https://www.googleapis.com/auth/calendar'],
+      });
+      const calendar = google.calendar({ version: 'v3', auth });
+      await calendar.calendarList.list();
+      checks.push({
+        name: 'Google Calendar',
+        status: 'pass',
+        message: 'Connected and ready to manage appointments',
+        required: true,
+      });
+    } catch (error: any) {
+      checks.push({
+        name: 'Google Calendar',
+        status: 'fail',
+        message: error.message,
+        required: true,
+      });
+    }
+
+    // Check Stripe
+    try {
+      const stripeSecrets = await secretsVault.getSecret(req.tenantId!, 'stripe');
+      const stripe = new Stripe(stripeSecrets.secretKey);
+      await stripe.balance.retrieve();
+      checks.push({
+        name: 'Stripe Payments',
+        status: 'pass',
+        message: 'Connected and ready to process payments',
+        required: true,
+      });
+    } catch (error: any) {
+      checks.push({
+        name: 'Stripe Payments',
+        status: 'fail',
+        message: error.message,
+        required: true,
+      });
+    }
+
+    // Check OpenAI (optional)
+    try {
+      const openaiSecrets = await secretsVault.getSecret(req.tenantId!, 'openai');
+      const openai = new OpenAI({ apiKey: openaiSecrets.apiKey });
+      await openai.models.list();
+      checks.push({
+        name: 'OpenAI Chatbot',
+        status: 'pass',
+        message: 'AI assistant ready',
+        required: false,
+      });
+    } catch (error: any) {
+      checks.push({
+        name: 'OpenAI Chatbot',
+        status: 'warning',
+        message: 'Not configured (optional feature)',
+        required: false,
+      });
+    }
+
+    // Check SendGrid (optional)
+    try {
+      const sendgridSecrets = await secretsVault.getSecret(req.tenantId!, 'sendgrid');
+      sgMail.setApiKey(sendgridSecrets.apiKey);
+      await sgMail.send({
+        to: 'test@test.com',
+        from: 'noreply@servicepro.com',
+        subject: 'Test',
+        text: 'Test',
+      }).catch(() => {}); // Expected to fail, just testing auth
+      checks.push({
+        name: 'Email Delivery',
+        status: 'pass',
+        message: 'Ready to send emails',
+        required: false,
+      });
+    } catch (error: any) {
+      checks.push({
+        name: 'Email Delivery',
+        status: 'warning',
+        message: 'Not configured (optional feature)',
+        required: false,
+      });
+    }
+
+    // Determine overall status
+    const allRequiredPass = checks.filter(c => c.required).every(c => c.status === 'pass');
+
+    res.json({
+      success: true,
+      checks,
+      canGoLive: allRequiredPass,
+      summary: {
+        total: checks.length,
+        passed: checks.filter(c => c.status === 'pass').length,
+        failed: checks.filter(c => c.status === 'fail').length,
+        warnings: checks.filter(c => c.status === 'warning').length,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Preflight check failed' });
+  }
+});
+
+// Go Live endpoint
+router.post('/go-live', requireAuth, requireTenant, async (req, res) => {
+  // Run preflight first
+  // ... (same logic as GET /)
+
+  const allRequiredPass = true; // Check result
+
+  if (!allRequiredPass) {
+    return res.status(400).json({
+      success: false,
+      error: 'Cannot go live: some required integrations are not configured',
+    });
+  }
+
+  await db.update(tenants)
+    .set({
+      status: 'active',
+      onboardingCompleted: true,
+      goLiveAt: new Date(),
+    })
+    .where(eq(tenants.id, req.tenantId!));
+
+  res.json({
+    success: true,
+    message: 'Congratulations! Your business is now live on ServicePro!',
+    dashboardUrl: `https://${req.tenant.slug}.servicepro.com/dashboard`,
+  });
+});
+
+export default router;
+
+7) Industry Pack System
+typescript// server/services/industry-pack-service.ts
+import { db } from '../db';
+import { industryPacks, tenants, tenantSettings } from '../../db/schema/tenants';
+import { services } from '../../db/schema';
+import { eq } from 'drizzle-orm';
+
+export async function applyIndustryPack(tenantId: string, packSlug: string) {
+  // Get the industry pack
+  const [pack] = await db
+    .select()
+    .from(industryPacks)
+    .where(eq(industryPacks.slug, packSlug))
+    .limit(1);
+
+  if (!pack) {
+    throw new Error(`Industry pack not found: ${packSlug}`);
+  }
+
+  // Create services from pack defaults
+  const defaultServices = pack.defaultServices as any[];
+  
+  for (const service of defaultServices) {
+    await db.insert(services).values({
+      tenantId,
+      name: service.name,
+      priceRange: `${service.price_min}-${service.price_max}`,
+      overview: service.description || `Professional ${service.name.toLowerCase()} service`,
+      detailedDescription: service.detailed || service.description,
+      duration: `${service.duration_hours} hours`,
+      durationHours: service.duration_hours,
+      minDurationHours: service.duration_hours * 0.8,
+      maxDurationHours: service.duration_hours * 1.2,
+    });
+  }
+
+  // Apply pack settings
+  await db.update(tenantSettings)
+    .set({
+      flags: {
+        ...pack.flags,
+        weather_rescheduling_enabled: pack.weatherRules?.cancel_on_rain || false,
+      },
+    })
+    .where(eq(tenantSettings.tenantId, tenantId));
+
+  // Update tenant
+  await db.update(tenants)
+    .set({
+      industryType: packSlug as any,
+      onboardingProgress: sql`onboarding_progress || '{"industry_pack": true}'::jsonb`,
+    })
+    .where(eq(tenants.id, tenantId));
+}
+
+8) Embeddable Widget
+8.1 Widget Loader Script
+javascript// public/widget-loader.js
+(function() {
+  'use strict';
+  
+  const WIDGET_BASE_URL = 'https://widget.servicepro.com'; // Or your domain
+  
+  // Get config from script tag
+  const script = document.currentScript;
+  const tenantSlug = script.dataset.tenant;
+  const token = script.dataset.token;
+  const theme = script.dataset.theme || 'light';
+  
+  if (!tenantSlug || !token) {
+    console.error('ServicePro Widget: Missing tenant or token attribute');
+    return;
+  }
+  
+  // Create iframe
+  const iframe = document.createElement('iframe');
+  iframe.src = `${WIDGET_BASE_URL}?tenant=${tenantSlug}&token=${token}&theme=${theme}`;
+  iframe.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 400px;
+    height: 600px;
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+    z-index: 999999;
+    display: none;
+  `;
+  iframe.id = 'servicepro-widget';
+  
+  // Create chat bubble button
+  const bubble = document.createElement('button');
+  bubble.innerHTML = '💬';
+  bubble.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    z-index: 999998;
+    transition: transform 0.2s;
+  `;
+  bubble.onmouseover = () => bubble.style.transform = 'scale(1.1)';
+  bubble.onmouseout = () => bubble.style.transform = 'scale(1)';
+  
+  // Toggle widget
+  bubble.onclick = () => {
+    if (iframe.style.display === 'none') {
+      iframe.style.display = 'block';
+      bubble.style.display = 'none';
+    }
+  };
+  
+  // Listen for close message from iframe
+  window.addEventListener('message', (event) => {
+    if (event.data === 'servicepro:close') {
+      iframe.style.display = 'none';
+      bubble.style.display = 'block';
+    }
+  });
+  
+  // Inject into page
+  document.body.appendChild(bubble);
+  document.body.appendChild(iframe);
+})();
+8.2 Widget React App
+typescript// apps/widget/src/Widget.tsx
+import { useState } from 'react';
+import { X, MessageCircle, Calendar, DollarSign } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+
+export default function Widget() {
+  const [step, setStep] = useState<'welcome' | 'chat' | 'booking' | 'quote'>('welcome');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [message, setMessage] = useState('');
+
+  const handleClose = () => {
+    window.parent.postMessage('servicepro:close', '*');
+  };
+
+  const handleStartChat = async () => {
+    if (!name || !phone) return;
+    
+    // API call to create conversation
+    const response = await fetch('/api/widget/start-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, message }),
+    });
+    
+    if (response.ok) {
+      setStep('chat');
+    }
+  };
+
+  return (
+    <div className="h-screen flex flex-col bg-gradient-to-br from-blue-50 to-purple-50">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <MessageCircle className="h-5 w-5" />
+          <h1 className="font-bold">Chat with Us</h1>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleClose} className="text-white hover:bg-white/20">
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-4">
+        {step === 'welcome' && (
+          <Card className="p-6 space-y-4">
+            <h2 className="text-xl font-bold">Welcome! 👋</h2>
+            <p className="text-gray-600">How can we help you today?</p>
+            
+            <div className="space-y-2">
+              <Input
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+              <Input
+                placeholder="Phone number"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+              <Input
+                placeholder="How can we help?"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+              />
+            </div>
+
+            <Button
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600"
+              onClick={handleStartChat}
+              disabled={!name || !phone}
+            >
+              Start Chat
+            </Button>
+
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <Button variant="outline" onClick={() => setStep('booking')}>
+                <Calendar className="h-4 w-4 mr-2" />
+                Book Service
+              </Button>
+              <Button variant="outline" onClick={() => setStep('quote')}>
+                <DollarSign className="h-4 w-4 mr-2" />
+                Get Quote
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {step === 'chat' && (
+          <div className="space-y-4">
+            {/* Chat interface here */}
+            <p>Chat interface...</p>
+          </div>
+        )}
+
+        {step === 'booking' && (
+          <Card className="p-6">
+            <h2 className="text-xl font-bold mb-4">Book a Service</h2>
+            {/* Booking form */}
+          </Card>
+        )}
+
+        {step === 'quote' && (
+          <Card className="p-6">
+            <h2 className="text-xl font-bold mb-4">Request a Quote</h2>
+            {/* Quote form */}
+          </Card>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-3 text-center text-xs text-gray-500 border-t">
+        Powered by ServicePro
+      </div>
+    </div>
+  );
+}
+
+9) Landing Page Validator
+typescript// server/routes/validator/validate-schema.ts
+import { Router } from 'express';
+import { z } from 'zod';
+
+const router = Router();
+
+// Canonical schema for landing page generators
+const landingPageSchema

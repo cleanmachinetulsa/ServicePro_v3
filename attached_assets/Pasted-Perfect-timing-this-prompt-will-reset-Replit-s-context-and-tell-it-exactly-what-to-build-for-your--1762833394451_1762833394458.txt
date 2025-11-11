@@ -1,0 +1,178 @@
+Perfect timing—this prompt will reset Replit’s context and tell it *exactly* what to build for your **Technician Mode** page so it matches your original vision instead of that stripped-down placeholder you got.
+
+Copy/paste this whole thing into Replit (or Claude) when you re-generate the page:
+
+---
+
+### 🔧 REPLIT PROMPT — **Technician Mode (Full Implementation Spec)**
+
+> You are building the *Technician Mode* dashboard for the **Clean Machine / ServicePro** app system.
+> The goal is a **production-quality, tablet-optimized interface** for technicians to manage their daily workflow — matching the professional polish of Uber, Lime, or DoorDash driver dashboards.
+>
+> The app already has authentication, jobs data, Twilio messaging/voice routes, and Google Maps integration available. You are not to stub or skip any functionality; wire to existing routes if present, otherwise include placeholder data interfaces that can connect later.
+
+---
+
+## 🎯 Purpose
+
+The Technician Mode is the **driver/technician workspace** — used on an iPad mounted in the service van. It provides everything needed to complete jobs efficiently during the workday:
+
+* Job list and status tracking
+* Navigation (Google Maps or native maps link)
+* Messages & calls (Twilio Voice + SMS)
+* Live job updates (“On the way,” “Arrived,” “Completed”)
+* Day summary and quick actions (refresh, break, etc.)
+
+---
+
+## 📱 Layout Goals
+
+* **Optimized for iPad horizontal mount** (landscape layout, touch-first controls).
+* **Clean, card-based UI** using Tailwind or ShadCN components (modern and lightweight).
+* **Top persistent header** with company logo + “Technician Mode”.
+* **Three main panels (stacked or grid depending on screen size):**
+
+  1. **Today’s Jobs** — list view of today’s assigned jobs with customer, address, time, and status.
+  2. **Navigation** — opens route preview and live ETA; links to Maps via `geo:` or `https://maps.google.com/?q=...`.
+  3. **Messages & Calls** — in-app chat and “click-to-call” via Twilio Voice JS SDK.
+
+---
+
+## 🧩 Components Required
+
+### 1. Header Bar
+
+* Left: app logo + “Technician Mode” text.
+* Right: technician name + status indicator (`Available`, `On Job`, `Break`).
+* Background: brand primary color.
+* Sticky top.
+
+### 2. Jobs List Panel
+
+* Card for each job showing:
+
+  * Customer name
+  * Vehicle or service type
+  * Address (tap → map)
+  * Scheduled time
+  * Buttons: **On the Way**, **Arrived**, **Complete**
+  * Status chip color changes with job state
+* Fetch from `/api/jobs/today` or mock endpoint.
+
+### 3. Navigation Panel
+
+* When a job is selected:
+
+  * Display map preview using Google Maps API iframe or static map tile.
+  * Show drive time, distance, and “Start Navigation” button → opens native Maps.
+  * If no job selected: placeholder “Select a job to view navigation”.
+
+### 4. Messages & Calls Panel
+
+* Integrated Twilio Voice SDK:
+
+  * “Call Customer” → uses Voice Access Token from `/api/voice/token`.
+  * “Send Message” → POST to `/api/messages/send`.
+  * Display recent messages (thread view).
+  * Handle call status feedback (“Ringing”, “Connected”, “Ended”).
+* If device lacks telephony (iPad), default to WebRTC calling.
+* Fallback `tel:` link for browsers without mic permission.
+
+### 5. Footer / Controls
+
+* Buttons: “Refresh Jobs”, “Mark Day Complete”, “Sign Out”.
+* Fixed bottom bar or floating action buttons.
+
+---
+
+## ⚙️ Behavior Requirements
+
+* Auto-refresh job list every 60 s.
+* When job status changes:
+
+  * Update UI immediately.
+  * Emit event via `/api/jobs/status` (POST).
+  * Publish to event bus (if available).
+* Store selected job in localStorage so it persists on reload.
+* Handle offline mode gracefully (cache last job list, show reconnect banner).
+
+---
+
+## 🔐 Authentication
+
+* Protected route: redirect to login if token missing or expired.
+* Use existing session context; do **not** bypass secure login.
+* Show technician name and ID from session payload.
+
+---
+
+## 🧠 State Management
+
+* Use React Context or Zustand store:
+
+  ```ts
+  interface TechState {
+    jobs: Job[];
+    selectedJob?: Job;
+    messages: Message[];
+    status: "idle"|"on_the_way"|"arrived"|"completed";
+    setSelectedJob(job: Job): void;
+    updateStatus(jobId: string, status: string): void;
+  }
+  ```
+
+---
+
+## 🗺️ Visual Style
+
+* Font: Inter / system default.
+* Color: modern white surface, primary brand blue header.
+* Large touch targets (min 48 px).
+* Card shadows, rounded corners, clean spacing.
+* Smooth transitions when selecting a job.
+* Icons from Lucide or Heroicons.
+* Responsive: single-column on phone, 2-column on tablet, 3-column on desktop.
+
+---
+
+## 🧩 Example Flow
+
+1. Tech logs in → redirected to `/technician`.
+2. Sees “Today’s Jobs”.
+3. Taps a job → job card expands or highlights.
+4. Navigation & Messages panels auto-populate for that job.
+5. Press “On the Way” → status updates + Twilio message “Your technician is on the way.”
+6. After completion → marks “Complete” → triggers invoice or closeout workflow.
+
+---
+
+## ✅ Deliverables to generate
+
+* `TechnicianMode.tsx` (React page)
+* `JobCard.tsx` component
+* `useTechnicianStore.ts` or equivalent state hook
+* API integration hooks (`useJobs`, `useMessages`, `useVoice`)
+* Tailwind + ShadCN styling
+* Example mock data for offline preview
+* Ensure **no Clean Machine branding text** is hard-coded — replace with dynamic `brand.name` from config.
+
+---
+
+## ⚡ Bonus (if time)
+
+* Night mode toggle.
+* Orientation lock warning if device is vertical.
+* Haptic feedback on button press (mobile Safari).
+* Auto-open first job if only one scheduled.
+
+---
+
+### 📣 Final Instruction
+
+Produce **clean, production-ready React + TypeScript code** that looks and feels professional — not placeholder.
+All modules must be self-contained and compatible with the modular architecture (`dropin` or `/packages/module-tech` structure).
+Use existing environment variables and API endpoints where possible; otherwise stub with clear comments.
+
+---
+
+Paste this prompt into Replit or Claude and let it rebuild the page — it’ll recreate the high-end technician dashboard you originally envisioned, with everything wired and styled properly.

@@ -1,0 +1,73 @@
+Upload your logo assets to Replit
+
+In your Replit project, create a public folder if you don’t have one.
+
+Upload:
+
+ab_clean4-04.jpg (black bg — default)
+
+ab_clean4-02.jpg (white bg)
+
+
+Note their public URLs (e.g., https://<your-replit-app>/ab_clean4-04.jpg).
+
+In your env or dashboard “Branding” section, set:
+
+hero_src = URL of ab_clean4-04.jpg
+
+hero_src_alt = URL of ab_clean4-02.jpg (optional)
+
+(optional) LOGO_GIF_URL if you create a tiny animated logo later
+
+
+
+1C) Set environment variables
+
+In Replit → Secrets/Environment:
+
+TWILIO_ACCOUNT_SID=...
+TWILIO_AUTH_TOKEN=...
+TWILIO_MESSAGING_SERVICE_SID=MG...
+SENDGRID_API_KEY=...
+SENDGRID_DYNAMIC_TEMPLATE_ID=d-...
+FROM_EMAIL=hello@yourdomain.com
+REPLY_TO_EMAIL=jody@yourdomain.com
+PUBLIC_SITE_URL=https://your-site-url
+DASHBOARD_URL=https://your-dashboard-url
+QUIET_HOURS=21:00-08:00
+LOGO_GIF_URL=    (leave blank unless you have one)
+
+1D) Add the banner snippet to your website (once)
+
+Place this before </body> on your site (unchanged from prior, it now reads config from your app):
+
+<script>
+(async function(){
+  try{
+    const res = await fetch('https://YOUR-REPLIT-APP-URL/banner.json', { cache: 'no-store' });
+    const cfg = await res.json();
+    if (!cfg.enabled) return;
+    if (cfg.expiresOn) {
+      const today = new Date().toISOString().slice(0,10);
+      if (today > cfg.expiresOn) return;
+    }
+    if (document.cookie.includes('cm_banner_dismissed=true')) return;
+    const bar = document.createElement('div');
+    bar.style.cssText = "position:sticky;top:0;z-index:9999;background:#111827;color:#fff;padding:10px 16px;display:flex;gap:12px;align-items:center;justify-content:center;font:14px system-ui;border-bottom:1px solid rgba(255,255,255,0.15)";
+    bar.innerHTML = `
+      <span style="background:#22c55e;color:#111827;padding:2px 8px;border-radius:9999px;font-weight:700;font-size:12px;margin-right:8px;">NEW</span>
+      <span style="max-width:80ch;text-align:center;">${cfg.text || 'Instant scheduling + loyalty rewards now live.'}</span>
+      ${cfg.buttonUrl ? `<a href="${cfg.buttonUrl}" style="color:#111827;background:#fff;border-radius:9999px;padding:6px 12px;font-weight:700;text-decoration:none;">${cfg.buttonText||'See it'}</a>`:''}
+      <button id="cm_banner_close" aria-label="Dismiss" style="margin-left:8px;background:transparent;border:0;color:#fff;cursor:pointer;font-size:16px;">×</button>
+    `;
+    document.body.prepend(bar);
+    document.getElementById('cm_banner_close').onclick = ()=>{
+      document.cookie = "cm_banner_dismissed=true; path=/; max-age=2592000";
+      bar.remove();
+    };
+  }catch(e){ console.warn('Banner load failed', e); }
+})();
+</script>
+
+
+---

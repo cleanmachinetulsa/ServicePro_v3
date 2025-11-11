@@ -1,0 +1,128 @@
+2025-10-31 21:41:25.86
+4afa71aa
+User
+'x-goog-api-client': 'gl-node/20.19.3',
+2025-10-31 21:41:25.86
+4afa71aa
+User
+Accept: 'application/json'
+2025-10-31 21:41:25.86
+4afa71aa
+User
+},
+2025-10-31 21:41:25.86
+4afa71aa
+User
+responseType: 'json',
+2025-10-31 21:41:25.86
+4afa71aa
+User
+retryConfig: {
+2025-10-31 21:41:25.86
+4afa71aa
+User
+httpMethodsToRetry: [Array],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+currentRetryAttempt: 0,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+retry: 3,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+noResponseRetries: 2,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+retryDelayMultiplier: 2,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+timeOfFirstRequest: 1761964885857,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+totalTimeout: 9007199254740991,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+maxRetryDelay: 9007199254740991,
+2025-10-31 21:41:25.86
+4afa71aa
+User
+statusCodesToRetry: [Array]
+2025-10-31 21:41:25.86
+4afa71aa
+User
+},
+2025-10-31 21:41:25.86
+4afa71aa
+User
+paramsSerializer: [Function: paramsSerializer],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+body: '< - See `errorRedactor` option in `gaxios` for configuration>.',
+2025-10-31 21:41:25.86
+4afa71aa
+User
+validateStatus: [Function: validateStatus],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+errorRedactor: [Function: defaultErrorRedactor]
+2025-10-31 21:41:25.86
+4afa71aa
+User
+},
+2025-10-31 21:41:25.86
+4afa71aa
+User
+response: {
+2025-10-31 21:41:25.86
+4afa71aa
+User
+config: {
+2025-10-31 21:41:25.86
+4afa71aa
+User
+method: 'POST',
+2025-10-31 21:41:25.86
+4afa71aa
+User
+data: [Object],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+headers: [Object],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+retryConfig: [Object],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+validateStatus: [Function: validateStatus],
+2025-10-31 21:41:25.86
+4afa71aa
+User
+errorRedactor: [Function: defaultErrorRedactor]
+2025-10-31 21:41:44.60
+4afa71aa
+User
+2:41:44 AM [express] GET /api/auth/verify 401 in 2ms :: {"success":false,"message":"No session"}
+
+2025-10-31 21:41:57.57
+4afa71aa
+User
+2:41:57 AM [express] POST /api/auth/login 200 in 434ms :: {"success":true,"user":{"id":1,"username":…
+2025-10-31 21:41:57.63
+4afa71aa
+User
+2:41:57 AM [express] GET /api/auth/verify 401 in 2ms :: {"success":false,"message":"No session"}
+2025-10-31 21:46:28.13
+27b68003
+System

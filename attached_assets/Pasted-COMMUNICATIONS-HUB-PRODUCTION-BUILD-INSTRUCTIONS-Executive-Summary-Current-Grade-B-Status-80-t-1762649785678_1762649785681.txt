@@ -1,0 +1,595 @@
+COMMUNICATIONS HUB - PRODUCTION BUILD INSTRUCTIONS
+Executive Summary
+Current Grade: B+
+Status: 80% to Google Voice replacement
+Critical Gap: Authentication, phone normalization, Twilio event-driven architecture
+
+PHASE 1: CRITICAL BLOCKERS (Must Complete Before Production)
+1.1 Authentication & Authorization (HIGHEST PRIORITY)
+Timeline: 2-3 days
+Backend - JWT Implementation
+typescript// server/auth.ts
+import jwt from 'jsonwebtoken';
+import { Request, Response, NextFunction } from 'express';
+
+interface JWTPayload {
+  sub: string;        // user ID
+  tid: string;        // tenant ID
+  role: 'owner' | 'agent' | 'readonly';
+  iat: number;
+  exp: number;
+}
+
+// Middleware for all /api/* routes
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
+    req.user = { 
+      id: payload.sub, 
+      tenantId: payload.tid, 
+      role: payload.role 
+    };
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// Apply to all API routes
+app.use('/api/*', requireAuth);
+WebSocket Authentication
+typescript// server/sockets.ts
+import { Server } from 'socket.io';
+import jwt from 'jsonwebtoken';
+
+export function setupSockets(io: Server) {
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
+      socket.data.user = { 
+        id: payload.sub, 
+        tenantId: payload.tid, 
+        role: payload.role 
+      };
+      
+      // Join tenant-scoped room
+      socket.join(`tenant:${payload.tid}`);
+      next();
+    } catch {
+      next(new Error('Authentication failed'));
+    }
+  });
+
+  // Emit events only to tenant rooms
+  io.to(`tenant:${tenantId}`).emit('new_message', data);
+}
+
+1.2 Phone Number Normalization (CRITICAL)
+Timeline: 1 day
+Single Source of Truth
+typescript// utils/phone.ts
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
+
+export function toE164(input: string, defaultCountry = 'US'): string | null {
+  const parsed = parsePhoneNumberFromString(input, defaultCountry);
+  return parsed?.isValid() ? parsed.number : null;
+}
+
+export function toDisplay(e164: string): string {
+  const parsed = parsePhoneNumberFromString(e164);
+  return parsed ? parsed.formatNational() : e164;
+}
+
+export function isValidPhone(input: string, country = 'US'): boolean {
+  return !!toE164(input, country);
+}
+Update ALL Components
+
+Composer.tsx - Remove auto +1 formatting, use toE164() on submit
+Dialer.tsx - Format display only, send E164 to backend
+Backend - Validate and convert ALL incoming phone numbers to E164
+Database - Store ONLY E164 format
+
+typescript// Example: Composer submission
+const handleSubmit = () => {
+  const e164 = toE164(phone);
+  if (!e164) {
+    toast({ title: 'Invalid phone number', variant: 'destructive' });
+    return;
+  }
+  createConversationMutation.mutate({ phone: e164, name, platform });
+};
+
+1.3 Twilio Event-Driven Architecture
+Timeline: 3-4 days
+Replace Polling with Webhooks
+typescript// server/webhooks/twilio.ts
+import twilio from 'twilio';
+
+// Verify all Twilio webhooks
+export function verifyTwilioSignature(req: Request, res: Response, next: NextFunction) {
+  const signature = req.headers['x-twilio-signature'] as string;
+  const url = `${process.env.PUBLIC_BASE_URL}${req.originalUrl}`;
+  
+  const isValid = twilio.validateRequest(
+    process.env.TWILIO_AUTH_TOKEN!,
+    signature,
+    url,
+    req.body
+  );
+
+  if (!isValid) {
+    return res.status(403).send('Invalid signature');
+  }
+  next();
+}
+
+// Call status webhook
+app.post('/webhooks/twilio/call-status', verifyTwilioSignature, async (req, res) => {
+  const { CallSid, CallStatus, From, To, Duration, ErrorCode } = req.body;
+  
+  // Save to database
+  await db.insert(calls).values({
+    twilioSid: CallSid,
+    status: CallStatus,
+    from: From,
+    to: To,
+    duration: Duration ? parseInt(Duration) : null,
+    errorCode: ErrorCode,
+  });
+
+  // Broadcast to connected clients via WebSocket
+  io.to(`tenant:${tenantId}`).emit('call_updated', {
+    callId: CallSid,
+    status: CallStatus,
+    duration: Duration,
+  });
+
+  res.sendStatus(200);
+});
+
+// Message status webhook
+app.post('/webhooks/twilio/message-status', verifyTwilioSignature, async (req, res) => {
+  const { MessageSid, MessageStatus, ErrorCode } = req.body;
+  
+  await db.update(messages)
+    .set({ 
+      status: MessageStatus,
+      errorCode: ErrorCode 
+    })
+    .where(eq(messages.twilioSid, MessageSid));
+
+  io.to(`tenant:${tenantId}`).emit('message_status_updated', {
+    messageId: MessageSid,
+    status: MessageStatus,
+  });
+
+  res.sendStatus(200);
+});
+Configure Twilio Webhooks
+bash# In Twilio Console, set:
+# Voice StatusCallback URL: https://yourapp.com/webhooks/twilio/call-status
+# SMS StatusCallback URL: https://yourapp.com/webhooks/twilio/message-status
+Remove Polling from Frontend
+typescript// Before (BAD - polling every 2s)
+const { data } = useQuery({
+  queryKey: ['/api/calls/active'],
+  refetchInterval: 2000,
+});
+
+// After (GOOD - event-driven)
+useEffect(() => {
+  socket.on('call_updated', (data) => {
+    queryClient.setQueryData(['/api/calls', data.callId], data);
+  });
+
+  return () => socket.off('call_updated');
+}, []);
+
+1.4 SMS Compliance (LEGAL REQUIREMENT)
+Timeline: 2 days
+Implement STOP/START/HELP Handler
+typescript// server/sms-compliance.ts
+const OPT_OUT_KEYWORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
+const OPT_IN_KEYWORDS = ['START', 'YES', 'UNSTOP'];
+const HELP_KEYWORDS = ['HELP', 'INFO'];
+
+export async function handleIncomingSMS(req: Request, res: Response) {
+  const { From, Body } = req.body;
+  const normalizedBody = Body.trim().toUpperCase();
+
+  // Check opt-out
+  if (OPT_OUT_KEYWORDS.includes(normalizedBody)) {
+    await db.insert(optOuts).values({
+      phoneNumber: From,
+      optedOutAt: new Date(),
+    });
+
+    // Auto-reply
+    await twilioClient.messages.create({
+      to: From,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      body: 'You have been unsubscribed. Reply START to opt back in.',
+    });
+
+    return res.sendStatus(200);
+  }
+
+  // Check opt-in
+  if (OPT_IN_KEYWORDS.includes(normalizedBody)) {
+    await db.delete(optOuts).where(eq(optOuts.phoneNumber, From));
+
+    await twilioClient.messages.create({
+      to: From,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      body: 'You have been re-subscribed. Reply STOP to opt out.',
+    });
+
+    return res.sendStatus(200);
+  }
+
+  // Check help
+  if (HELP_KEYWORDS.includes(normalizedBody)) {
+    await twilioClient.messages.create({
+      to: From,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      body: 'For support, call 918-856-5711 or email support@yourcompany.com. Reply STOP to opt out.',
+    });
+
+    return res.sendStatus(200);
+  }
+
+  // Normal message processing...
+}
+
+// Check opt-out before sending
+export async function canSendSMS(phoneNumber: string): Promise<boolean> {
+  const optOut = await db.query.optOuts.findFirst({
+    where: eq(optOuts.phoneNumber, phoneNumber),
+  });
+  return !optOut;
+}
+Enforce Before Every Send
+typescript// In message send route
+app.post('/api/messages/send', requireAuth, async (req, res) => {
+  const { to, message } = req.body;
+
+  // REQUIRED: Check opt-out status
+  if (!(await canSendSMS(to))) {
+    return res.status(403).json({
+      error: 'Customer has opted out of SMS',
+    });
+  }
+
+  // Send message...
+});
+
+1.5 Production Infrastructure
+Timeline: 2 days
+Add Observability
+typescript// server/logging.ts
+import winston from 'winston';
+
+export const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.json(),
+  transports: [
+    new winston.transports.File({ filename: 'error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'combined.log' }),
+  ],
+});
+
+// Use in all routes
+logger.info('Call initiated', { userId, to, callSid });
+logger.error('Twilio API error', { error, context });
+Add Error Tracking (Sentry)
+typescript// server/index.ts
+import * as Sentry from '@sentry/node';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+});
+
+app.use(Sentry.Handlers.errorHandler());
+Health Checks
+typescriptapp.get('/health', async (req, res) => {
+  try {
+    // Check database
+    await db.execute(sql`SELECT 1`);
+    
+    // Check Twilio
+    await twilioClient.api.accounts(process.env.TWILIO_ACCOUNT_SID).fetch();
+
+    res.json({ status: 'healthy', timestamp: new Date() });
+  } catch (error) {
+    res.status(503).json({ status: 'unhealthy', error: error.message });
+  }
+});
+
+PHASE 2: RECOMMENDED IMPROVEMENTS (Post-Launch Week 1)
+2.1 Fix Customers Pane Query
+Current Issue: Only shows SMS conversations, missing other channels
+typescript// server/routes/calls.ts - CORRECTED
+app.get('/api/calls/customers', requireAuth, async (req, res) => {
+  const { tenantId } = req.user;
+
+  // Get ALL recent conversations (not just SMS)
+  const recentConversations = await db.query.conversations.findMany({
+    where: and(
+      eq(conversations.tenantId, tenantId),
+      gte(conversations.lastMessageAt, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+    ),
+    orderBy: [desc(conversations.lastMessageAt)],
+    limit: 30,
+  });
+
+  // Get appointments
+  const appointments = await db.query.appointments.findMany({
+    where: and(
+      eq(appointments.tenantId, tenantId),
+      or(
+        eq(appointments.status, 'scheduled'),
+        eq(appointments.status, 'pending')
+      )
+    ),
+    orderBy: [desc(appointments.scheduledFor)],
+    limit: 30,
+  });
+
+  // Unified activity view - sort by MOST RECENT activity
+  const customers = [
+    ...recentConversations.map(c => ({
+      id: c.id,
+      type: 'conversation',
+      name: c.customerName || c.phoneNumber,
+      phone: c.phoneNumber,
+      lastActivity: c.lastMessageAt,
+      status: 'recent_contact',
+      preview: c.latestMessage?.content,
+    })),
+    ...appointments.map(a => ({
+      id: a.id,
+      type: 'appointment',
+      name: a.customerName,
+      phone: a.phoneNumber,
+      lastActivity: a.scheduledFor || a.createdAt,
+      status: a.status,
+      preview: a.serviceType,
+      scheduledDate: a.scheduledFor,
+    })),
+  ].sort((a, b) => 
+    new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+  );
+
+  res.json({ customers: customers.slice(0, 30) });
+});
+2.2 Improve Toast UX
+typescript// utils/toast-helpers.ts
+export function showSuccessToast(toast: any, message: string) {
+  toast({
+    title: message,
+    duration: 2000, // 2s is fine for success
+  });
+}
+
+export function showErrorToast(toast: any, message: string, retry?: () => void) {
+  toast({
+    title: 'Error',
+    description: message,
+    variant: 'destructive',
+    duration: 8000, // 8s for errors
+    action: retry ? (
+      <Button variant="outline" size="sm" onClick={retry}>
+        Retry
+      </Button>
+    ) : undefined,
+  });
+}
+2.3 Add Message Queue for Reliability
+typescript// server/queues/messages.ts
+import Bull from 'bull';
+
+const messageQueue = new Bull('outbound-messages', {
+  redis: process.env.REDIS_URL,
+});
+
+messageQueue.process(async (job) => {
+  const { to, body, from } = job.data;
+
+  try {
+    const message = await twilioClient.messages.create({ to, body, from });
+    return { success: true, messageSid: message.sid };
+  } catch (error) {
+    throw error; // Bull will retry
+  }
+});
+
+// In API route
+app.post('/api/messages/send', requireAuth, async (req, res) => {
+  const { to, message } = req.body;
+
+  // Add to queue instead of sending directly
+  const job = await messageQueue.add({
+    to: toE164(to),
+    body: message,
+    from: process.env.TWILIO_PHONE_NUMBER,
+  }, {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 2000 },
+  });
+
+  res.json({ success: true, jobId: job.id });
+});
+
+PHASE 3: FEATURE ADDITIONS (Week 2+)
+3.1 Call Recording with Consent
+typescript// server/routes/calls.ts
+app.post('/api/calls/initiate', requireAuth, async (req, res) => {
+  const { to, recordCall } = req.body;
+
+  const call = await twilioClient.calls.create({
+    to: toE164(to),
+    from: process.env.TWILIO_PHONE_NUMBER,
+    url: `${process.env.PUBLIC_BASE_URL}/voice/outbound`,
+    statusCallback: `${process.env.PUBLIC_BASE_URL}/webhooks/twilio/call-status`,
+    statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+    record: recordCall, // Only if user consented
+    recordingStatusCallback: `${process.env.PUBLIC_BASE_URL}/webhooks/twilio/recording-ready`,
+  });
+
+  res.json({ success: true, callSid: call.sid });
+});
+
+// TwiML for recording consent
+app.post('/voice/outbound', (req, res) => {
+  const twiml = new twilio.twiml.VoiceResponse();
+  
+  twiml.say('This call may be recorded for quality assurance.');
+  twiml.dial(req.body.To);
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+3.2 Voicemail Transcription
+typescriptapp.post('/webhooks/twilio/voicemail', verifyTwilioSignature, async (req, res) => {
+  const { CallSid, RecordingUrl, RecordingSid, TranscriptionText } = req.body;
+
+  await db.insert(voicemails).values({
+    callSid: CallSid,
+    recordingUrl: RecordingUrl,
+    recordingSid: RecordingSid,
+    transcription: TranscriptionText,
+    from: req.body.From,
+    duration: req.body.RecordingDuration,
+  });
+
+  // Notify user
+  io.to(`tenant:${tenantId}`).emit('new_voicemail', {
+    from: req.body.From,
+    transcription: TranscriptionText,
+  });
+
+  res.sendStatus(200);
+});
+3.3 Scheduled Messages
+typescript// Add scheduled_messages table
+export const scheduledMessages = pgTable('scheduled_messages', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id').notNull(),
+  to: varchar('to').notNull(),
+  message: text('message').notNull(),
+  scheduledFor: timestamp('scheduled_for').notNull(),
+  status: varchar('status').default('pending'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Cron job to process
+import cron from 'node-cron';
+
+cron.schedule('* * * * *', async () => {
+  const pending = await db.query.scheduledMessages.findMany({
+    where: and(
+      eq(scheduledMessages.status, 'pending'),
+      lte(scheduledMessages.scheduledFor, new Date())
+    ),
+  });
+
+  for (const msg of pending) {
+    await messageQueue.add({
+      to: msg.to,
+      body: msg.message,
+      from: process.env.TWILIO_PHONE_NUMBER,
+    });
+
+    await db.update(scheduledMessages)
+      .set({ status: 'sent' })
+      .where(eq(scheduledMessages.id, msg.id));
+  }
+});
+
+PRODUCTION DEPLOYMENT CHECKLIST
+Environment Variables Required
+bash# Authentication
+JWT_SECRET=<generate-strong-secret>
+
+# Twilio
+TWILIO_ACCOUNT_SID=<your-sid>
+TWILIO_AUTH_TOKEN=<your-token>
+TWILIO_PHONE_NUMBER=+19188565711
+
+# Webhooks
+PUBLIC_BASE_URL=https://yourapp.com
+
+# Database
+DATABASE_URL=<postgres-connection-string>
+
+# Observability
+SENTRY_DSN=<your-sentry-dsn>
+
+# Optional
+REDIS_URL=<redis-url-for-queues>
+Pre-Launch Verification
+
+ All API routes require authentication
+ WebSocket connections are authenticated
+ Phone numbers stored as E164 everywhere
+ Twilio webhooks verified with signature check
+ STOP/START/HELP handlers active
+ Opt-out database checked before every send
+ Error tracking (Sentry) configured
+ Health check endpoint responding
+ Database backups configured
+ Call recordings have consent flow
+ Voicemail transcription enabled
+ Message delivery receipts stored
+
+Go-Live Steps
+
+Test all workflows on staging with real Twilio number
+Port 918-856-5711 to Twilio (business hours only)
+Configure all Twilio webhooks in production
+Enable monitoring/alerts
+Run smoke tests (make call, send SMS, receive both)
+Monitor logs for 24 hours
+
+
+SUPPORT REFERENCES
+Key Documentation
+
+Twilio Voice: https://www.twilio.com/docs/voice
+Twilio SMS: https://www.twilio.com/docs/sms
+JWT Best Practices: https://jwt.io/introduction
+libphonenumber-js: https://gitlab.com/catamphetamine/libphonenumber-js
+
+Emergency Rollback Plan
+If issues occur after porting number:
+
+Stop all outbound calls/messages
+Forward 918-856-5711 to backup number
+Debug in parallel
+Re-enable once stable
+
+
+FINAL NOTES
+Current State: You have a solid foundation with good UI/UX and component structure.
+Critical Gap: The system is currently optimistic/synthetic - it shows UI states without real Twilio integration.
+Priority Order:
+
+Authentication (security)
+Phone normalization (data integrity)
+Twilio webhooks (reliability)
+SMS compliance (legal)
+Observability (operational)
+
+Timeline to Production: 1-2 weeks if focused on Phase 1 blockers.
+Risk Assessment: LOW risk if Phase 1 completed properly. The architecture is sound - you just need the production plumbing.
+Good luck with the build! 🚀

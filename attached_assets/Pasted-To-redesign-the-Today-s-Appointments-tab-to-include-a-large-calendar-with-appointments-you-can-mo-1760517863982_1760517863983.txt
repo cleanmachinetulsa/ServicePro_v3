@@ -1,0 +1,62 @@
+To redesign the 'Today's Appointments' tab to include a large calendar with appointments, you can modify the dashboard.tsx file to incorporate a calendar component and render the appointments accordingly. Here's how you can achieve this.
+
+Install a Calendar Library (if you haven't already). You can use a library like react-calendar or react-big-calendar. For this example, I'll assume you choose react-calendar. Ensure to install it via the Replit package manager or your project configuration.
+
+Modify dashboard.tsx: You'll create a calendar component that displays today's appointments.
+
+Here's an example implementation:
+
+Update client/src/pages/dashboard.tsx
+import React, { useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
+import { Button } from "@/components/ui/button";
+import Calendar from 'react-calendar'; // Import the calendar component
+import 'react-calendar/dist/Calendar.css'; // Import styles
+import { getTodaysAppointments } from './api'; // Ensure you have an api call to fetch today's appointments
+export default function Dashboard() {
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [todayDate, setTodayDate] = useState<Date>(new Date());
+  
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      const response = await getTodaysAppointments();
+      if (response.success) {
+        setAppointments(response.appointments);
+      }
+    };
+    
+    fetchAppointments();
+  }, []);
+  return (
+    <div>
+      <h1 className="text-2xl font-bold my-4">Today's Appointments</h1>
+      <div className="mb-4">
+        <Calendar
+          onChange={setTodayDate}
+          value={todayDate}
+        />
+      </div>
+      <div>
+        <h2 className="text-lg">Appointments for {todayDate.toDateString()}:</h2>
+        <ul>
+          {appointments.map((appt) => (
+            <li key={appt.id}>
+              <strong>{appt.customerName}</strong> - {appt.service} at {appt.time}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <Button size="sm" onClick={async () => {
+        const response = await fetch('/api/test-calendar');
+        const data = await response.json();
+        // Handle the response
+      }}>
+        Test Calendar
+      </Button>
+    </div>
+  );
+}
+Additional Notes:
+Ensure you have an API endpoint (/api/today) that provides today's appointments in JSON format.
+Modify the getTodaysAppointments function to fetch data from your existing backend implementation.
+This implementation will render a calendar component and list the appointments for the selected date. Please update your code accordingly to integrate this design into your application. Let me know if you need further adjustments!

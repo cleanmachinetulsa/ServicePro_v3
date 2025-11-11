@@ -1,0 +1,716 @@
+Build Spec — CM → ServicePro Additive Merge with Whitelabel Finishing (Files + Code)
+Golden rules
+
+Additive only: do not modify/delete SP’s existing files unless explicitly told; create new files & import/mount them.
+
+Flags first: all new UI behind flags in tenant_settings.flags.
+
+Tenant-safe: every query requires tenant_id; requests must resolve tenant.
+
+Provider-agnostic core: extract CM logic into packages/core using Ports; SP implements Adapters.
+
+0) Monorepo layout (create new folders only)
+servicepro-monorepo/
+  packages/
+    core/
+      src/
+        ports.ts
+        scheduler/
+        rescheduler/
+        telephony/
+        maps/
+        kb/
+        otw/
+        billing/
+      tsconfig.json
+      package.json
+  apps/
+    servicepro/    <-- your existing SP app; keep intact
+      server/
+        adapters/
+        middleware/
+        routes/
+        validators/
+        templates/
+        onboarding/
+        docs/
+        widget/
+      ui/
+        components/
+        pages/
+          onboarding/
+          admin/
+          tech/
+      prisma/ or db/
+  ops/
+    migrations/
+    seeds/
+    preflight/
+    ci/
+
+1) Feature flags (add; do not replace your config)
+
+File: apps/servicepro/server/flags.ts
+
+export type FlagKey =
+  | "wl_enabled"
+  | "wl_widget_enabled"
+  | "wl_generator_validator_enabled"
+  | "docs_cms_enabled"
+  | "require_preflight_green_for_live"
+  | "ai_bio_coach_enabled"
+  | "show_tech_photo_in_otw"
+  | "third_party_billing_enabled";
+
+export const DEFAULT_FLAGS: Record<FlagKey, boolean> = {
+  wl_enabled: false,
+  wl_widget_enabled: false,
+  wl_generator_validator_enabled: false,
+  docs_cms_enabled: false,
+  require_preflight_green_for_live: true,
+  ai_bio_coach_enabled: false,
+  show_tech_photo_in_otw: false,
+  third_party_billing_enabled: false,
+};
+
+// Resolve flags per-tenant; fall back to defaults
+export async function getFlags(tenantId: string): Promise<Record<FlagKey, boolean>> {
+  const row = await db.tenant_settings.findUnique({ where: { tenant_id: tenantId }});
+  return { ...DEFAULT_FLAGS, ...(row?.flags ?? {}) };
+}
+
+2) Tenants + Vault + RLS (additive DB + middleware)
+2.1 Schema changes (Prisma example; adapt if SQL)
+
+File: apps/servicepro/prisma/schema.prisma (append models—do not remove existing)
+
+model tenants {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  brand_name   String?
+  timezone     String   @default("America/Chicago")
+  locale       String   @default("en-US")
+  domain_primary String?
+  subdomain    String?
+  industry_pack String  @default("auto_detail")
+  theme        Json?
+  status       String   @default("trial")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  settings     tenant_settings?
+  integrations tenant_integrations[]
+}
+
+model tenant_settings {
+  id           String   @id @default(cuid())
+  tenant_id    String   @unique
+  flags        Json
+  notification_templates Json?
+  industry_overrides Json?
+  tenant       tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model tenant_integrations {
+  id           String   @id @default(cuid())
+  tenant_id    String
+  provider     String
+  secrets      Json     // encrypted at rest in app layer
+  status       String   @default("unconfigured")
+  last_checked_at DateTime?
+  tenant       tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+// Add tenant_id to core tables; examples:
+model contacts {
+  id          String   @id @default(cuid())
+  tenant_id   String   // NEW
+  name        String
+  phone_e164  String?
+  email       String?
+  role_tags   Json?    // ["payer","service_contact"]
+  notification_prefs Json?
+  // ...existing fields...
+  @@index([tenant_id, phone_e164])
+}
+
+model jobs {
+  id        String   @id @default(cuid())
+  tenant_id String   // NEW
+  // roles:
+  requester_contact_id    String?
+  service_contact_id      String?
+  vehicle_owner_contact_id String?
+  billing_contact_id      String?
+  billing_type            String?  // "self"|"third_party"|"gift"|"company_po"
+  deposit_percent         Int?
+  billing_status          String?
+  po_number               String?
+  gift_message            String?
+  price_locked            Boolean  @default(false)
+  share_location_with_payer Boolean?
+  // ...existing fields...
+  @@index([tenant_id, billing_status])
+}
+
+2.2 Tenant resolver middleware
+
+File: apps/servicepro/server/middleware/tenantResolver.ts
+
+import type { Request, Response, NextFunction } from "express";
+
+export function tenantResolver(req: Request, _res: Response, next: NextFunction) {
+  // Priority: header (widget) > subdomain > session
+  const hdr = req.header("X-Widget-Tenant");
+  if (hdr) { (req as any).tenantId = hdr; return next(); }
+
+  const host = req.hostname || "";
+  const sub = host.split(".")[0];
+  if (sub && sub !== "www" && sub !== "app") { (req as any).tenantId = sub; return next(); }
+
+  if ((req as any).session?.tenantId) { (req as any).tenantId = (req as any).session.tenantId; return next(); }
+
+  // Fallback: require explicit tenant for protected routes
+  (req as any).tenantId = "ROOT_TENANT"; // safe default for legacy paths
+  return next();
+}
+
+2.3 Enforce tenant scoping
+
+File: apps/servicepro/server/middleware/enforceTenantScope.ts
+
+export function enforceTenantScope(req, res, next) {
+  const tenantId = (req as any).tenantId;
+  if (!tenantId) return res.status(400).json({ error: "tenant_missing" });
+  res.locals.tenantId = tenantId;
+  next();
+}
+
+2.4 Secrets Vault (encryption wrapper)
+
+File: apps/servicepro/server/services/vault.ts
+
+import crypto from "crypto"; // simple AES-256-GCM; replace with KMS if available
+
+const MASTER = process.env.VAULT_MASTER_KEY!;
+const ALGO = "aes-256-gcm";
+
+export function encryptJSON(obj: any): { ct: string; iv: string; tag: string } {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGO, Buffer.from(MASTER, "hex"), iv);
+  const ct = Buffer.concat([cipher.update(JSON.stringify(obj), "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { ct: ct.toString("base64"), iv: iv.toString("base64"), tag: tag.toString("base64") };
+}
+
+export function decryptJSON(payload: { ct: string; iv: string; tag: string }) {
+  const decipher = crypto.createDecipheriv(ALGO, Buffer.from(MASTER, "hex"), Buffer.from(payload.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(payload.tag, "base64"));
+  const pt = Buffer.concat([decipher.update(Buffer.from(payload.ct, "base64")), decipher.final()]);
+  return JSON.parse(pt.toString("utf8"));
+}
+
+2.5 Integrations set/test routes
+
+File: apps/servicepro/server/routes/integrations.ts
+
+import { Router } from "express";
+import { encryptJSON, decryptJSON } from "../services/vault";
+import { prisma } from "../db";
+const r = Router();
+
+// Save secrets (owner/admin only - assume auth middleware exists)
+r.post("/api/tenant/integrations/set", async (req, res) => {
+  const tenantId = res.locals.tenantId;
+  const { provider, secrets } = req.body;
+  const enc = encryptJSON(secrets);
+  await prisma.tenant_integrations.upsert({
+    where: { tenant_id_provider: { tenant_id: tenantId, provider }},
+    update: { secrets: enc, status: "testing" },
+    create: { tenant_id: tenantId, provider, secrets: enc, status: "testing" }
+  });
+  res.json({ ok: true });
+});
+
+// Quick “test” example for Twilio (expand for Stripe/Maps/OpenAI/Email)
+r.post("/api/tenant/integrations/test", async (req, res) => {
+  const tenantId = res.locals.tenantId;
+  const { provider } = req.body;
+  const row = await prisma.tenant_integrations.findFirst({ where: { tenant_id: tenantId, provider }});
+  if (!row) return res.status(404).json({ error: "not_found" });
+  const sec = decryptJSON(row.secrets as any);
+  let status = "ready";
+  // TODO: call provider-specific ping; catch errors → status="error"
+  await prisma.tenant_integrations.update({ where: { id: row.id }, data: { status, last_checked_at: new Date() }});
+  res.json({ status });
+});
+
+export default r;
+
+
+Mount both middlewares globally (without touching existing order) before protected routes:
+
+File: apps/servicepro/server/index.ts (or your main app bootstrap)
+
+import tenantResolver from "./middleware/tenantResolver";
+import { enforceTenantScope } from "./middleware/enforceTenantScope";
+app.use(tenantResolver);
+app.use(enforceTenantScope);
+app.use("/api", integrationsRouter); // mount new routes additively
+
+3) Core package (extract CM logic; provider-agnostic)
+
+File: packages/core/src/ports.ts
+
+export interface StoragePort {
+  getJobsByRange(range:{start:string,end:string}): Promise<any[]>;
+  getTechnicians(): Promise<any[]>;
+  saveAssignments(assignments:any[]): Promise<void>;
+  getOrgFlags(): Promise<Record<string, boolean>>;
+  getJobById(id:string): Promise<any>;
+  getContactById(id:string): Promise<any>;
+}
+
+export interface MapsPort {
+  isInsideServiceArea(lat:number,lng:number):Promise<boolean>;
+  travelMinutes(from:[number,number],to:[number,number]):Promise<number>;
+}
+
+export interface WeatherPort {
+  forecastISO(dateISO:string, lat:number, lng:number):Promise<any>;
+}
+
+export interface NotifierPort {
+  sms(to:string, body:string, mediaUrl?:string):Promise<{id:string}>;
+  email(to:string, subject:string, html:string):Promise<{id:string}>;
+  render(templateKey:string, vars:Record<string,any>):Promise<string>;
+}
+
+export interface PaymentsPort {
+  createPaymentLink(opts:{amount:number,currency:string,meta?:any}):Promise<{url:string,id:string}>;
+}
+
+export interface CalendarPort {
+  putEvent(job:any):Promise<void>;
+}
+
+
+File: packages/core/src/otw/index.ts
+
+import type { NotifierPort, StoragePort } from "../ports";
+
+export async function sendOTW(params:{
+  storage:StoragePort, notify:NotifierPort,
+  jobId:string, etaMinutes:number, mmsUrl?:string
+}) {
+  const job = await params.storage.getJobById(params.jobId);
+  const tech = job.assignedTech;
+  const svcContact = await params.storage.getContactById(job.service_contact_id);
+  const bio = tech.bio_about || "";
+  const msg = await params.notify.render("otw_friendly_v1", {
+    tech_name: tech.preferred_name || tech.name,
+    eta_minutes: params.etaMinutes,
+    bio_about: bio,
+    map_link: job.mapLink
+  });
+  return params.notify.sms(svcContact.phone_e164, msg, params.mmsUrl);
+}
+
+
+Repeat for scheduler/, rescheduler/, telephony/, billing/, etc. with pure logic and unit tests.
+
+4) Adapters in SP (wire core to your providers)
+
+File: apps/servicepro/server/adapters/notifier.ts
+
+import { NotifierPort } from "../../../packages/core/src/ports";
+import { twilioClient } from "../services/twilio";
+import { renderTemplate } from "../templates/render";
+
+export const notifier: NotifierPort = {
+  async sms(to, body, mediaUrl){
+    const res = await twilioClient.messages.create({
+      to, body,
+      messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+      ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {})
+    });
+    return { id: res.sid };
+  },
+  async email(to, subject, html){
+    // plug your email provider here
+    return { id: "email-queued" };
+  },
+  async render(key, vars){
+    return renderTemplate(key, vars);
+  }
+};
+
+
+File: apps/servicepro/server/adapters/storage.ts
+
+import { StoragePort } from "../../../packages/core/src/ports";
+import { prisma } from "../db";
+
+export const storage: StoragePort = {
+  async getJobsByRange({start,end}) {
+    return prisma.jobs.findMany({ where: { tenant_id: res.locals.tenantId, date: { gte: start, lte: end } }, include: { technician: true }});
+  },
+  async getTechnicians() {
+    return prisma.technicians.findMany({ where: { tenant_id: res.locals.tenantId }});
+  },
+  async saveAssignments(assignments) { /* upsert */ },
+  async getOrgFlags() { /* read tenant_settings.flags */ return {}; },
+  async getJobById(id) {
+    return prisma.jobs.findUnique({ where: { id }, include: { technician: true }});
+  },
+  async getContactById(id) {
+    return prisma.contacts.findUnique({ where: { id }});
+  },
+};
+
+5) Templates (OTW + payer notices)
+
+File: apps/servicepro/server/templates/otw_friendly_v1.txt
+
+{{tech_name}} is en route — ETA ~{{eta_minutes}} min. {{bio_about}} {{map_link}}
+
+
+File: apps/servicepro/server/templates/render.ts
+
+import fs from "fs";
+import Mustache from "mustache";
+export async function renderTemplate(key:string, vars:any){
+  const path = require.resolve(`./${key}.txt`);
+  const tpl = fs.readFileSync(path, "utf8");
+  return Mustache.render(tpl, vars);
+}
+
+6) Technician Bios + AI (UI + API; additive)
+6.1 API routes
+
+File: apps/servicepro/server/routes/techProfile.ts
+
+import { Router } from "express";
+import { prisma } from "../db";
+import { moderateText, truncate } from "../validators/text";
+import OpenAI from "openai";
+const r = Router();
+
+r.get("/api/tech/profile/me", async (req,res)=>{
+  const tenantId = res.locals.tenantId;
+  const userId = (req as any).user?.id;
+  const tech = await prisma.technicians.findFirst({ where: { tenant_id: tenantId, user_id: userId }});
+  res.json(tech || {});
+});
+
+r.post("/api/tech/profile", async (req,res)=>{
+  const tenantId = res.locals.tenantId;
+  const userId = (req as any).user?.id;
+  const { preferred_name, city, bio_raw, bio_about, bio_tags, photo_url, consent_public_profile } = req.body;
+  const safeAbout = truncate(moderateText(bio_about || ""), 160);
+  const tech = await prisma.technicians.upsert({
+    where: { tenant_id_user_id: { tenant_id: tenantId, user_id: userId }},
+    update: { preferred_name, city, bio_raw, bio_about: safeAbout, bio_tags, photo_url, consent_public_profile },
+    create: { tenant_id: tenantId, user_id: userId, preferred_name, city, bio_raw, bio_about: safeAbout, bio_tags, photo_url, consent_public_profile }
+  });
+  res.json(tech);
+});
+
+r.post("/api/ai/bio/suggest", async (req,res)=>{
+  const flags = await getFlags(res.locals.tenantId);
+  if (!flags.ai_bio_coach_enabled) return res.status(403).json({ error: "disabled" });
+
+  const { preferred_name, city, bio_raw, tags=[] } = req.body;
+  const system = `You are the Bio Coach... (one sentence ≤140 chars, warm, safety-forward, no PII). Return JSON { "bio_about": "...", "tags": ["a","b"] }`;
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const out = await client.chat.completions.create({
+    model: process.env.OPENAI_BIO_MODEL || "gpt-4o-mini",
+    messages: [{ role: "system", content: system }, { role: "user", content: JSON.stringify({ preferred_name, city, bio_raw, existing_tags: tags })}],
+    response_format: { type: "json_object" },
+    temperature: 0.6
+  });
+  let json = JSON.parse(out.choices[0].message.content || "{}");
+  json.bio_about = truncate(moderateText(json.bio_about || ""), 140);
+  json.tags = (json.tags || []).slice(0,2);
+  res.json(json);
+});
+
+export default r;
+
+6.2 Tech portal UI (React; additive nav)
+
+File: apps/servicepro/ui/pages/tech/MyProfile.tsx
+
+import { useState, useEffect } from "react";
+import { get, post } from "../../utils/http";
+
+export default function MyProfile(){
+  const [data,setData] = useState<any>({});
+  const [ai,setAI] = useState<any>(null);
+  useEffect(()=>{ get("/api/tech/profile/me").then(setData) },[]);
+  return (
+    <div className="p-6 max-w-3xl">
+      <h1 className="text-2xl font-bold mb-4">My Profile</h1>
+      {/* fields: preferred_name, city, bio_raw, photo uploader, consent */}
+      <label>Name</label>
+      <input value={data.preferred_name||""} onChange={e=>setData({...data,preferred_name:e.target.value})} />
+      <label>City</label>
+      <input value={data.city||""} onChange={e=>setData({...data,city:e.target.value})} />
+      <label>Draft notes</label>
+      <textarea value={data.bio_raw||""} onChange={e=>setData({...data,bio_raw:e.target.value})} />
+      <button onClick={async()=>{
+        const res = await post("/api/ai/bio/suggest", { preferred_name: data.preferred_name, city: data.city, bio_raw: data.bio_raw });
+        setAI(res);
+      }}>Improve with AI</button>
+      {ai && <div className="mt-3 p-3 border rounded">
+        <div className="font-semibold">Suggestion</div>
+        <div>{ai.bio_about}</div>
+        <div className="text-sm text-gray-500">{(ai.tags||[]).join(" • ")}</div>
+        <button onClick={()=>setData({...data,bio_about:ai.bio_about,bio_tags:ai.tags})}>Use this</button>
+      </div>}
+      <button className="mt-4" onClick={()=>post("/api/tech/profile", data)}>Save for review</button>
+    </div>
+  );
+}
+
+
+Nav mounting (conditional): in your existing sidebar/nav component:
+
+{flags.ai_bio_coach_enabled && <NavLink to="/tech/my-profile">My Profile</NavLink>}
+
+7) Third-Party / Gift Billing (API + UI + public page)
+
+File: apps/servicepro/server/routes/billingThirdParty.ts
+
+import { Router } from "express";
+import { prisma } from "../db";
+import { signPublicToken, verifyPublicToken } from "../services/tokens";
+const r = Router();
+
+// assign roles on a job
+r.post("/api/jobs/:id/roles", async (req,res)=>{
+  const tenantId = res.locals.tenantId;
+  const { requester_contact_id, service_contact_id, vehicle_owner_contact_id, billing_contact_id, billing_type, deposit_percent, po_number, gift_message, share_location_with_payer } = req.body;
+  const job = await prisma.jobs.update({
+    where: { id: req.params.id },
+    data: { tenant_id: tenantId, requester_contact_id, service_contact_id, vehicle_owner_contact_id, billing_contact_id, billing_type, deposit_percent, po_number, gift_message, share_location_with_payer }
+  });
+  res.json(job);
+});
+
+// send payer approval link
+r.post("/api/jobs/:id/payer/send-approval", async (req,res)=>{
+  const tenantId = res.locals.tenantId;
+  const job = await prisma.jobs.findUnique({ where: { id: req.params.id }});
+  const token = signPublicToken({ t: tenantId, j: job.id, role:"payer" }, "15d");
+  const approvalLink = `${process.env.APP_URL}/public/payer/${token}`;
+  // send via SMS/Email to payer contact (lookup)
+  res.json({ approvalLink });
+});
+
+// public approval page data
+r.get("/public/payer/:token", async (req,res)=>{
+  const { t, j } = verifyPublicToken(req.params.token);
+  const job = await prisma.jobs.findUnique({ where: { id: j }, include: { /* summary fields */ }});
+  // hide live address unless share_location_with_payer
+  res.render("public/payer-approval", { job /* ... */ });
+});
+
+// decision
+r.post("/public/payer/:token/decision", async (req,res)=>{
+  const { approve, pay_now, po_number } = req.body;
+  const { t, j } = verifyPublicToken(req.params.token);
+  await prisma.jobs.update({ where: { id: j }, data: { billing_status: approve ? "deposit_requested" : "pending_payer_approval", po_number }});
+  res.json({ ok:true });
+});
+
+export default r;
+
+
+UI: add “Roles” panel inside Job Editor (Service Contact, Payer, Gift toggle, Deposit %), and buttons Send Approval, Send Deposit—mount under a flag third_party_billing_enabled.
+
+8) Onboarding Wizard + Docs right-rail
+
+Files:
+
+apps/servicepro/server/onboarding/state.ts (get/save step payloads per tenant)
+
+apps/servicepro/ui/pages/onboarding/Index.tsx (stepper with Test buttons)
+
+apps/servicepro/server/routes/integrations.ts (already created)
+
+apps/servicepro/server/routes/preflight.ts
+
+Preflight route:
+
+r.get("/api/preflight", async (req,res)=>{
+  const tenantId = res.locals.tenantId;
+  // read tenant_integrations.status for twilio/stripe/maps/openai/email
+  res.json({ twilio:"green", stripe:"green", maps:"yellow", openai:"green", email:"green" });
+});
+
+
+Docs CMS (simple):
+
+apps/servicepro/server/routes/docs.ts with GET/POST /api/docs/:key
+
+apps/servicepro/ui/pages/onboarding/RightRailDocs.tsx loads markdown by key like docs/onboarding/twilio, uses react-markdown
+
+9) Embeddable Widget (loader + iframe app)
+
+Loader: apps/servicepro/server/widget/loader.ts (served as /widget/servicepro.js)
+
+(function(){
+  function init(){
+    var s = document.currentScript;
+    var tenant = s.getAttribute("data-tenant");
+    var token  = s.getAttribute("data-token");
+    var iframe = document.createElement("iframe");
+    iframe.src = (s.src.replace("/widget/servicepro.js","") + "/widget/u/" + tenant + "?token=" + encodeURIComponent(token));
+    iframe.style.position = "fixed"; iframe.style.bottom = "20px"; iframe.style.right = "20px";
+    iframe.style.width = "380px"; iframe.style.height="560px"; iframe.style.border="0"; iframe.style.zIndex="2147483000";
+    document.body.appendChild(iframe);
+  }
+  if (document.readyState === "complete") init(); else window.addEventListener("load", init);
+})();
+
+
+Iframe app routes: apps/servicepro/server/widget/app.ts
+
+r.get("/widget/u/:slug", (req,res)=> {
+  // verify public token + resolve theme
+  res.render("widget/index", { theme: {/* from tenant.theme */} });
+});
+
+
+Public token service: apps/servicepro/server/services/tokens.ts with short-lived JWT signed by WIDGET_PUBLIC_SECRET.
+
+10) Landing-Page Generator Validator
+
+Schema: apps/servicepro/server/validator/generator.schema.json
+
+{
+  "type": "object",
+  "required": ["schemaVersion","brand","services","links"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "brand": { "type":"object", "required":["name"], "properties": { "name":{"type":"string"}, "city":{"type":"string"}, "phone":{"type":"string"} } },
+    "services": { "type":"array", "items": { "type":"object", "required":["key","title"], "properties": { "key":{"type":"string"}, "title":{"type":"string"}, "price":{"type":["number","string"]}, "durationMin":{"type":"number"} } } },
+    "links": { "type":"object", "properties": { "bookUrl":{"type":"string"}, "quoteUrl":{"type":"string"} } }
+  }
+}
+
+
+Routes: apps/servicepro/server/routes/validator.ts
+
+import { Router } from "express";
+import Ajv from "ajv";
+import schema from "../validator/generator.schema.json";
+const ajv = new Ajv({ allErrors:true });
+const validate = ajv.compile(schema);
+const r = Router();
+
+r.post("/api/wl/validator/check", async (req,res)=>{
+  const payload = req.body;
+  const ok = validate(payload);
+  const report = ok ? [] : validate.errors;
+  // TODO: HEAD links & verify services keys exist in tenant industry pack
+  res.json({ ok, report, suggestions: [] });
+});
+
+r.post("/api/wl/validator/dry-run", async (req,res)=>{
+  // render sandbox page with payload; do not send messages
+  res.render("validator/preview", { cfg: req.body });
+});
+
+export default r;
+
+11) Tests, Seeds, Preflight
+
+Seed demo tenant: ops/seeds/seedDemoTenant.ts
+
+await prisma.tenants.create({ data: { slug:"demo", name:"Demo Co", industry_pack:"auto_detail", theme:{ primary:"#2563eb" } }});
+await prisma.tenant_settings.create({ data: { tenant_id: demo.id, flags: { wl_enabled:true, ai_bio_coach_enabled:true } }});
+
+
+Preflight script: ops/preflight/run.ts runs:
+
+DB connectivity
+
+Reads tenant_integrations.status → must be “ready”
+
+Tries template render; tries widget token encode/decode
+
+Basic integration test: apps/servicepro/server/__tests__/onboarding.e2e.test.ts
+
+POST /api/tenant/integrations/set (mocks)
+
+POST /api/tenant/integrations/test
+
+GET /api/preflight → expect green for mocked providers
+
+12) Nav & Mounting
+
+In your server bootstrap (add only):
+
+app.use(require("./routes/integrations").default);
+app.use(require("./routes/techProfile").default);
+app.use(require("./routes/billingThirdParty").default);
+app.use(require("./routes/validator").default);
+// widget loader static
+app.get("/widget/servicepro.js", require("./widget/loaderBundled").default);
+
+
+In your UI nav:
+
+{flags.wl_enabled && <NavLink to="/onboarding">Onboarding</NavLink>}
+{flags.ai_bio_coach_enabled && <NavLink to="/tech/my-profile">My Profile</NavLink>}
+{flags.third_party_billing_enabled && <NavLink to="/admin/profiles">Profiles Review</NavLink>}
+
+13) Rollout order (so nothing breaks)
+
+Create core + adapters (no routes mounted yet).
+
+Add tenant tables + backfill to ROOT_TENANT; add middlewares.
+
+Integrations set/test routes; simple status page.
+
+Onboarding UI (gated by wl_enabled) + Docs rail.
+
+Widget loader + iframe (gated by wl_widget_enabled).
+
+Validator routes + dry-run (gated by wl_generator_validator_enabled).
+
+Tech Bios + AI pages + API; OTW enrich keeps old behavior if profile absent.
+
+Third-Party/Gift billing UI + public pages; templates; flags.
+
+Preflight must be green before Go Live.
+
+Seeds + tests; only then enable flags for your first real tenant.
+
+14) Acceptance checklist (must pass)
+
+With all flags OFF, SP behaves exactly as today.
+
+With flags ON (dev):
+
+A fresh tenant finishes onboarding, passes Preflight, embeds widget, submits a lead, triggers a test OTW, and pays a $1 test link—no code.
+
+Tenant scoping enforced (no cross-tenant reads).
+
+Secrets are encrypted at rest; never returned to client.
+
+Widget token scoped + rate-limited.
+
+Unit + integration tests green.
+
+Notes to agent
+
+Do not overwrite existing SP files; add new files and imports only where specified.
+
+If a required provider key is missing, gracefully no-op and log a warn.
+
+Prefer TypeScript; if project is JS, output JS versions of these files.
+
+Where the project uses a different router/template/ORM, transpose these stubs to match, keeping the same capabilities and filenames/paths as closely as possible.

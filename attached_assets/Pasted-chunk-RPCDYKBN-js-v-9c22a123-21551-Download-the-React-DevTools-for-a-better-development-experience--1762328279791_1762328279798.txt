@@ -1,0 +1,52 @@
+chunk-RPCDYKBN.js?v=9c22a123:21551 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+main.tsx:13 [PWA] Service Worker registered successfully: https://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/
+manifest.json:1 Manifest: Line: 1, column: 1, Syntax error.
+dashboard:1 <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">
+usePushNotifications.ts:45 [Push] Current browser notification permission: granted
+usePushNotifications.ts:50 [Push] Existing subscription: Found
+service-worker.js:63 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at service-worker.js:63:19
+(anonymous) @ service-worker.js:63
+Promise.then
+(anonymous) @ service-worker.js:62
+Promise.then
+(anonymous) @ service-worker.js:59
+usePushNotifications.ts:193  POST https://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/api/push/test 401 (Unauthorized)
+sendTestNotification @ usePushNotifications.ts:193
+onClick @ notifications-settings.tsx:565
+callCallback2 @ chunk-RPCDYKBN.js?v=9c22a123:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=9c22a123:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=9c22a123:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=9c22a123:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=9c22a123:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=9c22a123:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=9c22a123:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=9c22a123:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=9c22a123:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=9c22a123:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=9c22a123:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=9c22a123:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=9c22a123:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=9c22a123:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=9c22a123:5449
+usePushNotifications.ts:204 [Push] Test notification error: Error: Failed to send test notification
+    at Object.sendTestNotification (usePushNotifications.ts:199:15)
+    at async onClick (notifications-settings.tsx:565:41)
+sendTestNotification @ usePushNotifications.ts:204
+await in sendTestNotification
+onClick @ notifications-settings.tsx:565
+callCallback2 @ chunk-RPCDYKBN.js?v=9c22a123:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=9c22a123:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=9c22a123:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=9c22a123:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=9c22a123:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=9c22a123:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=9c22a123:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=9c22a123:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=9c22a123:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=9c22a123:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=9c22a123:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=9c22a123:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=9c22a123:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=9c22a123:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=9c22a123:5449

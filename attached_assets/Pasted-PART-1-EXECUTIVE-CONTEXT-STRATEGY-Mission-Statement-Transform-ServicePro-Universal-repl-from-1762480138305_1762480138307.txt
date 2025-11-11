@@ -1,0 +1,1817 @@
+PART 1: EXECUTIVE CONTEXT & STRATEGY
+📋 Mission Statement
+Transform ServicePro (Universal) repl from single-tenant to a fully automated multi-tenant white-label SaaS platform enabling service businesses to launch in under 5 minutes with zero code.
+
+Clean Machine repl contains superior feature implementations to be surgically merged into ServicePro while preserving white-label architecture.
+
+🎯 Business Model
+3-Tier Pricing:
+Starter: $49/month (100 customers, 500 SMS/month)
+Professional: $99/month ← Most popular (unlimited customers, 2,000 SMS, analytics)
+Enterprise: $249/month (10,000 SMS, white-label, dedicated support)
+Growth Strategy:
+14-day free trial (no credit card)
+No setup fee (automated = $0 cost)
+Industry packs = 5-minute setup = high conversion
+Target: Thousands of signups per day
+🏗️ Architecture (ONE Deployment = Unlimited Tenants)
+Customer visits: acme.servicepro.com
+    ↓
+Wildcard DNS: *.servicepro.com → Your app
+    ↓
+Middleware extracts "acme" → Finds tenant_id
+    ↓
+ALL queries: WHERE tenant_id = 'acme'
+    ↓
+Returns ONLY Acme's data (other tenants invisible)
+
+Security Layers:
+Tenant Middleware - Extracts subdomain → resolves tenant_id
+Query Scoping - Every DB query filtered by tenant_id
+Encrypted Vault - AES-256 encryption for API keys
+📊 Industry Packs (Pre-Built Templates)
+Auto Detailing:
+6 pre-loaded services (Full Detail, Quick Wash, Ceramic Coating, etc.)
+Email templates (confirmation, reminder, thank you)
+SMS templates (booking, on-the-way, completion)
+Loyalty tiers (Bronze/Silver/Gold)
+Lawn Care:
+Services: Mowing, Edging, Fertilization, Aeration
+Recurring service defaults (weekly/bi-weekly)
+Pet Grooming:
+Breed-specific pricing templates
+Service templates (Bath, Full Groom, Nail Trim)
+🔀 Clean Machine → ServicePro Merge Strategy
+Clean Machine Superior Features (Port to ServicePro):
+Live conversation monitoring (better UX)
+Analytics dashboard (seasonal trends, forecasting)
+Third-party billing (multi-role payments)
+Recurring services (flexible scheduling)
+Technician portal (bio coach, PTO, shift trading)
+PWA push notifications
+Voicemail-to-SMS
+Click-to-call (two-leg Twilio)
+Quote approval workflow
+AI response formatting
+Merge Approach:
+For each feature:
+1. Read Clean Machine implementation
+2. Add tenant_id scoping
+3. Replace or enhance ServicePro's version
+4. Test with multiple tenants
+
+PART 2: DATABASE SCHEMA & MIGRATIONS
+New Multi-Tenant Tables
+Complete Schema Additions:
+// shared/schema.ts - ADD THESE TABLES
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+import { sql } from "drizzle-orm";
+// ========================================
+// MULTI-TENANT CORE TABLES
+// ========================================
+export const tenants = pgTable("tenants", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  subdomain: text("subdomain").notNull().unique(), // 'acme'
+  businessName: text("business_name").notNull(),
+  industryType: varchar("industry_type", { length: 50 }).notNull(), // auto_detailing, lawn_care, pet_grooming
+  customDomain: text("custom_domain"), // Optional custom domain
+  
+  // Status & billing
+  status: varchar("status", { length: 20 }).default("trial"), // trial, active, suspended, cancelled
+  trialEndsAt: timestamp("trial_ends_at"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionTier: varchar("subscription_tier", { length: 20 }).default("starter"), // starter, professional, enterprise
+  subscriptionStatus: varchar("subscription_status", { length: 20 }).default("trialing"),
+  
+  // Branding
+  brandName: text("brand_name"),
+  logoUrl: text("logo_url"),
+  logoUrlAlt: text("logo_url_alt"), // White background version
+  primaryColor: text("primary_color").default("#3B82F6"),
+  
+  // Contact info
+  email: text("email").notNull(),
+  phone: text("phone"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  lastLoginAt: timestamp("last_login_at"),
+});
+export const tenantSettings = pgTable("tenant_settings", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  // Business hours
+  startHour: integer("start_hour").default(9),
+  startMinute: integer("start_minute").default(0),
+  endHour: integer("end_hour").default(17),
+  endMinute: integer("end_minute").default(0),
+  daysOfWeek: integer("days_of_week").array().default([1,2,3,4,5]), // 0=Sunday, 6=Saturday
+  
+  // Lunch break
+  enableLunchBreak: boolean("enable_lunch_break").default(false),
+  lunchHour: integer("lunch_hour").default(12),
+  lunchMinute: integer("lunch_minute").default(0),
+  
+  // Service settings
+  maxDriveTimeMinutes: integer("max_drive_time_minutes").default(30),
+  minimumNoticeHours: integer("minimum_notice_hours").default(24),
+  etaPadding: integer("eta_padding").default(15), // Buffer for ETAs
+  allowWeekendBookings: boolean("allow_weekend_bookings").default(false),
+  
+  // Feature flags
+  flags: jsonb("flags").default({
+    sms_enabled: true,
+    ai_chatbot: true,
+    loyalty_program: true,
+    recurring_services: true,
+    push_notifications: true,
+    facebook_messenger: false,
+    instagram_dm: false,
+  }),
+  
+  // External IDs
+  googlePlaceId: text("google_place_id"), // For reviews
+  
+  // Notifications
+  quietHoursStart: text("quiet_hours_start").default("21:00"),
+  quietHoursEnd: text("quiet_hours_end").default("08:00"),
+  
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const tenantSecrets = pgTable("tenant_secrets", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id").notNull().unique().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  // Twilio (all encrypted)
+  twilioAccountSid: text("twilio_account_sid"),
+  twilioAuthToken: text("twilio_auth_token"),
+  twilioPhoneNumber: text("twilio_phone_number"),
+  twilioMessagingServiceSid: text("twilio_messaging_service_sid"),
+  
+  // SendGrid (encrypted)
+  sendgridApiKey: text("sendgrid_api_key"),
+  sendgridFromEmail: text("sendgrid_from_email"),
+  sendgridReplyToEmail: text("sendgrid_reply_to_email"),
+  
+  // Stripe (encrypted)
+  stripeSecretKey: text("stripe_secret_key"),
+  stripePublicKey: text("stripe_public_key"),
+  stripeWebhookSecret: text("stripe_webhook_secret"),
+  
+  // Google (encrypted JSON)
+  googleApiCredentials: text("google_api_credentials"), // Encrypted service account JSON
+  googleCalendarId: text("google_calendar_id"),
+  googleSpreadsheetId: text("google_spreadsheet_id"),
+  googleDriveFolderId: text("google_drive_folder_id"),
+  
+  // OpenAI (encrypted)
+  openaiApiKey: text("openai_api_key"),
+  
+  // Facebook/Instagram (encrypted)
+  facebookPageAccessToken: text("facebook_page_access_token"),
+  facebookPageId: text("facebook_page_id"),
+  instagramPageAccessToken: text("instagram_page_access_token"),
+  instagramPageId: text("instagram_page_id"),
+  
+  // PayPal (encrypted)
+  paypalClientId: text("paypal_client_id"),
+  paypalClientSecret: text("paypal_client_secret"),
+  
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+export const industryTemplates = pgTable("industry_templates", {
+  id: serial("id").primaryKey(),
+  industryType: varchar("industry_type", { length: 50 }).notNull().unique(),
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  iconName: text("icon_name"), // lucide-react icon name
+  
+  // Template data (JSON)
+  servicesTemplate: jsonb("services_template"),
+  emailTemplatesTemplate: jsonb("email_templates_template"),
+  smsTemplatesTemplate: jsonb("sms_templates_template"),
+  loyaltyTiersTemplate: jsonb("loyalty_tiers_template"),
+  achievementsTemplate: jsonb("achievements_template"),
+  rewardServicesTemplate: jsonb("reward_services_template"),
+  quickRepliesTemplate: jsonb("quick_replies_template"),
+  
+  // AI configuration
+  aiSystemPromptTemplate: text("ai_system_prompt_template"),
+  aiKnowledgeBaseTemplate: text("ai_knowledge_base_template"),
+  
+  // Default settings
+  defaultSettings: jsonb("default_settings"),
+  
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+// Onboarding progress tracking
+export const tenantOnboarding = pgTable("tenant_onboarding", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id").notNull().unique().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  step1Completed: boolean("step1_completed").default(false), // Business info
+  step2Completed: boolean("step2_completed").default(false), // Subdomain
+  step3Completed: boolean("step3_completed").default(false), // Industry pack preview
+  step4Completed: boolean("step4_completed").default(false), // Customize services
+  step5Completed: boolean("step5_completed").default(false), // Twilio setup
+  step6Completed: boolean("step6_completed").default(false), // Google Workspace
+  step7Completed: boolean("step7_completed").default(false), // Payment processing
+  step8Completed: boolean("step8_completed").default(false), // Review & launch
+  
+  currentStep: integer("current_step").default(1),
+  completedAt: timestamp("completed_at"),
+  
+  // Test results
+  twilioTestPassed: boolean("twilio_test_passed").default(false),
+  googleCalendarTestPassed: boolean("google_calendar_test_passed").default(false),
+  stripeTestPassed: boolean("stripe_test_passed").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+// Super admin table (for managing all tenants)
+export const superAdmins = pgTable("super_admins", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  permissions: text("permissions").array().default(['view_all_tenants', 'manage_billing', 'view_analytics']),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+// Tenant usage tracking (for billing/analytics)
+export const tenantUsage = pgTable("tenant_usage", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
+  
+  smsCount: integer("sms_count").default(0),
+  emailCount: integer("email_count").default(0),
+  appointmentCount: integer("appointment_count").default(0),
+  customerCount: integer("customer_count").default(0),
+  storageUsedMb: numeric("storage_used_mb").default('0'),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+Add tenant_id to Existing Tables
+Migration Strategy:
+// FOR EVERY EXISTING TABLE, ADD:
+// Example: customers table
+export const customers = pgTable("customers", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id, { onDelete: 'cascade' }), // ← ADD THIS
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone").notNull(),
+  // ... rest of existing columns
+});
+// Add compound index for performance
+// In Drizzle, indexes are defined separately or in table definition
+
+Complete List of Tables Needing tenant_id:
+✅ users (special case - might be tenant-specific or shared)
+✅ customers
+✅ services
+✅ appointments
+✅ invoices
+✅ conversations
+✅ messages
+✅ callEvents
+✅ smsDeliveryStatus
+✅ loyaltyPoints
+✅ pointsTransactions
+✅ loyaltyTiers
+✅ achievements
+✅ customerAchievements
+✅ rewardServices
+✅ redeemedRewards
+✅ emailCampaigns
+✅ emailTemplates
+✅ emailSubscribers
+✅ pushSubscriptions
+✅ quoteRequests
+✅ authorizations
+✅ paymentLinks
+✅ giftCards
+✅ technicians
+✅ ptoRequests
+✅ shiftTrades
+✅ applicants
+✅ auditLog
+✅ recurringServices
+✅ businessSettings (replace with tenantSettings reference)
+✅ facebookPageTokens
+✅ quickReplyCategories
+✅ quickReplyTemplates
+✅ customerTags
+✅ conversationTags
+✅ galleryPhotos
+✅ subscriptions
+✅ cancellationFeedback
+✅ followUpReminders
+✅ upsellOffers
+✅ appointmentUpsells
+✅ contacts
+✅ contactRoles
+✅ notificationSettings
+
+Database Migration Script
+# After updating schema.ts with all changes:
+npm run db:push
+# If you get data loss warnings (expected for adding tenant_id):
+npm run db:push --force
+# This will:
+# 1. Create new tenant tables
+# 2. Add tenant_id columns to all existing tables
+# 3. Set them as NOT NULL (will fail if data exists - see note below)
+
+Handling Existing Data:
+If Clean Machine data exists in ServicePro:
+
+-- Manual migration script (run BEFORE db:push)
+-- Create a "root" tenant for existing Clean Machine data
+INSERT INTO tenants (id, subdomain, business_name, industry_type, email, status)
+VALUES ('root-tenant', 'cleanmachine', 'Clean Machine Auto Detail', 'auto_detailing', 'cleanmachinetulsa@gmail.com', 'active');
+-- Update all existing records to belong to root tenant
+UPDATE customers SET tenant_id = 'root-tenant' WHERE tenant_id IS NULL;
+UPDATE appointments SET tenant_id = 'root-tenant' WHERE tenant_id IS NULL;
+UPDATE services SET tenant_id = 'root-tenant' WHERE tenant_id IS NULL;
+-- ... repeat for all tables
+-- Now run: npm run db:push
+
+PART 3: IMPLEMENTATION CODE
+1. Tenant Middleware
+// server/middleware/tenant.ts
+import { Request, Response, NextFunction } from 'express';
+import { db } from '../db';
+import { tenants } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      tenantId?: string;
+      tenant?: typeof tenants.$inferSelect;
+    }
+  }
+}
+export async function resolveTenant(req: Request, res: Response, next: NextFunction) {
+  try {
+    // Extract subdomain from hostname
+    const hostname = req.hostname; // e.g., 'acme.servicepro.com' or 'localhost'
+    
+    // Handle localhost for development
+    if (hostname === 'localhost' || hostname.startsWith('127.0.0.1')) {
+      // For dev, check for X-Tenant-ID header or use 'dev' tenant
+      const devTenantId = req.headers['x-tenant-id'] as string || 'root-tenant';
+      const [tenant] = await db.select()
+        .from(tenants)
+        .where(eq(tenants.id, devTenantId))
+        .limit(1);
+      
+      if (!tenant) {
+        return res.status(404).json({ error: 'Development tenant not found. Set X-Tenant-ID header.' });
+      }
+      
+      req.tenantId = tenant.id;
+      req.tenant = tenant;
+      return next();
+    }
+    
+    // Production: extract subdomain
+    const subdomain = hostname.split('.')[0];
+    
+    // Skip middleware for certain paths (public API, webhooks, etc.)
+    const publicPaths = ['/api/webhooks', '/api/health', '/widget.js'];
+    if (publicPaths.some(path => req.path.startsWith(path))) {
+      return next();
+    }
+    
+    // Look up tenant by subdomain
+    const [tenant] = await db.select()
+      .from(tenants)
+      .where(eq(tenants.subdomain, subdomain))
+      .limit(1);
+    
+    if (!tenant) {
+      return res.status(404).json({ 
+        error: 'Tenant not found',
+        subdomain,
+        message: 'This business does not exist. Please check the URL.' 
+      });
+    }
+    
+    // Check tenant status
+    if (tenant.status === 'suspended') {
+      return res.status(403).json({ 
+        error: 'Account suspended',
+        message: 'This account has been suspended. Please contact support.' 
+      });
+    }
+    
+    if (tenant.status === 'cancelled') {
+      return res.status(410).json({ 
+        error: 'Account cancelled',
+        message: 'This account is no longer active.' 
+      });
+    }
+    
+    // Attach tenant to request
+    req.tenantId = tenant.id;
+    req.tenant = tenant;
+    
+    // Update last activity
+    await db.update(tenants)
+      .set({ lastLoginAt: new Date() })
+      .where(eq(tenants.id, tenant.id));
+    
+    next();
+  } catch (error) {
+    console.error('Tenant resolution error:', error);
+    res.status(500).json({ error: 'Failed to resolve tenant' });
+  }
+}
+// Helper middleware to require tenant
+export function requireTenant(req: Request, res: Response, next: NextFunction) {
+  if (!req.tenantId) {
+    return res.status(401).json({ error: 'Tenant required' });
+  }
+  next();
+}
+
+2. Secrets Vault Service
+// server/services/secrets-vault.ts
+import crypto from 'crypto';
+import { db } from '../db';
+import { tenantSecrets } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+// CRITICAL: Set this in Replit Secrets
+// Generate with: openssl rand -hex 32
+const ENCRYPTION_KEY = process.env.SECRETS_ENCRYPTION_KEY;
+if (!ENCRYPTION_KEY) {
+  console.error('❌ SECRETS_ENCRYPTION_KEY not set! Generate with: openssl rand -hex 32');
+  throw new Error('SECRETS_ENCRYPTION_KEY environment variable is required');
+}
+const ALGORITHM = 'aes-256-gcm';
+/**
+ * Encrypt sensitive data
+ */
+export function encrypt(text: string): string {
+  if (!text) return '';
+  
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(
+    ALGORITHM,
+    Buffer.from(ENCRYPTION_KEY, 'hex'),
+    iv
+  );
+  
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  
+  const authTag = cipher.getAuthTag();
+  
+  // Format: iv:authTag:encrypted
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+}
+/**
+ * Decrypt sensitive data
+ */
+export function decrypt(encryptedText: string): string {
+  if (!encryptedText) return '';
+  
+  try {
+    const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
+    
+    const decipher = crypto.createDecipheriv(
+      ALGORITHM,
+      Buffer.from(ENCRYPTION_KEY, 'hex'),
+      Buffer.from(ivHex, 'hex')
+    );
+    
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    return '';
+  }
+}
+/**
+ * Get all decrypted secrets for a tenant
+ */
+export async function getTenantSecrets(tenantId: string) {
+  const [secrets] = await db.select()
+    .from(tenantSecrets)
+    .where(eq(tenantSecrets.tenantId, tenantId))
+    .limit(1);
+  
+  if (!secrets) return null;
+  
+  return {
+    // Twilio
+    twilioAccountSid: decrypt(secrets.twilioAccountSid || ''),
+    twilioAuthToken: decrypt(secrets.twilioAuthToken || ''),
+    twilioPhoneNumber: decrypt(secrets.twilioPhoneNumber || ''),
+    twilioMessagingServiceSid: decrypt(secrets.twilioMessagingServiceSid || ''),
+    
+    // SendGrid
+    sendgridApiKey: decrypt(secrets.sendgridApiKey || ''),
+    sendgridFromEmail: decrypt(secrets.sendgridFromEmail || ''),
+    sendgridReplyToEmail: decrypt(secrets.sendgridReplyToEmail || ''),
+    
+    // Stripe
+    stripeSecretKey: decrypt(secrets.stripeSecretKey || ''),
+    stripePublicKey: decrypt(secrets.stripePublicKey || ''),
+    stripeWebhookSecret: decrypt(secrets.stripeWebhookSecret || ''),
+    
+    // Google
+    googleApiCredentials: secrets.googleApiCredentials ? 
+      JSON.parse(decrypt(secrets.googleApiCredentials)) : null,
+    googleCalendarId: decrypt(secrets.googleCalendarId || ''),
+    googleSpreadsheetId: decrypt(secrets.googleSpreadsheetId || ''),
+    googleDriveFolderId: decrypt(secrets.googleDriveFolderId || ''),
+    
+    // OpenAI
+    openaiApiKey: decrypt(secrets.openaiApiKey || ''),
+    
+    // Facebook/Instagram
+    facebookPageAccessToken: decrypt(secrets.facebookPageAccessToken || ''),
+    facebookPageId: decrypt(secrets.facebookPageId || ''),
+    instagramPageAccessToken: decrypt(secrets.instagramPageAccessToken || ''),
+    instagramPageId: decrypt(secrets.instagramPageId || ''),
+    
+    // PayPal
+    paypalClientId: decrypt(secrets.paypalClientId || ''),
+    paypalClientSecret: decrypt(secrets.paypalClientSecret || ''),
+  };
+}
+/**
+ * Save encrypted secrets for a tenant
+ */
+export async function saveTenantSecrets(tenantId: string, secrets: Partial<{
+  twilioAccountSid: string;
+  twilioAuthToken: string;
+  twilioPhoneNumber: string;
+  twilioMessagingServiceSid: string;
+  sendgridApiKey: string;
+  sendgridFromEmail: string;
+  sendgridReplyToEmail: string;
+  stripeSecretKey: string;
+  stripePublicKey: string;
+  stripeWebhookSecret: string;
+  googleApiCredentials: any;
+  googleCalendarId: string;
+  googleSpreadsheetId: string;
+  googleDriveFolderId: string;
+  openaiApiKey: string;
+  facebookPageAccessToken: string;
+  facebookPageId: string;
+  instagramPageAccessToken: string;
+  instagramPageId: string;
+  paypalClientId: string;
+  paypalClientSecret: string;
+}>) {
+  // Check if secrets record exists
+  const [existing] = await db.select()
+    .from(tenantSecrets)
+    .where(eq(tenantSecrets.tenantId, tenantId))
+    .limit(1);
+  
+  const encryptedSecrets: any = { tenantId };
+  
+  // Encrypt all provided secrets
+  if (secrets.twilioAccountSid) encryptedSecrets.twilioAccountSid = encrypt(secrets.twilioAccountSid);
+  if (secrets.twilioAuthToken) encryptedSecrets.twilioAuthToken = encrypt(secrets.twilioAuthToken);
+  if (secrets.twilioPhoneNumber) encryptedSecrets.twilioPhoneNumber = encrypt(secrets.twilioPhoneNumber);
+  if (secrets.twilioMessagingServiceSid) encryptedSecrets.twilioMessagingServiceSid = encrypt(secrets.twilioMessagingServiceSid);
+  if (secrets.sendgridApiKey) encryptedSecrets.sendgridApiKey = encrypt(secrets.sendgridApiKey);
+  if (secrets.sendgridFromEmail) encryptedSecrets.sendgridFromEmail = encrypt(secrets.sendgridFromEmail);
+  if (secrets.sendgridReplyToEmail) encryptedSecrets.sendgridReplyToEmail = encrypt(secrets.sendgridReplyToEmail);
+  if (secrets.stripeSecretKey) encryptedSecrets.stripeSecretKey = encrypt(secrets.stripeSecretKey);
+  if (secrets.stripePublicKey) encryptedSecrets.stripePublicKey = encrypt(secrets.stripePublicKey);
+  if (secrets.stripeWebhookSecret) encryptedSecrets.stripeWebhookSecret = encrypt(secrets.stripeWebhookSecret);
+  if (secrets.googleApiCredentials) encryptedSecrets.googleApiCredentials = encrypt(JSON.stringify(secrets.googleApiCredentials));
+  if (secrets.googleCalendarId) encryptedSecrets.googleCalendarId = encrypt(secrets.googleCalendarId);
+  if (secrets.googleSpreadsheetId) encryptedSecrets.googleSpreadsheetId = encrypt(secrets.googleSpreadsheetId);
+  if (secrets.googleDriveFolderId) encryptedSecrets.googleDriveFolderId = encrypt(secrets.googleDriveFolderId);
+  if (secrets.openaiApiKey) encryptedSecrets.openaiApiKey = encrypt(secrets.openaiApiKey);
+  if (secrets.facebookPageAccessToken) encryptedSecrets.facebookPageAccessToken = encrypt(secrets.facebookPageAccessToken);
+  if (secrets.facebookPageId) encryptedSecrets.facebookPageId = encrypt(secrets.facebookPageId);
+  if (secrets.instagramPageAccessToken) encryptedSecrets.instagramPageAccessToken = encrypt(secrets.instagramPageAccessToken);
+  if (secrets.instagramPageId) encryptedSecrets.instagramPageId = encrypt(secrets.instagramPageId);
+  if (secrets.paypalClientId) encryptedSecrets.paypalClientId = encrypt(secrets.paypalClientId);
+  if (secrets.paypalClientSecret) encryptedSecrets.paypalClientSecret = encrypt(secrets.paypalClientSecret);
+  
+  encryptedSecrets.updatedAt = new Date();
+  
+  if (existing) {
+    // Update
+    await db.update(tenantSecrets)
+      .set(encryptedSecrets)
+      .where(eq(tenantSecrets.tenantId, tenantId));
+  } else {
+    // Insert
+    await db.insert(tenantSecrets).values(encryptedSecrets);
+  }
+}
+/**
+ * Test connection for a specific integration
+ */
+export async function testTwilioConnection(tenantId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const secrets = await getTenantSecrets(tenantId);
+    if (!secrets?.twilioAccountSid || !secrets?.twilioAuthToken) {
+      return { success: false, error: 'Twilio credentials not configured' };
+    }
+    
+    // Test by fetching account info
+    const Twilio = require('twilio');
+    const client = Twilio(secrets.twilioAccountSid, secrets.twilioAuthToken);
+    await client.api.accounts(secrets.twilioAccountSid).fetch();
+    
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+export async function testStripeConnection(tenantId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const secrets = await getTenantSecrets(tenantId);
+    if (!secrets?.stripeSecretKey) {
+      return { success: false, error: 'Stripe credentials not configured' };
+    }
+    
+    const Stripe = require('stripe');
+    const stripe = new Stripe(secrets.stripeSecretKey);
+    await stripe.balance.retrieve();
+    
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+export async function testGoogleCalendarConnection(tenantId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const secrets = await getTenantSecrets(tenantId);
+    if (!secrets?.googleApiCredentials || !secrets?.googleCalendarId) {
+      return { success: false, error: 'Google Calendar not configured' };
+    }
+    
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      secrets.googleApiCredentials.client_email,
+      undefined,
+      secrets.googleApiCredentials.private_key,
+      ['https://www.googleapis.com/auth/calendar.readonly']
+    );
+    
+    const calendar = google.calendar({ version: 'v3', auth });
+    await calendar.calendarList.get({ calendarId: secrets.googleCalendarId });
+    
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+3. Industry Pack Seeder
+// server/services/industry-packs.ts
+import { db } from '../db';
+import { industryTemplates, services, emailTemplates, loyaltyTiers } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+/**
+ * Seed industry templates (run once on deployment)
+ */
+export async function seedIndustryTemplates() {
+  const templates = [
+    {
+      industryType: 'auto_detailing',
+      displayName: 'Auto Detailing',
+      description: 'Mobile auto detailing and car care services',
+      iconName: 'Car',
+      servicesTemplate: [
+        {
+          name: 'Full Detail',
+          priceRange: '$150-$300',
+          overview: 'Complete interior and exterior detailing',
+          detailedDescription: 'Comprehensive detail including wash, wax, interior vacuum, leather conditioning, and more.',
+          duration: '3-4 hours',
+          minDurationHours: 3,
+          maxDurationHours: 4,
+        },
+        {
+          name: 'Quick Wash & Wax',
+          priceRange: '$40-$60',
+          overview: 'Fast exterior wash and wax',
+          detailedDescription: 'Hand wash, dry, and spray wax for a quick shine.',
+          duration: '30-60 minutes',
+          minDurationHours: 0.5,
+          maxDurationHours: 1,
+        },
+        {
+          name: 'Ceramic Coating',
+          priceRange: '$500-$1200',
+          overview: 'Long-lasting paint protection',
+          detailedDescription: 'Professional ceramic coating application with 2-5 year durability.',
+          duration: '6-8 hours',
+          minDurationHours: 6,
+          maxDurationHours: 8,
+        },
+        {
+          name: 'Interior Deep Clean',
+          priceRange: '$100-$200',
+          overview: 'Thorough interior cleaning and sanitization',
+          detailedDescription: 'Deep vacuum, steam cleaning, leather conditioning, and odor removal.',
+          duration: '2-3 hours',
+          minDurationHours: 2,
+          maxDurationHours: 3,
+        },
+        {
+          name: 'Paint Correction',
+          priceRange: '$300-$800',
+          overview: 'Remove scratches, swirls, and oxidation',
+          detailedDescription: 'Multi-stage polishing to restore paint clarity and gloss.',
+          duration: '4-8 hours',
+          minDurationHours: 4,
+          maxDurationHours: 8,
+        },
+        {
+          name: 'Headlight Restoration',
+          priceRange: '$60-$120',
+          overview: 'Restore cloudy headlights to like-new clarity',
+          detailedDescription: 'Sanding, polishing, and UV protection for yellowed headlights.',
+          duration: '1-2 hours',
+          minDurationHours: 1,
+          maxDurationHours: 2,
+        },
+      ],
+      emailTemplatesTemplate: [
+        {
+          name: 'Appointment Confirmation',
+          subject: 'Your {{business_name}} appointment is confirmed!',
+          body: `Hi {{customer_name}},
+Your appointment is confirmed for {{date}} at {{time}}.
+Service: {{service_name}}
+Address: {{address}}
+We'll send you a text when we're on the way!
+Thanks,
+{{business_name}}`,
+        },
+        {
+          name: 'Day Before Reminder',
+          subject: 'Reminder: Tomorrow\'s {{service_name}}',
+          body: `Hi {{customer_name}},
+Just a reminder that your {{service_name}} is tomorrow at {{time}}.
+Address: {{address}}
+Please ensure the vehicle is available and personal items are removed.
+See you tomorrow!
+{{business_name}}`,
+        },
+        {
+          name: 'Thank You + Review Request',
+          subject: 'Thanks for choosing {{business_name}}!',
+          body: `Hi {{customer_name}},
+Thank you for trusting us with your {{service_name}}!
+If you're happy with the service, we'd love a review:
+{{review_link}}
+See you next time!
+{{business_name}}`,
+        },
+      ],
+      smsTemplatesTemplate: [
+        'Hi {{customer_name}}! Your {{service_name}} is confirmed for {{date}} at {{time}}. We\'ll text when we\'re on the way!',
+        '{{tech_name}} from {{business_name}} is on the way to {{address}}! ETA: {{eta}}.',
+        'Thanks for choosing {{business_name}}! Your service is complete. Total: ${{amount}}. {{payment_link}}',
+      ],
+      loyaltyTiersTemplate: [
+        { name: 'Bronze', pointsRequired: 0, discount: 0, color: '#CD7F32' },
+        { name: 'Silver', pointsRequired: 500, discount: 5, color: '#C0C0C0' },
+        { name: 'Gold', pointsRequired: 1000, discount: 10, color: '#FFD700' },
+        { name: 'Platinum', pointsRequired: 2000, discount: 15, color: '#E5E4E2' },
+      ],
+      aiSystemPromptTemplate: `You are an AI assistant for {{business_name}}, a professional auto detailing service. Be friendly, knowledgeable, and help customers book appointments, answer questions about services, and provide excellent customer service.`,
+      defaultSettings: {
+        startHour: 9,
+        endHour: 15,
+        maxDriveTimeMinutes: 26,
+        minimumNoticeHours: 24,
+      },
+    },
+    {
+      industryType: 'lawn_care',
+      displayName: 'Lawn Care',
+      description: 'Lawn mowing, landscaping, and yard maintenance',
+      iconName: 'Sprout',
+      servicesTemplate: [
+        {
+          name: 'Weekly Mowing',
+          priceRange: '$30-$60',
+          overview: 'Regular lawn mowing service',
+          detailedDescription: 'Mow, edge, and blow clippings weekly.',
+          duration: '30-60 minutes',
+          minDurationHours: 0.5,
+          maxDurationHours: 1,
+        },
+        {
+          name: 'Fertilization',
+          priceRange: '$50-$100',
+          overview: 'Seasonal fertilizer application',
+          detailedDescription: 'Professional fertilizer to keep your lawn healthy and green.',
+          duration: '30 minutes',
+          minDurationHours: 0.5,
+          maxDurationHours: 0.5,
+        },
+        {
+          name: 'Aeration & Seeding',
+          priceRange: '$100-$200',
+          overview: 'Improve lawn health and thickness',
+          detailedDescription: 'Core aeration followed by overseeding for a lush lawn.',
+          duration: '1-2 hours',
+          minDurationHours: 1,
+          maxDurationHours: 2,
+        },
+        {
+          name: 'Leaf Removal',
+          priceRange: '$60-$150',
+          overview: 'Fall leaf cleanup service',
+          detailedDescription: 'Remove leaves, blow clean, and haul away debris.',
+          duration: '1-3 hours',
+          minDurationHours: 1,
+          maxDurationHours: 3,
+        },
+      ],
+      emailTemplatesTemplate: [
+        {
+          name: 'Service Confirmation',
+          subject: 'Your {{business_name}} service is scheduled',
+          body: `Hi {{customer_name}},
+Your {{service_name}} is scheduled for {{date}}.
+We'll arrive between {{time_window}}.
+Thanks,
+{{business_name}}`,
+        },
+      ],
+      smsTemplatesTemplate: [
+        'Hi {{customer_name}}! Your {{service_name}} is scheduled for {{date}}. We\'ll be there between {{time_window}}!',
+        'We\'re finishing up at {{address}}! Your lawn looks great. Total: ${{amount}}.',
+      ],
+      loyaltyTiersTemplate: [
+        { name: 'Standard', pointsRequired: 0, discount: 0, color: '#808080' },
+        { name: 'Premium', pointsRequired: 300, discount: 5, color: '#4CAF50' },
+        { name: 'VIP', pointsRequired: 800, discount: 10, color: '#FFD700' },
+      ],
+      defaultSettings: {
+        startHour: 7,
+        endHour: 18,
+        maxDriveTimeMinutes: 45,
+        minimumNoticeHours: 48,
+      },
+    },
+    {
+      industryType: 'pet_grooming',
+      displayName: 'Pet Grooming',
+      description: 'Professional pet grooming and spa services',
+      iconName: 'Dog',
+      servicesTemplate: [
+        {
+          name: 'Bath & Brush',
+          priceRange: '$40-$80',
+          overview: 'Basic bath and brushing service',
+          detailedDescription: 'Shampoo, conditioner, blow dry, and brush out.',
+          duration: '1-2 hours',
+          minDurationHours: 1,
+          maxDurationHours: 2,
+        },
+        {
+          name: 'Full Groom',
+          priceRange: '$60-$120',
+          overview: 'Complete grooming package',
+          detailedDescription: 'Bath, haircut, nail trim, ear cleaning, and anal gland expression.',
+          duration: '2-3 hours',
+          minDurationHours: 2,
+          maxDurationHours: 3,
+        },
+        {
+          name: 'Nail Trim',
+          priceRange: '$15-$25',
+          overview: 'Quick nail trimming service',
+          detailedDescription: 'Nail trim and filing for comfort.',
+          duration: '15-30 minutes',
+          minDurationHours: 0.25,
+          maxDurationHours: 0.5,
+        },
+        {
+          name: 'Teeth Cleaning',
+          priceRange: '$30-$50',
+          overview: 'Professional dental cleaning',
+          detailedDescription: 'Brush and polish teeth for fresh breath.',
+          duration: '30-45 minutes',
+          minDurationHours: 0.5,
+          maxDurationHours: 0.75,
+        },
+      ],
+      emailTemplatesTemplate: [
+        {
+          name: 'Grooming Confirmation',
+          subject: '{{pet_name}}\'s grooming appointment',
+          body: `Hi {{customer_name}},
+{{pet_name}}'s {{service_name}} is confirmed for {{date}} at {{time}}.
+Please bring vaccination records if this is your first visit.
+Thanks,
+{{business_name}}`,
+        },
+      ],
+      smsTemplatesTemplate: [
+        'Hi {{customer_name}}! {{pet_name}}\'s {{service_name}} is confirmed for {{date}} at {{time}}.',
+        '{{pet_name}} is all done and looking great! Total: ${{amount}}. Ready for pickup!',
+      ],
+      loyaltyTiersTemplate: [
+        { name: 'Puppy', pointsRequired: 0, discount: 0, color: '#FFA07A' },
+        { name: 'Good Boy', pointsRequired: 200, discount: 5, color: '#87CEEB' },
+        { name: 'Best Friend', pointsRequired: 500, discount: 10, color: '#FFD700' },
+      ],
+      defaultSettings: {
+        startHour: 9,
+        endHour: 17,
+        maxDriveTimeMinutes: 0, // In-shop only
+        minimumNoticeHours: 12,
+      },
+    },
+  ];
+  
+  for (const template of templates) {
+    // Check if exists
+    const [existing] = await db.select()
+      .from(industryTemplates)
+      .where(eq(industryTemplates.industryType, template.industryType))
+      .limit(1);
+    
+    if (!existing) {
+      await db.insert(industryTemplates).values(template);
+      console.log(`✅ Seeded industry template: ${template.displayName}`);
+    }
+  }
+}
+/**
+ * Apply industry pack to a new tenant
+ */
+export async function applyIndustryPack(tenantId: string, industryType: string) {
+  const [template] = await db.select()
+    .from(industryTemplates)
+    .where(eq(industryTemplates.industryType, industryType))
+    .limit(1);
+  
+  if (!template) {
+    throw new Error(`Industry template not found: ${industryType}`);
+  }
+  
+  // Insert services
+  if (template.servicesTemplate) {
+    const servicesData = (template.servicesTemplate as any[]).map(svc => ({
+      ...svc,
+      tenantId,
+    }));
+    await db.insert(services).values(servicesData);
+  }
+  
+  // Insert email templates
+  if (template.emailTemplatesTemplate) {
+    const emailData = (template.emailTemplatesTemplate as any[]).map(tpl => ({
+      ...tpl,
+      tenantId,
+    }));
+    await db.insert(emailTemplates).values(emailData);
+  }
+  
+  // Insert loyalty tiers
+  if (template.loyaltyTiersTemplate) {
+    const tierData = (template.loyaltyTiersTemplate as any[]).map(tier => ({
+      ...tier,
+      tenantId,
+    }));
+    await db.insert(loyaltyTiers).values(tierData);
+  }
+  
+  console.log(`✅ Applied ${industryType} pack to tenant ${tenantId}`);
+}
+
+4. Tenant Onboarding Wizard (React)
+// client/src/pages/tenant-onboarding.tsx
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  CheckCircle2, 
+  Circle, 
+  Loader2, 
+  ArrowRight, 
+  ArrowLeft,
+  Sparkles,
+  Send,
+  Calendar,
+  CreditCard,
+  Rocket
+} from 'lucide-react';
+const TOTAL_STEPS = 8;
+export default function TenantOnboarding() {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<any>({});
+  const { toast } = useToast();
+  
+  const progress = (currentStep / TOTAL_STEPS) * 100;
+  
+  const nextStep = () => {
+    if (currentStep < TOTAL_STEPS) {
+      setCurrentStep(currentStep + 1);
+      window.scrollTo(0, 0);
+    }
+  };
+  
+  const prevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+      window.scrollTo(0, 0);
+    }
+  };
+  
+  const saveStepData = (data: any) => {
+    setFormData({ ...formData, ...data });
+  };
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
+      <div className="max-w-3xl mx-auto">
+        {/* Progress Bar */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-bold">Launch Your Business</h1>
+            <span className="text-sm text-gray-600">Step {currentStep} of {TOTAL_STEPS}</span>
+          </div>
+          <Progress value={progress} className="h-2" />
+        </div>
+        
+        {/* Step Content */}
+        {currentStep === 1 && (
+          <Step1BusinessInfo 
+            onNext={(data) => { saveStepData(data); nextStep(); }}
+            initialData={formData}
+          />
+        )}
+        
+        {currentStep === 2 && (
+          <Step2SubdomainSelection
+            onNext={(data) => { saveStepData(data); nextStep(); }}
+            onBack={prevStep}
+            initialData={formData}
+          />
+        )}
+        
+        {currentStep === 3 && (
+          <Step3IndustryPackPreview
+            onNext={() => nextStep()}
+            onBack={prevStep}
+            industryType={formData.industryType}
+          />
+        )}
+        
+        {currentStep === 4 && (
+          <Step4CustomizeServices
+            onNext={(data) => { saveStepData(data); nextStep(); }}
+            onBack={prevStep}
+            industryType={formData.industryType}
+            initialData={formData}
+          />
+        )}
+        
+        {currentStep === 5 && (
+          <Step5TwilioSetup
+            onNext={(data) => { saveStepData(data); nextStep(); }}
+            onBack={prevStep}
+            initialData={formData}
+          />
+        )}
+        
+        {currentStep === 6 && (
+          <Step6GoogleSetup
+            onNext={(data) => { saveStepData(data); nextStep(); }}
+            onBack={prevStep}
+            initialData={formData}
+          />
+        )}
+        
+        {currentStep === 7 && (
+          <Step7PaymentSetup
+            onNext={(data) => { saveStepData(data); nextStep(); }}
+            onBack={prevStep}
+            initialData={formData}
+          />
+        )}
+        
+        {currentStep === 8 && (
+          <Step8ReviewAndLaunch
+            onLaunch={() => {/* Launch tenant */}}
+            onBack={prevStep}
+            formData={formData}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+// ========================================
+// STEP 1: Business Info
+// ========================================
+const step1Schema = z.object({
+  businessName: z.string().min(2, 'Business name required'),
+  industryType: z.enum(['auto_detailing', 'lawn_care', 'pet_grooming']),
+  city: z.string().min(2, 'City required'),
+  state: z.string().min(2, 'State required'),
+  phone: z.string().min(10, 'Valid phone required'),
+  email: z.string().email('Valid email required'),
+});
+function Step1BusinessInfo({ onNext, initialData }: any) {
+  const form = useForm({
+    resolver: zodResolver(step1Schema),
+    defaultValues: initialData,
+  });
+  
+  const onSubmit = (data: any) => {
+    onNext(data);
+  };
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Sparkles className="w-6 h-6 text-blue-600" />
+          Tell us about your business
+        </CardTitle>
+        <CardDescription>Let's get started with the basics</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <div>
+            <Label htmlFor="businessName">Business Name</Label>
+            <Input
+              id="businessName"
+              placeholder="Acme Auto Detail"
+              {...form.register('businessName')}
+              data-testid="input-business-name"
+            />
+            {form.formState.errors.businessName && (
+              <p className="text-sm text-red-600 mt-1">
+                {form.formState.errors.businessName.message as string}
+              </p>
+            )}
+          </div>
+          
+          <div>
+            <Label htmlFor="industryType">Industry</Label>
+            <Select
+              onValueChange={(value) => form.setValue('industryType', value as any)}
+              defaultValue={initialData?.industryType}
+            >
+              <SelectTrigger data-testid="select-industry">
+                <SelectValue placeholder="Select your industry" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto_detailing">Auto Detailing</SelectItem>
+                <SelectItem value="lawn_care">Lawn Care</SelectItem>
+                <SelectItem value="pet_grooming">Pet Grooming</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="city">City</Label>
+              <Input id="city" placeholder="Tulsa" {...form.register('city')} data-testid="input-city" />
+            </div>
+            <div>
+              <Label htmlFor="state">State</Label>
+              <Input id="state" placeholder="OK" {...form.register('state')} data-testid="input-state" />
+            </div>
+          </div>
+          
+          <div>
+            <Label htmlFor="phone">Phone</Label>
+            <Input id="phone" type="tel" placeholder="(918) 555-0100" {...form.register('phone')} data-testid="input-phone" />
+          </div>
+          
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" placeholder="hello@acmedetail.com" {...form.register('email')} data-testid="input-email" />
+          </div>
+          
+          <Button type="submit" className="w-full" data-testid="button-next-step1">
+            Continue <ArrowRight className="ml-2 w-4 h-4" />
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+// ========================================
+// STEP 2: Subdomain Selection
+// ========================================
+const step2Schema = z.object({
+  subdomain: z.string()
+    .min(3, 'At least 3 characters')
+    .max(30, 'Max 30 characters')
+    .regex(/^[a-z0-9-]+$/, 'Only lowercase letters, numbers, and hyphens'),
+});
+function Step2SubdomainSelection({ onNext, onBack, initialData }: any) {
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
+  
+  const form = useForm({
+    resolver: zodResolver(step2Schema),
+    defaultValues: initialData,
+  });
+  
+  const subdomain = form.watch('subdomain');
+  
+  const checkAvailability = async () => {
+    if (!subdomain || subdomain.length < 3) return;
+    
+    setCheckingAvailability(true);
+    try {
+      const response = await apiRequest<{ available: boolean }>({
+        url: '/api/tenants/check-subdomain',
+        method: 'POST',
+        data: { subdomain },
+      });
+      setAvailable(response.available);
+    } catch (error) {
+      setAvailable(false);
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
+  
+  const onSubmit = (data: any) => {
+    if (available) {
+      onNext(data);
+    }
+  };
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Choose your subdomain</CardTitle>
+        <CardDescription>This will be your business's unique URL</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <div>
+            <Label htmlFor="subdomain">Subdomain</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="subdomain"
+                placeholder="acmedetail"
+                {...form.register('subdomain')}
+                onBlur={checkAvailability}
+                data-testid="input-subdomain"
+              />
+              <span className="text-gray-600 whitespace-nowrap">.servicepro.com</span>
+            </div>
+            {form.formState.errors.subdomain && (
+              <p className="text-sm text-red-600 mt-1">
+                {form.formState.errors.subdomain.message as string}
+              </p>
+            )}
+            
+            {checkingAvailability && (
+              <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Checking availability...
+              </div>
+            )}
+            
+            {available === true && (
+              <div className="flex items-center gap-2 mt-2 text-sm text-green-600">
+                <CheckCircle2 className="w-4 h-4" />
+                {subdomain}.servicepro.com is available!
+              </div>
+            )}
+            
+            {available === false && (
+              <div className="flex items-center gap-2 mt-2 text-sm text-red-600">
+                <Circle className="w-4 h-4" />
+                This subdomain is already taken
+              </div>
+            )}
+          </div>
+          
+          <Alert>
+            <AlertDescription>
+              Your business will be accessible at: <strong>{subdomain || 'yourname'}.servicepro.com</strong>
+              <br />
+              (You can add a custom domain later)
+            </AlertDescription>
+          </Alert>
+          
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onBack} data-testid="button-back-step2">
+              <ArrowLeft className="mr-2 w-4 h-4" /> Back
+            </Button>
+            <Button type="submit" className="flex-1" disabled={!available} data-testid="button-next-step2">
+              Continue <ArrowRight className="ml-2 w-4 h-4" />
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+// ========================================
+// STEP 3: Industry Pack Preview
+// ========================================
+function Step3IndustryPackPreview({ onNext, onBack, industryType }: any) {
+  const { data: preview, isLoading } = useQuery({
+    queryKey: ['/api/industry-templates', industryType],
+  });
+  
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  const template = preview as any;
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>We've pre-filled everything for you!</CardTitle>
+        <CardDescription>
+          Your {template.displayName} business is ready with services, pricing, and templates
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div>
+          <h3 className="font-semibold mb-2">✅ Services ({template.servicesTemplate?.length || 0} pre-loaded)</h3>
+          <div className="grid gap-2">
+            {template.servicesTemplate?.slice(0, 3).map((svc: any, idx: number) => (
+              <div key={idx} className="bg-gray-50 p-3 rounded-lg">
+                <div className="font-medium">{svc.name}</div>
+                <div className="text-sm text-gray-600">{svc.priceRange} • {svc.duration}</div>
+              </div>
+            ))}
+            {(template.servicesTemplate?.length || 0) > 3 && (
+              <div className="text-sm text-gray-600">
+                ...and {(template.servicesTemplate?.length || 0) - 3} more
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div>
+          <h3 className="font-semibold mb-2">✅ Email Templates ({template.emailTemplatesTemplate?.length || 0} ready)</h3>
+          <ul className="list-disc list-inside text-sm text-gray-600">
+            {template.emailTemplatesTemplate?.map((tpl: any, idx: number) => (
+              <li key={idx}>{tpl.name}</li>
+            ))}
+          </ul>
+        </div>
+        
+        <div>
+          <h3 className="font-semibold mb-2">✅ Loyalty Program ({template.loyaltyTiersTemplate?.length || 0} tiers)</h3>
+          <div className="flex gap-2">
+            {template.loyaltyTiersTemplate?.map((tier: any, idx: number) => (
+              <div key={idx} className="bg-gray-50 px-3 py-2 rounded-lg text-sm">
+                {tier.name} ({tier.discount}% off)
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        <Alert>
+          <Sparkles className="w-4 h-4" />
+          <AlertDescription>
+            Don't worry - you can customize everything in the next step!
+          </AlertDescription>
+        </Alert>
+        
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" onClick={onBack} data-testid="button-back-step3">
+            <ArrowLeft className="mr-2 w-4 h-4" /> Back
+          </Button>
+          <Button onClick={onNext} className="flex-1" data-testid="button-next-step3">
+            Customize My Services <ArrowRight className="ml-2 w-4 h-4" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+// ========================================
+// STEP 4-8: Additional steps follow same pattern
+// (Customize Services, Twilio Setup, Google Setup, Payment Setup, Review & Launch)
+// ========================================
+// NOTE: Full implementation would include all 8 steps
+// Each with form validation, API integration, and test buttons
+// Keeping this concise for the mega-prompt
+
+5. Stripe Billing Integration
+// server/routes/billing.ts
+import { Router } from 'express';
+import Stripe from 'stripe';
+import { db } from '../db';
+import { tenants } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import { requireAuth, requireTenant } from '../middleware';
+const router = Router();
+// Initialize Stripe (use ServicePro's master Stripe account)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-11-20.acacia',
+});
+const PRICE_IDS = {
+  starter: process.env.STRIPE_PRICE_STARTER!, // $49/mo
+  professional: process.env.STRIPE_PRICE_PRO!, // $99/mo
+  enterprise: process.env.STRIPE_PRICE_ENTERPRISE!, // $249/mo
+};
+/**
+ * Create Stripe customer and subscription for new tenant
+ */
+router.post('/create-subscription', async (req, res) => {
+  try {
+    const { tenantId, email, tier = 'starter' } = req.body;
+    
+    // Create Stripe customer
+    const customer = await stripe.customers.create({
+      email,
+      metadata: {
+        tenant_id: tenantId,
+      },
+    });
+    
+    // Create subscription with 14-day trial
+    const subscription = await stripe.subscriptions.create({
+      customer: customer.id,
+      items: [{ price: PRICE_IDS[tier as keyof typeof PRICE_IDS] }],
+      trial_period_days: 14,
+      metadata: {
+        tenant_id: tenantId,
+      },
+    });
+    
+    // Update tenant with Stripe IDs
+    await db.update(tenants)
+      .set({
+        stripeCustomerId: customer.id,
+        stripeSubscriptionId: subscription.id,
+        subscriptionTier: tier,
+        subscriptionStatus: 'trialing',
+        trialEndsAt: new Date(subscription.trial_end! * 1000),
+      })
+      .where(eq(tenants.id, tenantId));
+    
+    res.json({
+      success: true,
+      customerId: customer.id,
+      subscriptionId: subscription.id,
+      trialEndsAt: subscription.trial_end,
+    });
+  } catch (error: any) {
+    console.error('Subscription creation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+/**
+ * Stripe webhook handler
+ */
+router.post('/webhooks/stripe', async (req, res) => {
+  const sig = req.headers['stripe-signature']!;
+  
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+  
+  // Handle events
+  switch (event.type) {
+    case 'customer.subscription.updated':
+      const subscription = event.data.object as Stripe.Subscription;
+      const tenantId = subscription.metadata.tenant_id;
+      
+      await db.update(tenants)
+        .set({
+          subscriptionStatus: subscription.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, tenantId));
+      
+      console.log(`✅ Subscription updated for tenant ${tenantId}: ${subscription.status}`);
+      break;
+    
+    case 'invoice.payment_succeeded':
+      const invoice = event.data.object as Stripe.Invoice;
+      console.log(`✅ Payment succeeded: ${invoice.id}`);
+      break;
+    
+    case 'invoice.payment_failed':
+      const failedInvoice = event.data.object as Stripe.Invoice;
+      const failedTenantId = failedInvoice.subscription_details?.metadata?.tenant_id;
+      
+      // Suspend tenant account
+      await db.update(tenants)
+        .set({
+          status: 'suspended',
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, failedTenantId!));
+      
+      console.log(`⚠️ Payment failed for tenant ${failedTenantId} - account suspended`);
+      // TODO: Send notification email
+      break;
+    
+    case 'customer.subscription.deleted':
+      const deletedSub = event.data.object as Stripe.Subscription;
+      const cancelledTenantId = deletedSub.metadata.tenant_id;
+      
+      await db.update(tenants)
+        .set({
+          status: 'cancelled',
+          subscriptionStatus: 'canceled',
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, cancelledTenantId));
+      
+      console.log(`❌ Subscription cancelled for tenant ${cancelledTenantId}`);
+      break;
+    
+    default:
+      console.log(`Unhandled event type: ${event.type}`);
+  }
+  
+  res.json({ received: true });
+});
+/**
+ * Upgrade/downgrade subscription
+ */
+router.post('/change-plan', requireAuth, requireTenant, async (req, res) => {
+  try {
+    const { newTier } = req.body;
+    const tenant = req.tenant!;
+    
+    if (!tenant.stripeSubscriptionId) {
+      return res.status(400).json({ error: 'No active subscription' });
+    }
+    
+    // Retrieve current subscription
+    const subscription = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+    
+    // Update subscription
+    const updatedSub = await stripe.subscriptions.update(subscription.id, {
+      items: [{
+        id: subscription.items.data[0].id,
+        price: PRICE_IDS[newTier as keyof typeof PRICE_IDS],
+      }],
+      proration_behavior: 'create_prorations', // Pro-rate the change
+    });
+    
+    // Update tenant
+    await db.update(tenants)
+      .set({
+        subscriptionTier: newTier,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, tenant.id));
+    
+    res.json({
+      success: true,
+      newTier,
+      subscriptionId: updatedSub.id,
+    });
+  } catch (error: any) {
+    console.error('Plan change error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+export default router;
+
+PART 4: EXECUTION TASK LIST
+Phase 1: Multi-Tenant Foundation (Days 1-3)
+Task 1.1: Database Schema Setup
+ Add new tenant tables to shared/schema.ts:
+tenants
+tenantSettings
+tenantSecrets
+industryTemplates
+tenantOnboarding
+superAdmins
+tenantUsage
+ Add tenant_id column to ALL existing tables (50+ tables)
+ Add foreign key constraints with onDelete: 'cascade'
+ Run npm run db:push --force to migrate
+Task 1.2: Tenant Middleware
+ Create server/middleware/tenant.ts
+ Implement subdomain extraction logic
+ Add localhost dev mode support (X-Tenant-ID header)
+ Handle tenant status checks (suspended/cancelled)
+ Register middleware in server/index.ts BEFORE routes
+Task 1.3: Secrets Vault
+ Create server/services/secrets-vault.ts
+ Implement AES-256-GCM encrypt/decrypt functions
+ Add getTenantSecrets() and saveTenantSecrets() functions
+ Create test connection functions (Twilio, Stripe, Google)
+ Set SECRETS_ENCRYPTION_KEY in Replit Secrets: openssl rand -hex 32
+Task 1.4: Testing Multi-Tenant Isolation
+ Create 2 test tenants in database
+ Insert test data for each
+ Verify queries scoped by tenant_id
+ Attempt cross-tenant data access (should fail)
+ Test subdomain routing
+Phase 2: Feature Merge from Clean Machine (Days 4-7)
+Task 2.1: Port Conversation Monitoring
+ Copy Clean Machine's conversation UI to ServicePro
+ Add tenant_id scoping to all conversation queries
+ Update real-time WebSocket to be tenant-aware
+ Test with multiple tenants simultaneously
+Task 2.2: Port Analytics Dashboard
+ Copy analytics components
+ Make all metrics tenant-scoped
+ Update seasonal trends to use tenant_id
+ Test analytics with multiple tenants
+Task 2.3: Port Third-Party Billing
+ Copy multi-role billing logic
+ Add tenant_id to contacts, authorizations
+ Update invoice generation to be tenant-aware
+ Test complex billing scenarios
+Task 2.4: Port Recurring Services
+ Copy recurring service engine
+ Make cron jobs tenant-aware
+ Update Google Calendar sync for multi-tenant
+ Test recurring appointments for multiple tenants
+Task 2.5: Port Technician Portal
+ Copy TechWizard component (keep for employees)
+ Add tenant_id to technicians table
+ Update all technician features (PTO, shifts, etc.)
+ Test technician workflows
+Task 2.6: Port PWA Push Notifications
+ Copy push notification system
+ Make VAPID keys tenant-specific
+ Update service worker for multi-tenant
+ Test notifications for multiple tenants
+Task 2.7: Update ALL Queries
+ Audit every database query in codebase
+ Add WHERE tenant_id = req.tenantId to ALL
+ Use compound indexes for performance
+ Test thoroughly
+Phase 3: New Systems (Days 8-12)
+Task 3.1: Industry Pack System
+ Create server/services/industry-packs.ts
+ Seed industry templates (auto detailing, lawn care, pet grooming)
+ Implement applyIndustryPack() function
+ Test template application
+Task 3.2: Tenant Onboarding Wizard
+ Create 8-step wizard UI (client/src/pages/tenant-onboarding.tsx)
+ Implement subdomain availability checker
+ Add Twilio test button
+ Add Google Calendar test button
+ Add Stripe test button
+ Create tenant launch endpoint
+ Test complete onboarding flow
+Task 3.3: Stripe Billing
+ Create server/routes/billing.ts
+ Implement subscription creation
+ Set up webhook handler
+ Add plan upgrade/downgrade
+ Test trial → paid conversion
+ Test payment failure → suspension
+Task 3.4: Embeddable Widget
+ Create widget JavaScript file
+ Implement JWT authentication
+ Add tenant-specific branding
+ Create chat UI
+ Test widget on external site
+Task 3.5: Landing Page Validator
+ Create /api/validator/validate endpoint
+ Implement schema validation
+ Add endpoint connectivity tests
+ Create docs for third-party builders
+Task 3.6: Docs CMS
+ Add docs table to schema
+ Create CRUD endpoints
+ Build docs search UI
+ Seed initial help content
+Task 3.7: A2P Helper
+ Create consent page generator
+ Create A2P campaign template generator
+ Add to onboarding wizard Step 5
+ Test Twilio A2P setup
+Phase 4: Testing & Launch (Days 13-14)
+Task 4.1: End-to-End Testing
+ Test complete signup flow (all 3 industries)
+ Book appointment as customer
+ Send SMS notification
+ Send email notification
+ Process payment
+ Verify data isolation
+Task 4.2: Security Audit
+ Attempt to access another tenant's data (should fail)
+ Test SQL injection in tenant_id
+ Verify encrypted secrets
+ Check for XSS vulnerabilities
+ Audit all tenant_id scoping
+Task 4.3: Performance Testing
+ Load test with 100 concurrent tenants
+ Check database query performance
+ Optimize slow queries
+ Add database indexes
+Task 4.4: Documentation
+ Update replit.md with architecture
+ Create admin guide
+ Create tenant user guide
+ Document all environment variables
+Task 4.5: Deployment
+ Set all environment variables in Replit Secrets
+ Configure wildcard DNS (*.servicepro.com)
+ Test subdomain routing in production
+ Enable Stripe webhooks
+ Monitor error logs
+Phase 5: Post-Launch (Ongoing)
+Optional Enhancements:
+ Custom domain support
+ White-label mode (remove ServicePro branding)
+ Super admin dashboard
+ Advanced analytics
+ Email marketing automation
+ Multi-language support
+ Mobile app
+PART 5: CRITICAL REMINDERS
+Security Checklist:
+✅ Every query MUST include tenant_id
+✅ Never trust subdomain from client - extract from hostname
+✅ Encrypt ALL API keys in tenantSecrets
+✅ Test cross-tenant data access (should be impossible)
+✅ Validate tenant exists before processing requests
+✅ Use onDelete: 'cascade' for tenant foreign keys
+
+Environment Variables Required:
+# Database
+DATABASE_URL=postgresql://...
+# Secrets Encryption
+SECRETS_ENCRYPTION_KEY=<generate with: openssl rand -hex 32>
+# Stripe (ServicePro Master Account)
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_PRICE_STARTER=price_...
+STRIPE_PRICE_PRO=price_...
+STRIPE_PRICE_ENTERPRISE=price_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+# Session
+SESSION_SECRET=<random string>
+# OpenAI (for industry pack AI features)
+OPENAI_API_KEY=sk-...
+
+Testing Workflow:
+Create test tenant: POST /api/tenants/create with industry pack
+Verify subdomain: Visit test-tenant.localhost:5000
+Book appointment: As customer
+Check isolation: Try accessing another tenant's data (should fail)
+Test integrations: SMS, email, calendar
+Verify billing: Trial period, subscription
+References:
+Clean Machine Repl: https://replit.com/@cleanmachinetul/CleanMachine
+ServicePro Repl: https://replit.com/@cleanmachinetul/universal
+Stripe Docs: https://stripe.com/docs/billing/subscriptions
+Wildcard DNS: Configure with your DNS provider

@@ -1,0 +1,24 @@
+Thank you for reaching out to Onboarding and Compliance Support. My name is Sam, and I will be assisting you with your A2P 10DLC campaign status.
+ 
+I'm sorry to hear about the challenges you're facing with your campaign registration. Please rest assured that I will do my best to guide you through the compliance process. As you may be aware, we must adhere to regulatory requirements before allowing A2P messages to be sent to the US and CA.
+ 
+Your campaign submission CM68ff9cd5104cd276a1d2df7e75655c0c did not come through properly it showing in review initially then it showing old rejection. Please delete the rejected campaign using the console or API.
+ 
+Please mention only one method of opt-in that is verbally.If your recipients provide consent verbally via inbound/IVR/Instore, please add the transcript to a public site (e.g. Google Drive or OneDrive) and share the URL in  "How do end users consent to receive messages'' field of the submission. Please see the example below:
+ 
+
+Please provide the Privacy Policy URL of your company in the "How do end users consent to receive messages" field for review.
+  Ensure that you are not sharing end-user information with third parties/affiliates for marketing/promotional purposes. Your Privacy Policy should reflect the same. You may share end-user opt-in data with your subcontractors or outsourced service providers solely to fulfill the service you render to your end-user.
+ 
+I have created a separate ticket for toll-free verification error.
+ 
+I strongly recommend reviewing our Campaign Approval Requirements article and A2P 10DLC registration guide for comprehensive information on what a campaign submission should include.
+ 
+You can edit the campaign and resubmit it with the necessary corrections. Refer to the guide on how to edit the campaign via console. If the edit option is not available, you can delete the rejected campaign using the console or API.
+ 
+I hope this provides guidance on the necessary amendments for the next submission. If you have any questions, we’re here to help.
+ 
+Warm Regards,
+Sam|Support Team — Onboarding & Compliance
+
+

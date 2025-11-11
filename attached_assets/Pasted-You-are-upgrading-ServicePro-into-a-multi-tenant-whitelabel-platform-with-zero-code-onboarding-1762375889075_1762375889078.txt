@@ -1,0 +1,142 @@
+You are upgrading ServicePro into a **multi-tenant whitelabel** platform with **zero-code onboarding**, a **Docs/Help CMS** (videos + screenshots), an **embeddable agent widget**, and a **landing-page generator validator**. This is **additive** and **non-breaking**. Do not modify or remove existing routes; introduce feature flags and keep defaults OFF in production.
+
+## CORE REQUIREMENTS
+
+* Tenant isolation on all data.
+* Encrypted Secrets Vault for per-tenant provider keys.
+* Onboarding wizard with Validate/Test buttons and a Preflight checklist.
+* A Docs/Help mini-CMS embedded into each onboarding step (videos + screenshots).
+* Embeddable JS widget + iframe app with public token auth and tenant theming.
+* Landing-page Generator Validator (schema + endpoint checks + dry run).
+* A2P/Twilio helper flows (Messaging Service, brand/campaign status).
+
+## FEATURE FLAGS (tenant_settings.flags)
+
+* wl_enabled (default true in dev, false in prod)
+* wl_widget_enabled (true/false)
+* wl_generator_validator_enabled (true/false)
+* docs_cms_enabled (true/false)
+* require_preflight_green_for_live (true)
+* wl_industry_pack (auto_detail|lawn_care|pet_grooming|house_cleaning|custom)
+* use_twilio_subaccount (false)
+* allow_location_share_default (false)
+
+## DATA MODEL (SQL migrations; additive)
+
+* tenants(id PK, slug UNIQUE, name, brand_name, timezone, locale, domain_primary NULL, subdomain NULL, industry_pack, theme JSON, status DEFAULT "trial", created_at, updated_at)
+* tenant_settings(id PK, tenant_id FK, flags JSON, notification_templates JSON, industry_overrides JSON)
+* tenant_integrations(id PK, tenant_id FK, provider TEXT, secrets JSON ENCRYPTED, status TEXT, last_checked_at)
+* files(id PK, tenant_id FK, path, content_type, bytes INT, created_at)
+* docs(id PK, tenant_id FK, key TEXT UNIQUE, title, markdown TEXT, media JSON, updated_at)
+* Add tenant_id to: users, contacts, jobs, technicians, invoices, photos, time_logs, authorizations, notifications, messages
+
+  * Backfill: set tenant_id to ROOT tenant for existing rows.
+  * Add composite unique indexes, e.g., (tenant_id, phone_e164) on contacts.
+
+## MIDDLEWARE
+
+* tenantResolver: derive tenant from subdomain OR session OR `X-Widget-Tenant` header; attach `req.tenant`.
+* enforceTenantScope: all DB queries must filter by `tenant_id`.
+* widgetAuth: validate short-lived public token for iframe/widget endpoints; limit scope (lead creation, prebooking, KB reads).
+
+## SECRETS VAULT
+
+* helpers: vault.set(tenantId, provider, secrets), vault.get(tenantId, provider)
+* providers: twilio{accountSid,authToken,messagingServiceSid,subaccountSid?}, stripe{pk,sk}, google_maps{apiKey}, openai{apiKey}, email{host,user,pass|apiKey}
+* `/api/tenant/integrations/set` saves encrypted secrets
+* `/api/tenant/integrations/test` pings provider; sets tenant_integrations.status
+
+## INDUSTRY PACKS
+
+* `/industry-packs/*.json` (services, durations, buffers, copy templates, scheduler defaults, weather rules)
+* loader merges pack → tenant_settings.industry_overrides
+* safe “Reset to defaults” endpoint
+
+## ONBOARDING WIZARD (route: /onboarding; owner/admin only)
+
+Steps:
+
+1. Business Basics (brand, timezone, logo upload → /files)
+2. Industry Pack (pick pack, enable/disable services)
+3. Messaging (Twilio): choose “Port” or “New Number”; save keys; **Test SMS** button (send to owner’s phone); A2P helper shows prefilled brand/campaign fields + status checker
+4. Payments (Stripe): paste keys; **Create Test Payment Link** button; webhook test
+5. Maps: apiKey; geocode & distance matrix test
+6. AI: OpenAI key; run Bio Coach test on sample draft
+7. Email: SMTP or provider; send test email
+8. Preflight: checklist must be all green before “Go Live”
+
+* Right-rail **Docs tab** on each step, pulling docs CMS content (markdown + video links + screenshots)
+* Save progress; resume later
+
+## DOCS/HELP CMS
+
+* Admin UI to create/edit markdown docs per onboarding step (keys like `docs/onboarding/twilio`, `docs/onboarding/stripe`)
+* Fields: title, markdown, media list (image URLs or video links)
+* Button “Record Screen” → opens external recorder; paste URL back
+* Export to PDF endpoint `/api/docs/export?keys=...` that compiles selected docs into a single PDF
+
+## EMBEDDABLE WIDGET
+
+* Loader: `/widget/servicepro.js` injects iframe with `<script data-tenant="SLUG" data-token="PUBLIC_TOKEN">`
+* Iframe app: `/widget/u/:slug?token=...`
+* Features: chat/start SMS, service area check, request/quote, booking stub, pay deposit via Stripe link, voicemail via Twilio <Record>, KB answers
+* Theme from tenant.theme; CORS & sandbox iframes; ratelimit public endpoints
+
+## LANDING-PAGE GENERATOR VALIDATOR
+
+* Schema: `/docs/generator.schema.json` (versioned)
+* `POST /api/wl/validator/check`:
+
+  * Validate JSON schema
+  * Verify that services.keys exist in tenant pack
+  * HEAD request to `links.*` to ensure endpoint existence and tenant path mapping
+  * Return structured report with “fix suggestions”
+* `POST /api/wl/validator/dry-run`: create a sandbox page for visual QA (no real sends)
+
+## TWILIO/A2P HELPERS
+
+* Endpoints to build prefilled A2P fields: brand info, use cases, sample message templates
+* Check brand/campaign status and display in wizard; retries with backoff
+* Messaging Service attach; optionally create Subaccount per tenant (flag controlled)
+* Webhook signature verification for SMS/Voice; retry on 5xx; message logs with delivery receipts
+
+## SECURITY
+
+* Encrypt secrets at rest; never expose to client
+* Strict RLS by tenant_id in queries
+* Widget token minimal scope; ratelimit public routes
+* CORS: allowlist widget origins; iframe sandbox attrs (`allow-forms, allow-popups, allow-scripts`)
+
+## API (additive; examples)
+
+* POST /api/tenant/create {slug,name,brand_name,timezone,locale}
+* POST /api/tenant/integrations/set {provider,secrets}
+* POST /api/tenant/integrations/test {provider}
+* GET  /api/onboarding/state
+* POST /api/onboarding/step/:key {payload}
+* GET  /api/preflight → { twilio:"green|yellow|red", stripe:..., maps:..., openai:..., email:... }
+* GET  /api/docs/:key
+* POST /api/docs/:key (markdown, media[])
+* GET  /widget/snippet → returns the script tag with data-tenant + token
+* POST /api/wl/validator/check
+* POST /api/wl/validator/dry-run
+
+## TESTS
+
+* Unit: tenant scoping helpers; vault encrypt/decrypt; schema validation; token scopes
+* Integration: onboarding full flow with “Test” buttons; Twilio/Stripe/Maps/OpenAI mocks; widget load & chat start; validator dry-run
+* Regression: legacy single-tenant flows continue to work with ROOT tenant
+
+## DELIVERABLES
+
+1. SQL migrations + backfill scripts + seed tenants
+2. Tenant middleware & RLS filters applied app-wide
+3. Secrets Vault (encryption) + integration Test endpoints
+4. Onboarding Wizard UI (with Docs right-rail) + Preflight checklist
+5. Docs CMS (markdown + media) + PDF export
+6. Embeddable Widget loader + iframe app + public token auth
+7. Generator Validator API + schema + dry-run sandbox
+8. Twilio/A2P helper endpoints and status UI
+9. README: dev/prod setup, DNS/subdomain guide, embedding snippet, and a Non-Technical Setup Guide outline
+
+QUALITY BAR: Additive, flag-guarded, production-safe. Defaults OFF in prod; green Preflight required to enable live traffic per tenant.

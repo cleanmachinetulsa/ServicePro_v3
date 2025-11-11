@@ -1,0 +1,112 @@
+Campaign details
+
+Edit Campaign
+
+Delete Campaign
+Connected A2P Brand
+Jody Beeson
+Campaign SID
+CM68e64a1c5c246d1c01106b9a74700669
+
+Linked Messaging Service
+MG3c825f1ef8b2f6ad805524645fd9008b
+
+Brand registration SID
+BN6d55b06adf4c19be6a3631c1d20d1e7c
+
+Campaign use case
+Customer Care
+Campaign status
+Verified
+Compliance Registration SID
+-
+
+External Campaign ID
+C7OF4Q3
+Messaging throughput limits
+These messaging limits are based on your TCR (The Campaign Registry) Trust Score.
+
+Messaging rate limit
+Check your rate limit here
+Campaign Information
+Description
+Mobile auto detailing service sending appointment confirmations, reminders, ETAs, and follow-ups. Customers opt in via checkbox on our booking forms. Reply STOP to opt out.
+Sending messages with embedded links?
+Yes
+Sending messages with embedded phone numbers?
+Yes
+Sending messages with age-gated content?
+No
+Sending messages with content related to direct lending or other loan arrangement?
+No
+Message Sample #1
+Hi [Name], your Clean Machine appointment is confirmed for [Date] at [Time] at [Address]. We'll send a reminder 24 hours before. Reply STOP to opt out.
+Message Sample #2
+Reminder: Your Clean Machine appointment is tomorrow at [Time]. Looking forward to making your vehicle shine! Reply STOP to opt out.
+Message Sample #3
+Hi [Name], I'm on my way to [Address]! ETA is approximately [Time]. See you soon!
+Message Sample #4
+Thank you for choosing Clean Machine! Your [Service] is complete. We'd love your feedback - reply or call us anytime.
+Message Sample #5
+Hi [Name], it's been a while! Ready to book your next detail? Reply YES or visit cleanmachinetulsa.com to schedule.
+End User Consent
+(information)
+Twilio manages opt-out and help keywords for you by default
+Twilio manages opt-out and help keywords for you by default. We used this information to automatically fill out the details related to Opt Out and Help for your Campaign registration.
+
+If you want to customize these keywords and auto-reply messages, please go to Messaging Service - Opt-Out Management
+
+
+How do end-users consent to receive messages?
+Customers consent through our online booking system at https://cleanmachinetulsa.com/sms-consent When booking an appointment, customers must check a consent checkbox stating: "I Consent to Receive Informational messages & Alerts from Clean Machine Auto Detail. Message frequency varies. Message & data rates may apply. You can reply STOP to unsubscribe at any time." The consent form includes: - Explicit checkbox with opt-in language - Phone number field where customers enter their contact information - Timestamp and IP address logging for audit compliance - Clear STOP opt-out instructions All messages include STOP opt-out instructions. We never send unsolicited marketing to numbers that only consented to appointment communications. Privacy Policy: https://cleanmachinetulsa.com/privacy-policy
+Opt-in Message
+-
+Opt-in Keywords?
+-
+Opt-out Message
+You have successfully been unsubscribed. You will not receive any more messages from this number. Reply START to resubscribe.
+Opt-out Keywords
+Press Delete or Backspace to remove. Press Enter to toggle selection.
+
+OPTOUT
+
+CANCEL
+
+END
+
+QUIT
+
+UNSUBSCRIBE
+
+REVOKE
+
+STOP
+
+STOPALL
+Help Message
+Reply STOP to unsubscribe. Msg&Data Rates May Apply.
+Help Keywords
+Press Delete or Backspace to remove. Press Enter to toggle selection.
+
+HELP
+
+INFO
+Connected Phone Numbers
+Items
+
+10
+
+All
+
+Export CSV
+
+Add phone numbers
+Phone number
+Phone number SID
+Connected Messaging Service
+Status
+Last updated
+
+19188565711	PNc5ede2ab8f6a5b1623babd67b043e343	
+MG3c825f1ef8b2f6ad805524645fd9008b
+Pending Registration	11/8/2025, 2:54:35 PM	

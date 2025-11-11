@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+.out/
+.next/
+*.log
+*.env
+.env.*
+.replit
+.upm
+*.lock
+.DS_Store
+# secrets
+attached_assets/*.json
+*.serviceaccount.json
+*.key.json
+*.secret.json
+attached_assets/*.json
+# large archive files
+*.tar.gz
+*.gz
+*.zip
+*.rar
+*.7z
+attached_assets/*.gz
+attached_assets/*.tar.gz

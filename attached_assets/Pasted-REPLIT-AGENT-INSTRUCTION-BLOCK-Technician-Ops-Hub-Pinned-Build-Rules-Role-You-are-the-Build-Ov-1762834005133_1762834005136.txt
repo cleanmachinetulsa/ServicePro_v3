@@ -1,0 +1,183 @@
+REPLIT AGENT INSTRUCTION BLOCK — Technician Ops Hub (Pinned Build Rules)
+
+Role: You are the Build Overseer. Deliver a production-quality, iPad-optimized Technician Ops Hub as specified below. Do not invent alternatives, rename env vars, or omit tests. No mock/stub data in production codepaths. No TODO/FIXME in delivered files.
+
+0) Global Constraints
+
+Platforms: React + TypeScript + Tailwind + (optional) shadcn/ui; Express/Node for API.
+
+Devices: iPad landscape first; phone mode toggle <768px.
+
+Branding: Pull brand from config; no hardcoded “Clean Machine” strings.
+
+Security: Route is authenticated; client never sees Twilio secrets (only short-lived tokens).
+
+No-shortcuts: No console.log in production files; no skipped tests; no placeholder buttons.
+
+1) Features to Implement (Pods)
+
+Implement four pods inside a Technician layout. Each pod must work in isolation and in the full page.
+
+Workflow Pod (Status + Checklist + Notes)
+
+Status pipeline: Assigned → En Route → On-Site → In Progress → Completed → Hand-Off
+
+Buttons enforce step order with confirm on skip; timestamps each transition.
+
+Checklist from /api/tech/jobs/:id/checklist, autosave on check/uncheck.
+
+Notes textarea + voice-to-text (Web Speech API), autosave every 10s.
+
+Route/Navigation Pod
+
+Google Maps embed (VITE_GOOGLE_MAPS_API_KEY) with ETA + distance (poll 30s).
+
+Deep links: Open in Apple Maps and Open in Google Maps using lat/lng.
+
+Fallback to static map if embed fails.
+
+Communications Pod (SMS + Calling)
+
+SMS thread + “quick replies” (“On my way”, “Arrived”, “Complete”).
+
+Send via POST /api/messages/send; pull thread per job.
+
+Twilio Voice JS WebRTC calling: token from GET /api/voice/token; controls: Call/Mute/End; fallback tel:.
+
+Show last 5 call/message logs.
+
+Media Pod (Photos)
+
+Camera picker → upload to Drive/back-end via POST /api/tech/jobs/:id/photos.
+
+Progress, retry, thumbnails grid, tags: Before | After | Damage | Interior | Exterior.
+
+Left Rail: Today’s Jobs list (time-sorted, status chips), Day Overview (shift, completed/total, weather), Quick Settings (map preference, offline toggle, demo mode).
+Footer: Sticky quick actions: On-Site, Emergency Call, Quick Photo, Next Job (60px tall).
+Demo Mode: Toggle seeds 3 fake jobs; visible banner “DEMO MODE ACTIVE”.
+Offline: Service Worker; queue status/notes/photos and sync on reconnect.
+Phone Mode Toggle: Stack pods vertically with sticky footer on <768px.
+
+2) File/Route Contracts (Do not rename)
+
+Frontend (client/src):
+
+pages/technician-hub.tsx (main page + layout)
+
+components/technician/TechnicianLayout.tsx
+
+components/technician/SchedulePanel.tsx
+
+components/technician/NavigationPod.tsx
+
+components/technician/CommunicationsPod.tsx
+
+components/technician/WorkflowPod.tsx
+
+components/technician/MediaPod.tsx
+
+components/technician/QuickActionsFooter.tsx
+
+state/useTechnicianStore.ts (Zustand/Context)
+
+Backend (server):
+
+routes/tech.jobs.ts
+
+GET /api/tech/jobs/today
+
+GET /api/tech/jobs/:id/checklist
+
+POST /api/tech/jobs/:id/status
+
+POST /api/tech/jobs/:id/notes
+
+POST /api/tech/jobs/:id/photos
+
+routes/voice.ts
+
+GET /api/voice/token (Twilio Voice Access Token)
+
+POST /twiml/voice (TwiML App Voice URL handler)
+
+routes/messages.ts
+
+POST /api/messages/send
+
+GET /api/messages/thread?jobId=…
+
+Env (must not change names):
+
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+TWILIO_VOICE_API_KEY_SID
+TWILIO_VOICE_API_KEY_SECRET
+TWILIO_VOICE_TWIML_APP_SID
+TWILIO_CALLER_ID_NUMBER
+VITE_GOOGLE_MAPS_API_KEY
+
+3) UX/Design Requirements
+
+Large touch targets (≥44px), high contrast, minimal scroll.
+
+Header with logo + “Technician Mode” + technician name/status.
+
+Smooth transitions (Framer Motion) when selecting a job/pod content changes.
+
+Night mode toggle; orientation overlay if portrait.
+
+4) Acceptance Criteria (Definition of Done)
+
+iPad Safari (landscape) renders full layout; phone mode stacks correctly.
+
+Selecting a job populates all pods; state persists on reload.
+
+Status transitions post to API, show timestamps, and update progress UI.
+
+Maps embed shows ETA/distance; deep links launch native maps.
+
+SMS send + thread load works; Twilio WebRTC call works (fallback tel:).
+
+Photos upload with progress + thumbnails; tags saved.
+
+Demo mode seeds realistic jobs; banner visible.
+
+Offline banner shows; queued actions sync when online.
+
+No hardcoded “Clean Machine” labels; brand pulled from config.
+
+All tests pass; no ESLint/type errors; no TODO/FIXME; no production console.log.
+
+5) Build Process (Plan → Implement → Verify)
+
+PLAN: Output a short technical plan listing files to add/modify, data shapes, and API calls. Wait for the keyword: Proceed.
+
+IMPLEMENT: Create code exactly per plan. Do not mock production paths.
+
+VERIFY: Add/execute tests and checks:
+
+Unit: map link builders, status reducer, offline queue.
+
+Integration: /api/voice/token, /api/tech/jobs/:id/status, messaging send.
+
+E2E (Playwright): Technician flow (select job → navigate → call → message → complete).
+
+ESLint (no-console in prod), TypeScript strict typecheck.
+
+REPORT: Print a Final Delivery Report with file tree, diffs summary, and test results.
+
+Scripts to support (don’t remove existing):
+
+npm run lint
+npm run typecheck
+npm run test
+npm run test:e2e
+npm run verify   # chain all of the above
+
+6) Guardrails
+
+If any required env var is missing, render a non-blocking banner and disable that pod (do NOT crash).
+
+All API errors show friendly toasts; failed uploads retry with exponential backoff.
+
+Never expose Twilio secrets to the client; only return short-lived tokens.

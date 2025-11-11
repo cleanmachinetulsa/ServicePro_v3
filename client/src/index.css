@@ -1,0 +1,390 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Premium Tactile Button Animations */
+@keyframes button-press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.96); }
+  100% { transform: scale(0.98); }
+}
+
+@keyframes button-release {
+  0% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Base button enhancements */
+button, .btn, [role="button"] {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* Hover state - lift and glow */
+button:not(:disabled):hover,
+.btn:not(:disabled):hover,
+[role="button"]:not([aria-disabled="true"]):hover {
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Active/pressed state - tactile feedback */
+button:not(:disabled):active,
+.btn:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 
+    0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  animation: button-press 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Ripple effect on click */
+button::before,
+.btn::before,
+[role="button"]::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+button:active::before,
+.btn:active::before,
+[role="button"]:active::before {
+  width: 300px;
+  height: 300px;
+  animation: ripple 0.6s ease-out;
+}
+
+/* Base body and html styles for proper scrolling */
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Dialog content scrolling */
+.DialogContent {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+/* Main content scrolling */
+main {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+  width: 100%;
+}
+
+/* Custom scrollbar styles */
+/* Mobile-first dashboard tab menu */
+.mobile-tab-menu {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.tab-selection-dropdown {
+  width: 100%;
+  max-width: 300px;
+  background: rgba(59, 130, 246, 0.2);
+  color: white;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  text-align: center;
+  cursor: pointer;
+}
+
+.dashboard-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dashboard-tab-button {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.dashboard-tab-button:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+.dashboard-tab-button.active {
+  background: rgb(37, 99, 235);
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+ 
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+ 
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+ 
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+ 
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+ 
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+ 
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+ 
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+/* Custom styles for the chat interface */
+.chat-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-messages-container {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-bottom: 120px; /* Extra space for input area */
+}
+
+.chat-input-container {
+  position: sticky;
+  bottom: 0;
+  background-color: white;
+  padding: 12px;
+  border-top: 1px solid #e5e7eb;
+  z-index: 10;
+}
+
+.chat-suggestion-chips {
+  margin-bottom: 12px;
+}
+
+/* Custom styles for enhanced mobile experience */
+@media (max-width: 640px) {
+  .chat-messages-container {
+    padding-bottom: 220px; /* Much more padding for mobile to account for suggestion chips */
+  }
+  
+  .chat-input-container {
+    padding: 8px;
+  }
+  
+  .mobile-pb-extra {
+    padding-bottom: 160px !important;
+  }
+}
+
+/* Live conversation specific styles */
+.live-conversation-messages {
+  padding-bottom: 200px !important; /* Extra space for suggestion chips */
+}
+
+/* Live conversation mobile layout fix */
+@media (max-width: 768px) {
+  .conversation-detail {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    position: relative;
+  }
+  
+  .conversation-detail .conversation-header {
+    flex-shrink: 0;
+  }
+
+/* Premium UI animations and effects */
+.hover-glow {
+  transition: all 0.3s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+@keyframes subtle-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+
+.animate-float {
+  animation: subtle-float 3s ease-in-out infinite;
+}
+
+.gradient-text {
+  background: linear-gradient(45deg, #fff, #e2e8f0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+  
+  .conversation-detail .message-area {
+    flex-grow: 1;
+    overflow-y: auto;
+    /* Give 250px of space at the bottom for input + suggestions */
+    margin-bottom: 250px !important;
+    padding-bottom: 0 !important;
+  }
+  
+  .conversation-detail .input-suggestion-area {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background-color: white;
+  }
+}
+
+/* Brand styles */
+.brand-header {
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(to right, #1a56db, #38bdf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Animated gradient and pulse effects for homepage */
+@keyframes gradient-slow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}
+
+.animate-gradient-slow {
+  animation: gradient-slow 8s ease-in-out infinite;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 6s ease-in-out infinite;
+}

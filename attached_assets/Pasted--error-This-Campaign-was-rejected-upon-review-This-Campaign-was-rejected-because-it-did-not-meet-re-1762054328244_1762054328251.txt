@@ -1,0 +1,116 @@
+(error)
+This Campaign was rejected upon review
+This Campaign was rejected because it did not meet registration requirements. Learn more about Campaign registration best practices here
+. Please contact support
+ if you think this was a mistake.
+
+
+Fix Campaign
+
+Campaign details
+
+Edit Campaign
+
+Delete Campaign
+Connected A2P Brand
+Jody Beeson
+Campaign SID
+CM68ff9cd5104cd276a1d2df7e75655c0c
+
+Linked Messaging Service
+MG3f00401df810b906ec011b0e8e0aa8ba
+
+Brand registration SID
+BN6d55b06adf4c19be6a3631c1d20d1e7c
+
+Campaign use case
+Customer Care
+Campaign status
+Rejected
+Compliance Registration SID
+-
+
+External Campaign ID
+-
+Messaging throughput limits
+Your A2P Campaign registration with TCR failed.
+
+Next steps
+
+
+Register a new A2P Campaign
+or alternatively reach out to support
+ with the brand and failed campaign details for further resolution.
+Campaign Information
+Description
+I run a local mobile auto detailing business. This number is used to confirm appointments, send reminders, let clients know I’m en route, and answer customer questions. Messages are always 1-on-1 and initiated by the customer or sent after clear consent through my intake form or chatbot
+The campaign submission has been reviewed and it was rejected because of provided Opt-in information. 
+Learn more
+Sending messages with embedded links?
+Yes
+Sending messages with embedded phone numbers?
+No
+Sending messages with age-gated content?
+No
+Sending messages with content related to direct lending or other loan arrangement?
+No
+Message Sample #1
+Hey John, just confirming your Clean Machine Auto Detail appointment for 2PM tomorrow at 123 Main St. Text back if anything changes.
+Message Sample #2
+I’m on the way! Should arrive in 15–20 minutes. Please make sure your driveway and water hookup are accessible
+Message Sample #3
+Clean Machine Auto Detail here — just a reminder about your upcoming appointment on Thursday at 11:00 AM. Let us know if you need to reschedule
+Message Sample #4
+Thanks for your booking today! Want to upgrade to a ceramic protection package next time? Here’s the info: cleanmachinetulsa.com/protect
+Message Sample #5
+Hey Sarah, we just wrapped up your detail. Let us know if you'd like to book again for next month — we offer returning customer discounts.
+End User Consent
+(information)
+Twilio manages opt-out and help keywords for you by default
+Twilio manages opt-out and help keywords for you by default. We used this information to automatically fill out the details related to Opt Out and Help for your Campaign registration.
+
+If you want to customize these keywords and auto-reply messages, please go to Messaging Service - Opt-Out Management
+
+
+How do end-users consent to receive messages?
+End users opt in by submitting a booking form on my website or interacting with my chatbot at https://clean-machine-chatbot-cleanmachinetul.replit.app/. The form and chatbot clearly state that by submitting or continuing, they agree to receive SMS updates related to booking, arrival times, and service follow-ups.
+Opt-in Message
+Clean Machine Auto Detail: You are now opted in for appointment updates and service reminders. Reply HELP for help. Reply STOP to opt out anytime.
+Opt-in Keywords?
+Press Delete or Backspace to remove. Press Enter to toggle selection.
+
+START
+
+BOOK
+
+SCHEDULE
+
+YES
+Opt-out Message
+You have successfully been unsubscribed. You will not receive any more messages from this number. Reply START to resubscribe.
+Opt-out Keywords
+Press Delete or Backspace to remove. Press Enter to toggle selection.
+
+OPTOUT
+
+CANCEL
+
+END
+
+QUIT
+
+UNSUBSCRIBE
+
+REVOKE
+
+STOP
+
+STOPALL
+Help Message
+Reply STOP to unsubscribe. Msg&Data Rates May Apply.
+Help Keywords
+Press Delete or Backspace to remove. Press Enter to toggle selection.
+
+HELP
+
+INFO

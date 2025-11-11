@@ -1,0 +1,419 @@
+/**
+ * Security Service - Enterprise-grade security features
+ * 
+ * Features:
+ * - TOTP 2FA with authenticator apps (Google Authenticator, Authy, etc.)
+ * - Login attempt tracking and brute-force protection
+ * - Account lockout management
+ * - Admin activity audit logging
+ * - Backup codes for account recovery
+ */
+
+import { authenticator } from 'otplib';
+import { db } from './db';
+import { totpSecrets, loginAttempts, accountLockouts, auditLogs } from '../shared/schema';
+import { eq, and, gte, desc, sql } from 'drizzle-orm';
+import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import QRCode from 'qrcode';
+
+// ==================== 2FA / TOTP FUNCTIONALITY ====================
+
+export interface TOTPSetup {
+  secret: string;
+  qrCodeDataUrl: string;
+  backupCodes: string[];
+}
+
+/**
+ * Generate a new TOTP secret and QR code for a user
+ * Returns secret (only shown once), QR code, and backup codes
+ */
+export async function setupTOTP(userId: number, email: string, appName: string = 'Clean Machine'): Promise<TOTPSetup> {
+  // Generate secret for TOTP
+  const secret = authenticator.generateSecret();
+  
+  // Create otpauth URL for authenticator apps
+  const otpauthUrl = authenticator.keyuri(
+    email,
+    appName,
+    secret
+  );
+  
+  // Generate QR code as data URL
+  const qrCodeDataUrl = await QRCode.toDataURL(otpauthUrl);
+  
+  // Generate backup codes (10 codes)
+  const backupCodes = generateBackupCodes(10);
+  const hashedBackupCodes = await Promise.all(
+    backupCodes.map(code => bcrypt.hash(code, 10))
+  );
+  
+  // Store in database (not enabled yet)
+  const existing = await db.select().from(totpSecrets).where(eq(totpSecrets.userId, userId)).limit(1);
+  
+  if (existing.length > 0) {
+    // Update existing
+    await db.update(totpSecrets)
+      .set({
+        secret,
+        backupCodes: hashedBackupCodes,
+        enabled: false,
+        createdAt: new Date(),
+      })
+      .where(eq(totpSecrets.userId, userId));
+  } else {
+    // Create new
+    await db.insert(totpSecrets).values({
+      userId,
+      secret,
+      backupCodes: hashedBackupCodes,
+      enabled: false,
+    });
+  }
+  
+  return {
+    secret,
+    qrCodeDataUrl,
+    backupCodes, // Return plaintext codes to user (only time they'll see them)
+  };
+}
+
+/**
+ * Enable 2FA after user verifies initial token
+ */
+export async function enableTOTP(userId: number, token: string): Promise<boolean> {
+  const userSecret = await db.select().from(totpSecrets).where(eq(totpSecrets.userId, userId)).limit(1);
+  
+  if (userSecret.length === 0) {
+    throw new Error('2FA not set up for this user');
+  }
+  
+  // Verify token
+  const isValid = authenticator.verify({
+    token,
+    secret: userSecret[0].secret,
+  });
+  
+  if (!isValid) {
+    return false;
+  }
+  
+  // Enable 2FA
+  await db.update(totpSecrets)
+    .set({
+      enabled: true,
+      enabledAt: new Date(),
+    })
+    .where(eq(totpSecrets.userId, userId));
+  
+  return true;
+}
+
+/**
+ * Verify TOTP token during login or sensitive operations
+ */
+export async function verifyTOTP(userId: number, token: string): Promise<boolean> {
+  const userSecret = await db.select().from(totpSecrets)
+    .where(and(
+      eq(totpSecrets.userId, userId),
+      eq(totpSecrets.enabled, true)
+    ))
+    .limit(1);
+  
+  if (userSecret.length === 0) {
+    return false;
+  }
+  
+  // Verify token
+  const isValid = authenticator.verify({
+    token,
+    secret: userSecret[0].secret,
+  });
+  
+  if (isValid) {
+    // Update last used timestamp
+    await db.update(totpSecrets)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(totpSecrets.userId, userId));
+    
+    return true;
+  }
+  
+  // Check backup codes
+  if (userSecret[0].backupCodes && userSecret[0].backupCodes.length > 0) {
+    for (let i = 0; i < userSecret[0].backupCodes.length; i++) {
+      const hashedCode = userSecret[0].backupCodes[i];
+      const matches = await bcrypt.compare(token, hashedCode);
+      
+      if (matches) {
+        // Remove used backup code
+        const newBackupCodes = [...userSecret[0].backupCodes];
+        newBackupCodes.splice(i, 1);
+        
+        await db.update(totpSecrets)
+          .set({
+            backupCodes: newBackupCodes,
+            lastUsedAt: new Date(),
+          })
+          .where(eq(totpSecrets.userId, userId));
+        
+        return true;
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Disable 2FA for a user
+ */
+export async function disableTOTP(userId: number, token: string): Promise<boolean> {
+  // Verify token before disabling
+  const isValid = await verifyTOTP(userId, token);
+  
+  if (!isValid) {
+    return false;
+  }
+  
+  await db.update(totpSecrets)
+    .set({ enabled: false })
+    .where(eq(totpSecrets.userId, userId));
+  
+  return true;
+}
+
+/**
+ * Check if user has 2FA enabled
+ */
+export async function isTOTPEnabled(userId: number): Promise<boolean> {
+  const result = await db.select().from(totpSecrets)
+    .where(and(
+      eq(totpSecrets.userId, userId),
+      eq(totpSecrets.enabled, true)
+    ))
+    .limit(1);
+  
+  return result.length > 0;
+}
+
+/**
+ * Generate backup codes for account recovery
+ */
+function generateBackupCodes(count: number = 10): string[] {
+  const codes: string[] = [];
+  
+  for (let i = 0; i < count; i++) {
+    // Generate 8-character codes (XXXX-XXXX format)
+    const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const formatted = `${code.slice(0, 4)}-${code.slice(4, 8)}`;
+    codes.push(formatted);
+  }
+  
+  return codes;
+}
+
+// ==================== LOGIN ATTEMPT TRACKING ====================
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MINUTES = 30;
+const ATTEMPT_WINDOW_MINUTES = 15;
+
+/**
+ * Log a login attempt
+ */
+export async function logLoginAttempt(
+  username: string,
+  ipAddress: string,
+  successful: boolean,
+  failureReason?: string,
+  userAgent?: string
+): Promise<void> {
+  await db.insert(loginAttempts).values({
+    username,
+    ipAddress,
+    successful,
+    failureReason,
+    userAgent,
+  });
+}
+
+/**
+ * Check if account should be locked based on failed attempts
+ * Returns { locked: boolean, remainingAttempts?: number, unlockAt?: Date }
+ */
+export async function checkLoginAttempts(username: string, ipAddress: string): Promise<{
+  locked: boolean;
+  remainingAttempts?: number;
+  unlockAt?: Date;
+  reason?: string;
+}> {
+  // Check for existing lockout
+  const existingLockout = await db.select().from(accountLockouts)
+    .where(sql`${accountLockouts.unlocked} = false AND ${accountLockouts.unlockAt} > NOW()`)
+    .orderBy(desc(accountLockouts.lockedAt))
+    .limit(1);
+  
+  if (existingLockout.length > 0) {
+    return {
+      locked: true,
+      unlockAt: existingLockout[0].unlockAt,
+      reason: existingLockout[0].reason,
+    };
+  }
+  
+  // Count recent failed attempts (last 15 minutes)
+  const windowStart = new Date(Date.now() - ATTEMPT_WINDOW_MINUTES * 60 * 1000);
+  
+  const recentAttempts = await db.select().from(loginAttempts)
+    .where(and(
+      eq(loginAttempts.username, username),
+      eq(loginAttempts.successful, false),
+      gte(loginAttempts.attemptedAt, windowStart)
+    ));
+  
+  const failedCount = recentAttempts.length;
+  
+  if (failedCount >= MAX_LOGIN_ATTEMPTS) {
+    // Lock account
+    const unlockAt = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000);
+    
+    // Get userId (if user exists)
+    const userResult = await db.query.users.findFirst({
+      where: (users, { eq }) => eq(users.username, username),
+    });
+    
+    if (userResult) {
+      await db.insert(accountLockouts).values({
+        userId: userResult.id,
+        unlockAt,
+        reason: 'failed_login_attempts',
+      });
+    }
+    
+    return {
+      locked: true,
+      unlockAt,
+      reason: 'failed_login_attempts',
+    };
+  }
+  
+  return {
+    locked: false,
+    remainingAttempts: MAX_LOGIN_ATTEMPTS - failedCount,
+  };
+}
+
+/**
+ * Manually unlock an account (admin action)
+ */
+export async function unlockAccount(userId: number, unlockedBy: number): Promise<void> {
+  await db.update(accountLockouts)
+    .set({
+      unlocked: true,
+      unlockedAt: new Date(),
+    })
+    .where(and(
+      eq(accountLockouts.userId, userId),
+      eq(accountLockouts.unlocked, false)
+    ));
+  
+  // Log audit event
+  await logAuditEvent(
+    unlockedBy,
+    'account_unlocked',
+    'user',
+    userId.toString(),
+    null,
+    null,
+    null
+  );
+}
+
+// ==================== AUDIT LOGGING ====================
+
+/**
+ * Log an admin action for audit trail
+ */
+export async function logAuditEvent(
+  userId: number,
+  action: string,
+  resource: string,
+  resourceId: string | null,
+  changes: any | null,
+  ipAddress: string | null,
+  userAgent: string | null,
+  metadata?: any
+): Promise<void> {
+  await db.insert(auditLogs).values({
+    userId,
+    action,
+    resource,
+    resourceId,
+    changes,
+    ipAddress,
+    userAgent,
+    metadata,
+  });
+}
+
+/**
+ * Get recent audit logs for a user or resource
+ */
+export async function getAuditLogs(filters: {
+  userId?: number;
+  resource?: string;
+  action?: string;
+  limit?: number;
+}): Promise<any[]> {
+  let query = db.select().from(auditLogs);
+  
+  const conditions = [];
+  if (filters.userId) conditions.push(eq(auditLogs.userId, filters.userId));
+  if (filters.resource) conditions.push(eq(auditLogs.resource, filters.resource));
+  if (filters.action) conditions.push(eq(auditLogs.action, filters.action));
+  
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
+  }
+  
+  const logs = await query
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(filters.limit || 100);
+  
+  return logs;
+}
+
+/**
+ * Get security dashboard stats
+ */
+export async function getSecurityStats(): Promise<{
+  totalLogins24h: number;
+  failedLogins24h: number;
+  lockedAccounts: number;
+  users2FAEnabled: number;
+}> {
+  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  
+  const [totalLogins, failedLogins, lockedAccounts, users2FA] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(loginAttempts)
+      .where(gte(loginAttempts.attemptedAt, last24h)),
+    db.select({ count: sql<number>`count(*)` }).from(loginAttempts)
+      .where(and(
+        gte(loginAttempts.attemptedAt, last24h),
+        eq(loginAttempts.successful, false)
+      )),
+    db.select({ count: sql<number>`count(*)` }).from(accountLockouts)
+      .where(sql`${accountLockouts.unlocked} = false AND ${accountLockouts.unlockAt} > NOW()`),
+    db.select({ count: sql<number>`count(*)` }).from(totpSecrets)
+      .where(eq(totpSecrets.enabled, true)),
+  ]);
+  
+  return {
+    totalLogins24h: Number(totalLogins[0]?.count || 0),
+    failedLogins24h: Number(failedLogins[0]?.count || 0),
+    lockedAccounts: Number(lockedAccounts[0]?.count || 0),
+    users2FAEnabled: Number(users2FA[0]?.count || 0),
+  };
+}

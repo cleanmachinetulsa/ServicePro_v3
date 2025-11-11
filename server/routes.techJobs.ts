@@ -1,0 +1,581 @@
+import { Router, Request, Response } from 'express';
+import { db } from './db';
+import { appointments, conversations, messages as messagesTable, customers, jobPhotos } from '@shared/schema';
+import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { requireTechnician } from './technicianMiddleware';
+import { startOfDay, endOfDay } from 'date-fns';
+import multer from 'multer';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import { getDriveClient } from './googleIntegration';
+
+const router = Router();
+
+// Multer configuration for job photo uploads
+const jobPhotoStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(os.tmpdir(), 'job-photos');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `job-photo-${uniqueSuffix}${ext}`);
+  }
+});
+
+const jobPhotoUpload = multer({
+  storage: jobPhotoStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max size
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept only image files
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (extname && mimetype) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
+    }
+  }
+});
+
+/**
+ * Get today's jobs for technician
+ * GET /api/tech/jobs/today
+ * 
+ * Query params:
+ * - assignedOnly: boolean - if true, only show jobs assigned to current technician
+ * - status: string - filter by status (assigned, en_route, on_site, in_progress, paused, completed, hand_off)
+ * 
+ * Returns appointments from Google Calendar with database status/assignment info
+ */
+router.get('/jobs/today', requireTechnician, async (req: Request, res: Response) => {
+  try {
+    const technician = (req as any).technician;
+    const assignedOnly = req.query.assignedOnly === 'true';
+    const statusFilter = req.query.status as string | undefined;
+
+    console.log(`[TECH JOBS] Fetching today's jobs for technician ${technician.id}`, {
+      assignedOnly,
+      statusFilter,
+    });
+
+    // Fetch all today's appointment records from database
+    const today = new Date();
+    const todayStart = startOfDay(today);
+    const todayEnd = endOfDay(today);
+
+    const dbAppointments = await db
+      .select({
+        id: appointments.id,
+        customerId: appointments.customerId,
+        serviceId: appointments.serviceId,
+        scheduledTime: appointments.scheduledTime,
+        status: appointments.status,
+        technicianId: appointments.technicianId,
+        calendarEventId: appointments.calendarEventId,
+        latitude: appointments.latitude,
+        longitude: appointments.longitude,
+        jobNotes: appointments.jobNotes,
+        statusUpdatedAt: appointments.statusUpdatedAt,
+        customerPhone: customers.phone,
+        customerName: customers.name,
+        customerAddress: customers.address,
+      })
+      .from(appointments)
+      .leftJoin(customers, eq(appointments.customerId, customers.id))
+      .where(
+        and(
+          gte(appointments.scheduledTime, todayStart),
+          lte(appointments.scheduledTime, todayEnd)
+        )
+      );
+
+    // Format appointments as jobs
+    const enrichedJobs = dbAppointments.map((apt) => ({
+      id: apt.id,
+      customerId: apt.customerId,
+      serviceId: apt.serviceId,
+      scheduledTime: apt.scheduledTime,
+      status: apt.status || 'scheduled',
+      technicianId: apt.technicianId,
+      calendarEventId: apt.calendarEventId,
+      latitude: apt.latitude,
+      longitude: apt.longitude,
+      jobNotes: apt.jobNotes,
+      statusUpdatedAt: apt.statusUpdatedAt,
+      customerPhone: apt.customerPhone,
+      customerName: apt.customerName,
+      customerAddress: apt.customerAddress,
+    }));
+
+    // Apply filters
+    let filteredJobs = enrichedJobs;
+
+    // AUTHORIZATION: By default, only show jobs assigned to current technician OR unassigned jobs
+    // This prevents leaking other technicians' jobs and customer data
+    if (assignedOnly) {
+      // Show only jobs explicitly assigned to current technician
+      filteredJobs = filteredJobs.filter((job: any) => job.technicianId === technician.id);
+    } else {
+      // Show jobs assigned to current technician + unassigned jobs (available to claim)
+      // NEVER show jobs assigned to other technicians
+      filteredJobs = filteredJobs.filter((job: any) => 
+        job.technicianId === null || job.technicianId === technician.id
+      );
+    }
+
+    if (statusFilter) {
+      filteredJobs = filteredJobs.filter((job: any) => job.status === statusFilter);
+    }
+
+    console.log(`[TECH JOBS] Found ${filteredJobs.length} jobs matching filters`);
+
+    res.json({
+      success: true,
+      jobs: filteredJobs,
+      technicianId: technician.id,
+      filters: {
+        assignedOnly,
+        status: statusFilter || 'all',
+      },
+    });
+  } catch (error) {
+    console.error('[TECH JOBS] Error fetching jobs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch jobs',
+    });
+  }
+});
+
+/**
+ * Update job status
+ * POST /api/tech/jobs/:id/status
+ * 
+ * Body:
+ * - status: string (assigned, en_route, on_site, in_progress, paused, completed, hand_off)
+ * - latitude: number (optional) - GPS coordinates when status updated
+ * - longitude: number (optional)
+ * - notes: string (optional) - Job notes from technician
+ */
+router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Response) => {
+  try {
+    const technician = (req as any).technician;
+    const appointmentId = parseInt(req.params.id);
+    const { status, latitude, longitude, notes } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Status is required',
+      });
+    }
+
+    // Validate status
+    const validStatuses = ['assigned', 'en_route', 'on_site', 'in_progress', 'paused', 'completed', 'hand_off', 'scheduled', 'confirmed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    console.log(`[TECH JOBS] Technician ${technician.id} updating job ${appointmentId} to status: ${status}`);
+
+    // Check if appointment exists
+    const [appointment] = await db
+      .select()
+      .from(appointments)
+      .where(eq(appointments.id, appointmentId))
+      .limit(1);
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Appointment not found',
+      });
+    }
+
+    // AUTHORIZATION: Check if technician owns this job
+    // Only allow updates if job is unassigned OR assigned to current technician
+    if (appointment.technicianId && appointment.technicianId !== technician.id) {
+      console.warn(`[TECH JOBS] Technician ${technician.id} attempted to update job ${appointmentId} assigned to technician ${appointment.technicianId}`);
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot update job assigned to another technician',
+        assignedTo: appointment.technicianId,
+      });
+    }
+
+    // Update appointment status
+    const updateData: any = {
+      status,
+      statusUpdatedAt: new Date(),
+    };
+
+    // If technician is updating status, assign them to the job if not already assigned
+    if (!appointment.technicianId) {
+      updateData.technicianId = technician.id;
+      console.log(`[TECH JOBS] Auto-assigning job ${appointmentId} to technician ${technician.id}`);
+    }
+
+    // Update GPS coordinates if provided
+    if (latitude !== undefined && longitude !== undefined) {
+      updateData.latitude = latitude.toString();
+      updateData.longitude = longitude.toString();
+    }
+
+    // Update job notes if provided
+    if (notes !== undefined) {
+      updateData.jobNotes = notes;
+    }
+
+    const [updatedAppointment] = await db
+      .update(appointments)
+      .set(updateData)
+      .where(eq(appointments.id, appointmentId))
+      .returning();
+
+    console.log(`[TECH JOBS] Job ${appointmentId} status updated to: ${status}`);
+
+    // TODO: Broadcast status update via WebSocket for real-time UI updates
+
+    res.json({
+      success: true,
+      appointment: updatedAppointment,
+      message: `Job status updated to ${status}`,
+    });
+  } catch (error) {
+    console.error('[TECH JOBS] Error updating job status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update job status',
+    });
+  }
+});
+
+/**
+ * Get messages for a job
+ * GET /api/tech/jobs/:id/messages
+ * 
+ * Returns conversation messages associated with the job's customer
+ */
+router.get('/jobs/:id/messages', requireTechnician, async (req: Request, res: Response) => {
+  try {
+    const appointmentId = parseInt(req.params.id);
+
+    console.log(`[TECH JOBS] Fetching messages for job ${appointmentId}`);
+
+    // Get appointment with customer info
+    const [appointmentData] = await db
+      .select({
+        id: appointments.id,
+        customerId: appointments.customerId,
+        technicianId: appointments.technicianId,
+        customerPhone: customers.phone,
+        customerName: customers.name,
+      })
+      .from(appointments)
+      .leftJoin(customers, eq(appointments.customerId, customers.id))
+      .where(eq(appointments.id, appointmentId))
+      .limit(1);
+
+    if (!appointmentData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Appointment not found',
+      });
+    }
+
+    const technician = (req as any).technician;
+
+    // AUTHORIZATION: Check if technician owns this job
+    // Only allow viewing messages if job is unassigned OR assigned to current technician
+    if (appointmentData.technicianId && appointmentData.technicianId !== technician.id) {
+      console.warn(`[TECH JOBS] Technician ${technician.id} attempted to access messages for job ${appointmentId} assigned to technician ${appointmentData.technicianId}`);
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot access messages for job assigned to another technician',
+        assignedTo: appointmentData.technicianId,
+      });
+    }
+
+    if (!appointmentData.customerPhone) {
+      return res.json({
+        success: true,
+        messages: [],
+        conversation: null,
+        message: 'No customer phone number associated with this appointment',
+      });
+    }
+
+    // Find conversation for this customer phone
+    const [conversation] = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.customerPhone, appointmentData.customerPhone))
+      .limit(1);
+
+    if (!conversation) {
+      return res.json({
+        success: true,
+        messages: [],
+        conversation: null,
+        message: 'No conversation found for this customer',
+      });
+    }
+
+    // Get messages for this conversation
+    const messageList = await db
+      .select()
+      .from(messagesTable)
+      .where(eq(messagesTable.conversationId, conversation.id))
+      .orderBy(desc(messagesTable.timestamp))
+      .limit(100); // Last 100 messages
+
+    console.log(`[TECH JOBS] Found ${messageList.length} messages for job ${appointmentId}`);
+
+    res.json({
+      success: true,
+      messages: messageList,
+      conversation: {
+        id: conversation.id,
+        customerPhone: conversation.customerPhone,
+        customerName: conversation.customerName,
+      },
+      appointmentId,
+    });
+  } catch (error) {
+    console.error('[TECH JOBS] Error fetching messages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch messages',
+    });
+  }
+});
+
+/**
+ * Upload job photo to Google Drive
+ * POST /api/tech/jobs/:id/photos
+ * 
+ * Requires technician authentication
+ * Verifies job ownership before allowing upload
+ * Creates record in jobPhotos table with Google Drive link
+ */
+router.post('/jobs/:id/photos', requireTechnician, jobPhotoUpload.single('photo'), async (req: Request, res: Response) => {
+  let tempFilePath: string | null = null;
+
+  try {
+    const appointmentId = parseInt(req.params.id);
+    const technician = (req as any).technician;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No photo file provided',
+      });
+    }
+
+    tempFilePath = req.file.path;
+
+    console.log(`[TECH JOBS] Photo upload request for job ${appointmentId} by technician ${technician.id}`);
+
+    // Get appointment with customer info and verify ownership
+    const [appointmentData] = await db
+      .select({
+        id: appointments.id,
+        customerId: appointments.customerId,
+        technicianId: appointments.technicianId,
+        calendarEventId: appointments.calendarEventId,
+        customerPhone: customers.phone,
+        customerName: customers.name,
+      })
+      .from(appointments)
+      .leftJoin(customers, eq(appointments.customerId, customers.id))
+      .where(eq(appointments.id, appointmentId))
+      .limit(1);
+
+    if (!appointmentData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Appointment not found',
+      });
+    }
+
+    // AUTHORIZATION: Check if technician owns this job
+    if (appointmentData.technicianId && appointmentData.technicianId !== technician.id) {
+      console.warn(`[TECH JOBS] Technician ${technician.id} attempted to upload photo for job ${appointmentId} assigned to technician ${appointmentData.technicianId}`);
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot upload photos for job assigned to another technician',
+        assignedTo: appointmentData.technicianId,
+      });
+    }
+
+    // Upload to Google Drive
+    const drive = getDriveClient();
+    if (!drive) {
+      return res.status(503).json({
+        success: false,
+        error: 'Google Drive service not available',
+      });
+    }
+
+    try {
+      // Create folder name: "Job Photos - [Customer Name] - [Date]"
+      const folderDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const customerName = appointmentData.customerName || 'Unknown Customer';
+      const folderName = `Job Photos - ${customerName} - ${folderDate}`;
+
+      // Escape single quotes in folder name for query (prevents errors with names like "O'Reilly")
+      const escapedFolderName = folderName.replace(/'/g, "\\'");
+
+      // Find or create folder
+      const folderQuery = `name='${escapedFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const folderSearch = await drive.files.list({
+        q: folderQuery,
+        fields: 'files(id, name, webViewLink)',
+        spaces: 'drive'
+      });
+
+      let folderId: string;
+      let folderLink: string;
+
+      if (folderSearch.data.files && folderSearch.data.files.length > 0) {
+        folderId = folderSearch.data.files[0].id!;
+        folderLink = folderSearch.data.files[0].webViewLink!;
+        console.log(`[TECH JOBS] Using existing folder: ${folderLink}`);
+      } else {
+        // Create new folder
+        const folderMetadata = {
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder'
+        };
+        const folder = await drive.files.create({
+          requestBody: folderMetadata,
+          fields: 'id, webViewLink'
+        });
+        folderId = folder.data.id!;
+        folderLink = folder.data.webViewLink!;
+        console.log(`[TECH JOBS] Created new folder: ${folderLink}`);
+
+        // Set permissions to allow link access
+        try {
+          await drive.permissions.create({
+            fileId: folderId,
+            requestBody: {
+              role: 'reader',
+              type: 'anyone'
+            }
+          });
+        } catch (permError) {
+          console.warn('[TECH JOBS] Failed to set folder permissions:', permError);
+        }
+      }
+
+      // Generate unique filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[\W_]+/g, '').slice(0, 14);
+      const ext = path.extname(req.file.originalname);
+      const fileName = `job_${appointmentId}_${timestamp}${ext}`;
+
+      // Upload file to Drive
+      const fileMetadata = {
+        name: fileName,
+        parents: [folderId]
+      };
+
+      const media = {
+        mimeType: req.file.mimetype,
+        body: fs.createReadStream(req.file.path)
+      };
+
+      const uploadedFile = await drive.files.create({
+        requestBody: fileMetadata,
+        media: media,
+        fields: 'id, name, webViewLink, webContentLink, mimeType, size'
+      });
+
+      // Make file publicly viewable
+      try {
+        await drive.permissions.create({
+          fileId: uploadedFile.data.id!,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone'
+          }
+        });
+      } catch (permError) {
+        console.warn('[TECH JOBS] Failed to set file permissions:', permError);
+      }
+
+      const photoUrl = uploadedFile.data.webViewLink!;
+      const fileSize = uploadedFile.data.size ? parseInt(uploadedFile.data.size) : null;
+
+      console.log(`[TECH JOBS] Photo uploaded successfully: ${photoUrl}`);
+
+      // Create record in jobPhotos table
+      const [photoRecord] = await db
+        .insert(jobPhotos)
+        .values({
+          appointmentId,
+          technicianId: technician.id,
+          photoUrl,
+          fileSize,
+          mimeType: uploadedFile.data.mimeType || req.file.mimetype,
+          fileName: uploadedFile.data.name || fileName,
+        })
+        .returning();
+
+      console.log(`[TECH JOBS] Created photo record #${photoRecord.id} for job ${appointmentId}`);
+
+      res.json({
+        success: true,
+        photo: {
+          id: photoRecord.id,
+          url: photoUrl,
+          fileName: uploadedFile.data.name,
+          size: fileSize,
+          uploadedAt: photoRecord.uploadedAt,
+        },
+        message: 'Photo uploaded successfully',
+      });
+
+    } catch (driveError: any) {
+      console.error('[TECH JOBS] Google Drive error:', driveError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload to Google Drive',
+        message: driveError.message,
+      });
+    }
+
+  } catch (error: any) {
+    console.error('[TECH JOBS] Error uploading photo:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message || 'An unexpected error occurred',
+    });
+  } finally {
+    // Always clean up temp file
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try {
+        fs.unlinkSync(tempFilePath);
+        console.log(`[TECH JOBS] Cleaned up temp file: ${tempFilePath}`);
+      } catch (cleanupError) {
+        console.error(`[TECH JOBS] Failed to clean up temp file:`, cleanupError);
+      }
+    }
+  }
+});
+
+export default router;

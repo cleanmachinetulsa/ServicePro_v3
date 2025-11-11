@@ -1,0 +1,23 @@
+/* Mobile-specific styles for live conversations */
+@media (max-width: 768px) {
+  .message-area {
+    padding-bottom: 160px !important;
+  }
+  
+  .suggestions-wrapper {
+    position: fixed;
+    bottom: 70px;
+    left: 0;
+    right: 0;
+    z-index: 20;
+  }
+  
+  .input-wrapper {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    background: white;
+  }
+}

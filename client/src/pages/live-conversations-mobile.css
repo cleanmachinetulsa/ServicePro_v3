@@ -1,0 +1,52 @@
+/* Mobile-specific styles for the live conversations page */
+.conversation-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+
+.messages-container {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  padding-bottom: 180px; /* Provide space for the input area and suggestion chips */
+}
+
+.input-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: white;
+  border-top: 1px solid #e5e7eb;
+  padding: 1rem;
+  z-index: 10;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.suggestions-container {
+  margin-bottom: 0.75rem;
+}
+
+.suggestion-chip {
+  font-size: 0.75rem;
+  background-color: #f3f4f6;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  cursor: pointer;
+}
+
+/* Extra padding for bottom of message container */
+@media (max-width: 640px) {
+  .messages-container {
+    padding-bottom: 230px; /* Even more padding on very small screens */
+  }
+}
