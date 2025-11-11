@@ -33,6 +33,9 @@ export function normalizePhone(
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       for (const field of fieldArray) {
+        if (field === '__proto__' || field === 'constructor' || field === 'prototype') {
+          continue;
+        }
         const phoneValue = req.body[field];
 
         // Skip if field is not present
@@ -96,6 +99,9 @@ export function normalizePhoneQuery(
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       for (const field of fieldArray) {
+        if (field === '__proto__' || field === 'constructor' || field === 'prototype') {
+          continue;
+        }
         const phoneValue = req.query[field] as string;
 
         if (!phoneValue || phoneValue.trim() === '') {
