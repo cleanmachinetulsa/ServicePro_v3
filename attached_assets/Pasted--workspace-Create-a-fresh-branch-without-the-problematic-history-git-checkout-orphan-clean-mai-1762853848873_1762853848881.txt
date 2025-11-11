@@ -1,0 +1,573 @@
+~/workspace$ # Create a fresh branch without the problematic history
+git checkout --orphan clean-main
+
+# Add all current files (without the large archives since they're in .gitignore now)
+git add .
+
+# Commit everything fresh
+git commit -m "Fresh start - removed large files from history"
+
+# Delete old main branch
+git branch -D main
+
+# Rename this to main
+git branch -m main
+
+# Force push to replace remote history
+git push origin main --force
+Switched to a new branch 'clean-main'
+[clean-main (root-commit) 289f9b3] Fresh start - removed large files from history
+ 546 files changed, 138972 insertions(+)
+ create mode 100644 .gitignore
+ create mode 100644 30,
+ create mode 100644 Master_CleanMachine_AgentKnowledgeBase_AutoReady.xlsx
+ create mode 100644 TWILIO_SETUP_GUIDE.md
+ create mode 100644 TWILIO_SMS_CONSENT_COMPLIANCE.md
+ create mode 100644 TWILIO_VOICE_SETUP.md
+ create mode 100644 TWILIO_WEBHOOK_SETUP.md
+ create mode 100644 VOICE_WEBHOOK_SETUP.md
+ create mode 100644 attached_assets/.gitignore
+ create mode 100644 attached_assets/Add-on services_240808_135343.pdf
+ create mode 100644 attached_assets/ChatbotUI.jsx
+ create mode 100644 attached_assets/Deep service knowledge_250516_012254.docx
+ create mode 100644 attached_assets/Detailing startup & materials list_250516_013627.txt
+ create mode 100644 attached_assets/Other Responses_250506_173020.pdf
+ create mode 100644 attached_assets/POPULAR services_250513_215252.pdf
+ create mode 100644 attached_assets/Pasted--Campaign-description-I-run-a-local-mobile-auto-detailing-business-This-number-is-used-to-confirm-a-1762056895227_1762056895230.txt
+ create mode 100644 attached_assets/Pasted--Campaign-description-Mobile-auto-detailing-service-sending-appointment-confirmations-reminders-ET-1762371077307_1762371077309.txt
+ create mode 100644 attached_assets/Pasted--Campaign-description-Mobile-auto-detailing-service-sending-appointment-confirmations-reminders-ET-1762373123172_1762373123174.txt
+ create mode 100644 attached_assets/Pasted--REPLIT-META-PROMPT-UPGRADE-IMPLEMENT-THE-CLEAN-MACHINE-INVOICE-SYSTEM-You-are-a-staff-fu-1762758501980_1762758501984.txt
+ create mode 100644 attached_assets/Pasted--REPLIT-META-PROMPT-UPGRADE-IMPLEMENT-THE-CLEAN-MACHINE-INVOICE-SYSTEM-You-are-a-staff-fu-1762759501927_1762759501931.txt
+ create mode 100644 attached_assets/Pasted--ServicePro-White-Label-Super-System-Complete-Fusion-Implementation-Plan-Repository-Informed--1762398322759_1762398322759.txt
+ create mode 100644 attached_assets/Pasted--Step-by-Step-TwiML-App-Configuration-for-Your-Technician-Voice-Setup-You-should-be-on-the-Voice-1762821799451_1762821799453.txt
+ create mode 100644 attached_assets/Pasted--error-This-Campaign-was-rejected-upon-review-This-Campaign-was-rejected-because-it-did-not-meet-re-1762054328244_1762054328251.txt
+ create mode 100644 attached_assets/Pasted--typescript-server-routes-validator-validate-schema-ts-import-Router-from-express-import-1762477590971_1762477590975.txt
+ create mode 100644 attached_assets/Pasted-2025-10-31-21-41-25-86-4afa71aa-User-x-goog-api-client-gl-node-20-19-3-2025-10-31-21-41-25-86--1761965250373_1761965250376.txt
+ create mode 100644 attached_assets/Pasted-Assistant-Chats-Archived-Scheduler-Types-Differences-Explained-Clearly-22-minutes-ago-google-sheet-p-1748002792733.txt
+ create mode 100644 attached_assets/Pasted-Awesome-work-this-is-already-quite-polished-and-thoughtfully-composed-I-went-through-each-file-and--1762649247506_1762649247510.txt
+ create mode 100644 attached_assets/Pasted-Build-Spec-CM-ServicePro-Additive-Merge-with-Whitelabel-Finishing-Files-Code-Golden-rules-A-1762399267736_1762399267741.txt
+ create mode 100644 attached_assets/Pasted-COMMUNICATIONS-HUB-PRODUCTION-BUILD-INSTRUCTIONS-Executive-Summary-Current-Grade-B-Status-80-t-1762649785678_1762649785681.txt
+ create mode 100644 attached_assets/Pasted-Campaign-Vetting-Required-Two-Factor-authentication-2FA-10-00-month-Any-authentication-or-acc-1762372772762_1762372772764.txt
+ create mode 100644 attached_assets/Pasted-Campaign-details-Edit-Campaign-Delete-Campaign-Connected-A2P-Brand-Jody-Beeson-Campaign-SID-CM68e6-1762635358667_1762635358675.txt
+ create mode 100644 attached_assets/Pasted-Deployment-Source-Log-2025-10-31-21-24-28-49-27b68003-System-starting-up-user-application-2025-10-31-1761965764910_1761965764911.txt
+ create mode 100644 attached_assets/Pasted-Edit-A2P-Campaign-Details-Close-modal-Campaign-description-Mobile-auto-detailing-service-sending-ap-1762371690456_1762371690457.txt
+ create mode 100644 attached_assets/Pasted-Error-11200-Create-alarm-Learn-more-about-this-error-Properties-Debug-event-SID-NO83e927dfa709ca7-1762060809031_1762060809032.txt
+ create mode 100644 attached_assets/Pasted-Error-11200-Create-alarm-Learn-more-about-this-error-Properties-Debug-event-SID-NO83e927dfa709ca7-1762061134735_1762061134737.txt
+ create mode 100644 attached_assets/Pasted-Hi-Jody-Beeson-Thanks-for-submitting-a-porting-request-to-Twilio-Please-double-check-the-numbe-1762735377052_1762735377062.txt
+ create mode 100644 attached_assets/Pasted-I-ve-created-a-prompt-with-chat-get-for-you-to-crate-an-amazing-new-feature-create-a-plan-and-ask--1762815682991_1762815682995.txt
+ create mode 100644 attached_assets/Pasted-Mobile-auto-detailing-service-sending-appointment-confirmations-reminders-ETAs-and-follow-ups-Cu-1762632599710_1762632599723.txt
+ create mode 100644 attached_assets/Pasted-Mobile-auto-detailing-service-sending-appointment-confirmations-reminders-ETAs-and-follow-ups-Cu-1762636118561_1762636118571.txt
+ create mode 100644 attached_assets/Pasted-PART-1-EXECUTIVE-CONTEXT-STRATEGY-Mission-Statement-Transform-ServicePro-Universal-repl-from-1762480138305_1762480138307.txt
+ create mode 100644 attached_assets/Pasted-Perfect-timing-this-prompt-will-reset-Replit-s-context-and-tell-it-exactly-what-to-build-for-your--1762833394451_1762833394458.txt
+ create mode 100644 attached_assets/Pasted-REPLIT-AGENT-INSTRUCTION-BLOCK-Technician-Ops-Hub-Pinned-Build-Rules-Role-You-are-the-Build-Ov-1762834005133_1762834005136.txt
+ create mode 100644 attached_assets/Pasted-ServicePro-Multi-Tenant-SaaS-Comprehensive-Implementation-Analysis-Report-Generated-November-7-2-1762492889403_1762492889408.txt
+ create mode 100644 attached_assets/Pasted-Thank-you-for-reaching-out-to-Onboarding-and-Compliance-Support-My-name-is-Sam-and-I-will-be-assis-1762371989273_1762371989273.txt
+ create mode 100644 attached_assets/Pasted-The-source-list-for-the-Content-Security-Policy-directive-default-src-contains-an-invalid-source--1762314509713_1762314509715.txt
+ create mode 100644 attached_assets/Pasted-This-is-excellent-work-it-s-ambitious-detailed-and-clearly-structured-You-re-setting-the-ba-1762833826353_1762833826354.txt
+ create mode 100644 attached_assets/Pasted-To-redesign-the-Today-s-Appointments-tab-to-include-a-large-calendar-with-appointments-you-can-mo-1760517863982_1760517863983.txt
+ create mode 100644 attached_assets/Pasted-Upload-your-logo-assets-to-Replit-In-your-Replit-project-create-a-public-folder-if-you-don-t-have--1762477124628_1762477124629.txt
+ create mode 100644 attached_assets/Pasted-You-are-an-expert-product-platform-architect-and-staff-level-full-stack-engineer-tasked-with-produci-1762398215461_1762398215462.txt
+ create mode 100644 attached_assets/Pasted-You-are-upgrading-ServicePro-into-a-multi-tenant-whitelabel-platform-with-zero-code-onboarding-1762375889075_1762375889078.txt
+ create mode 100644 attached_assets/Pasted-chunk-RPCDYKBN-js-v-9c22a123-21551-Download-the-React-DevTools-for-a-better-development-experience--1762328279791_1762328279798.txt
+ create mode 100644 attached_assets/Pasted-curl-X-POST-http-localhost-5000-api-chat-send-business-message-jq-error-syntax-error-unexpec-1762052944076_1762052944078.txt
+ create mode 100644 attached_assets/Pasted-git-push-origin-mai-Install-git-filter-repo-best-tool-for-this-pip-install-git-filter-repo-Rem-1762853452075_1762853452079.txt
+ create mode 100644 attached_assets/Pasted-import-pgTable-text-serial-integer-boolean-timestamp-varchar-numeric-jsonb-date-from-d-1762478002883_1762478002886.txt
+ create mode 100644 attached_assets/Pasted-ls-cannot-access-at-No-such-file-or-directory-ls-cannot-access-2-55-13-No-such-file-or-direc-1762852928094_1762852928097.txt
+ create mode 100644 attached_assets/Pasted-manifest-json-1-Manifest-Line-1-column-1-Syntax-error-client-536-WebSocket-connection-to-wss--1762329457236_1762329457242.txt
+ create mode 100644 attached_assets/Pasted-manifest-json-1-Manifest-Line-1-column-1-Syntax-error-client-536-WebSocket-connection-to-wss--1762329678335_1762329678339.txt
+ create mode 100644 attached_assets/Pasted-manifest-json-1-Manifest-Line-1-column-1-Syntax-error-client-536-WebSocket-connection-to-wss--1762329857584_1762329857588.txt
+ create mode 100644 attached_assets/Pasted-service-worker-js-11-ServiceWorker-Installing-service-worker-js-15-ServiceWorker-Caching-app--1762327991689_1762327991697.txt
+ create mode 100644 attached_assets/Pasted-service-worker-js-11-ServiceWorker-Installing-service-worker-js-15-ServiceWorker-Caching-app--1762328958936_1762328958938.txt
+ create mode 100644 attached_assets/Pasted-typescript-server-routes-validator-validate-schema-ts-import-Router-from-express-import-z-1762477658753_1762477658754.txt
+ create mode 100644 attached_assets/Pasted-usePushNotifications-ts-193-POST-https-1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee-kirk-1762329197887_1762329197889.txt
+ create mode 100644 attached_assets/Price responses_250228_210443.pdf
+ create mode 100644 attached_assets/Screen Shot 2025-11-08 at 5.30.35 PM_1762644686640.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-08 at 5.30.55 PM_1762644686634.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.12.50 AM_1762676105451.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.13.36 AM_1762676105448.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.23.55 AM_1762676692851.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.24.05 AM_1762676692849.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.39.21 AM_1762677698914.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.39.42 AM_1762677664578.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 2.43.46 AM_1762677836327.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 7.11.08 PM_1762737129774.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 7.11.18 PM_1762737129772.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-09 at 7.11.27 PM_1762737129762.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.05.07 PM_1762808785518.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.08.07 PM_1762808948710.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.08.22 PM_1762808948709.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.11.50 PM_1762809260016.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.13.45 PM_1762809260025.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.41.52 AM_1762769178153.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 3.41.52 AM_1762770297720.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 7.51.27 PM_1762826426040.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 7.51.42 PM_1762826426037.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 7.57.04 PM_1762826426026.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 7.59.34 PM_1762826426011.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.06.13 PM_1762828185998.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.06.22 PM_1762828185997.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.11.28 PM_1762827151397.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.13.32 PM_1762827228989.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.21.16 PM_1762827840646.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.26.18 PM_1762828003175.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 8.41.12 PM_1762828948574.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 9.14.53 PM_1762830911045.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 9.33.54 PM_1762832161723.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-10 at 9.39.40 PM_1762832514926.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-11 at 12.14.01 AM_1762841956857.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-11 at 12.16.19 AM_1762841956852.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-11 at 12.44.58 AM_1762843514170.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-11 at 12.46.29 AM_1762843638173.png
+ create mode 100644 attached_assets/Screen Shot 2025-11-11 at 2.55.13 AM_1762852168164.png
+ create mode 100644 attached_assets/Screenshot_20251110_120513_Chrome_1762798016338.jpg
+ create mode 100644 attached_assets/Screenshot_20251110_120513_Chrome_1762798129505.jpg
+ create mode 100644 attached_assets/ServicePro White-Label Super-System_ Complete Fusion & Implementation Plan PDF_1762478145527.pdf
+ create mode 100644 attached_assets/Website services copypaste.txt
+ create mode 100644 attached_assets/ab_Clean4-03.jpg
+ create mode 100644 attached_assets/generated_images/Clean_Machine_badge_circular_ff904963.png
+ create mode 100644 attached_assets/generated_images/Clean_Machine_hexagonal_shield_logo_46864b38.png
+ create mode 100644 attached_assets/generated_images/Clean_Machine_logo_blue_0f30335d.png
+ create mode 100644 attached_assets/generated_images/Clean_Machine_shield_hexagonal_89fc94d0.png
+ create mode 100644 attached_assets/generated_images/Clean_Machine_white_logo_transparent_f0645d6c.png
+ create mode 100644 attached_assets/index.css
+ create mode 100644 attached_assets/index.html
+ create mode 100644 attached_assets/main.jsx
+ create mode 100644 attached_assets/servicepro files_1762400637234.zip
+ create mode 100644 attached_assets/servicepro files_1762400650587.zip
+ create mode 100644 attached_assets/servicepro-fusion-plan_1762477848510.md
+ create mode 100644 attached_assets/stock_images/black_plastic_car_tr_7690b95f.jpg
+ create mode 100644 attached_assets/stock_images/car_interior_seat_cl_654f4b97.jpg
+ create mode 100644 attached_assets/stock_images/car_windshield_water_85185c03.jpg
+ create mode 100644 attached_assets/stock_images/clean_car_engine_bay_0df62c92.jpg
+ create mode 100644 attached_assets/stock_images/fresh_clean_car_inte_8aff039e.jpg
+ create mode 100644 attached_assets/stock_images/glossy_car_ceramic_c_d900e9a1.jpg
+ create mode 100644 attached_assets/stock_images/hand_washing_car_wit_cfdfd508.jpg
+ create mode 100644 attached_assets/stock_images/headlight_restoratio_cc4535bf.jpg
+ create mode 100644 attached_assets/stock_images/leather_car_seat_con_f6ecde28.jpg
+ create mode 100644 attached_assets/stock_images/professional_car_pai_e49240d7.jpg
+ create mode 100644 attached_assets/stock_images/shiny_clean_detailed_40ae8ebb.jpg
+ create mode 100644 attached_assets/vite.config.js
+ create mode 100644 attached_assets/workflow.json_1760779358797.txt
+ create mode 100644 check-twilio-campaigns.ts
+ create mode 100644 client/index.html
+ create mode 100644 client/public/logo.jpg
+ create mode 100644 client/src/App.tsx
+ create mode 100644 client/src/MobileTabsMenu.tsx
+ create mode 100644 client/src/assets/clean-machine-logo.jpg
+ create mode 100644 client/src/assets/clean-machine-logo.svg
+ create mode 100644 client/src/assets/clean-machine-shield.png
+ create mode 100644 client/src/assets/logo.tsx
+ create mode 100644 client/src/components/ActionableNotificationsBanner.tsx
+ create mode 100644 client/src/components/AgentSettings.tsx
+ create mode 100644 client/src/components/AiHelpSearch.tsx
+ create mode 100644 client/src/components/AnimatedLoyaltyProgressBar.tsx
+ create mode 100644 client/src/components/AppointmentScheduler.tsx
+ create mode 100644 client/src/components/AuthGuard.tsx
+ create mode 100644 client/src/components/BackNavigation.tsx
+ create mode 100644 client/src/components/BannerDisplay.tsx
+ create mode 100644 client/src/components/BookingLoyaltyDisplay.tsx
+ create mode 100644 client/src/components/BookingPanel.tsx
+ create mode 100644 client/src/components/BookingPriceCalculator.tsx
+ create mode 100644 client/src/components/BusinessChatInterface.tsx
+ create mode 100644 client/src/components/CancellationDemo.tsx
+ create mode 100644 client/src/components/CancellationFeedbackModal.tsx
+ create mode 100644 client/src/components/ChatbotEscalationOption.tsx
+ create mode 100644 client/src/components/CleanMachineLogo.tsx
+ create mode 100644 client/src/components/CommunicationsNav.tsx
+ create mode 100644 client/src/components/CommunicationsSettings.tsx
+ create mode 100644 client/src/components/ContactPicker.tsx
+ create mode 100644 client/src/components/CustomerManagement.tsx
+ create mode 100644 client/src/components/CustomerProfilePanel.tsx
+ create mode 100644 client/src/components/CustomerSearch.tsx
+ create mode 100644 client/src/components/CustomerSelector.tsx
+ create mode 100644 client/src/components/DashboardNavButton.tsx
+ create mode 100644 client/src/components/DashboardSidebar.tsx
+ create mode 100644 client/src/components/DemoMode.tsx
+ create mode 100644 client/src/components/DynamicPricingVisualization.tsx
+ create mode 100644 client/src/components/EmailCampaignsManager.tsx
+ create mode 100644 client/src/components/EmailTemplateWizard.tsx
+ create mode 100644 client/src/components/EnhancedChatbotUI.tsx
+ create mode 100644 client/src/components/ExpandableServiceDetails.tsx
+ create mode 100644 client/src/components/FeatureActionButtons.tsx
+ create mode 100644 client/src/components/FlexibleIntervalPicker.tsx
+ create mode 100644 client/src/components/GalleryPhotoManager.tsx
+ create mode 100644 client/src/components/GoogleReviews.tsx
+ create mode 100644 client/src/components/HolidayAwareness.tsx
+ create mode 100644 client/src/components/InstantChatButton.tsx
+ create mode 100644 client/src/components/InstantChatSupport.tsx
+ create mode 100644 client/src/components/LiveConversationMobileStyles.tsx
+ create mode 100644 client/src/components/LiveConversationStyles.css
+ create mode 100644 client/src/components/LoyaltyBanner.tsx
+ create mode 100644 client/src/components/LoyaltyPointsSystem.tsx
+ create mode 100644 client/src/components/MultiVehicleAppointmentScheduler.tsx
+ create mode 100644 client/src/components/PageTransition.tsx
+ create mode 100644 client/src/components/PasswordChangeModal.tsx
+ create mode 100644 client/src/components/PhoneSettings.tsx
+ create mode 100644 client/src/components/PowerWaterAccessVerification.tsx
+ create mode 100644 client/src/components/QuickActionButton.tsx
+ create mode 100644 client/src/components/RecurringServicesCalendar.tsx
+ create mode 100644 client/src/components/RecurringServicesManager.tsx
+ create mode 100644 client/src/components/RoleAssignmentWizard.tsx
+ create mode 100644 client/src/components/SMSConsentCheckbox.tsx
+ create mode 100644 client/src/components/ServiceAreaCheck.tsx
+ create mode 100644 client/src/components/ServiceDetails.tsx
+ create mode 100644 client/src/components/ServiceVerificationAnimation.tsx
+ create mode 100644 client/src/components/ServicesCarousel.tsx
+ create mode 100644 client/src/components/ServicesManagement.tsx
+ create mode 100644 client/src/components/SettingsWorkspace.tsx
+ create mode 100644 client/src/components/SocialShareButtons.tsx
+ create mode 100644 client/src/components/SophisticatedAnimatedLogo.tsx
+ create mode 100644 client/src/components/SubscriptionManager.tsx
+ create mode 100644 client/src/components/ThreadView.tsx
+ create mode 100644 client/src/components/UpsellManagement.tsx
+ create mode 100644 client/src/components/WeatherAlertDialog.tsx
+ create mode 100644 client/src/components/WeatherForecast.tsx
+ create mode 100644 client/src/components/messages/Composer.tsx
+ create mode 100644 client/src/components/messages/ConversationFilters.tsx
+ create mode 100644 client/src/components/messages/ConversationList.tsx
+ create mode 100644 client/src/components/messages/HeaderActions.tsx
+ create mode 100644 client/src/components/messages/MessageBubble.tsx
+ create mode 100644 client/src/components/messages/SmartComposeRail.tsx
+ create mode 100644 client/src/components/phone/ActiveCall.tsx
+ create mode 100644 client/src/components/phone/CallDetailsModal.tsx
+ create mode 100644 client/src/components/phone/CustomersPane.tsx
+ create mode 100644 client/src/components/phone/Dialer.tsx
+ create mode 100644 client/src/components/phone/RecentCalls.tsx
+ create mode 100644 client/src/components/phone/SkeletonLoader.tsx
+ create mode 100644 client/src/components/phone/VoicemailInbox.tsx
+ create mode 100644 client/src/components/technician/CommunicationsPod.tsx
+ create mode 100644 client/src/components/technician/MediaPod.tsx
+ create mode 100644 client/src/components/technician/NavigationPod.tsx
+ create mode 100644 client/src/components/technician/QuickActionsFooter.tsx
+ create mode 100644 client/src/components/technician/SchedulePanel.tsx
+ create mode 100644 client/src/components/technician/TechnicianLayout.tsx
+ create mode 100644 client/src/components/technician/WorkflowPod.tsx
+ create mode 100644 client/src/components/ui/accordion.tsx
+ create mode 100644 client/src/components/ui/alert-dialog.tsx
+ create mode 100644 client/src/components/ui/alert.tsx
+ create mode 100644 client/src/components/ui/aspect-ratio.tsx
+ create mode 100644 client/src/components/ui/avatar.tsx
+ create mode 100644 client/src/components/ui/badge.tsx
+ create mode 100644 client/src/components/ui/breadcrumb.tsx
+ create mode 100644 client/src/components/ui/button.tsx
+ create mode 100644 client/src/components/ui/calendar.tsx
+ create mode 100644 client/src/components/ui/card.tsx
+ create mode 100644 client/src/components/ui/carousel.tsx
+ create mode 100644 client/src/components/ui/chart.tsx
+ create mode 100644 client/src/components/ui/checkbox.tsx
+ create mode 100644 client/src/components/ui/collapsible.tsx
+ create mode 100644 client/src/components/ui/command.tsx
+ create mode 100644 client/src/components/ui/context-menu.tsx
+ create mode 100644 client/src/components/ui/dialog.tsx
+ create mode 100644 client/src/components/ui/drawer.tsx
+ create mode 100644 client/src/components/ui/dropdown-menu.tsx
+ create mode 100644 client/src/components/ui/form.tsx
+ create mode 100644 client/src/components/ui/google-reviews.tsx
+ create mode 100644 client/src/components/ui/hover-card.tsx
+ create mode 100644 client/src/components/ui/icons.tsx
+ create mode 100644 client/src/components/ui/input-otp.tsx
+ create mode 100644 client/src/components/ui/input.tsx
+ create mode 100644 client/src/components/ui/label.tsx
+ create mode 100644 client/src/components/ui/menubar.tsx
+ create mode 100644 client/src/components/ui/navigation-menu.tsx
+ create mode 100644 client/src/components/ui/pagination.tsx
+ create mode 100644 client/src/components/ui/popover.tsx
+ create mode 100644 client/src/components/ui/progress.tsx
+ create mode 100644 client/src/components/ui/radio-group.tsx
+ create mode 100644 client/src/components/ui/resizable.tsx
+ create mode 100644 client/src/components/ui/scroll-area.tsx
+ create mode 100644 client/src/components/ui/select.tsx
+ create mode 100644 client/src/components/ui/separator.tsx
+ create mode 100644 client/src/components/ui/sheet.tsx
+ create mode 100644 client/src/components/ui/sidebar.tsx
+ create mode 100644 client/src/components/ui/skeleton.tsx
+ create mode 100644 client/src/components/ui/slider.tsx
+ create mode 100644 client/src/components/ui/switch-icons.tsx
+ create mode 100644 client/src/components/ui/switch.tsx
+ create mode 100644 client/src/components/ui/table.tsx
+ create mode 100644 client/src/components/ui/tabs.tsx
+ create mode 100644 client/src/components/ui/textarea.tsx
+ create mode 100644 client/src/components/ui/toast.tsx
+ create mode 100644 client/src/components/ui/toaster.tsx
+ create mode 100644 client/src/components/ui/toggle-group.tsx
+ create mode 100644 client/src/components/ui/toggle.tsx
+ create mode 100644 client/src/components/ui/tooltip.tsx
+ create mode 100644 client/src/contexts/TechnicianContext.tsx
+ create mode 100644 client/src/data/galleryPhotos.ts
+ create mode 100644 client/src/data/reviews.ts
+ create mode 100644 client/src/hooks/use-debounce.ts
+ create mode 100644 client/src/hooks/use-mobile.tsx
+ create mode 100644 client/src/hooks/use-toast.ts
+ create mode 100644 client/src/hooks/usePushNotifications.ts
+ create mode 100644 client/src/hooks/useReadReceipts.ts
+ create mode 100644 client/src/index.css
+ create mode 100644 client/src/lib/invoiceLoyalty.ts
+ create mode 100644 client/src/lib/phone.ts
+ create mode 100644 client/src/lib/queryClient.ts
+ create mode 100644 client/src/lib/utils.ts
+ create mode 100644 client/src/main.tsx
+ create mode 100644 client/src/pages/CallMetrics.tsx
+ create mode 100644 client/src/pages/Schedule.tsx
+ create mode 100644 client/src/pages/admin-employees.tsx
+ create mode 100644 client/src/pages/admin-job-editor.tsx
+ create mode 100644 client/src/pages/admin-quote-requests.tsx
+ create mode 100644 client/src/pages/analytics.tsx
+ create mode 100644 client/src/pages/banner-management.tsx
+ create mode 100644 client/src/pages/business-settings.tsx
+ create mode 100644 client/src/pages/change-password.tsx
+ create mode 100644 client/src/pages/chat.tsx
+ create mode 100644 client/src/pages/conversation-insights.tsx
+ create mode 100644 client/src/pages/customer-database.tsx
+ create mode 100644 client/src/pages/customer-recurring-services.tsx
+ create mode 100644 client/src/pages/damage-assessment.tsx
+ create mode 100644 client/src/pages/dashboard.tsx
+ create mode 100644 client/src/pages/demo.tsx
+ create mode 100644 client/src/pages/directions.tsx
+ create mode 100644 client/src/pages/facebook-settings.tsx
+ create mode 100644 client/src/pages/forgot-password.tsx
+ create mode 100644 client/src/pages/gallery.tsx
+ create mode 100644 client/src/pages/home.tsx
+ create mode 100644 client/src/pages/live-conversations-mobile.css
+ create mode 100644 client/src/pages/live-conversations.tsx
+ create mode 100644 client/src/pages/login.tsx
+ create mode 100644 client/src/pages/maintenance.tsx
+ create mode 100644 client/src/pages/messages.tsx
+ create mode 100644 client/src/pages/monitor.tsx
+ create mode 100644 client/src/pages/not-found.tsx
+ create mode 100644 client/src/pages/notifications-settings.tsx
+ create mode 100644 client/src/pages/payer-approval.tsx
+ create mode 100644 client/src/pages/phone.tsx
+ create mode 100644 client/src/pages/privacy-policy.tsx
+ create mode 100644 client/src/pages/quick-booking.tsx
+ create mode 100644 client/src/pages/quote-approval.tsx
+ create mode 100644 client/src/pages/recurring-service-booking.tsx
+ create mode 100644 client/src/pages/reset-password.tsx
+ create mode 100644 client/src/pages/reviews.tsx
+ create mode 100644 client/src/pages/rewards.tsx
+ create mode 100644 client/src/pages/security-settings.tsx
+ create mode 100644 client/src/pages/service-history.tsx
+ create mode 100644 client/src/pages/settings.tsx
+ create mode 100644 client/src/pages/showcase.tsx
+ create mode 100644 client/src/pages/sms-consent.tsx
+ create mode 100644 client/src/pages/sms-monitoring.tsx
+ create mode 100644 client/src/pages/tech-profile-public.tsx
+ create mode 100644 client/src/pages/tech-profile.tsx
+ create mode 100644 client/src/pages/tech-wizard.tsx
+ create mode 100644 client/src/pages/technician.tsx
+ create mode 100644 client/src/pages/user-management.tsx
+ create mode 100644 code-only.tar.gz
+ create mode 100644 components.json
+ create mode 100644 config/README.md
+ create mode 100644 create_archive.py
+ create mode 100644 delete-failed-campaigns.ts
+ create mode 100644 drizzle.config.ts
+ create mode 100644 fix-phone-number-association.ts
+ create mode 100644 generated-icon.png
+ create mode 100644 home_after_minimize.png
+ create mode 100644 home_fullpage.png
+ create mode 100644 package-lock.json
+ create mode 100644 package.json
+ create mode 100644 postcss.config.js
+ create mode 100644 public/assets/clean_machine_logo.svg
+ create mode 100644 public/assets/clean_machine_logo_fixed_1.png
+ create mode 100644 public/clean_machine_logo.svg
+ create mode 100644 public/clean_machine_logo_fixed_1.png
+ create mode 100644 public/documentation.html
+ create mode 100644 public/documentation.pdf
+ create mode 100644 public/icon-192.png
+ create mode 100644 public/icon-512.png
+ create mode 100644 public/icons-needed.txt
+ create mode 100644 public/images/ab_Clean4-03.jpg
+ create mode 100644 public/images/clean_machine_logo.png
+ create mode 100644 public/images/clean_machine_logo_fixed_1.png
+ create mode 100644 public/images/logo.png
+ create mode 100644 public/index.html
+ create mode 100644 public/logo.jpg
+ create mode 100644 public/manifest.json
+ create mode 100644 public/service-worker.js
+ create mode 100644 public/uploads/services/service-1761276885654-354697639.png
+ create mode 100644 public/uploads/services/service-1761277469897-996902414.png
+ create mode 100644 public/uploads/services/service-1761617760130-246782629.png
+ create mode 100644 public/uploads/services/service-1761627408957-663480265.png
+ create mode 100644 public/uploads/services/service-1761627418769-121152934.png
+ create mode 100644 public/uploads/services/service-1762842266080-381231965.jpg
+ create mode 100644 public/uploads/services/service-1762842266449-986627516.jpg
+ create mode 100644 public/uploads/services/service-1762842266519-98400416.jpg
+ create mode 100644 public/uploads/services/service-1762842266585-663508093.jpg
+ create mode 100644 public/uploads/services/service-1762842266654-915982050.jpg
+ create mode 100644 public/uploads/services/service-1762842266723-505835982.jpg
+ create mode 100644 public/uploads/services/service-1762842266790-901274628.jpg
+ create mode 100644 public/uploads/services/service-1762842266858-273694412.jpg
+ create mode 100644 public/uploads/services/service-1762842266925-693460949.jpg
+ create mode 100644 public/uploads/services/service-1762842266995-472328968.jpg
+ create mode 100644 public/uploads/services/service-1762842267067-588592335.jpg
+ create mode 100644 public/uploads/services/service-1762842267134-273264250.jpg
+ create mode 100644 public/uploads/services/service-1762842267202-379111254.jpg
+ create mode 100644 public/uploads/services/service-1762842267270-460393705.jpg
+ create mode 100644 public/uploads/services/service-1762843078314-223229637.webp
+ create mode 100644 public/uploads/services/service-1762843089180-245582493.webp
+ create mode 100644 public/uploads/services/service-1762843098205-746238199.webp
+ create mode 100644 public/uploads/services/service-1762843575777-577110236.webp
+ create mode 100644 replit.md
+ create mode 100644 scripts/generate-pwa-icons.ts
+ create mode 100644 scripts/updateServiceImages.ts
+ create mode 100644 server/addColumnsToAddons.ts
+ create mode 100644 server/aiSuggestionService.ts
+ create mode 100644 server/auditLogger.ts
+ create mode 100644 server/authMiddleware.ts
+ create mode 100644 server/autoFailover.ts
+ create mode 100644 server/calendarApi.ts
+ create mode 100644 server/calendarAvailability.ts
+ create mode 100644 server/calendarTest.ts
+ create mode 100644 server/callLoggingService.ts
+ create mode 100644 server/campaignScheduler.ts
+ create mode 100644 server/contactUtils.ts
+ create mode 100644 server/conversationClassifier.ts
+ create mode 100644 server/conversationService.ts
+ create mode 100644 server/conversationState.ts
+ create mode 100644 server/conversationalScheduling.ts
+ create mode 100644 server/createAdmin.ts
+ create mode 100644 server/customerMemory.ts
+ create mode 100644 server/customerSearch.ts
+ create mode 100644 server/damageAssessment.ts
+ create mode 100644 server/damageAssessmentMonitor.ts
+ create mode 100644 server/dashboardApi.ts
+ create mode 100644 server/db.ts
+ create mode 100644 server/demoProtection.ts
+ create mode 100644 server/depositManager.ts
+ create mode 100644 server/emailCampaignService.ts
+ create mode 100644 server/emailService.rewards.ts
+ create mode 100644 server/emailService.ts
+ create mode 100644 server/emailTemplates/base.ts
+ create mode 100644 server/emailTemplates/invoice.ts
+ create mode 100644 server/enhancedCustomerRoutes.ts
+ create mode 100644 server/enhancedCustomerSearch.ts
+ create mode 100644 server/errorMonitoring.ts
+ create mode 100644 server/fetch-addons.ts
+ create mode 100644 server/fetch-services.ts
+ create mode 100644 server/fileUpload.ts
+ create mode 100644 server/formatterConfig.ts
+ create mode 100644 server/gamificationService.ts
+ create mode 100644 server/generateVapidKeys.ts
+ create mode 100644 server/googleIntegration.ts
+ create mode 100644 server/googleLoyaltyIntegration.ts
+ create mode 100644 server/googleMapsApi.ts
+ create mode 100644 server/googleOAuth.ts
+ create mode 100644 server/handoffDetectionService.ts
+ create mode 100644 server/index.ts
+ create mode 100644 server/initPushNotifications.ts
+ create mode 100644 server/invoiceService.ts
+ create mode 100644 server/knowledge.ts
+ create mode 100644 server/loyaltyApi.ts
+ create mode 100644 server/loyaltyService.ts
+ create mode 100644 server/maintenanceDetail.ts
+ create mode 100644 server/maintenanceMode.ts
+ create mode 100644 server/mapApiTest.ts
+ create mode 100644 server/navigationService.ts
+ create mode 100644 server/notifications.ts
+ create mode 100644 server/oauthStorage.ts
+ create mode 100644 server/openai.ts
+ create mode 100644 server/paymentHandler.ts
+ create mode 100644 server/pdfDocumentation.ts
+ create mode 100644 server/phoneValidationMiddleware.ts
+ create mode 100644 server/photoCleanup.ts
+ create mode 100644 server/populateAddonDetails.ts
+ create mode 100644 server/portMonitoring.ts
+ create mode 100644 server/pricing.ts
+ create mode 100644 server/pushNotificationService.ts
+ create mode 100644 server/quoteManagement.ts
+ create mode 100644 server/rbacMiddleware.ts
+ create mode 100644 server/realServices.ts
+ create mode 100644 server/recurringServicesScheduler.ts
+ create mode 100644 server/responseFormatter.ts
+ create mode 100644 server/roleAwareNotifications.ts
+ create mode 100644 server/routes.adminEmployees.ts
+ create mode 100644 server/routes.aiBioCoach.ts
+ create mode 100644 server/routes.analytics.ts
+ create mode 100644 server/routes.appointments.ts
+ create mode 100644 server/routes.auth.ts
+ create mode 100644 server/routes.backupBookings.ts
+ create mode 100644 server/routes.banners.ts
+ create mode 100644 server/routes.calendarAvailability.ts
+ create mode 100644 server/routes.calls.ts
+ create mode 100644 server/routes.campaigns.ts
+ create mode 100644 server/routes.cancellation.ts
+ create mode 100644 server/routes.contacts.ts
+ create mode 100644 server/routes.conversations.ts
+ create mode 100644 server/routes.email.ts
+ create mode 100644 server/routes.errorMonitoring.ts
+ create mode 100644 server/routes.facebook.ts
+ create mode 100644 server/routes.gallery.ts
+ create mode 100644 server/routes.invoice.loyalty.ts
+ create mode 100644 server/routes.invoices.ts
+ create mode 100644 server/routes.loyalty.ts
+ create mode 100644 server/routes.maintenance.ts
+ create mode 100644 server/routes.notifications.ts
+ create mode 100644 server/routes.password.ts
+ create mode 100644 server/routes.payerApproval.ts
+ create mode 100644 server/routes.phoneSettings.ts
+ create mode 100644 server/routes.pushNotifications.ts
+ create mode 100644 server/routes.quickReplies.ts
+ create mode 100644 server/routes.quickbooking.ts
+ create mode 100644 server/routes.quoteApproval.ts
+ create mode 100644 server/routes.quoteRequests.ts
+ create mode 100644 server/routes.recurringServices.ts
+ create mode 100644 server/routes.search.ts
+ create mode 100644 server/routes.sendgridWebhook.ts
+ create mode 100644 server/routes.serviceLimits.ts
+ create mode 100644 server/routes.smsConsent.ts
+ create mode 100644 server/routes.smsFallback.ts
+ create mode 100644 server/routes.stripeWebhooks.ts
+ create mode 100644 server/routes.subscriptions.ts
+ create mode 100644 server/routes.tags.ts
+ create mode 100644 server/routes.techJobs.ts
+ create mode 100644 server/routes.techProfiles.ts
+ create mode 100644 server/routes.ts
+ create mode 100644 server/routes.twilioStatusCallback.ts
+ create mode 100644 server/routes.twiml.ts
+ create mode 100644 server/routes.upsell.ts
+ create mode 100644 server/routes.users.ts
+ create mode 100644 server/routes.voiceTesting.ts
+ create mode 100644 server/routes.voiceWebhook.ts
+ create mode 100644 server/routes.webauthn.ts
+ create mode 100644 server/schedulingTools.ts
+ create mode 100644 server/security/paylink.ts
+ create mode 100644 server/securityService.ts
+ create mode 100644 server/seedPhoneLines.ts
+ create mode 100644 server/seedTags.ts
+ create mode 100644 server/serviceData.ts
+ create mode 100644 server/serviceManagement.ts
+ create mode 100644 server/services.ts
+ create mode 100644 server/session.d.ts
+ create mode 100644 server/sessionMiddleware.ts
+ create mode 100644 server/smsCampaignService.ts
+ create mode 100644 server/smsConsentService.ts
+ create mode 100644 server/smsNotificationService.ts
+ create mode 100644 server/storage.ts
+ create mode 100644 server/sync-all-services.ts
+ create mode 100644 server/sync-services.ts
+ create mode 100644 server/technicianMiddleware.ts
+ create mode 100644 server/templateVariableService.ts
+ create mode 100644 server/timeoutMonitorService.ts
+ create mode 100644 server/twilioSignatureMiddleware.ts
+ create mode 100644 server/updateCustomer.ts
+ create mode 100644 server/upsellService.ts
+ create mode 100644 server/vite.ts
+ create mode 100644 server/weatherScheduler.ts
+ create mode 100644 server/weatherService.ts
+ create mode 100644 server/websocketService.ts
+ create mode 100644 service-card-hover-focused.png
+ create mode 100644 service-card-hover.png
+ create mode 100644 shared/schema.ts
+ create mode 100644 tailwind.config.ts
+ create mode 100644 test-sms-918.ts
+ create mode 100644 tsconfig.json
+ create mode 100644 utils/phone.ts
+ create mode 100644 vite.config.ts
+Deleted branch main (was 397ffc2).
+Enumerating objects: 548, done.
+Counting objects: 100% (548/548), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (539/539), done.
+Writing objects: 100% (548/548), 35.07 MiB | 29.29 MiB/s, done.
+Total 548 (delta 16), reused 0 (delta 0), pack-reused 0 (from 0)
