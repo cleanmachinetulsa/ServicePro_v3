@@ -159,7 +159,7 @@ export default function MessagesPage() {
         onShowMobileProfile={() => setShowMobileProfileSheet(true)}
       />
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 border-r flex-col bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm`}>
           <ConversationFilters
             activeFilter={filter}
@@ -175,7 +175,7 @@ export default function MessagesPage() {
           />
         </div>
 
-        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 items-center justify-center bg-white dark:bg-gray-950`}>
+        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 items-center justify-center bg-white dark:bg-gray-950`}>
           {selectedConversation ? (
             <ThreadView conversationId={selectedConversation} />
           ) : (

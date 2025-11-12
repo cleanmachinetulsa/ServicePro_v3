@@ -870,7 +870,7 @@ export default function ThreadView({
             {getStatusBadge()}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap max-w-full">
             {/* Assign to Me */}
             {!conversation.assignedAgent && (
               <Button
@@ -1048,9 +1048,9 @@ export default function ThreadView({
         )}
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         {/* Main Message Area */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Scheduled Banner Slot - Extension point for Phase 2 scheduled message summaries */}
           {scheduledBannerSlot && (
             <div className="border-b dark:border-gray-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3">
@@ -1364,15 +1364,15 @@ export default function ThreadView({
                 {/* Attachment Button */}
                 <Button
                   variant="outline"
-                  className="h-[100px] w-14 rounded-xl border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
+                  className="h-16 w-12 rounded-lg border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingAttachments || selectedFiles.length > 0}
                   data-testid="button-attach-file"
                   title="Attach file"
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <Paperclip className="h-5 w-5 text-primary" />
-                    <span className="text-[10px] font-medium">File</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <Paperclip className="h-4 w-4 text-primary" />
+                    <span className="text-[9px] font-medium">File</span>
                   </div>
                 </Button>
                 
@@ -1381,13 +1381,13 @@ export default function ThreadView({
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="h-[100px] w-14 rounded-xl border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
+                      className="h-16 w-12 rounded-lg border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
                       data-testid="button-emoji-picker"
                       title="Add emoji"
                     >
-                      <div className="flex flex-col items-center gap-1">
-                        <Smile className="h-5 w-5 text-primary" />
-                        <span className="text-[10px] font-medium">Emoji</span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Smile className="h-4 w-4 text-primary" />
+                        <span className="text-[9px] font-medium">Emoji</span>
                       </div>
                     </Button>
                   </PopoverTrigger>
@@ -1409,7 +1409,7 @@ export default function ThreadView({
                     value={messageInput}
                     onChange={(e) => handleInputChange(e.target.value)}
                     placeholder="Type your message here..."
-                    className="min-h-[100px] resize-none text-sm leading-normal bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 rounded-xl pr-24 pb-8 font-sans"
+                    className="min-h-[140px] max-h-[240px] resize-none text-base leading-relaxed bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 rounded-xl pr-24 pb-8 font-sans"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -1441,13 +1441,13 @@ export default function ThreadView({
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="h-[100px] w-14 rounded-xl border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
+                      className="h-16 w-12 rounded-lg border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
                       data-testid="button-template-variables"
                       title="Insert template variable"
                     >
-                      <div className="flex flex-col items-center gap-1">
-                        <Code2 className="h-5 w-5 text-primary" />
-                        <span className="text-[10px] font-medium">Vars</span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Code2 className="h-4 w-4 text-primary" />
+                        <span className="text-[9px] font-medium">Vars</span>
                       </div>
                     </Button>
                   </PopoverTrigger>
@@ -1493,15 +1493,15 @@ export default function ThreadView({
                 <Button
                   onClick={handleSendMessage}
                   disabled={!messageInput.trim() || sendMessageMutation.isPending}
-                  className="h-[100px] w-20 bg-primary hover:bg-primary/90 text-white rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-16 w-16 bg-primary hover:bg-primary/90 text-white rounded-lg shadow-lg hover:shadow-xl transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="button-send"
                 >
                   {sendMessageMutation.isPending ? (
-                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <Send className="h-6 w-6" />
-                      <span className="text-xs font-medium">Send</span>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Send className="h-5 w-5" />
+                      <span className="text-[9px] font-medium">Send</span>
                     </div>
                   )}
                 </Button>
