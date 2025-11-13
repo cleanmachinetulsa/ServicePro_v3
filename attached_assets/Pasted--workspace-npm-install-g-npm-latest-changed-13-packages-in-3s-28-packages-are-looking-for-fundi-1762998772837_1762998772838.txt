@@ -1,0 +1,82 @@
+~/workspace$ npm install -g npm@latest
+
+changed 13 packages in 3s
+
+28 packages are looking for funding
+  run `npm fund` for details
+~/workspace$ npm fund
+rest-express@1.0.0
+├── https://github.com/sponsors/tannerlinsley
+│   └── @tanstack/react-query@5.76.1, @tanstack/query-core@5.76.0
+├── https://www.paypal.me/kirilvatev
+│   └── canvas-confetti@1.9.3
+├── https://polar.sh/cva
+│   └── class-variance-authority@0.7.1
+├── https://github.com/sponsors/kossnocorp
+│   └── date-fns@3.6.0
+├─┬ https://opencollective.com/express
+│ │ └── express@4.21.2
+│ ├── https://github.com/sponsors/sindresorhus
+│ │   └── merge-descriptors@1.0.3, is-stream@2.0.1, p-queue@6.6.2, get-port@5.1.1, p-limit@2.3.0, @alloc/quick-lru@5.2.0, binary-extensions@2.3.0, string-width@5.1.2
+│ ├── https://github.com/sponsors/ljharb
+│ │   └── qs@6.13.0, side-channel@1.0.6, call-bind@1.0.7, define-data-property@1.1.4, has-property-descriptors@1.0.2, object-inspect@1.13.2, get-intrinsic@1.3.0, function-bind@1.1.2, gopd@1.2.0, has-symbols@1.1.0, has-tostringtag@1.0.2, minimist@1.2.8, resolve@1.22.8, is-core-module@2.15.1, supports-preserve-symlinks-flag@1.0.0
+│ └── https://github.com/sponsors/feross
+│     └── safe-buffer@5.2.1, base64-js@1.5.1, run-parallel@1.2.0, queue-microtask@1.2.3
+├── https://github.com/sponsors/express-rate-limit
+│   └── express-rate-limit@8.2.1
+├── https://opencollective.com/ioredis
+│   └── ioredis@5.8.2
+├── https://github.com/sponsors/ai
+│   └── nanoid@5.1.6, nanoid@3.3.11
+├── https://github.com/sponsors/panva
+│   └── openid-client@6.8.1, jose@6.1.1, oauth4webapi@3.8.2
+├── https://github.com/sponsors/jaredhanson
+│   └── passport@0.7.0, passport-oauth2@1.8.0
+├── https://github.com/sponsors/gpbl
+│   └── react-day-picker@8.10.1
+├── https://opencollective.com/react-hook-form
+│   └── react-hook-form@7.55.0
+├── https://opencollective.com/libvips
+│   └── sharp@0.34.4, @img/sharp-libvips-linux-x64@1.2.3, @img/sharp-libvips-linuxmusl-x64@1.2.3, @img/sharp-linux-x64@0.34.4, @img/sharp-linuxmusl-x64@0.34.4
+├── https://github.com/sponsors/dcastil
+│   └── tailwind-merge@2.6.0
+├── https://github.com/sponsors/Wombosvideo
+│   └── tw-animate-css@1.2.5
+├── https://github.com/sponsors/colinhacks
+│   └── zod@3.24.4
+├─┬ https://opencollective.com/postcss/
+│ │ └── autoprefixer@10.4.20, postcss@8.4.47, postcss-js@4.0.1, postcss-load-config@4.0.2, postcss-nested@6.2.0
+│ └── https://github.com/sponsors/rawify
+│     └── fraction.js@4.3.7
+├── https://github.com/vitejs/vite?sponsor=1
+│   └── vite@5.4.21
+├── https://tidelift.com/funding/github/npm/loglevel
+│   └── loglevel@1.9.2
+├── https://github.com/sponsors/RubenVerborgh
+│   └── follow-redirects@1.15.9
+├── https://github.com/sponsors/broofa
+│   └── uuid@9.0.1
+├── https://github.com/sponsors/jimmywarting
+│   └── node-domexception@1.0.0
+├── https://github.com/chalk/ansi-styles?sponsor=1
+│   └── ansi-styles@4.3.0
+├── https://opencollective.com/parcel
+│   └── lightningcss@1.29.2, lightningcss-linux-x64-gnu@1.29.2, lightningcss-linux-x64-musl@1.29.2
+├─┬ https://opencollective.com/babel
+│ │ └── @babel/core@7.26.0
+│ └── https://opencollective.com/browserslist
+│     └── browserslist@4.24.2, caniuse-lite@1.0.30001718, update-browserslist-db@1.1.1
+├─┬ https://github.com/privatenumber/get-tsconfig?sponsor=1
+│ │ └── get-tsconfig@4.8.1
+│ └── https://github.com/privatenumber/resolve-pkg-maps?sponsor=1
+│     └── resolve-pkg-maps@1.0.0
+├─┬ https://paulmillr.com/funding/
+│ │ └── chokidar@3.6.0
+│ └── https://github.com/sponsors/jonschlinkert
+│     └── picomatch@2.3.1
+├── https://github.com/sponsors/antonk52
+│   └── lilconfig@3.1.3
+└── https://github.com/sponsors/isaacs
+    └── glob@10.4.5, foreground-child@3.3.0, signal-exit@4.1.0, jackspeak@3.4.3, minimatch@9.0.5, path-scurry@1.11.1
+
+~/workspace$ 
