@@ -321,6 +321,31 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
 
     console.log(`[TECH JOBS] Job ${appointmentId} status updated to: ${status}`);
 
+    // ✅ CUSTOMER NOTIFICATION: Send SMS when technician arrives on-site
+    if (status === 'on_site') {
+      try {
+        // Get customer phone number
+        const [customer] = await db
+          .select({ phone: customers.phone, name: customers.name })
+          .from(customers)
+          .where(eq(customers.id, appointment.customerId))
+          .limit(1);
+
+        if (customer && customer.phone) {
+          const { sendSMS } = await import('./notifications');
+          const customerName = customer.name ? customer.name.split(' ')[0] : 'there';
+          
+          const message = `Hey ${customerName}! 👋 Your Clean Machine technician has arrived and will be with you shortly. Get ready for that showroom shine! ✨`;
+          
+          await sendSMS(customer.phone, message);
+          console.log(`[TECH JOBS] On-site SMS notification sent to customer ${appointment.customerId}`);
+        }
+      } catch (smsError) {
+        // Log error but don't fail the status update
+        console.error('[TECH JOBS] Failed to send on-site SMS notification:', smsError);
+      }
+    }
+
     // TODO: Broadcast status update via WebSocket for real-time UI updates
 
     res.json({
