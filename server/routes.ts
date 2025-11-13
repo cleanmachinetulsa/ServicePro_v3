@@ -6,7 +6,7 @@ import { join } from 'path';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
 import { eq } from 'drizzle-orm';
-import { services as servicesTable, businessSettings } from '@shared/schema';
+import { services as servicesTable, businessSettings, agentPreferences } from '@shared/schema';
 import { registerLoyaltyRoutes } from './routes.loyalty';
 import { registerUpsellRoutes } from './routes.upsell';
 import { registerInvoiceRoutes } from './routes.invoices';
@@ -567,6 +567,58 @@ export async function registerRoutes(app: Express) {
     } catch (error) {
       console.error('Error updating business settings:', error);
       res.status(500).json({ success: false, error: 'Failed to update business settings' });
+    }
+  });
+
+  // Agent preferences endpoints
+  app.get('/api/agent-preferences', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const preferences = await db.select().from(agentPreferences).where(eq(agentPreferences.id, 1)).limit(1);
+      
+      // If no preferences exist, create default preferences
+      if (preferences.length === 0) {
+        const defaultPreferences = await db.insert(agentPreferences).values({
+          id: 1,
+          updatedBy: req.user?.id,
+        }).returning();
+        return res.json({ success: true, preferences: defaultPreferences[0] });
+      }
+      
+      res.json({ success: true, preferences: preferences[0] });
+    } catch (error) {
+      console.error('Error fetching agent preferences:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch agent preferences' });
+    }
+  });
+
+  app.put('/api/agent-preferences', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Validate request body against schema
+      const validationResult = insertAgentPreferencesSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid agent preferences data',
+          details: validationResult.error.errors 
+        });
+      }
+      
+      const updateData = {
+        ...validationResult.data,
+        updatedAt: new Date(),
+        updatedBy: req.user?.id,
+      };
+      
+      const updated = await db.update(agentPreferences)
+        .set(updateData)
+        .where(eq(agentPreferences.id, 1))
+        .returning();
+      
+      res.json({ success: true, preferences: updated[0], message: 'Agent preferences updated successfully' });
+    } catch (error) {
+      console.error('Error updating agent preferences:', error);
+      res.status(500).json({ success: false, error: 'Failed to update agent preferences' });
     }
   });
 

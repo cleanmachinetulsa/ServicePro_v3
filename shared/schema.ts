@@ -1092,6 +1092,44 @@ export const orgSettings = pgTable("org_settings", {
   updatedBy: integer("updated_by").references(() => users.id),
 });
 
+// Agent Preferences - AI chatbot personality and behavior settings (singleton table - only one row with id=1)
+export const agentPreferences = pgTable("agent_preferences", {
+  id: serial("id").primaryKey(),
+  
+  // Personality settings (1-5 scale)
+  professionalismLevel: integer("professionalism_level").notNull().default(4),
+  friendliness: integer("friendliness").notNull().default(4),
+  detailOrientation: integer("detail_orientation").notNull().default(3),
+  humorLevel: integer("humor_level").notNull().default(2),
+  enthusiasm: integer("enthusiasm").notNull().default(3),
+  
+  // Behavior settings
+  useCustomerName: boolean("use_customer_name").notNull().default(true),
+  askFollowUpQuestions: boolean("ask_follow_up_questions").notNull().default(true),
+  offerSuggestions: boolean("offer_suggestions").notNull().default(true),
+  sendConfirmationMessages: boolean("send_confirmation_messages").notNull().default(true),
+  proactiveServiceReminders: boolean("proactive_service_reminders").notNull().default(true),
+  holidayGreetings: boolean("holiday_greetings").notNull().default(true),
+  
+  // Language settings
+  formality: integer("formality").notNull().default(3), // 1-5 scale (casual to formal)
+  technicalTerms: integer("technical_terms").notNull().default(2), // 1-5 scale (simple to technical)
+  messageLength: integer("message_length").notNull().default(3), // 1-5 scale (concise to detailed)
+  defaultLanguage: varchar("default_language", { length: 10 }).notNull().default("en"),
+  useEmojis: boolean("use_emojis").notNull().default(true),
+  
+  // Messaging settings
+  smsOpeningMessage: text("sms_opening_message").notNull().default("Hi! Thanks for reaching out to Clean Machine Auto Detail. How can I help you today?"),
+  websiteOpeningMessage: text("website_opening_message").notNull().default("Welcome to Clean Machine! I'm here to help you schedule a detailing appointment or answer any questions."),
+  facebookOpeningMessage: text("facebook_opening_message").notNull().default("Hey there! Thanks for messaging Clean Machine. What can I do for you?"),
+  
+  // Holiday awareness
+  knownHolidays: jsonb("known_holidays").notNull().default('[]'),
+  
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
 // Shift Templates - Define standard shift types (Morning, Afternoon, Full Day, etc.)
 export const shiftTemplates = pgTable("shift_templates", {
   id: serial("id").primaryKey(),
@@ -1731,6 +1769,23 @@ export const insertBusinessSettingsSchema = createInsertSchema(businessSettings)
 
 export type InsertBusinessSettings = z.infer<typeof insertBusinessSettingsSchema>;
 export type BusinessSettings = typeof businessSettings.$inferSelect;
+
+export const insertAgentPreferencesSchema = createInsertSchema(agentPreferences).omit({
+  id: true,
+  updatedAt: true,
+}).extend({
+  professionalismLevel: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  friendliness: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  detailOrientation: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  humorLevel: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  enthusiasm: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  formality: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  technicalTerms: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+  messageLength: z.number().int().min(1).max(5, "Must be between 1 and 5"),
+});
+
+export type InsertAgentPreferences = z.infer<typeof insertAgentPreferencesSchema>;
+export type AgentPreferences = typeof agentPreferences.$inferSelect;
 
 export const insertServiceLimitSchema = createInsertSchema(serviceLimits).omit({
   id: true,
