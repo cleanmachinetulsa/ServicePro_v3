@@ -244,11 +244,32 @@ export async function getGoogleReviews(placeId?: string) {
     
     console.log('Fetching real-time reviews from Google Places API');
     
+    // Google Places API v1 requires NESTED field masks for review data
+    // Reference: https://developers.google.com/maps/documentation/places/web-service/choose-fields
+    const fieldMask = [
+      'id',
+      'displayName',
+      'rating',
+      'userRatingCount',
+      'reviews',
+      'reviews.authorAttribution',
+      'reviews.authorAttribution.displayName',
+      'reviews.authorAttribution.uri',
+      'reviews.authorAttribution.photoUri',
+      'reviews.rating',
+      'reviews.text',
+      'reviews.text.text',
+      'reviews.originalText',
+      'reviews.originalText.text',
+      'reviews.publishTime',
+      'reviews.relativePublishTimeDescription'
+    ].join(',');
+    
     const response = await axios.get(url, {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_API_KEY,
-        'X-Goog-FieldMask': 'reviews,rating,userRatingCount,displayName'
+        'X-Goog-FieldMask': fieldMask
       }
     });
 
