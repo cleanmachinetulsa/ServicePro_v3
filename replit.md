@@ -3,8 +3,27 @@
 ## Overview
 Clean Machine Auto Detail is an AI-powered web application designed to streamline operations for an auto detailing service. It provides a comprehensive solution for efficient business management and enhanced customer experience by integrating customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system leverages Google Workspace APIs for calendar, customer data, and photo management, while utilizing OpenAI for intelligent chatbot capabilities and Facebook Graph API for social media messaging.
 
-## Recent Updates (November 11, 2025)
-**Investor-Grade Showcase Page:**
+## Recent Updates (November 13, 2025)
+**Routing Fixes:**
+- Fixed technician page 404 error in deployment by adding missing route to App.tsx
+- Technician page now accessible at `/technician` with AuthGuard protection
+- Import and route properly configured for production deployment
+
+**Clean Machine Showcase Page:**
+- Created NEW Clean Machine showcase at `/clean-machine` highlighting the app's intelligent features
+- Showcases voicemail-aware missed call handling (waits 5-10s to read voicemail before sending SMS)
+- Displays multi-channel messaging capabilities (SMS, Facebook Messenger, Instagram DMs, web chat)
+- Features real-world intelligence scenarios with step-by-step flows
+- Highlights GPT-4o AI engine with 87% automation rate
+- Shows smart scheduling with weather checking and Google Calendar integration
+- Demonstrates iMessage-quality messaging features (read receipts, typing indicators, reactions)
+- Includes advanced capabilities: payment processing, security/compliance, business intelligence, operational features
+- Displays tech stack integrations (OpenAI, Twilio, Facebook Graph API, Google Workspace, Stripe)
+- Interactive animations with Framer Motion and gradient backgrounds
+- Separate from `/showcase` page (which remains for ServicePro white-label marketing)
+
+## Previous Updates (November 11, 2025)
+**ServicePro Investor-Grade Showcase Page:**
 - Rebuilt `/showcase` page as high-tech investor presentation with interactive elements and animations
 - Added Framer Motion animations: floating particles, gradient transitions, hover effects, auto-rotating AI flow
 - Implemented Recharts data visualizations: area charts, bar charts, pie charts, line charts for metrics
