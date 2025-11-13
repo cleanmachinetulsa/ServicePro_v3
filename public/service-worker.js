@@ -1,4 +1,4 @@
-const CACHE_NAME = 'comm-hub-v15-cache-cleared';
+const CACHE_NAME = 'comm-hub-v16-force-update';
 const urlsToCache = [
   '/',
   '/messages',
