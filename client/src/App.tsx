@@ -57,7 +57,9 @@ import PrivacyPolicyPage from './pages/privacy-policy';
 import CallMetricsPage from './pages/CallMetrics';
 import Maintenance from './pages/maintenance';
 import ShowcasePage from './pages/showcase';
+import CleanMachineShowcase from './pages/clean-machine-showcase';
 import SecuritySettingsPage from './pages/security-settings';
+import TechnicianPage from './pages/technician';
 
 // Helper function to render routes for a specific location
 function renderRoutes(loc: string) {
@@ -66,8 +68,9 @@ function renderRoutes(loc: string) {
       {/* Public maintenance page */}
       <Route path="/maintenance" component={Maintenance} />
       
-      {/* Public showcase/demo page */}
+      {/* Public showcase/demo pages */}
       <Route path="/showcase" component={ShowcasePage} />
+      <Route path="/clean-machine" component={CleanMachineShowcase} />
       
       {/* Public authentication routes */}
       <Route path="/login" component={LoginPage} />
@@ -147,6 +150,9 @@ function renderRoutes(loc: string) {
       </Route>
 
       {/* Technician portal routes */}
+      <Route path="/technician">
+        <AuthGuard><TechnicianPage /></AuthGuard>
+      </Route>
       <Route path="/tech/wizard" component={TechWizard} />
       <Route path="/tech/profile" component={TechProfile} />
       
