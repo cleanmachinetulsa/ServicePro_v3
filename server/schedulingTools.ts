@@ -142,10 +142,21 @@ export async function validateAddress(phone: string, address: string): Promise<A
     const result = await checkDistanceToBusinessLocation(address);
     
     if (!result.success) {
+      // Provide more helpful error message based on the specific failure
+      let errorMessage = 'Unable to validate that address. ';
+      
+      if ('enhancedAddress' in result && result.enhancedAddress) {
+        // Show what we tried
+        errorMessage += `I tried "${result.enhancedAddress}" but couldn't find it. `;
+      }
+      
+      // Helpful suggestions
+      errorMessage += 'Please include your street number and name (like "2710 South Hudson Place"). You don\'t need to include "Tulsa, OK" - I\'ll add that automatically!';
+      
       return {
         valid: false,
         inServiceArea: false,
-        message: 'Unable to validate address. Please provide a complete street address in the Tulsa area.',
+        message: errorMessage,
       };
     }
     
