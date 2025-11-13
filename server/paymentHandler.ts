@@ -4,6 +4,7 @@ import { db } from './db';
 import { invoices } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { sendInvoiceNotification } from './invoiceService';
+import { checkAndRewardReferral } from './referralService';
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -101,7 +102,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         const invoiceId = paymentIntent.metadata.invoiceId;
         
         // Update invoice status with both legacy and new payment status fields
-        await db
+        const [paidInvoice] = await db
           .update(invoices)
           .set({
             status: 'paid',          // Legacy field - backward compatibility
@@ -109,9 +110,28 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             paymentMethod: 'stripe',
             paidAt: new Date(),
           })
-          .where(eq(invoices.id, parseInt(invoiceId)));
+          .where(eq(invoices.id, parseInt(invoiceId)))
+          .returning();
         
         console.log(`Invoice ${invoiceId} marked as paid via Stripe`);
+        
+        // Check if this customer was referred and reward the referrer
+        // This triggers when the referee completes their first service via Stripe payment
+        if (paidInvoice && paidInvoice.customerId) {
+          try {
+            const referralResult = await checkAndRewardReferral(
+              paidInvoice.customerId,
+              paidInvoice.id  // Pass invoice ID for validation
+            );
+            
+            if (referralResult.success) {
+              console.log(`Referral reward awarded via Stripe: ${referralResult.pointsAwarded} points for customer ${paidInvoice.customerId}`);
+            }
+          } catch (referralError) {
+            // Log error but don't fail the payment processing
+            console.error('Error processing referral reward (Stripe):', referralError);
+          }
+        }
         break;
         
       case 'payment_intent.payment_failed':
@@ -155,6 +175,24 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
     
     if (!updatedInvoice) {
       return res.status(404).json({ error: 'Invoice not found' });
+    }
+    
+    // Check if this customer was referred and reward the referrer
+    // This triggers when the referee completes their first service
+    if (updatedInvoice.customerId) {
+      try {
+        const referralResult = await checkAndRewardReferral(
+          updatedInvoice.customerId,
+          updatedInvoice.id  // Pass invoice ID for validation
+        );
+        
+        if (referralResult.success) {
+          console.log(`Referral reward awarded: ${referralResult.pointsAwarded} points for customer ${updatedInvoice.customerId}`);
+        }
+      } catch (referralError) {
+        // Log error but don't fail the payment
+        console.error('Error processing referral reward:', referralError);
+      }
     }
     
     res.status(200).json({ success: true, invoice: updatedInvoice });

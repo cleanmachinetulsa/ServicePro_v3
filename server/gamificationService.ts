@@ -12,6 +12,11 @@ import {
   type InsertLoyaltyTier
 } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { ExtractTablesWithRelations } from "drizzle-orm";
+
+// Type for database executor - can be the global db or an active transaction
+type DbExecutor = NodePgDatabase<any> | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * Award points to a customer
@@ -21,15 +26,16 @@ export async function awardPoints(
   amount: number,
   source: string,
   sourceId: number | null,
-  description: string
+  description: string,
+  executor: DbExecutor = db
 ): Promise<{ success: boolean; currentPoints: number }> {
   try {
     // Get or create loyalty points record for customer
-    let customerPoints = await getCustomerLoyaltyPoints(customerId);
+    let customerPoints = await getCustomerLoyaltyPoints(customerId, executor);
     
     if (!customerPoints) {
       // Create new loyalty points record for customer
-      const [newPoints] = await db
+      const [newPoints] = await executor
         .insert(loyaltyPoints)
         .values({ customerId, points: 0 })
         .returning();
@@ -41,7 +47,7 @@ export async function awardPoints(
     const newPointsTotal = customerPoints.points + amount;
     
     // Update the loyalty points record
-    const [updatedPoints] = await db
+    const [updatedPoints] = await executor
       .update(loyaltyPoints)
       .set({ 
         points: newPointsTotal,
@@ -51,7 +57,7 @@ export async function awardPoints(
       .returning();
     
     // Record the transaction
-    await db.insert(pointsTransactions).values({
+    await executor.insert(pointsTransactions).values({
       loyaltyPointsId: customerPoints.id,
       amount,
       description,
@@ -61,7 +67,7 @@ export async function awardPoints(
     });
     
     // Check if customer has earned any new achievements
-    await checkForNewAchievements(customerId, newPointsTotal);
+    await checkForNewAchievements(customerId, newPointsTotal, executor);
     
     return { 
       success: true, 
@@ -144,8 +150,8 @@ export async function redeemPoints(
 /**
  * Get a customer's loyalty points
  */
-export async function getCustomerLoyaltyPoints(customerId: number) {
-  const [customerPoints] = await db
+export async function getCustomerLoyaltyPoints(customerId: number, executor: DbExecutor = db) {
+  const [customerPoints] = await executor
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
@@ -213,13 +219,13 @@ export async function getCustomerAchievements(customerId: number) {
 /**
  * Check if a customer has earned any new achievements
  */
-async function checkForNewAchievements(customerId: number, currentPoints: number) {
+async function checkForNewAchievements(customerId: number, currentPoints: number, executor: DbExecutor = db) {
   try {
     // Get all achievements
-    const allAchievements = await db.select().from(achievements);
+    const allAchievements = await executor.select().from(achievements);
     
     // Get customer's existing achievements
-    const existingAchievements = await db
+    const existingAchievements = await executor
       .select()
       .from(customerAchievements)
       .where(eq(customerAchievements.customerId, customerId));
@@ -249,7 +255,7 @@ async function checkForNewAchievements(customerId: number, currentPoints: number
     
     // Save new achievements
     if (newAchievements.length > 0) {
-      await db.insert(customerAchievements).values(newAchievements);
+      await executor.insert(customerAchievements).values(newAchievements);
     }
     
     return newAchievements.length;
@@ -419,7 +425,8 @@ export async function awardPointsForAppointment(
  */
 export async function awardPointsForReferral(
   customerId: number,
-  referredCustomerId: number
+  referredCustomerId: number,
+  executor: DbExecutor = db
 ) {
   // Referrals are worth 500 points
   const referralPoints = 500;
@@ -429,7 +436,8 @@ export async function awardPointsForReferral(
     referralPoints,
     "referral",
     referredCustomerId,
-    `Earned ${referralPoints} points for referring a new customer`
+    `Earned ${referralPoints} points for referring a new customer`,
+    executor  // Pass transaction executor through
   );
 }
 
