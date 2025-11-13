@@ -660,6 +660,7 @@ export const referrals = pgTable("referrals", {
   signedUpAt: timestamp("signed_up_at"), // When referee created account/completed first booking
   completedAt: timestamp("completed_at"), // When referee completed their first service
   rewardedAt: timestamp("rewarded_at"), // When referrer received their points
+  rewardedInvoiceId: integer("rewarded_invoice_id"), // Invoice ID that triggered the reward (ensures idempotency)
   notes: text("notes"), // Optional notes about the referral
 });
 

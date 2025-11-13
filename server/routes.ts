@@ -8,6 +8,7 @@ import { db } from './db';
 import { eq } from 'drizzle-orm';
 import { services as servicesTable, businessSettings, agentPreferences } from '@shared/schema';
 import { registerLoyaltyRoutes } from './routes.loyalty';
+import { registerReferralRoutes } from './routes.referral';
 import { registerUpsellRoutes } from './routes.upsell';
 import { registerInvoiceRoutes } from './routes.invoices';
 import { registerEnhancedCustomerRoutes } from './enhancedCustomerRoutes';
@@ -1723,6 +1724,7 @@ export async function registerRoutes(app: Express) {
   });
 
   registerLoyaltyRoutes(app);
+  registerReferralRoutes(app);
   registerUpsellRoutes(app);
   registerInvoiceRoutes(app);
   registerEnhancedCustomerRoutes(app);
