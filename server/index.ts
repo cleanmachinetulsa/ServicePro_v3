@@ -77,6 +77,10 @@ app.get('/service-worker.js', (req, res) => {
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [
+      'https://cleanmachinetulsa.com',
+      'http://cleanmachinetulsa.com',
+      'https://www.cleanmachinetulsa.com',
+      'http://www.cleanmachinetulsa.com',
       'https://clean-machine-auto-detail.replit.app',
       'https://*.replit.dev',
       'http://*.replit.dev',
