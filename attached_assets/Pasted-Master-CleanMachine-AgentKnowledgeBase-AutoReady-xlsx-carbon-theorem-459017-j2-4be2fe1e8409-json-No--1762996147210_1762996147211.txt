@@ -1,0 +1,350 @@
+Master_CleanMachine_AgentKnowledgeBase_AutoReady.xlsx
+carbon-theorem-459017-j2-4be2fe1e8409.json
+No file found at "attached_assets/carbon-theorem-459017-j2-4be2fe1e8409.json", it may have been deleted
+Master_CleanMachine_AgentKnowledgeBase_AutoReady.xlsx
+
+photos
+
+No file found at "photos", it may have been deleted
+
+photo_upload.py
+
+No file found at "photo_upload.py", it may have been deleted
+
+calendar_apy.py
+
+No file found at "calendar_apy.py", it may have been deleted
+
+Diff: AppointmentScheduler.tsx
+
+
+
+Unified
+
+Split
+client/src/components/AppointmentScheduler.tsx
+import React, { useState, useEffect } from "react";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { format, parseISO, isWeekend, addMonths, isSameDay, isBefore } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import ServiceAreaCheck from "./ServiceAreaCheck";
+carbon-theorem-459017-j2-4be2fe1e8409.json
+No file found at "carbon-theorem-459017-j2-4be2fe1e8409.json", it may have been deleted
+
+Multiplayer
+
+Multiplayers
+1 / 3
+Add people by username or email
+
+Invite
+Offline
+1
+CL
+
+claybowl
+claybowl
+Can edit
+
+
+Refer a friend and earn more credits
+Private join link
+Anyone with this link can edit files
+
+https://replit.com/join/rwbgrwgcql-cleanmachinetul
+
+Copy join link
+Want to revoke access to this link? Generate a new link
+
+User Settings
+
+User Settings
+The following settings apply to your account and will be used across all your Apps.
+Agent & Assistant
+Agent Audio Notification
+Play a sound when the Agent needs your response.
+
+Agent Push Notification
+Send a push notification when the Agent needs your response.
+
+Assistant Push Notification
+Send a push notification when the Assistant needs your response.
+
+App Preview
+Automatic Preview
+Open a web preview automatically when a port is open
+
+Forward Opened Ports Automatically
+Automatically configure detected newly opened ports.
+
+all ports except localhost
+
+all ports except localhost
+Appearance
+Font Size
+Change the font size of the editor.
+
+normal
+
+normal
+Code Editing
+Advanced Developer Settings
+
+Console
+
+
+npm run dev
+
+Ask Agent…
+
+
+ab_Clean4-04.jpg
+
+Failed to load media file
+
+Shell
+
+
+
+
+Enable "Accessible Terminal" in Workspace Settings to use a screen reader with the shell.
+
+Assistant
+
+
+
+New chat
+
+Chats
+Archived
+Clear Replit cache Chrome
+
+6 hours ago
+Clear cache instructions
+
+2 days ago
+Showcase page white screen error
+
+2 days ago
+Shell code execution and verification
+
+5 days ago
+Test Twilio SMS message after number change
+
+5 days ago
+Github disconnected troubleshooting
+
+7 days ago
+Login redirect issue messages page
+
+11 days ago
+Download to Android
+
+12 days ago
+Messages page security and access
+
+12 days ago
+SendGrid API and SMTP integration
+
+12 days ago
+Link Google voice replacement page
+
+12 days ago
+Chat AI vs n8n for scheduling
+
+26 days ago
+Dashboard page redesign appointment calendar
+
+29 days ago
+troubleshooting ssl certificate connection issues domain
+
+6 months ago
+twilio sms webhook route for replit app
+
+6 months ago
+Scheduler Types Differences Explained Clearly
+
+6 months ago
+google sheet pricing data import troubleshooting
+
+6 months ago
+Importing Logic Files Between Replit Apps
+
+6 months ago
+customer notification example send on my way
+
+6 months ago
+Troubleshooting Chatbot Logo Display Issue
+
+6 months ago
+
+Settings
+I ran the shell code. Read the code and tell me if it worked
+
+JB
+
+cleanmachinetul
+Assistant
+5 days ago
+Read 13 files
+I don't see any shell code execution in the recent console output or workflow logs. The console shows your Express server running normally with regular API requests (mostly /api/users/me authentication checks), but there's no indication of a new shell command being executed.
+
+The most recent notable event in the logs was:
+
+9:27:01 PM [express] POST /api/test-sms 200 in 46ms
+This suggests someone tested the SMS endpoint, but I don't see any shell command output.
+
+To help you verify if your shell command worked, I need to know:
+
+What shell command did you run?
+What were you trying to accomplish?
+If you ran a command in a separate shell/terminal, the output wouldn't appear in the workflow console shown here. You can check:
+
+The Shell tab in Replit for command output
+Look for any new files created
+Check if any services started/stopped
+Review any error messages that appeared
+Let me know what command you executed and I can help you determine if it succeeded.
+
+
+Scroll to latest
+Assistant mode
+
+advanced
+Claude 4.5 Sonnet
+
+Ask Assistant, use @ to include specific files...
+
+
+
+TWILIO_VOICE_SETUP.md
+
+
+Security Scanner
+
+Security Scanner
+Beta
+Run a scan to check for potential security risks in your application. Scans are typically complete within minutes. Learn more
+
+Run scan
+2 potential vulnerabilities found.
+Last ran on
+ 
+7:00 pm, Nov 12, 2025
+Security
+Bracket object notation with user input is present, this might allow an attacker to access all properties of the object and even it's prototype. Use literal values for object properties.
+
+
+Hide
+
+Fix with Agent
+Security
+Bracket object notation with user input is present, this might allow an attacker to access all properties of the object and even it's prototype. Use literal values for object properties.
+
+
+Hide
+
+Fix with Agent
+Vulnerability scans are enabled by the following Replit partners:
+Security scans are powered by Semgrep Community Edition.
+
+Git
+
+
+main
+
+
+
+Branch has already been pushed to 'origin/main'
+Remote Updates
+cleanmachinetulsa/CleanMachineAppOfficial
+origin/main•upstream
+last fetched 17 hours ago
+
+Fetch
+9 commits to push
+
+Sync with Remote
+
+Pull
+
+Push
+Commit
+There are no changes to commit.
+
+Publishing
+
+
+Overview
+
+Logs
+
+Analytics
+
+Resources
+
+Domains
+
+Manage
+Search
+
+Time
+Log
+11-12 18:31:17
+[PUSH INIT] Push subscriptions table initialized
+11-12 19:02:24
+body: '< - See `errorRedactor` option in `gaxios` for configuration>.',
+11-12 19:02:24
+validateStatus: [Function: validateStatus],
+11-12 19:03:09
+[SECURITY] Blocked request from unauthorized origin: https://cleanmachinetulsa.com
+11-12 19:03:09
+Error: Not allowed by CORS
+11-12 19:03:09
+at origin (file:///home/runner/workspace/dist/index.js:29241:16)
+11-12 19:03:09
+at /home/runner/workspace/node_modules/cors/lib/index.js:219:13
+11-12 19:03:09
+at optionsCallback (/home/runner/workspace/node_modules/cors/lib/index.js:199:9)
+11-12 19:03:09
+at corsMiddleware (/home/runner/workspace/node_modules/cors/lib/index.js:204:7)
+11-12 19:03:09
+at Layer.handle [as handle_request] (/home/runner/workspace/node_modules/express/lib/router/layer.js:95:5)
+11-12 19:03:09
+at trim_prefix (/home/runner/workspace/node_modules/express/lib/router/index.js:328:13)
+11-12 19:03:09
+at /home/runner/workspace/node_modules/express/lib/router/index.js:286:9
+11-12 19:03:09
+at Function.process_params (/home/runner/workspace/node_modules/express/lib/router/index.js:346:12)
+11-12 19:03:09
+at next (/home/runner/workspace/node_modules/express/lib/router/index.js:280:10)
+11-12 19:03:09
+at urlencodedParser (/home/runner/workspace/node_modules/body-parser/lib/types/urlencoded.js:94:7)
+11-12 19:03:09
+[SECURITY] Blocked request from unauthorized origin: https://cleanmachinetulsa.com
+11-12 19:03:09
+Error: Not allowed by CORS
+11-12 19:03:09
+at origin (file:///home/runner/workspace/dist/index.js:29241:16)
+11-12 19:03:09
+at /home/runner/workspace/node_modules/cors/lib/index.js:219:13
+11-12 19:03:09
+at optionsCallback (/home/runner/workspace/node_modules/cors/lib/index.js:199:9)
+11-12 19:03:09
+at corsMiddleware (/home/runner/workspace/node_modules/cors/lib/index.js:204:7)
+11-12 19:03:09
+at Layer.handle [as handle_request] (/home/runner/workspace/node_modules/express/lib/router/layer.js:95:5)
