@@ -145,7 +145,7 @@ export function ActionableNotificationsBanner() {
                   {/* Pending Confirmations */}
                   {pendingConfirmations.length > 0 && (
                     <button
-                      onClick={() => setLocation('/dashboard')}
+                      onClick={() => setLocation('/dashboard?tab=customers')}
                       className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg border-2 border-purple-200 dark:border-purple-900 hover:border-purple-400 dark:hover:border-purple-700 transition-all group text-left"
                       data-testid="alert-pending-confirmations"
                     >

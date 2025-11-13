@@ -649,6 +649,17 @@ export default function BusinessSettings() {
           lunchHour: businessHours.lunchHour,
           lunchMinute: businessHours.lunchMinute,
           daysOfWeek: businessHours.daysOfWeek,
+          // Seasonal hours
+          activeScheduleType,
+          summerStartHour: summerHours.startHour,
+          summerStartMinute: summerHours.startMinute,
+          summerEndHour: summerHours.endHour,
+          summerEndMinute: summerHours.endMinute,
+          winterStartHour: winterHours.startHour,
+          winterStartMinute: winterHours.startMinute,
+          winterEndHour: winterHours.endHour,
+          winterEndMinute: winterHours.endMinute,
+          // Other settings
           enableLunchBreak,
           allowWeekendBookings,
           halfHourIncrements,
