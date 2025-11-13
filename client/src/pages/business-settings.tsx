@@ -632,7 +632,38 @@ export default function BusinessSettings() {
     { value: 6, label: "Saturday" },
   ];
   
+  // Validate that start time is before end time
+  const validateHours = (startHour: number, startMinute: number, endHour: number, endMinute: number, label: string): boolean => {
+    const startTimeMinutes = startHour * 60 + startMinute;
+    const endTimeMinutes = endHour * 60 + endMinute;
+    
+    if (startTimeMinutes >= endTimeMinutes) {
+      toast({
+        title: "Invalid Hours",
+        description: `${label} start time must be before end time.`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
+  };
+  
   const handleSaveBusinessHours = async () => {
+    // Always validate the currently active schedule type
+    if (activeScheduleType === 'regular') {
+      if (!validateHours(businessHours.startHour, businessHours.startMinute, businessHours.endHour, businessHours.endMinute, "Regular hours")) {
+        return;
+      }
+    } else if (activeScheduleType === 'summer') {
+      if (!validateHours(summerHours.startHour, summerHours.startMinute, summerHours.endHour, summerHours.endMinute, "Summer hours")) {
+        return;
+      }
+    } else if (activeScheduleType === 'winter') {
+      if (!validateHours(winterHours.startHour, winterHours.startMinute, winterHours.endHour, winterHours.endMinute, "Winter hours")) {
+        return;
+      }
+    }
+    
     setIsSaving(true);
     try {
       const response = await fetch('/api/business-settings', {
