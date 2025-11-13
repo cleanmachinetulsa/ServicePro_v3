@@ -166,6 +166,17 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showBusinessChat, setShowBusinessChat] = useState(false);
   
+  // Read tab from URL query parameter on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam) {
+        setActiveTab(tabParam);
+      }
+    }
+  }, [location]);
+  
   // Compatibility mapping for old tab names to new structure
   const tabCompatibilityMap: Record<string, string> = {
     'today': 'dashboard',
