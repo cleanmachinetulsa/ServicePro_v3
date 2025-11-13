@@ -246,22 +246,26 @@ export default function CleanMachineShowcase() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
       {/* Animated background particles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(30)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-1 h-1 bg-blue-400/30 rounded-full"
-            animate={{
-              x: [Math.random() * window.innerWidth, Math.random() * window.innerWidth],
-              y: [Math.random() * window.innerHeight, Math.random() * window.innerHeight],
-              opacity: [0.2, 0.8, 0.2]
-            }}
-            transition={{
-              duration: Math.random() * 10 + 10,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-          />
-        ))}
+        {[...Array(30)].map((_, i) => {
+          const width = typeof window !== 'undefined' ? window.innerWidth : 1920;
+          const height = typeof window !== 'undefined' ? window.innerHeight : 1080;
+          return (
+            <motion.div
+              key={i}
+              className="absolute w-1 h-1 bg-blue-400/30 rounded-full"
+              animate={{
+                x: [Math.random() * width, Math.random() * width],
+                y: [Math.random() * height, Math.random() * height],
+                opacity: [0.2, 0.8, 0.2]
+              }}
+              transition={{
+                duration: Math.random() * 10 + 10,
+                repeat: Infinity,
+                ease: "linear"
+              }}
+            />
+          );
+        })}
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-16 space-y-24">
