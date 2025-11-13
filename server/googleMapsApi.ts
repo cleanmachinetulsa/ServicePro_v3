@@ -32,7 +32,65 @@ async function getMaxDriveTime(): Promise<number> {
 }
 
 /**
+ * Smart address preprocessing to enhance incomplete addresses
+ * - Adds "Tulsa, OK" if city/state missing
+ * - Normalizes common abbreviations
+ * - Makes validation smoother for customers
+ */
+function preprocessAddress(rawAddress: string): string {
+  let address = rawAddress.trim();
+  
+  // Normalize common street abbreviations (case-insensitive)
+  const abbreviations: Record<string, string> = {
+    'pl': 'Pl',
+    'place': 'Pl',
+    'st': 'St',
+    'street': 'St',
+    'ave': 'Ave',
+    'avenue': 'Ave',
+    'rd': 'Rd',
+    'road': 'Rd',
+    'dr': 'Dr',
+    'drive': 'Dr',
+    'ln': 'Ln',
+    'lane': 'Ln',
+    'ct': 'Ct',
+    'court': 'Ct',
+    'blvd': 'Blvd',
+    'boulevard': 'Blvd',
+    'pkwy': 'Pkwy',
+    'parkway': 'Pkwy',
+    'cir': 'Cir',
+    'circle': 'Cir'
+  };
+  
+  // Replace street type abbreviations (match word boundaries)
+  for (const [abbr, standard] of Object.entries(abbreviations)) {
+    const regex = new RegExp(`\\b${abbr}\\b`, 'gi');
+    address = address.replace(regex, standard);
+  }
+  
+  // Check if address already has city and state
+  const hasCity = /tulsa/i.test(address);
+  const hasState = /\b(ok|oklahoma)\b/i.test(address);
+  const hasZip = /\b74\d{3}\b/.test(address);
+  
+  // If missing city/state, append Tulsa, OK
+  if (!hasCity && !hasState && !hasZip) {
+    address = `${address}, Tulsa, OK`;
+    console.log(`[ADDRESS PREPROCESSING] Enhanced "${rawAddress}" → "${address}"`);
+  } else if (hasCity && !hasState) {
+    // Has city but no state
+    address = `${address}, OK`;
+    console.log(`[ADDRESS PREPROCESSING] Added state: "${rawAddress}" → "${address}"`);
+  }
+  
+  return address;
+}
+
+/**
  * Geocode an address to get its coordinates
+ * Now includes smart preprocessing for incomplete addresses
  */
 export async function geocodeAddress(address: string) {
   try {
@@ -43,20 +101,40 @@ export async function geocodeAddress(address: string) {
       return { success: false, error: 'API key configuration error' };
     }
 
+    // Smart preprocessing: enhance incomplete addresses
+    const enhancedAddress = preprocessAddress(address);
+
     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
       params: {
-        address: address,
-        key: apiKey
+        address: enhancedAddress,
+        key: apiKey,
+        components: 'locality:Tulsa|administrative_area:OK|country:US'  // Bias results to Tulsa, OK
       }
     });
 
     if (response.data.status !== 'OK') {
       console.error('Geocoding error:', response.data.status, response.data.error_message);
+      
+      // Provide more helpful error messages
+      if (response.data.status === 'ZERO_RESULTS') {
+        return { 
+          success: false, 
+          error: 'Address not found',
+          originalAddress: address,
+          enhancedAddress: enhancedAddress
+        };
+      }
+      
       return { success: false, error: 'Failed to geocode address' };
     }
 
     if (!response.data.results || response.data.results.length === 0) {
-      return { success: false, error: 'No results found for address' };
+      return { 
+        success: false, 
+        error: 'No results found for address',
+        originalAddress: address,
+        enhancedAddress: enhancedAddress
+      };
     }
 
     const location = response.data.results[0].geometry.location;
@@ -65,7 +143,9 @@ export async function geocodeAddress(address: string) {
     return {
       success: true,
       location,
-      formattedAddress
+      formattedAddress,
+      originalAddress: address,
+      enhancedAddress: enhancedAddress
     };
   } catch (error) {
     console.error('Error geocoding address:', error);
@@ -166,7 +246,7 @@ export async function calculateETAAndGenerateNavLink(address: string) {
     
     // Calculate ETA (current time + drive time)
     const now = new Date();
-    const etaMinutes = Math.ceil(distanceResult.driveTime.minutes);
+    const etaMinutes = Math.ceil(distanceResult.driveTime?.minutes || 0);
     const etaTime = new Date(now.getTime() + etaMinutes * 60000);
     
     // Format ETA time nicely (e.g., "12:45 PM")
@@ -187,7 +267,7 @@ export async function calculateETAAndGenerateNavLink(address: string) {
         time: etaTime.toISOString(),
         formatted: etaFormatted,
         minutes: etaMinutes,
-        driveTimeText: distanceResult.driveTime.text
+        driveTimeText: distanceResult.driveTime?.text || 'Unknown'
       },
       navigation: {
         url: navigationUrl,

@@ -9,6 +9,33 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
 
 ## Recent Updates (November 2025)
 
+### Smart Address Validation - Seamless Customer Experience
+**Date: November 13, 2025**
+
+**Feature**: Automatic address enhancement and normalization for smoother booking flow
+
+**Problem Solved**: Customers were frustrated when entering addresses like "2710 South Hudson pl" failed validation, requiring multiple attempts to get the format just right.
+
+**Solution Implemented**:
+1. **Smart Preprocessing** (`server/googleMapsApi.ts`):
+   - Automatically appends "Tulsa, OK" if city/state missing
+   - Normalizes street abbreviations (pl→Pl, st→St, ave→Ave, etc.)
+   - Biases Google Maps results to Tulsa, OK area
+   - Customers can now just type street address without full formatting
+
+2. **Better Error Messages** (`server/schedulingTools.ts`):
+   - Shows what the system tried: "I tried '2710 South Hudson Pl, Tulsa, OK' but couldn't find it"
+   - Clear guidance: "Please include your street number and name. You don't need to include 'Tulsa, OK' - I'll add that automatically!"
+   - Reduces customer frustration and retry attempts
+
+**Examples**:
+- "2710 South Hudson pl" → Enhanced to "2710 South Hudson Pl, Tulsa, OK" ✅
+- "123 main st" → Enhanced to "123 Main St, Tulsa, OK" ✅
+- "456 Elm Avenue" → Enhanced to "456 Elm Ave, Tulsa, OK" ✅
+- Full addresses with city/state work as before ✅
+
+**Status**: ✅ Production ready - Tested and deployed
+
 ### Critical Bug Fixes - Production Ready
 **Date: November 13, 2025**
 
