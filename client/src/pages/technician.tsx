@@ -271,10 +271,80 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
 
 export default function TechnicianPage() {
   const [demoMode, setDemoMode] = useState(false);
+  const [hasAutoEnabled, setHasAutoEnabled] = useState(false);
+  const [userPreferenceSet, setUserPreferenceSet] = useState(false);
 
   return (
     <TechnicianProvider demoMode={demoMode} demoJobs={DEMO_JOBS}>
-      <TechnicianContent demoMode={demoMode} onToggleDemo={() => setDemoMode(!demoMode)} />
+      <TechnicianContentWrapper 
+        demoMode={demoMode} 
+        setDemoMode={setDemoMode}
+        hasAutoEnabled={hasAutoEnabled}
+        setHasAutoEnabled={setHasAutoEnabled}
+        userPreferenceSet={userPreferenceSet}
+        setUserPreferenceSet={setUserPreferenceSet}
+      />
     </TechnicianProvider>
+  );
+}
+
+function TechnicianContentWrapper({ 
+  demoMode, 
+  setDemoMode,
+  hasAutoEnabled,
+  setHasAutoEnabled,
+  userPreferenceSet,
+  setUserPreferenceSet,
+}: { 
+  demoMode: boolean; 
+  setDemoMode: (val: boolean) => void;
+  hasAutoEnabled: boolean;
+  setHasAutoEnabled: (val: boolean) => void;
+  userPreferenceSet: boolean;
+  setUserPreferenceSet: (val: boolean) => void;
+}) {
+  const { jobs, isLoadingJobs } = useTechnician();
+  const { toast } = useToast();
+
+  // Auto-enable demo mode ONCE when:
+  // 1. Data has finished loading (not isLoading)
+  // 2. No real jobs exist (jobs.length === 0)
+  // 3. User hasn't set a preference yet (manual toggle)
+  // 4. We haven't already auto-enabled
+  useEffect(() => {
+    if (!isLoadingJobs && !userPreferenceSet && !hasAutoEnabled && jobs.length === 0) {
+      console.log('[TECH PAGE] No real jobs found - auto-enabling demo mode');
+      setDemoMode(true);
+      setHasAutoEnabled(true);
+      toast({
+        title: 'Demo Mode Activated',
+        description: 'No scheduled jobs found. Showing 3 sample jobs for preview.',
+      });
+    }
+    
+    // If real jobs arrive, reset the auto-enable flag so demo can auto-enable again if jobs disappear
+    if (jobs.length > 0 && hasAutoEnabled) {
+      setHasAutoEnabled(false);
+    }
+  }, [isLoadingJobs, jobs.length, userPreferenceSet, hasAutoEnabled, setDemoMode, setHasAutoEnabled, toast]);
+
+  const handleToggleDemo = () => {
+    setDemoMode(!demoMode);
+    setUserPreferenceSet(true); // User has made a choice - respect it permanently
+    if (!demoMode) {
+      toast({
+        title: 'Demo Mode Activated',
+        description: '3 sample jobs loaded for preview',
+      });
+    } else {
+      toast({
+        title: 'Demo Mode Deactivated',
+        description: 'Showing real jobs from your calendar',
+      });
+    }
+  };
+
+  return (
+    <TechnicianContent demoMode={demoMode} onToggleDemo={handleToggleDemo} />
   );
 }
