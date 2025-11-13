@@ -642,6 +642,27 @@ export const redeemedRewards = pgTable("redeemed_rewards", {
   // Note: Table name remains redeemed_rewards for database compatibility, but UI shows "Redeemed Loyalty Offers"
 });
 
+// Referral tracking for refer-a-friend loyalty program
+// Status flow: pending → signed_up → first_service_completed → rewarded
+// Optional states: expired (if code expires), invalid (fraud/abuse detection)
+export const referrals = pgTable("referrals", {
+  id: serial("id").primaryKey(),
+  referrerId: integer("referrer_id").notNull().references(() => customers.id), // Customer who made the referral
+  referralCode: varchar("referral_code", { length: 20 }).notNull().unique(), // Unique code for tracking (e.g., "JOHN-ABC123")
+  refereePhone: varchar("referee_phone", { length: 20 }), // Phone number of person being referred
+  refereeEmail: text("referee_email"), // Email of person being referred
+  refereeName: text("referee_name"), // Name of person being referred (optional)
+  refereeCustomerId: integer("referee_customer_id").references(() => customers.id), // Once they sign up, link to their customer record
+  status: varchar("status", { length: 30 }).notNull().default("pending"), // 'pending', 'signed_up', 'first_service_completed', 'rewarded', 'expired', 'invalid'
+  pointsAwarded: integer("points_awarded").default(500), // Points given to referrer when referee completes first service
+  createdAt: timestamp("created_at").defaultNow(), // When referral link was generated
+  expiresAt: timestamp("expires_at"), // Optional expiration for referral code (default: no expiration)
+  signedUpAt: timestamp("signed_up_at"), // When referee created account/completed first booking
+  completedAt: timestamp("completed_at"), // When referee completed their first service
+  rewardedAt: timestamp("rewarded_at"), // When referrer received their points
+  notes: text("notes"), // Optional notes about the referral
+});
+
 // Tables for post-purchase upsell system
 export const upsellOffers = pgTable("upsell_offers", {
   id: serial("id").primaryKey(),
@@ -1463,6 +1484,16 @@ export const insertPointsTransactionSchema = createInsertSchema(pointsTransactio
   expiryDate: true,
 });
 
+export const insertReferralSchema = createInsertSchema(referrals).omit({
+  id: true,
+  createdAt: true,
+  signedUpAt: true,
+  completedAt: true,
+  rewardedAt: true,
+});
+
+export type InsertReferral = z.infer<typeof insertReferralSchema>;
+
 export const insertUpsellOfferSchema = createInsertSchema(upsellOffers).pick({
   name: true,
   description: true,
@@ -1854,6 +1885,7 @@ export type CustomerAchievement = typeof customerAchievements.$inferSelect;
 export type LoyaltyTier = typeof loyaltyTiers.$inferSelect;
 export type RewardService = typeof rewardServices.$inferSelect;
 export type RedeemedReward = typeof redeemedRewards.$inferSelect;
+export type Referral = typeof referrals.$inferSelect;
 export type UpsellOffer = typeof upsellOffers.$inferSelect;
 export type AppointmentUpsell = typeof appointmentUpsells.$inferSelect;
 export type EmailCampaign = typeof emailCampaigns.$inferSelect;
