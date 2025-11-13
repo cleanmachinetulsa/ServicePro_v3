@@ -185,6 +185,15 @@ router.get('/jobs/today', requireTechnician, async (req: Request, res: Response)
     // Apply filters
     let filteredJobs = enrichedJobs;
 
+    // CRITICAL SECURITY: Exclude calendar-only jobs for technicians
+    // Calendar events don't have technician assignment metadata, so showing them to all techs
+    // would expose customer PII (names, addresses, phone numbers) to unauthorized personnel
+    // Only managers/owners can see calendar-only jobs for coordination purposes
+    const isTechnicianRole = technician.role === 'employee';
+    if (isTechnicianRole) {
+      filteredJobs = filteredJobs.filter((job: any) => !job.isCalendarOnly);
+    }
+
     // AUTHORIZATION: By default, only show jobs assigned to current technician OR unassigned jobs
     // This prevents leaking other technicians' jobs and customer data
     if (assignedOnly) {

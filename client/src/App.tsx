@@ -3,9 +3,6 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AnimatePresence } from "framer-motion";
-import { PageTransition } from "@/components/PageTransition";
-import { useState, useEffect, useRef } from "react";
 import NotFound from "@/pages/not-found";
 import ChatPage from "@/pages/chat";
 import DirectionsPage from "@/pages/directions";
@@ -61,10 +58,9 @@ import CleanMachineShowcase from './pages/clean-machine-showcase';
 import SecuritySettingsPage from './pages/security-settings';
 import TechnicianPage from './pages/technician';
 
-// Helper function to render routes for a specific location
-function renderRoutes(loc: string) {
+function Router() {
   return (
-    <Switch location={loc}>
+    <Switch>
       {/* Public maintenance page */}
       <Route path="/maintenance" component={Maintenance} />
       
@@ -179,51 +175,6 @@ function renderRoutes(loc: string) {
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>
-  );
-}
-
-function Router() {
-  const [currentLocation] = useLocation();
-  const [activeLocation, setActiveLocation] = useState(currentLocation);
-  const [pendingLocation, setPendingLocation] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (currentLocation !== activeLocation) {
-      setPendingLocation(currentLocation);
-    }
-  }, [currentLocation, activeLocation]);
-
-  const handleExitComplete = () => {
-    if (pendingLocation) {
-      setActiveLocation(pendingLocation);
-      setPendingLocation(null);
-    }
-  };
-
-  return (
-    <div style={{ position: 'relative', width: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
-      <AnimatePresence mode="sync" initial={false} onExitComplete={handleExitComplete}>
-        {/* Render outgoing page when navigation occurs */}
-        {pendingLocation && (
-          <PageTransition 
-            key={activeLocation} 
-            phase="outgoing" 
-            direction="forward"
-          >
-            {renderRoutes(activeLocation)}
-          </PageTransition>
-        )}
-        
-        {/* Render incoming/active page */}
-        <PageTransition 
-          key={pendingLocation || activeLocation} 
-          phase="incoming" 
-          direction="forward"
-        >
-          {renderRoutes(pendingLocation || activeLocation)}
-        </PageTransition>
-      </AnimatePresence>
-    </div>
   );
 }
 
