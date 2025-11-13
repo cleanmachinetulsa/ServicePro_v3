@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, KeyRound, History, Download, AlertTriangle } from "lucide-react";
+import { Shield, KeyRound, History, Download, AlertTriangle, Users } from "lucide-react";
+import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,10 +50,15 @@ interface SetupResponse {
 
 export default function SecuritySettingsPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [showSetupDialog, setShowSetupDialog] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [setupData, setSetupData] = useState<SetupResponse | null>(null);
   const [showBackupCodes, setShowBackupCodes] = useState(false);
+
+  const { data: currentUserData } = useQuery<{ success: boolean; user: { role: string } }>({
+    queryKey: ['/api/users/me'],
+  });
 
   const { data: status, isLoading: statusLoading } = useQuery<TwoFactorStatus>({
     queryKey: ["/api/auth/2fa/status"],
@@ -187,6 +193,8 @@ export default function SecuritySettingsPage() {
     );
   }
 
+  const canManageUsers = currentUserData?.user?.role === 'manager' || currentUserData?.user?.role === 'owner';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-6">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -201,6 +209,36 @@ export default function SecuritySettingsPage() {
             <p className="text-slate-600 dark:text-slate-400">Manage authentication and view security logs</p>
           </div>
         </div>
+
+        {/* Admin Quick Link - User Management */}
+        {canManageUsers && (
+          <Card data-testid="card-user-management" className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border-purple-200 dark:border-purple-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                User Management
+              </CardTitle>
+              <CardDescription>
+                Manage team access and roles for your organization
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Create, edit, and manage user accounts, roles, and permissions for employees and managers.
+                </p>
+                <Button 
+                  onClick={() => setLocation('/user-management')}
+                  className="ml-4 bg-purple-600 hover:bg-purple-700"
+                  data-testid="button-open-user-management"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Manage Users
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Tabs defaultValue="2fa" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
