@@ -73,10 +73,12 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
 - **File Modified**: `client/src/pages/technician.tsx` (lines 149-236)
 - **Status**: ✅ Architect approved - Production ready (security vulnerability resolved)
 
-### Technician Page - Mark On-Site Button Documentation
-**Feature**: Quick Actions Footer - Mark On-Site Button
+### Technician Page - Mark On-Site Button with SMS Notification
+**Date: November 13, 2025**
 
-**Purpose**: Allows technicians to update job status to 'on_site' when they arrive at customer location.
+**Feature**: Quick Actions Footer - Mark On-Site Button with automatic customer notification
+
+**Purpose**: Allows technicians to update job status to 'on_site' when they arrive at customer location, automatically sending an SMS to notify the customer.
 
 **Location**: Fixed footer at bottom of Technician page with purple button labeled "Mark On-Site"
 
@@ -87,27 +89,40 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
    - Checks if job is selected (shows error toast if not)
    - Checks if demo mode is active (disabled in demo mode)
 4. **Status Update**: Calls `updateJobStatus('on_site')` to update job in database
-5. **Confirmation**: Shows success toast "Status Updated - Marked as on-site"
-6. **Error Handling**: Shows error toast if update fails
+5. **✨ NEW: Customer SMS Notification**: Automatically sends friendly SMS to customer
+   - Message: "Hey [FirstName]! 👋 Your Clean Machine technician has arrived and will be with you shortly. Get ready for that showroom shine! ✨"
+   - Respects SMS opt-out status (TCPA/CTIA compliant)
+   - Non-blocking: Status update succeeds even if SMS fails
+6. **Confirmation**: Shows success toast "Status Updated - Marked as on-site"
+7. **Error Handling**: Shows error toast if update fails
 
 **User Flow**:
 - Technician drives to customer location
 - Opens Technician page on mobile device
 - Selects active job from list
 - Clicks "Mark On-Site" button when arriving
-- System updates job status and shows confirmation
+- System updates job status and shows confirmation to technician
+- **Customer receives SMS notification that technician has arrived**
 - Customer and business dashboard reflect updated status
 
 **Technical Implementation**:
-- Component: `QuickActionsFooter` (`client/src/components/technician/QuickActionsFooter.tsx`)
-- Handler: `handleMarkOnSite` (`client/src/pages/technician.tsx` lines 94-125)
-- API Endpoint: Updates job status via backend API
+- Frontend Component: `QuickActionsFooter` (`client/src/components/technician/QuickActionsFooter.tsx`)
+- Frontend Handler: `handleMarkOnSite` (`client/src/pages/technician.tsx` lines 94-125)
+- Backend API: `POST /api/tech/jobs/:id/status` (`server/routes.techJobs.ts` lines 244-366)
+- **SMS Notification**: Lines 327-350 in `server/routes.techJobs.ts`
+  - Triggers only when `status === 'on_site'`
+  - Fetches customer name and phone from database
+  - Sends personalized SMS via Twilio
+  - Logs notification delivery
 - Button disabled when no job selected or in demo mode
 - Real-time WebSocket updates broadcast status changes to dashboard
 
-**Code Location**: 
+**Code Locations**: 
 - UI Component: `client/src/components/technician/QuickActionsFooter.tsx` (lines 22-31)
-- Click Handler: `client/src/pages/technician.tsx` (lines 94-125)
+- Frontend Handler: `client/src/pages/technician.tsx` (lines 94-125)
+- Backend Route + SMS: `server/routes.techJobs.ts` (lines 244-366)
+
+**Status**: ✅ Production ready - SMS notification added
 
 ## System Architecture
 
