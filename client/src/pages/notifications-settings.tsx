@@ -286,6 +286,16 @@ export default function NotificationsSettings() {
             <p className="text-xs text-muted-foreground">
               Recommended: 20-30 seconds (too short may miss calls, too long frustrates customers)
             </p>
+            {hasChanges && (
+              <Button
+                onClick={handleSave}
+                disabled={updateSettingsMutation.isPending}
+                size="sm"
+                className="mt-2"
+              >
+                {updateSettingsMutation.isPending ? 'Saving...' : 'Save Ring Duration'}
+              </Button>
+            )}
           </div>
 
           <Separator />

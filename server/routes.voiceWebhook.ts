@@ -53,7 +53,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
   const callerPhone = req.body.From;
   const twilioPhone = req.body.To;
   const callSid = req.body.CallSid;
-  
+
   console.log(`[VOICE] Incoming call from ${callerPhone} to ${twilioPhone}, CallSid: ${callSid}`);
 
   // Log the incoming call
@@ -84,25 +84,36 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
   // If during business hours and forwarding enabled, skip IVR and forward directly
   if (routing.shouldForward && routing.forwardingNumber) {
     console.log(`[VOICE] Business hours active - forwarding ${callerPhone} to ${routing.forwardingNumber}`);
-    
+
     twiml.say({
       voice: 'alice',
       language: 'en-US'
     }, 'Please hold while we connect you.');
-    
+
+    // Get ring duration from notification settings
+    const [voiceSettings] = await db
+      .select()
+      .from(notificationSettings)
+      .where(eq(notificationSettings.settingKey, 'voice_webhook'))
+      .limit(1);
+
+    const ringDuration = voiceSettings?.config?.ringDuration || 20; // Default to 20 seconds
+
+    console.log(`[VOICE] Forwarding call to ${routing.forwardingNumber} for ${twilioPhone} (ring duration: ${ringDuration}s)`);
+
     const dial = twiml.dial({
-      timeout: 20,
+      timeout: ringDuration,
       action: '/api/voice/call-status',
       method: 'POST',
       // Show business line number to owner so they know it's a business call
       callerId: twilioPhone,
     });
-    
+
     dial.number(routing.forwardingNumber);
   } else {
     // After hours or forwarding disabled - show IVR menu
     console.log(`[VOICE] After hours or forwarding disabled - showing IVR menu`);
-    
+
     const gather = twiml.gather({
       numDigits: 1,
       action: '/api/voice/menu-selection',
@@ -113,7 +124,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
     // Use custom voicemail greeting if available, otherwise default IVR message
     const greeting = routing.voicemailGreeting || 
       'Thank you for calling Clean Machine Auto Detail. Press 1 to receive a text message with booking information and a link to our web app. Press 2 to speak with someone.';
-    
+
     gather.say({
       voice: 'alice',
       language: 'en-US'
@@ -165,7 +176,7 @@ router.post('/menu-selection', verifyTwilioSignature, async (req: Request, res: 
 
     const businessPhone = process.env.BUSINESS_OWNER_PHONE;
     const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-    
+
     if (businessPhone) {
       const dial = twiml.dial({
         timeout: 20,
@@ -175,14 +186,14 @@ router.post('/menu-selection', verifyTwilioSignature, async (req: Request, res: 
         // This way you know it's a business call and not spam
         callerId: twilioPhone || callerPhone
       });
-      
+
       dial.number(businessPhone);
     } else {
       twiml.say({
         voice: 'alice',
         language: 'en-US'
       }, 'Sorry, I\'m unable to transfer your call right now. Please leave a voicemail after the beep.');
-      
+
       twiml.record({
         timeout: 10,
         transcribe: true,
@@ -214,7 +225,7 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
   // Use DialCallDuration for <Dial action> callbacks, fallback to CallDuration for status callbacks
   const callDuration = req.body.DialCallDuration ? parseInt(req.body.DialCallDuration) : 
                        req.body.CallDuration ? parseInt(req.body.CallDuration) : undefined;
-  
+
   console.log(`[VOICE] Call status: ${dialCallStatus} from ${callerPhone}, CallSid: ${callSid}, Duration: ${callDuration}`);
 
   // Update call event with final status
@@ -247,7 +258,7 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
   // Handle missed calls - send automatic SMS
   if (dialCallStatus === 'no-answer' || dialCallStatus === 'busy' || dialCallStatus === 'failed') {
     console.log(`[VOICE] Missed call from ${callerPhone} - sending automatic SMS`);
-    
+
     // Send automatic SMS response
     try {
       await sendMissedCallSMS(callerPhone);
@@ -260,7 +271,7 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
       voice: 'alice',
       language: 'en-US'
     }, 'Sorry we missed your call. We\'ve sent you a text message. You can also leave a voicemail after the beep.');
-    
+
     twiml.record({
       timeout: 10,
       transcribe: true,
@@ -290,7 +301,7 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
   const callSid = req.body.CallSid;
   const recordingSid = req.body.RecordingSid;
   const transcriptionStatus = req.body.TranscriptionStatus;
-  
+
   console.log(`[VOICE] Voicemail transcription from ${callerPhone}: ${transcriptionText}`);
 
   // Update call event with transcription and recording
@@ -305,7 +316,7 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
   } catch (error) {
     console.error('[VOICE] Failed to update call event with transcription:', error);
   }
-  
+
   // Send transcription to business phone for record-keeping
   try {
     const businessPhone = process.env.BUSINESS_OWNER_PHONE;
@@ -319,17 +330,17 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
   // AI AUTO-REPLY: Send transcription through GPT agent for intelligent, contextual response
   if (transcriptionText && transcriptionText.trim().length > 0) {
     console.log(`[VOICE] Sending voicemail through AI agent for intelligent response to ${callerPhone}`);
-    
+
     try {
       const aiResponse = await handleConversationalScheduling(
         transcriptionText,
         callerPhone,
         'sms'
       );
-      
+
       // Send AI-generated contextual response back to customer
       await sendSMS(callerPhone, aiResponse.response);
-      
+
       console.log(`[VOICE] ✅ Sent AI-powered response to customer: ${callerPhone}`);
     } catch (error) {
       console.error('[VOICE] Failed to send AI response to voicemail:', error);
@@ -353,27 +364,27 @@ async function sendMissedCallSMS(toPhone: string) {
 
   // Get dynamic settings to check if AI mode is enabled
   const settings = await getVoiceSettings();
-  
+
   // Check if AI conversation mode is enabled (default to true for intelligent responses)
   const useAIMode = settings?.useAIConversation !== false;
-  
+
   if (useAIMode) {
     // INTELLIGENT MODE: AI checks calendar and provides real available times
     console.log(`[VOICE] Using AI conversation mode for ${toPhone}`);
-    
+
     try {
       // Trigger AI conversation with context that customer called
       const initialMessage = "I'm calling about getting my vehicle detailed and would like to know your available times.";
-      
+
       const result = await handleConversationalScheduling(
         initialMessage,
         toPhone,
         'sms'
       );
-      
+
       // Send the AI-generated response with real calendar availability
       await sendSMS(toPhone, result.response);
-      
+
       console.log(`[VOICE] Sent intelligent AI response to ${toPhone}`);
     } catch (error) {
       console.error('[VOICE] Error in AI conversation mode:', error);
@@ -386,7 +397,7 @@ async function sendMissedCallSMS(toPhone: string) {
   } else {
     // STATIC MODE: Send pre-configured template message
     console.log(`[VOICE] Using static message mode for ${toPhone}`);
-    
+
     const message = settings?.autoReplyMessage || `Hi, it's Jody with Clean Machine Auto Detail, sorry I missed you! How can I help you today?
 
 Here are some of our most popular services. You can also see all of our available services, book online, read reviews and more by visiting cleanmachinetulsa.com
@@ -460,7 +471,7 @@ async function sendVoicemailNotification(toPhone: string, fromPhone: string, tra
 router.post('/click-to-call', async (req: Request, res: Response) => {
   try {
     const { customerPhone } = req.body;
-    
+
     if (!customerPhone) {
       return res.status(400).json({ error: 'Customer phone number is required' });
     }
