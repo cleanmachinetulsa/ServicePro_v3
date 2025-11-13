@@ -436,7 +436,7 @@ export default function AgentSettings({ onSave }: AgentSettingsProps) {
             <CardHeader>
               <CardTitle>Behavior Settings</CardTitle>
               <CardDescription className="text-blue-200">
-                Control how the agent interacts with customers
+                Control how the agent interacts with customers. The AI automatically keeps conversations focused on auto detailing topics and steers discussions back to Clean Machine services when needed.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
