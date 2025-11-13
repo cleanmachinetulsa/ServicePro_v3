@@ -174,7 +174,7 @@ export function CommunicationsPod() {
                 size="sm"
                 variant="outline"
                 onClick={() => handleQuickReply(reply)}
-                className="text-xs border-white/20 text-white hover:bg-white/10 h-auto py-2 whitespace-normal text-left"
+                className="text-xs border-white/20 text-slate-900 dark:text-white hover:bg-white/10 h-auto py-2 whitespace-normal text-left"
                 data-testid={`button-quick-reply-${index}`}
               >
                 {reply}

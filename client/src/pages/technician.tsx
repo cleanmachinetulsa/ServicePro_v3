@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TechnicianProvider, useTechnician } from '@/contexts/TechnicianContext';
 import { TechnicianLayout } from '@/components/technician/TechnicianLayout';
 import { SchedulePanel } from '@/components/technician/SchedulePanel';
@@ -67,8 +67,10 @@ interface TechnicianContentProps {
 
 function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
   const [showOrientationWarning, setShowOrientationWarning] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const { selectedJob, updateJobStatus, jobs, queuedActions, isOnline } = useTechnician();
   const { toast } = useToast();
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Detect device orientation
   useEffect(() => {
@@ -145,11 +147,70 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
       return;
     }
 
-    // Trigger photo capture - would integrate with MediaPod
-    toast({
-      title: 'Quick Photo',
-      description: 'Use the Media pod on the right to capture photos',
-    });
+    // Trigger camera capture
+    photoInputRef.current?.click();
+  };
+
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedJob) return;
+
+    // Validate file type and size
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      toast({
+        title: 'Invalid File Type',
+        description: 'Please select a JPEG, PNG, or GIF image',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast({
+        title: 'File Too Large',
+        description: 'Image must be less than 5MB',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('photo', file);
+      formData.append('jobId', selectedJob.id.toString());
+
+      const response = await fetch('/api/upload-photo', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      toast({
+        title: 'Photo Uploaded',
+        description: 'Photo captured and uploaded successfully',
+      });
+
+      // Clear the input value so the same file can be selected again
+      if (photoInputRef.current) {
+        photoInputRef.current.value = '';
+      }
+    } catch (error) {
+      console.error('Photo upload error:', error);
+      toast({
+        title: 'Upload Failed',
+        description: 'Failed to upload photo. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const handleNextJob = () => {
@@ -225,8 +286,8 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
         </aside>
 
         {/* Main Canvas - 3 Pods Grid */}
-        <main className="flex-1 overflow-hidden pb-[60px]">
-          <div className="h-full overflow-y-auto p-4">
+        <main className="flex-1 overflow-y-auto pb-[60px]">
+          <div className="h-full p-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 h-full">
               {/* Workflow Pod */}
               <div className="min-h-[400px] lg:min-h-full">
@@ -257,13 +318,24 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
         </div>
       </div>
 
+      {/* Hidden camera input */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handlePhotoCapture}
+        className="hidden"
+        data-testid="input-camera-capture"
+      />
+
       {/* Quick Actions Footer */}
       <QuickActionsFooter
         onMarkOnSite={handleMarkOnSite}
         onEmergencyCall={handleEmergencyCall}
         onQuickPhoto={handleQuickPhoto}
         onNextJob={handleNextJob}
-        disabled={!selectedJob}
+        disabled={!selectedJob || isUploadingPhoto}
       />
     </TechnicianLayout>
   );

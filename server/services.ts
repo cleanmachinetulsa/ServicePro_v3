@@ -88,13 +88,29 @@ export async function saveServiceImage(serviceName: string, imageUrl: string): P
     // Normalize service name (trim whitespace) to match Google Sheets data
     const normalizedName = serviceName.trim();
     
-    // Use UPSERT (INSERT ... ON CONFLICT) to handle both insert and update cases
-    // The unique index on services.name allows this to work properly
-    await db.execute(
-      sql`INSERT INTO services (name, price_range, overview, detailed_description, duration, duration_hours, image_url) 
-          VALUES (${normalizedName}, 'See Google Sheets', 'See Google Sheets', 'See Google Sheets', '2 hours', 2, ${imageUrl})
-          ON CONFLICT (name) DO UPDATE SET image_url = ${imageUrl}`
-    );
+    // First, check if service exists with this name
+    const existingService = await db.select()
+      .from(servicesTable)
+      .where(eq(servicesTable.name, normalizedName))
+      .limit(1);
+    
+    if (existingService.length > 0) {
+      // Update existing service's image URL
+      await db.update(servicesTable)
+        .set({ imageUrl: imageUrl })
+        .where(eq(servicesTable.name, normalizedName));
+    } else {
+      // Insert new service with image URL
+      await db.insert(servicesTable).values({
+        name: normalizedName,
+        priceRange: 'See Google Sheets',
+        overview: 'See Google Sheets',
+        detailedDescription: 'See Google Sheets',
+        duration: '2 hours',
+        durationHours: 2,
+        imageUrl: imageUrl
+      });
+    }
     
     return true;
   } catch (error) {

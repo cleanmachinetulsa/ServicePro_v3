@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -9,6 +9,9 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { HolidayAwarenessTable, defaultHolidays } from './HolidayAwareness';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { queryClient, apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Save,
   RotateCcw,
@@ -19,6 +22,7 @@ import {
   Phone,
   MessageCircle,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 
 // Define all agent settings types
@@ -58,7 +62,16 @@ interface AgentSettingsProps {
 }
 
 export default function AgentSettings({ onSave }: AgentSettingsProps) {
-  // Initialize state for all settings
+  const { toast } = useToast();
+  
+  // Load agent preferences from backend
+  const { data: preferencesData, isLoading } = useQuery({
+    queryKey: ['/api/agent-preferences'],
+  });
+  
+  const preferences = preferencesData?.preferences;
+  
+  // Initialize state - these will be populated from backend via useEffect
   const [personalitySettings, setPersonalitySettings] = useState<PersonalitySettings>({
     professionalismLevel: 4,
     friendliness: 4,
@@ -80,16 +93,80 @@ export default function AgentSettings({ onSave }: AgentSettingsProps) {
     formality: 3,
     technicalTerms: 2,
     messageLength: 3,
-    defaultLanguage: 'English',
+    defaultLanguage: 'en', // Match backend schema (2-letter language code)
     useEmojis: true,
   });
 
   const [holidays, setHolidays] = useState(defaultHolidays);
 
   const [messagingSettings, setMessagingSettings] = useState<MessagingSettings>({
-    smsOpeningMessage: "Hi! Thanks for texting Clean Machine. I'm here to help with appointments and service questions. What can I help you with?",
-    websiteOpeningMessage: "Hello! I'm here to help you book an appointment or answer any questions about our auto detailing services. What can I help you with today?",
-    facebookOpeningMessage: "Hey there! Thanks for reaching out on Facebook. I'm the Clean Machine assistant - happy to help with booking or any questions about our services!",
+    smsOpeningMessage: "Hi! Thanks for reaching out to Clean Machine Auto Detail. How can I help you today?",
+    websiteOpeningMessage: "Welcome to Clean Machine! I'm here to help you schedule a detailing appointment or answer any questions.",
+    facebookOpeningMessage: "Hey there! Thanks for messaging Clean Machine. What can I do for you?",
+  });
+  
+  // Load preferences from backend when available
+  useEffect(() => {
+    if (preferences) {
+      setPersonalitySettings({
+        professionalismLevel: preferences.professionalismLevel || 4,
+        friendliness: preferences.friendliness || 4,
+        detailOrientation: preferences.detailOrientation || 3,
+        humorLevel: preferences.humorLevel || 2,
+        enthusiasm: preferences.enthusiasm || 3,
+      });
+      
+      setBehaviorSettings({
+        useCustomerName: preferences.useCustomerName ?? true,
+        askFollowUpQuestions: preferences.askFollowUpQuestions ?? true,
+        offerSuggestions: preferences.offerSuggestions ?? true,
+        sendConfirmationMessages: preferences.sendConfirmationMessages ?? true,
+        proactiveServiceReminders: preferences.proactiveServiceReminders ?? true,
+        holidayGreetings: preferences.holidayGreetings ?? true,
+      });
+      
+      setLanguageSettings({
+        formality: preferences.formality || 3,
+        technicalTerms: preferences.technicalTerms || 2,
+        messageLength: preferences.messageLength || 3,
+        defaultLanguage: preferences.defaultLanguage || 'en',
+        useEmojis: preferences.useEmojis ?? true,
+      });
+      
+      setMessagingSettings({
+        smsOpeningMessage: preferences.smsOpeningMessage || "Hi! Thanks for reaching out to Clean Machine Auto Detail. How can I help you today?",
+        websiteOpeningMessage: preferences.websiteOpeningMessage || "Welcome to Clean Machine! I'm here to help you schedule a detailing appointment or answer any questions.",
+        facebookOpeningMessage: preferences.facebookOpeningMessage || "Hey there! Thanks for messaging Clean Machine. What can I do for you?",
+      });
+      
+      if (preferences.knownHolidays && Array.isArray(preferences.knownHolidays)) {
+        setHolidays(preferences.knownHolidays);
+      }
+    }
+  }, [preferences]);
+  
+  // Save mutation
+  const saveMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('PUT', '/api/agent-preferences', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/agent-preferences'] });
+      toast({
+        title: 'Settings Saved',
+        description: 'Your agent preferences have been updated successfully.',
+      });
+      if (onSave) {
+        onSave({ personality: personalitySettings, behavior: behaviorSettings, language: languageSettings, messaging: messagingSettings, holidays });
+      }
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to save agent preferences. Please try again.',
+        variant: 'destructive',
+      });
+    },
   });
   
   // Reset all settings to default
@@ -115,16 +192,16 @@ export default function AgentSettings({ onSave }: AgentSettingsProps) {
       formality: 3,
       technicalTerms: 2,
       messageLength: 3,
-      defaultLanguage: 'English',
+      defaultLanguage: 'en', // Match backend schema (2-letter language code)
       useEmojis: true,
     });
     
     setHolidays(defaultHolidays);
 
     setMessagingSettings({
-      smsOpeningMessage: "Hi! Thanks for texting Clean Machine. I'm here to help with appointments and service questions. What can I help you with?",
-      websiteOpeningMessage: "Hello! I'm here to help you book an appointment or answer any questions about our auto detailing services. What can I help you with today?",
-      facebookOpeningMessage: "Hey there! Thanks for reaching out on Facebook. I'm the Clean Machine assistant - happy to help with booking or any questions about our services!",
+      smsOpeningMessage: "Hi! Thanks for reaching out to Clean Machine Auto Detail. How can I help you today?",
+      websiteOpeningMessage: "Welcome to Clean Machine! I'm here to help you schedule a detailing appointment or answer any questions.",
+      facebookOpeningMessage: "Hey there! Thanks for messaging Clean Machine. What can I do for you?",
     });
   };
   
@@ -144,23 +221,30 @@ export default function AgentSettings({ onSave }: AgentSettingsProps) {
   
   // Handle save all settings
   const handleSave = () => {
-    const allSettings = {
-      personality: personalitySettings,
-      behavior: behaviorSettings,
-      language: languageSettings,
-      messaging: messagingSettings,
-      holidays: holidays,
+    const saveData = {
+      professionalismLevel: personalitySettings.professionalismLevel,
+      friendliness: personalitySettings.friendliness,
+      detailOrientation: personalitySettings.detailOrientation,
+      humorLevel: personalitySettings.humorLevel,
+      enthusiasm: personalitySettings.enthusiasm,
+      useCustomerName: behaviorSettings.useCustomerName,
+      askFollowUpQuestions: behaviorSettings.askFollowUpQuestions,
+      offerSuggestions: behaviorSettings.offerSuggestions,
+      sendConfirmationMessages: behaviorSettings.sendConfirmationMessages,
+      proactiveServiceReminders: behaviorSettings.proactiveServiceReminders,
+      holidayGreetings: behaviorSettings.holidayGreetings,
+      formality: languageSettings.formality,
+      technicalTerms: languageSettings.technicalTerms,
+      messageLength: languageSettings.messageLength,
+      defaultLanguage: languageSettings.defaultLanguage,
+      useEmojis: languageSettings.useEmojis,
+      smsOpeningMessage: messagingSettings.smsOpeningMessage,
+      websiteOpeningMessage: messagingSettings.websiteOpeningMessage,
+      facebookOpeningMessage: messagingSettings.facebookOpeningMessage,
+      knownHolidays: holidays,
     };
     
-    // Save to localStorage for persistence
-    localStorage.setItem('agentSettings', JSON.stringify(allSettings));
-    
-    // Call onSave if provided
-    if (onSave) {
-      onSave(allSettings);
-    }
-    
-    alert('Agent settings saved successfully!');
+    saveMutation.mutate(saveData);
   };
   
   // Format slider labels based on value

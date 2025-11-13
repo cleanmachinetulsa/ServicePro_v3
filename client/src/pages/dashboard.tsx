@@ -1549,7 +1549,7 @@ export default function Dashboard() {
                                       const data = await response.json();
                                       if (data.success) {
                                         // Save the image URL to database
-                                        await fetch('/api/save-service-image', {
+                                        const saveResponse = await fetch('/api/save-service-image', {
                                           method: 'POST',
                                           headers: { 'Content-Type': 'application/json' },
                                           body: JSON.stringify({
@@ -1558,13 +1558,32 @@ export default function Dashboard() {
                                           })
                                         });
                                         
-                                        // Update the service with the new image URL
-                                        const updatedService = { ...service, imageUrl: data.imageUrl };
-                                        setServices(services.map(s => s.name === service.name ? updatedService : s));
-                                        toast({
-                                          title: "Image uploaded",
-                                          description: "Service image has been updated"
-                                        });
+                                        if (!saveResponse.ok) {
+                                          toast({
+                                            title: "Save failed",
+                                            description: "Image uploaded but failed to save to database",
+                                            variant: "destructive"
+                                          });
+                                          return;
+                                        }
+                                        
+                                        const saveData = await saveResponse.json();
+                                        
+                                        if (saveData.success) {
+                                          // Update the service with the new image URL
+                                          const updatedService = { ...service, imageUrl: data.imageUrl };
+                                          setServices(services.map(s => s.name === service.name ? updatedService : s));
+                                          toast({
+                                            title: "Image uploaded",
+                                            description: "Service image has been saved successfully"
+                                          });
+                                        } else {
+                                          toast({
+                                            title: "Save failed",
+                                            description: "Image uploaded but failed to save to database",
+                                            variant: "destructive"
+                                          });
+                                        }
                                       }
                                     } catch (error) {
                                       toast({
@@ -1696,7 +1715,7 @@ export default function Dashboard() {
                                       const data = await response.json();
                                       if (data.success) {
                                         // Save the image URL to database
-                                        await fetch('/api/save-service-image', {
+                                        const saveResponse = await fetch('/api/save-service-image', {
                                           method: 'POST',
                                           headers: { 'Content-Type': 'application/json' },
                                           body: JSON.stringify({
@@ -1705,13 +1724,32 @@ export default function Dashboard() {
                                           })
                                         });
                                         
-                                        // Update the service with the new image URL
-                                        const updatedService = { ...service, imageUrl: data.imageUrl };
-                                        setServices(services.map(s => s.name === service.name ? updatedService : s));
-                                        toast({
-                                          title: "Image uploaded",
-                                          description: "Add-on image has been updated"
-                                        });
+                                        if (!saveResponse.ok) {
+                                          toast({
+                                            title: "Save failed",
+                                            description: "Image uploaded but failed to save to database",
+                                            variant: "destructive"
+                                          });
+                                          return;
+                                        }
+                                        
+                                        const saveData = await saveResponse.json();
+                                        
+                                        if (saveData.success) {
+                                          // Update the service with the new image URL
+                                          const updatedService = { ...service, imageUrl: data.imageUrl };
+                                          setServices(services.map(s => s.name === service.name ? updatedService : s));
+                                          toast({
+                                            title: "Image uploaded",
+                                            description: "Add-on image has been saved successfully"
+                                          });
+                                        } else {
+                                          toast({
+                                            title: "Save failed",
+                                            description: "Image uploaded but failed to save to database",
+                                            variant: "destructive"
+                                          });
+                                        }
                                       }
                                     } catch (error) {
                                       toast({
