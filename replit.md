@@ -4,7 +4,83 @@
 Clean Machine Auto Detail is an AI-powered web application designed to streamline operations for an auto detailing service. It provides a comprehensive solution for efficient business management and enhanced customer experience by integrating customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system leverages Google Workspace APIs for calendar, customer data, and photo management, while utilizing OpenAI for intelligent chatbot capabilities and Facebook Graph API for social media messaging. The project aims to achieve an 87% automation rate for business operations, significantly enhancing efficiency and customer engagement.
 
 ## User Preferences
-Preferred communication style: Simple, everyday language.
+- Preferred communication style: Simple, everyday language
+- **AI Agent Behavior**: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
+
+## Recent Updates (November 2025)
+
+### Critical Bug Fixes - Production Ready
+**Date: November 13, 2025**
+
+**1. Service Photo Persistence Fix**
+- **Issue**: Photos uploaded in Dashboard → Edit Services section were not saving to database
+- **Root Cause**: UPSERT pattern required unique constraint on services.name, but production data had duplicates
+- **Solution**: Changed to SELECT-then-UPDATE/INSERT pattern (no unique constraint needed)
+- **Files Modified**: 
+  - `shared/schema.ts` - Removed `.unique()` from services.name (line 177)
+  - `server/services.ts` - Replaced UPSERT with SELECT-UPDATE/INSERT (lines 95-116)
+  - `client/src/pages/dashboard.tsx` - Added response guards before .json() parsing (lines 1564, 1730)
+- **Additional Fixes**: Changed durationHours from string '2.0' to numeric 2 for schema compatibility
+- **Status**: ✅ Architect approved - Production ready
+
+**2. Technician Page Scroll Fix**
+- **Issue**: Bottom fields inaccessible on mobile/smaller screens
+- **Solution**: Changed `overflow-hidden` to `overflow-y-auto`
+- **File Modified**: `client/src/pages/technician.tsx` (line 231)
+- **Status**: ✅ Architect approved - Production ready
+
+**3. Quick Replies Dark Mode Fix**
+- **Issue**: Quick reply text not visible in dark mode (white text on white background)
+- **Solution**: Added `text-slate-900 dark:text-white` for proper contrast in both themes
+- **File Modified**: `client/src/components/technician/CommunicationsPod.tsx` (line 180)
+- **Status**: ✅ Architect approved - Production ready
+
+**4. Camera Capture Enhancement + Security Fix**
+- **Issue**: "Capture Photo" button only opened file picker, didn't access camera
+- **Security Issue**: Customer PII (name, phone) sent unencrypted with photo uploads
+- **Solution**: 
+  - Added `capture="environment"` attribute to open camera on mobile devices
+  - Added client-side validation (file type: JPEG/PNG/GIF, size: max 5MB)
+  - **Removed customer PII from uploads** - now only sends photo + jobId
+  - User-friendly error toasts for validation failures
+- **File Modified**: `client/src/pages/technician.tsx` (lines 149-236)
+- **Status**: ✅ Architect approved - Production ready (security vulnerability resolved)
+
+### Technician Page - Mark On-Site Button Documentation
+**Feature**: Quick Actions Footer - Mark On-Site Button
+
+**Purpose**: Allows technicians to update job status to 'on_site' when they arrive at customer location.
+
+**Location**: Fixed footer at bottom of Technician page with purple button labeled "Mark On-Site"
+
+**How It Works**:
+1. **Prerequisites**: A job must be selected from the job list
+2. **Button Click**: Technician clicks purple "Mark On-Site" button
+3. **Validation**: 
+   - Checks if job is selected (shows error toast if not)
+   - Checks if demo mode is active (disabled in demo mode)
+4. **Status Update**: Calls `updateJobStatus('on_site')` to update job in database
+5. **Confirmation**: Shows success toast "Status Updated - Marked as on-site"
+6. **Error Handling**: Shows error toast if update fails
+
+**User Flow**:
+- Technician drives to customer location
+- Opens Technician page on mobile device
+- Selects active job from list
+- Clicks "Mark On-Site" button when arriving
+- System updates job status and shows confirmation
+- Customer and business dashboard reflect updated status
+
+**Technical Implementation**:
+- Component: `QuickActionsFooter` (`client/src/components/technician/QuickActionsFooter.tsx`)
+- Handler: `handleMarkOnSite` (`client/src/pages/technician.tsx` lines 94-125)
+- API Endpoint: Updates job status via backend API
+- Button disabled when no job selected or in demo mode
+- Real-time WebSocket updates broadcast status changes to dashboard
+
+**Code Location**: 
+- UI Component: `client/src/components/technician/QuickActionsFooter.tsx` (lines 22-31)
+- Click Handler: `client/src/pages/technician.tsx` (lines 94-125)
 
 ## System Architecture
 
