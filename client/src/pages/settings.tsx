@@ -8,11 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { MessageSquare, Plus, Edit2, Trash2, Save, Settings2, Bell, Shield, Key, Send } from 'lucide-react';
+import { MessageSquare, Plus, Edit2, Trash2, Save, Settings2, Bell, Shield, Key, Send, MessageCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { QuickReplyCategory, QuickReplyTemplate } from '@shared/schema';
 import { CommunicationsSettings } from '@/components/CommunicationsSettings';
 import BackNavigation from '@/components/BackNavigation';
+import { SmsTemplatesManager } from '@/components/SmsTemplatesManager';
 
 interface CategoryWithTemplates extends QuickReplyCategory {
   templates: QuickReplyTemplate[];
@@ -50,6 +51,10 @@ export default function SettingsPage() {
             <MessageSquare className="h-4 w-4 mr-2" />
             Quick Reply Templates
           </TabsTrigger>
+          <TabsTrigger value="sms-templates" data-testid="tab-sms-templates">
+            <MessageCircle className="h-4 w-4 mr-2" />
+            SMS Templates
+          </TabsTrigger>
           <TabsTrigger value="communications" data-testid="tab-communications">
             <Send className="h-4 w-4 mr-2" />
             Campaigns
@@ -66,6 +71,10 @@ export default function SettingsPage() {
         
         <TabsContent value="templates" className="space-y-4">
           <TemplateManager categories={categories} isLoading={categoriesLoading} />
+        </TabsContent>
+        
+        <TabsContent value="sms-templates" className="space-y-4">
+          <SmsTemplatesManager />
         </TabsContent>
         
         <TabsContent value="communications" className="space-y-4">
