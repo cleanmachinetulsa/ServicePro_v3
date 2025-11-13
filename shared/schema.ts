@@ -855,6 +855,37 @@ export const notificationSettings = pgTable("notification_settings", {
   updatedBy: integer("updated_by").references(() => users.id),
 });
 
+// SMS Templates - Centralized template management with versioning
+export const smsTemplates = pgTable("sms_templates", {
+  id: serial("id").primaryKey(),
+  templateKey: varchar("template_key", { length: 100 }).notNull().unique(), // e.g., 'on_site_arrival', 'booking_confirmation'
+  category: varchar("category", { length: 50 }).notNull(), // 'booking', 'technician', 'referrals', 'payment', etc.
+  channel: varchar("channel", { length: 20 }).notNull().default("sms"), // Future: 'sms', 'email', 'push'
+  language: varchar("language", { length: 10 }).notNull().default("en"), // Future: 'en', 'es', etc.
+  name: text("name").notNull(), // Human-readable name
+  description: text("description"), // Description for dashboard
+  body: text("body").notNull(), // Template text with {variables}
+  variables: jsonb("variables").notNull(), // Array of {name, description, sample, required}
+  defaultPayload: jsonb("default_payload"), // Example payload for preview
+  enabled: boolean("enabled").default(true),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
+// SMS Template Versions - Audit trail and rollback support
+export const smsTemplateVersions = pgTable("sms_template_versions", {
+  id: serial("id").primaryKey(),
+  templateId: integer("template_id").notNull().references(() => smsTemplates.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  body: text("body").notNull(),
+  variables: jsonb("variables").notNull(),
+  changeDescription: text("change_description"), // What changed in this version
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: integer("created_by").references(() => users.id),
+});
+
 // Push notification subscriptions for PWA
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
@@ -1896,6 +1927,12 @@ export type QuickReplyCategory = typeof quickReplyCategories.$inferSelect;
 export type QuickReplyTemplate = typeof quickReplyTemplates.$inferSelect;
 export type NotificationSettings = typeof notificationSettings.$inferSelect;
 export type InsertNotificationSettings = z.infer<typeof insertNotificationSettingsSchema>;
+export const insertSmsTemplateSchema = createInsertSchema(smsTemplates).omit({ id: true, createdAt: true, updatedAt: true, version: true });
+export type SmsTemplate = typeof smsTemplates.$inferSelect;
+export type InsertSmsTemplate = z.infer<typeof insertSmsTemplateSchema>;
+export const insertSmsTemplateVersionSchema = createInsertSchema(smsTemplateVersions).omit({ id: true, createdAt: true });
+export type SmsTemplateVersion = typeof smsTemplateVersions.$inferSelect;
+export type InsertSmsTemplateVersion = z.infer<typeof insertSmsTemplateVersionSchema>;
 export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true, lastUsedAt: true });
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;

@@ -21,6 +21,7 @@ import { registerBannerRoutes } from "./routes.banners";
 import phoneSettingsRouter from "./routes.phoneSettings";
 import sendgridWebhookRouter from "./routes.sendgridWebhook";
 import campaignsRouter from "./routes.campaigns";
+import smsTemplatesRouter from "./routes.smsTemplates";
 import { setupGoogleOAuth } from "./googleOAuth";
 import path from "path";
 
@@ -154,6 +155,8 @@ app.use(stripeWebhooksRouter);
 app.use(sendgridWebhookRouter);
 // Register campaign management routes (requires auth)
 app.use('/api/campaigns', campaignsRouter);
+// Register SMS templates routes (requires auth)
+app.use('/api/sms-templates', smsTemplatesRouter);
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -193,6 +196,10 @@ app.use((req, res, next) => {
   // Seed phone lines and business hours (idempotent - only runs once)
   const { seedPhoneLines } = await import('./seedPhoneLines');
   await seedPhoneLines();
+  
+  // Initialize SMS templates (idempotent - safe to run multiple times)
+  const { initializeSmsTemplates } = await import('./initSmsTemplates');
+  await initializeSmsTemplates();
   
   const server = await registerRoutes(app);
   
