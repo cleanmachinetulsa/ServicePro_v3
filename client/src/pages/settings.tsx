@@ -12,6 +12,7 @@ import { MessageSquare, Plus, Edit2, Trash2, Save, Settings2, Bell, Shield, Key,
 import { useToast } from '@/hooks/use-toast';
 import type { QuickReplyCategory, QuickReplyTemplate } from '@shared/schema';
 import { CommunicationsSettings } from '@/components/CommunicationsSettings';
+import BackNavigation from '@/components/BackNavigation';
 
 interface CategoryWithTemplates extends QuickReplyCategory {
   templates: QuickReplyTemplate[];
@@ -30,6 +31,9 @@ export default function SettingsPage() {
   
   return (
     <div className="container mx-auto p-6 max-w-6xl">
+      <div className="mb-4">
+        <BackNavigation fallbackPath="/dashboard" />
+      </div>
       <div className="mb-6">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Settings2 className="h-8 w-8" />

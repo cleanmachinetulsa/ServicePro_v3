@@ -806,28 +806,28 @@ export default function BusinessSettings() {
       </header>
       
       <Tabs defaultValue="hours">
-        <TabsList className="grid w-full md:w-auto grid-cols-2 md:grid-cols-6">
-          <TabsTrigger value="hours" className="flex items-center">
+        <TabsList className="flex flex-wrap justify-start gap-1 h-auto p-1 bg-muted">
+          <TabsTrigger value="hours" className="flex items-center whitespace-nowrap">
             <Clock className="mr-2 h-4 w-4" />
             Business Hours
           </TabsTrigger>
-          <TabsTrigger value="booking" className="flex items-center">
+          <TabsTrigger value="booking" className="flex items-center whitespace-nowrap">
             <Calendar className="mr-2 h-4 w-4" />
             Booking Settings
           </TabsTrigger>
-          <TabsTrigger value="limits" className="flex items-center">
+          <TabsTrigger value="limits" className="flex items-center whitespace-nowrap">
             <TrendingDown className="mr-2 h-4 w-4" />
             Service Limits
           </TabsTrigger>
-          <TabsTrigger value="google" className="flex items-center">
+          <TabsTrigger value="google" className="flex items-center whitespace-nowrap">
             <LinkIcon className="mr-2 h-4 w-4" />
             Google Integration
           </TabsTrigger>
-          <TabsTrigger value="branding" className="flex items-center">
+          <TabsTrigger value="branding" className="flex items-center whitespace-nowrap">
             <Settings className="mr-2 h-4 w-4" />
             Branding
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center">
+          <TabsTrigger value="notifications" className="flex items-center whitespace-nowrap">
             <Shield className="mr-2 h-4 w-4" />
             Maintenance
           </TabsTrigger>
