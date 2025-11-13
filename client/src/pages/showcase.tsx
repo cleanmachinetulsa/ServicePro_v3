@@ -28,6 +28,11 @@ export default function ShowcasePage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [scrollY, setScrollY] = useState(0);
   const [viewportSize, setViewportSize] = useState({ width: 1920, height: 1080 });
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
@@ -55,27 +60,29 @@ export default function ShowcasePage() {
       </div>
 
       {/* Floating Particles */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-2 h-2 bg-blue-500/20 rounded-full"
-            animate={{
-              x: [Math.random() * viewportSize.width, Math.random() * viewportSize.width],
-              y: [Math.random() * viewportSize.height, Math.random() * viewportSize.height],
-            }}
-            transition={{
-              duration: Math.random() * 20 + 10,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-            style={{
-              left: Math.random() * 100 + '%',
-              top: Math.random() * 100 + '%',
-            }}
-          />
-        ))}
-      </div>
+      {isClient && (
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          {[...Array(20)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="absolute w-2 h-2 bg-blue-500/20 rounded-full"
+              animate={{
+                x: [Math.random() * viewportSize.width, Math.random() * viewportSize.width],
+                y: [Math.random() * viewportSize.height, Math.random() * viewportSize.height],
+              }}
+              transition={{
+                duration: Math.random() * 20 + 10,
+                repeat: Infinity,
+                ease: "linear"
+              }}
+              style={{
+                left: Math.random() * 100 + '%',
+                top: Math.random() * 100 + '%',
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="relative z-10">
         {/* Hero Section with Animated Stats */}

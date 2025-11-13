@@ -52,8 +52,21 @@ const suggestionChips = [
 ];
 
 export default function ChatPage() {
+  const [isClient, setIsClient] = useState(false);
+  
   // Load messages from localStorage for persistence across views
   const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window === 'undefined') {
+      return [
+        {
+          id: "welcome",
+          text: "Hey, I'm the Clean Machine Assistant! Want to check our services, book an appointment, or ask a question? I can handle it all right here.",
+          sender: "bot",
+          timestamp: new Date(),
+        }
+      ];
+    }
+    
     const savedMessages = localStorage.getItem('chatMessages');
     if (savedMessages) {
       try {
@@ -77,6 +90,10 @@ export default function ChatPage() {
       }
     ];
   });
+  
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
   
   // Save messages to localStorage whenever they change
   useEffect(() => {
@@ -252,8 +269,9 @@ export default function ChatPage() {
         >
           {/* Messages Area */}
           <ScrollArea className="h-full p-6 pb-32">
-            <AnimatePresence initial={false}>
-              {messages.map((message) => (
+            {isClient ? (
+              <AnimatePresence initial={false}>
+                {messages.map((message) => (
                 <motion.div
                   key={message.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -318,11 +336,57 @@ export default function ChatPage() {
                     </div>
                   </div>
                 </motion.div>
-              ))}
-            </AnimatePresence>
+                ))}
+              </AnimatePresence>
+            ) : (
+              messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`mb-4 flex ${
+                    message.sender === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`flex items-start gap-3 max-w-[80%] ${
+                      message.sender === "user" ? "flex-row-reverse" : ""
+                    }`}
+                  >
+                    <div
+                      className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        message.sender === "user"
+                          ? "bg-blue-600"
+                          : "bg-gradient-to-br from-blue-500 to-blue-700"
+                      }`}
+                    >
+                      {message.sender === "user" ? (
+                        <User className="h-4 w-4 text-white" />
+                      ) : (
+                        <Bot className="h-4 w-4 text-white" />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div
+                        className={`px-4 py-3 rounded-2xl ${
+                          message.sender === "user"
+                            ? "bg-blue-600 text-white rounded-tr-sm"
+                            : "bg-gray-800/70 backdrop-blur-sm border border-gray-700/50 text-blue-100 rounded-tl-sm"
+                        }`}
+                      >
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                          {message.text}
+                        </p>
+                      </div>
+                      <span className="text-xs text-blue-400/60 px-1">
+                        {formatTime(message.timestamp)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
 
             {/* Typing Indicator */}
-            <AnimatePresence>
+            {isClient && <AnimatePresence>
               {isTyping && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -354,7 +418,7 @@ export default function ChatPage() {
                   </div>
                 </motion.div>
               )}
-            </AnimatePresence>
+            </AnimatePresence>}
 
             <div ref={messageEndRef} />
           </ScrollArea>
