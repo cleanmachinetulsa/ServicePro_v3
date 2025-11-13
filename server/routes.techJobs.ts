@@ -8,7 +8,8 @@ import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { getDriveClient } from './googleIntegration';
+import { getDriveClient, getAuthClient } from './googleIntegration';
+import { google } from 'googleapis';
 
 const router = Router();
 
@@ -68,54 +69,60 @@ router.get('/jobs/today', requireTechnician, async (req: Request, res: Response)
       statusFilter,
     });
 
-    // Fetch all today's appointment records from database
+    // Fetch appointments from Google Calendar (primary source of truth)
     const today = new Date();
     const todayStart = startOfDay(today);
     const todayEnd = endOfDay(today);
 
-    const dbAppointments = await db
-      .select({
-        id: appointments.id,
-        customerId: appointments.customerId,
-        serviceId: appointments.serviceId,
-        scheduledTime: appointments.scheduledTime,
-        status: appointments.status,
-        technicianId: appointments.technicianId,
-        calendarEventId: appointments.calendarEventId,
-        latitude: appointments.latitude,
-        longitude: appointments.longitude,
-        jobNotes: appointments.jobNotes,
-        statusUpdatedAt: appointments.statusUpdatedAt,
-        customerPhone: customers.phone,
-        customerName: customers.name,
-        customerAddress: customers.address,
-      })
-      .from(appointments)
-      .leftJoin(customers, eq(appointments.customerId, customers.id))
-      .where(
-        and(
-          gte(appointments.scheduledTime, todayStart),
-          lte(appointments.scheduledTime, todayEnd)
-        )
-      );
+    let enrichedJobs = [];
+    
+    try {
+      const auth = await getAuthClient();
+      const calendar = google.calendar({ version: 'v3', auth });
+      const calendarId = process.env.GOOGLE_CALENDAR_ID || 'cleanmachinetulsa@gmail.com';
+      
+      const response = await calendar.events.list({
+        calendarId,
+        timeMin: todayStart.toISOString(),
+        timeMax: todayEnd.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
 
-    // Format appointments as jobs
-    const enrichedJobs = dbAppointments.map((apt) => ({
-      id: apt.id,
-      customerId: apt.customerId,
-      serviceId: apt.serviceId,
-      scheduledTime: apt.scheduledTime,
-      status: apt.status || 'scheduled',
-      technicianId: apt.technicianId,
-      calendarEventId: apt.calendarEventId,
-      latitude: apt.latitude,
-      longitude: apt.longitude,
-      jobNotes: apt.jobNotes,
-      statusUpdatedAt: apt.statusUpdatedAt,
-      customerPhone: apt.customerPhone,
-      customerName: apt.customerName,
-      customerAddress: apt.customerAddress,
-    }));
+      const events = response.data.items || [];
+      console.log(`[TECH JOBS] Found ${events.length} calendar events`);
+
+      // Convert calendar events to job format
+      enrichedJobs = events.map((event: any) => {
+        const eventSummaryParts = event.summary ? event.summary.split('-') : ['Unknown Service'];
+        const serviceName = eventSummaryParts[0]?.trim() || 'Unknown Service';
+        const customerName = eventSummaryParts[1]?.trim() || 'Unknown Customer';
+        
+        return {
+          id: event.id,  // Use calendar event ID
+          customerId: null,
+          serviceId: null,
+          scheduledTime: event.start.dateTime || event.start.date,
+          status: 'scheduled',
+          technicianId: null,  // All jobs unassigned until assigned in database
+          calendarEventId: event.id,
+          latitude: null,
+          longitude: null,
+          jobNotes: event.description || null,
+          statusUpdatedAt: null,
+          customerPhone: null,
+          customerName,
+          customerAddress: event.location || '',
+          serviceName,  // Add service name for display
+        };
+      });
+    } catch (calError) {
+      console.error('[TECH JOBS] Failed to fetch from calendar:', calError);
+      return res.status(503).json({
+        success: false,
+        error: 'Calendar service unavailable'
+      });
+    }
 
     // Apply filters
     let filteredJobs = enrichedJobs;
