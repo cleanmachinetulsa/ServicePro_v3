@@ -31,7 +31,7 @@ export function TechnicianLayout({
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 overflow-hidden">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900">
       {/* Header - Sticky */}
       <header className="flex-shrink-0 bg-blue-950 border-b border-blue-800 px-4 md:px-6 py-3 md:py-4">
         <div className="flex items-center justify-between">
@@ -81,8 +81,8 @@ export function TechnicianLayout({
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
+      {/* Main Content - Now scrollable */}
+      <main className="flex-1 overflow-auto">
         {children}
       </main>
     </div>

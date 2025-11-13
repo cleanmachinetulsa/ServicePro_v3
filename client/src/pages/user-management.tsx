@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Users, Plus, Edit, Trash2, Key, ArrowLeft, Shield, UserCheck, UserX } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import BackNavigation from '@/components/BackNavigation';
 
 interface User {
   id: number;
@@ -228,15 +229,10 @@ export default function UserManagement() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
+      <div className="mb-4">
+        <BackNavigation fallbackPath="/dashboard" />
+      </div>
       <div className="flex items-center gap-4 mb-6">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setLocation('/dashboard')}
-          data-testid="button-back-dashboard"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <div className="flex-1">
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Users className="h-8 w-8" />
