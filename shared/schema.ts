@@ -664,6 +664,66 @@ export const referrals = pgTable("referrals", {
   notes: text("notes"), // Optional notes about the referral
 });
 
+// Referral Program Configuration - Singleton table for referral system settings
+// This table stores all configurable properties for the referral system
+export const referralProgramConfig = pgTable("referral_program_config", {
+  id: serial("id").primaryKey(),
+  enabled: boolean("enabled").notNull().default(true), // Master on/off switch
+  
+  // Referrer reward configuration (person who shares the code)
+  referrerRewardType: varchar("referrer_reward_type", { length: 30 }).notNull().default("loyalty_points"), // 'loyalty_points', 'fixed_discount', 'percent_discount', 'service_credit', 'free_addon', 'tier_upgrade', 'priority_booking', 'milestone_reward', 'gift_card'
+  referrerRewardAmount: numeric("referrer_reward_amount", { precision: 10, scale: 2 }).notNull().default("500"), // Amount varies by type: points=500, discount=$25, percent=15, etc.
+  referrerRewardServiceId: integer("referrer_reward_service_id").references(() => services.id), // For free_addon type - which service/addon to give
+  referrerRewardExpiryDays: integer("referrer_reward_expiry_days"), // How many days until referrer reward expires (null = never)
+  referrerRewardNotes: text("referrer_reward_notes"), // Display text for reward description
+  
+  // Referee reward configuration (person who uses the code - new customer)
+  refereeRewardType: varchar("referee_reward_type", { length: 30 }).notNull().default("fixed_discount"), // Same types as referrer
+  refereeRewardAmount: numeric("referee_reward_amount", { precision: 10, scale: 2 }).notNull().default("25"), // Default $25 off first service
+  refereeRewardServiceId: integer("referee_reward_service_id").references(() => services.id), // For free_addon type
+  refereeRewardExpiryDays: integer("referee_reward_expiry_days"), // How many days until referee reward expires (null = never)
+  refereeRewardNotes: text("referee_reward_notes"), // Display text for reward description
+  
+  // Code generation settings
+  codeExpiryDays: integer("code_expiry_days").default(90), // How long referral codes are valid (null = never expire)
+  maxUsesPerCode: integer("max_uses_per_code").default(1), // Usually 1, but could allow multiple uses
+  
+  // Milestone rewards - bonus rewards for hitting referral milestones
+  milestonesEnabled: boolean("milestones_enabled").default(false),
+  milestoneConfig: jsonb("milestone_config").default('[]'), // Array of {threshold: 5, rewardType: 'free_addon', amount: 100, notes: 'Free wax!'}
+  
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
+// Reward Audit Trail - Tracks all referral reward applications
+// Used for debugging, analytics, and ensuring rewards are only applied once
+export const rewardAudit = pgTable("reward_audit", {
+  id: serial("id").primaryKey(),
+  referralId: integer("referral_id").notNull().references(() => referrals.id),
+  customerId: integer("customer_id").notNull().references(() => customers.id), // Who received the reward
+  rewardRole: varchar("reward_role", { length: 20 }).notNull(), // 'referrer' or 'referee'
+  rewardType: varchar("reward_type", { length: 30 }).notNull(), // 'loyalty_points', 'fixed_discount', etc.
+  rewardAmount: numeric("reward_amount", { precision: 10, scale: 2 }).notNull(), // Value of reward applied
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // 'pending', 'applied', 'expired', 'failed'
+  
+  // Application tracking
+  appliedAt: timestamp("applied_at"), // When reward was actually applied
+  expiresAt: timestamp("expires_at"), // When reward expires if not used
+  invoiceId: integer("invoice_id").references(() => invoices.id), // Invoice where discount was applied (for discount types)
+  transactionId: integer("transaction_id").references(() => pointsTransactions.id), // Points transaction (for points type)
+  
+  // Metadata
+  metadata: jsonb("metadata"), // Flexible storage for type-specific data
+  errorMessage: text("error_message"), // If failed, why?
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  // Performance indexes for high-volume lookups
+  referralIdIdx: index("reward_audit_referral_id_idx").on(table.referralId),
+  customerIdIdx: index("reward_audit_customer_id_idx").on(table.customerId),
+  statusIdx: index("reward_audit_status_idx").on(table.status),
+}));
+
 // Tables for post-purchase upsell system
 export const upsellOffers = pgTable("upsell_offers", {
   id: serial("id").primaryKey(),
@@ -1525,6 +1585,55 @@ export const insertReferralSchema = createInsertSchema(referrals).omit({
 });
 
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
+export type SelectReferral = typeof referrals.$inferSelect;
+
+// Referral Program Config schemas and types
+export const insertReferralProgramConfigSchema = createInsertSchema(referralProgramConfig).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertReferralProgramConfig = z.infer<typeof insertReferralProgramConfigSchema>;
+export type SelectReferralProgramConfig = typeof referralProgramConfig.$inferSelect;
+
+// Reward Audit schemas and types
+export const insertRewardAuditSchema = createInsertSchema(rewardAudit).omit({
+  id: true,
+  createdAt: true,
+  appliedAt: true,
+});
+
+export type InsertRewardAudit = z.infer<typeof insertRewardAuditSchema>;
+export type SelectRewardAudit = typeof rewardAudit.$inferSelect;
+
+// TypeScript type definitions for reward descriptors
+export type RewardType = 
+  | 'loyalty_points' 
+  | 'fixed_discount' 
+  | 'percent_discount' 
+  | 'service_credit' 
+  | 'free_addon' 
+  | 'tier_upgrade' 
+  | 'priority_booking' 
+  | 'milestone_reward' 
+  | 'gift_card';
+
+export type RewardDescriptor = {
+  type: RewardType;
+  amount: number; // Points, dollars, percent, or credit amount
+  serviceId?: number; // For free_addon type - which service to give
+  expiryDays?: number; // How many days until reward expires (null = never)
+  notes?: string; // Display text for the reward
+  maxUses?: number; // How many times this reward can be used (usually 1)
+  stackable?: boolean; // Can this be combined with other rewards?
+};
+
+export type MilestoneConfig = {
+  threshold: number; // Number of referrals needed
+  rewardType: RewardType;
+  amount: number;
+  notes: string;
+};
 
 export const insertUpsellOfferSchema = createInsertSchema(upsellOffers).pick({
   name: true,
