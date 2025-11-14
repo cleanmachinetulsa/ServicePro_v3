@@ -18,7 +18,8 @@ import {
   CheckCircle2, 
   Clock, 
   TrendingUp,
-  QrCode as QrCodeIcon
+  QrCode as QrCodeIcon,
+  Search
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import BackNavigation from '@/components/BackNavigation';
