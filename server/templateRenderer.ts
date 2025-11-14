@@ -261,3 +261,80 @@ export async function getTemplateVersionHistory(templateId: number) {
     return [];
   }
 }
+
+/**
+ * Production-safe SMS template renderer with graceful fallback
+ * 
+ * Renders SMS template from database or falls back to legacy hardcoded message.
+ * Provides observability through structured results and detailed logging.
+ * 
+ * @param templateKey - Template identifier (e.g., 'booking_confirmation')
+ * @param payload - Variable values for interpolation (e.g., { firstName: 'John' })
+ * @param fallback - Function that returns legacy message if template fails
+ * @param options - Additional rendering options
+ * @returns Structured result with rendered message and metadata
+ * 
+ * @example
+ * const result = await renderSmsTemplateOrFallback(
+ *   'booking_confirmation',
+ *   { firstName: 'John', date: '12/15', time: '2:00 PM' },
+ *   () => `Hi John, your appointment is confirmed for 12/15 at 2:00 PM`
+ * );
+ * console.log(result.message); // Rendered SMS body
+ * console.log(result.fallbackUsed); // true if template failed
+ */
+export async function renderSmsTemplateOrFallback(
+  templateKey: string,
+  payload: Record<string, string>,
+  fallback: () => string,
+  options: { language?: string } = {}
+): Promise<{
+  message: string;
+  usedTemplateKey: string | null;
+  fallbackUsed: boolean;
+  missingVariables?: string[];
+}> {
+  try {
+    // Attempt to render the template
+    const result = await renderTemplate(templateKey, payload, options);
+
+    if (result.success && result.rendered) {
+      // Template rendered successfully
+      console.log(`[SMS TEMPLATE] ✅ Successfully rendered template: ${templateKey}`);
+      return {
+        message: result.rendered,
+        usedTemplateKey: templateKey,
+        fallbackUsed: false,
+      };
+    }
+
+    // Template failed - log details and use fallback
+    console.warn(`[SMS TEMPLATE] ⚠️ Template failed: ${templateKey}`, {
+      reason: result.message,
+      missing: result.missing,
+      payload: Object.keys(payload),
+    });
+
+    const fallbackMessage = fallback();
+    console.log(`[SMS TEMPLATE] 🔄 Using fallback message for: ${templateKey}`);
+
+    return {
+      message: fallbackMessage,
+      usedTemplateKey: null,
+      fallbackUsed: true,
+      missingVariables: result.missing,
+    };
+  } catch (error) {
+    // Unexpected error - log and use fallback
+    console.error(`[SMS TEMPLATE] ❌ Unexpected error rendering ${templateKey}:`, error);
+    
+    const fallbackMessage = fallback();
+    console.log(`[SMS TEMPLATE] 🔄 Using fallback message due to error`);
+
+    return {
+      message: fallbackMessage,
+      usedTemplateKey: null,
+      fallbackUsed: true,
+    };
+  }
+}
