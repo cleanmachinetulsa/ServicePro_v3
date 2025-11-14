@@ -57,6 +57,7 @@ import ShowcasePage from './pages/showcase';
 import CleanMachineShowcase from './pages/clean-machine-showcase';
 import SecuritySettingsPage from './pages/security-settings';
 import TechnicianPage from './pages/technician';
+import ReferralPage from './pages/ReferralPage';
 
 function Router() {
   return (
@@ -163,6 +164,7 @@ function Router() {
       <Route path="/service-history" component={ServiceHistoryPage} />
       <Route path="/demo" component={DemoPage} />
       <Route path="/rewards" component={LoyaltyPointsPage} />
+      <Route path="/referrals" component={ReferralPage} />
       <Route path="/gallery" component={GalleryPage} />
       <Route path="/reviews" component={ReviewsPage} />
       <Route path="/my-services" component={CustomerRecurringServicesPage} />
