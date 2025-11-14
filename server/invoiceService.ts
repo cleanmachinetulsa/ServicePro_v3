@@ -1,11 +1,12 @@
 import { db } from './db';
-import { invoices, appointments, customers, services, loyaltyPoints, type Invoice, type InsertInvoice } from '@shared/schema';
+import { invoices, appointments, customers, services, loyaltyPoints, referrals, type Invoice, type InsertInvoice } from '@shared/schema';
 import { and, eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { sendBusinessEmail } from './emailService';
 import { sendSMS } from './notifications';
 import { renderInvoiceEmail, renderInvoiceEmailPlainText, type InvoiceEmailData } from './emailTemplates/invoice';
 import { signPayToken } from './security/paylink';
+import { applyRefereeReward, calculateInvoiceWithReferralDiscount, markReferralDiscountApplied } from './referralService';
 
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
@@ -65,19 +66,70 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
   // Create service description
   const serviceDescription = `${service.name} - ${service.overview}`;
 
-  // Create the invoice
-  const newInvoice: InsertInvoice = {
-    appointmentId,
-    customerId: customer.id,
-    amount: amount.toString(),
-    serviceDescription,
-    notes: `Service completed at ${customer.address || appointment.address}`,
-  };
+  // ATOMIC TRANSACTION: Apply referee reward, calculate discount, create invoice, mark reward as applied
+  const invoice = await db.transaction(async (tx) => {
+    // Check for referral signup and apply referee reward
+    try {
+      const [referralRecord] = await tx
+        .select()
+        .from(referrals)
+        .where(
+          and(
+            eq(referrals.refereeCustomerId, customer.id),
+            eq(referrals.status, 'signed_up')
+          )
+        )
+        .limit(1);
 
-  const [invoice] = await db
-    .insert(invoices)
-    .values(newInvoice)
-    .returning();
+      if (referralRecord) {
+        console.log(`[REFERRAL] Found referral record ${referralRecord.id} for customer ${customer.id}, applying referee reward`);
+        
+        // Apply referee reward within transaction (creates pending reward_audit)
+        const rewardResult = await applyRefereeReward(referralRecord.id, customer.id, tx);
+        
+        if (rewardResult.success) {
+          console.log(`[REFERRAL] Successfully applied referee reward: ${rewardResult.message}`);
+        } else {
+          console.warn(`[REFERRAL] Failed to apply referee reward: ${rewardResult.message}`);
+          // Don't throw - continue with invoice creation even if reward fails
+        }
+      }
+    } catch (referralError) {
+      console.error('[REFERRAL] Error checking/applying referee reward:', referralError);
+      // Don't throw - continue with invoice creation even if referral reward fails
+    }
+
+    // Calculate final amount with any pending referral discounts (within transaction)
+    const { finalAmount, discount, discountType, rewardAuditId } = await calculateInvoiceWithReferralDiscount(
+      amount,
+      customer.id,
+      tx  // Pass transaction executor
+    );
+
+    // Create the invoice with discounted amount if applicable
+    const newInvoice: InsertInvoice = {
+      appointmentId,
+      customerId: customer.id,
+      amount: finalAmount.toString(),
+      serviceDescription,
+      notes: discount > 0 
+        ? `Service completed at ${customer.address || appointment.address}\nReferral ${discountType} applied: -$${discount.toFixed(2)} (Original: $${amount.toFixed(2)})`
+        : `Service completed at ${customer.address || appointment.address}`,
+    };
+
+    const [createdInvoice] = await tx
+      .insert(invoices)
+      .values(newInvoice)
+      .returning();
+
+    // Mark referral discount as applied if one was used (within transaction)
+    if (rewardAuditId && discount > 0) {
+      await markReferralDiscountApplied(rewardAuditId, createdInvoice.id, tx);  // Pass transaction executor
+      console.log(`[REFERRAL] Marked reward_audit ${rewardAuditId} as applied to invoice ${createdInvoice.id}`);
+    }
+
+    return createdInvoice;
+  });
 
   return invoice;
 }

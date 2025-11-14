@@ -620,6 +620,166 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
 }
 
 /**
+ * Apply referee reward when they book their first appointment
+ * Creates pending reward that will be applied to their invoice/experience
+ */
+export async function applyRefereeReward(
+  referralId: number,
+  customerId: number,
+  executor: any = db
+): Promise<{ success: boolean; rewardAuditId?: number; discount?: { type: string; amount: number }; message?: string }> {
+  try {
+    // Get referee reward configuration
+    const refereeReward = await getRefereeRewardDescriptor();
+    if (!refereeReward) {
+      console.warn("No referee reward configuration found");
+      return { success: false, message: "Referee reward not configured" };
+    }
+
+    // Apply the reward
+    const rewardResult = await applyRewardByType(
+      refereeReward,
+      customerId,
+      referralId,
+      'referee',
+      executor
+    );
+
+    if (!rewardResult.success) {
+      return { success: false, message: rewardResult.message };
+    }
+
+    // Return discount info if it's a discount type for invoice application
+    const result: any = {
+      success: true,
+      rewardAuditId: rewardResult.auditId,
+      message: rewardResult.message,
+    };
+
+    if (refereeReward.type === 'fixed_discount' || refereeReward.type === 'percent_discount') {
+      result.discount = {
+        type: refereeReward.type,
+        amount: refereeReward.amount,
+      };
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Error applying referee reward:", error);
+    return { success: false, message: "Failed to apply referee reward" };
+  }
+}
+
+/**
+ * Calculate invoice amount with referral discount applied
+ */
+export async function calculateInvoiceWithReferralDiscount(
+  baseAmount: number,
+  customerId: number,
+  executor: any = db
+): Promise<{ 
+  finalAmount: number; 
+  discount: number; 
+  discountType: string | null;
+  rewardAuditId: number | null;
+}> {
+  try {
+    // Check for pending referee discount rewards for this customer
+    const [pendingDiscount] = await executor
+      .select()
+      .from(rewardAudit)
+      .where(
+        and(
+          eq(rewardAudit.customerId, customerId),
+          eq(rewardAudit.rewardRole, 'referee'),
+          eq(rewardAudit.status, 'pending'),
+          or(
+            eq(rewardAudit.rewardType, 'fixed_discount'),
+            eq(rewardAudit.rewardType, 'percent_discount')
+          )
+        )
+      )
+      .limit(1);
+
+    if (!pendingDiscount) {
+      return { 
+        finalAmount: baseAmount, 
+        discount: 0, 
+        discountType: null,
+        rewardAuditId: null
+      };
+    }
+
+    // Check if expired
+    if (pendingDiscount.expiresAt && new Date() > pendingDiscount.expiresAt) {
+      // Mark as expired
+      await executor
+        .update(rewardAudit)
+        .set({ status: 'expired' })
+        .where(eq(rewardAudit.id, pendingDiscount.id));
+
+      return { 
+        finalAmount: baseAmount, 
+        discount: 0, 
+        discountType: null,
+        rewardAuditId: null
+      };
+    }
+
+    const discountAmount = parseFloat(pendingDiscount.rewardAmount);
+    let finalDiscount = 0;
+
+    if (pendingDiscount.rewardType === 'fixed_discount') {
+      finalDiscount = Math.min(discountAmount, baseAmount); // Can't discount more than invoice
+    } else if (pendingDiscount.rewardType === 'percent_discount') {
+      finalDiscount = (baseAmount * discountAmount) / 100;
+    }
+
+    const finalAmount = Math.max(0, baseAmount - finalDiscount);
+
+    return {
+      finalAmount,
+      discount: finalDiscount,
+      discountType: pendingDiscount.rewardType,
+      rewardAuditId: pendingDiscount.id
+    };
+  } catch (error) {
+    console.error("Error calculating referral discount:", error);
+    return { 
+      finalAmount: baseAmount, 
+      discount: 0, 
+      discountType: null,
+      rewardAuditId: null
+    };
+  }
+}
+
+/**
+ * Mark referral discount as applied to an invoice
+ */
+export async function markReferralDiscountApplied(
+  rewardAuditId: number,
+  invoiceId: number,
+  executor: any = db
+): Promise<{ success: boolean }> {
+  try {
+    await executor
+      .update(rewardAudit)
+      .set({
+        status: 'applied',
+        appliedAt: new Date(),
+        invoiceId,
+      })
+      .where(eq(rewardAudit.id, rewardAuditId));
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error marking referral discount as applied:", error);
+    return { success: false };
+  }
+}
+
+/**
  * Get or create referral code for a customer
  * Returns existing code if one exists, creates new one otherwise
  */
