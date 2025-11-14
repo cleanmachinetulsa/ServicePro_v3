@@ -340,6 +340,8 @@ export async function registerRoutes(app: Express) {
       '/api/addon-services',    // Public addon services
       '/api/privacy-policy',    // Public privacy policy
       '/api/recurring-service-booking', // Public recurring service booking
+      '/api/referral/validate', // Public referral code validation (for booking flow)
+      '/api/referral/signup',   // Public referral signup tracking (for booking flow)
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)

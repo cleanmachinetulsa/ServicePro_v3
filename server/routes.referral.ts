@@ -8,6 +8,7 @@ import {
   trackReferralSignup,
   getOrCreateReferralCode,
 } from './referralService';
+import { getRefereeRewardDescriptor, formatRewardDescription } from './referralConfigService';
 
 /**
  * Register referral program routes
@@ -126,6 +127,7 @@ export function registerReferralRoutes(app: Express) {
   /**
    * Validate a referral code
    * Checks if code exists, is not expired, and is available to use
+   * Returns referee reward information if valid
    * Public endpoint - no auth required
    */
   app.post('/api/referral/validate', async (req: Request, res: Response) => {
@@ -143,6 +145,30 @@ export function registerReferralRoutes(app: Express) {
       const normalizedCode = code.trim().toUpperCase();
       
       const result = await validateReferralCode(normalizedCode);
+      
+      // If valid, fetch referee reward information from config
+      if (result.valid) {
+        const refereeReward = await getRefereeRewardDescriptor();
+        
+        if (refereeReward) {
+          const rewardDescription = formatRewardDescription(refereeReward);
+          
+          return res.json({ 
+            success: true,
+            message: result.message,
+            data: {
+              valid: true,
+              reward: {
+                type: refereeReward.type,
+                amount: refereeReward.amount,
+                description: rewardDescription,
+                expiryDays: refereeReward.expiryDays,
+                notes: refereeReward.notes,
+              }
+            }
+          });
+        }
+      }
       
       res.json({ 
         success: result.valid,
