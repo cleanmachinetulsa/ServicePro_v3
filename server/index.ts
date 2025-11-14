@@ -201,6 +201,10 @@ app.use((req, res, next) => {
   const { initializeSmsTemplates } = await import('./initSmsTemplates');
   await initializeSmsTemplates();
   
+  // Initialize referral program configuration (singleton - only runs once)
+  const { initializeReferralConfig } = await import('./referralConfigService');
+  await initializeReferralConfig();
+  
   const server = await registerRoutes(app);
   
   // Register contacts routes
