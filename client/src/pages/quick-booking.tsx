@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -11,11 +11,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import BackNavigation from "@/components/BackNavigation";
-import { Loader2, Search, CheckCircle2, Phone, Mail, MapPin, Car, Award, Calendar as CalendarIcon, Clock, Plus, ArrowLeft } from "lucide-react";
+import { Loader2, Search, CheckCircle2, Phone, Mail, MapPin, Car, Award, Calendar as CalendarIcon, Clock, Plus, ArrowLeft, Gift } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { SMSConsentCheckbox } from "@/components/SMSConsentCheckbox";
+
+interface ReferralReward {
+  type: string;
+  amount: number;
+  description: string;
+  expiryDays?: number;
+  notes?: string;
+}
 
 interface Service {
   name: string;
@@ -88,12 +96,85 @@ export default function QuickBookingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
 
+  // Referral code state
+  const [referralCode, setReferralCode] = useState("");
+  const [referralValid, setReferralValid] = useState<boolean | null>(null);
+  const [referralReward, setReferralReward] = useState<ReferralReward | null>(null);
+  const [isValidatingReferral, setIsValidatingReferral] = useState(false);
+  const referralCacheRef = useRef<Record<string, { isValid: boolean; reward?: ReferralReward; error?: string }>>({});
+
   // Fetch services for service selection dropdown
   const { data: servicesData } = useQuery<{ success: boolean; services: Service[] }>({
     queryKey: ['/api/services'],
   });
 
   const services = servicesData?.services || [];
+
+  // Parse referral code from URL on mount and validate once
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      const normalized = refCode.toUpperCase();
+      setReferralCode(normalized);
+      validateReferralCode(normalized);
+    }
+  }, []);
+
+  // Validate referral code (matches Schedule.tsx pattern)
+  const validateReferralCode = async (code: string) => {
+    const normalizedCode = code.trim().toUpperCase();
+    
+    if (!normalizedCode) {
+      setReferralValid(null);
+      setReferralReward(null);
+      return;
+    }
+
+    // Check cache first
+    if (referralCacheRef.current[normalizedCode]) {
+      const cached = referralCacheRef.current[normalizedCode];
+      setReferralValid(cached.isValid);
+      setReferralReward(cached.reward || null);
+      return;
+    }
+
+    setIsValidatingReferral(true);
+    setReferralValid(null);
+    setReferralReward(null);
+
+    try {
+      const response = await fetch('/api/referral/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: normalizedCode }),
+      });
+
+      const data = await response.json();
+
+      const result = {
+        isValid: data.success && data.data?.valid,
+        reward: data.data?.reward,
+        error: !data.success ? data.message : undefined,
+      };
+
+      // Cache the result
+      referralCacheRef.current[normalizedCode] = result;
+      
+      setReferralValid(result.isValid);
+      setReferralReward(result.reward || null);
+    } catch (error) {
+      console.error('Referral validation error:', error);
+      toast({
+        title: "Network Error",
+        description: "Could not validate referral code. Please try again.",
+        variant: "destructive",
+      });
+      // Don't cache network errors - allow retry
+    } finally {
+      setIsValidatingReferral(false);
+    }
+  };
 
   // Handle customer lookup
   const handleLookup = async (e: React.FormEvent) => {
@@ -337,6 +418,7 @@ export default function QuickBookingPage() {
         scheduledTime: selectedTime,
         notes: "",
         smsConsent,
+        referralCode: referralValid ? referralCode : undefined,
       });
 
       const data = await response.json();
@@ -844,6 +926,84 @@ export default function QuickBookingPage() {
                                 checked={smsConsent}
                                 onCheckedChange={setSmsConsent}
                               />
+                            </CardContent>
+                          </Card>
+                        )}
+
+                        {/* Referral Code */}
+                        {selectedTime && (
+                          <Card className="bg-gray-800/50 border-blue-500/30">
+                            <CardHeader>
+                              <CardTitle className="text-blue-100 flex items-center gap-2 text-base">
+                                <Gift className="w-5 h-5" />
+                                Referral Code (Optional)
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              <div>
+                                <Input
+                                  data-testid="input-referral-code"
+                                  type="text"
+                                  placeholder="ENTER REFERRAL CODE"
+                                  value={referralCode}
+                                  onChange={(e) => {
+                                    const code = e.target.value.toUpperCase();
+                                    setReferralCode(code);
+                                    // Clear stale validation state when user edits
+                                    setReferralValid(null);
+                                    setReferralReward(null);
+                                  }}
+                                  onBlur={(e) => {
+                                    const code = e.target.value.trim().toUpperCase();
+                                    if (code) validateReferralCode(code);
+                                  }}
+                                  className="bg-gray-900/50 border-blue-500/30 text-white placeholder:text-gray-500 uppercase"
+                                />
+                                
+                                {isValidatingReferral && (
+                                  <p className="text-sm text-blue-400 mt-2 flex items-center gap-2">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Validating code...
+                                  </p>
+                                )}
+                                
+                                {!isValidatingReferral && referralValid === false && (
+                                  <p className="text-sm text-red-400 mt-2">
+                                    Invalid or expired referral code
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Reward Preview */}
+                              {!isValidatingReferral && referralValid && referralReward && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  className="bg-green-900/20 border border-green-500/30 rounded-lg p-4"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                                    <div className="flex-1">
+                                      <p className="text-sm font-medium text-green-100">
+                                        ✓ Valid code! You'll receive:
+                                      </p>
+                                      <p className="text-base font-semibold text-green-300 mt-1">
+                                        {referralReward.description}
+                                      </p>
+                                      {referralReward.expiryDays && (
+                                        <p className="text-xs text-green-200/70 mt-1">
+                                          Expires in {referralReward.expiryDays} days
+                                        </p>
+                                      )}
+                                      {referralReward.notes && (
+                                        <p className="text-xs text-green-200/70 mt-1">
+                                          {referralReward.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
                             </CardContent>
                           </Card>
                         )}
