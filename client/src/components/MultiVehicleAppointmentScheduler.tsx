@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -69,6 +69,7 @@ interface MultiVehicleAppointmentSchedulerProps {
   initialName?: string;
   initialPhone?: string;
   initialService?: string;
+  initialReferralCode?: string;
   onClose?: () => void;
   onSuccess?: (appointment: AppointmentDetails) => void;
 }
@@ -79,6 +80,7 @@ export default function MultiVehicleAppointmentScheduler({
   initialName,
   initialPhone,
   initialService,
+  initialReferralCode,
 }: MultiVehicleAppointmentSchedulerProps = {}) {
   const [step, setStep] = useState<"address" | "accessVerification" | "service" | "addons" | "vehicle" | "date" | "time" | "details">("address");
   const [customerAddress, setCustomerAddress] = useState<string>("");
@@ -90,6 +92,22 @@ export default function MultiVehicleAppointmentScheduler({
   const [name, setName] = useState(initialName || "");
   const [phone, setPhone] = useState(initialPhone || "");
   const [customerEmail, setCustomerEmail] = useState(""); // Assuming email isn't pre-fillable via URL yet
+
+  // Referral code state
+  const [referralCode, setReferralCode] = useState(initialReferralCode?.toUpperCase() || "");
+  const [isValidatingReferral, setIsValidatingReferral] = useState(false);
+  const [referralStatus, setReferralStatus] = useState<{
+    isValid: boolean;
+    reward?: {
+      type: string;
+      amount: number;
+      description: string;
+      expiryDays?: number;
+      notes?: string;
+    };
+    error?: string;
+  } | null>(null);
+  const referralCacheRef = useRef<Record<string, typeof referralStatus>>({});
 
   // Power/Water Access information
   const [accessInfo, setAccessInfo] = useState<{
@@ -547,6 +565,61 @@ export default function MultiVehicleAppointmentScheduler({
     });
   };
 
+  // Validate referral code
+  const validateReferralCode = async (code: string) => {
+    const normalizedCode = code.trim().toUpperCase();
+    
+    if (!normalizedCode) {
+      setReferralStatus(null);
+      return;
+    }
+
+    // Check cache first
+    if (referralCacheRef.current[normalizedCode]) {
+      setReferralStatus(referralCacheRef.current[normalizedCode]);
+      return;
+    }
+
+    setIsValidatingReferral(true);
+    setReferralStatus(null);
+
+    try {
+      const response = await fetch('/api/referral/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: normalizedCode }),
+      });
+
+      const data = await response.json();
+
+      const result = {
+        isValid: data.success && data.data?.valid,
+        reward: data.data?.reward,
+        error: !data.success ? data.message : undefined,
+      };
+
+      // Cache the result
+      referralCacheRef.current[normalizedCode] = result;
+      setReferralStatus(result);
+    } catch (error) {
+      console.error('Error validating referral code:', error);
+      toast({
+        title: 'Network Error',
+        description: 'Could not validate referral code. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsValidatingReferral(false);
+    }
+  };
+
+  // Validate initial referral code on mount
+  useEffect(() => {
+    if (initialReferralCode) {
+      validateReferralCode(initialReferralCode);
+    }
+  }, [initialReferralCode]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -603,6 +676,7 @@ export default function MultiVehicleAppointmentScheduler({
           notes,
           time: selectedTime,
           smsConsent,
+          referralCode: referralStatus?.isValid ? referralCode : undefined,
         }),
       });
 
@@ -621,7 +695,7 @@ export default function MultiVehicleAppointmentScheduler({
         // Format the time for display
         const formattedTime = format(parseISO(selectedTime), "EEEE, MMMM d, yyyy 'at' h:mm a");
 
-        onSuccess({
+        onSuccess?.({
           name,
           phone,
           address: customerAddress,
@@ -771,7 +845,7 @@ export default function MultiVehicleAppointmentScheduler({
         {step === "address" && (
           <ServiceAreaCheck
             onNext={handleAddressNext}
-            onBack={onClose}
+            onBack={onClose || (() => {})}
           />
         )}
 
@@ -1284,6 +1358,44 @@ export default function MultiVehicleAppointmentScheduler({
                 className="bg-gray-700/30 border-blue-400/30 text-blue-100 placeholder:text-blue-200/40"
                 data-testid="input-phone"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="referralCode" className="text-blue-100">
+                Referral Code <span className="text-blue-300/60 text-sm font-normal">(Optional)</span>
+              </Label>
+              <Input
+                id="referralCode"
+                type="text"
+                value={referralCode}
+                onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                onBlur={() => validateReferralCode(referralCode)}
+                placeholder="Enter referral code"
+                className="bg-gray-700/30 border-blue-400/30 text-blue-100 placeholder:text-blue-200/40 uppercase"
+                data-testid="input-referral-code"
+                disabled={isValidatingReferral}
+              />
+              {isValidatingReferral && (
+                <p className="text-sm text-blue-300/70 mt-1">Validating code...</p>
+              )}
+              {referralStatus?.error && (
+                <p className="text-sm text-red-400 mt-1">{referralStatus.error}</p>
+              )}
+              {referralStatus?.isValid && referralStatus.reward && (
+                <div className="mt-2 p-3 bg-green-500/10 border border-green-500/30 rounded-md">
+                  <p className="text-sm text-green-400 font-medium">
+                    ✓ Valid code! You'll receive: {referralStatus.reward.description}
+                  </p>
+                  {referralStatus.reward.notes && (
+                    <p className="text-xs text-green-300/70 mt-1">{referralStatus.reward.notes}</p>
+                  )}
+                  {referralStatus.reward.expiryDays && (
+                    <p className="text-xs text-green-300/70 mt-1">
+                      Valid for {referralStatus.reward.expiryDays} days after booking
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <SMSConsentCheckbox

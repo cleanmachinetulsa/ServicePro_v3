@@ -6,6 +6,7 @@ import {
   sendBookingConfirmation,
   scheduleDayBeforeReminder,
 } from "./notifications";
+import { trackReferralSignup } from "./referralService";
 
 // COMMIT
 // Configuration for booking appointments
@@ -186,6 +187,7 @@ export async function handleBook(req: any, res: any) {
       notes = "",
       email = "",
       smsConsent = false,
+      referralCode = "",
     } = req.body;
 
     if (!name || !phone || !service || !time) {
@@ -438,6 +440,28 @@ export async function handleBook(req: any, res: any) {
         }
         
         console.log(`[SERVICE LIMITS] Booking allowed: ${service} on ${dateStr} has ${bookingsOnDay}/${applicableLimit.dailyLimit} bookings`);
+      }
+
+      // Track referral signup if referral code was provided
+      if (referralCode && referralCode.trim()) {
+        try {
+          console.log(`[REFERRAL] Tracking referral signup with code: ${referralCode}`);
+          const referralResult = await trackReferralSignup(referralCode.trim().toUpperCase(), {
+            phone,
+            email,
+            name,
+          });
+          
+          if (referralResult.success) {
+            console.log(`[REFERRAL] Successfully tracked referral signup: ${referralResult.message}`);
+          } else {
+            console.warn(`[REFERRAL] Failed to track referral: ${referralResult.message}`);
+            // Continue with booking even if referral tracking fails - don't block the appointment
+          }
+        } catch (referralError) {
+          console.error('[REFERRAL] Error tracking referral signup:', referralError);
+          // Continue with booking even if referral tracking fails - don't block the appointment
+        }
       }
 
       const CALENDAR_ID = "cleanmachinetulsa@gmail.com";

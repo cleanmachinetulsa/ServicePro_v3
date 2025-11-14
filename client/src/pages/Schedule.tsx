@@ -12,20 +12,23 @@ export default function SchedulePage() {
     name?: string;
     phone?: string;
     service?: string;
+    referralCode?: string;
   }>({});
 
   useEffect(() => {
-    // Parse URL parameters for pre-filled reschedule flow
+    // Parse URL parameters for pre-filled reschedule flow and referral codes
     const params = new URLSearchParams(window.location.search);
     const name = params.get('name');
     const phone = params.get('phone');
     const service = params.get('service');
+    const referralCode = params.get('ref');
 
-    if (name || phone || service) {
+    if (name || phone || service || referralCode) {
       setPrefilledData({
         name: name || undefined,
         phone: phone || undefined,
         service: service || undefined,
+        referralCode: referralCode || undefined,
       });
     }
   }, []);
@@ -97,6 +100,7 @@ export default function SchedulePage() {
                 initialName={prefilledData.name}
                 initialPhone={prefilledData.phone}
                 initialService={prefilledData.service}
+                initialReferralCode={prefilledData.referralCode}
                 onClose={() => setLocation("/")}
                 onSuccess={handleAppointmentSuccess}
               />
