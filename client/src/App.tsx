@@ -159,6 +159,7 @@ function Router() {
       {/* Customer-facing pages (not protected) */}
       <Route path="/chat" component={ChatPage} />
       <Route path="/schedule" component={SchedulePage} />
+      <Route path="/book" component={SchedulePage} />
       <Route path="/quick-booking" component={QuickBookingPage} />
       <Route path="/directions" component={DirectionsPage} />
       <Route path="/service-history" component={ServiceHistoryPage} />
