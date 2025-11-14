@@ -1,7 +1,9 @@
 import { db } from "./db";
-import { referrals, customers, invoices } from "@shared/schema";
+import { referrals, customers, invoices, rewardAudit } from "@shared/schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
-import { awardPointsForReferral } from "./gamificationService";
+import { awardPoints } from "./gamificationService";
+import { getReferrerRewardDescriptor, getRefereeRewardDescriptor } from "./referralConfigService";
+import type { RewardDescriptor } from "@shared/schema";
 import { nanoid } from "nanoid";
 
 /**
@@ -40,14 +42,14 @@ export async function generateReferralCode(customerId: number): Promise<{ succes
       if (!existing) {
         isUnique = true;
         
-        // Create the referral record
+        // Create the referral record (points will be set when rewarded based on config)
         const [newReferral] = await db
           .insert(referrals)
           .values({
             referrerId: customerId,
             referralCode: code,
             status: "pending",
-            pointsAwarded: 500,
+            pointsAwarded: 0, // Will be updated when reward is applied
           })
           .returning();
 
@@ -240,6 +242,246 @@ export async function trackReferralSignup(
 }
 
 /**
+ * Apply a reward based on its type
+ * Creates reward_audit record and applies the reward
+ */
+async function applyRewardByType(
+  rewardDescriptor: RewardDescriptor,
+  customerId: number,
+  referralId: number,
+  role: 'referrer' | 'referee',
+  executor: any = db,
+  invoiceId?: number
+): Promise<{ success: boolean; message?: string; auditId?: number; pointsAwarded?: number }> {
+  try {
+    const { type, amount, serviceId, expiryDays, notes } = rewardDescriptor;
+    
+    // Calculate expiry if configured
+    const expiresAt = expiryDays ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000) : null;
+
+    switch (type) {
+      case 'loyalty_points': {
+        // Validate amount is required for points
+        if (!amount || amount <= 0) {
+          return { success: false, message: "Amount is required for loyalty_points reward" };
+        }
+
+        // Award points immediately
+        const pointsResult = await awardPoints(
+          customerId,
+          amount,
+          "referral",
+          referralId,
+          `Earned ${amount} points as ${role} reward`,
+          executor
+        );
+
+        if (!pointsResult.success) {
+          return { success: false, message: "Failed to award loyalty points" };
+        }
+
+        // Create reward audit record (transactionId not available from awardPoints)
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: amount.toString(),
+            status: "applied",
+            appliedAt: new Date(),
+            expiresAt,
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          pointsAwarded: amount,
+          message: `Awarded ${amount} loyalty points`
+        };
+      }
+
+      case 'fixed_discount':
+      case 'percent_discount': {
+        // Validate amount is required for discounts
+        if (!amount || amount <= 0) {
+          return { success: false, message: `Amount is required for ${type} reward` };
+        }
+
+        // Create pending reward audit - will be applied to invoice later
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: amount.toString(),
+            status: invoiceId ? "applied" : "pending",
+            appliedAt: invoiceId ? new Date() : null,
+            expiresAt,
+            invoiceId,
+            metadata: { discountType: type, discountValue: amount },
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: `Created ${type} reward of ${type === 'percent_discount' ? amount + '%' : '$' + amount}`
+        };
+      }
+
+      case 'service_credit': {
+        // Service credit requires amount
+        if (!amount || amount <= 0) {
+          return { success: false, message: "Amount is required for service_credit reward" };
+        }
+
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: amount.toString(),
+            status: "pending",
+            expiresAt,
+            metadata: { notes, creditAmount: amount },
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: `Created ${type} reward of $${amount}`
+        };
+      }
+
+      case 'gift_card': {
+        // Gift card requires amount
+        if (!amount || amount <= 0) {
+          return { success: false, message: "Amount is required for gift_card reward" };
+        }
+
+        const giftCardCode = `GC-${nanoid(10).toUpperCase()}`;
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: amount.toString(),
+            status: "pending",
+            expiresAt,
+            metadata: { notes, giftCardCode, cardValue: amount },
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: `Created ${type} reward of $${amount} (Code: ${giftCardCode})`
+        };
+      }
+
+      case 'free_addon': {
+        // Free addon requires serviceId
+        if (!serviceId) {
+          return { success: false, message: "ServiceId is required for free_addon reward" };
+        }
+
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: '0', // Free addon has no monetary value
+            status: "pending",
+            expiresAt,
+            metadata: { serviceId, notes, freeAddon: true },
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: `Created free_addon reward (Service ID: ${serviceId})`
+        };
+      }
+
+      case 'tier_upgrade':
+      case 'priority_booking': {
+        // Boolean-style rewards - no amount required
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: '0', // No monetary value
+            status: "pending",
+            expiresAt,
+            metadata: { notes, benefit: type },
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: `Created ${type} reward`
+        };
+      }
+
+      case 'milestone_reward': {
+        // Milestone rewards track progress and issue bonuses at thresholds
+        // Amount represents the bonus value when milestone is reached
+        if (!amount || amount <= 0) {
+          return { success: false, message: "Amount is required for milestone_reward" };
+        }
+
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: amount.toString(),
+            status: "pending", // Will be applied when milestone threshold is reached
+            expiresAt,
+            metadata: { 
+              notes, 
+              milestoneBonus: amount,
+              thresholdNote: notes || "Milestone bonus pending",
+            },
+          })
+          .returning();
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: `Created milestone_reward of $${amount}`
+        };
+      }
+
+      default:
+        return { success: false, message: `Unsupported reward type: ${type}` };
+    }
+  } catch (error) {
+    console.error(`Error applying ${role} reward:`, error);
+    return { success: false, message: "Failed to apply reward" };
+  }
+}
+
+/**
  * Check if a new customer was referred and award points when they complete first service
  * This should be called after a customer completes their first appointment
  * IDEMPOTENT: Only awards points once via status check + timestamp validation
@@ -300,7 +542,14 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
     // Log for debugging
     console.log(`Processing referral reward - customer ${customerId}, invoice ${invoiceId}, referral ID ${referral.id}`);
 
-    // ATOMIC TRANSACTION: Update referral status and award points in single transaction
+    // Get referrer reward configuration
+    const referrerReward = await getReferrerRewardDescriptor();
+    if (!referrerReward) {
+      console.error("No referrer reward configuration found");
+      return { success: false, message: "Referrer reward not configured" };
+    }
+
+    // ATOMIC TRANSACTION: Update referral status and award rewards in single transaction
     // RACE CONDITION PROTECTION: Update WHERE status='signed_up' ensures only ONE concurrent request succeeds
     try {
       await db.transaction(async (tx) => {
@@ -327,17 +576,22 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
           throw new Error("Referral already processed");  // Abort transaction
         }
 
-        // Award points to the referrer WITHIN TRANSACTION (throws on error)
-        // Passing tx ensures points are only awarded if entire transaction succeeds
-        const result = await awardPointsForReferral(
+        // Apply referrer reward based on configuration
+        const rewardResult = await applyRewardByType(
+          referrerReward,
           referral.referrerId,
-          customerId,
-          tx  // ← CRITICAL: Pass transaction executor for atomicity
+          referral.id,
+          'referrer',
+          tx,  // ← CRITICAL: Pass transaction executor for atomicity
+          invoiceId
         );
 
-        if (!result.success) {
-          throw new Error("Failed to award referral points");
+        if (!rewardResult.success) {
+          throw new Error(rewardResult.message || "Failed to apply referrer reward");
         }
+
+        // Update pointsAwarded field for backwards compatibility
+        const pointsAwarded = rewardResult.pointsAwarded || 0;
 
         // Mark as rewarded (final status transition)
         await tx
@@ -345,6 +599,7 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
           .set({
             status: "rewarded",
             rewardedAt: new Date(),
+            pointsAwarded,
           })
           .where(eq(referrals.id, referral.id));
       });
@@ -352,7 +607,7 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
       return { 
         success: true, 
         message: "Referral reward awarded successfully",
-        pointsAwarded: referral.pointsAwarded
+        pointsAwarded: referrerReward.type === 'loyalty_points' ? referrerReward.amount : 0
       };
     } catch (transactionError) {
       console.error("Transaction failed during referral reward:", transactionError);
