@@ -108,7 +108,7 @@ export function registerQuickBookingRoutes(app: Express) {
         // Last appointment info
         lastAppointment: lastAppointment ? {
           id: lastAppointment.id,
-          service: lastAppointment.service?.[0]?.name || '',
+          service: lastAppointment.service?.name || '',
           serviceId: lastAppointment.serviceId,
           scheduledTime: lastAppointment.scheduledTime,
           address: lastAppointment.address,
@@ -159,9 +159,10 @@ export function registerQuickBookingRoutes(app: Express) {
         scheduledTime,
         notes,
         smsConsent,
+        referralCode,
       } = req.body;
       
-      console.log(`[Quick Booking] Submitting booking for ${name}`);
+      console.log(`[Quick Booking] Submitting booking for ${name}`, { referralCode: referralCode || 'none' });
       
       // Validate required fields
       if (!name || !phone || !service || !scheduledTime) {
@@ -169,6 +170,27 @@ export function registerQuickBookingRoutes(app: Express) {
           success: false,
           message: 'Missing required fields'
         });
+      }
+
+      // Track referral signup if code provided (non-blocking)
+      if (referralCode && typeof referralCode === 'string') {
+        try {
+          const { trackReferralSignup } = await import('./referralService');
+          console.log(`[Quick Booking] Tracking referral signup with code: ${referralCode}`);
+          
+          await trackReferralSignup(
+            referralCode.trim().toUpperCase(),
+            {
+              phone: phone,
+              email: email || undefined,
+              name: name,
+            }
+          );
+          
+          console.log(`[Quick Booking] Referral signup tracked successfully`);
+        } catch (referralError) {
+          console.error('[Quick Booking] Failed to track referral signup (non-blocking):', referralError);
+        }
       }
       
       // Find or create customer
