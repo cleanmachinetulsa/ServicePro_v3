@@ -26,6 +26,7 @@ import ServicesManagement from "./ServicesManagement";
 import { CustomerManagement } from "./CustomerManagement";
 import { LoyaltyPointsSystem } from "./LoyaltyPointsSystem";
 import GalleryPhotoManager from "./GalleryPhotoManager";
+import AdminReferralStats from "./AdminReferralStats";
 import { 
   Menu, 
   Settings as SettingsIcon, 
@@ -36,7 +37,8 @@ import {
   Shield,
   Phone,
   Image,
-  Award
+  Award,
+  Gift
 } from "lucide-react";
 
 interface SettingsSection {
@@ -77,6 +79,7 @@ export default function SettingsWorkspace() {
       items: [
         { id: 'customer-management', label: 'Customer Database', component: CustomerManagement },
         { id: 'loyalty', label: 'Loyalty Program', component: LoyaltyPointsSystem },
+        { id: 'referrals', label: 'Referral Program', component: AdminReferralStats },
         { id: 'gallery', label: 'Gallery Photos', component: GalleryPhotoManager },
       ]
     },

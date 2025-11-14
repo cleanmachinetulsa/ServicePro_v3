@@ -10,6 +10,8 @@ import { services as servicesTable, businessSettings, agentPreferences } from '@
 import { registerLoyaltyRoutes } from './routes.loyalty';
 import { registerReferralRoutes } from './routes.referral';
 import { registerSmsReferralRoutes } from './routes.smsReferral';
+import { registerAdminReferralStatsRoutes } from './routes.adminReferralStats';
+import { registerPublicCustomerLookupRoutes } from './routes.publicCustomerLookup';
 import { registerUpsellRoutes } from './routes.upsell';
 import { registerInvoiceRoutes } from './routes.invoices';
 import { registerEnhancedCustomerRoutes } from './enhancedCustomerRoutes';
@@ -1727,6 +1729,8 @@ export async function registerRoutes(app: Express) {
   registerLoyaltyRoutes(app);
   registerReferralRoutes(app);
   registerSmsReferralRoutes(app);
+  registerAdminReferralStatsRoutes(app);
+  registerPublicCustomerLookupRoutes(app);
   registerUpsellRoutes(app);
   registerInvoiceRoutes(app);
   registerEnhancedCustomerRoutes(app);

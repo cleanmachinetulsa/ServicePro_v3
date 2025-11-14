@@ -164,7 +164,9 @@ function Router() {
       <Route path="/service-history" component={ServiceHistoryPage} />
       <Route path="/demo" component={DemoPage} />
       <Route path="/rewards" component={LoyaltyPointsPage} />
-      <Route path="/referrals" component={ReferralPage} />
+      <Route path="/referrals">
+        <AuthGuard><ReferralPage /></AuthGuard>
+      </Route>
       <Route path="/gallery" component={GalleryPage} />
       <Route path="/reviews" component={ReviewsPage} />
       <Route path="/my-services" component={CustomerRecurringServicesPage} />
