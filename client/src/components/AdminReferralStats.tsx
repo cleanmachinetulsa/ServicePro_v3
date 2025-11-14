@@ -73,10 +73,10 @@ const referralConfigSchema = z.object({
   enabled: z.boolean(),
   referrerRewardType: z.string(),
   referrerRewardAmount: z.string(),
-  referrerRewardExpiry: z.coerce.number().nullable(),
+  referrerRewardExpiry: z.union([z.number().int().positive(), z.null()]).optional().transform(val => val ?? null),
   refereeRewardType: z.string(),
   refereeRewardAmount: z.string(),
-  refereeRewardExpiry: z.coerce.number().nullable(),
+  refereeRewardExpiry: z.union([z.number().int().positive(), z.null()]).optional().transform(val => val ?? null),
   allowStackableRewards: z.boolean(),
 });
 
@@ -287,10 +287,12 @@ function ReferralConfigurationPanel() {
                       <FormLabel>Expiry (Days)</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
                           type="number"
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                          value={field.value === null || field.value === undefined ? '' : field.value}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            field.onChange(val === '' ? null : Number(val));
+                          }}
                           placeholder="Never"
                           data-testid="input-referrer-expiry"
                         />
@@ -366,10 +368,12 @@ function ReferralConfigurationPanel() {
                       <FormLabel>Expiry (Days)</FormLabel>
                       <FormControl>
                         <Input
-                          {...field}
                           type="number"
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                          value={field.value === null || field.value === undefined ? '' : field.value}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            field.onChange(val === '' ? null : Number(val));
+                          }}
                           placeholder="Never"
                           data-testid="input-referee-expiry"
                         />
