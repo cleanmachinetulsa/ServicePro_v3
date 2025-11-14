@@ -6,7 +6,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { queryClient } from '@/lib/queryClient';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Copy, 
   MessageSquare, 
@@ -45,7 +47,10 @@ interface Referral {
 
 export default function ReferralPage() {
   const { toast } = useToast();
-  const [customerId] = useState(1); // TODO: Get from auth context
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [searchPhone, setSearchPhone] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [showSmsForm, setShowSmsForm] = useState(false);
   const [friendPhone, setFriendPhone] = useState('');
@@ -68,6 +73,58 @@ export default function ReferralPage() {
     queryKey: ['/api/referral/list', customerId],
     enabled: !!customerId,
   });
+
+  // Search for customer by phone
+  const handleSearch = async () => {
+    if (!searchPhone.trim()) {
+      toast({
+        title: 'Phone number required',
+        description: 'Please enter your phone number to view your referral code',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSearching(true);
+    setHasSearched(true);
+
+    try {
+      // Use admin-protected customer search endpoint
+      const response = await fetch(`/api/customers/lookup/phone/${encodeURIComponent(searchPhone)}`, {
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Customer not found');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.customer) {
+        setCustomerId(data.customer.id);
+        toast({
+          title: 'Account found!',
+          description: `Welcome back, ${data.customer.name}!`,
+        });
+      } else {
+        setCustomerId(null);
+        toast({
+          title: 'Not found',
+          description: 'No account found with this phone number. Please book a service first to join our referral program!',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      setCustomerId(null);
+      toast({
+        title: 'Search failed',
+        description: 'Could not find your account. Please check your phone number.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const referralCode = codeData?.data?.code;
   const stats = statsData?.data;
@@ -245,12 +302,54 @@ export default function ReferralPage() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <Gift className="h-8 w-8 text-blue-600" />
-            <h1 className="text-3xl font-bold">Refer Friends, Earn Rewards</h1>
+            <h1 className="text-3xl font-bold">Customer Referral Management</h1>
           </div>
           <p className="text-gray-600 dark:text-gray-400">
-            Share your code and both you and your friend get 500 loyalty points!
+            Look up customers and manage their referral codes
           </p>
         </div>
+
+        {/* Customer Search */}
+        {!customerId && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Find Customer</CardTitle>
+              <CardDescription>Search by phone number to view referral information</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input
+                  type="tel"
+                  placeholder="(918) 555-0123"
+                  value={searchPhone}
+                  onChange={(e) => setSearchPhone(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                  data-testid="input-customer-search-phone"
+                />
+                <Button
+                  onClick={handleSearch}
+                  disabled={searching}
+                  data-testid="button-search-customer"
+                >
+                  {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+                  {searching ? 'Searching...' : 'Search'}
+                </Button>
+              </div>
+              {hasSearched && !customerId && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    No customer found with this phone number.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        )}
+        
+        {!customerId && hasSearched && (
+          <p className="text-center text-gray-500">Enter a phone number to get started</p>
+        )}
 
         {/* Stats Cards */}
         {stats && (
