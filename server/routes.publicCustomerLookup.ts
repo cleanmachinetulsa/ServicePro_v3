@@ -26,18 +26,22 @@ export function registerPublicCustomerLookupRoutes(app: Express) {
         });
       }
 
-      // Normalize phone number (remove spaces, dashes, etc.)
-      const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '');
+      // Normalize phone number (remove spaces, dashes, parentheses, plus signs)
+      const normalizedPhone = phone.replace(/[\s\-\(\)\+]/g, '');
 
-      const [customer] = await db
+      // Query all customers and filter by normalized phone on both sides
+      const allCustomers = await db
         .select({
           id: customers.id,
           name: customers.name,
           phone: customers.phone,
         })
-        .from(customers)
-        .where(eq(customers.phone, normalizedPhone))
-        .limit(1);
+        .from(customers);
+
+      // Find customer by comparing normalized phone numbers
+      const customer = allCustomers.find(c => 
+        c.phone.replace(/[\s\-\(\)\+]/g, '') === normalizedPhone
+      );
 
       if (!customer) {
         return res.status(404).json({
