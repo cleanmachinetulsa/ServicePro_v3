@@ -333,11 +333,17 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
 
         if (customer && customer.phone) {
           const { sendSMS } = await import('./notifications');
-          const customerName = customer.name ? customer.name.split(' ')[0] : 'there';
+          const { renderSmsTemplateOrFallback } = await import('./templateRenderer');
+          const firstName = customer.name ? customer.name.split(' ')[0] : 'there';
           
-          const message = `Hey ${customerName}! 👋 Your Clean Machine technician has arrived and will be with you shortly. Get ready for that showroom shine! ✨`;
+          // Render SMS from template with fallback to legacy message
+          const templateResult = await renderSmsTemplateOrFallback(
+            'on_site_arrival',
+            { firstName },
+            () => `Hey ${firstName}! 👋 Your Clean Machine technician has arrived and will be with you shortly. Get ready for that showroom shine! ✨`
+          );
           
-          await sendSMS(customer.phone, message);
+          await sendSMS(customer.phone, templateResult.message);
           console.log(`[TECH JOBS] On-site SMS notification sent to customer ${appointment.customerId}`);
         }
       } catch (smsError) {

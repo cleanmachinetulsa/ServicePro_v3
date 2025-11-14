@@ -216,10 +216,26 @@ export async function sendBookingConfirmation(
   // Get customer information from memory
   const customerInfo = customerMemory.getCustomer(phone);
   const vehicle = vehicleInfo || (customerInfo?.vehicleInfo || 'your vehicle');
-
-  // Create the confirmation message
   const servicesList = [service, ...(addOns || [])].join(', ');
-  const confirmationMessage = `
+
+  // Render SMS from template with fallback to legacy message
+  const { renderSmsTemplateOrFallback } = await import('./templateRenderer');
+  const firstName = name.split(' ')[0];
+  
+  // Parse date and time from formattedTime (e.g., "December 15 at 2:00 PM")
+  const dateMatch = formattedTime.match(/^(.+?) at (.+)$/);
+  const date = dateMatch ? dateMatch[1] : formattedTime.split(' at ')[0];
+  const time = dateMatch ? dateMatch[2] : formattedTime.split(' at ')[1] || formattedTime;
+
+  const templateResult = await renderSmsTemplateOrFallback(
+    'booking_confirmation',
+    {
+      firstName,
+      serviceName: servicesList,
+      date,
+      time,
+    },
+    () => `
 Hi ${name}, this is Clean Machine Auto Detail confirming your appointment for ${formattedTime} at ${address}.
 
 Services: ${servicesList}
@@ -230,7 +246,10 @@ ${SERVICE_REMINDERS}
 Need to reschedule? Reply to this message or call us.
 
 Directions to your location: https://cleanmachine.app/directions?address=${encodeURIComponent(address)}
-`;
+`
+  );
+
+  const confirmationMessage = templateResult.message;
 
   // Send SMS confirmation
   const smsResult = await sendSMS(phone, confirmationMessage);
@@ -345,10 +364,24 @@ async function sendReminderNotifications(
   // Get customer information from memory
   const customerInfo = customerMemory.getCustomer(phone);
   const vehicle = vehicleInfo || (customerInfo?.vehicleInfo || 'your vehicle');
-
-  // Create the reminder message
   const servicesList = [service, ...(addOns || [])].join(', ');
-  const reminderMessage = `
+
+  // Render SMS from template with fallback to legacy message
+  const { renderSmsTemplateOrFallback } = await import('./templateRenderer');
+  const firstName = name.split(' ')[0];
+  
+  // Parse time from formattedTime (e.g., "December 15 at 2:00 PM" -> "2:00 PM")
+  const timeMatch = formattedTime.match(/at\s+(.+)$/);
+  const time = timeMatch ? timeMatch[1] : formattedTime;
+
+  const templateResult = await renderSmsTemplateOrFallback(
+    'appointment_reminder_24h',
+    {
+      firstName,
+      serviceName: servicesList,
+      time,
+    },
+    () => `
 Hi ${name}, this is Clean Machine Auto Detail reminding you of your appointment tomorrow at ${formattedTime} at ${address}.
 
 Services: ${servicesList}
@@ -361,7 +394,10 @@ To cancel: Reply "CANCEL" and we'll confirm your cancellation.
 Questions? Text back or call (918) 856-5304
 
 Directions to your location: https://cleanmachine.app/directions?address=${encodeURIComponent(address)}
-`;
+`
+  );
+
+  const reminderMessage = templateResult.message;
 
   // Send SMS reminder
   const smsResult = await sendSMS(phone, reminderMessage);
