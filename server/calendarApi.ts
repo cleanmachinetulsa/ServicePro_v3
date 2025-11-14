@@ -443,6 +443,7 @@ export async function handleBook(req: any, res: any) {
       }
 
       // Track referral signup if referral code was provided
+      // Referee reward will be applied when their first invoice is created
       if (referralCode && referralCode.trim()) {
         try {
           console.log(`[REFERRAL] Tracking referral signup with code: ${referralCode}`);
@@ -454,6 +455,7 @@ export async function handleBook(req: any, res: any) {
           
           if (referralResult.success) {
             console.log(`[REFERRAL] Successfully tracked referral signup: ${referralResult.message}`);
+            console.log(`[REFERRAL] Referee reward will be applied when first invoice is created`);
           } else {
             console.warn(`[REFERRAL] Failed to track referral: ${referralResult.message}`);
             // Continue with booking even if referral tracking fails - don't block the appointment
