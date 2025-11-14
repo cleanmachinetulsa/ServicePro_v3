@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import { services as servicesTable, businessSettings, agentPreferences } from '@shared/schema';
 import { registerLoyaltyRoutes } from './routes.loyalty';
 import { registerReferralRoutes } from './routes.referral';
+import { registerReferralConfigRoutes } from './routes.referralConfig';
 import { registerSmsReferralRoutes } from './routes.smsReferral';
 import { registerAdminReferralStatsRoutes } from './routes.adminReferralStats';
 import { registerPublicCustomerLookupRoutes } from './routes.publicCustomerLookup';
@@ -1728,6 +1729,7 @@ export async function registerRoutes(app: Express) {
 
   registerLoyaltyRoutes(app);
   registerReferralRoutes(app);
+  registerReferralConfigRoutes(app);
   registerSmsReferralRoutes(app);
   registerAdminReferralStatsRoutes(app);
   registerPublicCustomerLookupRoutes(app);
