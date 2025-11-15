@@ -63,7 +63,7 @@ export default function RecentCalls() {
   const { toast } = useToast();
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error } = useQuery<{ calls?: Call[] }>({
     queryKey: ['/api/calls/recent'],
     refetchInterval: 10000, // Refresh every 10 seconds
     retry: 3,
@@ -139,6 +139,10 @@ export default function RecentCalls() {
     );
   }
 
+  const missedCount = calls.filter(c => c.status === 'missed').length;
+  const inboundCount = calls.filter(c => c.direction === 'inbound').length;
+  const outboundCount = calls.filter(c => c.direction === 'outbound').length;
+
   return (
     <>
       <CallDetailsModal
@@ -149,99 +153,127 @@ export default function RecentCalls() {
         onMessage={() => selectedCall && handleMessage(selectedCall.direction === 'inbound' ? selectedCall.from : selectedCall.to)}
       />
       
-      <ScrollArea className="h-full">
-        <div className="divide-y dark:divide-gray-800">
-          {calls.map((call) => {
-          const phoneNumber = call.direction === 'inbound' ? call.from : call.to;
-          const isMissed = call.status === 'missed';
-          
-          return (
-            <div
-              key={call.id}
-              className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                isMissed ? 'bg-red-50/50 dark:bg-red-950/20' : ''
-              }`}
-              data-testid={`call-${call.id}`}
-            >
-              <div className="flex items-center gap-4">
-                {/* Icon */}
-                <div className="flex-shrink-0">
-                  {getCallIcon(call)}
-                </div>
-
-                {/* Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className={`font-medium dark:text-white ${isMissed ? 'text-red-700 dark:text-red-400' : ''}`}>
-                      {phoneNumber}
-                    </p>
-                    {isMissed && (
-                      <Badge variant="destructive" className="text-xs">
-                        Missed
-                      </Badge>
-                    )}
-                    {call.status === 'voicemail' && (
-                      <Badge variant="default" className="text-xs bg-blue-600">
-                        Voicemail
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>{call.direction === 'inbound' ? 'Incoming' : 'Outgoing'}</span>
-                    {call.duration !== null && (
-                      <>
-                        <span>•</span>
-                        <span>{formatCallDuration(call.duration)}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Time */}
-                <div className="text-sm text-muted-foreground text-right">
-                  {formatCallTime(call.timestamp)}
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleMessage(phoneNumber)}
-                    className="h-9 w-9 p-0"
-                    title="Send message"
-                    data-testid={`button-message-${call.id}`}
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCallBack(phoneNumber)}
-                    disabled={callBackMutation.isPending}
-                    className="h-9 w-9 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950"
-                    title="Call back"
-                    data-testid={`button-call-${call.id}`}
-                  >
-                    <Phone className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSelectedCall(call)}
-                    className="h-9 w-9 p-0"
-                    title="Details"
-                    data-testid={`button-info-${call.id}`}
-                  >
-                    <Info className="h-4 w-4" />
-                  </Button>
-                </div>
+      <div className="h-full flex flex-col bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30">
+        {/* Glass Stats Header */}
+        <div className="glass-card m-4 mb-0 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-gradient-to-br from-green-500 to-blue-500">
+                <Phone className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg dark:text-white">Recent Calls</h3>
+                <p className="text-sm text-muted-foreground">
+                  {calls.length} call{calls.length !== 1 ? 's' : ''}
+                  {missedCount > 0 && ` • ${missedCount} missed`}
+                </p>
               </div>
             </div>
-          );
-          })}
+            <div className="flex items-center gap-2">
+              {missedCount > 0 && (
+                <Badge className="bg-gradient-to-br from-red-600 to-red-700 text-white border-0">
+                  {missedCount} Missed
+                </Badge>
+              )}
+            </div>
+          </div>
         </div>
-      </ScrollArea>
+
+        {/* Single ScrollArea for call list */}
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-3">
+            {calls.map((call) => {
+            const phoneNumber = call.direction === 'inbound' ? call.from : call.to;
+            const isMissed = call.status === 'missed';
+            
+            return (
+              <div
+                key={call.id}
+                className={`glass-card p-4 transition-all duration-200 hover:scale-[1.01] ${
+                  isMissed ? 'bg-gradient-to-br from-red-50/30 to-red-100/20 dark:from-red-900/20 dark:to-red-950/10' : ''
+                }`}
+                data-testid={`call-${call.id}`}
+              >
+                <div className="flex items-center gap-4">
+                  {/* Icon */}
+                  <div className="flex-shrink-0">
+                    {getCallIcon(call)}
+                  </div>
+
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className={`font-medium dark:text-white ${isMissed ? 'text-red-700 dark:text-red-400' : ''}`}>
+                        {phoneNumber}
+                      </p>
+                      {isMissed && (
+                        <Badge variant="destructive" className="text-xs">
+                          Missed
+                        </Badge>
+                      )}
+                      {call.status === 'voicemail' && (
+                        <Badge className="text-xs bg-gradient-to-br from-blue-600 to-purple-600 text-white border-0">
+                          Voicemail
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{call.direction === 'inbound' ? 'Incoming' : 'Outgoing'}</span>
+                      {call.duration !== null && (
+                        <>
+                          <span>•</span>
+                          <span>{formatCallDuration(call.duration)}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Time */}
+                  <div className="text-sm text-muted-foreground text-right hidden sm:block">
+                    {formatCallTime(call.timestamp)}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleMessage(phoneNumber)}
+                      className="h-9 w-9 p-0 transition-all duration-200 hover:scale-110"
+                      title="Send message"
+                      data-testid={`button-message-${call.id}`}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCallBack(phoneNumber)}
+                      disabled={callBackMutation.isPending}
+                      className="h-9 w-9 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950 transition-all duration-200 hover:scale-110"
+                      title="Call back"
+                      data-testid={`button-call-${call.id}`}
+                    >
+                      <Phone className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedCall(call)}
+                      className="h-9 w-9 p-0 transition-all duration-200 hover:scale-110"
+                      title="Details"
+                      data-testid={`button-info-${call.id}`}
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+            })}
+          </div>
+        </ScrollArea>
+      </div>
     </>
   );
 }

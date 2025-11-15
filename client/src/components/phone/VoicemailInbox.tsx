@@ -148,7 +148,7 @@ export default function VoicemailInbox() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ voicemails?: VoicemailMessage[] }>({
     queryKey: ['/api/voicemail/inbox'],
     retry: 3,
   });
@@ -256,24 +256,38 @@ export default function VoicemailInbox() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      {newCount > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border-b dark:border-blue-800 px-4 py-3">
-          <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-            You have {newCount} new voicemail{newCount > 1 ? 's' : ''}
-          </p>
+    <div className="h-full flex flex-col bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30">
+      {/* Glass Stats Header */}
+      <div className="glass-card m-4 mb-0 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-full bg-gradient-to-br from-blue-500 to-purple-500">
+              <Voicemail className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg dark:text-white">Voicemail</h3>
+              <p className="text-sm text-muted-foreground">
+                {voicemails.length} message{voicemails.length !== 1 ? 's' : ''}
+                {newCount > 0 && ` • ${newCount} new`}
+              </p>
+            </div>
+          </div>
+          {newCount > 0 && (
+            <Badge className="bg-gradient-to-br from-blue-600 to-purple-600 text-white border-0">
+              {newCount} New
+            </Badge>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* List */}
+      {/* Single ScrollArea for voicemail list */}
       <ScrollArea className="flex-1">
-        <div className="divide-y dark:divide-gray-800">
+        <div className="p-4 space-y-3">
           {voicemails.map((voicemail) => (
             <div
               key={voicemail.id}
-              className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                voicemail.isNew ? 'bg-blue-50/30 dark:bg-blue-950/10' : ''
+              className={`glass-card p-4 transition-all duration-200 hover:scale-[1.01] ${
+                voicemail.isNew ? 'bg-gradient-to-br from-blue-50/30 to-purple-50/20 dark:from-blue-900/20 dark:to-purple-900/10' : ''
               }`}
               data-testid={`voicemail-${voicemail.id}`}
             >
@@ -283,7 +297,9 @@ export default function VoicemailInbox() {
                   <div className="flex items-center gap-2">
                     <p className="font-medium dark:text-white">{voicemail.from}</p>
                     {voicemail.isNew && (
-                      <Badge className="bg-blue-600">New</Badge>
+                      <Badge className="bg-gradient-to-br from-blue-600 to-purple-600 text-white border-0 text-xs">
+                        New
+                      </Badge>
                     )}
                   </div>
                   <p className="text-sm text-muted-foreground">
@@ -302,7 +318,7 @@ export default function VoicemailInbox() {
                     variant="outline"
                     size="lg"
                     onClick={() => handlePlay(voicemail)}
-                    className="w-full gap-2"
+                    className="w-full gap-2 transition-all duration-200 hover:scale-[1.02]"
                     data-testid={`button-play-${voicemail.id}`}
                   >
                     <Play className="h-5 w-5" />
@@ -312,7 +328,7 @@ export default function VoicemailInbox() {
                 
                 {/* Transcription */}
                 {voicemail.transcription && (
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
+                  <div className="glass-card p-3 bg-gradient-to-br from-white/80 to-gray-50/30 dark:from-gray-800/80 dark:to-gray-900/30">
                     <p className="text-xs text-muted-foreground mb-1 font-medium">Transcription:</p>
                     <p className="text-sm dark:text-gray-300 italic">
                       "{voicemail.transcription}"
@@ -321,13 +337,13 @@ export default function VoicemailInbox() {
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 pt-2">
+                <div className="flex items-center gap-2 pt-2 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleCallBack(voicemail.from)}
                     disabled={callBackMutation.isPending}
-                    className="gap-2"
+                    className="gap-2 transition-all duration-200 hover:scale-105"
                     data-testid={`button-callback-${voicemail.id}`}
                   >
                     <Phone className="h-3.5 w-3.5" />
@@ -337,7 +353,7 @@ export default function VoicemailInbox() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleMessage(voicemail.from)}
-                    className="gap-2"
+                    className="gap-2 transition-all duration-200 hover:scale-105"
                     data-testid={`button-message-${voicemail.id}`}
                   >
                     <MessageCircle className="h-3.5 w-3.5" />
@@ -347,7 +363,7 @@ export default function VoicemailInbox() {
                     variant="ghost"
                     size="sm"
                     onClick={() => window.open(voicemail.recordingUrl, '_blank')}
-                    className="gap-2"
+                    className="gap-2 transition-all duration-200 hover:scale-105"
                     data-testid={`button-download-${voicemail.id}`}
                   >
                     <Download className="h-3.5 w-3.5" />
@@ -357,7 +373,7 @@ export default function VoicemailInbox() {
                     size="sm"
                     onClick={() => deleteMutation.mutate(voicemail.id)}
                     disabled={deleteMutation.isPending}
-                    className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 ml-auto"
+                    className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 ml-auto transition-all duration-200 hover:scale-105"
                     data-testid={`button-delete-${voicemail.id}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
