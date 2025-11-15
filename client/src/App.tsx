@@ -20,7 +20,6 @@ import SchedulePage from "@/pages/Schedule";
 import QuickBookingPage from "@/pages/quick-booking";
 import LoyaltyPointsPage from "@/pages/rewards";
 import DashboardNavButton from "@/components/DashboardNavButton";
-import { QuickActionButton } from "@/components/QuickActionButton";
 import GalleryPage from './pages/gallery';
 import ReviewsPage from './pages/reviews';
 import MonitorDashboard from './pages/monitor';

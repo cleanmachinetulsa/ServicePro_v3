@@ -8,7 +8,6 @@ import ServicesCarousel from "@/components/ServicesCarousel";
 import GoogleReviews from "@/components/GoogleReviews";
 import SophisticatedAnimatedLogo from "@/components/SophisticatedAnimatedLogo";
 import FeatureActionButtons from "@/components/FeatureActionButtons";
-import InstantChatSupport from "@/components/InstantChatSupport";
 import EnhancedChatbotUI from "@/components/EnhancedChatbotUI";
 import { CalendarClock, MessageSquare, Phone } from "lucide-react";
 
