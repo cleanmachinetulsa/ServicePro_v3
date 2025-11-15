@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertBannerSchema } from "@shared/schema";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import BackNavigation from "@/components/BackNavigation";
+import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -359,38 +359,36 @@ export default function BannerManagement() {
 
   if (isLoading) {
     return (
-      <div className="container py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-muted-foreground">Loading banners...</div>
+      <AppShell title="Banner Management">
+        <div className="p-6">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-muted-foreground">Loading banners...</div>
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
+  const pageActions = (
+    <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <DialogTrigger asChild>
+        <Button data-testid="button-create-banner">
+          <Plus className="h-4 w-4 mr-2" />
+          Create Banner
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create New Banner</DialogTitle>
+        </DialogHeader>
+        <BannerForm onClose={() => setIsCreateOpen(false)} />
+      </DialogContent>
+    </Dialog>
+  );
+
   return (
-    <div className="container py-8">
-      <BackNavigation />
-      
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Banner Management</h1>
-          <p className="text-muted-foreground mt-1">Create and manage marketing banners with scheduling</p>
-        </div>
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-create-banner">
-              <Plus className="h-4 w-4 mr-2" />
-              Create Banner
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New Banner</DialogTitle>
-            </DialogHeader>
-            <BannerForm onClose={() => setIsCreateOpen(false)} />
-          </DialogContent>
-        </Dialog>
-      </div>
+    <AppShell title="Banner Management" pageActions={pageActions}>
+      <div className="p-6">
 
       {banners.length === 0 ? (
         <Card>
@@ -495,6 +493,7 @@ export default function BannerManagement() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </AppShell>
   );
 }

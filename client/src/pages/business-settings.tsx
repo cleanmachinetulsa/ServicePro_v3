@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import BackNavigation from '@/components/BackNavigation';
+import { AppShell } from "@/components/AppShell";
 import { 
   Clock, 
   Calendar,
@@ -836,17 +836,8 @@ export default function BusinessSettings() {
   };
   
   return (
-    <div className="container mx-auto py-6 space-y-8">
-      <div className="mb-4">
-        <BackNavigation fallbackPath="/dashboard" />
-      </div>
-      <header className="mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Business Settings</h1>
-          <p className="text-gray-500">Configure your business hours and booking settings</p>
-        </div>
-      </header>
-      
+    <AppShell title="Business Settings">
+      <div className="p-6">
       <Tabs defaultValue="hours">
         <TabsList className="flex flex-wrap justify-start gap-1 h-auto p-1 bg-muted">
           <TabsTrigger value="hours" className="flex items-center whitespace-nowrap">
@@ -1383,6 +1374,7 @@ export default function BusinessSettings() {
           <MaintenanceModeTab />
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppShell>
   );
 }

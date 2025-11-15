@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -282,61 +283,45 @@ export default function AdminEmployees() {
     </div>
   );
 
+  const pageActions = (
+    <>
+      <Badge variant="outline" data-testid="badge-total-employees">
+        <Users className="w-3 h-3 mr-1" />
+        {stats.totalTechnicians} Total
+      </Badge>
+      <Badge variant="default" data-testid="badge-active-employees">
+        <CheckCircle2 className="w-3 h-3 mr-1" />
+        {stats.activeTechnicians} Active
+      </Badge>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <div className="flex h-screen">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:block w-80 bg-background border-r border-border" data-testid="sidebar-desktop">
-          <SidebarContent />
-        </aside>
+    <AppShell title="Employee Management" pageActions={pageActions}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
+        <div className="flex h-screen">
+          {/* Desktop Sidebar */}
+          <aside className="hidden lg:block w-80 bg-background border-r border-border" data-testid="sidebar-desktop">
+            <SidebarContent />
+          </aside>
 
-        {/* Main Content */}
-        <div className="flex-1 overflow-auto">
-          <div className="container mx-auto py-6 space-y-6">
-            {/* Header */}
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  {/* Mobile Sidebar Toggle */}
-                  <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
-                    <SheetTrigger asChild>
-                      <Button variant="ghost" size="sm" className="lg:hidden" data-testid="button-mobile-menu">
-                        <Menu className="w-4 h-4 mr-2" />
-                        Employees
-                      </Button>
-                    </SheetTrigger>
-                    <SheetContent side="left" className="w-80 p-0">
-                      <SidebarContent />
-                    </SheetContent>
-                  </Sheet>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setLocation('/dashboard')}
-                    data-testid="button-back"
-                  >
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Back to Dashboard
-                  </Button>
-                </div>
-                <h1 className="text-3xl font-bold" data-testid="text-page-title">Employee Management</h1>
-                <p className="text-muted-foreground" data-testid="text-page-description">
-                  Unified hub for technician profiles, scheduling, time tracking, and workforce management
-                </p>
+          {/* Main Content */}
+          <div className="flex-1 overflow-auto">
+            <div className="container mx-auto py-6 space-y-6">
+              {/* Mobile Sidebar Toggle */}
+              <div className="lg:hidden mb-4">
+                <Sheet open={isMobileSidebarOpen} onOpenChange={setIsMobileSidebarOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="sm" data-testid="button-mobile-menu">
+                      <Menu className="w-4 h-4 mr-2" />
+                      Menu
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-80 p-0">
+                    <SidebarContent />
+                  </SheetContent>
+                </Sheet>
               </div>
-
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" data-testid="badge-total-employees">
-                  <Users className="w-3 h-3 mr-1" />
-                  {stats.totalTechnicians} Total
-                </Badge>
-                <Badge variant="default" data-testid="badge-active-employees">
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  {stats.activeTechnicians} Active
-                </Badge>
-              </div>
-            </header>
 
         {/* Quick Stats Overview */}
         {activeTab === 'overview' && (
@@ -1179,9 +1164,10 @@ export default function AdminEmployees() {
             </Card>
           </TabsContent>
         </Tabs>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

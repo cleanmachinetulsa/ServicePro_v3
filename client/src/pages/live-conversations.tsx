@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
+import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -416,35 +417,19 @@ export default function LiveConversationsPage() {
     return "Monitoring";
   };
 
+  const pageActions = (
+    <>
+      <Button variant="outline" onClick={() => setLocation('/conversation-insights')}>
+        <BarChart className="mr-2 h-4 w-4" />
+        Insights
+      </Button>
+    </>
+  );
+
   return (
-    <div className="container mx-auto py-6">
-      <header className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="brand-header flex items-center">
-            <div className="mr-3 w-16 h-16 bg-black rounded-lg flex items-center justify-center overflow-hidden">
-              <img src="../assets/clean-machine-logo.svg" alt="Clean Machine Logo" className="w-full h-full object-cover scale-125" />
-            </div>
-            Live Conversations
-          </h1>
-          <p className="text-gray-500">Monitor and manage ongoing customer conversations</p>
-        </div>
-        
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setLocation('/dashboard')}>
-            <Home className="mr-2 h-4 w-4" />
-            Dashboard
-          </Button>
-          <Button variant="outline" onClick={() => setLocation('/conversation-insights')}>
-            <BarChart className="mr-2 h-4 w-4" />
-            Insights
-          </Button>
-          <Button onClick={() => setLocation('/')}>
-            Back to Chatbot
-          </Button>
-        </div>
-      </header>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <AppShell title="Live Conversations" pageActions={pageActions}>
+      <div className="p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Conversations List */}
         <div className="md:col-span-1 border rounded-lg overflow-hidden">
           <div className="bg-blue-50 p-4 border-b">
@@ -742,7 +727,8 @@ export default function LiveConversationsPage() {
             </div>
           )}
         </div>
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

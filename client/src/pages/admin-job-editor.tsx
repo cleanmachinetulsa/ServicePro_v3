@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +46,6 @@ import {
   DollarSign,
   FileText,
   Gift,
-  ArrowLeft,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -206,75 +206,61 @@ export default function AdminJobEditor() {
 
   if (loadingAppointment || loadingRoles) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading appointment...</p>
+      <AppShell title="Job Editor">
+        <div className="p-6">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading appointment...</p>
+            </div>
           </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   if (!appointment) {
     return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Appointment not found. Please check the ID and try again.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <AppShell title="Job Editor">
+        <div className="p-6">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Appointment not found. Please check the ID and try again.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </AppShell>
     );
   }
 
+  const pageActions = (
+    <>
+      <Badge
+        variant={appointment.status === 'confirmed' ? 'default' : 'secondary'}
+        className="text-sm"
+      >
+        {appointment.status}
+      </Badge>
+      {appointment.priceLocked && (
+        <Badge variant="outline" className="text-sm">
+          <DollarSign className="h-3 w-3 mr-1" />
+          Price Locked
+        </Badge>
+      )}
+      {appointment.isGift && (
+        <Badge variant="outline" className="text-sm bg-pink-50 text-pink-700 border-pink-200">
+          <Gift className="h-3 w-3 mr-1" />
+          Gift
+        </Badge>
+      )}
+    </>
+  );
+
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/admin/appointments')}
-          data-testid="button-back-to-appointments"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Appointments
-        </Button>
-      </div>
-
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Job Editor</h1>
-          <p className="text-muted-foreground">
-            Manage roles, billing, and privacy for appointment #{appointmentId}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Badge
-            variant={appointment.status === 'confirmed' ? 'default' : 'secondary'}
-            className="text-sm"
-          >
-            {appointment.status}
-          </Badge>
-          {appointment.priceLocked && (
-            <Badge variant="outline" className="text-sm">
-              <DollarSign className="h-3 w-3 mr-1" />
-              Price Locked
-            </Badge>
-          )}
-          {appointment.isGift && (
-            <Badge variant="outline" className="text-sm bg-pink-50 text-pink-700 border-pink-200">
-              <Gift className="h-3 w-3 mr-1" />
-              Gift
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <AppShell title={`Job Editor - Appointment #${appointmentId}`} pageActions={pageActions}>
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content - Left 2 columns */}
         <div className="lg:col-span-2 space-y-6">
           {/* Appointment Details */}
@@ -532,7 +518,8 @@ export default function AdminJobEditor() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 

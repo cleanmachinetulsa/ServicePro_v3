@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -265,49 +266,36 @@ export default function ConversationInsightsPage() {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   };
   
+  const pageActions = (
+    <>
+      <Select 
+        value={timeRange} 
+        onValueChange={setTimeRange}
+      >
+        <SelectTrigger className="w-[140px]">
+          <SelectValue placeholder="Time Range" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="24h">Last 24 Hours</SelectItem>
+          <SelectItem value="7d">Last 7 Days</SelectItem>
+          <SelectItem value="30d">Last 30 Days</SelectItem>
+          <SelectItem value="90d">Last 90 Days</SelectItem>
+        </SelectContent>
+      </Select>
+      
+      <Button 
+        onClick={handleGenerateReport}
+        disabled={isGeneratingReport}
+      >
+        <Download className="mr-2 h-4 w-4" />
+        {isGeneratingReport ? 'Generating' + typingFrames[typingFrame] : 'Export Report'}
+      </Button>
+    </>
+  );
+
   return (
-    <div className="container mx-auto py-6">
-      <header className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="brand-header flex items-center">
-            <div className="mr-3 w-12 h-12 bg-black rounded-lg flex items-center justify-center">
-              <img src="../assets/clean-machine-logo.svg" alt="Clean Machine Logo" className="w-full h-full" />
-            </div>
-            Conversation Insights
-          </h1>
-          <p className="text-gray-500">Analytics and trends from customer conversations</p>
-        </div>
-        
-        <div className="flex gap-2">
-          <Select 
-            value={timeRange} 
-            onValueChange={setTimeRange}
-          >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Time Range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="24h">Last 24 Hours</SelectItem>
-              <SelectItem value="7d">Last 7 Days</SelectItem>
-              <SelectItem value="30d">Last 30 Days</SelectItem>
-              <SelectItem value="90d">Last 90 Days</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Button variant="outline" onClick={() => setLocation('/dashboard')}>
-            <Home className="mr-2 h-4 w-4" />
-            Dashboard
-          </Button>
-          
-          <Button 
-            onClick={handleGenerateReport}
-            disabled={isGeneratingReport}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {isGeneratingReport ? 'Generating' + typingFrames[typingFrame] : 'Export Report'}
-          </Button>
-        </div>
-      </header>
+    <AppShell title="Conversation Insights" pageActions={pageActions}>
+      <div className="p-6">
       
       {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -1159,6 +1147,7 @@ export default function ConversationInsightsPage() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppShell>
   );
 }
