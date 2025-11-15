@@ -1,0 +1,87 @@
+
+⚠️ ABSOLUTE RULE: DO NOT BREAK EXISTING WIRES / CONTRACTS
+
+You must not break the existing connections between:
+
+Frontend UI and backend API (buttons, forms, and pages → routes/endpoints).
+
+Existing routes / page paths.
+
+Existing database schema and how it’s used.
+
+
+Concretely:
+
+1. Do NOT rename anything that already exists unless I explicitly ask:
+
+No renaming of API endpoints (e.g. /api/new-sms vs /api/newsms).
+
+No renaming of routes/paths, page components, or layout wrappers.
+
+No renaming of DB tables/columns, Prisma models, or types.
+
+No renaming of critical components or hooks that are already in use.
+
+
+
+2. Assume the current naming & schema are the source of truth.
+If you think a name is bad or inconsistent:
+
+Keep the old name in place.
+
+If you really must improve it, create a wrapper or alias that keeps the old interface working and add the new interface alongside it.
+
+Document what you did in your summary.
+
+
+
+3. Extend, don’t rewrite, unless there’s a clear bug:
+
+When adding new features, attach them to the existing endpoints and schema instead of inventing new ones.
+
+If you need new endpoints, don’t repurpose or delete existing ones that are in use.
+
+
+
+4. No global refactors of routes, file names, or endpoint names:
+
+Don’t change things like new-sms → newsms just for style.
+
+Don’t reorganize folder structures in a way that breaks imports or routing, unless it’s absolutely necessary and you also update all imports and routes accordingly.
+
+
+
+5. If you must change something that might break wiring:
+
+First, search the entire codebase for all usages and update them consistently.
+
+Prefer to keep a backward-compatible layer so existing buttons and pages still work.
+
+Explain in the summary:
+
+What you changed (old name → new name).
+
+Why it was necessary.
+
+Which files were updated.
+
+
+
+
+6. Verify after changes:
+
+After your changes, manually verify or simulate:
+
+Buttons still trigger the correct endpoint or action.
+
+Pages still load from the same URLs / routes.
+
+Forms still submit to the correct handlers.
+
+
+If anything stops working, you must fix it before moving on.
+
+
+
+
+Your mission is to integrate and enhance the app without breaking any existing behaviors or connections. Only improve, don’t wreck. If you’re unsure whether a rename or large structural change is safe, keep the existing contract and adapt your new code to it.
