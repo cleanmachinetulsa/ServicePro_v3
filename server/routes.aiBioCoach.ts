@@ -133,8 +133,8 @@ function safeParseJson(text: string): any {
   throw new Error('Could not parse JSON from response');
 }
 
-// AI Bio Suggest endpoint (Admin only)
-router.post('/api/ai/bio/suggest', requireRole('manager', 'owner'), aiRateLimiter, async (req: Request, res: Response) => {
+// AI Bio Suggest endpoint (All authenticated users)
+router.post('/api/ai/bio/suggest', requireRole('employee', 'manager', 'owner'), aiRateLimiter, async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     if (!user) {
