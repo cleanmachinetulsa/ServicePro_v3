@@ -145,12 +145,20 @@ export default function TechProfile() {
       return apiRequest('POST', '/api/ai/bio/suggest', {
         preferred_name: preferredName,
         city,
+        bio_raw: bioAbout,
         tags: selectedTags,
-        draft_notes: bioAbout,
+        service_context: 'mobile auto detailing',
       });
     },
     onSuccess: (data: any) => {
-      setAiSuggestion(data.suggestion);
+      // Backend returns { bio_about, tags }
+      if (data.bio_about) {
+        setAiSuggestion(data.bio_about);
+        if (data.tags && data.tags.length > 0) {
+          // Optionally update tags with AI suggestions
+          setSelectedTags(prev => [...new Set([...prev, ...data.tags])]);
+        }
+      }
       toast({
         title: 'AI suggestion generated',
         description: 'Review the suggestion and decide if you want to use it.',
