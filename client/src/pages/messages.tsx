@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -8,15 +8,35 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { MessageCircle, PlusCircle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { 
+  MessageCircle, 
+  PlusCircle, 
+  Moon, 
+  Sun, 
+  PanelRight, 
+  PanelRightClose, 
+  User
+} from 'lucide-react';
 import io from 'socket.io-client';
 import ThreadView from '@/components/ThreadView';
 import CustomerProfilePanel from '@/components/CustomerProfilePanel';
-import HeaderActions from '@/components/messages/HeaderActions';
 import ConversationFilters from '@/components/messages/ConversationFilters';
 import ConversationList from '@/components/messages/ConversationList';
 import Composer from '@/components/messages/Composer';
-import CommunicationsNav from '@/components/CommunicationsNav';
+import { AppShell } from '@/components/AppShell';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface Conversation {
   id: number;
@@ -55,19 +75,60 @@ export default function MessagesPage() {
     return false;
   });
   const [showComposeDialog, setShowComposeDialog] = useState(false);
+  const [operatorDialogOpen, setOperatorDialogOpen] = useState(false);
+  const [operatorName, setOperatorName] = useState('');
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Fetch user data for operator name
+  const { data: userData } = useQuery<{ success: boolean; user: { operatorName?: string | null } }>({
+    queryKey: ['/api/users/me'],
+  });
+
+  useEffect(() => {
+    if (userData?.user?.operatorName) {
+      setOperatorName(userData.user.operatorName);
+    }
+  }, [userData]);
+
+  // Update operator name mutation
+  const updateOperatorMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const response = await apiRequest('PUT', '/api/users/me/operator-name', { operatorName: name });
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users/me'] });
+      toast({
+        title: 'Success',
+        description: 'Operator name updated successfully',
+      });
+      setOperatorDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update operator name',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSaveOperatorName = () => {
+    updateOperatorMutation.mutate(operatorName);
+  };
 
   // Fetch conversations
   const { data: conversationsData, isLoading } = useQuery<{ success: boolean; data: Conversation[] }>({
     queryKey: ['/api/conversations', filter],
     queryFn: async () => {
       const response = await fetch(`/api/conversations?status=${filter}`, {
-        credentials: 'include', // Send authentication cookies
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to fetch conversations');
       return response.json();
     },
-    refetchInterval: 10000, // Refetch every 10 seconds
+    refetchInterval: 10000,
   });
 
   const conversations = conversationsData?.data || [];
@@ -145,21 +206,94 @@ export default function MessagesPage() {
     };
   }, [queryClient]);
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      <CommunicationsNav />
-      <HeaderActions
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
-        onNewMessage={() => setShowComposeDialog(true)}
-        selectedConversation={selectedConversation}
-        onBackToList={() => setSelectedConversation(null)}
-        showProfilePanel={showProfilePanel}
-        onToggleProfilePanel={() => setShowProfilePanel(!showProfilePanel)}
-        onShowMobileProfile={() => setShowMobileProfileSheet(true)}
-      />
+  // Page-specific actions for AppShell
+  const pageActions = (
+    <>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setShowComposeDialog(true)}
+        data-testid="button-compose"
+      >
+        <PlusCircle className="h-4 w-4 mr-2" />
+        <span className="hidden sm:inline">New Message</span>
+      </Button>
+      {selectedConversation && (
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setShowProfilePanel(!showProfilePanel)}
+          className="hidden md:flex"
+          data-testid="button-toggle-profile"
+          title={showProfilePanel ? "Hide Profile Panel" : "Show Profile Panel"}
+        >
+          {showProfilePanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+        </Button>
+      )}
+      <Dialog open={operatorDialogOpen} onOpenChange={setOperatorDialogOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm" data-testid="button-operator-settings">
+            <User className="h-4 w-4" />
+            <span className="hidden sm:inline ml-2">Operator</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="dark:bg-gray-900 dark:border-gray-800">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Set Operator Name</DialogTitle>
+            <DialogDescription className="dark:text-gray-400">
+              Configure your name to personalize message templates. This replaces "our team" in automated messages.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="operator-name" className="dark:text-white">
+                Your Name
+              </Label>
+              <Input
+                id="operator-name"
+                data-testid="input-operator-name"
+                placeholder="e.g., Sarah, Mike, Team Leader"
+                value={operatorName}
+                onChange={(e) => setOperatorName(e.target.value)}
+                className="dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+              />
+              <p className="text-sm text-muted-foreground dark:text-gray-400">
+                Leave empty to use "our team" in templates
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOperatorDialogOpen(false)}
+              data-testid="button-cancel-operator"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveOperatorName}
+              disabled={updateOperatorMutation.isPending}
+              data-testid="button-save-operator"
+            >
+              {updateOperatorMutation.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setDarkMode(!darkMode)}
+        data-testid="button-dark-mode"
+      >
+        {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </Button>
+    </>
+  );
 
-      <div className="flex-1 flex overflow-hidden min-h-0">
+  return (
+    <AppShell title="Messages" showSearch={false} pageActions={pageActions}>
+      <div className="flex h-full overflow-hidden">
         <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 border-r flex-col bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm`}>
           <ConversationFilters
             activeFilter={filter}
@@ -232,6 +366,6 @@ export default function MessagesPage() {
           <PlusCircle className="h-6 w-6" />
         </Button>
       )}
-    </div>
+    </AppShell>
   );
 }
