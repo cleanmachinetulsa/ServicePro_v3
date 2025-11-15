@@ -3,6 +3,7 @@ import { customerMemory } from './customerMemory';
 import { getAllServices } from './realServices';
 import { google } from 'googleapis';
 import { getAuthClient, getGoogleSheetsWriteClient } from './googleIntegration';
+import { getGoogleCalendarClient } from './googleCalendarConnector';
 import { addDays, addHours, format, parseISO, subDays } from 'date-fns';
 import { getDailyWeatherSummary } from './weatherService';
 import { calculateETAAndGenerateNavLink } from './googleMapsApi';
@@ -23,25 +24,20 @@ const updateServiceSchema = z.object({
 
 // Calendar ID for Clean Machine - use environment variable if available
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'cleanmachinetulsa@gmail.com';
-let calendarService: any = null;
 
 // Debug: Log the calendar ID we're using
 console.log('Using Google Calendar ID for dashboard:', CALENDAR_ID);
 
 /**
- * Initialize Google Calendar API for accessing appointment data
+ * Get Google Calendar client using Replit OAuth connector
+ * Never cache this - tokens expire and need to be refreshed
  */
-export async function initializeDashboardCalendar() {
-  if (calendarService) return true;
-  
+async function getCalendarService() {
   try {
-    const auth = await getAuthClient();
-    calendarService = google.calendar({ version: 'v3', auth });
-    console.log('Dashboard calendar service initialized successfully with calendar ID:', CALENDAR_ID);
-    return true;
+    return await getGoogleCalendarClient();
   } catch (error) {
-    console.error('Failed to initialize calendar service for dashboard:', error);
-    return false;
+    console.error('Failed to get calendar client:', error);
+    return null;
   }
 }
 
@@ -51,7 +47,7 @@ export async function initializeDashboardCalendar() {
  */
 export async function syncAppointmentsFromGoogleCalendar() {
   try {
-    await initializeDashboardCalendar();
+    const calendarService = await getCalendarService();
     
     if (!calendarService) {
       console.error('Cannot sync appointments - calendar service not available');
@@ -95,7 +91,7 @@ export async function syncAppointmentsFromGoogleCalendar() {
  */
 export async function getUpcomingAppointments(req: Request, res: Response) {
   try {
-    await initializeDashboardCalendar();
+    const calendarService = await getCalendarService();
     
     if (!calendarService) {
       return res.status(503).json({
@@ -165,7 +161,7 @@ export async function getUpcomingAppointments(req: Request, res: Response) {
  */
 export async function getTodaysAppointments(req: Request, res: Response) {
   try {
-    await initializeDashboardCalendar();
+    const calendarService = await getCalendarService();
     
     if (!calendarService) {
       return res.status(503).json({
@@ -485,7 +481,7 @@ export async function getRecentMessages(req: Request, res: Response) {
  */
 export async function getMonthlyStatistics(req: Request, res: Response) {
   try {
-    await initializeDashboardCalendar();
+    const calendarService = await getCalendarService();
     
     if (!calendarService) {
       return res.status(503).json({
@@ -502,7 +498,7 @@ export async function getMonthlyStatistics(req: Request, res: Response) {
     
     // Fetch this month's appointments
     const thisMonthResponse = await calendarService.events.list({
-      calendarId: DASHBOARD_CALENDAR_ID,
+      calendarId: CALENDAR_ID,
       timeMin: thisMonthStart.toISOString(),
       timeMax: thisMonthEnd.toISOString(),
       singleEvents: true,
@@ -511,7 +507,7 @@ export async function getMonthlyStatistics(req: Request, res: Response) {
     
     // Fetch last month's appointments
     const lastMonthResponse = await calendarService.events.list({
-      calendarId: DASHBOARD_CALENDAR_ID,
+      calendarId: CALENDAR_ID,
       timeMin: lastMonthStart.toISOString(),
       timeMax: lastMonthEnd.toISOString(),
       singleEvents: true,
@@ -595,7 +591,7 @@ export async function getMonthlyStatistics(req: Request, res: Response) {
  */
 export async function getMonthlyAppointmentCounts(req: Request, res: Response) {
   try {
-    await initializeDashboardCalendar();
+    const calendarService = await getCalendarService();
     
     if (!calendarService) {
       return res.status(503).json({
@@ -743,8 +739,8 @@ export async function navigateAndSendETA(req: Request, res: Response) {
     
     const padding = etaPaddingMinutes || 0;
     
-    // Initialize calendar service
-    await initializeDashboardCalendar();
+    // Get calendar service
+    const calendarService = await getCalendarService();
     
     if (!calendarService) {
       return res.status(503).json({
@@ -755,7 +751,7 @@ export async function navigateAndSendETA(req: Request, res: Response) {
     
     // Fetch the appointment details from Google Calendar
     const event = await calendarService.events.get({
-      calendarId: DASHBOARD_CALENDAR_ID,
+      calendarId: CALENDAR_ID,
       eventId: appointmentId
     });
     
