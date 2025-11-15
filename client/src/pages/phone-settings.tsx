@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -45,6 +46,7 @@ interface LinesResponse {
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function PhoneSettings() {
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [selectedLine, setSelectedLine] = useState<PhoneLine | null>(null);
   const [showLineConfigModal, setShowLineConfigModal] = useState(false);
@@ -494,7 +496,7 @@ export default function PhoneSettings() {
             <div className="pt-2">
               <Button
                 variant="outline"
-                onClick={() => window.location.href = '/notifications-settings'}
+                onClick={() => setLocation('/notifications-settings')}
                 data-testid="link-voicemail-settings"
               >
                 <Voicemail className="h-4 w-4 mr-2" />

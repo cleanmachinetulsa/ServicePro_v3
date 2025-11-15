@@ -31,8 +31,8 @@ export default function Maintenance() {
   }, []);
 
   const handleRetry = () => {
-    // Reload the page to check if maintenance mode is still active
-    window.location.href = "/";
+    // Navigate to homepage to check if maintenance mode is still active
+    setLocation('/');
   };
 
   return (

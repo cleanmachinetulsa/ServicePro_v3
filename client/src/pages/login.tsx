@@ -73,7 +73,7 @@ export default function LoginPage() {
         toast({ title: 'Login successful', description: 'Welcome back!' });
         
         setTimeout(() => {
-          window.location.href = '/messages';
+          setLocation('/messages');
         }, 100);
       } else if (data.requires2FA) {
         // Password verified, now need 2FA code
@@ -129,7 +129,7 @@ export default function LoginPage() {
         toast({ title: 'Verification successful', description: 'Welcome back!' });
         
         setTimeout(() => {
-          window.location.href = '/messages';
+          setLocation('/messages');
         }, 100);
       } else {
         toast({ 
@@ -256,7 +256,7 @@ export default function LoginPage() {
         });
         
         setTimeout(() => {
-          window.location.href = '/messages';
+          setLocation('/messages');
         }, 100);
       } else {
         toast({ 

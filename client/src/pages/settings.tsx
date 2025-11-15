@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ interface CategoryWithTemplates extends QuickReplyCategory {
 }
 
 export default function SettingsPage() {
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('templates');
   
@@ -466,7 +468,7 @@ function NotificationsSettings() {
             The full notification configuration panel has been moved to a dedicated page for easier management.
           </p>
           <Button
-            onClick={() => window.location.href = '/notifications-settings'}
+            onClick={() => setLocation('/notifications-settings')}
             data-testid="button-go-to-notifications"
           >
             <Bell className="w-4 h-4 mr-2" />

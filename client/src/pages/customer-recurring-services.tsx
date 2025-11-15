@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ interface Appointment {
 }
 
 export default function CustomerRecurringServicesPage() {
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [customerPhone, setCustomerPhone] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -232,7 +234,7 @@ export default function CustomerRecurringServicesPage() {
                   <AlertCircle className="h-12 w-12 text-slate-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">No Recurring Services</h3>
                   <p className="text-slate-600 dark:text-slate-400">You don't have any recurring services scheduled yet.</p>
-                  <Button className="mt-4" onClick={() => window.location.href = '/schedule'} data-testid="button-schedule-service">
+                  <Button className="mt-4" onClick={() => setLocation('/schedule')} data-testid="button-schedule-service">
                     Schedule a Service
                   </Button>
                 </CardContent>
