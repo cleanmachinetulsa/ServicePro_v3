@@ -7,6 +7,7 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -61,6 +62,7 @@ export default function SettingsWorkspace() {
   const [activeSection, setActiveSection] = useState('operations');
   const [activeItem, setActiveItem] = useState('services');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Settings hierarchy configuration - ALL legacy features included
   const settingsSections: SettingsSection[] = [
@@ -116,11 +118,11 @@ export default function SettingsWorkspace() {
     .find(item => item.id === activeItem)?.component || null;
 
   // Sidebar navigation component
-  const SidebarNavigation = ({ isMobile = false }: { isMobile?: boolean }) => (
+  const SidebarNavigation = ({ isMobile = false, collapsed = false }: { isMobile?: boolean; collapsed?: boolean }) => (
     <div className={`space-y-2 ${isMobile ? 'p-4' : ''}`}>
-      <div className="flex items-center gap-2 mb-4 px-3">
+      <div className={`flex items-center mb-4 px-3 ${collapsed ? 'justify-center' : 'gap-2'}`}>
         <SettingsIcon className="h-5 w-5 text-primary" />
-        <h2 className="text-lg font-semibold">Settings</h2>
+        {!collapsed && <h2 className="text-lg font-semibold">Settings</h2>}
       </div>
       
       {isMobile ? (
@@ -159,22 +161,23 @@ export default function SettingsWorkspace() {
         <div className="space-y-1">
           {settingsSections.map(section => (
             <div key={section.id} className="space-y-1">
-              <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground">
+              <div className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground ${collapsed ? 'justify-center' : ''}`}>
                 {section.icon}
-                <span>{section.label}</span>
+                {!collapsed && <span>{section.label}</span>}
               </div>
               {section.items.map(item => (
                 <Button
                   key={item.id}
                   variant={activeItem === item.id ? "secondary" : "ghost"}
-                  className="w-full justify-start pl-9"
+                  className={`w-full ${collapsed ? 'justify-center px-2' : 'justify-start pl-9'}`}
                   onClick={() => {
                     setActiveItem(item.id);
                     setActiveSection(section.id);
                   }}
                   data-testid={`settings-item-${item.id}`}
+                  title={collapsed ? item.label : undefined}
                 >
-                  {item.label}
+                  {collapsed ? item.label.charAt(0) : item.label}
                 </Button>
               ))}
             </div>
@@ -201,11 +204,25 @@ export default function SettingsWorkspace() {
         </Sheet>
       </div>
 
-      {/* Desktop Sidebar - Always visible on large screens */}
-      <div className="hidden lg:block lg:w-72 flex-shrink-0">
-        <Card className="sticky top-4">
+      {/* Desktop Sidebar - Collapsible on large screens */}
+      <div className={`hidden lg:block flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
+        <Card className="sticky top-4 relative">
+          {/* Collapse/Expand Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute -right-3 top-4 z-10 h-6 w-6 rounded-full border bg-background shadow-md"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
           <ScrollArea className="h-[calc(100vh-120px)]">
-            <SidebarNavigation />
+            <SidebarNavigation collapsed={sidebarCollapsed} />
           </ScrollArea>
         </Card>
       </div>
