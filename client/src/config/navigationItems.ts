@@ -8,7 +8,8 @@ import {
   Image, 
   Wrench, 
   Settings, 
-  Shield 
+  Shield,
+  DollarSign
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -57,6 +58,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Analytics',
     icon: TrendingUp,
     path: '/analytics',
+  },
+  {
+    id: 'billing',
+    label: 'Billing',
+    icon: DollarSign,
+    path: '/billing',
   },
   {
     id: 'gallery',

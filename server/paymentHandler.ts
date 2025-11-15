@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 import { db } from './db';
 import { invoices } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import { sendInvoiceNotification } from './invoiceService';
+import { sendInvoiceNotification, sendReviewRequest } from './invoiceService';
 import { checkAndRewardReferral } from './referralService';
 
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -193,6 +193,15 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
         // Log error but don't fail the payment
         console.error('Error processing referral reward:', referralError);
       }
+    }
+    
+    // Trigger post-payment automations (review request, receipt email, loyalty points)
+    try {
+      await sendReviewRequest(updatedInvoice.id);
+      console.log(`[PAYMENT] Review request sent for invoice ${updatedInvoice.id}`);
+    } catch (error) {
+      console.error('[PAYMENT] Error sending review request:', error);
+      // Don't fail the payment if review request fails
     }
     
     res.status(200).json({ success: true, invoice: updatedInvoice });
