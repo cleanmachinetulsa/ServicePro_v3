@@ -267,6 +267,7 @@ export default function CallMetricsPage() {
           </CardContent>
         </Card>
       </div>
+      </div>
     </AppShell>
   );
 }
