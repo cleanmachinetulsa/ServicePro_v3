@@ -98,6 +98,7 @@ import quoteApprovalRoutes from './routes.quoteApproval';
 import calendarAvailabilityRoutes from './routes.calendarAvailability';
 import { registerHealthRoutes } from './healthCheck';
 import phoneSettingsRoutes from './routes.phoneSettings';
+import { registerCallRoutes } from './routes.calls';
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -1914,6 +1915,9 @@ export async function registerRoutes(app: Express) {
   
   // Phone settings routes (for phone line management)
   app.use('/api/phone-settings', phoneSettingsRoutes);
+  
+  // Register call and voicemail routes
+  registerCallRoutes(app);
   
   // Register calendar availability routes
   app.use('/api/calendar', calendarAvailabilityRoutes);
