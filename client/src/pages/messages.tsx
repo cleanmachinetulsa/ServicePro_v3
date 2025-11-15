@@ -261,13 +261,13 @@ function MessagesPageContent() {
               <Input
                 id="operator-name"
                 data-testid="input-operator-name"
-                placeholder="e.g., Sarah, Mike, Team Leader"
+                placeholder="Enter your first name"
                 value={operatorName}
                 onChange={(e) => setOperatorName(e.target.value)}
                 className="dark:bg-gray-800 dark:border-gray-700 dark:text-white"
               />
               <p className="text-sm text-muted-foreground dark:text-gray-400">
-                Leave empty to use "our team" in templates
+                {operatorName ? `Current: ${operatorName}` : 'Leave empty to use "our team" in templates'}
               </p>
             </div>
           </div>
