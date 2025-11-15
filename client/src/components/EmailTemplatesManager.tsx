@@ -69,8 +69,7 @@ export default function EmailTemplatesManager() {
   // Create template mutation
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const res = await apiRequest('POST', '/api/email-templates', data);
-      return res.json();
+      return await apiRequest('POST', '/api/email-templates', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/email-templates'] });
@@ -93,8 +92,7 @@ export default function EmailTemplatesManager() {
   // Update template mutation
   const updateMutation = useMutation({
     mutationFn: async (data: { id: number; updates: Partial<EmailTemplate> }) => {
-      const res = await apiRequest('PUT', `/api/email-templates/${data.id}`, data.updates);
-      return res.json();
+      return await apiRequest('PUT', `/api/email-templates/${data.id}`, data.updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/email-templates'] });
@@ -117,8 +115,7 @@ export default function EmailTemplatesManager() {
   // Delete template mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const res = await apiRequest('DELETE', `/api/email-templates/${id}`);
-      return res.json();
+      return await apiRequest('DELETE', `/api/email-templates/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/email-templates'] });
