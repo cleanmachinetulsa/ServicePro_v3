@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Phone, PhoneCall, PhoneOff, Clock, Mic, FileText, TrendingUp, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { AppShell } from '@/components/AppShell';
 
 interface CallMetrics {
   totalCalls: number;
@@ -76,17 +77,17 @@ export default function CallMetricsPage() {
   const healthStatus = data?.healthStatus;
   const recentCalls = data?.recentCalls || [];
 
+  // Page-specific actions
+  const pageActions = (
+    <Badge variant={healthStatus?.systemOperational ? 'default' : 'destructive'} className="text-sm">
+      {healthStatus?.systemOperational ? 'System Operational' : 'System Issues Detected'}
+    </Badge>
+  );
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Call Quality Metrics</h1>
-          <p className="text-muted-foreground">Real-time monitoring of voice system performance</p>
-        </div>
-        <Badge variant={healthStatus?.systemOperational ? 'default' : 'destructive'} className="text-sm">
-          {healthStatus?.systemOperational ? 'System Operational' : 'System Issues Detected'}
-        </Badge>
-      </div>
+    <AppShell title="Call Quality Metrics" pageActions={pageActions}>
+      <div className="p-6 space-y-6">
+        <p className="text-muted-foreground">Real-time monitoring of voice system performance</p>
 
       {/* Key Metrics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -266,6 +267,6 @@ export default function CallMetricsPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AppShell>
   );
 }

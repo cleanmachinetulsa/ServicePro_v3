@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, DollarSign, Calendar, Mail, Target, Users, ArrowUp, ArrowDown } from 'lucide-react';
+import { TrendingUp, DollarSign, Calendar, Mail, Target, Users, ArrowUp, ArrowDown, ArrowLeft } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import BackNavigation from '@/components/BackNavigation';
+import { AppShell } from '@/components/AppShell';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 
 export default function AnalyticsPage() {
+  const [, navigate] = useLocation();
   const [timeRange, setTimeRange] = useState('12');
 
   // Fetch seasonal trends
@@ -98,35 +101,38 @@ export default function AnalyticsPage() {
     ? ((currentMonthRevenue - previousMonthRevenue) / previousMonthRevenue) * 100 
     : 0;
 
+  // Page-specific actions
+  const pageActions = (
+    <div className="flex items-center gap-2">
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        onClick={() => navigate('/dashboard')}
+        className="gap-2"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back
+      </Button>
+      <Select value={timeRange} onValueChange={setTimeRange}>
+        <SelectTrigger className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="3">Last 3 months</SelectItem>
+          <SelectItem value="6">Last 6 months</SelectItem>
+          <SelectItem value="12">Last 12 months</SelectItem>
+          <SelectItem value="24">Last 24 months</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="mb-4">
-              <BackNavigation fallbackPath="/dashboard" />
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-              <TrendingUp className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-              Business Analytics
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Insights into seasonal trends, service popularity, and financial forecasting
-            </p>
-          </div>
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">Last 3 months</SelectItem>
-              <SelectItem value="6">Last 6 months</SelectItem>
-              <SelectItem value="12">Last 12 months</SelectItem>
-              <SelectItem value="24">Last 24 months</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <AppShell title="Business Analytics" pageActions={pageActions}>
+      <div className="p-6 space-y-6">{/* Header Description */}
+        <p className="text-gray-600 dark:text-gray-400">
+          Insights into seasonal trends, service popularity, and financial forecasting
+        </p>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -415,6 +421,6 @@ export default function AnalyticsPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+    </AppShell>
   );
 }
