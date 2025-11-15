@@ -27,6 +27,7 @@ import MonitorDashboard from './pages/monitor';
 import MessagesPage from './pages/messages';
 import PhonePage from './pages/phone';
 import SettingsPage from './pages/settings';
+import SettingsAdmin from './pages/settings-admin';
 import SmsMonitoringPage from './pages/sms-monitoring';
 import FacebookSettingsPage from './pages/facebook-settings';
 import LoginPage from './pages/login';
@@ -102,8 +103,11 @@ function Router() {
       <Route path="/facebook-settings">
         <AuthGuard><FacebookSettingsPage /></AuthGuard>
       </Route>
-      <Route path="/settings">
+      <Route path="/quick-replies">
         <AuthGuard><SettingsPage /></AuthGuard>
+      </Route>
+      <Route path="/settings/:section?/:item?">
+        <AuthGuard><SettingsAdmin /></AuthGuard>
       </Route>
       <Route path="/security-settings">
         <AuthGuard><SecuritySettingsPage /></AuthGuard>
@@ -200,6 +204,7 @@ function App() {
       '/messages',
       '/sms-monitoring',
       '/facebook-settings',
+      '/settings',
       '/admin/employees',
       '/admin/jobs',
       '/admin/quote-requests'
