@@ -72,6 +72,7 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
     let discountType = '';
     let rewardAuditId: number | null = null;
     let finalAmount = amount;
+    let appliedReferralCode: string | null = null;
     
     // PRIORITY 1: Check for payer-approval referral code (stored on authorization)
     try {
@@ -93,6 +94,7 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
         discount = parseFloat(authWithReferral.referralDiscount.toString());
         discountType = authWithReferral.referralDiscountType || 'referral discount';
         finalAmount = Math.max(0, amount - discount);
+        appliedReferralCode = authWithReferral.referralCode;
         
         console.log(`[INVOICE-REFERRAL] Applied payer-approval referral: ${discountType} -$${discount.toFixed(2)}, final: $${finalAmount.toFixed(2)}`);
       }
@@ -153,7 +155,9 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
       amount: finalAmount.toString(),
       serviceDescription,
       notes: discount > 0 
-        ? `Service completed at ${customer.address || appointment.address}\nReferral ${discountType} applied: -$${discount.toFixed(2)} (Original: $${amount.toFixed(2)})`
+        ? appliedReferralCode
+          ? `Service completed at ${customer.address || appointment.address}\n\n🎁 Referral code ${appliedReferralCode} applied\nDiscount type: ${discountType}\nDiscount amount: -$${discount.toFixed(2)}\nOriginal price: $${amount.toFixed(2)}\nFinal price: $${finalAmount.toFixed(2)}`
+          : `Service completed at ${customer.address || appointment.address}\n\n🎁 Referral ${discountType} applied\nDiscount amount: -$${discount.toFixed(2)}\nOriginal price: $${amount.toFixed(2)}\nFinal price: $${finalAmount.toFixed(2)}`
         : `Service completed at ${customer.address || appointment.address}`,
     };
 
