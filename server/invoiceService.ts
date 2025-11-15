@@ -1,5 +1,5 @@
 import { db } from './db';
-import { invoices, appointments, customers, services, loyaltyPoints, referrals, type Invoice, type InsertInvoice } from '@shared/schema';
+import { invoices, appointments, customers, services, loyaltyPoints, referrals, authorizations, type Invoice, type InsertInvoice } from '@shared/schema';
 import { and, eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { sendBusinessEmail } from './emailService';
@@ -68,43 +68,83 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
 
   // ATOMIC TRANSACTION: Apply referee reward, calculate discount, create invoice, mark reward as applied
   const invoice = await db.transaction(async (tx) => {
-    // Check for referral signup and apply referee reward
+    let discount = 0;
+    let discountType = '';
+    let rewardAuditId: number | null = null;
+    let finalAmount = amount;
+    
+    // PRIORITY 1: Check for payer-approval referral code (stored on authorization)
     try {
-      const [referralRecord] = await tx
+      const [authWithReferral] = await tx
         .select()
-        .from(referrals)
+        .from(authorizations)
         .where(
           and(
-            eq(referrals.refereeCustomerId, customer.id),
-            eq(referrals.status, 'signed_up')
+            eq(authorizations.appointmentId, appointmentId),
+            eq(authorizations.approvalStatus, 'approved')
           )
         )
         .limit(1);
 
-      if (referralRecord) {
-        console.log(`[REFERRAL] Found referral record ${referralRecord.id} for customer ${customer.id}, applying referee reward`);
+      if (authWithReferral?.referralCode && authWithReferral.referralDiscount) {
+        console.log(`[INVOICE-REFERRAL] Found payer-approval referral code: ${authWithReferral.referralCode}, discount: $${authWithReferral.referralDiscount}`);
         
-        // Apply referee reward within transaction (creates pending reward_audit)
-        const rewardResult = await applyRefereeReward(referralRecord.id, customer.id, tx);
+        // Use the pre-calculated discount from payer-approval
+        discount = parseFloat(authWithReferral.referralDiscount.toString());
+        discountType = authWithReferral.referralDiscountType || 'referral discount';
+        finalAmount = Math.max(0, amount - discount);
         
-        if (rewardResult.success) {
-          console.log(`[REFERRAL] Successfully applied referee reward: ${rewardResult.message}`);
-        } else {
-          console.warn(`[REFERRAL] Failed to apply referee reward: ${rewardResult.message}`);
-          // Don't throw - continue with invoice creation even if reward fails
-        }
+        console.log(`[INVOICE-REFERRAL] Applied payer-approval referral: ${discountType} -$${discount.toFixed(2)}, final: $${finalAmount.toFixed(2)}`);
       }
-    } catch (referralError) {
-      console.error('[REFERRAL] Error checking/applying referee reward:', referralError);
-      // Don't throw - continue with invoice creation even if referral reward fails
+    } catch (authError) {
+      console.error('[INVOICE-REFERRAL] Error checking payer-approval referral:', authError);
+      // Don't throw - continue with invoice creation
     }
+    
+    // PRIORITY 2: If no payer-approval referral, check for referee signup reward
+    if (discount === 0) {
+      try {
+        const [referralRecord] = await tx
+          .select()
+          .from(referrals)
+          .where(
+            and(
+              eq(referrals.refereeCustomerId, customer.id),
+              eq(referrals.status, 'signed_up')
+            )
+          )
+          .limit(1);
 
-    // Calculate final amount with any pending referral discounts (within transaction)
-    const { finalAmount, discount, discountType, rewardAuditId } = await calculateInvoiceWithReferralDiscount(
-      amount,
-      customer.id,
-      tx  // Pass transaction executor
-    );
+        if (referralRecord) {
+          console.log(`[REFERRAL] Found referral record ${referralRecord.id} for customer ${customer.id}, applying referee reward`);
+          
+          // Apply referee reward within transaction (creates pending reward_audit)
+          const rewardResult = await applyRefereeReward(referralRecord.id, customer.id, tx);
+          
+          if (rewardResult.success) {
+            console.log(`[REFERRAL] Successfully applied referee reward: ${rewardResult.message}`);
+          } else {
+            console.warn(`[REFERRAL] Failed to apply referee reward: ${rewardResult.message}`);
+            // Don't throw - continue with invoice creation even if reward fails
+          }
+        }
+      } catch (referralError) {
+        console.error('[REFERRAL] Error checking/applying referee reward:', referralError);
+        // Don't throw - continue with invoice creation even if referral reward fails
+      }
+
+      // Calculate final amount with any pending referral discounts (within transaction)
+      const discountResult = await calculateInvoiceWithReferralDiscount(
+        amount,
+        customer.id,
+        tx  // Pass transaction executor
+      );
+      
+      finalAmount = discountResult.finalAmount;
+      discount = discountResult.discount;
+      discountType = discountResult.discountType;
+      rewardAuditId = discountResult.rewardAuditId;
+    }
 
     // Create the invoice with discounted amount if applicable
     const newInvoice: InsertInvoice = {
