@@ -7,7 +7,7 @@ import RecentCalls from '@/components/phone/RecentCalls';
 import VoicemailInbox from '@/components/phone/VoicemailInbox';
 import ActiveCall from '@/components/phone/ActiveCall';
 import CustomersPane from '@/components/phone/CustomersPane';
-import CommunicationsNav from '@/components/CommunicationsNav';
+import { AppShell } from '@/components/AppShell';
 
 export default function PhonePage() {
   const [activeTab, setActiveTab] = useState('dialer');
@@ -23,9 +23,7 @@ export default function PhonePage() {
   const hasActiveCall = activeCalls.length > 0;
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      <CommunicationsNav />
-
+    <AppShell title="Phone" showSearch={false}>
       {/* Active Call Overlay */}
       {hasActiveCall && (
         <ActiveCall 
@@ -36,10 +34,9 @@ export default function PhonePage() {
 
       {/* Main Content */}
       {!hasActiveCall && (
-        <div className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 px-4">
-              <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 bg-gray-100 dark:bg-gray-800">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+          <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 px-4">
+            <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 bg-gray-100 dark:bg-gray-800">
                 <TabsTrigger 
                   value="dialer" 
                   className="gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700"
@@ -93,8 +90,7 @@ export default function PhonePage() {
               </TabsContent>
             </div>
           </Tabs>
-        </div>
       )}
-    </div>
+    </AppShell>
   );
 }

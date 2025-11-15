@@ -40,6 +40,7 @@ import {
   Loader2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { AppShell } from "@/components/AppShell";
 
 interface PhotoCleanupResult {
   success: boolean;
@@ -201,10 +202,9 @@ const CustomerDatabasePage = () => {
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <h1 className="text-3xl font-bold mb-6">Customer Database</h1>
-      
-      <Tabs defaultValue="search">
+    <AppShell title="Customer Database">
+      <div className="p-6">
+        <Tabs defaultValue="search">
         <TabsList className="mb-6">
           <TabsTrigger value="search" className="flex items-center">
             <Users className="mr-2 h-4 w-4" />
@@ -429,7 +429,8 @@ const CustomerDatabasePage = () => {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </AppShell>
   );
 };
 
