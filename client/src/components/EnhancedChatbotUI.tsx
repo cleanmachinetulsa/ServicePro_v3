@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { CarIcon, PaperclipIcon, PaperPlaneIcon, UserIcon, XIcon } from "@/components/ui/icons";
 import { Download, HelpCircle } from "lucide-react";
 import { useLocation } from "wouter";
+import logoUrl from '@assets/generated_images/Clean_Machine_hexagonal_shield_logo_46864b38.png';
 import {
   Tooltip,
   TooltipContent,
@@ -705,7 +706,7 @@ export default function EnhancedChatbotUI() {
             variants={typingVariants}
           >
             <div className="max-w-[85%] bg-white text-gray-800 rounded-2xl rounded-tl-md px-3 py-2 flex items-center gap-2 shadow-sm border border-gray-200">
-              <img src="/logo.jpg" alt="Clean Machine" className="h-3 w-3 rounded-full" />
+              <img src={logoUrl} alt="Clean Machine" className="h-3 w-3 rounded-full" />
               <span className="text-[10px] opacity-60 font-medium">Clean Machine is typing</span>
               <div className="flex gap-1">
                 {[0, 1, 2].map(i => (
@@ -776,7 +777,7 @@ export default function EnhancedChatbotUI() {
           
           {/* Logo */}
           <img 
-            src="/logo.jpg" 
+            src={logoUrl} 
             alt="Clean Machine" 
             className="h-8 w-8 rounded-full relative z-10 border-2 border-white/30" 
           />
@@ -795,7 +796,7 @@ export default function EnhancedChatbotUI() {
           <div className="flex items-center justify-between relative z-10">
             <div className="flex items-center gap-2">
               <img
-                src="/logo.jpg"
+                src={logoUrl}
                 alt="Clean Machine"
                 className="h-7 w-7 rounded-full border-2 border-white/30 shadow-md"
               />
