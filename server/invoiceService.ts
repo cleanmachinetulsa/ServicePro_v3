@@ -144,7 +144,7 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
       
       finalAmount = discountResult.finalAmount;
       discount = discountResult.discount;
-      discountType = discountResult.discountType;
+      discountType = discountResult.discountType || '';
       rewardAuditId = discountResult.rewardAuditId;
     }
 
@@ -221,7 +221,6 @@ export async function createManualInvoice(params: {
   const newInvoice: InsertInvoice = {
     customerId: customer.id,
     appointmentId: null,
-    invoiceType: 'manual',
     amount: amount.toString(),
     serviceDescription,
     notes: notes || `Manual invoice created via dashboard`,
@@ -571,6 +570,30 @@ export async function getUnpaidInvoices(): Promise<Invoice[]> {
     .select()
     .from(invoices)
     .where(eq(invoices.paymentStatus, 'unpaid'));
+}
+
+/**
+ * Get unpaid invoices with customer details for admin billing UI
+ */
+export async function getUnpaidInvoicesWithDetails() {
+  const unpaidInvoices = await db
+    .select({
+      id: invoices.id,
+      createdAt: invoices.createdAt,
+      appointmentId: invoices.appointmentId,
+      serviceDescription: invoices.serviceDescription,
+      amount: invoices.amount,
+      paymentStatus: invoices.paymentStatus,
+      customerName: customers.name,
+      customerPhone: customers.phone,
+      customerEmail: customers.email,
+    })
+    .from(invoices)
+    .leftJoin(customers, eq(invoices.customerId, customers.id))
+    .where(eq(invoices.paymentStatus, 'unpaid'))
+    .orderBy(invoices.createdAt);
+
+  return unpaidInvoices;
 }
 
 /**

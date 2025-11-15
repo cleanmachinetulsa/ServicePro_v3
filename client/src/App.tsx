@@ -58,6 +58,7 @@ import SecuritySettingsPage from './pages/security-settings';
 import TechnicianPage from './pages/technician';
 import ReferralPage from './pages/ReferralPage';
 import PhoneSettingsPage from './pages/phone-settings';
+import Billing from './pages/billing';
 
 function Router() {
   return (
@@ -141,6 +142,9 @@ function Router() {
       </Route>
       <Route path="/analytics">
         <AuthGuard><AnalyticsPage /></AuthGuard>
+      </Route>
+      <Route path="/billing">
+        <AuthGuard><Billing /></AuthGuard>
       </Route>
       <Route path="/admin/employees">
         <AuthGuard><AdminEmployees /></AuthGuard>
