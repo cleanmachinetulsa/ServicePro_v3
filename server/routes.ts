@@ -94,10 +94,14 @@ import { registerContactsRoutes } from './routes.contacts';
 import quoteRequestsRoutes from './routes.quoteRequests';
 import quoteApprovalRoutes from './routes.quoteApproval';
 import calendarAvailabilityRoutes from './routes.calendarAvailability';
+import { registerHealthRoutes } from './healthCheck';
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
   const server = createServer(app);
+
+  // Register health check routes (FIRST - no auth required)
+  registerHealthRoutes(app);
 
   // Register authentication routes
   registerAuthRoutes(app);

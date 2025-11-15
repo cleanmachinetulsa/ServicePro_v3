@@ -1,6 +1,6 @@
 import { addDays, addHours, format, setHours, setMinutes } from "date-fns";
-import { getAuthClient } from "./googleIntegration";
-import { google } from "googleapis";
+import { getGoogleCalendarClient } from "./googleCalendarConnector";
+import { criticalMonitor } from "./criticalMonitoring";
 import { customerMemory } from "./customerMemory";
 import {
   sendBookingConfirmation,
@@ -66,66 +66,88 @@ async function getServiceDuration(serviceName: string): Promise<number> {
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || "primary";
 console.log("Using Calendar ID for appointments:", CALENDAR_ID);
 
-// Initialize Google Calendar API client
-let calendarService: any = null;
-
-// Export function to get calendar service for other modules
-export async function getCalendarService() {
-  return calendarService;
+/**
+ * Get fresh calendar client with automatic token refresh
+ * NEVER cache this - tokens expire
+ */
+async function getFreshCalendarClient() {
+  try {
+    const client = await getGoogleCalendarClient();
+    console.log("✅ Google Calendar client obtained successfully");
+    criticalMonitor.reportSuccess('Google Calendar');
+    return client;
+  } catch (error: any) {
+    console.error("❌ Failed to get Google Calendar client:", error.message);
+    await criticalMonitor.reportFailure('Google Calendar', error.message);
+    return null;
+  }
 }
 
-// Function to initialize the calendar service
-async function initializeCalendarService() {
+/**
+ * Test calendar connectivity on startup
+ */
+async function testCalendarConnectivity() {
   try {
-    const auth = getAuthClient();
-    if (auth) {
-      calendarService = google.calendar({ version: "v3", auth });
-      console.log("Google Calendar API initialized successfully");
-
-      // Test the calendar service by directly accessing the specified calendar
-      try {
-        const result = await calendarService.events.list({
-          calendarId: CALENDAR_ID,
-          timeMin: new Date().toISOString(),
-          timeMax: new Date(
-            new Date().setDate(new Date().getDate() + 7),
-          ).toISOString(),
-          maxResults: 10,
-          singleEvents: true,
-          orderBy: "startTime",
-        });
-
-        console.log(
-          `Calendar access test successful - found ${result.data.items?.length || 0} events in calendar: ${CALENDAR_ID}`,
-        );
-      } catch (testError: any) {
-        console.error(
-          "Calendar access test failed:",
-          testError.message || "Unknown error",
-        );
-      }
-
-      return true;
+    console.log("🔍 Testing Google Calendar connectivity...");
+    const client = await getFreshCalendarClient();
+    
+    if (!client) {
+      console.error("❌ CRITICAL: Google Calendar client initialization failed");
+      return false;
     }
-    return false;
-  } catch (error) {
-    console.error("Failed to initialize Google Calendar API:", error);
+
+    // Test calendar access
+    const result = await client.events.list({
+      calendarId: CALENDAR_ID,
+      timeMin: new Date().toISOString(),
+      timeMax: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString(),
+      maxResults: 10,
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    console.log(`✅ Calendar connectivity test PASSED - found ${result.data.items?.length || 0} events`);
+    criticalMonitor.reportSuccess('Google Calendar');
+    return true;
+  } catch (error: any) {
+    console.error("❌ CRITICAL: Calendar connectivity test FAILED:", error.message);
+    await criticalMonitor.reportFailure('Google Calendar', error.message);
     return false;
   }
 }
 
-// Try to initialize the calendar service on startup
-initializeCalendarService().catch((err) =>
-  console.error("Initial calendar service setup failed:", err),
+// Test calendar on startup
+testCalendarConnectivity().catch((err) =>
+  console.error("Startup calendar test failed:", err)
 );
 
 /**
- * Generate fallback available slots when Google Calendar API is unavailable
+ * Generate conflict-safe fallback slots when Google Calendar API is unavailable
+ * Checks database for existing appointments to prevent double bookings
  * Returns default business hours slots for the next 14 days
  * Format matches generateAvailableSlots(): string[] of ISO timestamps
  */
-function generateFallbackSlots(serviceName: string): string[] {
-  console.warn("⚠️ USING FALLBACK SLOTS - Google Calendar unavailable, generating default availability");
+async function generateConflictSafeFallbackSlots(serviceName: string): Promise<string[]> {
+  console.warn("⚠️ USING FALLBACK SLOTS - Google Calendar unavailable, checking database for conflicts");
+  
+  // Get service duration for conflict checking
+  const { duration } = await getServiceInfo(serviceName);
+  
+  // Fetch all existing appointments from database
+  const { db: dbInstance } = await import('./db');
+  const { appointments } = await import('@shared/schema');
+  const { gte } = await import('drizzle-orm');
+  
+  const now = new Date();
+  const existingAppointments = await dbInstance
+    .select({
+      scheduledTime: appointments.scheduledTime,
+      serviceName: appointments.serviceName,
+    })
+    .from(appointments)
+    .where(gte(appointments.scheduledTime, now));
+  
+  console.log(`[FALLBACK] Found ${existingAppointments.length} existing appointments in database`);
   
   const slots: string[] = [];
   const startDate = new Date();
@@ -141,17 +163,40 @@ function generateFallbackSlots(serviceName: string): string[] {
     // Generate hourly slots from 9 AM to 5 PM
     for (let hour = 9; hour < 17; hour++) {
       const slotTime = setMinutes(setHours(currentDate, hour), 0);
-      // Return ISO timestamp string (matches normal response format)
-      slots.push(slotTime.toISOString());
+      const slotEnd = addHours(slotTime, duration);
+      
+      // Check for conflicts with existing database appointments
+      let hasConflict = false;
+      for (const appt of existingAppointments) {
+        const apptTime = new Date(appt.scheduledTime);
+        const apptServiceDuration = await getServiceDuration(appt.serviceName || 'Full Detail');
+        const apptEnd = addHours(apptTime, apptServiceDuration);
+        
+        // Check if slot overlaps with existing appointment
+        if (
+          (slotTime >= apptTime && slotTime < apptEnd) ||
+          (slotEnd > apptTime && slotEnd <= apptEnd) ||
+          (slotTime <= apptTime && slotEnd >= apptEnd)
+        ) {
+          hasConflict = true;
+          break;
+        }
+      }
+      
+      // Only include slot if no conflict
+      if (!hasConflict) {
+        slots.push(slotTime.toISOString());
+      }
     }
   }
   
+  console.log(`[FALLBACK] Generated ${slots.length} conflict-safe slots (removed ${(14 * 8) - slots.length} conflicting slots)`);
   return slots;
 }
 
 /**
  * Handle request for available time slots
- * GRACEFUL DEGRADATION: Returns fallback slots when Google Calendar API unavailable
+ * GRACEFUL DEGRADATION: Returns conflict-safe fallback slots when Google Calendar API unavailable
  */
 export async function handleGetAvailable(req: any, res: any) {
   try {
@@ -164,45 +209,38 @@ export async function handleGetAvailable(req: any, res: any) {
       });
     }
 
-    // GRACEFUL FALLBACK: If calendar service unavailable, return default slots
-    if (!calendarService) {
-      console.warn("⚠️ CALENDAR API NOT CONNECTED - Using fallback slots");
-      const fallbackSlots = generateFallbackSlots(serviceName);
-      return res.json({ 
-        success: true, 
-        slots: fallbackSlots,
-        fallback: true,
-        message: "Calendar service unavailable - showing default availability"
-      });
-    }
-
+    // Try to get slots from Google Calendar first
     try {
       const slots = await generateAvailableSlots(serviceName);
       return res.json({ success: true, slots });
-    } catch (calendarError) {
-      console.error("❌ CALENDAR API ERROR - Failed to fetch availability:", calendarError);
-      console.warn("⚠️ Falling back to default slots");
-      const fallbackSlots = generateFallbackSlots(serviceName);
+    } catch (calendarError: any) {
+      console.error("❌ CALENDAR API ERROR - Failed to fetch availability:", calendarError.message);
+      await criticalMonitor.reportFailure('Google Calendar', calendarError.message);
+      
+      // GRACEFUL FALLBACK: Use conflict-safe database-backed fallback
+      console.warn("⚠️ Falling back to conflict-safe database availability");
+      const fallbackSlots = await generateConflictSafeFallbackSlots(serviceName);
       return res.json({ 
         success: true, 
         slots: fallbackSlots,
         fallback: true,
-        message: "Calendar temporarily unavailable - showing default availability"
+        message: "Calendar temporarily unavailable - showing database-verified availability"
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error getting available slots:", error);
     // Even on unexpected errors, try to return fallback slots
     try {
       const serviceName = req.query.service as string;
-      const fallbackSlots = generateFallbackSlots(serviceName || "Full Detail");
+      const fallbackSlots = await generateConflictSafeFallbackSlots(serviceName || "Full Detail");
       return res.json({ 
         success: true, 
         slots: fallbackSlots,
         fallback: true,
-        message: "Using default availability"
+        message: "Using database-verified availability"
       });
     } catch (fallbackError) {
+      await criticalMonitor.reportFailure('Google Calendar', 'Complete failure - no fallback available');
       return res.status(500).json({
         success: false,
         message: "Failed to get available slots",
@@ -656,6 +694,9 @@ export async function handleBook(req: any, res: any) {
  * Generate available appointment slots based on calendar availability
  */
 export async function generateAvailableSlots(serviceName: string) {
+  // Get fresh calendar client (never cache - tokens expire)
+  const calendarService = await getFreshCalendarClient();
+  
   if (!calendarService) {
     throw new Error("Calendar service not initialized");
   }
@@ -889,6 +930,9 @@ async function bookAppointment(
   startTimeISO: string,
   description: string = "",
 ) {
+  // Get fresh calendar client (never cache - tokens expire)
+  const calendarService = await getFreshCalendarClient();
+  
   if (!calendarService) {
     throw new Error("Calendar service not initialized");
   }
