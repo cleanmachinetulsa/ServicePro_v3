@@ -37,6 +37,7 @@ interface Conversation {
   pinnedAt: string | null;
   archivedAt: string | null;
   starredAt: string | null;
+  phoneLineId: number | null;
 }
 
 interface ConversationListProps {
@@ -232,11 +233,19 @@ export default function ConversationList({
                       </span>
                     </div>
                     
-                    {conversation.customerName && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {conversation.customerPhone}
-                      </p>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {conversation.customerName && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {conversation.customerPhone}
+                        </p>
+                      )}
+                      {/* Phone line badge for SMS only */}
+                      {conversation.platform === 'sms' && conversation.phoneLineId && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-medium bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800">
+                          {conversation.phoneLineId === 1 ? 'Main' : conversation.phoneLineId === 2 ? 'Owner' : `Line ${conversation.phoneLineId}`}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 

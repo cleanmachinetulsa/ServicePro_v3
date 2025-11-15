@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { usePhoneLine } from '@/contexts/PhoneLineContext';
 import {
   Popover,
   PopoverContent,
@@ -109,6 +110,7 @@ export default function ThreadView({
   sidePanelSlot,
   scheduledBannerSlot,
 }: ThreadViewProps) {
+  const { selectedPhoneLineId } = usePhoneLine();
   const [messageInput, setMessageInput] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [showLoadMore, setShowLoadMore] = useState(true);
@@ -229,7 +231,8 @@ export default function ThreadView({
       const response = await apiRequest('POST', `/api/conversations/${conversationId}/send-message`, { 
         content: payload.content,
         channel: conversation?.platform || 'web',
-        attachments: payload.attachments || []
+        attachments: payload.attachments || [],
+        phoneLineId: conversation?.platform === 'sms' ? (selectedPhoneLineId || conversation?.phoneLineId || undefined) : undefined
       });
       return response.json();
     },

@@ -465,14 +465,21 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
     
     // Send with rate limiting (slot already claimed above, so we're guaranteed within limit)
     await twilioLimiter.schedule(async () => {
-      const fromNumber = campaign.from_number || process.env.BUSINESS_PHONE_NUMBER;
+      // CRITICAL FIX: Use sendSMS() from notifications.ts with phoneLineId
+      // Campaigns use Main Line (ID 1) for automated messages
+      const { sendSMS } = await import('./notifications');
       
-      const message = await twilioClient.messages.create({
-        body: finalMessage,
-        from: fromNumber,
-        to: recipient.phone_number,
-        messagingServiceSid: TWILIO_MESSAGING_SERVICE_SID
-      });
+      const result = await sendSMS(
+        recipient.phone_number,
+        finalMessage,
+        undefined, // conversationId
+        undefined, // messageId
+        1 // phoneLineId: Main Line for campaigns
+      );
+      
+      if (!result.success) {
+        throw new Error(result.error || 'SMS send failed');
+      }
       
       // Update recipient status
       await db.execute(sql`
@@ -481,7 +488,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
           status = 'sent',
           sent_at = NOW(),
           attempt_count = attempt_count + 1,
-          twilio_sid = ${message.sid}
+          twilio_sid = ${result.messageSid || null}
         WHERE id = ${recipient.id}
       `);
       
@@ -492,7 +499,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
         WHERE id = ${campaign.id}
       `);
       
-      console.log(`[SMS CAMPAIGN] Sent SMS to ${recipient.phone_number} (SID: ${message.sid})`);
+      console.log(`[SMS CAMPAIGN] Sent SMS to ${recipient.phone_number} (SID: ${result.messageSid})`);
     });
     
   } catch (error: any) {

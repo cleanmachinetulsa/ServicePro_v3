@@ -805,7 +805,8 @@ export async function navigateAndSendETA(req: Request, res: Response) {
     const smsMessage = `Hi ${customerName}! This is Clean Machine Auto Detail. We're on our way! 🚗\n\nEstimated arrival: ${paddedDuration} minutes\n\nSee you soon!`;
     
     try {
-      await sendSMS(phone, smsMessage);
+      // Use Main Line (ID 1) for automated ETA notifications
+      await sendSMS(phone, smsMessage, undefined, undefined, 1);
     } catch (smsError) {
       console.error('Failed to send ETA SMS:', smsError);
       // Don't fail the whole request if SMS fails - still return navigation data
@@ -924,8 +925,8 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
     // Build SMS message with real payment link
     const smsMessage = `Thank you ${customerName || 'for choosing Clean Machine Auto Detail'}!\n\nYour ${service} service is complete.\nAmount: $${amount.toFixed(2)}\n\n${notes || ''}\n\nPayment Options:\n1. Card: ${paymentLink}\n2. Venmo: @cleanmachinetulsa\n3. CashApp: $CleanMachineTulsa\n4. PayPal: CleanMachineTulsa\n\nWe'd love a review:\nGoogle: https://g.page/r/CQo53O2yXrN8EBM/review`;
     
-    // Send SMS
-    const smsResult = await sendSMS(customerPhone, smsMessage);
+    // Send SMS using Main Line (ID 1) for automated invoice notifications
+    const smsResult = await sendSMS(customerPhone, smsMessage, undefined, undefined, 1);
     
     // Send Email if provided
     let emailSent = false;

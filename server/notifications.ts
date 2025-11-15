@@ -46,7 +46,8 @@ export async function sendSMSOptInConfirmation(
 ): Promise<{ success: boolean; error?: any }> {
   const confirmationMessage = "Clean Machine Auto Detail: You are now opted in for appointment updates and service reminders. Reply HELP for help. Reply STOP to opt out anytime.";
 
-  return await sendSMS(phoneNumber, confirmationMessage);
+  // Use Main Line (ID 1) for automated opt-in confirmations
+  return await sendSMS(phoneNumber, confirmationMessage, undefined, undefined, 1);
 }
 
 /**
@@ -56,7 +57,8 @@ export async function sendSMS(
   phoneNumber: string,
   message: string,
   conversationId?: number,
-  messageId?: number
+  messageId?: number,
+  phoneLineId?: number
 ): Promise<{ success: boolean; error?: any; messageSid?: string }> {
   if (DEMO_MODE) {
     // In demo mode, log the message but don't actually send it
@@ -76,6 +78,26 @@ export async function sendSMS(
   try {
     // Format phone number to E.164 format if not already
     const formattedPhone = formatPhoneNumber(phoneNumber);
+    
+    // Load phone line from database if phoneLineId provided
+    let fromPhoneNumber = twilioPhoneNumber; // Default to env variable
+    if (phoneLineId) {
+      const { phoneLines } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const [phoneLine] = await db
+        .select()
+        .from(phoneLines)
+        .where(eq(phoneLines.id, phoneLineId))
+        .limit(1);
+      
+      if (phoneLine) {
+        fromPhoneNumber = phoneLine.phoneNumber;
+        console.log(`[SMS] Using phone line ${phoneLine.label} (${phoneLine.phoneNumber})`);
+      } else {
+        console.warn(`[SMS] Phone line ID ${phoneLineId} not found, using default`);
+      }
+    }
     
     // SMS OPT-OUT ENFORCEMENT (TCPA/CTIA Compliance)
     // Check if customer has opted out via STOP keyword
@@ -130,14 +152,22 @@ export async function sendSMS(
       statusCallback: statusCallbackUrl, // Twilio will POST updates to this URL
     };
 
-    // Use Messaging Service SID for better deliverability (A2P compliance)
-    // If not available, fall back to phone number
-    if (twilioMessagingServiceSid) {
-      smsParams.messagingServiceSid = twilioMessagingServiceSid;
-      console.log(`[SMS] Sending via Messaging Service: ${twilioMessagingServiceSid}`);
+    // CRITICAL FIX: When phoneLineId is specified, use that line's phone number directly
+    // DO NOT use Messaging Service when a specific line is requested
+    if (phoneLineId) {
+      // Use the specific phone line number (bypass Messaging Service)
+      smsParams.from = fromPhoneNumber;
+      console.log(`[SMS] Sending via specific phone line: ${fromPhoneNumber} (Line ID: ${phoneLineId})`);
     } else {
-      smsParams.from = twilioPhoneNumber;
-      console.log(`[SMS] Sending via phone number: ${twilioPhoneNumber}`);
+      // Legacy behavior: Use Messaging Service SID for better deliverability (A2P compliance)
+      // If not available, fall back to default phone number
+      if (twilioMessagingServiceSid) {
+        smsParams.messagingServiceSid = twilioMessagingServiceSid;
+        console.log(`[SMS] Sending via Messaging Service: ${twilioMessagingServiceSid}`);
+      } else {
+        smsParams.from = fromPhoneNumber;
+        console.log(`[SMS] Sending via default phone number: ${fromPhoneNumber}`);
+      }
     }
 
     // Send SMS via Twilio with status callback
@@ -251,8 +281,8 @@ Directions to your location: https://cleanmachine.app/directions?address=${encod
 
   const confirmationMessage = templateResult.message;
 
-  // Send SMS confirmation
-  const smsResult = await sendSMS(phone, confirmationMessage);
+  // Send SMS confirmation using Main Line (ID 1) for automated booking confirmations
+  const smsResult = await sendSMS(phone, confirmationMessage, undefined, undefined, 1);
 
   // Send email confirmation if email is provided
   let emailResult = { success: false };
@@ -399,8 +429,8 @@ Directions to your location: https://cleanmachine.app/directions?address=${encod
 
   const reminderMessage = templateResult.message;
 
-  // Send SMS reminder
-  const smsResult = await sendSMS(phone, reminderMessage);
+  // Send SMS reminder using Main Line (ID 1) for automated reminders
+  const smsResult = await sendSMS(phone, reminderMessage, undefined, undefined, 1);
 
   // Send email reminder if email is provided
   let emailResult = { success: false };
@@ -451,8 +481,8 @@ Hey ${name}, it's Jody with Clean Machine Auto Detail. Just wanted to let you kn
 See you soon!
 `;
 
-  // Send the SMS
-  return await sendSMS(phoneNumber, message);
+  // Send the SMS using Main Line (ID 1) for automated ETA notifications
+  return await sendSMS(phoneNumber, message, undefined, undefined, 1);
 }
 
 /**
@@ -528,8 +558,8 @@ Or reply RESCHEDULE for help, or KEEP to continue.
 Questions? Text back or call (918) 856-5304
 `;
 
-  // Send SMS weather alert
-  const smsResult = await sendSMS(phone, weatherAlertMessage);
+  // Send SMS weather alert using Main Line (ID 1) for automated weather alerts
+  const smsResult = await sendSMS(phone, weatherAlertMessage, undefined, undefined, 1);
 
   // Send email weather alert if email is provided
   let emailResult = { success: false };

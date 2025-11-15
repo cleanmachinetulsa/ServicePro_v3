@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { usePhoneLine } from '@/contexts/PhoneLineContext';
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ interface ComposerProps {
 }
 
 export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerProps) {
+  const { selectedPhoneLineId } = usePhoneLine();
   const [platform, setPlatform] = useState<'sms' | 'web' | 'facebook' | 'instagram' | 'email'>('sms');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -47,7 +49,7 @@ export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerPr
 
   // Create new conversation mutation
   const createConversationMutation = useMutation({
-    mutationFn: async (data: { phone?: string; email?: string; socialId?: string; name: string; platform: string }) => {
+    mutationFn: async (data: { phone?: string; email?: string; socialId?: string; name: string; platform: string; phoneLineId?: number }) => {
       return await apiRequest('POST', '/api/conversations/create', data);
     },
     onSuccess: async (response) => {
@@ -131,7 +133,8 @@ export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerPr
       email: platform === 'email' ? email : undefined,
       socialId: (platform === 'facebook' || platform === 'instagram') ? socialId : undefined,
       name, 
-      platform 
+      platform,
+      phoneLineId: platform === 'sms' ? (selectedPhoneLineId || undefined) : undefined
     });
   };
 
