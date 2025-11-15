@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -7,110 +8,46 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Menu, Settings as SettingsIcon } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import AgentSettings from "./AgentSettings";
-import BusinessSettings from "../pages/business-settings";
-import NotificationsSettings from "../pages/notifications-settings";
-import { UpsellManagement } from "./UpsellManagement";
-import RecurringServicesManager from "./RecurringServicesManager";
-import { EmailCampaignsManager } from "./EmailCampaignsManager";
-import { SmsTemplatesManager } from "./SmsTemplatesManager";
-import EmailTemplatesManager from "./EmailTemplatesManager";
-import CancellationDemo from "./CancellationDemo";
-import SubscriptionManager from "./SubscriptionManager";
-import { PhoneSettings } from "./PhoneSettings";
-import ServicesManagement from "./ServicesManagement";
-import { CustomerManagement } from "./CustomerManagement";
-import { LoyaltyPointsSystem } from "./LoyaltyPointsSystem";
-import GalleryPhotoManager from "./GalleryPhotoManager";
-import AdminReferralStats from "./AdminReferralStats";
-import { 
-  Menu, 
-  Settings as SettingsIcon, 
-  Wrench, 
-  MessageSquare, 
-  Building, 
-  Users, 
-  Shield,
-  Phone,
-  Image,
-  Award,
-  Gift
-} from "lucide-react";
+import { settingsSections } from "@/config/settingsSections";
 
-interface SettingsSection {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  items: SettingsItem[];
+interface SettingsWorkspaceProps {
+  initialSection?: string;
+  initialItem?: string;
 }
 
-interface SettingsItem {
-  id: string;
-  label: string;
-  component: React.ComponentType<any>;
-  props?: Record<string, any>;
-}
-
-export default function SettingsWorkspace() {
-  const [activeSection, setActiveSection] = useState('operations');
-  const [activeItem, setActiveItem] = useState('services');
+export default function SettingsWorkspace({ initialSection, initialItem }: SettingsWorkspaceProps = {}) {
+  const [, setLocation] = useLocation();
+  const [activeSection, setActiveSection] = useState(initialSection || 'operations');
+  const [activeItem, setActiveItem] = useState(initialItem || 'services');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Settings hierarchy configuration - ALL legacy features included
-  const settingsSections: SettingsSection[] = [
-    {
-      id: 'operations',
-      label: 'Operations',
-      icon: <Wrench className="h-4 w-4" />,
-      items: [
-        { id: 'services', label: 'Services & Add-ons', component: ServicesManagement },
-        { id: 'recurring', label: 'Recurring Services', component: RecurringServicesManager },
-        { id: 'phone-settings', label: 'Phone & Voice', component: PhoneSettings },
-      ]
-    },
-    {
-      id: 'customers',
-      label: 'Customer Management',
-      icon: <Users className="h-4 w-4" />,
-      items: [
-        { id: 'customer-management', label: 'Customer Database', component: CustomerManagement },
-        { id: 'loyalty', label: 'Loyalty Program', component: LoyaltyPointsSystem },
-        { id: 'referrals', label: 'Referral Program', component: AdminReferralStats },
-        { id: 'gallery', label: 'Gallery Photos', component: GalleryPhotoManager },
-      ]
-    },
-    {
-      id: 'communications',
-      label: 'Communications',
-      icon: <MessageSquare className="h-4 w-4" />,
-      items: [
-        { id: 'notifications', label: 'Notifications', component: NotificationsSettings },
-        { id: 'sms-templates', label: 'SMS Templates', component: SmsTemplatesManager },
-        { id: 'email-templates', label: 'Email Templates', component: EmailTemplatesManager },
-        { id: 'email-campaigns', label: 'Email Campaigns', component: EmailCampaignsManager },
-        { id: 'upsell', label: 'Upsell Offers', component: UpsellManagement },
-        { id: 'cancellation', label: 'Cancellation Feedback', component: CancellationDemo },
-      ]
-    },
-    {
-      id: 'business',
-      label: 'Business',
-      icon: <Building className="h-4 w-4" />,
-      items: [
-        { id: 'business-settings', label: 'Business Settings', component: BusinessSettings },
-        { id: 'agent-settings', label: 'Agent Settings', component: AgentSettings },
-        { id: 'subscriptions', label: 'Subscription Plans', component: SubscriptionManager },
-      ]
-    },
-  ];
+  // Sync initial props to state when they change
+  useEffect(() => {
+    if (initialSection && initialSection !== activeSection) {
+      setActiveSection(initialSection);
+    }
+    if (initialItem && initialItem !== activeItem) {
+      setActiveItem(initialItem);
+    }
+  }, [initialSection, initialItem]);
+
+  // Sync URL when active section/item changes
+  useEffect(() => {
+    // Only update URL if we're on a settings page (check current location)
+    const currentPath = window.location.pathname;
+    if (currentPath.startsWith('/settings')) {
+      // Update URL to reflect current section and item
+      setLocation(`/settings/${activeSection}/${activeItem}`);
+    }
+  }, [activeSection, activeItem, setLocation]);
 
   // Find active item component
   const ActiveComponent = settingsSections
