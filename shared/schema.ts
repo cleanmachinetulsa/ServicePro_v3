@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -152,6 +152,9 @@ export const errorLogs = pgTable("error_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Loyalty tier enum for customer tier upgrades
+export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold', 'platinum']);
+
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -167,6 +170,9 @@ export const customers = pgTable("customers", {
   smsConsent: boolean("sms_consent").default(false),
   smsConsentTimestamp: timestamp("sms_consent_timestamp"),
   smsConsentIpAddress: text("sms_consent_ip_address"),
+  loyaltyTier: loyaltyTierEnum("loyalty_tier").default('bronze'),
+  hasPriorityBooking: boolean("has_priority_booking").default(false),
+  priorityBookingGrantedAt: timestamp("priority_booking_granted_at"),
 });
 
 export const services = pgTable("services", {
@@ -1503,6 +1509,66 @@ export const creditTransactions = pgTable("credit_transactions", {
   balanceAfter: numeric("balance_after", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Service Addons - Catalog of available service enhancements
+export const serviceAddons = pgTable("service_addons", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g., "Tire Shine", "Air Freshener", "Engine Bay Detail"
+  description: text("description"), // What the addon includes
+  value: numeric("value", { precision: 10, scale: 2 }).notNull(), // Dollar value if purchased separately
+  category: varchar("category", { length: 50 }), // 'exterior', 'interior', 'engine', 'protection'
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Customer Addon Credits - Track awarded free addons
+export const customerAddonCredits = pgTable("customer_addon_credits", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  addonId: integer("addon_id").notNull().references(() => serviceAddons.id),
+  source: varchar("source", { length: 50 }).notNull(), // 'referral_reward', 'promotion', 'compensation', 'admin_grant'
+  sourceId: integer("source_id"), // ID of the source entity (e.g., referral code ID)
+  status: varchar("status", { length: 20 }).notNull().default("available"), // 'available', 'redeemed', 'expired', 'cancelled'
+  grantedAt: timestamp("granted_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // Addon credits may expire
+  redeemedAt: timestamp("redeemed_at"),
+  redeemedInvoiceId: integer("redeemed_invoice_id").references(() => invoices.id),
+  notes: text("notes"),
+}, (table) => ({
+  customerStatusIndex: index("addon_credits_customer_status_idx").on(table.customerId, table.status),
+}));
+
+// Milestone Definitions - Configurable achievement milestones
+export const milestoneDefinitions = pgTable("milestone_definitions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g., "5th Booking Milestone", "VIP Spender"
+  description: text("description"), // What the milestone represents
+  milestoneType: varchar("milestone_type", { length: 30 }).notNull(), // 'bookings_count', 'total_spent', 'days_since_first'
+  targetValue: numeric("target_value", { precision: 10, scale: 2 }).notNull(), // Threshold to reach (e.g., 5 for 5 bookings, 500 for $500 spent)
+  rewardType: varchar("reward_type", { length: 30 }).notNull(), // What reward to grant when milestone is reached
+  rewardValue: text("reward_value"), // Reward configuration (JSON or simple value)
+  isActive: boolean("is_active").default(true),
+  isRepeatable: boolean("is_repeatable").default(false), // Can milestone be achieved multiple times?
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Customer Milestone Progress - Track customer progress toward milestones
+export const customerMilestoneProgress = pgTable("customer_milestone_progress", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  milestoneId: integer("milestone_id").notNull().references(() => milestoneDefinitions.id),
+  currentValue: numeric("current_value", { precision: 10, scale: 2 }).notNull().default('0'), // Current progress
+  completedAt: timestamp("completed_at"), // When milestone was reached
+  rewardGranted: boolean("reward_granted").default(false), // Whether reward was successfully applied
+  rewardAuditId: integer("reward_audit_id"), // Link to reward_audit record
+  lastUpdatedAt: timestamp("last_updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  customerMilestoneIndex: index("milestone_progress_customer_milestone_idx").on(table.customerId, table.milestoneId),
+  completedIndex: index("milestone_progress_completed_idx").on(table.completedAt),
+}));
 
 // Create schemas for data insertion
 export const insertUserSchema = createInsertSchema(users).pick({
