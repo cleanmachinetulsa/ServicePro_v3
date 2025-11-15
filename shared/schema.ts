@@ -356,6 +356,14 @@ export const invoices = pgTable("invoices", {
   invoiceSentAt: timestamp("invoice_sent_at"),
   lastReminderSent: timestamp("last_reminder_sent"),
   reminderCount: integer("reminder_count").default(0),
+  
+  // Referral discount tracking
+  referralCode: varchar("referral_code", { length: 20 }), // Applied referral code (e.g., "JOHN-ABC123")
+  referralDiscount: numeric("referral_discount", { precision: 10, scale: 2 }), // Discount amount applied
+  referralRewardType: varchar("referral_reward_type", { length: 30 }), // fixed_discount, percent_discount, etc.
+  referralRewardValue: numeric("referral_reward_value", { precision: 10, scale: 2 }), // Original reward value
+  referralOriginalAmount: numeric("referral_original_amount", { precision: 10, scale: 2 }), // Amount before referral discount
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const conversations = pgTable("conversations", {
