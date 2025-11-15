@@ -1,0 +1,429 @@
+Here’s a cleaned-up, “right and TIGHT” prompt you can paste straight into Replit for the AI to follow:
+
+
+---
+
+You are Replit’s AI coding assistant working inside my existing full-stack web app project (dashboard + messaging hub + PWA that replaces Google Voice for my business communications).
+
+Your job right now is to stabilize, complete, and polish the app toward production-ready, AAA-level quality. Follow every instruction below carefully, and explain what you changed as you go.
+
+
+---
+
+HIGH-LEVEL GOALS
+
+Make the app stable (no white screens, no broken routes).
+
+Ensure all core components are actually integrated into the real flows (not just created in isolation).
+
+Clean up confusing UX (especially settings / configuration areas).
+
+Prepare the app to be deployable for real customers once code is solid.
+
+
+
+---
+
+TASK 1 — PAYMENT CODE SNIPPET / AUTOMATION
+
+1. There is supposed to be a code snippet that can be added to any payment page (likely related to invoices / referral codes / tracking).
+
+
+2. Your tasks:
+
+Locate any existing code snippet you previously added or started for this purpose.
+
+If it already exists:
+
+Refactor it into a reusable component / hook / function that can be easily attached to any payment page.
+
+Wire it into all current payment / checkout / invoice pages where it’s supposed to be used.
+
+
+If it does not exist or is incomplete:
+
+Design and implement a sensible, reusable solution that:
+
+Is easy for a non-developer (me) to reuse.
+
+Has clear comments on where and how to call it.
+
+
+
+
+
+3. When you’re done:
+
+Document exactly which files contain this snippet.
+
+Show me how to add it to any new payment page in 2–3 simple steps.
+
+
+
+
+I do not have the technical skills to wire this in manually, so assume you must do the full integration and leave me only simple “copy/paste or import + 1 line” usage.
+
+
+---
+
+TASK 2 — AI BIO HELPER TOOL (SMS TEMPLATES PAGE)
+
+There is an AI bio helper tool on the SMS templates page.
+
+1. Confirm whether this tool is pre-contextualized with hard-coded context (e.g., my business, tone of voice, example bios, etc.).
+
+
+2. If it isn’t:
+
+Add a clear, sensible hard-coded context block that:
+
+Explains that this is for my business SMS templates.
+
+Sets tone (professional but friendly, trustworthy, local service owner).
+
+Includes any necessary fields / variables (name, role, experience, specialties).
+
+
+
+
+3. Make sure:
+
+The user experience is clear (labels, helper text).
+
+Any AI calls are safe, predictable, and easy to adjust later.
+
+
+
+
+Explain in your summary how you contextualized it and where that context lives in the code.
+
+
+---
+
+TASK 3 — DASHBOARD SEARCH BAR: LIVE VALIDATION & SUGGESTIONS
+
+On the main dashboard page, there is a search bar at the top.
+
+I want this to behave more like Google’s search box:
+
+1. Add live validation + live suggestions:
+
+As the user types, show a dropdown with:
+
+Matching settings.
+
+Matching components/pages.
+
+Possibly common actions (e.g., “Go to Messages”, “Open Billing Settings”, etc.) if you can map them.
+
+
+
+
+2. Implementation details:
+
+Use a debounced input so we don’t over-render.
+
+Suggest results in a dropdown panel directly under the search bar.
+
+Clicking a result should navigate to the relevant page or surface that setting (or at least set up the navigation hook for that).
+
+
+
+3. UX requirements:
+
+Keyboard navigation (↑/↓/Enter) should work nicely if feasible.
+
+Empty state: e.g., “Start typing to search settings and sections…”
+
+No janky layout shifts or weird overlapped UI.
+
+
+
+
+If any part of this is ambiguous, make a best-effort, robust implementation and then describe your design in the summary so I can refine later.
+
+
+---
+
+TASK 4 — WHITE SCREEN BUGS & InvoiceReferralCodeInput PAGE
+
+There is a new page: InvoiceReferralCodeInput.
+
+Right now it shows a white screen. This is part of a bigger pattern: new pages you create or edit tend to go white screen.
+
+Your job:
+
+1. Diagnose and fix the InvoiceReferralCodeInput page:
+
+Find the exact cause of the white screen (routing, layout wrapper, missing provider, runtime error, etc.).
+
+Fix it so the page loads properly and is reachable from whatever route / navigation is intended.
+
+
+
+2. General white screen prevention:
+
+Identify whether this is a wrapper/layout/provider issue, route config issue, or something else.
+
+Add appropriate guards / error boundaries / layout consistency so:
+
+New pages don’t silently white screen.
+
+Errors surface in a clear dev-friendly way (e.g., error boundary message or console error).
+
+
+
+
+3. Bake the fix into your building logic:
+
+Standardize page creation:
+
+Which layout component to wrap with.
+
+Which providers / contexts are required.
+
+How routes should be declared.
+
+
+Refactor existing pages if necessary so the pattern is consistent.
+
+
+
+4. Confirm at the end:
+
+No pages are currently white screening.
+
+You have a repeatable pattern for adding new pages without breaking the app.
+
+
+
+
+
+---
+
+TASK 5 — 22-POINT TASK LIST & DATABASE SCHEMA
+
+Previously you had a 22-point task list plus older smaller task lists.
+
+1. Locate that 22-point list (and any earlier to-do/task lists in the code or comments).
+
+
+2. For each item:
+
+Mark it as:
+
+✅ Completed, or
+
+⏳ Still needed (and then complete it now, if it’s still relevant).
+
+
+
+
+3. Do the same for any older task lists that are still relevant.
+
+
+4. Confirm that the database schema is:
+
+Synchronized with the ORM / migrations.
+
+Working properly end to end across:
+
+Dashboard
+
+Messages
+
+Any other key pages (billing, templates, etc.).
+
+
+
+
+5. After schema verification:
+
+Ensure the app is deploy-ready:
+
+No obvious breaking migrations.
+
+No hard-coded dev URLs that would break in production.
+
+
+If additional steps are needed to deploy, list them clearly in your summary.
+
+
+
+
+
+---
+
+TASK 6 — SETTINGS UX (MESSAGES PAGE VS DASHBOARD)
+
+Currently there are two settings menus on the Messages page, plus another more complex settings menu in the main Dashboard.
+
+The Messages page functions as my business messaging + phone communications hub and is used via a PWA app on my home screen, replacing Google Voice (dialer, messaging, visual voicemail, etc.).
+
+Your job:
+
+1. Analyze the current settings structure:
+
+Identify all places where there are settings menus/buttons, especially:
+
+Messages page.
+
+Global dashboard.
+
+
+
+
+2. Decide on a best-practice layout:
+
+If appropriate, consolidate everything under:
+
+A single, global settings area with clearly separated sections, or
+
+A global settings area + a small, local settings section for the Messages page that is truly specific to messaging.
+
+
+Reduce redundancy and confusion.
+
+
+
+3. Implementation:
+
+Refactor the UI so users clearly understand:
+
+Where to go for global/settings vs messages-specific settings.
+
+
+Update labels, icons, and navigation to match this new structure.
+
+
+
+4. If you’re unsure of best practice:
+
+Use your knowledge of common messaging/phone UIs (Google Voice, iMessage, WhatsApp, etc.).
+
+If your environment allows, search for best practices around “messaging app settings vs global settings” and use that to guide your design.
+
+
+
+
+Explain in the summary what you changed and how to access each settings area now.
+
+
+---
+
+TASK 7 — COMPONENT INTEGRATION & OUTDATED PAGES
+
+I’m concerned there are components you created but never fully integrated into the app flows.
+
+Your job:
+
+1. Search the codebase for:
+
+Components or pages that were created but are not imported/used anywhere.
+
+“Dead” or legacy UI that’s no longer wired into navigation.
+
+
+
+2. For each such component/page:
+
+Decide if it should:
+
+Be properly integrated into the current UX, or
+
+Be removed/retired to reduce clutter and confusion.
+
+
+
+
+3. Additionally:
+
+Scan for older pages or elements that have not been upgraded to match the current stack configuration (e.g., old layout patterns, missing providers, outdated styling, old routing patterns).
+
+Update them to the modern, current pattern you’re using elsewhere so the whole app feels consistent.
+
+
+
+4. Make sure:
+
+There are no important features/components that are only half-wired.
+
+The navigation structure makes sense from a real user perspective.
+
+
+
+
+In your summary, list:
+
+Components/pages that were previously unused and what you did with them.
+
+Any significant legacy pieces you modernized.
+
+
+
+---
+
+TASK 8 — FINAL POLISH & UX QUALITY
+
+As you implement all of the above, also:
+
+1. Push for AAA-level, top-tier production quality:
+
+Smooth, consistent animated transitions.
+
+No weird “window inside a window” UI unless explicitly intended.
+
+Back and Cancel buttons work everywhere it’s expected:
+
+They navigate sensibly or close dialogs/sheets without trapping the user.
+
+
+
+
+2. Ensure:
+
+No major layout jank between pages.
+
+Mobile/PWA experience is solid (especially for Messages & dashboard).
+
+
+
+3. Make reasonable improvements if you see obvious rough edges.
+
+
+
+
+---
+
+OUTPUT REQUIREMENTS
+
+When you’re done (or at logical checkpoints), provide:
+
+1. A clear summary of:
+
+Changes made for each task (1–8).
+
+Files and key components you touched.
+
+
+
+2. Any remaining TODOs that absolutely require my input (e.g., business copy, complex product decisions).
+
+
+3. Short usage notes where relevant (e.g., “To use the payment snippet on a new page, do X, Y, Z”).
+
+
+
+Do not just say “done” — I need enough detail to understand:
+
+What was fixed,
+
+What changed structurally,
+
+And how to use any new tools/components you built.
+
+
+
+---
+
+Use your full capabilities, write clean, maintainable code, and assume I am not a programmer — you must handle the technical parts end-to-end and leave me with simple, documented hooks and usage steps.
