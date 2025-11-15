@@ -12,28 +12,37 @@ import {
 /**
  * Get all active conversations with customer info and latest message
  */
-export async function getAllConversations(status?: string) {
+export async function getAllConversations(status?: string, phoneLineId?: number) {
   try {
     const statusFilter = status || 'all';
     
     // Build the where clause based on filter
-    let whereClause;
+    const conditions = [];
+    
     if (statusFilter === 'all') {
-      // Show all active conversations
-      whereClause = eq(conversations.status, 'active');
+      conditions.push(eq(conversations.status, 'active'));
     } else if (statusFilter === 'manual') {
-      // Show conversations in manual mode (still active)
-      whereClause = and(
-        eq(conversations.status, 'active'),
-        eq(conversations.controlMode, 'manual')
-      );
+      conditions.push(eq(conversations.status, 'active'));
+      conditions.push(eq(conversations.controlMode, 'manual'));
     } else if (statusFilter === 'closed') {
-      // Show closed conversations
-      whereClause = eq(conversations.status, 'closed');
+      conditions.push(eq(conversations.status, 'closed'));
     } else {
-      // Fallback to active
-      whereClause = eq(conversations.status, 'active');
+      conditions.push(eq(conversations.status, 'active'));
     }
+    
+    // Add phone line filter if provided
+    // CRITICAL FIX: Treat NULL phoneLineId as Main Line (ID 1) for legacy conversations
+    if (phoneLineId !== undefined && phoneLineId !== null) {
+      if (phoneLineId === 1) {
+        // Main Line - include both phoneLineId = 1 AND NULL (legacy conversations)
+        conditions.push(or(eq(conversations.phoneLineId, 1), sql`${conversations.phoneLineId} IS NULL`));
+      } else {
+        // Other lines - only match the specific line ID
+        conditions.push(eq(conversations.phoneLineId, phoneLineId));
+      }
+    }
+    
+    const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
     
     const conversationList = await db
       .select({
@@ -53,6 +62,7 @@ export async function getAllConversations(status?: string) {
         status: conversations.status,
         createdAt: conversations.createdAt,
         unreadCount: conversations.unreadCount,
+        phoneLineId: conversations.phoneLineId,
       })
       .from(conversations)
       .where(whereClause)
@@ -158,7 +168,8 @@ export async function getOrCreateConversation(
   facebookPageId?: string,
   emailAddress?: string,
   emailThreadId?: string,
-  emailSubject?: string
+  emailSubject?: string,
+  phoneLineId?: number
 ) {
   try {
     // For Facebook/Instagram, look up by sender ID instead of phone
@@ -260,6 +271,9 @@ export async function getOrCreateConversation(
     }
 
     // Create new conversation
+    // Default to Main Line (ID 1) for SMS if phoneLineId not provided
+    const effectivePhoneLineId = platform === 'sms' ? (phoneLineId || 1) : null;
+    
     const newConversation = await db
       .insert(conversations)
       .values({
@@ -272,6 +286,7 @@ export async function getOrCreateConversation(
         emailAddress: emailAddress || null,
         emailThreadId: emailThreadId || null,
         emailSubject: emailSubject || null,
+        phoneLineId: effectivePhoneLineId,
         controlMode: 'auto',
         status: 'active',
         category: 'Other',
@@ -299,9 +314,13 @@ export async function addMessage(
   content: string,
   sender: 'customer' | 'ai' | 'agent',
   channel: 'web' | 'sms' | 'facebook' | 'instagram' | 'email',
-  metadata?: Record<string, any> | null
+  metadata?: Record<string, any> | null,
+  phoneLineId?: number
 ) {
   try {
+    // Default to Main Line (ID 1) for SMS if phoneLineId not provided
+    const effectivePhoneLineId = channel === 'sms' ? (phoneLineId || 1) : null;
+    
     const newMessage = await db.insert(messages).values({
       conversationId,
       content,
@@ -309,6 +328,7 @@ export async function addMessage(
       fromCustomer: sender === 'customer',
       channel,
       metadata: metadata || null,
+      phoneLineId: effectivePhoneLineId,
     }).returning();
 
     // Update conversation's last message time and unread count

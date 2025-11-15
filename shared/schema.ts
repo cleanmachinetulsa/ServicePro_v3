@@ -377,6 +377,7 @@ export const conversations = pgTable("conversations", {
   resolved: boolean("resolved").default(false),
   lastMessageTime: timestamp("last_message_time").defaultNow(),
   platform: varchar("platform", { length: 20 }).notNull(), // web, sms, facebook, instagram, email
+  phoneLineId: integer("phone_line_id").references(() => phoneLines.id), // Which phone line this SMS conversation is on (null for non-SMS)
   facebookSenderId: text("facebook_sender_id"), // Facebook/Instagram user ID for sending messages
   facebookPageId: text("facebook_page_id"), // Which Facebook page this conversation is on
   emailAddress: text("email_address"), // Customer email address for email conversations
@@ -407,6 +408,7 @@ export const conversations = pgTable("conversations", {
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),
+  phoneLineIndex: index("conversations_phone_line_idx").on(table.phoneLineId),
 }));
 
 export const messages = pgTable("messages", {
@@ -418,6 +420,7 @@ export const messages = pgTable("messages", {
   timestamp: timestamp("timestamp").defaultNow(),
   topics: text("topics").array(),
   channel: varchar("channel", { length: 10 }), // web, sms, email
+  phoneLineId: integer("phone_line_id").references(() => phoneLines.id), // Which phone line this SMS was sent from/to
   isAutomated: boolean("is_automated").default(false), // Whether message was sent by AI (vs human agent)
   
   // Production messaging features

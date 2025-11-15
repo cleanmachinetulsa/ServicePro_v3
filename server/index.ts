@@ -200,6 +200,10 @@ app.use((req, res, next) => {
   const { seedPhoneLines } = await import('./seedPhoneLines');
   await seedPhoneLines();
   
+  // Backfill phone line IDs for existing conversations (idempotent - safe to run multiple times)
+  const { backfillPhoneLineIds } = await import('./backfillPhoneLines');
+  await backfillPhoneLineIds();
+  
   // Initialize SMS templates (idempotent - safe to run multiple times)
   const { initializeSmsTemplates } = await import('./initSmsTemplates');
   await initializeSmsTemplates();

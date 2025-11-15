@@ -97,6 +97,7 @@ import quoteRequestsRoutes from './routes.quoteRequests';
 import quoteApprovalRoutes from './routes.quoteApproval';
 import calendarAvailabilityRoutes from './routes.calendarAvailability';
 import { registerHealthRoutes } from './healthCheck';
+import phoneSettingsRoutes from './routes.phoneSettings';
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -950,10 +951,30 @@ export async function registerRoutes(app: Express) {
   // SECURITY: Twilio signature verification enabled
   app.post('/sms', verifyTwilioSignature, normalizePhone('From', { required: false, skipValidation: false }), async (req: Request, res: Response) => {
     try {
-      const { Body, From, customerName, NumMedia, MediaUrl0, MediaContentType0 } = req.body;
+      const { Body, From, To, customerName, NumMedia, MediaUrl0, MediaContentType0 } = req.body;
       const message = Body || '';
       // From is now in E.164 format thanks to middleware
       const phone = From || 'web-client';
+      
+      // Detect which phone line received this SMS by looking up the To number
+      let phoneLineId: number | undefined = undefined;
+      if (To) {
+        const { phoneLines } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        
+        const [phoneLine] = await db
+          .select()
+          .from(phoneLines)
+          .where(eq(phoneLines.phoneNumber, To))
+          .limit(1);
+        
+        if (phoneLine) {
+          phoneLineId = phoneLine.id;
+          console.log(`[SMS WEBHOOK] Incoming SMS to ${phoneLine.label} (${To})`);
+        } else {
+          console.warn(`[SMS WEBHOOK] Could not find phone line for ${To}, defaulting to Main Line`);
+        }
+      }
       
       // Handle photo uploads from SMS
       if (NumMedia && parseInt(NumMedia) > 0 && MediaUrl0) {
@@ -1017,7 +1038,17 @@ export async function registerRoutes(app: Express) {
 
       // Get or create conversation first (needed for consent keyword processing)
       const { getOrCreateConversation, addMessage } = await import('./conversationService');
-      let conversation = await getOrCreateConversation(phone, customerName || null, platform);
+      let conversation = await getOrCreateConversation(
+        phone,
+        customerName || null,
+        platform,
+        undefined, // facebookSenderId
+        undefined, // facebookPageId
+        undefined, // emailAddress
+        undefined, // emailThreadId
+        undefined, // emailSubject
+        phoneLineId // Pass detected phone line ID
+      );
 
       // Handle SMS consent keywords (STOP/START/HELP) - SMS only
       if (!isWebClient && platform === 'sms') {
@@ -1028,10 +1059,10 @@ export async function registerRoutes(app: Express) {
           console.log(`[SMS CONSENT] Detected ${consentResult.keyword} keyword for conversation ${conversation.id}`);
           
           // Save the consent keyword message from customer
-          await addMessage(conversation.id, message, 'customer', platform);
+          await addMessage(conversation.id, message, 'customer', platform, null, phoneLineId);
           
           // Save the auto-response message
-          await addMessage(conversation.id, consentResult.autoResponse, 'agent', platform);
+          await addMessage(conversation.id, consentResult.autoResponse, 'agent', platform, null, phoneLineId);
           
           // Send the auto-response via TwiML
           res.set('Content-Type', 'text/xml');
@@ -1051,7 +1082,7 @@ export async function registerRoutes(app: Express) {
         console.log(`[WEB CHAT] After handoff, controlMode is now: ${conversation.controlMode}`);
       }
 
-      await addMessage(conversation.id, message, 'customer', platform);
+      await addMessage(conversation.id, message, 'customer', platform, null, phoneLineId);
 
       // Check for handoff needs (only for auto mode conversations)
       if (conversation.controlMode === 'auto') {
@@ -1578,7 +1609,8 @@ export async function registerRoutes(app: Express) {
       }
 
       const { sendSMS } = await import('./notifications');
-      const smsResult = await sendSMS(customerPhone, message);
+      // Use Main Line (ID 1) for business messages
+      const smsResult = await sendSMS(customerPhone, message, undefined, undefined, 1);
 
       if (smsResult.success) {
         res.json({
@@ -1879,6 +1911,9 @@ export async function registerRoutes(app: Express) {
   
   // Register recurring services routes
   app.use('/api/recurring-services', recurringServicesRoutes);
+  
+  // Phone settings routes (for phone line management)
+  app.use('/api/phone-settings', phoneSettingsRoutes);
   
   // Register calendar availability routes
   app.use('/api/calendar', calendarAvailabilityRoutes);

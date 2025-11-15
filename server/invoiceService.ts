@@ -398,7 +398,8 @@ Facebook: https://www.facebook.com/CLEANMACHINETULSA
 Thanks for trusting us with your vehicle!`;
 
       try {
-        await sendSMS(customer.phone, smsMessage);
+        // Use Main Line (ID 1) for automated invoice notifications
+        await sendSMS(customer.phone, smsMessage, undefined, undefined, 1);
       } catch (error) {
         console.error('Error sending SMS invoice notification:', error);
         success = false;
@@ -549,7 +550,8 @@ Facebook: https://www.facebook.com/CLEANMACHINETULSA
 Thank you for choosing Clean Machine Auto Detail!`;
 
   try {
-    await sendSMS(customer.phone, smsMessage);
+    // Use Main Line (ID 1) for automated review requests
+    await sendSMS(customer.phone, smsMessage, undefined, undefined, 1);
 
     // Mark review request as sent with timestamp
     await markReviewRequested(invoiceId);

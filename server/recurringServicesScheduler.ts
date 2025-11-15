@@ -246,7 +246,8 @@ async function processRecurringServiceReminders() {
       
       const message = `Hi ${customer.name}, this is Clean Machine Auto Detail. Just a reminder that you have a ${service.name} appointment in 3 days on ${formattedTime} at ${appointment.address}.\n\nLooking forward to servicing your vehicle!\n\nTo reschedule or cancel, reply to this message or call (918) 856-5304.`;
 
-      await sendSMS(customer.phone, message);
+      // Use Main Line (ID 1) for automated 3-day reminders
+      await sendSMS(customer.phone, message, undefined, undefined, 1);
       console.log(`[RECURRING] Sent 3-day reminder to ${customer.name} for appointment ${appointment.id}`);
       remindersCount++;
     }
@@ -259,7 +260,8 @@ async function processRecurringServiceReminders() {
       
       const smsMessage = `Hi ${customer.name}, this is Clean Machine Auto Detail reminding you of your ${service.name} appointment tomorrow at ${formattedTime} at ${appointment.address}.\n\nWe're ready to make your vehicle shine!\n\nQuestions? Reply or call (918) 856-5304.\n\nDirections: https://cleanmachine.app/directions?address=${encodeURIComponent(appointment.address)}`;
 
-      await sendSMS(customer.phone, smsMessage);
+      // Use Main Line (ID 1) for automated 1-day reminders
+      await sendSMS(customer.phone, smsMessage, undefined, undefined, 1);
 
       // Send email if available
       if (customer.email) {

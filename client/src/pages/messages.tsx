@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
+import PhoneLineSwitcher from '@/components/messages/PhoneLineSwitcher';
 import {
   Sheet,
   SheetContent,
@@ -60,9 +62,11 @@ interface Conversation {
   pinnedAt: string | null;
   archivedAt: string | null;
   starredAt: string | null;
+  phoneLineId: number | null;
 }
 
-export default function MessagesPage() {
+function MessagesPageContent() {
+  const { selectedPhoneLineId } = usePhoneLine();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,9 +124,14 @@ export default function MessagesPage() {
 
   // Fetch conversations
   const { data: conversationsData, isLoading } = useQuery<{ success: boolean; data: Conversation[] }>({
-    queryKey: ['/api/conversations', filter],
+    queryKey: ['/api/conversations', filter, selectedPhoneLineId],
+    enabled: selectedPhoneLineId !== null,
     queryFn: async () => {
-      const response = await fetch(`/api/conversations?status=${filter}`, {
+      const params = new URLSearchParams({ status: filter });
+      if (selectedPhoneLineId !== null) {
+        params.append('phoneLineId', selectedPhoneLineId.toString());
+      }
+      const response = await fetch(`/api/conversations?${params.toString()}`, {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to fetch conversations');
@@ -295,6 +304,9 @@ export default function MessagesPage() {
     <AppShell title="Messages" showSearch={false} pageActions={pageActions}>
       <div className="flex h-full overflow-hidden">
         <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 border-r flex-col bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm`}>
+          <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3">
+            <PhoneLineSwitcher />
+          </div>
           <ConversationFilters
             activeFilter={filter}
             onFilterChange={setFilter}
@@ -367,5 +379,13 @@ export default function MessagesPage() {
         </Button>
       )}
     </AppShell>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <PhoneLineProvider>
+      <MessagesPageContent />
+    </PhoneLineProvider>
   );
 }

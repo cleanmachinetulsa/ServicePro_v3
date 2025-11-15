@@ -44,14 +44,20 @@ export function registerConversationRoutes(app: Express) {
   // Separated handler for conversation creation logic
   async function handleConversationCreate(req: Request, res: Response) {
     try {
-      const { phone, email, socialId, name, platform } = req.body;
+      const { phone, email, socialId, name, platform, phoneLineId } = req.body;
 
       if (platform === 'sms') {
         // Phone is already validated and normalized to E.164 by middleware
         const conversation = await getOrCreateConversation(
           phone,
           name || null,
-          'sms'
+          'sms',
+          undefined, // facebookSenderId
+          undefined, // facebookPageId
+          undefined, // emailAddress
+          undefined, // emailThreadId
+          undefined, // emailSubject
+          phoneLineId // Pass phoneLineId for SMS
         );
 
         res.json({
@@ -130,8 +136,9 @@ export function registerConversationRoutes(app: Express) {
   // Get all conversations
   app.get('/api/conversations', async (req: Request, res: Response) => {
     try {
-      const { status } = req.query;
-      const conversations = await getAllConversations(status as string);
+      const { status, phoneLineId } = req.query;
+      const phoneLineIdNum = phoneLineId ? parseInt(phoneLineId as string) : undefined;
+      const conversations = await getAllConversations(status as string, phoneLineIdNum);
 
       res.json({
         success: true,
@@ -382,7 +389,7 @@ export function registerConversationRoutes(app: Express) {
   app.post('/api/conversations/:id/send-message', async (req: Request, res: Response) => {
     try {
       const conversationId = parseInt(req.params.id);
-      const { content, channel, attachments = [] } = req.body;
+      const { content, channel, attachments = [], phoneLineId } = req.body;
 
       if (isNaN(conversationId)) {
         return res.status(400).json({
@@ -447,13 +454,15 @@ export function registerConversationRoutes(app: Express) {
             });
           }
 
-          const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-          
-          await client.messages.create({
-            body: processedContent,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: conversation.customerPhone,
-          });
+          // Use sendSMS from notifications to handle phone line properly
+          const { sendSMS } = await import('./notifications');
+          await sendSMS(
+            conversation.customerPhone,
+            processedContent,
+            conversationId,
+            undefined,
+            phoneLineId || conversation.phoneLineId || undefined
+          );
           
           console.log(`Manual message sent via SMS to ${conversation.customerPhone}`);
         } catch (smsError: any) {
@@ -525,7 +534,8 @@ export function registerConversationRoutes(app: Express) {
         processedContent || '', 
         'agent', 
         channel || 'web',
-        messageMetadata
+        messageMetadata,
+        phoneLineId || conversation.phoneLineId || undefined
       );
       // For web chat, the message is broadcast via WebSocket in addMessage
 
@@ -659,7 +669,8 @@ export function registerConversationRoutes(app: Express) {
 
       // Send notification to customer if requested and on SMS
       if (notifyCustomer !== false && conversation.platform === 'sms' && customerNotification && conversation.customerPhone) {
-        await sendSMS(conversation.customerPhone, customerNotification);
+        // Use the conversation's phoneLineId if available, otherwise default to Main Line
+        await sendSMS(conversation.customerPhone, customerNotification, conversationId, undefined, conversation.phoneLineId || 1);
       }
 
       // Notify business owner

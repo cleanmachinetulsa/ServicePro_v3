@@ -105,7 +105,8 @@ export async function sendDepositReminder(
     let smsSuccess = false;
     if (payer.phoneE164 && !payer.smsOptOut) {
       try {
-        const smsResult = await sendSMS(payer.phoneE164, message);
+        // Use Main Line (ID 1) for automated deposit reminders
+        const smsResult = await sendSMS(payer.phoneE164, message, undefined, undefined, 1);
         smsSuccess = smsResult.success;
       } catch (error) {
         console.error('[DEPOSIT MGR] SMS send failed:', error);
