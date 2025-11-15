@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { referrals, customers, invoices, rewardAudit } from "@shared/schema";
+import { referrals, customers, invoices, rewardAudit, customerAddonCredits } from "@shared/schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { awardPoints } from "./gamificationService";
 import { getReferrerRewardDescriptor, getRefereeRewardDescriptor } from "./referralConfigService";
@@ -428,11 +428,30 @@ async function applyRewardByType(
       }
 
       case 'free_addon': {
-        // Free addon requires serviceId
-        if (!serviceId) {
-          return { success: false, message: "ServiceId is required for free_addon reward" };
+        // Free addon requires addonId (from config or metadata)
+        // For referrals, addonId should be in the reward descriptor
+        const addonId = serviceId; // Using serviceId parameter to pass addonId for now
+        
+        if (!addonId) {
+          return { success: false, message: "Addon ID is required for free_addon reward" };
         }
 
+        // Create addon credit for customer
+        const [addonCredit] = await executor
+          .insert(customerAddonCredits)
+          .values({
+            customerId,
+            addonId,
+            source: 'referral_reward',
+            sourceId: referralId,
+            status: 'available',
+            grantedAt: new Date(),
+            expiresAt,
+            notes: notes || `Free addon from ${role} referral reward`,
+          })
+          .returning();
+
+        // Create audit record
         const [audit] = await executor
           .insert(rewardAudit)
           .values({
@@ -440,23 +459,55 @@ async function applyRewardByType(
             customerId,
             rewardRole: role,
             rewardType: type,
-            rewardAmount: '0', // Free addon has no monetary value
-            status: "pending",
+            rewardAmount: '0',
+            status: "applied",
             expiresAt,
-            metadata: { serviceId, notes, freeAddon: true },
+            metadata: { 
+              addonId, 
+              addonCreditId: addonCredit.id,
+              notes,
+            },
           })
           .returning();
+
+        console.log(`[REFERRAL] Granted free addon (ID: ${addonId}) to customer ${customerId}`);
 
         return { 
           success: true, 
           auditId: audit.id,
-          message: `Created free_addon reward (Service ID: ${serviceId})`
+          addonCreditId: addonCredit.id,
+          message: `Free addon credit granted (Addon ID: ${addonId})`,
         };
       }
 
-      case 'tier_upgrade':
-      case 'priority_booking': {
-        // Boolean-style rewards - no amount required
+      case 'tier_upgrade': {
+        // Upgrade customer's loyalty tier (bronze → silver → gold → platinum)
+        const tierOrder = ['bronze', 'silver', 'gold', 'platinum'] as const;
+        
+        // Get current tier
+        const [customer] = await executor
+          .select()
+          .from(customers)
+          .where(eq(customers.id, customerId));
+
+        if (!customer) {
+          return { success: false, message: "Customer not found" };
+        }
+
+        const currentTier = customer.loyaltyTier || 'bronze';
+        const currentIndex = tierOrder.indexOf(currentTier);
+        
+        // Calculate next tier
+        const nextIndex = Math.min(currentIndex + 1, tierOrder.length - 1);
+        const nextTier = tierOrder[nextIndex];
+
+        // Update customer tier
+        await executor
+          .update(customers)
+          .set({ loyaltyTier: nextTier })
+          .where(eq(customers.id, customerId));
+
+        // Create audit record
         const [audit] = await executor
           .insert(rewardAudit)
           .values({
@@ -464,22 +515,63 @@ async function applyRewardByType(
             customerId,
             rewardRole: role,
             rewardType: type,
-            rewardAmount: '0', // No monetary value
-            status: "pending",
+            rewardAmount: '0',
+            status: "applied",
             expiresAt,
-            metadata: { notes, benefit: type },
+            metadata: { 
+              notes, 
+              previousTier: currentTier,
+              newTier: nextTier,
+            },
           })
           .returning();
+
+        console.log(`[REFERRAL] Upgraded customer ${customerId} from ${currentTier} to ${nextTier}`);
 
         return { 
           success: true, 
           auditId: audit.id,
-          message: `Created ${type} reward`
+          message: `Upgraded tier from ${currentTier} to ${nextTier}`,
+        };
+      }
+
+      case 'priority_booking': {
+        // Grant priority booking access
+        await executor
+          .update(customers)
+          .set({ 
+            hasPriorityBooking: true,
+            priorityBookingGrantedAt: new Date(),
+          })
+          .where(eq(customers.id, customerId));
+
+        // Create audit record
+        const [audit] = await executor
+          .insert(rewardAudit)
+          .values({
+            referralId,
+            customerId,
+            rewardRole: role,
+            rewardType: type,
+            rewardAmount: '0',
+            status: "applied",
+            expiresAt,
+            metadata: { notes, priorityGrantedAt: new Date().toISOString() },
+          })
+          .returning();
+
+        console.log(`[REFERRAL] Granted priority booking to customer ${customerId}`);
+
+        return { 
+          success: true, 
+          auditId: audit.id,
+          message: "Priority booking granted",
         };
       }
 
       case 'milestone_reward': {
-        // Milestone rewards track progress and issue bonuses at thresholds
+        // MVP: Milestone rewards are tracked but require manual application
+        // Future: Implement automatic milestone tracking with progress updates
         // Amount represents the bonus value when milestone is reached
         if (!amount || amount <= 0) {
           return { success: false, message: "Amount is required for milestone_reward" };
@@ -493,20 +585,23 @@ async function applyRewardByType(
             rewardRole: role,
             rewardType: type,
             rewardAmount: amount.toString(),
-            status: "pending", // Will be applied when milestone threshold is reached
+            status: "pending", // MVP: Admin manually marks complete when milestone reached
             expiresAt,
             metadata: { 
               notes, 
               milestoneBonus: amount,
-              thresholdNote: notes || "Milestone bonus pending",
+              milestoneType: notes || "Referral milestone",
+              requiresManualApproval: true, // Flag for admin UI
             },
           })
           .returning();
 
+        console.log(`[REFERRAL] Created milestone reward for customer ${customerId}: $${amount} bonus pending`);
+
         return { 
           success: true, 
           auditId: audit.id,
-          message: `Created milestone_reward of $${amount}`
+          message: `Milestone reward created: $${amount} (pending manual approval)`,
         };
       }
 

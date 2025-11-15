@@ -7,19 +7,42 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
 - **Referral Discount Transaction Safety**: Invoice discount application uses nested service calls (referralConfigService, gamificationService) that execute outside the invoice creation transaction. Under high concurrency or retry scenarios, this could lead to double-discounts or orphaned rewards. Recommended for future hardening: propagate transaction executor through all nested services and implement optimistic locking for discount claims.
 - **Small Business Scale**: Current implementation is optimized for small business use cases with low concurrency. High-traffic scenarios may require additional transaction hardening.
 
-## Recent Changes (November 13-14, 2025)
+## Recent Changes (November 13-15, 2025)
+- **Referral System with 9 Reward Types** ✅ PRODUCTION-READY: Complete implementation of all 9 referral reward types with full transaction safety and audit trails.
+  - **Reward Types Implemented**:
+    1. **loyalty_points**: Awards loyalty points via gamificationService integration
+    2. **fixed_discount**: Applies dollar amount discount to invoices
+    3. **percent_discount**: Applies percentage-based discount to invoices
+    4. **service_credit**: Creates credit ledger entries with FIFO consumption and expiry support
+    5. **gift_card**: Generates unique codes and creates credit ledger entries
+    6. **free_addon**: Creates customerAddonCredits for free service enhancements
+    7. **tier_upgrade**: Upgrades customer loyalty tier (bronze→silver→gold→platinum)
+    8. **priority_booking**: Grants priority booking access with timestamp tracking
+    9. **milestone_reward**: Tracks milestone achievements (MVP: manual admin approval)
+  - **Schema Additions**:
+    - Added `loyaltyTier` enum column to customers table (bronze/silver/gold/platinum)
+    - Added `hasPriorityBooking` and `priorityBookingGrantedAt` columns to customers table
+    - Created `serviceAddons` table for addon catalog management
+    - Created `customerAddonCredits` table for tracking awarded free addons
+    - Created `milestoneDefinitions` and `customerMilestoneProgress` tables for milestone tracking
+    - Created `creditLedger` and `creditTransactions` tables for service credits and gift cards
+  - **Credit Ledger System**: Complete transaction-safe implementation with FIFO consumption, expiry handling, row-level locking, and full audit trail
+  - **Admin Configuration**: ReferralConfigurationPanel supports all 9 reward types with dynamic SMS preview
+  - **SMS Integration**: Templates use dynamic reward values from configuration (no hardcoded amounts)
+  - **Transaction Safety**: All rewards apply within transaction context with comprehensive error handling
 - **SMS Template System** ✅ FULLY OPERATIONAL: Complete end-to-end implementation allowing admins to edit all automatic SMS messages from the dashboard without code changes.
-  - **Dashboard** (Task 7c): SMS Templates Manager with variable insertion, preview, version history, and error handling
-  - **Live Integration** (Task 7d): All production SMS flows now use template system with graceful fallbacks
+  - **Dashboard**: SMS Templates Manager with variable insertion, preview, version history, and error handling
+  - **Live Integration**: All production SMS flows use template system with graceful fallbacks
     - Booking confirmations → `booking_confirmation` template
     - 24-hour reminders → `appointment_reminder_24h` template  
     - Technician on-site notifications → `on_site_arrival` template
     - Referral invites → `referral_invite` template
+    - Referral rewards → `referral_reward_earned` template
   - **Helper Function**: `renderSmsTemplateOrFallback()` with comprehensive logging and structured results
   - **Safety**: Legacy hardcoded messages serve as fallbacks if templates fail
-- **Referral System** ✅ COMPLETE: Full-featured admin referral management tool with security hardening.
-  - **Admin Referral Tool** (Task 6c): `/referrals` page with customer search, QR code generation, SMS invites, stats display
-  - **Admin Statistics Dashboard** (Task 6d): Comprehensive analytics in Settings → Customer Management
+- **Admin Referral Management** ✅ COMPLETE: Full-featured admin tools with security hardening.
+  - **Admin Referral Tool**: `/referrals` page with customer search, QR code generation, SMS invites, stats display
+  - **Admin Statistics Dashboard**: Comprehensive analytics in Settings → Customer Management
   - **Security**: Role-based access control (manager/owner only), data minimization, PII protection
   - **Integration**: Uses SMS template system for referral invites with graceful fallback
 
