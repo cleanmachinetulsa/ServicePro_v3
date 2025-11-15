@@ -444,6 +444,7 @@ export default function ReferralPage() {
               </Button>
               <Button
                 onClick={() => setShowSmsForm(!showSmsForm)}
+                disabled={!customerId || !referralCode}
                 data-testid="button-send-sms-invite"
               >
                 <MessageSquare className="h-4 w-4 mr-2" />
@@ -465,7 +466,7 @@ export default function ReferralPage() {
                   />
                   <Button
                     onClick={handleSendInvite}
-                    disabled={sendInviteMutation.isPending}
+                    disabled={!customerId || !referralCode || !friendPhone.trim() || sendInviteMutation.isPending}
                     data-testid="button-send-invite"
                   >
                     {sendInviteMutation.isPending ? 'Sending...' : 'Send'}

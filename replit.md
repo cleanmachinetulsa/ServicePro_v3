@@ -8,6 +8,11 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
 - **Small Business Scale**: Current implementation is optimized for small business use cases with low concurrency. High-traffic scenarios may require additional transaction hardening.
 
 ## Recent Changes (November 13-15, 2025)
+- **Bug Fixes** ✅ RESOLVED: Fixed critical runtime errors in template managers and referral system
+  - Email/SMS Templates: Removed duplicate .json() calls on apiRequest results (already parsed JSON)
+  - SMS Preview: Added validation for required template variables before API call
+  - AI Bio Coach: Fixed RBAC to allow employee role, corrected payload (bio_raw), and response handling
+  - Referral SMS: Disabled invite buttons when no customer selected to prevent 400 errors
 - **Referral System with 9 Reward Types** ✅ PRODUCTION-READY: Complete implementation of all 9 referral reward types with full transaction safety and audit trails.
   - **Reward Types Implemented**:
     1. **loyalty_points**: Awards loyalty points via gamificationService integration
