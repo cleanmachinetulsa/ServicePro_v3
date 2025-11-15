@@ -22,6 +22,7 @@ import phoneSettingsRouter from "./routes.phoneSettings";
 import sendgridWebhookRouter from "./routes.sendgridWebhook";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
+import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import { setupGoogleOAuth } from "./googleOAuth";
 import path from "path";
 
@@ -157,6 +158,8 @@ app.use(sendgridWebhookRouter);
 app.use('/api/campaigns', campaignsRouter);
 // Register SMS templates routes (requires auth)
 app.use('/api/sms-templates', smsTemplatesRouter);
+// Register referral invoice routes (validation public, apply requires auth)
+registerReferralInvoiceRoutes(app);
 
 app.use((req, res, next) => {
   const start = Date.now();
