@@ -5,6 +5,7 @@ import { customers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { sendSMS } from './notifications';
 import { renderSmsTemplateOrFallback } from './templateRenderer';
+import { getReferrerRewardDescriptor, getRefereeRewardDescriptor, formatRewardDescription } from './referralConfigService';
 
 /**
  * Register SMS referral invite routes
@@ -43,15 +44,24 @@ export function registerSmsReferralRoutes(app: Express) {
       const referrerName = customer.name ? customer.name.split(' ')[0] : 'your friend';
       const bookingUrl = `${process.env.REPLIT_DEV_DOMAIN || 'https://cleanmachinetulsa.com'}/book?ref=${referralCode}`;
       
-      // Render SMS from template with fallback to legacy message
+      // Get dynamic reward descriptions from configuration
+      const referrerDescriptor = await getReferrerRewardDescriptor();
+      const refereeDescriptor = await getRefereeRewardDescriptor();
+      
+      const referrerReward = referrerDescriptor ? formatRewardDescription(referrerDescriptor) : '500 loyalty points';
+      const refereeReward = refereeDescriptor ? formatRewardDescription(refereeDescriptor) : '$25 off';
+      
+      // Render SMS from template with fallback to dynamic message
       const templateResult = await renderSmsTemplateOrFallback(
         'referral_invite',
         { 
           referrerName, 
           referralCode,
-          bookingUrl 
+          bookingUrl,
+          referrerReward, // Dynamic reward from config
+          refereeReward   // Dynamic reward from config
         },
-        () => `Hey! ${referrerName} thinks you'd love Clean Machine Auto Detail! 🚗✨\n\nUse code ${referralCode} to get $25 off your first detail, and we'll both get 500 loyalty points!\n\nBook now: ${bookingUrl}`
+        () => `Hey! ${referrerName} thinks you'd love Clean Machine Auto Detail! 🚗✨\n\nUse code ${referralCode} to get ${refereeReward} your first detail, and we'll both get ${referrerReward}!\n\nBook now: ${bookingUrl}`
       );
       
       // Send SMS
