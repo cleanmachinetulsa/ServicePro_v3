@@ -4,7 +4,6 @@
 Clean Machine Auto Detail is an AI-powered web application designed to streamline operations for an auto detailing service. It offers comprehensive business management and enhances customer experience through customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs for calendar, customer data, and photo management, and utilizes OpenAI for intelligent chatbot capabilities and Facebook Graph API for social media messaging. The project aims to achieve an 87% automation rate for business operations, significantly enhancing efficiency and customer engagement.
 
 ## Known Limitations (to be addressed in future iterations)
-- **Referral Discount Transaction Safety**: Invoice discount application uses nested service calls (referralConfigService, gamificationService) that execute outside the invoice creation transaction. Under high concurrency or retry scenarios, this could lead to double-discounts or orphaned rewards. Recommended for future hardening: propagate transaction executor through all nested services and implement optimistic locking for discount claims.
 - **Small Business Scale**: Current implementation is optimized for small business use cases with low concurrency. High-traffic scenarios may require additional transaction hardening.
 
 ## Recent Changes (November 13-15, 2025)
@@ -50,6 +49,19 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
   - **Admin Statistics Dashboard**: Comprehensive analytics in Settings → Customer Management
   - **Security**: Role-based access control (manager/owner only), data minimization, PII protection
   - **Integration**: Uses SMS template system for referral invites with graceful fallback
+- **Invoice-Side Referral Integration** ✅ PRODUCTION-READY (November 15, 2025): Complete end-to-end referral flow from payer-approval through invoice creation.
+  - **Priority Discount System**: Two-tier referral discount application
+    - **PRIORITY 1**: Payer-approval referral codes (stored on authorization) - applied during quote approval
+    - **PRIORITY 2**: Referee signup rewards - applied if no payer-approval code exists
+  - **Invoice Creation**: `invoiceService.createInvoice()` honors stored `authorization.referralCode` during invoice creation
+  - **Transaction Safety**: All referral discount logic executes within invoice creation transaction
+  - **Enhanced Invoice Notes**: Structured referral information with emoji indicator (🎁)
+    - Displays referral code, discount type, discount amount, original price, final price
+    - Format: Multi-line with clear labels for customer clarity
+  - **Email Template Fix**: Invoice emails properly render newlines (`\r?\n` → `<br>`) for HTML display
+  - **Discount Tracking**: Invoice notes capture complete audit trail of applied discounts
+  - **Double-Discount Prevention**: Priority system ensures only one discount source applies per invoice
+  - **QA Documentation**: Comprehensive testing guide at `docs/QA_TESTING_PAYER_REFERRAL_SYSTEM.md`
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
