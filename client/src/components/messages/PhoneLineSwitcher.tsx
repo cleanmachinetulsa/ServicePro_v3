@@ -13,11 +13,18 @@ interface PhoneLine {
 export default function PhoneLineSwitcher() {
   const { selectedPhoneLineId, setSelectedPhoneLineId } = usePhoneLine();
 
-  const { data: phoneLinesData, isLoading } = useQuery<{ success: boolean; lines: PhoneLine[] }>({
+  const { data: phoneLinesData, isLoading, error } = useQuery<{ success: boolean; lines: PhoneLine[] }>({
     queryKey: ['/api/phone-settings/lines'],
   });
 
   const phoneLines = phoneLinesData?.lines || [];
+
+  console.log('[PhoneLineSwitcher] Debug:', { 
+    isLoading, 
+    error, 
+    phoneLinesData, 
+    phoneLines: phoneLines.length 
+  });
 
   if (isLoading) {
     return (
@@ -29,7 +36,11 @@ export default function PhoneLineSwitcher() {
   }
 
   if (phoneLines.length === 0) {
-    return null;
+    return (
+      <div className="text-xs text-muted-foreground p-2">
+        No phone lines configured
+      </div>
+    );
   }
 
   return (
