@@ -57,6 +57,7 @@ import CleanMachineShowcase from './pages/clean-machine-showcase';
 import SecuritySettingsPage from './pages/security-settings';
 import TechnicianPage from './pages/technician';
 import ReferralPage from './pages/ReferralPage';
+import PhoneSettingsPage from './pages/phone-settings';
 
 function Router() {
   return (
@@ -110,6 +111,9 @@ function Router() {
       </Route>
       <Route path="/security-settings">
         <AuthGuard><SecuritySettingsPage /></AuthGuard>
+      </Route>
+      <Route path="/phone-settings">
+        <AuthGuard><PhoneSettingsPage /></AuthGuard>
       </Route>
       <Route path="/live-conversations">
         <AuthGuard><LiveConversationsPage /></AuthGuard>
