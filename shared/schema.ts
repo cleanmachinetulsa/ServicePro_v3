@@ -1469,6 +1469,41 @@ export const giftCards = pgTable("gift_cards", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Credit Ledger - Track customer service credits and awarded gift cards
+export const creditLedger = pgTable("credit_ledger", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  creditType: varchar("credit_type", { length: 20 }).notNull(), // 'service_credit', 'gift_card'
+  initialAmount: numeric("initial_amount", { precision: 10, scale: 2 }).notNull(),
+  currentBalance: numeric("current_balance", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  source: varchar("source", { length: 50 }).notNull(), // 'referral_reward', 'purchase', 'admin_grant', 'promotion', 'compensation'
+  sourceId: integer("source_id"), // ID of the source entity (e.g., referral code ID, invoice ID)
+  description: text("description"), // Human-readable description of the credit
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active', 'used', 'expired', 'cancelled'
+  issuedAt: timestamp("issued_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // Credits may have expiry dates
+  usedAt: timestamp("used_at"), // When fully consumed
+  lastUsedAt: timestamp("last_used_at"), // Last partial usage
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  customerStatusIndex: index("credit_ledger_customer_status_idx").on(table.customerId, table.status),
+  expiryIndex: index("credit_ledger_expiry_idx").on(table.expiresAt),
+}));
+
+// Credit Transactions - Audit trail for all credit ledger changes
+export const creditTransactions = pgTable("credit_transactions", {
+  id: serial("id").primaryKey(),
+  creditLedgerId: integer("credit_ledger_id").notNull().references(() => creditLedger.id),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(), // Negative for usage, positive for additions
+  invoiceId: integer("invoice_id").references(() => invoices.id), // Link to invoice if applied to payment
+  description: text("description"), // What this transaction represents
+  transactionType: varchar("transaction_type", { length: 20 }).notNull(), // 'issued', 'applied', 'refunded', 'expired', 'cancelled'
+  balanceBefore: numeric("balance_before", { precision: 10, scale: 2 }).notNull(),
+  balanceAfter: numeric("balance_after", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Create schemas for data insertion
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -1908,6 +1943,19 @@ export const insertGiftCardSchema = createInsertSchema(giftCards).omit({
   lastUsedAt: true,
 });
 
+export const insertCreditLedgerSchema = createInsertSchema(creditLedger).omit({
+  id: true,
+  createdAt: true,
+  issuedAt: true,
+  usedAt: true,
+  lastUsedAt: true,
+});
+
+export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Define types for use in the application
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
@@ -2093,3 +2141,7 @@ export type PaymentLink = typeof paymentLinks.$inferSelect;
 export type InsertPaymentLink = z.infer<typeof insertPaymentLinkSchema>;
 export type GiftCard = typeof giftCards.$inferSelect;
 export type InsertGiftCard = z.infer<typeof insertGiftCardSchema>;
+export type CreditLedger = typeof creditLedger.$inferSelect;
+export type InsertCreditLedger = z.infer<typeof insertCreditLedgerSchema>;
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
+export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
