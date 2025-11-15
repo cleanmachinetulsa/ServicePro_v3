@@ -10,9 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Users, Plus, Edit, Trash2, Key, ArrowLeft, Shield, UserCheck, UserX } from 'lucide-react';
+import { Users, Plus, Edit, Trash2, Key, Shield, UserCheck, UserX } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import BackNavigation from '@/components/BackNavigation';
+import { AppShell } from '@/components/AppShell';
 
 interface User {
   id: number;
@@ -216,37 +216,32 @@ export default function UserManagement() {
 
   if (!currentUser || (currentUser.role !== 'manager' && currentUser.role !== 'owner')) {
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <Alert variant="destructive">
-          <Shield className="h-4 w-4" />
-          <AlertDescription>
-            You don't have permission to access user management. This area is restricted to managers and owners.
-          </AlertDescription>
-        </Alert>
-      </div>
+      <AppShell title="User Management">
+        <div className="p-6 max-w-4xl mx-auto">
+          <Alert variant="destructive">
+            <Shield className="h-4 w-4" />
+            <AlertDescription>
+              You don't have permission to access user management. This area is restricted to managers and owners.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </AppShell>
     );
   }
 
+  const pageActions = (
+    <Button onClick={() => setShowCreateDialog(true)} data-testid="button-add-user">
+      <Plus className="h-4 w-4 mr-2" />
+      Add User
+    </Button>
+  );
+
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <div className="mb-4">
-        <BackNavigation fallbackPath="/dashboard" />
-      </div>
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Users className="h-8 w-8" />
-            User Management
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Manage employee, manager, and system access
-          </p>
-        </div>
-        <Button onClick={() => setShowCreateDialog(true)} data-testid="button-add-user">
-          <Plus className="h-4 w-4 mr-2" />
-          Add User
-        </Button>
-      </div>
+    <AppShell title="User Management" pageActions={pageActions}>
+      <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <p className="text-muted-foreground">
+          Manage employee, manager, and system access
+        </p>
 
       {tempPassword && (
         <Alert className="mb-6 bg-yellow-50 border-yellow-300">
@@ -537,6 +532,7 @@ export default function UserManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { FacebookPageToken } from '@shared/schema';
+import { AppShell } from '@/components/AppShell';
 
 interface FacebookPage extends FacebookPageToken {
   pageAccessToken: string;
@@ -180,36 +181,21 @@ export default function FacebookSettings() {
 
   const webhookUrl = `${window.location.origin}/api/facebook/webhook`;
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      {/* Header */}
-      <div className="border-b bg-gradient-to-r from-white via-blue-50/30 to-purple-50/30 dark:from-gray-900 dark:via-blue-950/30 dark:to-purple-950/30 shadow-lg dark:border-gray-800">
-        <div className="px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl blur opacity-40 animate-pulse"></div>
-                <div className="relative bg-gradient-to-br from-blue-500 to-purple-600 p-3 rounded-xl shadow-lg">
-                  <Facebook className="h-7 w-7 text-white" />
-                </div>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
-                  Facebook & Instagram Integration
-                </h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Connect your Facebook Pages and Instagram accounts for messaging
-                </p>
-              </div>
-            </div>
+  const pageActions = (
+    <Button className="gap-2" onClick={() => setIsAddDialogOpen(true)} data-testid="add-facebook-page-button">
+      <Plus className="h-4 w-4" />
+      Add Page
+    </Button>
+  );
 
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2" data-testid="add-facebook-page-button">
-                  <Plus className="h-4 w-4" />
-                  Add Page
-                </Button>
-              </DialogTrigger>
+  return (
+    <AppShell title="Facebook & Instagram Integration" pageActions={pageActions}>
+      <div className="p-6">
+        <p className="text-sm text-muted-foreground mb-6">
+          Connect your Facebook Pages and Instagram accounts for messaging
+        </p>
+
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
                   <DialogTitle>Add Facebook/Instagram Page</DialogTitle>
@@ -310,12 +296,8 @@ export default function FacebookSettings() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div>
-        </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6">
+        {/* Main Content */}
         <div className="max-w-5xl mx-auto space-y-6">
           {/* Webhook Configuration Card */}
           <Card className="border-blue-200 dark:border-blue-900">
@@ -498,6 +480,6 @@ export default function FacebookSettings() {
           </Card>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

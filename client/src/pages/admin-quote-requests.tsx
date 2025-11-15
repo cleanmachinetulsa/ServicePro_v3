@@ -32,6 +32,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { AppShell } from '@/components/AppShell';
 
 interface QuoteRequest {
   id: number;
@@ -197,17 +198,11 @@ export default function AdminQuoteRequests() {
   const allQuotes = quotesData?.quotes || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
-      <div className="container mx-auto p-6 max-w-7xl">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2" data-testid="page-title">
-            Specialty Quote Requests
-          </h1>
-          <p className="text-muted-foreground">
-            Review and price specialty jobs requiring custom quotes
-          </p>
-        </div>
+    <AppShell title="Specialty Quote Requests">
+      <div className="p-6 max-w-7xl mx-auto">
+        <p className="text-muted-foreground mb-6">
+          Review and price specialty jobs requiring custom quotes
+        </p>
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -716,6 +711,6 @@ export default function AdminQuoteRequests() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </AppShell>
   );
 }

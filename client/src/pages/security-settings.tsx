@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import BackNavigation from "@/components/BackNavigation";
+import { AppShell } from '@/components/AppShell';
 
 interface TwoFactorStatus {
   enabled: boolean;
@@ -179,9 +179,8 @@ export default function SecuritySettingsPage() {
 
   if (statusLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-6">
-        <div className="max-w-4xl mx-auto">
-          <BackNavigation defaultPath="/settings" />
+      <AppShell title="Security Settings">
+        <div className="p-6 max-w-4xl mx-auto">
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -189,26 +188,16 @@ export default function SecuritySettingsPage() {
             </div>
           </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   const canManageUsers = currentUserData?.user?.role === 'manager' || currentUserData?.user?.role === 'owner';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <BackNavigation defaultPath="/settings" />
-
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-            <Shield className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Security Settings</h1>
-            <p className="text-slate-600 dark:text-slate-400">Manage authentication and view security logs</p>
-          </div>
-        </div>
+    <AppShell title="Security Settings">
+      <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <p className="text-slate-600 dark:text-slate-400 mb-6">Manage authentication and view security logs</p>
 
         {/* Admin Quick Link - User Management */}
         {canManageUsers && (
@@ -505,6 +494,6 @@ export default function SecuritySettingsPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </div>
+    </AppShell>
   );
 }
