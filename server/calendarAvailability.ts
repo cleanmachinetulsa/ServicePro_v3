@@ -1,5 +1,5 @@
 import { calendar_v3 } from 'googleapis';
-import { getCalendarService } from './calendarApi';
+import { getGoogleCalendarClient } from './googleCalendarConnector';
 import { db } from './db';
 import { businessSettings } from '@shared/schema';
 import { addDays, addMonths, format, parse, startOfDay, endOfDay, addMinutes, isBefore, isAfter } from 'date-fns';
@@ -103,7 +103,7 @@ function isWithinBusinessHours(
  */
 async function getCalendarEvents(startDate: Date, endDate: Date): Promise<calendar_v3.Schema$Event[]> {
   try {
-    const calendarService = await getCalendarService();
+    const calendarService = await getGoogleCalendarClient();
     
     if (!calendarService) {
       console.log('[CALENDAR AVAILABILITY] Calendar service not initialized');
@@ -111,7 +111,7 @@ async function getCalendarEvents(startDate: Date, endDate: Date): Promise<calend
     }
 
     // Use configured calendar ID for production consistency
-    const calendarId = process.env.CALENDAR_ID || 'primary';
+    const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
     
     const response = await calendarService.events.list({
       calendarId,
