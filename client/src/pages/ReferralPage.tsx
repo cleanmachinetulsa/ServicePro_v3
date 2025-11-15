@@ -22,7 +22,7 @@ import {
   Search
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import BackNavigation from '@/components/BackNavigation';
+import { AppShell } from '@/components/AppShell';
 
 interface ReferralStats {
   totalReferrals: number;
@@ -283,32 +283,22 @@ export default function ReferralPage() {
 
   if (codeLoading || statsLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-6">
-        <div className="max-w-4xl mx-auto">
-          <BackNavigation fallbackPath="/" label="Back to Home" />
+      <AppShell title="Customer Referrals">
+        <div className="p-6 max-w-4xl mx-auto">
           <div className="text-center py-20">
             <p className="text-gray-600 dark:text-gray-400">Loading your referral code...</p>
           </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        <BackNavigation fallbackPath="/" label="Back to Home" />
-
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2">
-            <Gift className="h-8 w-8 text-blue-600" />
-            <h1 className="text-3xl font-bold">Customer Referral Management</h1>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400">
-            Look up customers and manage their referral codes
-          </p>
-        </div>
+    <AppShell title="Customer Referral Management">
+      <div className="p-6 max-w-4xl mx-auto space-y-6">
+        <p className="text-gray-600 dark:text-gray-400 text-center mb-6">
+          Look up customers and manage their referral codes
+        </p>
 
         {/* Customer Search */}
         {!customerId && (
@@ -555,6 +545,6 @@ export default function ReferralPage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </AppShell>
   );
 }

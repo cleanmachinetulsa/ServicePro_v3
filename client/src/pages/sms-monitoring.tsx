@@ -36,6 +36,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
+import { AppShell } from '@/components/AppShell';
 
 interface DeliveryStats {
   total: number;
@@ -140,67 +141,31 @@ export default function SmsMonitoring() {
     return errorDescriptions[errorCode] || 'Unknown error';
   };
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      {/* Header - Enhanced with Better Design */}
-      <div className="border-b bg-gradient-to-r from-white via-blue-50/30 to-purple-50/30 dark:from-gray-900 dark:via-blue-950/30 dark:to-purple-950/30 shadow-lg dark:border-gray-800">
-        <div className="px-6 py-5">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            {/* Title Section */}
-            <div className="flex items-center gap-4">
-              {/* Animated Icon */}
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl blur opacity-40 animate-pulse"></div>
-                <div className="relative bg-gradient-to-br from-blue-500 to-purple-600 p-3 rounded-xl shadow-lg transform hover:scale-110 transition-transform duration-300">
-                  <BarChart3 className="h-7 w-7 text-white" />
-                </div>
-              </div>
-              
-              {/* Text Content */}
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
-                  SMS Analytics Dashboard
-                </h1>
-                <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-2">
-                  <Activity className="h-3.5 w-3.5 animate-pulse text-green-500" />
-                  Live delivery monitoring and trend analysis
-                </p>
-              </div>
-            </div>
-
-            {/* Date Range Selector - Better Responsive */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-              <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-lg border dark:border-gray-700 shadow-sm">
-                <Calendar className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium text-muted-foreground">Time Range</span>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {['7', '30', '90', '365'].map((days) => (
-                  <Button
-                    key={days}
-                    variant={dateRange === days ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setDateRange(days)}
-                    className={`
-                      transition-all duration-200 shadow-sm
-                      ${dateRange === days 
-                        ? 'shadow-md shadow-primary/25 scale-105' 
-                        : 'hover:scale-105'
-                      }
-                    `}
-                    data-testid={`date-range-${days}`}
-                  >
-                    {days === '365' ? '1 Year' : `${days}d`}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+  const pageActions = (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-lg border dark:border-gray-700 shadow-sm">
+        <Calendar className="h-4 w-4 text-primary" />
+        <span className="text-sm font-medium text-muted-foreground">Time Range</span>
       </div>
+      <div className="flex gap-2">
+        {['7', '30', '90', '365'].map((days) => (
+          <Button
+            key={days}
+            variant={dateRange === days ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setDateRange(days)}
+            data-testid={`date-range-${days}`}
+          >
+            {days === '365' ? '1 Year' : `${days}d`}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6">
+  return (
+    <AppShell title="SMS Analytics Dashboard" pageActions={pageActions}>
+      <div className="p-6">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Stats Overview Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -613,6 +578,6 @@ export default function SmsMonitoring() {
           </Tabs>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }
