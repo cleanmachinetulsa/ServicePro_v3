@@ -174,8 +174,8 @@ export async function applyCredit(
       console.log(`[CREDIT LEDGER] Applied $${amountToApply} from credit ${credit.id} to invoice ${invoiceId} (new balance: $${newBalance})`);
     }
 
-    // Calculate remaining balance across all credits
-    const remainingBalance = await getCreditBalance(customerId);
+    // Calculate remaining balance across all credits (within same transaction)
+    const remainingBalance = await getCreditBalance(customerId, executor);
 
     return {
       success: true,
@@ -194,11 +194,12 @@ export async function applyCredit(
  */
 export async function getActiveCredits(
   customerId: number,
-  updateExpired: boolean = false
+  updateExpired: boolean = false,
+  executor: DbExecutor = db
 ): Promise<CreditLedger[]> {
   try {
     // Fetch all credits
-    const credits = await db
+    const credits = await executor
       .select()
       .from(creditLedger)
       .where(
@@ -227,18 +228,22 @@ export async function getActiveCredits(
 
     // Optionally update expired credits in database
     if (updateExpired && expiredCreditIds.length > 0) {
-      await db
+      await executor
         .update(creditLedger)
-        .set({ status: 'expired', usedAt: new Date() })
+        .set({ 
+          status: 'expired', 
+          currentBalance: '0',  // CRITICAL: Zero out balance to prevent re-application
+          usedAt: new Date() 
+        })
         .where(sql`${creditLedger.id} = ANY(${expiredCreditIds})`);
 
       // Log expiration transactions
       for (const creditId of expiredCreditIds) {
         const credit = credits.find(c => c.id === creditId);
         if (credit) {
-          await db.insert(creditTransactions).values({
+          await executor.insert(creditTransactions).values({
             creditLedgerId: creditId,
-            amount: '0',
+            amount: `-${credit.currentBalance}`,  // Negative amount to reflect zeroing
             description: 'Credit expired',
             transactionType: 'expired',
             balanceBefore: credit.currentBalance,
@@ -260,9 +265,9 @@ export async function getActiveCredits(
 /**
  * Get total credit balance for a customer (active credits only)
  */
-export async function getCreditBalance(customerId: number): Promise<number> {
+export async function getCreditBalance(customerId: number, executor: DbExecutor = db): Promise<number> {
   try {
-    const activeCredits = await getActiveCredits(customerId, false);
+    const activeCredits = await getActiveCredits(customerId, false, executor);
     
     return activeCredits.reduce((total, credit) => {
       return total + parseFloat(credit.currentBalance);
@@ -295,18 +300,22 @@ export async function expireCredits(): Promise<number> {
       return 0;
     }
 
-    // Update status to expired
+    // Update status to expired and zero out balance
     const expiredIds = expiredCredits.map(c => c.id);
     await db
       .update(creditLedger)
-      .set({ status: 'expired', usedAt: new Date() })
+      .set({ 
+        status: 'expired', 
+        currentBalance: '0',  // CRITICAL: Zero out balance to prevent re-application
+        usedAt: new Date() 
+      })
       .where(sql`${creditLedger.id} = ANY(${expiredIds})`);
 
     // Log expiration transactions
     for (const credit of expiredCredits) {
       await db.insert(creditTransactions).values({
         creditLedgerId: credit.id,
-        amount: '0',
+        amount: `-${credit.currentBalance}`,  // Negative amount to reflect zeroing
         description: 'Credit expired (scheduled job)',
         transactionType: 'expired',
         balanceBefore: credit.currentBalance,

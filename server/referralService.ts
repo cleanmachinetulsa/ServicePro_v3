@@ -3,6 +3,7 @@ import { referrals, customers, invoices, rewardAudit } from "@shared/schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { awardPoints } from "./gamificationService";
 import { getReferrerRewardDescriptor, getRefereeRewardDescriptor } from "./referralConfigService";
+import { awardCredit } from "./creditLedgerService";
 import type { RewardDescriptor } from "@shared/schema";
 import { nanoid } from "nanoid";
 
@@ -340,6 +341,23 @@ async function applyRewardByType(
           return { success: false, message: "Amount is required for service_credit reward" };
         }
 
+        // Award service credit via credit ledger
+        const creditResult = await awardCredit(
+          customerId,
+          'service_credit',
+          amount,
+          'referral_reward',
+          referralId,
+          `${role === 'referrer' ? 'Referrer' : 'Referee'} reward: $${amount} service credit`,
+          expiryDays ?? null,
+          executor
+        );
+
+        if (!creditResult.success) {
+          return { success: false, message: "Failed to award service credit" };
+        }
+
+        // Create reward audit record for tracking
         const [audit] = await executor
           .insert(rewardAudit)
           .values({
@@ -348,16 +366,17 @@ async function applyRewardByType(
             rewardRole: role,
             rewardType: type,
             rewardAmount: amount.toString(),
-            status: "pending",
+            status: "applied",
+            appliedAt: new Date(),
             expiresAt,
-            metadata: { notes, creditAmount: amount },
+            metadata: { notes, creditAmount: amount, creditLedgerId: creditResult.creditId },
           })
           .returning();
 
         return { 
           success: true, 
           auditId: audit.id,
-          message: `Created ${type} reward of $${amount}`
+          message: `Awarded $${amount} service credit (Credit ID: ${creditResult.creditId})`
         };
       }
 
@@ -368,6 +387,24 @@ async function applyRewardByType(
         }
 
         const giftCardCode = `GC-${nanoid(10).toUpperCase()}`;
+
+        // Award gift card via credit ledger
+        const creditResult = await awardCredit(
+          customerId,
+          'gift_card',
+          amount,
+          'referral_reward',
+          referralId,
+          `${role === 'referrer' ? 'Referrer' : 'Referee'} reward: $${amount} gift card (${giftCardCode})`,
+          expiryDays ?? null,
+          executor
+        );
+
+        if (!creditResult.success) {
+          return { success: false, message: "Failed to award gift card" };
+        }
+
+        // Create reward audit record for tracking
         const [audit] = await executor
           .insert(rewardAudit)
           .values({
@@ -376,16 +413,17 @@ async function applyRewardByType(
             rewardRole: role,
             rewardType: type,
             rewardAmount: amount.toString(),
-            status: "pending",
+            status: "applied",
+            appliedAt: new Date(),
             expiresAt,
-            metadata: { notes, giftCardCode, cardValue: amount },
+            metadata: { notes, giftCardCode, cardValue: amount, creditLedgerId: creditResult.creditId },
           })
           .returning();
 
         return { 
           success: true, 
           auditId: audit.id,
-          message: `Created ${type} reward of $${amount} (Code: ${giftCardCode})`
+          message: `Awarded $${amount} gift card (Code: ${giftCardCode}, Credit ID: ${creditResult.creditId})`
         };
       }
 
