@@ -222,6 +222,16 @@ router.post('/api/payer-approval/:token/verify-otp', async (req: Request, res: R
       return res.status(401).json({ error: 'Invalid or expired OTP code' });
     }
     
+    // Mark OTP as verified on authorization
+    await db
+      .update(authorizations)
+      .set({
+        otpVerified: true,
+        otpVerifiedAt: new Date().toISOString(),
+      })
+      .where(eq(authorizations.id, authorization.id))
+      .execute();
+    
     // Log successful OTP verification
     await db.insert(auditLog).values({
       actionType: 'otp_verified',
@@ -237,6 +247,207 @@ router.post('/api/payer-approval/:token/verify-otp', async (req: Request, res: R
   } catch (error: any) {
     console.error('[PAYER APPROVAL] Error verifying OTP:', error);
     res.status(500).json({ error: 'Failed to verify OTP' });
+  }
+});
+
+/**
+ * POST /api/payer-approval/:token/apply-referral
+ * Apply and validate a referral code to the authorization (stores metadata for later invoice creation)
+ * SECURITY: Requires OTP verification first
+ */
+router.post('/api/payer-approval/:token/apply-referral', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const { referralCode } = req.body;
+    
+    if (!referralCode || typeof referralCode !== 'string') {
+      return res.status(400).json({ error: 'Referral code is required' });
+    }
+    
+    const code = referralCode.trim().toUpperCase();
+    
+    // SECURITY FIX: Load authorization AND appointment from database - never trust client pricing
+    const { appointments } = await import('@shared/schema');
+    const authResult = await db
+      .select({
+        auth: authorizations,
+        appointment: appointments,
+      })
+      .from(authorizations)
+      .leftJoin(appointments, eq(authorizations.appointmentId, appointments.id))
+      .where(eq(authorizations.token, token))
+      .execute();
+    
+    if (!authResult || authResult.length === 0) {
+      return res.status(404).json({ error: 'Authorization not found' });
+    }
+    
+    const { auth: authorization, appointment } = authResult[0];
+    
+    if (!appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+    
+    // SECURITY: Use ONLY the database price, ignore any client input
+    const estimatedPrice = parseFloat(appointment.estimatedPrice || '0');
+    
+    if (estimatedPrice <= 0) {
+      return res.status(400).json({ error: 'Appointment has no valid price' });
+    }
+    
+    // SECURITY FIX: Enforce OTP verification
+    if (!authorization.otpVerified) {
+      return res.status(401).json({ 
+        error: 'OTP verification required before applying referral code' 
+      });
+    }
+    
+    // Check if already processed
+    if (authorization.status !== 'pending') {
+      return res.status(400).json({ 
+        error: 'Cannot apply referral code after approval/decline' 
+      });
+    }
+    
+    // ABUSE PREVENTION: Check if referral already applied
+    if (authorization.referralCode) {
+      return res.status(400).json({ 
+        error: 'A referral code has already been applied to this authorization' 
+      });
+    }
+    
+    // Validate referral code using existing referral service
+    const { referrals, customers } = await import('@shared/schema');
+    const referralResult = await db
+      .select({
+        referral: referrals,
+        referrer: customers,
+      })
+      .from(referrals)
+      .leftJoin(customers, eq(referrals.referrerCustomerId, customers.id))
+      .where(eq(referrals.code, code))
+      .execute();
+    
+    if (!referralResult || referralResult.length === 0) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Invalid referral code' 
+      });
+    }
+    
+    const { referral, referrer } = referralResult[0];
+    
+    // Check if code is active
+    if (referral.status !== 'active') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'This referral code is not active' 
+      });
+    }
+    
+    // Check expiration
+    if (referral.expiresAt && new Date(referral.expiresAt) < new Date()) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'This referral code has expired' 
+      });
+    }
+    
+    // Get referral configuration to determine reward
+    const { referralConfigurations } = await import('@shared/schema');
+    const configResult = await db
+      .select()
+      .from(referralConfigurations)
+      .execute();
+    
+    if (!configResult || configResult.length === 0) {
+      return res.status(500).json({ error: 'Referral configuration not found' });
+    }
+    
+    const config = configResult[0];
+    const rewardType = config.refereeRewardType;
+    const rewardValue = parseFloat(config.refereeRewardValue || '0');
+    
+    // LOGIC FIX: Calculate COMPUTED discount amount (not raw reward value)
+    let computedDiscount = 0;
+    const isDiscount = rewardType === 'fixed_discount' || rewardType === 'percent_discount';
+    
+    if (isDiscount) {
+      if (rewardType === 'fixed_discount') {
+        // Fixed dollar amount
+        computedDiscount = Math.min(rewardValue, estimatedPrice);
+      } else if (rewardType === 'percent_discount') {
+        // Percentage of total
+        computedDiscount = (estimatedPrice * rewardValue) / 100;
+      }
+      
+      // DEFENSIVE: Clamp discount to never exceed total (prevents negative totals from bad config)
+      computedDiscount = Math.min(computedDiscount, estimatedPrice);
+    }
+    
+    // CRITICAL FIX: Recalculate deposit based on discounted total
+    let newDepositAmount = authorization.depositAmount;
+    if (isDiscount && computedDiscount > 0 && authorization.depositAmount) {
+      const discountedTotal = estimatedPrice - computedDiscount;
+      const depositPercent = parseFloat(appointment.depositPercent || '0');
+      if (depositPercent > 0) {
+        // Recalculate deposit as percentage of NEW discounted total
+        newDepositAmount = (discountedTotal * depositPercent) / 100;
+      } else {
+        // If no deposit percent, use original deposit amount (shouldn't happen)
+        newDepositAmount = authorization.depositAmount;
+      }
+    }
+    
+    // Store referral metadata AND updated deposit on authorization
+    await db
+      .update(authorizations)
+      .set({
+        referralCode: code,
+        referralDiscount: isDiscount ? computedDiscount.toString() : null,
+        referralDiscountType: rewardType,
+        referralReferrerId: referral.referrerCustomerId,
+        depositAmount: isDiscount && computedDiscount > 0 ? newDepositAmount : authorization.depositAmount,
+      })
+      .where(eq(authorizations.id, authorization.id))
+      .execute();
+    
+    // Log the application
+    await db.insert(auditLog).values({
+      actionType: 'referral_code_applied',
+      entityType: 'authorization',
+      entityId: authorization.id,
+      details: {
+        referralCode: code,
+        rewardType,
+        rewardValue,
+        computedDiscount,
+        estimatedPrice,
+        referrerId: referral.referrerCustomerId,
+      },
+    });
+    
+    // Calculate authoritative totals to prevent double-discount in UI
+    const discountedTotal = isDiscount && computedDiscount > 0 
+      ? estimatedPrice - computedDiscount 
+      : estimatedPrice;
+    
+    res.json({
+      success: true,
+      isInformational: !isDiscount,
+      message: isDiscount 
+        ? `Referral code applied! You'll save $${computedDiscount.toFixed(2)}`
+        : `Referral code saved! You'll receive: ${config.refereeRewardDescription || 'reward after first service'}`,
+      rewardType,
+      rewardValue, // Original reward config value
+      computedDiscount, // Actual discount amount
+      discountedTotal, // AUTHORITATIVE: New total after discount (UI should trust this, not calculate)
+      discountedDeposit: isDiscount && computedDiscount > 0 ? newDepositAmount : authorization.depositAmount, // AUTHORITATIVE: New deposit
+      referrerName: referrer?.firstName || 'your friend',
+    });
+  } catch (error: any) {
+    console.error('[PAYER APPROVAL] Error applying referral code:', error);
+    res.status(500).json({ error: 'Failed to apply referral code' });
   }
 });
 
@@ -313,8 +524,11 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
     
     let paymentLink = null;
     
+    // CRITICAL FIX: Use authorization.depositAmount (may be discounted) instead of appointment.depositAmount
+    const depositAmount = authorization.depositAmount || appointment.depositAmount;
+    
     // Create Stripe payment link if deposit required
-    if (appointment.depositAmount && appointment.depositAmount > 0) {
+    if (depositAmount && depositAmount > 0) {
       // TODO: Integrate with Stripe API to create payment link
       // For now, return placeholder
       paymentLink = `https://checkout.stripe.com/pay/cs_test_${crypto.randomBytes(16).toString('hex')}`;
@@ -322,7 +536,7 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
       // Store payment link
       await db.insert(paymentLinks).values({
         appointmentId: appointment.id,
-        amount: appointment.depositAmount,
+        amount: depositAmount, // Use potentially discounted amount from authorization
         description: `Deposit for ${appointment.serviceType}`,
         url: paymentLink,
         status: 'pending',
