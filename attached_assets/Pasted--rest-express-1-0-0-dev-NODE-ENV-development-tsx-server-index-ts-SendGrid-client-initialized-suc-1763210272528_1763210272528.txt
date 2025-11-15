@@ -1,0 +1,118 @@
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+SendGrid client initialized successfully
+[EMAIL] Sender configured: info@cleanmachinetulsa.com
+Twilio client initialized successfully
+[PUSH] Push notification service initialized with VAPID keys
+[CRITICAL MONITOR] Initialized with default config
+Google API key available: true
+[SMS FALLBACK] Twilio client initialized for fallback service
+Loading spreadsheet with ID: 1-xeX82TPoxxeyWXoCEXh-TdMkBHuJSXjoUSaiFjfv9g
+Using Calendar ID for appointments: primary
+🔍 Testing Google Calendar connectivity...
+Using Google Calendar ID for dashboard: cleanmachinetulsa@gmail.com
+[SMS CAMPAIGN] Twilio client initialized for campaigns
+[SMS CAMPAIGN] Bottleneck rate limiter initialized: 600 req/min for Twilio API
+[GOOGLE OAUTH] Routes initialized successfully
+✅ Google Calendar client obtained successfully
+[CRITICAL MONITOR] No settings found in DB, using defaults
+[PUSH INIT] Push subscriptions table initialized
+[SEED] Checking phone lines...
+Google Sheets found: ["SMS Knowledge Base","Services","Add-Ons","Client Responses","AI Behavior Rules","Trigger Phrase Map","FAQ","Customer Information","Live Client Requests","Customer_Info_Sheet","Customer Database"]
+Found tabs - Services: Services, Add-ons: Add-Ons
+Loading services from tab: Services
+✅ Calendar connectivity test PASSED - found 1 events
+[SEED] Phone lines already seeded, skipping...
+[BACKFILL] Starting phone line ID backfill...
+Services tab has 10 rows of data
+Service Full Detail - Detailed Description: "why oh why"
+Service Interior Detail - Detailed Description: "Deep cleaning of the vehicle’s interior to its best condition."
+Service Maintenance Detail Program - Detailed Description: "For vehicles previously detailed. A light upkeep service recommended every 3 months."
+Service Paint Enhancement / Light Polish - Detailed Description: "Enhances shine, removes minor swirls & water spots. Uses Rupes Uno Protect polish."
+Service Ceramic Coating - 1 Year - Detailed Description: "True SiO2 coating for 1-year paint protection and exceptional gloss."
+Service Ceramic Coating - 3 Year - Detailed Description: "Long-lasting SiO2 coating with 2-stage polish and up to 90% paint correction."
+Service Motorcycle Detail - Detailed Description: "Restore motorcycle shine, clean & protect all surfaces."
+Service Premium Wash - Detailed Description: "Thorough hand wash with ceramic wax protection."
+Service Shampoo seats and or Carpets - Detailed Description: "Seat/carpet cleaning as a standalone service, typically priced between $80-120 depending on the condition.
+
+We restore cloth upholstery and carpets/floor mats with our system of shampoo and steam to clean them to the best possible condition. Leather seats get gently and thoroughly steam-cleaned and conditioned with a quality cremé leather conditioner to moisturize, soften and protect your leather."
+Successfully loaded Services tab with 9 rows
+Sample services data: {"Service Name":"Full Detail","Price Range":"$225–300","Overview":"Complete interior + exterior reco...
+Loading add-on services from tab: Add-Ons
+[BACKFILL] Main Line ID: 1
+[BACKFILL] Updated 0 SMS conversations to Main Line
+Add-on services tab has 10 rows of data
+Add-on Leather or Fabric Protector - Detailed Description: "Professional-grade nano-coating technology that creates an invisible barrier on your interior surfaces. This advanced protectant repels liquids, prevents staining from spills, and makes cleanup effortless. Works on leather, cloth, vinyl, and carpet surfaces. The treatment is completely safe and won't alter the look or feel of your upholstery while providing months of protection. Perfect for families, pet owners, or anyone who wants to keep their interior looking pristine."
+Add-on Light Polish - Detailed Description: "Single-stage machine polishing that removes light oxidation, minor swirls, and water spots to restore your paint's natural shine and depth. We use premium Rupes Uno Protect polish which not only enhances gloss but also leaves behind a layer of protection. This service is ideal for vehicles that are regularly maintained but need a refresh to remove light imperfections accumulated over time. Brings back that "just detailed" appearance without the time commitment of a full paint correction."
+Add-on Headlight Restoration - Detailed Description: "Complete restoration process that removes oxidation, yellowing, and cloudiness from faded headlight lenses. We use a multi-stage wet-sanding and polishing system to restore optical clarity, followed by UV-protective sealant to prevent future oxidation. This service dramatically improves nighttime visibility and safety while enhancing your vehicle's appearance. Most vehicles require restoration of both headlights (sold per lens). Results typically last 1-2 years with proper care."
+Add-on 12-Month Ceramic Coating - Detailed Description: "True SiO2 ceramic coating application providing 12 months of superior paint protection. This coating creates a permanent bond with your paint, offering exceptional resistance to UV damage, bird droppings, tree sap, road salt, and minor scratches. The hydrophobic properties create incredible water beading and make washing easier. Includes complete paint decontamination and single-stage polish before application. Perfect for customers wanting ceramic protection without the full paint correction process."
+Add-on Plastic Trim Restoration - Detailed Description: "Specialized treatment that revives faded, gray, or chalky black plastic trim and brings it back to its original deep black appearance. We use professional-grade restoration products that penetrate the plastic to restore color from within, not just coat the surface. Results last significantly longer than traditional trim dressings. Works on door handles, mirror housings, bumper trim, window moldings, and all exterior plastic components. Dramatically improves your vehicle's overall appearance."
+Add-on Engine Bay Cleaning - Detailed Description: "Thorough cosmetic cleaning and detailing of your engine compartment. We safely degrease all surfaces, remove dirt and grime buildup, then apply professional dressing to plastic and rubber components for a like-new appearance. While this is a cosmetic service (not a mechanical deep clean), it makes your engine bay look showroom-ready and helps with resale value. We use safe, engine-friendly products and proper techniques to protect sensitive components."
+Add-on Glass/Windshield Protector - Detailed Description: "Advanced hydrophobic glass treatment that creates an ultra-slick, water-repelling surface on all your windows. Rain beads up and sheets off at speeds as low as 35 mph, dramatically improving visibility in wet conditions. The coating also makes ice and snow removal easier in winter, reduces bug and dirt adhesion, and makes routine glass cleaning effortless. Treatment lasts 12+ months on windshields and even longer on side windows. Significantly improves driving safety in inclement weather."
+Add-on Premium Wash - Detailed Description: "Comprehensive hand wash service that goes well beyond a basic car wash. Includes thorough hand washing of all exterior surfaces, wheel and tire cleaning with dedicated brushes, hand drying with premium microfiber towels, tire dressing for a like-new appearance, and application of ceramic spray wax for protection and enhanced gloss. Perfect for regular maintenance between full details or as a standalone service when you want your vehicle looking its best. Takes approximately 45-60 minutes."
+Add-on Ozone Odor Removal - Detailed Description: "Professional ozone treatment that eliminates stubborn odors at the molecular level - not just masks them. This powerful process neutralizes smoke odors, pet smells, mildew/mold odors, and other persistent scents that traditional cleaning can't remove. We seal the vehicle and run an ozone generator that breaks down odor-causing molecules throughout the entire interior, including in air vents, upholstery, and carpet. The treatment is completely safe and leaves no chemical residue. Typically requires 1-2 hours of ozone exposure time plus airing out."
+Successfully loaded Add-Ons tab with 9 rows
+Sample add-on data: {"Add-On Service":"Leather or Fabric Protector","Price":"$50","Overview":"Nano-coating repels liquid...
+Finished loading sheets from Google Sheets
+[BACKFILL] Updated 0 SMS messages to Main Line
+[BACKFILL] ✅ Phone line ID backfill complete!
+[SMS TEMPLATES INIT] Starting template initialization...
+[SMS TEMPLATES INIT] Initialization complete: 0 created, 11 updated
+[REFERRAL CONFIG] Configuration already exists
+[HEALTH CHECK] Routes registered
+[SMS CONSENT] Routes registered
+[SOCKET.IO] Session middleware enabled for WebSocket connections
+WebSocket service initialized
+[TIMEOUT MONITOR] Starting - will check every 30 minutes
+[TIMEOUT MONITOR] Checking for timed-out conversations...
+[SERVER] Timeout monitoring started
+[DAMAGE ASSESSMENT MONITOR] Starting - will check every 15 minutes
+[DAMAGE ASSESSMENT MONITOR] Checking for auto-approval candidates...
+[SERVER] Damage assessment monitoring started
+[RECURRING] Scheduler initialized - will run daily at midnight
+[RECURRING] Reminder scheduler initialized - will run every 2 hours
+[DEPOSIT] Reminder scheduler initialized - will run every 4 hours
+[SERVER] Recurring services scheduler, reminders, and deposit reminders started
+[CAMPAIGN SCHEDULER] Email + SMS campaign processor scheduled (runs hourly)
+[SERVER] Email campaign scheduler started - processes campaigns hourly
+[SERVER] Port monitoring started - will notify when 918-856-5304 is fully ported
+[TIMEOUT MONITOR] Found 0 timed-out conversations
+[TIMEOUT MONITOR] No timed-out conversations found
+[DAMAGE ASSESSMENT MONITOR] No appointments require auto-approval
+12:30:46 PM [express] serving on port 5000
+[PORT MONITOR] Monitoring previously disabled - skipping initialization
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 services from Google Sheet
+Fetching real-time reviews from Google Places API
+12:30:58 PM [express] GET /api/services 304 in 1213ms :: {"success":true,"services":[{"id":1,"name":"…
+Successfully loaded 9 add-on services from Google Sheet
+Error fetching Google reviews: Request failed with status code 400
+Returning empty reviews array due to API error
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully loaded 9 add-on services from Google Sheet
+12:30:59 PM [express] GET /api/google-reviews 304 in 2134ms :: {"success":true,"reviews":[]}
+12:30:59 PM [express] GET /api/addon-services 304 in 769ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 services from Google Sheet
+12:36:35 PM [express] GET /api/services 304 in 535ms :: {"success":true,"services":[{"id":1,"name":"F…
+Successfully loaded 9 add-on services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully loaded 9 add-on services from Google Sheet
+Fetching real-time reviews from Google Places API
+Error fetching Google reviews: Request failed with status code 400
+Returning empty reviews array due to API error
+12:36:35 PM [express] GET /api/addon-services 304 in 267ms :: {"success":true,"addOns":[{"name":"Leat…
+12:36:35 PM [express] GET /api/google-reviews 304 in 2528ms :: {"success":true,"reviews":[]}
+12:37:00 PM [express] GET /api/auth/verify 304 in 65ms :: {"success":true,"userId":1}
+Client connected: jU5dQFj9DoVIP5qLAAAB
+[SOCKET.IO] Client connected (authenticated): jU5dQFj9DoVIP5qLAAAB, User: admin (owner)
+12:37:01 PM [express] GET /api/users/me 304 in 751ms :: {"success":true,"user":{"id":1,"username":"ad…
+12:37:01 PM [express] GET /api/conversations 304 in 873ms :: {"success":true,"data":[{"id":33,"custom…
+Socket jU5dQFj9DoVIP5qLAAAB (User: admin) joined monitoring room
+12:37:13 PM [express] GET /api/conversations 304 in 1057ms :: {"success":true,"data":[{"id":33,"custo…
+12:37:25 PM [express] GET /api/conversations 304 in 1067ms :: {"success":true,"data":[{"id":33,"custo…
+12:37:37 PM [express] GET /api/conversations 304 in 1055ms :: {"success":true,"data":[{"id":33,"custo…
