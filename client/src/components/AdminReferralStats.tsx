@@ -140,7 +140,8 @@ function ReferralConfigurationPanel() {
   // Save config mutation
   const saveConfigMutation = useMutation({
     mutationFn: async (data: ReferralConfigForm) => {
-      return await apiRequest('/api/admin/referral-config', 'POST', data);
+      const response = await apiRequest('POST', '/api/admin/referral-config', data);
+      return response.json();
     },
     onSuccess: () => {
       toast({ title: 'Referral configuration updated successfully' });
