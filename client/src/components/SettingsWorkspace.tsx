@@ -20,6 +20,7 @@ import { UpsellManagement } from "./UpsellManagement";
 import RecurringServicesManager from "./RecurringServicesManager";
 import { EmailCampaignsManager } from "./EmailCampaignsManager";
 import { SmsTemplatesManager } from "./SmsTemplatesManager";
+import EmailTemplatesManager from "./EmailTemplatesManager";
 import CancellationDemo from "./CancellationDemo";
 import SubscriptionManager from "./SubscriptionManager";
 import { PhoneSettings } from "./PhoneSettings";
@@ -91,6 +92,7 @@ export default function SettingsWorkspace() {
       items: [
         { id: 'notifications', label: 'Notifications', component: NotificationsSettings },
         { id: 'sms-templates', label: 'SMS Templates', component: SmsTemplatesManager },
+        { id: 'email-templates', label: 'Email Templates', component: EmailTemplatesManager },
         { id: 'email-campaigns', label: 'Email Campaigns', component: EmailCampaignsManager },
         { id: 'upsell', label: 'Upsell Offers', component: UpsellManagement },
         { id: 'cancellation', label: 'Cancellation Feedback', component: CancellationDemo },
