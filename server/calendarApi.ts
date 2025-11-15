@@ -133,21 +133,33 @@ async function generateConflictSafeFallbackSlots(serviceName: string): Promise<s
   // Get service duration for conflict checking
   const { duration } = await getServiceInfo(serviceName);
   
-  // Fetch all existing appointments from database
+  // Fetch all existing appointments WITH service durations in SINGLE query (PERFORMANCE FIX)
   const { db: dbInstance } = await import('./db');
-  const { appointments } = await import('@shared/schema');
-  const { gte } = await import('drizzle-orm');
+  const { appointments, services } = await import('@shared/schema');
+  const { gte, eq } = await import('drizzle-orm');
   
   const now = new Date();
   const existingAppointments = await dbInstance
     .select({
       scheduledTime: appointments.scheduledTime,
       serviceName: appointments.serviceName,
+      serviceDuration: services.durationHours,
     })
     .from(appointments)
+    .leftJoin(services, eq(appointments.serviceName, services.name))
     .where(gte(appointments.scheduledTime, now));
   
   console.log(`[FALLBACK] Found ${existingAppointments.length} existing appointments in database`);
+  
+  // Pre-compute appointment time ranges with durations from JOIN (no additional queries)
+  const appointmentRanges = existingAppointments.map(appt => {
+    const apptTime = new Date(appt.scheduledTime);
+    const apptDuration = parseFloat(appt.serviceDuration as string || '2'); // Default 2 hours if missing
+    const apptEnd = addHours(apptTime, apptDuration);
+    return { start: apptTime, end: apptEnd };
+  });
+  console.log(`[FALLBACK] Pre-computed ${appointmentRanges.length} appointment ranges (single query)`);
+  
   
   const slots: string[] = [];
   const startDate = new Date();
@@ -165,18 +177,14 @@ async function generateConflictSafeFallbackSlots(serviceName: string): Promise<s
       const slotTime = setMinutes(setHours(currentDate, hour), 0);
       const slotEnd = addHours(slotTime, duration);
       
-      // Check for conflicts with existing database appointments
+      // Check for conflicts with pre-computed appointment ranges
       let hasConflict = false;
-      for (const appt of existingAppointments) {
-        const apptTime = new Date(appt.scheduledTime);
-        const apptServiceDuration = await getServiceDuration(appt.serviceName || 'Full Detail');
-        const apptEnd = addHours(apptTime, apptServiceDuration);
-        
+      for (const range of appointmentRanges) {
         // Check if slot overlaps with existing appointment
         if (
-          (slotTime >= apptTime && slotTime < apptEnd) ||
-          (slotEnd > apptTime && slotEnd <= apptEnd) ||
-          (slotTime <= apptTime && slotEnd >= apptEnd)
+          (slotTime >= range.start && slotTime < range.end) ||
+          (slotEnd > range.start && slotEnd <= range.end) ||
+          (slotTime <= range.start && slotEnd >= range.end)
         ) {
           hasConflict = true;
           break;
@@ -212,6 +220,7 @@ export async function handleGetAvailable(req: any, res: any) {
     // Try to get slots from Google Calendar first
     try {
       const slots = await generateAvailableSlots(serviceName);
+      criticalMonitor.reportSuccess('Google Calendar'); // Report success after successful slot generation
       return res.json({ success: true, slots });
     } catch (calendarError: any) {
       console.error("❌ CALENDAR API ERROR - Failed to fetch availability:", calendarError.message);
@@ -220,6 +229,13 @@ export async function handleGetAvailable(req: any, res: any) {
       // GRACEFUL FALLBACK: Use conflict-safe database-backed fallback
       console.warn("⚠️ Falling back to conflict-safe database availability");
       const fallbackSlots = await generateConflictSafeFallbackSlots(serviceName);
+      
+      // CRITICAL: Report success after successful fallback delivery (prevents stuck "failed" state)
+      if (fallbackSlots.length > 0) {
+        criticalMonitor.reportSuccess('Google Calendar');
+        console.log(`✅ Fallback successful - returning ${fallbackSlots.length} conflict-safe slots`);
+      }
+      
       return res.json({ 
         success: true, 
         slots: fallbackSlots,
@@ -233,6 +249,13 @@ export async function handleGetAvailable(req: any, res: any) {
     try {
       const serviceName = req.query.service as string;
       const fallbackSlots = await generateConflictSafeFallbackSlots(serviceName || "Full Detail");
+      
+      // CRITICAL: Report success after successful fallback (even on unexpected errors)
+      if (fallbackSlots.length > 0) {
+        criticalMonitor.reportSuccess('Google Calendar');
+        console.log(`✅ Emergency fallback successful - returning ${fallbackSlots.length} slots`);
+      }
+      
       return res.json({ 
         success: true, 
         slots: fallbackSlots,

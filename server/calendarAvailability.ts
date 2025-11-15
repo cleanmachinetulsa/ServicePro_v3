@@ -1,5 +1,6 @@
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './googleCalendarConnector';
+import { criticalMonitor } from './criticalMonitoring';
 import { db } from './db';
 import { businessSettings } from '@shared/schema';
 import { addDays, addMonths, format, parse, startOfDay, endOfDay, addMinutes, isBefore, isAfter } from 'date-fns';
@@ -107,6 +108,7 @@ async function getCalendarEvents(startDate: Date, endDate: Date): Promise<calend
     
     if (!calendarService) {
       console.log('[CALENDAR AVAILABILITY] Calendar service not initialized');
+      await criticalMonitor.reportFailure('Google Calendar', 'Calendar service not initialized');
       return [];
     }
 
@@ -121,9 +123,11 @@ async function getCalendarEvents(startDate: Date, endDate: Date): Promise<calend
       orderBy: 'startTime',
     });
 
+    criticalMonitor.reportSuccess('Google Calendar');
     return response.data.items || [];
-  } catch (error) {
+  } catch (error: any) {
     console.error('[CALENDAR AVAILABILITY] Error fetching calendar events:', error);
+    await criticalMonitor.reportFailure('Google Calendar', error.message || 'Failed to fetch events');
     return [];
   }
 }
