@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
 import PhoneLineSwitcher from '@/components/messages/PhoneLineSwitcher';
+import { useLocation } from 'wouter';
 import {
   Sheet,
   SheetContent,
@@ -10,25 +11,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { 
   MessageCircle, 
   PlusCircle, 
   Moon, 
   Sun, 
   PanelRight, 
-  PanelRightClose, 
-  User
+  PanelRightClose,
+  Phone
 } from 'lucide-react';
 import io from 'socket.io-client';
 import ThreadView from '@/components/ThreadView';
@@ -37,7 +27,6 @@ import ConversationFilters from '@/components/messages/ConversationFilters';
 import ConversationList from '@/components/messages/ConversationList';
 import Composer from '@/components/messages/Composer';
 import { AppShell } from '@/components/AppShell';
-import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 
 interface Conversation {
@@ -67,6 +56,7 @@ interface Conversation {
 
 function MessagesPageContent() {
   const { selectedPhoneLineId } = usePhoneLine();
+  const [, setLocation] = useLocation();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,48 +69,8 @@ function MessagesPageContent() {
     return false;
   });
   const [showComposeDialog, setShowComposeDialog] = useState(false);
-  const [operatorDialogOpen, setOperatorDialogOpen] = useState(false);
-  const [operatorName, setOperatorName] = useState('');
   const queryClient = useQueryClient();
   const { toast } = useToast();
-
-  // Fetch user data for operator name
-  const { data: userData } = useQuery<{ success: boolean; user: { operatorName?: string | null } }>({
-    queryKey: ['/api/users/me'],
-  });
-
-  useEffect(() => {
-    if (userData?.user?.operatorName) {
-      setOperatorName(userData.user.operatorName);
-    }
-  }, [userData]);
-
-  // Update operator name mutation
-  const updateOperatorMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const response = await apiRequest('PUT', '/api/users/me/operator-name', { operatorName: name });
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/users/me'] });
-      toast({
-        title: 'Success',
-        description: 'Operator name updated successfully',
-      });
-      setOperatorDialogOpen(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to update operator name',
-        variant: 'destructive',
-      });
-    },
-  });
-
-  const handleSaveOperatorName = () => {
-    updateOperatorMutation.mutate(operatorName);
-  };
 
   // Fetch conversations
   const { data: conversationsData, isLoading } = useQuery<{ success: boolean; data: Conversation[] }>({
@@ -222,77 +172,40 @@ function MessagesPageContent() {
         size="sm" 
         onClick={() => setShowComposeDialog(true)}
         data-testid="button-compose"
+        className="transition-all duration-200 hover:scale-105"
       >
         <PlusCircle className="h-4 w-4 mr-2" />
         <span className="hidden sm:inline">New Message</span>
+      </Button>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        onClick={() => setLocation('/phone')}
+        data-testid="button-phone"
+        className="transition-all duration-200 hover:scale-105"
+        title="Open Phone & Voicemail"
+      >
+        <Phone className="h-4 w-4" />
+        <span className="hidden sm:inline ml-2">Phone</span>
       </Button>
       {selectedConversation && (
         <Button 
           variant="outline" 
           size="sm" 
           onClick={() => setShowProfilePanel(!showProfilePanel)}
-          className="hidden md:flex"
+          className="hidden md:flex transition-all duration-200 hover:scale-105"
           data-testid="button-toggle-profile"
           title={showProfilePanel ? "Hide Profile Panel" : "Show Profile Panel"}
         >
           {showProfilePanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
         </Button>
       )}
-      <Dialog open={operatorDialogOpen} onOpenChange={setOperatorDialogOpen}>
-        <DialogTrigger asChild>
-          <Button variant="outline" size="sm" data-testid="button-operator-settings">
-            <User className="h-4 w-4" />
-            <span className="hidden sm:inline ml-2">Operator</span>
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="dark:bg-gray-900 dark:border-gray-800">
-          <DialogHeader>
-            <DialogTitle className="dark:text-white">Set Operator Name</DialogTitle>
-            <DialogDescription className="dark:text-gray-400">
-              Configure your name to personalize message templates. This replaces "our team" in automated messages.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="operator-name" className="dark:text-white">
-                Your Name
-              </Label>
-              <Input
-                id="operator-name"
-                data-testid="input-operator-name"
-                placeholder="Enter your first name"
-                value={operatorName}
-                onChange={(e) => setOperatorName(e.target.value)}
-                className="dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              />
-              <p className="text-sm text-muted-foreground dark:text-gray-400">
-                {operatorName ? `Current: ${operatorName}` : 'Leave empty to use "our team" in templates'}
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOperatorDialogOpen(false)}
-              data-testid="button-cancel-operator"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveOperatorName}
-              disabled={updateOperatorMutation.isPending}
-              data-testid="button-save-operator"
-            >
-              {updateOperatorMutation.isPending ? 'Saving...' : 'Save'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <Button 
         variant="outline" 
         size="sm" 
         onClick={() => setDarkMode(!darkMode)}
         data-testid="button-dark-mode"
+        className="transition-all duration-200 hover:scale-105"
       >
         {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </Button>
@@ -304,7 +217,7 @@ function MessagesPageContent() {
       <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30" data-page-wrapper>
         {/* Conversation List Sidebar - Google Voice Polished */}
         <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-col bg-white/98 dark:bg-gray-900/98 backdrop-blur-md border-r border-gray-200/60 dark:border-gray-800/60 shadow-xl transition-all duration-300`}>
-          <div className="border-b border-gray-200/70 dark:border-gray-800/70 px-4 py-4 bg-gradient-to-b from-white/60 to-transparent dark:from-gray-900/60">
+          <div className="border-b border-gray-200/70 dark:border-gray-800/70 px-4 py-3 bg-gradient-to-b from-white/60 to-transparent dark:from-gray-900/60">
             <PhoneLineSwitcher />
           </div>
           <ConversationFilters
