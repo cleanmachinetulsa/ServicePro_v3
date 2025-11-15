@@ -262,7 +262,7 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
                 <tr>
                   <td style="padding: 16px;">
                     <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: ${BRAND_COLORS.gray600}; text-transform: uppercase; letter-spacing: 0.5px;">Note from Clean Machine</p>
-                    <p style="margin: 0; font-size: 14px; color: ${BRAND_COLORS.gray700}; line-height: 1.6;">${data.notes}</p>
+                    <p style="margin: 0; font-size: 14px; color: ${BRAND_COLORS.gray700}; line-height: 1.6;">${data.notes.replace(/\r?\n/g, '<br>')}</p>
                   </td>
                 </tr>
               </table>
