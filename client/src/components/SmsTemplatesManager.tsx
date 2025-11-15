@@ -179,6 +179,20 @@ export function SmsTemplatesManager() {
 
   const handlePreviewUpdate = () => {
     if (!previewTemplate) return;
+    
+    // Validate that required variables are provided
+    const requiredVars = (previewTemplate.variables || []).filter(v => v.required);
+    const missingVars = requiredVars.filter(v => !previewData[v.name] || previewData[v.name].trim() === '');
+    
+    if (missingVars.length > 0) {
+      toast({
+        title: 'Missing required fields',
+        description: `Please provide values for: ${missingVars.map(v => v.name).join(', ')}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     previewMutation.mutate({ key: previewTemplate.templateKey, payload: previewData });
   };
 
