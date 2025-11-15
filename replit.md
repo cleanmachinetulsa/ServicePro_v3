@@ -3,75 +3,6 @@
 ## Overview
 Clean Machine Auto Detail is an AI-powered web application designed to streamline operations for an auto detailing service. It offers comprehensive business management and enhances customer experience through customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs for calendar, customer data, and photo management, and utilizes OpenAI for intelligent chatbot capabilities and Facebook Graph API for social media messaging. The project aims to achieve an 87% automation rate for business operations, significantly enhancing efficiency and customer engagement.
 
-## Known Limitations (to be addressed in future iterations)
-- **Small Business Scale**: Current implementation is optimized for small business use cases with low concurrency. High-traffic scenarios may require additional transaction hardening.
-
-## Recent Changes (November 13-15, 2025)
-- **Phase 6-7: Complete Admin Modernization & Component Cleanup** ✅ COMPLETE (November 15, 2025): Migrated ALL 18 admin pages to unified AppShell navigation pattern following Google Voice UX design principles.
-  - **Total AppShell Pages**: 18 pages now use consistent navigation (up from 2)
-    - **Wave 1**: Dashboard, Messages, Phone, Analytics, Customer Database, Call Metrics, SMS Monitoring, User Management, Referrals, Facebook Settings, Security Settings, Admin Quote Requests
-    - **Wave 2**: Admin Employees, Admin Job Editor, Banner Management, Live Conversations, Conversation Insights, Business Settings
-  - **Dead Code Removal**: Deleted 4 unused components (1,752 lines): AppointmentScheduler, ServiceDetails, QuickActionButton, InstantChatSupport
-  - **Navigation Consistency**: Unified hamburger menu (mobile), pinned sidebar (desktop), instant search in top bar
-  - **UX Improvements**: Zero scrolling hell, 1-2 taps maximum to reach any feature, consistent page actions
-  - **Code Quality**: Architect-reviewed, zero breaking changes, all functionality preserved, production-ready
-  - **Build Status**: ✅ All JSX syntax errors resolved, server running successfully
-- **Bug Fixes** ✅ RESOLVED: Fixed critical runtime errors in template managers and referral system
-  - Email/SMS Templates: Removed duplicate .json() calls on apiRequest results (already parsed JSON)
-  - SMS Preview: Added validation for required template variables before API call
-  - AI Bio Coach: Fixed RBAC to allow employee role, corrected payload (bio_raw), and response handling
-  - Referral SMS: Disabled invite buttons when no customer selected to prevent 400 errors
-- **Referral System with 9 Reward Types** ✅ PRODUCTION-READY: Complete implementation of all 9 referral reward types with full transaction safety and audit trails.
-  - **Reward Types Implemented**:
-    1. **loyalty_points**: Awards loyalty points via gamificationService integration
-    2. **fixed_discount**: Applies dollar amount discount to invoices
-    3. **percent_discount**: Applies percentage-based discount to invoices
-    4. **service_credit**: Creates credit ledger entries with FIFO consumption and expiry support
-    5. **gift_card**: Generates unique codes and creates credit ledger entries
-    6. **free_addon**: Creates customerAddonCredits for free service enhancements
-    7. **tier_upgrade**: Upgrades customer loyalty tier (bronze→silver→gold→platinum)
-    8. **priority_booking**: Grants priority booking access with timestamp tracking
-    9. **milestone_reward**: Tracks milestone achievements (MVP: manual admin approval)
-  - **Schema Additions**:
-    - Added `loyaltyTier` enum column to customers table (bronze/silver/gold/platinum)
-    - Added `hasPriorityBooking` and `priorityBookingGrantedAt` columns to customers table
-    - Created `serviceAddons` table for addon catalog management
-    - Created `customerAddonCredits` table for tracking awarded free addons
-    - Created `milestoneDefinitions` and `customerMilestoneProgress` tables for milestone tracking
-    - Created `creditLedger` and `creditTransactions` tables for service credits and gift cards
-  - **Credit Ledger System**: Complete transaction-safe implementation with FIFO consumption, expiry handling, row-level locking, and full audit trail
-  - **Admin Configuration**: ReferralConfigurationPanel supports all 9 reward types with dynamic SMS preview
-  - **SMS Integration**: Templates use dynamic reward values from configuration (no hardcoded amounts)
-  - **Transaction Safety**: All rewards apply within transaction context with comprehensive error handling
-- **SMS Template System** ✅ FULLY OPERATIONAL: Complete end-to-end implementation allowing admins to edit all automatic SMS messages from the dashboard without code changes.
-  - **Dashboard**: SMS Templates Manager with variable insertion, preview, version history, and error handling
-  - **Live Integration**: All production SMS flows use template system with graceful fallbacks
-    - Booking confirmations → `booking_confirmation` template
-    - 24-hour reminders → `appointment_reminder_24h` template  
-    - Technician on-site notifications → `on_site_arrival` template
-    - Referral invites → `referral_invite` template
-    - Referral rewards → `referral_reward_earned` template
-  - **Helper Function**: `renderSmsTemplateOrFallback()` with comprehensive logging and structured results
-  - **Safety**: Legacy hardcoded messages serve as fallbacks if templates fail
-- **Admin Referral Management** ✅ COMPLETE: Full-featured admin tools with security hardening.
-  - **Admin Referral Tool**: `/referrals` page with customer search, QR code generation, SMS invites, stats display
-  - **Admin Statistics Dashboard**: Comprehensive analytics in Settings → Customer Management
-  - **Security**: Role-based access control (manager/owner only), data minimization, PII protection
-  - **Integration**: Uses SMS template system for referral invites with graceful fallback
-- **Invoice-Side Referral Integration** ✅ PRODUCTION-READY (November 15, 2025): Complete end-to-end referral flow from payer-approval through invoice creation.
-  - **Priority Discount System**: Two-tier referral discount application
-    - **PRIORITY 1**: Payer-approval referral codes (stored on authorization) - applied during quote approval
-    - **PRIORITY 2**: Referee signup rewards - applied if no payer-approval code exists
-  - **Invoice Creation**: `invoiceService.createInvoice()` honors stored `authorization.referralCode` during invoice creation
-  - **Transaction Safety**: All referral discount logic executes within invoice creation transaction
-  - **Enhanced Invoice Notes**: Structured referral information with emoji indicator (🎁)
-    - Displays referral code, discount type, discount amount, original price, final price
-    - Format: Multi-line with clear labels for customer clarity
-  - **Email Template Fix**: Invoice emails properly render newlines (`\r?\n` → `<br>`) for HTML display
-  - **Discount Tracking**: Invoice notes capture complete audit trail of applied discounts
-  - **Double-Discount Prevention**: Priority system ensures only one discount source applies per invoice
-  - **QA Documentation**: Comprehensive testing guide at `docs/QA_TESTING_PAYER_REFERRAL_SYSTEM.md`
-
 ## User Preferences
 - Preferred communication style: Simple, everyday language
 - **AI Agent Behavior**: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
@@ -79,10 +10,10 @@ Clean Machine Auto Detail is an AI-powered web application designed to streamlin
 ## System Architecture
 
 ### UI/UX Decisions
-The application features a modern 3-column layout with full mobile responsiveness, utilizing shadcn/ui for component-based architecture and CSS variables for theming. Branding includes a hexagonal shield logo and "CLEAN MACHINE" as the primary heading. A reusable BackNavigation component provides consistent navigation. The home page features a login button. Message platform filters use a compact single-line layout with icon-only buttons and hover tooltips. Key UI elements include visual channel indicators, gradient backgrounds, numbered buttons for AI suggestions, confidence badges, hover effects, and enhanced message input with character counters. Gamification elements like canvas confetti and weather emoji icons enhance user interaction. Dashboard navigation uses an 8-tab sidebar structure. Top navigation features compact glass-effect buttons with translucent styling. AI Help Search includes text wrapping fixes.
+The application features a modern 3-column layout with full mobile responsiveness, utilizing shadcn/ui for component-based architecture and CSS variables for theming. Branding includes a hexagonal shield logo and "CLEAN MACHINE" as the primary heading. Reusable components ensure consistent navigation. Key UI elements include visual channel indicators, gradient backgrounds, numbered buttons for AI suggestions, confidence badges, hover effects, and enhanced message input with character counters. Gamification elements like canvas confetti and weather emoji icons enhance user interaction. Dashboard navigation uses an 8-tab sidebar structure, and top navigation features compact glass-effect buttons with translucent styling.
 
 ### Technical Implementations
-The system includes production-ready message attachment capabilities with Google Drive integration, a TCPA/CTIA-compliant SMS consent system, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Recurring services are managed with a flexible scheduling system and Google Calendar integration. Communication features include Twilio Voice integration with voicemail and missed call auto-SMS, comprehensive call logging, and production-ready PWA push notifications. Security and compliance are handled through Twilio webhook signature verification, E.164 phone normalization, request validation, and role-based access control (RBAC) middleware with hierarchical permissions (employee < manager < owner). Database performance is optimized with strategic indexes, and real-time WebSocket updates provide live monitoring. Enhanced error handling with toast messages and smart retry buttons improves user experience. A health check endpoint and voice testing system ensure reliability. An iMessage-quality messaging suite includes real-time read receipts, typing indicators, message reactions, conversation search/history, and offline drafts with localStorage auto-save. Service limits and maintenance mode provide configurable daily service capacity caps and catastrophic failure protection. A banner management system enables dynamic customer communications with multi-mode display, page targeting, dismissal tracking, priority ordering, and scheduled visibility windows. Auto-failover protection monitors critical/high errors with tiered thresholds and provides automatic SMS/email alerts with backup booking endpoints. A branded invoice email system delivers professional, mobile-responsive invoices with Clean Machine branding, loyalty points showcase, multi-payment CTAs, smart upsell recommendations, and HMAC-signed payment links. A centralized SMS template system allows for dynamic editing of automatic messages from the dashboard, supporting versioning, variable interpolation, and in-memory caching. Smart address validation enhances customer experience by automatically appending city/state and normalizing street abbreviations for booking flows. A referral management system provides admin tools for generating customer referral codes, tracking referrals, sending SMS invites, and viewing comprehensive statistics with QR code generation and secure customer lookup (manager/owner only).
+The system includes production-ready message attachment capabilities with Google Drive integration, a TCPA/CTIA-compliant SMS consent system, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Recurring services are managed with a flexible scheduling system and Google Calendar integration. Communication features include Twilio Voice integration with voicemail and missed call auto-SMS, comprehensive call logging, and production-ready PWA push notifications. Security and compliance are handled through Twilio webhook signature verification, E.164 phone normalization, request validation, and role-based access control (RBAC) middleware with hierarchical permissions. Database performance is optimized with strategic indexes, and real-time WebSocket updates provide live monitoring. Enhanced error handling with toast messages and smart retry buttons improves user experience. An iMessage-quality messaging suite includes real-time read receipts, typing indicators, message reactions, conversation search/history, and offline drafts with localStorage auto-save. Service limits and maintenance mode provide configurable daily service capacity caps and catastrophic failure protection. A banner management system enables dynamic customer communications with multi-mode display, page targeting, dismissal tracking, priority ordering, and scheduled visibility windows. Auto-failover protection monitors critical/high errors with tiered thresholds and provides automatic SMS/email alerts with backup booking endpoints. A branded invoice email system delivers professional, mobile-responsive invoices with Clean Machine branding, loyalty points showcase, multi-payment CTAs, smart upsell recommendations, and HMAC-signed payment links. A centralized SMS template system allows for dynamic editing of automatic messages from the dashboard, supporting versioning, variable interpolation, and in-memory caching. Smart address validation enhances customer experience for booking flows. A referral management system provides admin tools for generating customer referral codes, tracking referrals, sending SMS invites, and viewing comprehensive statistics with QR code generation and secure customer lookup. A graceful fallback mechanism is implemented for Google Calendar API failures to ensure continuous booking availability. All admin pages are modernized to a unified AppShell navigation pattern. A comprehensive referral system with 9 reward types is implemented, including loyalty points, various discounts, service credits, gift cards, free add-ons, tier upgrades, priority booking, and milestone rewards, all with transaction safety and audit trails.
 
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI to detect keywords and trigger custom pricing requests. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are also integrated. Real-time chat monitoring allows for manual takeover and behavior controls. Technicians can update job status to 'on_site' with an automatic customer SMS notification. Admin referral management enables managers and owners to search customers by phone, generate unique referral codes with QR codes, send SMS invites, track referral statistics, and view performance analytics.
