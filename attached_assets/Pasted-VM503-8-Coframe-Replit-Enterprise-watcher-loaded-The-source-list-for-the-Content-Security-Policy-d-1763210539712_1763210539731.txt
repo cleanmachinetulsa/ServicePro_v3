@@ -1,0 +1,256 @@
+VM503:8 [Coframe] Replit Enterprise watcher loaded
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+CleanMachineChatbot:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+CleanMachineChatbot:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+CleanMachineChatbot:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+c75c2f758afe2793.js:2 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+c75c2f758afe2793.js:2 Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+c75c2f758afe2793.js:2 [LaunchDarkly] LaunchDarkly client initialized
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 3
+stallwart.build.js:1 stallwart: failed ping 4
+CleanMachineChatbot:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+stallwart.build.js:1 stallwart: failed ping 1
+ed1e693c96a75807.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'ambient-light-sensor'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'battery'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'layout-animations'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'legacy-image-formats'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'navigation-override'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'oversized-images'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'publickey-credentials'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'speaker-selection'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'unoptimized-images'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'unsized-media'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Unrecognized feature: 'pointer-lock'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+z @ ed1e693c96a75807.js:2
+ed1e693c96a75807.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+z @ ed1e693c96a75807.js:2
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+c75c2f758afe2793.js:2 task queue exceeded allotted deadline by 80ms
+(anonymous) @ c75c2f758afe2793.js:2
+c75c2f758afe2793.js:2 task queue exceeded allotted deadline by 25ms
+(anonymous) @ c75c2f758afe2793.js:2
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 3
+stallwart.build.js:1 stallwart: failed ping 4
+stallwart.build.js:1 stallwart: failed ping 5
+stallwart.build.js:1 stallwart: session stalled
+attached_assets/Screen%20Shot%202025-11-15%20at%206.37.11%20AM_1763210246803.png:1  Failed to load resource: the server responded with a status of 404 ()
+ed1e693c96a75807.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+z @ ed1e693c96a75807.js:2
+workspace_iframe.html:32 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+workspace_iframe.html:32 Unrecognized feature: 'ambient-light-sensor'.
+workspace_iframe.html:32 Unrecognized feature: 'battery'.
+workspace_iframe.html:32 Unrecognized feature: 'execution-while-not-rendered'.
+workspace_iframe.html:32 Unrecognized feature: 'execution-while-out-of-viewport'.
+workspace_iframe.html:32 Unrecognized feature: 'layout-animations'.
+workspace_iframe.html:32 Unrecognized feature: 'legacy-image-formats'.
+workspace_iframe.html:32 Unrecognized feature: 'navigation-override'.
+workspace_iframe.html:32 Unrecognized feature: 'oversized-images'.
+workspace_iframe.html:32 Unrecognized feature: 'publickey-credentials'.
+workspace_iframe.html:32 Unrecognized feature: 'speaker-selection'.
+workspace_iframe.html:32 Unrecognized feature: 'unoptimized-images'.
+workspace_iframe.html:32 Unrecognized feature: 'unsized-media'.
+workspace_iframe.html:32 Allow attribute will take precedence over 'allowfullscreen'.
+workspace_iframe.html:32 Allow attribute will take precedence over 'allowpaymentrequest'.
+client:536 WebSocket connection to 'wss://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/?token=X_xdof2uClh3' failed: 
+setupWebSocket @ client:536
+client:536 Uncaught (in promise) SyntaxError: Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=X_xdof2uClh3' is invalid.
+    at setupWebSocket (client:536:19)
+    at fallback (client:509:16)
+    at WebSocket.<anonymous> (client:555:7)
+main.tsx:13 [PWA] Service Worker registered successfully: https://1555409b-960e-4bc2-9db2-b5c3d64d04ff-00-2q8lk2dtkvwee.kirk.replit.dev/
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Full Detail: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Interior Detail: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Maintenance Detail Program: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Paint Enhancement / Light Polish: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Ceramic Coating - 1 Year: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Ceramic Coating - 3 Year: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Motorcycle Detail: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Premium Wash: Object
+ExpandableServiceDetails.tsx:20 ExpandableServiceDetails for Shampoo seats and or Carpets: Object
+c75c2f758afe2793.js:2 task queue exceeded allotted deadline by 72ms
+(anonymous) @ c75c2f758afe2793.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+o @ c75c2f758afe2793.js:2
+setTimeout
+(anonymous) @ c75c2f758afe2793.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 409625c931ad32ea.js:2
+fit @ 0887e6ea76b934b8.js:2
+Q.L.type @ 0887e6ea76b934b8.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+f @ 9cf274b135960c5e.js:2
+O @ 9cf274b135960c5e.js:2
+_ @ 9cf274b135960c5e.js:2
+o @ c75c2f758afe2793.js:2
+setTimeout
+(anonymous) @ c75c2f758afe2793.js:2
+E @ 9cf274b135960c5e.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+o @ c75c2f758afe2793.js:2
+requestAnimationFrame
+(anonymous) @ c75c2f758afe2793.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+c75c2f758afe2793.js:2 task queue exceeded allotted deadline by 29ms
+(anonymous) @ c75c2f758afe2793.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+o @ c75c2f758afe2793.js:2
+setTimeout
+(anonymous) @ c75c2f758afe2793.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 409625c931ad32ea.js:2
+fit @ 0887e6ea76b934b8.js:2
+Q.L.type @ 0887e6ea76b934b8.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+f @ 9cf274b135960c5e.js:2
+O @ 9cf274b135960c5e.js:2
+_ @ 9cf274b135960c5e.js:2
+o @ c75c2f758afe2793.js:2
+setTimeout
+(anonymous) @ c75c2f758afe2793.js:2
+E @ 9cf274b135960c5e.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+o @ c75c2f758afe2793.js:2
+requestAnimationFrame
+(anonymous) @ c75c2f758afe2793.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+c75c2f758afe2793.js:2 task queue exceeded allotted deadline by 136ms
+(anonymous) @ c75c2f758afe2793.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+o @ c75c2f758afe2793.js:2
+setTimeout
+(anonymous) @ c75c2f758afe2793.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+(anonymous) @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 7bbcd727018fe756.js:2
+value @ 409625c931ad32ea.js:2
+fit @ 0887e6ea76b934b8.js:2
+(anonymous) @ 0887e6ea76b934b8.js:2
+uV @ ed1e693c96a75807.js:2
+iH @ ed1e693c96a75807.js:2
+iT @ ed1e693c96a75807.js:2
+r6 @ ed1e693c96a75807.js:2
+(anonymous) @ ed1e693c96a75807.js:2
+requestAnimationFrame
+(anonymous) @ c75c2f758afe2793.js:2
+(anonymous) @ d5b93bad9961f7a3.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
+o @ c75c2f758afe2793.js:2
+requestAnimationFrame
+(anonymous) @ c75c2f758afe2793.js:2
+(anonymous) @ 9cf274b135960c5e.js:2
