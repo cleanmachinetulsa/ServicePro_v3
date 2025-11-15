@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +33,7 @@ const DEMO_WEATHER_LEVELS = [
 ];
 
 export default function DemoPage() {
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState('chatbot');
   const [showWeatherAlert, setShowWeatherAlert] = useState(false);
   const [selectedWeatherRisk, setSelectedWeatherRisk] = useState(DEMO_WEATHER_LEVELS[0]);
@@ -428,7 +430,7 @@ export default function DemoPage() {
               </Button>
             </CardContent>
             <CardFooter className="flex justify-between border-t pt-4">
-              <Button variant="outline" size="sm" onClick={() => window.location.href = '/'}>
+              <Button variant="outline" size="sm" onClick={() => setLocation('/')}>
                 Exit Demo
               </Button>
               <Button size="sm" onClick={() => window.location.href = 'mailto:info@cleanmachineautodetail.com'}>

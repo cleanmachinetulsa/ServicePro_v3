@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import {
   Card,
   CardContent,
@@ -178,6 +179,7 @@ interface RedeemedReward {
 }
 
 export function LoyaltyPointsSystem() {
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("customers");
@@ -1519,8 +1521,8 @@ export function LoyaltyPointsSystem() {
                                 size="sm" 
                                 variant="outline"
                                 onClick={() => {
-                                  // Redirect to booking page with pre-selected service
-                                  window.location.href = `/booking?service=${encodeURIComponent(reward.name)}&redeem=true&customerId=${selectedCustomer.id}&rewardId=${reward.id}`;
+                                  // Navigate to booking page with pre-selected service
+                                  setLocation(`/booking?service=${encodeURIComponent(reward.name)}&redeem=true&customerId=${selectedCustomer.id}&rewardId=${reward.id}`);
                                 }}
                               >
                                 Schedule & Redeem

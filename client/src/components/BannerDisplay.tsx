@@ -8,8 +8,46 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export default function BannerDisplay() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [dismissedBanners, setDismissedBanners] = useState<Set<string>>(new Set());
+
+  // Helper function to handle navigation (internal vs external)
+  const handleNavigation = (url: string) => {
+    // Use blacklist approach: Detect URLs that MUST use full page navigation
+    // Everything else gets SPA navigation (flexible for new routes)
+    
+    // External protocols → full page navigation
+    if (url.startsWith('http://') || url.startsWith('https://') || 
+        url.startsWith('//') || url.startsWith('mailto:') || url.startsWith('tel:')) {
+      window.location.href = url;
+      return;
+    }
+    
+    // API endpoints → full page navigation
+    if (url.startsWith('/api/')) {
+      window.location.href = url;
+      return;
+    }
+    
+    // Asset/download paths → full page navigation
+    const assetPrefixes = ['/uploads/', '/downloads/', '/assets/', '/static/', '/files/'];
+    if (assetPrefixes.some(prefix => url.startsWith(prefix))) {
+      window.location.href = url;
+      return;
+    }
+    
+    // File extensions → full page navigation (downloads)
+    const fileExtensions = ['.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.txt', 
+                           '.jpg', '.jpeg', '.png', '.gif', '.mp4', '.mov', '.avi', '.mp3', '.wav'];
+    if (fileExtensions.some(ext => url.toLowerCase().includes(ext))) {
+      window.location.href = url;
+      return;
+    }
+    
+    // Everything else (internal SPA routes) → wouter navigation
+    // Handles all app routes including hash fragments and query strings
+    setLocation(url);
+  };
 
   const { data: banners = [] } = useQuery<Banner[]>({
     queryKey: ["/api/banners/active"],
@@ -100,7 +138,7 @@ export default function BannerDisplay() {
                   <Button
                     size="sm"
                     variant="default"
-                    onClick={() => window.location.href = banner.ctaUrl!}
+                    onClick={() => handleNavigation(banner.ctaUrl!)}
                     data-testid={`banner-cta-${banner.trackingKey}`}
                   >
                     {banner.ctaLabel}
@@ -151,7 +189,7 @@ export default function BannerDisplay() {
                     )}
                     <Button
                       variant="default"
-                      onClick={() => window.location.href = banner.ctaUrl!}
+                      onClick={() => handleNavigation(banner.ctaUrl!)}
                       data-testid={`banner-modal-cta-${banner.trackingKey}`}
                     >
                       {banner.ctaLabel}
@@ -194,7 +232,7 @@ export default function BannerDisplay() {
                   size="sm"
                   variant="default"
                   className="w-full"
-                  onClick={() => window.location.href = banner.ctaUrl!}
+                  onClick={() => handleNavigation(banner.ctaUrl!)}
                   data-testid={`banner-floating-cta-${banner.trackingKey}`}
                 >
                   {banner.ctaLabel}
