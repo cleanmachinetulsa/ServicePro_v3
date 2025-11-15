@@ -19,6 +19,7 @@ import NotificationsSettings from "../pages/notifications-settings";
 import { UpsellManagement } from "./UpsellManagement";
 import RecurringServicesManager from "./RecurringServicesManager";
 import { EmailCampaignsManager } from "./EmailCampaignsManager";
+import { SmsTemplatesManager } from "./SmsTemplatesManager";
 import CancellationDemo from "./CancellationDemo";
 import SubscriptionManager from "./SubscriptionManager";
 import { PhoneSettings } from "./PhoneSettings";
@@ -89,9 +90,10 @@ export default function SettingsWorkspace() {
       icon: <MessageSquare className="h-4 w-4" />,
       items: [
         { id: 'notifications', label: 'Notifications', component: NotificationsSettings },
+        { id: 'sms-templates', label: 'SMS Templates', component: SmsTemplatesManager },
+        { id: 'email-campaigns', label: 'Email Campaigns', component: EmailCampaignsManager },
         { id: 'upsell', label: 'Upsell Offers', component: UpsellManagement },
         { id: 'cancellation', label: 'Cancellation Feedback', component: CancellationDemo },
-        { id: 'email-campaigns', label: 'Email Campaigns', component: EmailCampaignsManager },
       ]
     },
     {
