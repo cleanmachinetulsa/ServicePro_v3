@@ -972,6 +972,19 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   lastUsedAt: timestamp("last_used_at").defaultNow(), // Track last notification sent
 });
 
+// Critical monitoring settings for multi-channel alerts on integration failures
+export const criticalMonitoringSettings = pgTable("critical_monitoring_settings", {
+  id: serial("id").primaryKey(),
+  alertChannels: jsonb("alert_channels").notNull().$type<{ sms: boolean; push: boolean; email: boolean }>(), // Which channels to use for alerts
+  smsRecipients: text("sms_recipients").array().notNull().default([]), // Phone numbers to receive SMS alerts
+  emailRecipients: text("email_recipients").array().notNull().default([]), // Email addresses to receive email alerts
+  pushRoles: text("push_roles").array().notNull().default(['owner', 'manager']), // User roles to receive push notifications
+  failureThreshold: integer("failure_threshold").notNull().default(3), // Number of consecutive failures before alerting
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(30), // Minutes between repeat alerts
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
 // Gallery photos for the public gallery page - uploaded by admin
 export const galleryPhotos = pgTable("gallery_photos", {
   id: serial("id").primaryKey(),
@@ -2173,6 +2186,9 @@ export type InsertSmsTemplateVersion = z.infer<typeof insertSmsTemplateVersionSc
 export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true, lastUsedAt: true });
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+export const insertCriticalMonitoringSettingsSchema = createInsertSchema(criticalMonitoringSettings).omit({ id: true, updatedAt: true });
+export type CriticalMonitoringSettings = typeof criticalMonitoringSettings.$inferSelect;
+export type InsertCriticalMonitoringSettings = z.infer<typeof insertCriticalMonitoringSettingsSchema>;
 export type GalleryPhoto = typeof galleryPhotos.$inferSelect;
 export type InsertGalleryPhoto = z.infer<typeof insertGalleryPhotoSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;
