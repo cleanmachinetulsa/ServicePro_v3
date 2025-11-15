@@ -36,22 +36,18 @@ export default function PhoneLineSwitcher() {
   }
 
   if (phoneLines.length === 0) {
-    return (
-      <div className="text-xs text-muted-foreground p-2">
-        No phone lines configured
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Smartphone className="h-3.5 w-3.5" />
-        <span className="font-medium">Line:</span>
+    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+        <Smartphone className="h-4 w-4" />
+        <span>Active Line:</span>
       </div>
       
       <div 
-        className="inline-flex items-center gap-1 bg-muted/40 dark:bg-muted/20 rounded-lg p-1"
+        className="inline-flex items-center gap-1.5 bg-gradient-to-r from-muted/50 to-muted/30 dark:from-muted/20 dark:to-muted/10 rounded-xl p-1.5 shadow-sm border border-border/50"
         role="group"
         data-testid="phone-line-switcher"
       >
@@ -61,10 +57,10 @@ export default function PhoneLineSwitcher() {
           size="sm"
           onClick={() => setSelectedPhoneLineId(null)}
           className={`
-            h-8 px-3 text-xs font-medium transition-all
+            h-9 px-4 text-sm font-medium transition-all rounded-lg
             ${selectedPhoneLineId === null 
-              ? 'bg-background dark:bg-background shadow-sm text-foreground' 
-              : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+              ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }
           `}
           data-testid="phone-line-all"
@@ -80,10 +76,10 @@ export default function PhoneLineSwitcher() {
             size="sm"
             onClick={() => setSelectedPhoneLineId(line.id)}
             className={`
-              h-8 px-3 text-xs font-medium transition-all
+              h-9 px-4 text-sm font-medium transition-all rounded-lg
               ${selectedPhoneLineId === line.id 
-                ? 'bg-background dark:bg-background shadow-sm text-foreground' 
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }
             `}
             data-testid={`phone-line-${line.id}`}

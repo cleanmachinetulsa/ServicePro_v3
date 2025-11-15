@@ -230,10 +230,27 @@ export function registerCallRoutes(app: Router) {
   // Voicemail routes
   app.get('/api/voicemail/inbox', requireAuth, async (req: Request, res: Response) => {
     try {
-      // TODO: Fetch from database (voicemails table)
+      // Fetch all call events with recordings (voicemails)
+      const voicemails = await db
+        .select()
+        .from(callEvents)
+        .where(sql`${callEvents.recordingUrl} IS NOT NULL`)
+        .orderBy(desc(callEvents.createdAt));
+
+      // Transform to match frontend interface
+      const formattedVoicemails = voicemails.map(call => ({
+        id: call.id,
+        from: call.from,
+        duration: call.duration || 0,
+        timestamp: call.createdAt.toISOString(),
+        transcription: call.transcriptionText,
+        recordingUrl: call.recordingUrl,
+        isNew: call.readAt === null,
+      }));
+
       res.json({
         success: true,
-        voicemails: [],
+        voicemails: formattedVoicemails,
       });
     } catch (error) {
       console.error('Error fetching voicemails:', error);
@@ -249,7 +266,10 @@ export function registerCallRoutes(app: Router) {
     try {
       const id = parseInt(req.params.id);
 
-      // TODO: Delete from database
+      await db
+        .delete(callEvents)
+        .where(eq(callEvents.id, id));
+
       res.json({
         success: true,
         message: 'Voicemail deleted',
@@ -268,7 +288,11 @@ export function registerCallRoutes(app: Router) {
     try {
       const id = parseInt(req.params.id);
 
-      // TODO: Update in database
+      await db
+        .update(callEvents)
+        .set({ readAt: new Date() })
+        .where(eq(callEvents.id, id));
+
       res.json({
         success: true,
         message: 'Voicemail marked as read',

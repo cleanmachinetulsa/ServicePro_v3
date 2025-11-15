@@ -495,6 +495,7 @@ export const callEvents = pgTable("call_events", {
   priceUnit: varchar("price_unit", { length: 10 }), // Currency (USD)
   technicianId: integer("technician_id").references(() => technicians.id, { onDelete: "set null" }), // For technician_outbound calls
   appointmentId: integer("appointment_id").references(() => appointments.id, { onDelete: "set null" }), // Link to appointment if call is job-related
+  readAt: timestamp("read_at"), // When voicemail was marked as read
   createdAt: timestamp("created_at").defaultNow(), // When call was initiated
   startedAt: timestamp("started_at"), // When call was answered
   endedAt: timestamp("ended_at"), // When call ended
