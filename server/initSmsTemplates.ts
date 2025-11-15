@@ -129,11 +129,34 @@ const DEFAULT_TEMPLATES = [
     category: "referrals",
     name: "Referral Reward Earned",
     description: "Sent when customer earns referral points",
-    body: "Great news {firstName}! Your friend just completed their first service. You've earned 500 loyalty points! 🎉 Keep referring and rack up those rewards!",
+    body: "Great news {firstName}! Your friend just completed their first service. You've earned {referrerReward}! 🎉 Keep referring and rack up those rewards!",
     variables: [
       { name: "firstName", description: "Customer's first name", sample: "Chris", required: true },
+      { name: "referrerReward", description: "Reward earned by referrer", sample: "500 loyalty points", required: true },
     ],
-    defaultPayload: { firstName: "Chris" },
+    defaultPayload: { firstName: "Chris", referrerReward: "500 loyalty points" },
+    enabled: true,
+  },
+  {
+    templateKey: "referral_invite",
+    category: "referrals",
+    name: "Referral Invite",
+    description: "Sent when customer sends referral invite to a friend via SMS",
+    body: "Hey! {referrerName} thinks you'd love Clean Machine Auto Detail! 🚗✨\n\nUse code {referralCode} to get {refereeReward} your first detail, and we'll both get {referrerReward}!\n\nBook now: {bookingUrl}",
+    variables: [
+      { name: "referrerName", description: "Referrer's first name", sample: "Sarah", required: true },
+      { name: "referralCode", description: "Unique referral code", sample: "SARAH-AB3C5", required: true },
+      { name: "bookingUrl", description: "Booking URL with referral code", sample: "https://cleanmachinetulsa.com/book?ref=SARAH-AB3C5", required: true },
+      { name: "referrerReward", description: "Reward for referrer (from config)", sample: "500 loyalty points", required: true },
+      { name: "refereeReward", description: "Reward for referee (from config)", sample: "$25 off", required: true },
+    ],
+    defaultPayload: {
+      referrerName: "Sarah",
+      referralCode: "SARAH-AB3C5",
+      bookingUrl: "https://cleanmachinetulsa.com/book?ref=SARAH-AB3C5",
+      referrerReward: "500 loyalty points",
+      refereeReward: "$25 off"
+    },
     enabled: true,
   },
 ];
