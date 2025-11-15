@@ -37,6 +37,7 @@ import {
   Gift,
 } from "lucide-react";
 import { format } from "date-fns";
+import { PayerReferralCodeInput } from "@/components/PayerReferralCodeInput";
 
 interface ApprovalData {
   authorization: {
@@ -77,6 +78,8 @@ export default function PayerApprovalPage() {
   const [otp, setOtp] = useState('');
   const [isOtpVerified, setIsOtpVerified] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
+  const [discountedAmount, setDiscountedAmount] = useState<number | null>(null);
+  const [discountedDeposit, setDiscountedDeposit] = useState<number | null>(null);
 
   // Fetch approval data
   const { data, isLoading, error } = useQuery<ApprovalData>({
@@ -421,10 +424,25 @@ export default function PayerApprovalPage() {
               <CardTitle>Payment Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Original Price (crossed out if discount applied) */}
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Estimated Total</span>
-                <span className="text-2xl font-bold">${appointment.estimatedPrice.toFixed(2)}</span>
+                <span className="text-muted-foreground">
+                  {discountedAmount !== null ? 'Original Price' : 'Estimated Total'}
+                </span>
+                <span className={`text-2xl font-bold ${discountedAmount !== null ? 'line-through text-muted-foreground' : ''}`}>
+                  ${appointment.estimatedPrice.toFixed(2)}
+                </span>
               </div>
+
+              {/* Discounted Price */}
+              {discountedAmount !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-green-600 dark:text-green-400 font-medium">New Total</span>
+                  <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    ${discountedAmount.toFixed(2)}
+                  </span>
+                </div>
+              )}
 
               {appointment.depositPercent && appointment.depositAmount && (
                 <>
@@ -432,7 +450,13 @@ export default function PayerApprovalPage() {
                   <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">Deposit Required ({appointment.depositPercent}%)</span>
-                      <span className="text-xl font-bold text-blue-600">${appointment.depositAmount.toFixed(2)}</span>
+                      <span className="text-xl font-bold text-blue-600">
+                        ${/* CRITICAL: Use server-provided deposit, don't recalculate */
+                          discountedDeposit !== null 
+                            ? discountedDeposit.toFixed(2)
+                            : appointment.depositAmount.toFixed(2)
+                        }
+                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Deposit secures your appointment. Balance due upon completion.
@@ -442,6 +466,20 @@ export default function PayerApprovalPage() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* Referral Code Input */}
+        {appointment.estimatedPrice && !appointment.isGift && (
+          <PayerReferralCodeInput 
+            token={token}
+            currentAmount={discountedAmount !== null ? discountedAmount : appointment.estimatedPrice}
+            onDiscountApplied={(newAmount, newDeposit) => {
+              setDiscountedAmount(newAmount);
+              if (newDeposit !== undefined) {
+                setDiscountedDeposit(newDeposit);
+              }
+            }}
+          />
         )}
 
         {/* Action Buttons */}

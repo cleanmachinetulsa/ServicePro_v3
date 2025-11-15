@@ -1439,6 +1439,12 @@ export const authorizations = pgTable("authorizations", {
   ipAddress: text("ip_address"), // IP of signer for audit trail
   userAgent: text("user_agent"),
   agreedToTerms: boolean("agreed_to_terms").default(false), // Checkbox for terms
+  otpVerified: boolean("otp_verified").default(false), // Track if OTP was verified for this authorization
+  otpVerifiedAt: timestamp("otp_verified_at"), // When OTP was verified
+  referralCode: text("referral_code"), // Referral code applied during payer approval (stored for later invoice creation)
+  referralDiscount: numeric("referral_discount", { precision: 10, scale: 2 }), // Computed discount amount (NOT the raw reward value)
+  referralDiscountType: varchar("referral_discount_type", { length: 30 }), // fixed_discount, percent_discount, service_credit, etc.
+  referralReferrerId: integer("referral_referrer_id"), // ID of the customer who referred (for tracking)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
