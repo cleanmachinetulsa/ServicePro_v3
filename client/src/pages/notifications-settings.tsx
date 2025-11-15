@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Phone, MessageSquare, Save, RotateCcw, Sparkles, Loader2, Bell, Send } from 'lucide-react';
+import { Phone, MessageSquare, Save, RotateCcw, Sparkles, Loader2, Bell, Send, AlertTriangle, Shield, Trash2, Plus } from 'lucide-react';
 import { queryClient } from '@/lib/queryClient';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import CommunicationsNav from '@/components/CommunicationsNav';
@@ -36,9 +36,31 @@ interface NotificationSettingsResponse {
   };
 }
 
+interface CriticalMonitoringSettings {
+  id: number;
+  alertChannels: { sms: boolean; push: boolean; email: boolean };
+  smsRecipients: string[];
+  emailRecipients: string[];
+  pushRoles: string[];
+  failureThreshold: number;
+  cooldownMinutes: number;
+  updatedAt: Date;
+  updatedBy: number | null;
+}
+
+interface CriticalMonitoringResponse {
+  success: boolean;
+  settings: CriticalMonitoringSettings;
+  monitoring: {
+    integrationsCount: number;
+    healthStatus: Record<string, any>;
+  };
+}
+
 export default function NotificationsSettings() {
   const { toast } = useToast();
   const [hasChanges, setHasChanges] = useState(false);
+  const [criticalHasChanges, setCriticalHasChanges] = useState(false);
   
   // Push notifications hook
   const pushNotifications = usePushNotifications();
@@ -56,6 +78,11 @@ export default function NotificationsSettings() {
     queryKey: ['/api/notifications/settings/voice_webhook'],
   });
 
+  // Fetch critical monitoring settings
+  const { data: criticalSettings, isLoading: criticalLoading } = useQuery<CriticalMonitoringResponse>({
+    queryKey: ['/api/critical-monitoring/settings'],
+  });
+
   const [formData, setFormData] = useState({
     enabled: true,
     ringDuration: 20,
@@ -66,6 +93,18 @@ export default function NotificationsSettings() {
     forwardingEnabled: true,
     useAIConversation: true, // Default to AI mode
   });
+
+  const [criticalFormData, setCriticalFormData] = useState({
+    alertChannels: { sms: true, push: true, email: false },
+    smsRecipients: [] as string[],
+    emailRecipients: [] as string[],
+    pushRoles: ['owner', 'manager'] as string[],
+    failureThreshold: 3,
+    cooldownMinutes: 30,
+  });
+
+  const [newSmsRecipient, setNewSmsRecipient] = useState('');
+  const [newEmailRecipient, setNewEmailRecipient] = useState('');
 
   // Update form data when settings are loaded
   useEffect(() => {
@@ -82,6 +121,20 @@ export default function NotificationsSettings() {
       });
     }
   }, [voiceSettings]);
+
+  // Update critical form data when settings are loaded
+  useEffect(() => {
+    if (criticalSettings?.settings) {
+      setCriticalFormData({
+        alertChannels: criticalSettings.settings.alertChannels,
+        smsRecipients: criticalSettings.settings.smsRecipients,
+        emailRecipients: criticalSettings.settings.emailRecipients,
+        pushRoles: criticalSettings.settings.pushRoles,
+        failureThreshold: criticalSettings.settings.failureThreshold,
+        cooldownMinutes: criticalSettings.settings.cooldownMinutes,
+      });
+    }
+  }, [criticalSettings]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -188,6 +241,117 @@ export default function NotificationsSettings() {
         useAIConversation: voiceSettings.settings.config.useAIConversation !== false,
       });
       setHasChanges(false);
+    }
+  };
+
+  // Critical monitoring mutations and handlers
+  const updateCriticalSettingsMutation = useMutation({
+    mutationFn: async (data: typeof criticalFormData) => {
+      const response = await fetch('/api/critical-monitoring/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) throw new Error('Failed to update critical monitoring settings');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/critical-monitoring/settings'] });
+      setCriticalHasChanges(false);
+      toast({
+        title: 'Critical Alert Settings Saved',
+        description: 'Your critical monitoring settings have been updated successfully.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to update critical monitoring settings. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCriticalInputChange = (field: string, value: any) => {
+    setCriticalFormData((prev) => ({ ...prev, [field]: value }));
+    setCriticalHasChanges(true);
+  };
+
+  const handleCriticalChannelChange = (channel: 'sms' | 'push' | 'email', value: boolean) => {
+    setCriticalFormData((prev) => ({
+      ...prev,
+      alertChannels: { ...prev.alertChannels, [channel]: value },
+    }));
+    setCriticalHasChanges(true);
+  };
+
+  const handleCriticalRoleChange = (role: string, checked: boolean) => {
+    setCriticalFormData((prev) => ({
+      ...prev,
+      pushRoles: checked
+        ? [...prev.pushRoles, role]
+        : prev.pushRoles.filter((r) => r !== role),
+    }));
+    setCriticalHasChanges(true);
+  };
+
+  const handleAddSmsRecipient = () => {
+    const phone = newSmsRecipient.trim();
+    if (phone && !criticalFormData.smsRecipients.includes(phone)) {
+      setCriticalFormData((prev) => ({
+        ...prev,
+        smsRecipients: [...prev.smsRecipients, phone],
+      }));
+      setNewSmsRecipient('');
+      setCriticalHasChanges(true);
+    }
+  };
+
+  const handleRemoveSmsRecipient = (phone: string) => {
+    setCriticalFormData((prev) => ({
+      ...prev,
+      smsRecipients: prev.smsRecipients.filter((p) => p !== phone),
+    }));
+    setCriticalHasChanges(true);
+  };
+
+  const handleAddEmailRecipient = () => {
+    const email = newEmailRecipient.trim();
+    if (email && !criticalFormData.emailRecipients.includes(email)) {
+      setCriticalFormData((prev) => ({
+        ...prev,
+        emailRecipients: [...prev.emailRecipients, email],
+      }));
+      setNewEmailRecipient('');
+      setCriticalHasChanges(true);
+    }
+  };
+
+  const handleRemoveEmailRecipient = (email: string) => {
+    setCriticalFormData((prev) => ({
+      ...prev,
+      emailRecipients: prev.emailRecipients.filter((e) => e !== email),
+    }));
+    setCriticalHasChanges(true);
+  };
+
+  const handleSaveCritical = () => {
+    updateCriticalSettingsMutation.mutate(criticalFormData);
+  };
+
+  const handleResetCritical = () => {
+    if (criticalSettings?.settings) {
+      setCriticalFormData({
+        alertChannels: criticalSettings.settings.alertChannels,
+        smsRecipients: criticalSettings.settings.smsRecipients,
+        emailRecipients: criticalSettings.settings.emailRecipients,
+        pushRoles: criticalSettings.settings.pushRoles,
+        failureThreshold: criticalSettings.settings.failureThreshold,
+        cooldownMinutes: criticalSettings.settings.cooldownMinutes,
+      });
+      setCriticalHasChanges(false);
     }
   };
 
@@ -683,6 +847,288 @@ export default function NotificationsSettings() {
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Critical System Alerts */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-orange-500" />
+            <CardTitle>Critical System Alerts</CardTitle>
+          </div>
+          <CardDescription>
+            Configure multi-channel alerts for critical system failures (calendar, payments, SMS, email integrations)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {criticalLoading ? (
+            <div className="text-center py-4 text-muted-foreground">Loading critical monitoring settings...</div>
+          ) : (
+            <>
+              {/* Monitoring Status */}
+              {criticalSettings?.monitoring && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-blue-900 dark:text-blue-100">
+                        Monitoring Status
+                      </p>
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                        Currently monitoring {criticalSettings.monitoring.integrationsCount} critical integrations
+                      </p>
+                    </div>
+                    <AlertTriangle className="w-8 h-8 text-blue-500" />
+                  </div>
+                </div>
+              )}
+
+              {/* Alert Channels */}
+              <div className="space-y-4">
+                <Label className="text-base font-semibold">Alert Channels</Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="critical-sms">SMS Alerts</Label>
+                      <p className="text-xs text-muted-foreground">Send text messages</p>
+                    </div>
+                    <Switch
+                      id="critical-sms"
+                      checked={criticalFormData.alertChannels.sms}
+                      onCheckedChange={(checked) => handleCriticalChannelChange('sms', checked)}
+                      data-testid="switch-critical-sms"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="critical-push">Push Notifications</Label>
+                      <p className="text-xs text-muted-foreground">Browser notifications</p>
+                    </div>
+                    <Switch
+                      id="critical-push"
+                      checked={criticalFormData.alertChannels.push}
+                      onCheckedChange={(checked) => handleCriticalChannelChange('push', checked)}
+                      data-testid="switch-critical-push"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="critical-email">Email Alerts</Label>
+                      <p className="text-xs text-muted-foreground">Future feature</p>
+                    </div>
+                    <Switch
+                      id="critical-email"
+                      checked={criticalFormData.alertChannels.email}
+                      onCheckedChange={(checked) => handleCriticalChannelChange('email', checked)}
+                      disabled
+                      data-testid="switch-critical-email"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* SMS Recipients */}
+              {criticalFormData.alertChannels.sms && (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-base font-semibold">SMS Recipients</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Phone numbers to receive SMS alerts (include country code, e.g., +19185551234)
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="+19185551234"
+                      value={newSmsRecipient}
+                      onChange={(e) => setNewSmsRecipient(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddSmsRecipient()}
+                      data-testid="input-new-sms-recipient"
+                    />
+                    <Button onClick={handleAddSmsRecipient} variant="outline" data-testid="button-add-sms">
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  {criticalFormData.smsRecipients.length > 0 && (
+                    <div className="space-y-2">
+                      {criticalFormData.smsRecipients.map((phone) => (
+                        <div key={phone} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                          <span className="text-sm font-mono">{phone}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveSmsRecipient(phone)}
+                            data-testid={`button-remove-sms-${phone}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Email Recipients */}
+              {criticalFormData.alertChannels.email && (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-base font-semibold">Email Recipients</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Email addresses to receive alert emails
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      placeholder="email@example.com"
+                      value={newEmailRecipient}
+                      onChange={(e) => setNewEmailRecipient(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddEmailRecipient()}
+                      data-testid="input-new-email-recipient"
+                    />
+                    <Button onClick={handleAddEmailRecipient} variant="outline" data-testid="button-add-email">
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  {criticalFormData.emailRecipients.length > 0 && (
+                    <div className="space-y-2">
+                      {criticalFormData.emailRecipients.map((email) => (
+                        <div key={email} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                          <span className="text-sm">{email}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveEmailRecipient(email)}
+                            data-testid={`button-remove-email-${email}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Push Notification Roles */}
+              {criticalFormData.alertChannels.push && (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-base font-semibold">Push Notification Roles</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      User roles that will receive browser push notifications
+                    </p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="role-owner"
+                        checked={criticalFormData.pushRoles.includes('owner')}
+                        onChange={(e) => handleCriticalRoleChange('owner', e.target.checked)}
+                        className="w-4 h-4"
+                        data-testid="checkbox-role-owner"
+                      />
+                      <Label htmlFor="role-owner">Owner</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="role-manager"
+                        checked={criticalFormData.pushRoles.includes('manager')}
+                        onChange={(e) => handleCriticalRoleChange('manager', e.target.checked)}
+                        className="w-4 h-4"
+                        data-testid="checkbox-role-manager"
+                      />
+                      <Label htmlFor="role-manager">Manager</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="role-employee"
+                        checked={criticalFormData.pushRoles.includes('employee')}
+                        onChange={(e) => handleCriticalRoleChange('employee', e.target.checked)}
+                        className="w-4 h-4"
+                        data-testid="checkbox-role-employee"
+                      />
+                      <Label htmlFor="role-employee">Employee</Label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Alert Thresholds */}
+              <div className="space-y-4">
+                <Label className="text-base font-semibold">Alert Thresholds</Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="failure-threshold">Failure Threshold</Label>
+                    <Input
+                      id="failure-threshold"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={criticalFormData.failureThreshold}
+                      onChange={(e) => handleCriticalInputChange('failureThreshold', parseInt(e.target.value))}
+                      data-testid="input-failure-threshold"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Number of consecutive failures before sending alert
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cooldown-minutes">Cooldown (minutes)</Label>
+                    <Input
+                      id="cooldown-minutes"
+                      type="number"
+                      min="5"
+                      max="1440"
+                      value={criticalFormData.cooldownMinutes}
+                      onChange={(e) => handleCriticalInputChange('cooldownMinutes', parseInt(e.target.value))}
+                      data-testid="input-cooldown-minutes"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Minimum time between repeat alerts
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save/Reset Buttons */}
+              <div className="flex gap-2 pt-4">
+                <Button
+                  onClick={handleSaveCritical}
+                  disabled={!criticalHasChanges || updateCriticalSettingsMutation.isPending}
+                  data-testid="button-save-critical"
+                >
+                  {updateCriticalSettingsMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Critical Alert Settings
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleResetCritical}
+                  disabled={!criticalHasChanges}
+                  data-testid="button-reset-critical"
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Reset
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

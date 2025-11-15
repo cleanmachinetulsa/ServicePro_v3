@@ -6,7 +6,9 @@ import { join } from 'path';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
 import { eq } from 'drizzle-orm';
-import { services as servicesTable, businessSettings, agentPreferences } from '@shared/schema';
+import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema } from '@shared/schema';
+import { requireRole } from './rbacMiddleware';
+import { criticalMonitor } from './criticalMonitoring';
 import { registerLoyaltyRoutes } from './routes.loyalty';
 import { registerReferralRoutes } from './routes.referral';
 import { registerReferralConfigRoutes } from './routes.referralConfig';
@@ -470,6 +472,96 @@ export async function registerRoutes(app: Express) {
     } catch (error) {
       console.error('Error updating business settings:', error);
       res.status(500).json({ success: false, error: 'Failed to update business settings' });
+    }
+  });
+
+  // Critical Monitoring Settings endpoints
+  app.get('/api/critical-monitoring/settings', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
+    try {
+      let [settings] = await db.select().from(criticalMonitoringSettings).limit(1);
+      
+      // If no settings exist, create default settings
+      if (!settings) {
+        const defaultSettings = {
+          alertChannels: { sms: true, push: true, email: false },
+          smsRecipients: process.env.BUSINESS_PHONE_NUMBER ? [process.env.BUSINESS_PHONE_NUMBER] : [],
+          emailRecipients: [],
+          pushRoles: ['owner', 'manager'],
+          failureThreshold: 3,
+          cooldownMinutes: 30,
+          updatedBy: req.user?.id,
+        };
+        
+        [settings] = await db.insert(criticalMonitoringSettings)
+          .values(defaultSettings)
+          .returning();
+      }
+      
+      // Get current health status
+      const healthStatus = criticalMonitor.getHealthStatus();
+      const integrationsCount = Object.keys(healthStatus).length;
+      
+      res.json({ 
+        success: true, 
+        settings,
+        monitoring: {
+          integrationsCount,
+          healthStatus,
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching critical monitoring settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch critical monitoring settings' });
+    }
+  });
+
+  app.put('/api/critical-monitoring/settings', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      // Validate request body
+      const validationResult = insertCriticalMonitoringSettingsSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid settings data',
+          details: validationResult.error.errors 
+        });
+      }
+      
+      const updateData = {
+        ...validationResult.data,
+        updatedAt: new Date(),
+        updatedBy: req.user?.id,
+      };
+      
+      // Check if settings exist
+      const [existingSettings] = await db.select().from(criticalMonitoringSettings).limit(1);
+      
+      let updated;
+      if (existingSettings) {
+        // Update existing settings
+        [updated] = await db.update(criticalMonitoringSettings)
+          .set(updateData)
+          .where(eq(criticalMonitoringSettings.id, existingSettings.id))
+          .returning();
+      } else {
+        // Insert new settings
+        [updated] = await db.insert(criticalMonitoringSettings)
+          .values(updateData)
+          .returning();
+      }
+      
+      // Reload settings in the monitor
+      await criticalMonitor.loadSettings();
+      
+      res.json({ 
+        success: true, 
+        settings: updated, 
+        message: 'Critical monitoring settings updated successfully' 
+      });
+    } catch (error) {
+      console.error('Error updating critical monitoring settings:', error);
+      res.status(500).json({ success: false, error: 'Failed to update critical monitoring settings' });
     }
   });
 

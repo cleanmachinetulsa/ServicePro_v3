@@ -1,9 +1,13 @@
 /**
  * Critical Integration Monitoring & Alerting System
- * Monitors calendar, payments, SMS, email and sends urgent SMS alerts on failures
+ * Monitors calendar, payments, SMS, email and sends multi-channel alerts on failures
  */
 
 import { sendSMS } from './notifications';
+import { sendPushNotification } from './pushNotificationService';
+import { db } from './db';
+import { criticalMonitoringSettings, users, pushSubscriptions } from '@shared/schema';
+import { eq, inArray } from 'drizzle-orm';
 
 interface IntegrationHealth {
   name: string;
@@ -14,10 +18,12 @@ interface IntegrationHealth {
 }
 
 interface AlertConfig {
-  enabled: boolean;
-  ownerPhone: string;
-  failureThreshold: number; // Number of consecutive failures before alerting
-  cooldownMinutes: number; // Minutes between repeat alerts
+  alertChannels: { sms: boolean; push: boolean; email: boolean };
+  smsRecipients: string[];
+  emailRecipients: string[];
+  pushRoles: string[];
+  failureThreshold: number;
+  cooldownMinutes: number;
 }
 
 class CriticalMonitor {
@@ -26,18 +32,52 @@ class CriticalMonitor {
   private config: AlertConfig;
 
   constructor() {
+    // Default fallback config using env vars
     this.config = {
-      enabled: !!process.env.BUSINESS_PHONE_NUMBER,
-      ownerPhone: process.env.BUSINESS_PHONE_NUMBER || '',
+      alertChannels: { sms: true, push: true, email: false },
+      smsRecipients: process.env.BUSINESS_PHONE_NUMBER ? [process.env.BUSINESS_PHONE_NUMBER] : [],
+      emailRecipients: [],
+      pushRoles: ['owner', 'manager'],
       failureThreshold: 3,
       cooldownMinutes: 30,
     };
 
-    console.log('[CRITICAL MONITOR] Initialized', {
-      enabled: this.config.enabled,
-      ownerPhone: this.config.ownerPhone ? '***' + this.config.ownerPhone.slice(-4) : 'not set',
-      failureThreshold: this.config.failureThreshold,
+    // Load settings from database
+    this.loadSettings().catch(err => {
+      console.error('[CRITICAL MONITOR] Failed to load settings from DB, using defaults:', err);
     });
+
+    console.log('[CRITICAL MONITOR] Initialized with default config');
+  }
+
+  /**
+   * Load settings from database, fallback to env vars
+   */
+  async loadSettings() {
+    try {
+      const [settings] = await db.select().from(criticalMonitoringSettings).limit(1);
+
+      if (settings) {
+        this.config = {
+          alertChannels: settings.alertChannels,
+          smsRecipients: settings.smsRecipients,
+          emailRecipients: settings.emailRecipients,
+          pushRoles: settings.pushRoles,
+          failureThreshold: settings.failureThreshold,
+          cooldownMinutes: settings.cooldownMinutes,
+        };
+        console.log('[CRITICAL MONITOR] Loaded settings from database', {
+          channels: settings.alertChannels,
+          smsCount: settings.smsRecipients.length,
+          emailCount: settings.emailRecipients.length,
+          pushRoles: settings.pushRoles,
+        });
+      } else {
+        console.log('[CRITICAL MONITOR] No settings found in DB, using defaults');
+      }
+    } catch (error) {
+      console.error('[CRITICAL MONITOR] Error loading settings:', error);
+    }
   }
 
   /**
@@ -82,14 +122,9 @@ class CriticalMonitor {
   }
 
   /**
-   * Send urgent SMS alert for critical failure
+   * Send multi-channel alert for critical failure
    */
   private async sendFailureAlert(integrationName: string, health: IntegrationHealth) {
-    if (!this.config.enabled) {
-      console.warn('[CRITICAL MONITOR] Alerts disabled - BUSINESS_PHONE_NUMBER not set');
-      return;
-    }
-
     const lastAlert = this.lastAlertTime.get(integrationName);
     const now = new Date();
 
@@ -104,30 +139,139 @@ class CriticalMonitor {
 
     const message = `🚨 CRITICAL ALERT: ${integrationName} has failed ${health.consecutiveFailures} times!\n\nLast error: ${health.lastError?.substring(0, 100)}\n\nAction required immediately. Check your Replit dashboard.`;
 
-    try {
-      console.log(`[CRITICAL MONITOR] 📱 Sending urgent SMS alert to ${this.config.ownerPhone}`);
-      await sendSMS(this.config.ownerPhone, message);
+    let alertsSent = 0;
+
+    // Send SMS alerts
+    if (this.config.alertChannels.sms && this.config.smsRecipients.length > 0) {
+      await this.sendSmsAlerts(this.config.smsRecipients, message);
+      alertsSent++;
+    }
+
+    // Send push notifications
+    if (this.config.alertChannels.push && this.config.pushRoles.length > 0) {
+      await this.sendPushAlerts(integrationName, health);
+      alertsSent++;
+    }
+
+    // Send email alerts (stub for future)
+    if (this.config.alertChannels.email && this.config.emailRecipients.length > 0) {
+      await this.sendEmailAlerts(this.config.emailRecipients, integrationName, health);
+      alertsSent++;
+    }
+
+    if (alertsSent > 0) {
       this.lastAlertTime.set(integrationName, now);
-      console.log(`[CRITICAL MONITOR] ✅ Alert sent successfully`);
-    } catch (smsError) {
-      console.error(`[CRITICAL MONITOR] ❌ Failed to send SMS alert:`, smsError);
+      console.log(`[CRITICAL MONITOR] ✅ Alerts sent via ${alertsSent} channels`);
+    } else {
+      console.warn('[CRITICAL MONITOR] No alert channels configured or enabled');
     }
   }
 
   /**
-   * Send recovery notification
+   * Send SMS alerts to all recipients
+   */
+  private async sendSmsAlerts(recipients: string[], message: string) {
+    console.log(`[CRITICAL MONITOR] 📱 Sending SMS alerts to ${recipients.length} recipients`);
+    
+    for (const phone of recipients) {
+      try {
+        await sendSMS(phone, message);
+        console.log(`[CRITICAL MONITOR] ✅ SMS sent to ${phone.slice(-4)}`);
+      } catch (error) {
+        console.error(`[CRITICAL MONITOR] ❌ Failed to send SMS to ${phone.slice(-4)}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Send push notifications to users with specified roles
+   */
+  private async sendPushAlerts(integrationName: string, health: IntegrationHealth) {
+    try {
+      // Find users with push subscriptions and matching roles
+      const usersWithPush = await db
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
+        .where(inArray(users.role, this.config.pushRoles))
+        .groupBy(users.id);
+
+      if (usersWithPush.length === 0) {
+        console.log('[CRITICAL MONITOR] No users with push subscriptions found for roles:', this.config.pushRoles);
+        return;
+      }
+
+      console.log(`[CRITICAL MONITOR] 🔔 Sending push notifications to ${usersWithPush.length} users`);
+
+      const payload = {
+        title: '🚨 Critical System Alert',
+        body: `${integrationName} has failed ${health.consecutiveFailures} times. Immediate action required.`,
+        icon: '/icon-512.png',
+        badge: '/icon-192.png',
+        tag: 'critical-alert',
+        requireInteraction: true,
+        data: {
+          type: 'critical_alert',
+          integration: integrationName,
+          error: health.lastError,
+          url: '/monitor',
+        },
+      };
+
+      for (const user of usersWithPush) {
+        try {
+          await sendPushNotification(user.id, payload);
+          console.log(`[CRITICAL MONITOR] ✅ Push notification sent to user ${user.id}`);
+        } catch (error) {
+          console.error(`[CRITICAL MONITOR] ❌ Failed to send push to user ${user.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('[CRITICAL MONITOR] Error sending push notifications:', error);
+    }
+  }
+
+  /**
+   * Send email alerts (stub for future implementation)
+   */
+  private async sendEmailAlerts(recipients: string[], integrationName: string, health: IntegrationHealth) {
+    console.log(`[CRITICAL MONITOR] 📧 Email alerts to ${recipients.length} recipients (not yet implemented)`);
+    // TODO: Implement email sending when needed
+  }
+
+  /**
+   * Send multi-channel recovery notification
    */
   private async sendRecoveryAlert(integrationName: string) {
-    if (!this.config.enabled) return;
-
     const message = `✅ RECOVERY: ${integrationName} is now working normally.`;
 
-    try {
-      console.log(`[CRITICAL MONITOR] 📱 Sending recovery notification to ${this.config.ownerPhone}`);
-      await sendSMS(this.config.ownerPhone, message);
-      console.log(`[CRITICAL MONITOR] ✅ Recovery notification sent`);
-    } catch (smsError) {
-      console.error(`[CRITICAL MONITOR] ❌ Failed to send recovery notification:`, smsError);
+    // Send SMS recovery alerts
+    if (this.config.alertChannels.sms && this.config.smsRecipients.length > 0) {
+      await this.sendSmsAlerts(this.config.smsRecipients, message);
+    }
+
+    // Send push recovery notifications
+    if (this.config.alertChannels.push && this.config.pushRoles.length > 0) {
+      try {
+        const usersWithPush = await db
+          .select({ id: users.id })
+          .from(users)
+          .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
+          .where(inArray(users.role, this.config.pushRoles))
+          .groupBy(users.id);
+
+        for (const user of usersWithPush) {
+          await sendPushNotification(user.id, {
+            title: '✅ System Recovered',
+            body: `${integrationName} is now working normally.`,
+            icon: '/icon-512.png',
+            tag: 'recovery-alert',
+            data: { type: 'recovery_alert', integration: integrationName },
+          });
+        }
+      } catch (error) {
+        console.error('[CRITICAL MONITOR] Error sending recovery push notifications:', error);
+      }
     }
   }
 

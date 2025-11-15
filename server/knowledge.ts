@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
+import { getGoogleSheetsClient } from './googleSheetsConnector';
+import { criticalMonitor } from './criticalMonitoring';
 
 // Data store for sheet contents
 export let sheetsData: Record<string, any[]> = {};
@@ -74,48 +76,8 @@ function formatKnowledgeBase(): string {
   return knowledgeBase;
 }
 
-// Get Google Sheets client
-async function getGoogleSheetsClient() {
-  try {
-    // Get credentials from environment variable ONLY (never from files for security)
-    if (!process.env.GOOGLE_API_CREDENTIALS) {
-      throw new Error('CRITICAL: GOOGLE_API_CREDENTIALS environment variable is not set. Please configure it in Replit Secrets.');
-    }
-    
-    let credentials: any = null;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_API_CREDENTIALS);
-      console.log('Using Google credentials from environment variable');
-    } catch (parseError) {
-      throw new Error('CRITICAL: Failed to parse GOOGLE_API_CREDENTIALS. Please ensure it contains valid JSON.');
-    }
-    
-    if (!credentials || !credentials.client_email || !credentials.private_key) {
-      throw new Error('CRITICAL: GOOGLE_API_CREDENTIALS is missing required fields (client_email, private_key)');
-    }
-
-    // Fix private key line breaks - this is the common issue
-    let privateKey = credentials.private_key;
-    if (privateKey && !privateKey.includes('\n')) {
-      // Replace literal \n with actual line breaks
-      privateKey = privateKey.replace(/\\n/g, '\n');
-    }
-
-    // Set up authentication with the service account
-    const auth = new google.auth.JWT(
-      credentials.client_email,
-      undefined,
-      privateKey,
-      ['https://www.googleapis.com/auth/spreadsheets.readonly']
-    );
-
-    // Create and return the sheets client
-    return google.sheets({ version: 'v4', auth });
-  } catch (error) {
-    console.error('Error initializing Google Sheets client:', error);
-    return null;
-  }
-}
+// REMOVED: Legacy JWT-based Sheets client (replaced with Replit OAuth connector)
+// Now uses googleSheetsConnector.ts with auto-refreshing OAuth tokens
 
 // Force reload of sheets data
 export async function forceReloadSheets(): Promise<boolean> {
@@ -130,16 +92,19 @@ async function loadAllSheets(forceReload: boolean = false): Promise<boolean> {
 
   console.log(`Loading spreadsheet with ID: ${spreadsheetId}`);
 
-  const sheetsClient = await getGoogleSheetsClient();
-  if (!sheetsClient) {
-    return false;
-  }
-
   try {
+    const sheetsClient = await getGoogleSheetsClient();
+    if (!sheetsClient) {
+      await criticalMonitor.reportFailure('Google Sheets', 'Sheets client not initialized');
+      return false;
+    }
+
     // First, get the list of sheets
     const spreadsheet = await sheetsClient.spreadsheets.get({
       spreadsheetId
     });
+    
+    criticalMonitor.reportSuccess('Google Sheets'); // Report success after successful API call
 
     // Extract the sheet names
     const sheetNames = spreadsheet.data.sheets?.map((sheet: any) => 
@@ -280,9 +245,11 @@ async function loadAllSheets(forceReload: boolean = false): Promise<boolean> {
     }
 
     console.log('Finished loading sheets from Google Sheets');
+    criticalMonitor.reportSuccess('Google Sheets'); // Report success after all sheets loaded
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error loading sheets from Google Sheets:', error);
+    await criticalMonitor.reportFailure('Google Sheets', error.message || 'Failed to load sheets');
     return false;
   }
 }
