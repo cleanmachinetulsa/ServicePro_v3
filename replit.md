@@ -24,8 +24,8 @@ The architecture uses a React with TypeScript frontend (Vite, Tailwind CSS, shad
 ## External Dependencies
 
 **Google Workspace Suite**:
--   **Google Calendar API**: Appointment scheduling and availability.
--   **Google Sheets API**: Customer database and knowledge base.
+-   **Google Calendar API**: Appointment scheduling and availability. (Using Replit OAuth connector for auto-refreshing credentials)
+-   **Google Sheets API**: Customer database and knowledge base. (Using Replit OAuth connector for auto-refreshing credentials)
 -   **Google Drive API**: Customer photo management.
 -   **Google Maps API**: Geocoding, distance/drive time calculation.
 
@@ -34,8 +34,8 @@ The architecture uses a React with TypeScript frontend (Vite, Tailwind CSS, shad
 -   **PayPal**: Alternative payment option.
 
 **Communication Services**:
--   **Twilio**: SMS notifications and voicemail transcription.
--   **SendGrid**: Email delivery.
+-   **Twilio**: SMS notifications and voicemail transcription. (Using manual secrets - user preference, existing setup working)
+-   **SendGrid**: Email delivery. (Using manual secrets - user preference, existing setup working)
 -   **Slack**: Internal business notifications and alerts.
 -   **Facebook Graph API**: Integration with Facebook Messenger and Instagram Direct Messages.
 
@@ -44,3 +44,7 @@ The architecture uses a React with TypeScript frontend (Vite, Tailwind CSS, shad
 
 **AI & ML**:
 -   **OpenAI API**: GPT-4o for chatbot intelligence, conversation handling, email content generation, and service recommendations.
+
+**Integration Strategy Notes**:
+- Google Calendar & Sheets: Using Replit OAuth connectors with auto-refreshing credentials
+- Twilio & SendGrid: Using manual secrets (user dismissed Twilio connector, prefers current working setup)
