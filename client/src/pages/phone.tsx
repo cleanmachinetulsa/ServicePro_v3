@@ -13,7 +13,7 @@ export default function PhonePage() {
   const [activeTab, setActiveTab] = useState('dialer');
 
   // Check for active calls
-  const { data: activeCallsData } = useQuery({
+  const { data: activeCallsData } = useQuery<{ calls?: Array<{ id: number }> }>({
     queryKey: ['/api/calls/active'],
     refetchInterval: 2000, // Poll every 2 seconds for active calls
   });
@@ -76,7 +76,7 @@ export default function PhonePage() {
           </TabsList>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0">
           <TabsContent value="dialer" className="h-full m-0">
             <Dialer />
           </TabsContent>
