@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
-import { conversations, appointments } from '@shared/schema';
-import { desc, eq, and, or, gte } from 'drizzle-orm';
+import { conversations, appointments, callEvents } from '@shared/schema';
+import { desc, eq, and, or, gte, sql } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { normalizePhone } from './phoneValidationMiddleware';
 

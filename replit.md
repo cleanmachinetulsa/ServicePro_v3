@@ -3,6 +3,12 @@
 ## Overview
 Clean Machine Auto Detail is an AI-powered web application designed to streamline operations for an auto detailing service. It offers comprehensive business management and enhances customer experience through customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs for calendar, customer data, and photo management, and utilizes OpenAI for intelligent chatbot capabilities and Facebook Graph API for social media messaging. The project aims to achieve an 87% automation rate for business operations, significantly enhancing efficiency and customer engagement.
 
+## Recent Changes (November 15, 2025)
+- **Phase 8-9 Progress**: Voicemail system fully wired with transcription, playback, and notifications. Messages page received Google Voice-level polish with glass-card styling, gradients, and backdrop blur effects.
+- **Critical Fixes**: Fixed white page at `/phone` route (conditional rendering issue), fixed "All Lines" filter query blocking on Messages page
+- **UI/UX Polish**: Added global animation layer (fadeIn, slideIn), enhanced phone line switcher with modern gradients, polished empty states
+- **New Build Plan Phases**: Added Phases 12-15 for settings consolidation and communications hub enhancements (bulk actions, AI features, analytics)
+
 ## User Preferences
 - Preferred communication style: Simple, everyday language
 - **AI Agent Behavior**: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
