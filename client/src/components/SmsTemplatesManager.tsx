@@ -106,8 +106,7 @@ export function SmsTemplatesManager() {
   // Preview template mutation
   const previewMutation = useMutation({
     mutationFn: async ({ key, payload }: { key: string; payload: Record<string, string> }) => {
-      const res = await apiRequest('POST', `/api/sms-templates/${key}/preview`, { payload });
-      return await res.json();
+      return await apiRequest('POST', `/api/sms-templates/${key}/preview`, { payload });
     },
     onError: (error: any) => {
       toast({
@@ -121,8 +120,7 @@ export function SmsTemplatesManager() {
   // Update template mutation
   const updateMutation = useMutation({
     mutationFn: async ({ id, body, changeDescription }: { id: number; body: string; changeDescription: string }) => {
-      const res = await apiRequest('PUT', `/api/sms-templates/${id}`, { body, changeDescription });
-      return await res.json();
+      return await apiRequest('PUT', `/api/sms-templates/${id}`, { body, changeDescription });
     },
     onSuccess: () => {
       toast({ title: 'Template updated successfully', description: 'A new version has been saved.' });
