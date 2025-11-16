@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Save, RotateCcw, ExternalLink, Upload, X } from 'lucide-react';
+import { Save, RotateCcw, ExternalLink, Upload, X, Palette } from 'lucide-react';
 import type { HomepageContent } from '@shared/schema';
+import { getAllTemplates } from '@/lib/homeTemplates';
+import { Badge } from '@/components/ui/badge';
 
 export default function HomepageEditor() {
   const { toast } = useToast();
@@ -71,6 +73,24 @@ export default function HomepageEditor() {
     },
   });
 
+  // Apply template mutation
+  const applyTemplateMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      return await apiRequest('/api/homepage-content/template', 'PUT', { templateId });
+    },
+    onSuccess: () => {
+      toast({ title: 'Template Applied!', description: 'Homepage template updated successfully' });
+      queryClient.invalidateQueries({ queryKey: ['/api/homepage-content'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to apply template',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -126,13 +146,17 @@ export default function HomepageEditor() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="hero">
-              <TabsList className="grid grid-cols-3 lg:grid-cols-6">
+              <TabsList className="grid grid-cols-4 lg:grid-cols-7">
                 <TabsTrigger value="hero">Hero</TabsTrigger>
                 <TabsTrigger value="about">About</TabsTrigger>
                 <TabsTrigger value="services">Services</TabsTrigger>
                 <TabsTrigger value="colors">Colors</TabsTrigger>
                 <TabsTrigger value="logo">Logo</TabsTrigger>
                 <TabsTrigger value="seo">SEO</TabsTrigger>
+                <TabsTrigger value="templates">
+                  <Palette className="w-4 h-4 mr-1" />
+                  Templates
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="hero" className="space-y-4">
@@ -295,6 +319,62 @@ export default function HomepageEditor() {
                     onChange={(e) => setFormData({ ...formData, metaDescription: e.target.value })}
                     data-testid="textarea-meta-description"
                   />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="templates" className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {getAllTemplates().map((template) => {
+                    const isActive = (formData.templateId || 'current') === template.id;
+                    return (
+                      <Card 
+                        key={template.id} 
+                        className={isActive ? 'border-primary shadow-lg' : ''}
+                        data-testid={`card-template-${template.id}`}
+                      >
+                        <CardHeader>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <CardTitle className="text-lg">{template.name}</CardTitle>
+                              {isActive && (
+                                <Badge className="mt-1" data-testid={`badge-current-${template.id}`}>
+                                  Current
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <p className="text-sm text-muted-foreground">
+                            {template.description}
+                          </p>
+                          <div className="space-y-2 text-xs text-muted-foreground">
+                            <div className="flex justify-between">
+                              <span>Hero Style:</span>
+                              <span className="font-medium">{template.layout.heroStyle}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Services:</span>
+                              <span className="font-medium">{template.layout.servicesLayout}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Animation:</span>
+                              <span className="font-medium">{template.animations.speed}</span>
+                            </div>
+                          </div>
+                          <Button
+                            variant={isActive ? 'secondary' : 'default'}
+                            className="w-full"
+                            onClick={() => applyTemplateMutation.mutate(template.id)}
+                            disabled={applyTemplateMutation.isPending || isActive}
+                            data-testid={`button-apply-template-${template.id}`}
+                          >
+                            {isActive ? 'Currently Active' : 'Apply Template'}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               </TabsContent>
             </Tabs>
