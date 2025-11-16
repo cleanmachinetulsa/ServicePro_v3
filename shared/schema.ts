@@ -1410,6 +1410,41 @@ export const agentPreferences = pgTable("agent_preferences", {
   updatedBy: integer("updated_by").references(() => users.id),
 });
 
+// Homepage Content - CMS for homepage text, colors, and branding (singleton table - only one row)
+export const homepageContent = pgTable('homepage_content', {
+  id: serial('id').primaryKey(),
+  
+  // Hero Section
+  heroHeading: text('hero_heading').notNull().default('Clean Machine Auto Detail'),
+  heroSubheading: text('hero_subheading').notNull().default('Professional Mobile Auto Detailing'),
+  heroCtaText: text('hero_cta_text').notNull().default('Book Now'),
+  heroCtaLink: text('hero_cta_link').notNull().default('/booking'),
+  
+  // About Section
+  aboutHeading: text('about_heading').notNull().default('About Us'),
+  aboutText: text('about_text').notNull().default('Premium auto detailing services...'),
+  
+  // Services Section
+  servicesHeading: text('services_heading').notNull().default('Our Services'),
+  servicesSubheading: text('services_subheading'),
+  
+  // Colors (HSL format)
+  primaryColor: varchar('primary_color', { length: 50 }).notNull().default('220 90% 56%'),
+  secondaryColor: varchar('secondary_color', { length: 50 }).notNull().default('280 80% 60%'),
+  accentColor: varchar('accent_color', { length: 50 }).notNull().default('340 80% 55%'),
+  
+  // Logo
+  logoUrl: text('logo_url'),
+  
+  // SEO
+  metaTitle: text('meta_title').notNull().default('Clean Machine Auto Detail'),
+  metaDescription: text('meta_description').notNull().default('Professional auto detailing services'),
+  
+  // Timestamps
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedBy: integer('updated_by').references(() => users.id),
+});
+
 // Shift Templates - Define standard shift types (Morning, Afternoon, Full Day, etc.)
 export const shiftTemplates = pgTable("shift_templates", {
   id: serial("id").primaryKey(),
@@ -2359,6 +2394,14 @@ export const insertAgentPreferencesSchema = createInsertSchema(agentPreferences)
 
 export type InsertAgentPreferences = z.infer<typeof insertAgentPreferencesSchema>;
 export type AgentPreferences = typeof agentPreferences.$inferSelect;
+
+export const insertHomepageContentSchema = createInsertSchema(homepageContent).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertHomepageContent = z.infer<typeof insertHomepageContentSchema>;
+export type HomepageContent = typeof homepageContent.$inferSelect;
 
 export const insertServiceLimitSchema = createInsertSchema(serviceLimits).omit({
   id: true,

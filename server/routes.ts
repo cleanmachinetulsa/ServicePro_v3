@@ -553,6 +553,72 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // Homepage Content endpoints
+  app.get('/api/homepage-content', async (req: Request, res: Response) => {
+    try {
+      const { homepageContent } = await import('@shared/schema');
+      
+      // Get the single row (or create default if doesn't exist)
+      let [content] = await db.select().from(homepageContent).limit(1);
+      
+      if (!content) {
+        // Create default content
+        [content] = await db.insert(homepageContent).values({}).returning();
+      }
+      
+      return res.json({ success: true, content });
+    } catch (error) {
+      console.error('[HOMEPAGE CONTENT] Error fetching:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  app.put('/api/homepage-content', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { homepageContent, insertHomepageContentSchema } = await import('@shared/schema');
+      
+      const schema = insertHomepageContentSchema.partial();
+      const parsed = schema.safeParse(req.body);
+      
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
+      }
+      
+      // Get existing row
+      let [existing] = await db.select().from(homepageContent).limit(1);
+      
+      let updated;
+      if (existing) {
+        // Update existing
+        [updated] = await db.update(homepageContent)
+          .set({
+            ...parsed.data,
+            updatedAt: new Date(),
+            updatedBy: req.user.id,
+          })
+          .where(eq(homepageContent.id, existing.id))
+          .returning();
+      } else {
+        // Create new
+        [updated] = await db.insert(homepageContent)
+          .values({
+            ...parsed.data,
+            updatedBy: req.user.id,
+          })
+          .returning();
+      }
+      
+      return res.json({ success: true, content: updated });
+    } catch (error) {
+      console.error('[HOMEPAGE CONTENT] Error updating:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
   // Critical Monitoring Settings endpoints
   app.get('/api/critical-monitoring/settings', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
     try {
