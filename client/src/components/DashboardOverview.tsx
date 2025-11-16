@@ -12,6 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { motion } from "framer-motion";
 import { 
   Car, 
   CalendarClock, 
@@ -26,7 +27,8 @@ import {
   ChevronRight,
   Star,
   Users,
-  HelpCircle
+  HelpCircle,
+  Sparkles
 } from "lucide-react";
 
 interface Appointment {
@@ -88,52 +90,100 @@ export function DashboardOverview({
   return (
     <div className="space-y-4 p-6">
       {/* Monthly Statistics Bar */}
-      <Card className="bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-xl">
+      <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 text-white shadow-xl">
         <CardContent className="py-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            <div className="text-center px-1">
-              <div className="text-2xl sm:text-3xl font-bold">{Object.values(appointmentCounts).reduce((sum, count) => sum + count, 0)}</div>
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="text-center px-1"
+            >
+              <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                {Object.values(appointmentCounts).reduce((sum, count) => sum + count, 0)}
+              </div>
               <div className="text-xs text-blue-100 line-clamp-2">Total This Month</div>
-            </div>
-            <div className="text-center px-1">
-              <div className="text-2xl sm:text-3xl font-bold">{Object.keys(appointmentCounts).length}</div>
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              className="text-center px-1"
+            >
+              <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-300">
+                {Object.keys(appointmentCounts).length}
+              </div>
               <div className="text-xs text-blue-100 line-clamp-2">Busy Days</div>
-            </div>
-            <div className="text-center px-1">
-              <div className="text-2xl sm:text-3xl font-bold">{Math.max(...Object.values(appointmentCounts), 0)}</div>
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="text-center px-1"
+            >
+              <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-300">
+                {Math.max(...Object.values(appointmentCounts), 0)}
+              </div>
               <div className="text-xs text-blue-100 line-clamp-2">Peak Daily</div>
-            </div>
-            <div className="text-center px-1">
-              <div className="text-2xl sm:text-3xl font-bold">{appointments.length}</div>
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.25 }}
+              className="text-center px-1"
+            >
+              <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-300">
+                {appointments.length}
+              </div>
               <div className="text-xs text-blue-100 line-clamp-2">Today</div>
-            </div>
-            <div className="text-center px-1">
-              <div className="text-2xl sm:text-3xl font-bold truncate">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="text-center px-1"
+            >
+              <div className="text-2xl sm:text-3xl font-bold truncate bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-300">
                 ${appointments.reduce((sum, apt) => {
                   const price = apt.price ? parseInt(apt.price.replace(/\D/g, '')) || 150 : 150;
                   return sum + price;
                 }, 0).toLocaleString()}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Today's Revenue</div>
-            </div>
-            <div className="text-center px-1">
-              <div className="text-2xl sm:text-3xl font-bold">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.35 }}
+              className="text-center px-1"
+            >
+              <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-rose-300">
                 {appointments.filter(apt => 
                   apt.status !== 'completed' && apt.status !== 'cancelled'
                 ).length}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Uncompleted</div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Large Central Calendar */}
         <div className="lg:col-span-2 space-y-4">
-          <Card className="rounded-xl border-none bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 shadow-2xl overflow-hidden" data-testid="calendar-card">
-            <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white pb-6">
-              <CardTitle className="flex items-center justify-between text-2xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
+            <Card className="rounded-xl backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl overflow-hidden" data-testid="calendar-card">
+              <CardHeader className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-md text-white pb-6 border-b border-white/20">
+                <CardTitle className="flex items-center justify-between text-2xl">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <Button
@@ -239,9 +289,9 @@ export function DashboardOverview({
                   </Button>
                 </div>
               </CardTitle>
-            </CardHeader>
-            <CardContent className="p-8">
-              <style>
+              </CardHeader>
+              <CardContent className="p-8 backdrop-blur-sm">
+                <style>
                 {`
                   .modern-calendar .rdp {
                     --rdp-cell-size: 70px;
@@ -518,186 +568,250 @@ export function DashboardOverview({
                     },
                   }}
                 />
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
 
           {/* Selected Day Appointments */}
-          <Card className="bg-blue-50/95 dark:bg-gray-800/95 text-gray-800 dark:text-gray-100 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center text-blue-800 dark:text-blue-200">
-                <CalendarClock className="mr-2 h-5 w-5 text-blue-600 dark:text-blue-400" />
-                {format(todayDate, 'MMM d, yyyy') === format(new Date(), 'MMM d, yyyy') 
-                  ? "Today's Schedule" 
-                  : `Schedule for ${format(todayDate, 'MMM d, yyyy')}`} ({appointments.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {appointments.length > 0 ? (
-                <div className="space-y-4">
-                  {appointments.map((appointment, index) => {
-                    // Color-code appointments for easier distinction
-                    const colors = [
-                      'border-l-purple-500 bg-purple-50/90 dark:bg-purple-950/30',
-                      'border-l-blue-500 bg-blue-50/90 dark:bg-blue-950/30',
-                      'border-l-green-500 bg-green-50/90 dark:bg-green-950/30',
-                      'border-l-orange-500 bg-orange-50/90 dark:bg-orange-950/30',
-                      'border-l-pink-500 bg-pink-50/90 dark:bg-pink-950/30'
-                    ];
-                    const colorClass = colors[index % colors.length];
-                    
-                    return (
-                    <Card key={appointment.id} className={`border-l-4 ${colorClass} hover:shadow-lg transition-all duration-300 dark:bg-gray-800/90`}>
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <CardTitle className="text-lg text-blue-700 dark:text-blue-300">{appointment.customerName}</CardTitle>
-                            <CardDescription>{appointment.service}</CardDescription>
-                          </div>
-                          <Badge variant="outline" className="font-mono bg-blue-50 dark:bg-gray-700 text-blue-700 dark:text-blue-300">
-                            {formatDate(appointment.time).split(',')[1]}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-2 space-y-2">
-                        <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                          <Car className="mr-2 h-4 w-4" />
-                          {appointment.vehicleInfo || "Vehicle info not available"}
-                        </div>
-                        <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                          <Navigation className="mr-2 h-4 w-4" />
-                          {appointment.address}
-                        </div>
-                        <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                          <Phone className="mr-2 h-4 w-4" />
-                          {appointment.phone}
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex justify-between pt-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => onViewHistory(appointment.phone)}
-                        >
-                          History
-                        </Button>
-                        <div className="space-x-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => onCall(appointment.phone)}
-                          >
-                            <Phone className="h-4 w-4 mr-2" />
-                            Call
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => onChat(appointment.phone, appointment.customerName)}
-                          >
-                            <MessageSquare className="h-4 w-4 mr-2" />
-                            Chat
-                          </Button>
-                          <Button 
-                            variant="default" 
-                            size="sm"
-                            onClick={() => onNavigate(appointment.address, appointment.phone)}
-                          >
-                            <Navigation className="h-4 w-4 mr-2" />
-                            Navigate
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 border-green-300 dark:border-green-700"
-                            onClick={() => onSendInvoice(appointment)}
-                          >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Send Invoice
-                          </Button>
-                        </div>
-                      </CardFooter>
-                    </Card>
-                    )
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  No appointments scheduled for this date
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
+            <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 text-gray-800 dark:text-gray-100 shadow-xl">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <CalendarClock className="mr-2 h-5 w-5 text-cyan-400" />
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                    {format(todayDate, 'MMM d, yyyy') === format(new Date(), 'MMM d, yyyy') 
+                      ? "Today's Schedule" 
+                      : `Schedule for ${format(todayDate, 'MMM d, yyyy')}`} ({appointments.length})
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {appointments.length > 0 ? (
+                  <div className="space-y-4">
+                    {appointments.map((appointment, index) => {
+                      // Color-code appointments for easier distinction
+                      const accentColors = [
+                        'from-purple-500 to-pink-500',
+                        'from-blue-500 to-cyan-500',
+                        'from-green-500 to-emerald-500',
+                        'from-orange-500 to-yellow-500',
+                        'from-pink-500 to-rose-500'
+                      ];
+                      const gradientClass = accentColors[index % accentColors.length];
+                      
+                      return (
+                      <motion.div
+                        key={appointment.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.4, delay: index * 0.1 }}
+                      >
+                        <Card className={`backdrop-blur-xl bg-white/5 border border-white/20 hover:bg-white/10 transition-all duration-300 relative overflow-hidden group`}>
+                          <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${gradientClass}`}></div>
+                          <CardHeader className="pb-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <CardTitle className="text-lg bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">{appointment.customerName}</CardTitle>
+                                <CardDescription className="text-gray-300">{appointment.service}</CardDescription>
+                              </div>
+                              <Badge variant="outline" className="font-mono backdrop-blur-md bg-white/10 border-white/20 text-cyan-300">
+                                {formatDate(appointment.time).split(',')[1]}
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pb-2 space-y-2">
+                            <div className="flex items-center text-sm text-gray-300">
+                              <Car className="mr-2 h-4 w-4 text-cyan-400" />
+                              {appointment.vehicleInfo || "Vehicle info not available"}
+                            </div>
+                            <div className="flex items-center text-sm text-gray-300">
+                              <Navigation className="mr-2 h-4 w-4 text-blue-400" />
+                              {appointment.address}
+                            </div>
+                            <div className="flex items-center text-sm text-gray-300">
+                              <Phone className="mr-2 h-4 w-4 text-purple-400" />
+                              {appointment.phone}
+                            </div>
+                          </CardContent>
+                          <CardFooter className="flex justify-between pt-2 flex-wrap gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="backdrop-blur-md bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                              onClick={() => onViewHistory(appointment.phone)}
+                            >
+                              History
+                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="backdrop-blur-md bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                                onClick={() => onCall(appointment.phone)}
+                              >
+                                <Phone className="h-4 w-4 mr-2" />
+                                Call
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="backdrop-blur-md bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                                onClick={() => onChat(appointment.phone, appointment.customerName)}
+                              >
+                                <MessageSquare className="h-4 w-4 mr-2" />
+                                Chat
+                              </Button>
+                              <Button 
+                                variant="default" 
+                                size="sm"
+                                className="backdrop-blur-md bg-gradient-to-r from-blue-500/80 to-cyan-500/80 hover:from-blue-600/80 hover:to-cyan-600/80 border-white/20 text-white"
+                                onClick={() => onNavigate(appointment.address, appointment.phone)}
+                              >
+                                <Navigation className="h-4 w-4 mr-2" />
+                                Navigate
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="backdrop-blur-md bg-green-500/20 border-green-400/30 text-green-300 hover:bg-green-500/30"
+                                onClick={() => onSendInvoice(appointment)}
+                              >
+                                <FileText className="h-4 w-4 mr-2" />
+                                Invoice
+                              </Button>
+                            </div>
+                          </CardFooter>
+                        </Card>
+                      </motion.div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-300">
+                    <Sparkles className="h-12 w-12 mx-auto mb-3 text-cyan-400/50" />
+                    <p className="text-lg">No appointments scheduled for this date</p>
+                    <p className="text-sm text-gray-400 mt-1">Select a different date to view appointments</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
 
         {/* Right Side Panel - Quick Actions and Insights */}
         <div className="space-y-4">
           {/* Daily Insights Card */}
-          <Card className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 text-gray-800 dark:text-gray-100 shadow-lg border-purple-200 dark:border-purple-800">
-            <CardHeader>
-              <CardTitle className="text-purple-800 dark:text-purple-300 flex items-center">
-                <Star className="mr-2 h-5 w-5 text-purple-600 dark:text-purple-400" />
-                {format(todayDate, 'MMM d')} Insights
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {appointments.length > 0 ? (
-                <>
-                  <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded-lg">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Appointments:</span>
-                    <Badge className="bg-purple-600">{appointments.length}</Badge>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
+            <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Star className="mr-2 h-5 w-5 text-yellow-400" />
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-300">
+                    {format(todayDate, 'MMM d')} Insights
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {appointments.length > 0 ? (
+                  <>
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.5 }}
+                      className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg"
+                    >
+                      <span className="text-sm text-gray-300">Appointments:</span>
+                      <Badge className="backdrop-blur-md bg-gradient-to-r from-purple-500 to-pink-500 border-0">{appointments.length}</Badge>
+                    </motion.div>
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.6 }}
+                      className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg"
+                    >
+                      <span className="text-sm text-gray-300">Popular Service:</span>
+                      <Badge variant="outline" className="border-purple-400/50 text-purple-300 backdrop-blur-md bg-white/5">
+                        {(() => {
+                          const serviceCounts = appointments.reduce((acc: any, apt) => {
+                            acc[apt.service] = (acc[apt.service] || 0) + 1;
+                            return acc;
+                          }, {});
+                          const mostPopular = Object.entries(serviceCounts).sort((a: any, b: any) => b[1] - a[1])[0];
+                          return mostPopular ? mostPopular[0] : 'N/A';
+                        })()}
+                      </Badge>
+                    </motion.div>
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.7 }}
+                      className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg"
+                    >
+                      <span className="text-sm text-gray-300">Revenue:</span>
+                      <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-300">
+                        ${(() => {
+                          const total = appointments.reduce((sum, apt) => {
+                            const price = apt.price ? parseInt(apt.price.replace(/\D/g, '')) || 150 : 150;
+                            return sum + price;
+                          }, 0);
+                          return total.toLocaleString();
+                        })()}
+                      </span>
+                    </motion.div>
+                  </>
+                ) : (
+                  <div className="text-center py-4 text-gray-300">
+                    <Sparkles className="h-8 w-8 mx-auto mb-2 text-purple-400/50" />
+                    <p>No appointments for this date</p>
+                    <p className="text-sm mt-1 text-gray-400">Select a different date to view insights</p>
                   </div>
-                  <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded-lg">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Popular Service:</span>
-                    <Badge variant="outline" className="border-purple-400 text-purple-700">
-                      {(() => {
-                        const serviceCounts = appointments.reduce((acc: any, apt) => {
-                          acc[apt.service] = (acc[apt.service] || 0) + 1;
-                          return acc;
-                        }, {});
-                        const mostPopular = Object.entries(serviceCounts).sort((a: any, b: any) => b[1] - a[1])[0];
-                        return mostPopular ? mostPopular[0] : 'N/A';
-                      })()}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded-lg">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Revenue:</span>
-                    <span className="text-lg font-bold text-green-600">
-                      ${(() => {
-                        const total = appointments.reduce((sum, apt) => {
-                          const price = apt.price ? parseInt(apt.price.replace(/\D/g, '')) || 150 : 150;
-                          return sum + price;
-                        }, 0);
-                        return total.toLocaleString();
-                      })()}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-4 text-gray-500 dark:text-gray-400">
-                  <p>No appointments for this date</p>
-                  <p className="text-sm mt-1">Select a different date to view insights</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
 
-          <Card className="mt-4 bg-white/95 dark:bg-gray-800/95 text-gray-800 dark:text-gray-100 shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-blue-800 dark:text-blue-200">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Button className="w-full justify-start bg-blue-600 hover:bg-blue-700" onClick={() => setLocation('/service-history')}>
-                <User className="mr-2 h-4 w-4" />
-                Customer Service History
-              </Button>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+          >
+            <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Sparkles className="mr-2 h-5 w-5 text-cyan-400" />
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                    Quick Actions
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button 
+                  className="w-full justify-start backdrop-blur-md bg-gradient-to-r from-blue-500/80 to-cyan-500/80 hover:from-blue-600/80 hover:to-cyan-600/80 border-white/20 text-white transition-all duration-300" 
+                  onClick={() => setLocation('/service-history')}
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  Customer Service History
+                </Button>
 
-              <Button className="w-full justify-start bg-purple-600 hover:bg-purple-700" onClick={() => setLocation('/user-management')}>
-                <Users className="mr-2 h-4 w-4" />
-                User Management
-              </Button>
-            </CardContent>
-          </Card>
+                <Button 
+                  className="w-full justify-start backdrop-blur-md bg-gradient-to-r from-purple-500/80 to-pink-500/80 hover:from-purple-600/80 hover:to-pink-600/80 border-white/20 text-white transition-all duration-300" 
+                  onClick={() => setLocation('/user-management')}
+                >
+                  <Users className="mr-2 h-4 w-4" />
+                  User Management
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </div>
     </div>

@@ -22,6 +22,7 @@ import { Home, Moon, Sun, Mail } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
 import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
+import { InstallPromptBanner, OfflineIndicator } from "@/components/PwaComponents";
 
 interface Appointment {
   id: string;
@@ -294,6 +295,8 @@ export default function Dashboard() {
 
   return (
     <>
+      <OfflineIndicator />
+      <InstallPromptBanner />
       <AppShell title="Dashboard" pageActions={pageActions}>
         <DashboardOverview
           darkMode={darkMode}

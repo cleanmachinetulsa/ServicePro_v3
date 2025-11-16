@@ -3,6 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { useKeyboardDismiss } from "@/hooks/useKeyboardDismiss";
+import { PwaProvider } from "@/contexts/PwaContext";
 import NotFound from "@/pages/not-found";
 import ChatPage from "@/pages/chat";
 import DirectionsPage from "@/pages/directions";
@@ -271,12 +272,14 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Toaster />
-      <PasswordChangeModal />
-      <BannerDisplay />
-      <Router />
-      {/* Only show dashboard button on admin pages (except dashboard, messages, phone which have own nav) */}
-      {!isCustomerFacingPage() && !location.startsWith('/dashboard') && !location.startsWith('/messages') && !location.startsWith('/phone') && !location.startsWith('/notifications-settings') && <DashboardNavButton />}
+      <PwaProvider>
+        <Toaster />
+        <PasswordChangeModal />
+        <BannerDisplay />
+        <Router />
+        {/* Only show dashboard button on admin pages (except dashboard, messages, phone which have own nav) */}
+        {!isCustomerFacingPage() && !location.startsWith('/dashboard') && !location.startsWith('/messages') && !location.startsWith('/phone') && !location.startsWith('/notifications-settings') && <DashboardNavButton />}
+      </PwaProvider>
     </QueryClientProvider>
   );
 }
