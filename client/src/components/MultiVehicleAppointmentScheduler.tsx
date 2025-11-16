@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,38 @@ import WeatherAlertDialog from "./WeatherAlertDialog";
 import BookingLoyaltyDisplay from "./BookingLoyaltyDisplay";
 import BookingPriceCalculator from "./BookingPriceCalculator";
 import { SMSConsentCheckbox } from "./SMSConsentCheckbox";
-import { Plus, X } from "lucide-react";
+import { 
+  Plus, 
+  X, 
+  MapPin, 
+  Zap, 
+  Car, 
+  Calendar as CalendarIcon, 
+  Clock, 
+  CheckCircle2,
+  Sparkles,
+  Award
+} from "lucide-react";
+
+// Premium Design Tokens
+const GLASS_CARD = "bg-gray-900/40 backdrop-blur-xl border border-blue-500/20 shadow-2xl shadow-blue-500/10";
+const GRADIENT_TEXT = "bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200";
+const GRADIENT_BUTTON = "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400";
+const STEP_INDICATOR_ACTIVE = "bg-blue-500 text-white shadow-lg shadow-blue-500/50";
+const STEP_INDICATOR_COMPLETE = "bg-green-500 text-white shadow-lg shadow-green-500/50";
+const STEP_INDICATOR_PENDING = "bg-gray-700/50 text-gray-400 border border-gray-600/30";
+
+// Motion variants for step transitions
+const stepVariants = {
+  enter: { opacity: 0, x: 20 },
+  center: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -20 }
+};
+
+const stepTransition = {
+  duration: 0.3,
+  ease: "easeInOut"
+};
 
 interface AppointmentSchedulerProps {
   onClose: () => void;
@@ -819,13 +850,120 @@ export default function MultiVehicleAppointmentScheduler({
     return total;
   };
 
+  // Step configuration
+  const steps = [
+    { id: "address", label: "Address", icon: MapPin },
+    { id: "accessVerification", label: "Access", icon: Zap },
+    { id: "service", label: "Service", icon: Sparkles },
+    { id: "addons", label: "Add-ons", icon: Award },
+    { id: "vehicle", label: "Vehicle", icon: Car },
+    { id: "date", label: "Date", icon: CalendarIcon },
+    { id: "time", label: "Time", icon: Clock },
+    { id: "details", label: "Confirm", icon: CheckCircle2 }
+  ];
+
+  const currentStepIndex = steps.findIndex(s => s.id === step);
+  
+  const getStepStatus = (index: number) => {
+    if (index < currentStepIndex) return "complete";
+    if (index === currentStepIndex) return "active";
+    return "pending";
+  };
+
   return (
-    <div className="w-full h-full flex flex-col bg-gradient-to-b from-gray-900 via-blue-950/10 to-black text-white">
+    <div className="w-full h-full flex flex-col bg-gradient-to-b from-gray-900 via-blue-950/10 to-black text-white relative overflow-hidden">
+      {/* Premium background blur orbs */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <motion.div 
+          className="absolute top-[10%] left-[15%] w-96 h-96 bg-blue-500/5 rounded-full filter blur-3xl"
+          animate={{ 
+            scale: [1, 1.2, 1],
+            opacity: [0.3, 0.5, 0.3]
+          }}
+          transition={{ 
+            duration: 8,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+        <motion.div 
+          className="absolute bottom-[20%] right-[10%] w-80 h-80 bg-blue-600/5 rounded-full filter blur-3xl"
+          animate={{ 
+            scale: [1, 1.3, 1],
+            opacity: [0.3, 0.5, 0.3]
+          }}
+          transition={{ 
+            duration: 10,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: 1
+          }}
+        />
+      </div>
+
       {/* Header */}
-      <div className="p-6 pb-3 text-center border-b border-blue-400/10 flex-shrink-0">
-        <h2 className="text-xl md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200">
+      <motion.div 
+        className="p-6 pb-3 text-center border-b border-blue-400/10 flex-shrink-0 relative z-10"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <h2 className={`text-xl md:text-2xl font-bold ${GRADIENT_TEXT}`}>
           Schedule an Appointment
         </h2>
+      </motion.div>
+
+      {/* Premium Step Indicator */}
+      <div className="px-6 py-4 border-b border-blue-400/10 relative z-10">
+        <div className="flex items-center justify-between max-w-4xl mx-auto">
+          {steps.map((stepInfo, index) => {
+            const status = getStepStatus(index);
+            const StepIcon = stepInfo.icon;
+            
+            return (
+              <div key={stepInfo.id} className="flex items-center flex-1">
+                <motion.div
+                  className="flex flex-col items-center"
+                  initial={false}
+                  animate={{ scale: status === "active" ? 1.1 : 1 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <motion.div
+                    className={`
+                      w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold mb-1
+                      transition-all duration-300
+                      ${status === "active" ? STEP_INDICATOR_ACTIVE : ""}
+                      ${status === "complete" ? STEP_INDICATOR_COMPLETE : ""}
+                      ${status === "pending" ? STEP_INDICATOR_PENDING : ""}
+                    `}
+                    whileHover={{ scale: 1.05 }}
+                  >
+                    {status === "complete" ? (
+                      <CheckCircle2 className="w-5 h-5" />
+                    ) : (
+                      <StepIcon className="w-5 h-5" />
+                    )}
+                  </motion.div>
+                  <span className={`text-xs hidden md:block ${status === "active" ? "text-blue-300 font-medium" : "text-gray-500"}`}>
+                    {stepInfo.label}
+                  </span>
+                </motion.div>
+                
+                {/* Connector line */}
+                {index < steps.length - 1 && (
+                  <div className="flex-1 h-0.5 mx-2 bg-gray-700/30 relative">
+                    <motion.div
+                      className="h-full bg-blue-500"
+                      initial={{ width: "0%" }}
+                      animate={{ width: index < currentStepIndex ? "100%" : "0%" }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Weather Alert Dialog */}
@@ -840,162 +978,275 @@ export default function MultiVehicleAppointmentScheduler({
         selectedService={selectedService?.name || ''}
       />
 
-      {/* Content Area - Single scroll container */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
+      {/* Content Area with AnimatePresence for smooth transitions */}
+      <div className="flex-1 overflow-y-auto px-6 pb-6 relative z-10">
+        <AnimatePresence mode="wait">
         {step === "address" && (
-          <ServiceAreaCheck
-            onNext={handleAddressNext}
-            onBack={onClose || (() => {})}
-          />
+          <motion.div
+            key="address"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+          >
+            <ServiceAreaCheck
+              onNext={handleAddressNext}
+              onBack={onClose || (() => {})}
+            />
+          </motion.div>
         )}
 
         {step === "accessVerification" && (
-          <PowerWaterAccessVerification
-            onConfirm={handleAccessVerificationNext}
-            onBack={handleAccessVerificationBack}
-            locationType="house"
-          />
+          <motion.div
+            key="accessVerification"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+          >
+            <PowerWaterAccessVerification
+              onConfirm={handleAccessVerificationNext}
+              onBack={handleAccessVerificationBack}
+              locationType="house"
+            />
+          </motion.div>
         )}
 
         {step === "service" && (
-          <div className="space-y-4">
-            <Label className="text-blue-100">Select a Service</Label>
-            {isLoadingServices ? (
-              <div className="py-8 text-center text-blue-200/70">Loading services...</div>
-            ) : services.length > 0 ? (
-              <div className="grid gap-2 max-h-[300px] overflow-y-auto">
-                {services.map((service) => (
-                  <div
-                    key={service.name}
-                    className={`relative rounded-md border p-3 transition-all cursor-pointer ${
-                      selectedService?.name === service.name
-                        ? "border-blue-400 bg-blue-500/20 shadow-lg shadow-blue-500/20"
-                        : "border-blue-400/20 bg-gray-700/30 hover:bg-gray-700/50 hover:border-blue-400/40"
-                    }`}
-                    onClick={() => handleServiceSelect(service)}
+          <motion.div
+            key="service"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+            className="space-y-4"
+          >
+            <div className={`${GLASS_CARD} rounded-xl p-6`}>
+              <h3 className={`text-lg font-semibold mb-4 ${GRADIENT_TEXT}`}>
+                <Sparkles className="w-5 h-5 inline mr-2" />
+                Select Your Service
+              </h3>
+              {isLoadingServices ? (
+                <div className="py-8 text-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full mx-auto"
+                  />
+                  <p className="text-blue-200/70 mt-4">Loading services...</p>
+                </div>
+              ) : services.length > 0 ? (
+                <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2">
+                  {services.map((service, index) => (
+                    <motion.div
+                      key={service.name}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      className={`
+                        relative rounded-lg border p-4 cursor-pointer transition-all duration-200
+                        ${selectedService?.name === service.name
+                          ? "border-blue-400 bg-gradient-to-br from-blue-500/20 to-blue-600/10 shadow-lg shadow-blue-500/20"
+                          : "border-blue-400/20 bg-gray-800/40 hover:bg-gray-800/60 hover:border-blue-400/40 hover:shadow-lg"
+                        }
+                      `}
+                      onClick={() => handleServiceSelect(service)}
+                    >
+                      {selectedService?.name === service.name && (
+                        <motion.div
+                          layoutId="selected-service"
+                          className="absolute inset-0 border-2 border-blue-400 rounded-lg"
+                          initial={false}
+                          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        />
+                      )}
+                      <div className="flex flex-col">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-semibold text-blue-100 flex items-center">
+                            <Sparkles className="w-4 h-4 mr-2 text-blue-400" />
+                            {service.name}
+                          </div>
+                          <div className="text-blue-300 whitespace-nowrap font-bold bg-blue-500/10 px-3 py-1 rounded-full">
+                            {service.priceRange}
+                          </div>
+                        </div>
+                        <p className="text-sm text-blue-200/70 mb-2">{service.description}</p>
+                        <div className="flex items-center text-xs text-blue-300/60">
+                          <Clock className="w-3 h-3 mr-1" />
+                          <span>{service.duration}</span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <p className="text-blue-200/70 mb-4">No services available</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-blue-400/30 text-blue-200 hover:bg-blue-500/20"
+                    onClick={onClose}
                   >
-                    <div className="flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium text-blue-100">{service.name}</div>
-                        <div className="text-blue-300 whitespace-nowrap font-semibold">{service.priceRange}</div>
-                      </div>
-                      <p className="text-sm text-blue-200/60 mt-1">{service.description}</p>
-                      <div className="flex items-center mt-2 text-xs text-blue-200/50">
-                        <span>Estimated Duration: {service.duration}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-4 text-center">
-                <p className="text-blue-200/70">No services available</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2 border-blue-400/30 text-blue-200 hover:bg-blue-500/20"
-                  onClick={onClose}
-                >
-                  Close
-                </Button>
-              </div>
-            )}
-          </div>
+                    Close
+                  </Button>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
 
         {step === "addons" && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <Label className="text-lg text-blue-100">Add-On Services</Label>
-                <p className="text-sm text-blue-200/60 mt-1">
-                  Optional services to enhance your {selectedService?.name}
-                </p>
+          <motion.div
+            key="addons"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+            className="space-y-4"
+          >
+            <div className={`${GLASS_CARD} rounded-xl p-6`}>
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className={`text-lg font-semibold ${GRADIENT_TEXT}`}>
+                    <Award className="w-5 h-5 inline mr-2" />
+                    Enhance Your Service
+                  </h3>
+                  <p className="text-sm text-blue-200/60 mt-1">
+                    Add optional upgrades to {selectedService?.name}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-200 hover:bg-blue-500/20"
+                  onClick={() => setStep("service")}
+                >
+                  Back
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-blue-200 hover:bg-blue-500/20"
-                onClick={() => setStep("service")}
-              >
-                Back
-              </Button>
-            </div>
 
-            {isLoadingAddOns ? (
-              <div className="py-8 text-center text-blue-200/70">Loading add-on options...</div>
-            ) : addOnServices.length > 0 ? (
-              <div className="space-y-4 max-h-[300px] overflow-y-auto pb-4">
-                {addOnServices.map((addon) => (
-                  <div
-                    key={addon.name}
-                    className={`relative rounded-md border p-3 transition-all ${
-                      selectedAddOns.includes(addon.name)
-                        ? "border-blue-400 bg-blue-500/20 shadow-lg shadow-blue-500/20"
-                        : addon.recommended
-                          ? "border-amber-400/40 bg-amber-500/10"
-                          : "border-blue-400/20 bg-gray-700/30"
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center">
+              {isLoadingAddOns ? (
+                <div className="py-8 text-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full mx-auto"
+                  />
+                  <p className="text-blue-200/70 mt-4">Loading add-on options...</p>
+                </div>
+              ) : addOnServices.length > 0 ? (
+                <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2">
+                  {addOnServices.map((addon, index) => (
+                    <motion.div
+                      key={addon.name}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      whileHover={{ scale: 1.01 }}
+                      className={`
+                        relative rounded-lg border p-4 cursor-pointer transition-all duration-200
+                        ${selectedAddOns.includes(addon.name)
+                          ? "border-blue-400 bg-gradient-to-br from-blue-500/20 to-blue-600/10 shadow-lg shadow-blue-500/20"
+                          : addon.recommended
+                            ? "border-amber-400/40 bg-gradient-to-br from-amber-500/10 to-amber-600/5"
+                            : "border-blue-400/20 bg-gray-800/40 hover:bg-gray-800/60"
+                        }
+                      `}
+                      onClick={() => toggleAddOn(addon.name)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1 flex items-start">
                           <Checkbox
                             id={`addon-${addon.name}`}
                             checked={selectedAddOns.includes(addon.name)}
                             onCheckedChange={() => toggleAddOn(addon.name)}
-                            className="border-blue-400/40"
+                            className="mt-1 border-blue-400/40"
                           />
-                          <label
-                            htmlFor={`addon-${addon.name}`}
-                            className="ml-2 font-medium cursor-pointer text-blue-100"
-                          >
-                            {addon.name} {addon.recommended && <Badge variant="outline" className="ml-2 text-xs bg-amber-500/20 text-amber-200 border-amber-400/40">Recommended</Badge>}
-                          </label>
+                          <div className="ml-3 flex-1">
+                            <label
+                              htmlFor={`addon-${addon.name}`}
+                              className="font-semibold cursor-pointer text-blue-100 flex items-center"
+                            >
+                              {addon.name}
+                              {addon.recommended && (
+                                <motion.div
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  transition={{ delay: 0.2 }}
+                                >
+                                  <Badge className="ml-2 text-xs bg-amber-500/30 text-amber-200 border-amber-400/50">
+                                    ⭐ Recommended
+                                  </Badge>
+                                </motion.div>
+                              )}
+                            </label>
+                            <p className="text-sm text-blue-200/70 mt-1">{addon.description}</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-blue-200/60 mt-1 ml-6">{addon.description}</p>
+                        <div className="text-blue-300 font-bold whitespace-nowrap ml-3 bg-blue-500/10 px-3 py-1 rounded-full">
+                          {addon.priceRange}
+                        </div>
                       </div>
-                      <div className="text-blue-300 font-semibold whitespace-nowrap ml-2">
-                        {addon.priceRange}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-4 text-center text-blue-200/60">
-                No add-on services available for this service
-              </div>
-            )}
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <p className="text-blue-200/60">No add-on services available for this service</p>
+                </div>
+              )}
 
-            <div className="flex justify-end mt-6">
-              <Button
-                type="button"
-                onClick={handleAddOnsComplete}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Continue to Vehicle Information
-              </Button>
+              <div className="flex justify-between items-center mt-6 pt-4 border-t border-blue-400/10">
+                <p className="text-sm text-blue-300/70">
+                  {selectedAddOns.length} add-on{selectedAddOns.length !== 1 ? 's' : ''} selected
+                </p>
+                <Button
+                  type="button"
+                  onClick={handleAddOnsComplete}
+                  className={`${GRADIENT_BUTTON} shadow-lg shadow-blue-500/30 transition-all hover:scale-105`}
+                >
+                  Continue to Vehicle Information
+                </Button>
+              </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {step === "vehicle" && (
-          <div className="space-y-4 max-h-[calc(100vh-240px)] overflow-y-auto pb-4">
-            <div className="flex justify-between items-center mb-2 sticky top-0 bg-gray-800/90 backdrop-blur-sm pt-2 pb-2 z-10">
-              <div>
-                <Label className="text-lg text-blue-100">Vehicle Information</Label>
-                <p className="text-sm text-blue-200/60 mt-1">Please provide details about your vehicle</p>
+          <motion.div
+            key="vehicle"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+            className="space-y-4"
+          >
+            <div className={`${GLASS_CARD} rounded-xl p-6 max-h-[calc(100vh-300px)] overflow-y-auto`}>
+              <div className="flex justify-between items-center mb-4 sticky top-0 bg-gray-900/90 backdrop-blur-sm pt-2 pb-2 z-10">
+                <div>
+                  <h3 className={`text-lg font-semibold ${GRADIENT_TEXT}`}>
+                    <Car className="w-5 h-5 inline mr-2" />
+                    Vehicle Information
+                  </h3>
+                  <p className="text-sm text-blue-200/60 mt-1">Tell us about your vehicle{vehicles.length > 1 ? 's' : ''}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-200 hover:bg-blue-500/20"
+                  onClick={() => setStep("addons")}
+                >
+                  Back
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-blue-200 hover:bg-blue-500/20"
-                onClick={() => setStep("addons")}
-              >
-                Back
-              </Button>
-            </div>
 
             {/* Vehicle Tabs for multi-vehicle selection */}
             {vehicles.length > 1 && (
@@ -1204,135 +1455,197 @@ export default function MultiVehicleAppointmentScheduler({
               </div>
             </div>
 
-            {/* Add another vehicle button */}
-            <div className="mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={addVehicle}
-                className="w-full border-dashed border-blue-400/40 text-blue-200 hover:bg-blue-500/20 hover:border-blue-400 flex items-center justify-center"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Another Vehicle
-              </Button>
-            </div>
+              {/* Add another vehicle button */}
+              <div className="mt-6 pt-4 border-t border-blue-400/10">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addVehicle}
+                  className="w-full border-dashed border-blue-400/40 text-blue-200 hover:bg-blue-500/20 hover:border-blue-400 flex items-center justify-center"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Another Vehicle
+                </Button>
+              </div>
 
-            <div className="flex justify-end mt-6">
-              <Button
-                type="button"
-                onClick={handleVehicleComplete}
-                disabled={!currentVehicle.make || !currentVehicle.model || !currentVehicle.year}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Continue to Date Selection
-              </Button>
+              <div className="flex justify-end mt-6 pt-4 border-t border-blue-400/10">
+                <Button
+                  type="button"
+                  onClick={handleVehicleComplete}
+                  disabled={!currentVehicle.make || !currentVehicle.model || !currentVehicle.year}
+                  className={`${GRADIENT_BUTTON} shadow-lg shadow-blue-500/30 transition-all hover:scale-105`}
+                >
+                  Continue to Date Selection
+                </Button>
+              </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {step === "date" && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <Label className="text-lg text-blue-100">Select a Date</Label>
-                <p className="text-sm text-blue-200/60 mt-1">
-                  Choose your preferred appointment date
-                </p>
+          <motion.div
+            key="date"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+            className="space-y-4"
+          >
+            <div className={`${GLASS_CARD} rounded-xl p-6`}>
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className={`text-lg font-semibold ${GRADIENT_TEXT}`}>
+                    <CalendarIcon className="w-5 h-5 inline mr-2" />
+                    Select Your Date
+                  </h3>
+                  <p className="text-sm text-blue-200/60 mt-1">
+                    Choose your preferred appointment date
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-200 hover:bg-blue-500/20"
+                  onClick={() => setStep("vehicle")}
+                >
+                  Back
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-blue-200 hover:bg-blue-500/20"
-                onClick={() => setStep("vehicle")}
-              >
-                Back
-              </Button>
-            </div>
 
-            {isLoading ? (
-              <div className="py-8 text-center text-blue-200/70">Loading available dates...</div>
-            ) : (
-              <div className="py-4 flex justify-center">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={handleDateSelect}
-                  disabled={(date) => {
-                    return (
-                      isBefore(date, new Date()) || // Disable past dates
-                      isWeekend(date) || // Disable weekends
-                      !availableDates.some(availableDate => // Disable dates not in availableDates
-                        isSameDay(availableDate, date)
-                      )
-                    );
-                  }}
-                  className="rounded-md border border-blue-400/30 p-2 bg-gray-700/20"
-                />
-              </div>
-            )}
-          </div>
+              {isLoading ? (
+                <div className="py-8 text-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full mx-auto"
+                  />
+                  <p className="text-blue-200/70 mt-4">Loading available dates...</p>
+                </div>
+              ) : (
+                <div className="py-4 flex justify-center">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={handleDateSelect}
+                    disabled={(date) => {
+                      return (
+                        isBefore(date, new Date()) ||
+                        isWeekend(date) ||
+                        !availableDates.some(availableDate =>
+                          isSameDay(availableDate, date)
+                        )
+                      );
+                    }}
+                    className="rounded-md border border-blue-400/30 p-2 bg-gray-800/40"
+                  />
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
 
         {step === "time" && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <Label className="text-lg text-blue-100">Select a Time</Label>
-                <p className="text-sm text-blue-200/60 mt-1">
-                  {selectedDate ? `For ${format(selectedDate, 'EEEE, MMMM d, yyyy')}` : ''}
-                </p>
+          <motion.div
+            key="time"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+            className="space-y-4"
+          >
+            <div className={`${GLASS_CARD} rounded-xl p-6`}>
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className={`text-lg font-semibold ${GRADIENT_TEXT}`}>
+                    <Clock className="w-5 h-5 inline mr-2" />
+                    Select Your Time
+                  </h3>
+                  <p className="text-sm text-blue-200/60 mt-1">
+                    {selectedDate ? `For ${format(selectedDate, 'EEEE, MMMM d, yyyy')}` : ''}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-200 hover:bg-blue-500/20"
+                  onClick={() => setStep("date")}
+                >
+                  Back
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-blue-200 hover:bg-blue-500/20"
-                onClick={() => setStep("date")}
-              >
-                Back
-              </Button>
-            </div>
 
-            {isLoading ? (
-              <div className="py-8 text-center text-blue-200/70">Loading available times...</div>
-            ) : getTimeSlotsForSelectedDate().length > 0 ? (
-              <div className="grid gap-2 max-h-[300px] overflow-y-auto">
-                {getTimeSlotsForSelectedDate().map((slot) => (
-                  <Button
-                    key={slot}
-                    variant="outline"
-                    className="justify-start h-auto py-3 px-4 text-left border-blue-400/30 text-blue-100 hover:bg-blue-500/20 hover:border-blue-400"
-                    onClick={() => handleTimeSelect(slot)}
-                  >
-                    {formatTimeSlot(slot)}
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <div className="py-4 text-center text-blue-200/70">
-                No available times found for {selectedService?.name}.
-              </div>
-            )}
-          </div>
+              {isLoading ? (
+                <div className="py-8 text-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full mx-auto"
+                  />
+                  <p className="text-blue-200/70 mt-4">Loading available times...</p>
+                </div>
+              ) : getTimeSlotsForSelectedDate().length > 0 ? (
+                <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2">
+                  {getTimeSlotsForSelectedDate().map((slot, index) => (
+                    <motion.div
+                      key={slot}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      whileHover={{ scale: 1.01, x: 4 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start h-auto py-3 px-4 text-left border-blue-400/30 text-blue-100 hover:bg-blue-500/20 hover:border-blue-400"
+                        onClick={() => handleTimeSelect(slot)}
+                      >
+                        <Clock className="w-4 h-4 mr-3 text-blue-400" />
+                        {formatTimeSlot(slot)}
+                      </Button>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center">
+                  <p className="text-blue-200/70">No available times found for {selectedService?.name}.</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
 
         {step === "details" && (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <Label className="text-lg text-blue-100">Contact Information</Label>
-                <p className="text-sm text-blue-200/60 mt-1">
-                  Please provide your contact details
-                </p>
+          <motion.div
+            key="details"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+            className="space-y-4"
+          >
+            <form onSubmit={handleSubmit} className={`${GLASS_CARD} rounded-xl p-6 space-y-4`}>
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h3 className={`text-lg font-semibold ${GRADIENT_TEXT}`}>
+                    <CheckCircle2 className="w-5 h-5 inline mr-2" />
+                    Confirm & Book
+                  </h3>
+                  <p className="text-sm text-blue-200/60 mt-1">
+                    Final details to complete your booking
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-blue-200 hover:bg-blue-500/20"
+                  onClick={() => setStep("time")}
+                >
+                  Back
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-blue-200 hover:bg-blue-500/20"
-                onClick={() => setStep("time")}
-              >
-                Back
-              </Button>
-            </div>
 
             <div>
               <Label htmlFor="name" className="text-blue-100">Full Name *</Label>
@@ -1436,17 +1749,35 @@ export default function MultiVehicleAppointmentScheduler({
               pointsEarningRate={1}
             />
 
-            <div className="pt-6 pb-2">
-              <Button
-                type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg shadow-blue-500/30"
-                disabled={isLoading}
-              >
-                {isLoading ? "Booking..." : "Confirm Appointment"}
-              </Button>
-            </div>
-          </form>
+              <div className="pt-6 pb-2 border-t border-blue-400/10">
+                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                  <Button
+                    type="submit"
+                    className={`w-full ${GRADIENT_BUTTON} text-white font-semibold shadow-lg shadow-blue-500/30 transition-all`}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block mr-2"
+                        />
+                        Booking...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 inline mr-2" />
+                        Confirm Appointment
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
+              </div>
+            </form>
+          </motion.div>
         )}
+      </AnimatePresence>
       </div>
     </div>
   );
