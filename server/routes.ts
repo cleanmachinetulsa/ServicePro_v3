@@ -998,6 +998,248 @@ export async function registerRoutes(app: Express) {
       .replace(/'/g, '&apos;');
   };
 
+  // ==================== REMINDER ACTION ENDPOINTS (Phase 4D) ====================
+  
+  /**
+   * PUBLIC endpoint: One-click booking from reminder SMS
+   * Verifies token and redirects to booking page with prefilled customer data
+   */
+  app.get('/api/public/reminder/book', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.query;
+      
+      if (!token || typeof token !== 'string') {
+        return res.status(400).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>❌ Invalid Link</h1>
+              <p>This booking link is invalid or has expired.</p>
+            </body>
+          </html>
+        `);
+      }
+      
+      const { verifyBookingToken } = await import('./reminderActionTokens');
+      const payload = verifyBookingToken(token);
+      
+      if (!payload) {
+        return res.status(400).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>⏰ Link Expired</h1>
+              <p>This booking link has expired (links are valid for 24 hours).</p>
+              <p><a href="/book">Click here to book manually</a></p>
+            </body>
+          </html>
+        `);
+      }
+      
+      // Fetch customer data for prefilling
+      const { customers, reminderJobs, reminderEvents } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const customer = await db.query.customers.findFirst({
+        where: eq(customers.id, payload.customerId),
+      });
+      
+      if (!customer) {
+        return res.status(404).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>❌ Customer Not Found</h1>
+              <p><a href="/book">Click here to book manually</a></p>
+            </body>
+          </html>
+        `);
+      }
+      
+      // Log event to reminder_events
+      await db.insert(reminderEvents).values({
+        jobId: payload.jobId,
+        eventType: 'clicked',
+        eventData: { action: 'booking_link_clicked', timestamp: new Date().toISOString() },
+      });
+      
+      console.log(`[REMINDER BOOK] Customer ${customer.id} clicked booking link for job ${payload.jobId}`);
+      
+      // Build prefilled booking URL with query params
+      const params = new URLSearchParams();
+      if (customer.name) params.append('name', customer.name);
+      if (customer.phone) params.append('phone', customer.phone);
+      
+      const redirectUrl = `/book?${params.toString()}`;
+      
+      // Redirect to booking page
+      return res.redirect(redirectUrl);
+      
+    } catch (error) {
+      console.error('[REMINDER BOOK] Error processing booking link:', error);
+      return res.status(500).send(`
+        <html>
+          <body style="font-family: Arial; padding: 20px; text-align: center;">
+            <h1>❌ Error</h1>
+            <p>Something went wrong. Please try again.</p>
+            <p><a href="/book">Click here to book manually</a></p>
+          </body>
+        </html>
+      `);
+    }
+  });
+  
+  /**
+   * PUBLIC endpoint: One-click snooze from reminder SMS
+   * Snoozes reminder for 7 days and creates new job
+   */
+  app.get('/api/public/reminder/snooze', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.query;
+      
+      if (!token || typeof token !== 'string') {
+        return res.status(400).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>❌ Invalid Link</h1>
+              <p>This snooze link is invalid or has expired.</p>
+            </body>
+          </html>
+        `);
+      }
+      
+      const { verifySnoozeToken } = await import('./reminderActionTokens');
+      const payload = verifySnoozeToken(token);
+      
+      if (!payload) {
+        return res.status(400).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>⏰ Link Expired</h1>
+              <p>This snooze link has expired (links are valid for 24 hours).</p>
+            </body>
+          </html>
+        `);
+      }
+      
+      const { reminderJobs, reminderSnoozes, reminderEvents } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const { addDays } = await import('date-fns');
+      
+      // Get the original job
+      const job = await db.query.reminderJobs.findFirst({
+        where: eq(reminderJobs.id, payload.jobId),
+      });
+      
+      if (!job) {
+        return res.status(404).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>❌ Reminder Not Found</h1>
+              <p>This reminder no longer exists.</p>
+            </body>
+          </html>
+        `);
+      }
+      
+      // BUG FIX #3: Validate job status - only pending jobs can be snoozed
+      if (job.status !== 'pending') {
+        return res.status(400).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>⚠️ Cannot Snooze Reminder</h1>
+              <p>This reminder is no longer active (status: ${job.status}).</p>
+              <p style="color: #666; margin-top: 20px;">You can only snooze pending reminders.</p>
+            </body>
+          </html>
+        `);
+      }
+      
+      // BUG FIX #3: Check for existing snooze - prevent duplicates
+      const existingSnoozes = await db.query.reminderSnoozes.findMany({
+        where: eq(reminderSnoozes.jobId, payload.jobId),
+      });
+      
+      if (existingSnoozes.length > 0) {
+        return res.status(400).send(`
+          <html>
+            <body style="font-family: Arial; padding: 20px; text-align: center;">
+              <h1>⏰ Already Snoozed</h1>
+              <p>This reminder has already been snoozed.</p>
+              <p style="color: #666; margin-top: 20px;">You'll receive a new reminder on the scheduled date.</p>
+            </body>
+          </html>
+        `);
+      }
+      
+      // Create snooze record
+      const snoozeDays = 7;
+      const snoozedUntil = addDays(new Date(), snoozeDays);
+      
+      await db.insert(reminderSnoozes).values({
+        jobId: payload.jobId,
+        customerId: payload.customerId,
+        snoozedUntil,
+        snoozeDuration: `${snoozeDays} days`,
+      });
+      
+      // Update original job status
+      await db.update(reminderJobs)
+        .set({ status: 'snoozed' })
+        .where(eq(reminderJobs.id, payload.jobId));
+      
+      // Create new job scheduled for snoozedUntil date
+      await db.insert(reminderJobs).values({
+        ruleId: job.ruleId,
+        customerId: job.customerId,
+        scheduledFor: snoozedUntil,
+        status: 'pending',
+        messageContent: null, // Will be regenerated when sent
+      });
+      
+      // Log event
+      await db.insert(reminderEvents).values({
+        jobId: payload.jobId,
+        eventType: 'snoozed',
+        eventData: { 
+          action: 'reminder_snoozed', 
+          snoozeDays,
+          newScheduledDate: snoozedUntil.toISOString(),
+          timestamp: new Date().toISOString() 
+        },
+      });
+      
+      console.log(`[REMINDER SNOOZE] Job ${payload.jobId} snoozed for ${snoozeDays} days until ${snoozedUntil.toISOString()}`);
+      
+      // Return success page
+      return res.send(`
+        <html>
+          <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+          </head>
+          <body style="font-family: Arial; padding: 20px; text-align: center; background: #f5f5f5;">
+            <div style="max-width: 400px; margin: 40px auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <h1 style="color: #2563eb;">✅ Reminder Snoozed</h1>
+              <p style="color: #666; font-size: 16px;">We'll remind you again in ${snoozeDays} days!</p>
+              <p style="color: #999; font-size: 14px;">Next reminder: ${snoozedUntil.toLocaleDateString()}</p>
+              <div style="margin-top: 30px;">
+                <a href="/book" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px;">Book Now Instead</a>
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+      
+    } catch (error) {
+      console.error('[REMINDER SNOOZE] Error processing snooze:', error);
+      return res.status(500).send(`
+        <html>
+          <body style="font-family: Arial; padding: 20px; text-align: center;">
+            <h1>❌ Error</h1>
+            <p>Something went wrong. Please try again.</p>
+          </body>
+        </html>
+      `);
+    }
+  });
+
   // SMS endpoint for chat and actual SMS
   // CRITICAL: Phone normalization for incoming Twilio SMS (field name: 'From')
   // SECURITY: Twilio signature verification enabled
@@ -2519,52 +2761,63 @@ export async function registerRoutes(app: Express) {
         with: { service: true },
       });
       
-      // Generate message with available context
-      let reminderMessage: string;
-      if (lastAppointment && rule) {
-        const daysSinceService = lastAppointment.scheduledTime 
-          ? differenceInDays(new Date(), new Date(lastAppointment.scheduledTime))
-          : 90;
-        
-        // BUG FIX #2: Wrap weather fetch in try/catch to prevent 500 errors
-        let weatherToday: string;
-        try {
-          const weatherResponse = await fetch(
-            'https://api.open-meteo.com/v1/forecast?latitude=36.15&longitude=-95.99&current_weather=true&temperature_unit=fahrenheit'
-          );
-          const weatherData = weatherResponse.ok ? await weatherResponse.json() : null;
-          weatherToday = weatherData?.current_weather 
-            ? `${weatherData.current_weather.weathercode <= 3 ? 'clear' : 'partly cloudy'} and ${Math.round(weatherData.current_weather.temperature)}°F`
-            : 'pleasant';
-        } catch (error) {
-          console.warn('[MANUAL REMINDER] Weather fetch failed, using defaults:', error);
-          weatherToday = 'clear and 65°F';
-        }
-        
-        reminderMessage = await generateReminderMessage(
-          {
-            id: customer.id,
-            name: customer.name,
-            phone: customer.phone || '',
-            loyaltyTier: customer.loyaltyTier || 'bronze',
-            lifetimeValue: customer.lifetimeValue || '0.00',
-          },
-          {
-            lastServiceDate: lastAppointment.scheduledTime || new Date(),
-            lastServiceName: lastAppointment.service?.name || 'detail service',
-            daysSinceService,
-            recommendedService: rule.service?.name || 'maintenance detail',
-            recommendedServicePrice: rule.service?.priceRange || '$150-200',
-            weatherToday,
-          }
-        );
-      } else {
-        // ISSUE #1 FIX: No appointment history - use generic fallback message
-        console.warn('[MANUAL REMINDER] No appointment history for customer, using generic fallback');
-        reminderMessage = `Hi ${customer.name}, we'd love to detail your vehicle again! Book online or call us at Clean Machine.`;
-      }
+      // PHASE 4D: Create job first, then generate personalized message with jobId for action links
+      const fallbackMessage = `Hi ${customer.name}, we'd love to detail your vehicle again! Book online or call us at Clean Machine.`;
+      const jobId = await createReminderJob(customerId, ruleId, new Date(), fallbackMessage);
       
-      const jobId = await createReminderJob(customerId, ruleId, new Date(), reminderMessage);
+      // Generate message with available context AND jobId for action links
+      let reminderMessage: string = fallbackMessage;
+      if (lastAppointment && rule) {
+        try {
+          const daysSinceService = lastAppointment.scheduledTime 
+            ? differenceInDays(new Date(), new Date(lastAppointment.scheduledTime))
+            : 90;
+          
+          // BUG FIX #2: Wrap weather fetch in try/catch to prevent 500 errors
+          let weatherToday: string;
+          try {
+            const weatherResponse = await fetch(
+              'https://api.open-meteo.com/v1/forecast?latitude=36.15&longitude=-95.99&current_weather=true&temperature_unit=fahrenheit'
+            );
+            const weatherData = weatherResponse.ok ? await weatherResponse.json() : null;
+            weatherToday = weatherData?.current_weather 
+              ? `${weatherData.current_weather.weathercode <= 3 ? 'clear' : 'partly cloudy'} and ${Math.round(weatherData.current_weather.temperature)}°F`
+              : 'pleasant';
+          } catch (error) {
+            console.warn('[MANUAL REMINDER] Weather fetch failed, using defaults:', error);
+            weatherToday = 'clear and 65°F';
+          }
+          
+          reminderMessage = await generateReminderMessage(
+            {
+              id: customer.id,
+              name: customer.name,
+              phone: customer.phone || '',
+              loyaltyTier: customer.loyaltyTier || 'bronze',
+              lifetimeValue: customer.lifetimeValue || '0.00',
+            },
+            {
+              lastServiceDate: lastAppointment.scheduledTime || new Date(),
+              lastServiceName: lastAppointment.service?.name || 'detail service',
+              daysSinceService,
+              recommendedService: rule.service?.name || 'maintenance detail',
+              recommendedServicePrice: rule.service?.priceRange || '$150-200',
+              weatherToday,
+            },
+            jobId  // PHASE 4D: Pass jobId for action links
+          );
+          
+          // Update job with personalized message
+          const { reminderJobs } = await import('@shared/schema');
+          await db.update(reminderJobs)
+            .set({ messageContent: reminderMessage })
+            .where(eq(reminderJobs.id, jobId));
+            
+        } catch (error) {
+          console.error('[MANUAL REMINDER] Error generating personalized message:', error);
+          // Job already created with fallback message
+        }
+      }
       
       res.json({
         success: true,

@@ -1,0 +1,109 @@
+### ADD-ON REQUIREMENT: INTERACTIVE "LIVE SANDBOX" AGENT EXPERIENCE
+
+In addition to everything already specified for the Clean Machine showcase page, I want a **highly interactive sandbox section** where visitors can **try the agent**, see **simulated SMS-style conversations**, and watch **automations and alerts fire in real time**.
+
+This is NOT connected to production infrastructure – it’s a **front-end simulation** that:
+- Feels like a real conversation with the Clean Machine agent.
+- Shows what happens "under the hood" as the agent triggers automations.
+- Lets visitors run **preset scenarios** (like “New lead inquiry”, “Rain reschedule”, “Follow-up reminder”, etc).
+
+---
+
+## NEW SECTION: LIVE SANDBOX / TRY THE AGENT
+
+Create a new section in the showcase page:
+
+- ID: `#sandbox`
+- Title: “Try the Clean Machine Agent”
+- Add this section to the sticky nav so users can jump straight to it.
+
+This section should have **three key parts**:
+
+1. **Mode & Scenario Selector (top bar / left side)**
+2. **Chat Simulator (primary focus)**
+3. **Automation Timeline / Under-the-Hood View (right side or bottom)**
+
+---
+
+### 1. MODE & SCENARIO SELECTOR
+
+At the top of the sandbox section, include:
+
+- **Mode tabs** (pills):
+  - “Free Play”
+  - “New Lead → Booking”
+  - “Rain Reschedule”
+  - “Follow-Up & Reviews”
+  - “Upsell & Packages”
+
+When a user clicks a mode:
+
+- It loads:
+  - A **preset starting conversation** (if scenario-based).
+  - A default “system state” for the automations.
+- It also updates a short description of what they’re about to experience.
+
+Visuals / UX:
+
+- Use pill-style buttons with smooth animated underline/indicator.
+- Show a 1–2 sentence description under the tabs:
+  - Example: “New Lead → Booking: Experience how Clean Machine greets a new customer, checks their location, and locks in a time slot—all over SMS.”
+
+---
+
+### 2. CHAT SIMULATOR (CORE INTERACTIVE PIECE)
+
+This is the main “wow” area.
+
+Implement a **chat-style interface** that looks like a modern messaging app:
+
+- Left/right bubbles for:
+  - **Customer** messages (visitor input).
+  - **Clean Machine Agent** replies (simulated).
+- A chat input at the bottom:
+  - Text field
+  - “Send” button
+  - (Optional) quick suggestion chips above the input for people who don’t know what to type.
+
+Important:
+
+- This sandbox does **NOT** need real AI. Instead:
+  - Use front-end logic and a **small state machine** to produce **plausible, helpful replies**, based on:
+    - Current mode (“New Lead”, “Rain”, etc.).
+    - Keywords in the visitor’s message (e.g. “tomorrow”, “rain”, “outside area”).
+    - A basic conversation state (e.g. “collecting address”, “offering times”, “confirming appointment”).
+
+Implement a very simple rule engine for the sandbox:
+
+- Example shape:
+
+```ts
+type SandboxMode =
+  | "free-play"
+  | "new-lead"
+  | "rain"
+  | "follow-up"
+  | "upsell";
+
+type ConversationStep =
+  | "greeting"
+  | "collecting_name"
+  | "collecting_address"
+  | "checking_service_area"
+  | "offering_slots"
+  | "confirming_booking"
+  | "post_job_followup"
+  | "review_request"
+  | "upsell_offer"
+  | "complete";
+
+interface SandboxState {
+  mode: SandboxMode;
+  step: ConversationStep;
+  messages: Array<{
+    id: string;
+    from: "customer" | "agent";
+    text: string;
+    timestamp: number;
+  }>;
+}
