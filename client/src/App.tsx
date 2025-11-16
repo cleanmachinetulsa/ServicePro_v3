@@ -60,6 +60,7 @@ import ReferralPage from './pages/ReferralPage';
 import PhoneSettingsPage from './pages/phone-settings';
 import Billing from './pages/billing';
 import EscalationsPage from './pages/escalations';
+import ReminderDashboard from './pages/ReminderDashboard';
 
 function Router() {
   return (
@@ -140,6 +141,9 @@ function Router() {
       </Route>
       <Route path="/escalations">
         <AuthGuard><EscalationsPage /></AuthGuard>
+      </Route>
+      <Route path="/reminders">
+        <AuthGuard><ReminderDashboard /></AuthGuard>
       </Route>
       <Route path="/notifications-settings">
         <AuthGuard><NotificationsSettings /></AuthGuard>
