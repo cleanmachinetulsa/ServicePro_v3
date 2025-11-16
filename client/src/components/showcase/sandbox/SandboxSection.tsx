@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { PillTabs } from '../shared/PillTabs';
@@ -13,9 +13,12 @@ export function SandboxSection() {
   const [mode, setMode] = useState<SandboxMode>('new-lead');
   const { messages, events, processMessage, reset } = useSandboxState(mode);
 
+  useEffect(() => {
+    reset();
+  }, [mode, reset]);
+
   const handleModeChange = (newMode: string) => {
     setMode(newMode as SandboxMode);
-    setTimeout(reset, 100); // Reset after mode change with slight delay
   };
 
   const handleReset = () => {
