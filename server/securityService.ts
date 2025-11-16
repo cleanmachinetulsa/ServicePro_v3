@@ -15,7 +15,7 @@ import { totpSecrets, loginAttempts, accountLockouts, auditLogs } from '../share
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 
 // ==================== 2FA / TOTP FUNCTIONALITY ====================
 

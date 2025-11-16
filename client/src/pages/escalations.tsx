@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle, Clock, Phone, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import AppShell from '@/components/AppShell';
+import { AppShell } from '@/components/AppShell';
 
 interface HumanEscalationRequest {
   id: number;

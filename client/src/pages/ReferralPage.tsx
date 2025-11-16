@@ -21,7 +21,7 @@ import {
   QrCode as QrCodeIcon,
   Search
 } from 'lucide-react';
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 import { AppShell } from '@/components/AppShell';
 
 interface ReferralStats {
