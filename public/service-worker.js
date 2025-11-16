@@ -1,10 +1,23 @@
-const CACHE_NAME = 'comm-hub-v16-force-update';
+// Cache version - increment to force update
+const CACHE_NAME = 'comm-hub-v17-force-update';
+
+// URLs to cache on install
 const urlsToCache = [
   '/',
   '/messages',
   '/index.html',
   '/manifest.json',
 ];
+
+// Dashboard data endpoints that use cache-first strategy
+const DASHBOARD_ENDPOINTS = [
+  '/api/dashboard',
+  '/api/appointments',
+  '/api/customers'
+];
+
+// Offline mutation queue (stored in memory)
+let offlineQueue = [];
 
 // Install service worker and cache app shell
 self.addEventListener('install', (event) => {
@@ -45,7 +58,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch strategy: Network first, fallback to cache
+// Fetch strategy: Smart caching based on resource type
 self.addEventListener('fetch', (event) => {
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
@@ -58,7 +71,48 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For API requests, always try network first
+  // Check if this is a dashboard data endpoint - use cache-first strategy
+  const isDashboardEndpoint = DASHBOARD_ENDPOINTS.some(endpoint => 
+    event.request.url.includes(endpoint)
+  );
+
+  if (isDashboardEndpoint) {
+    console.log('[ServiceWorker] Cache-first strategy for:', event.request.url);
+    event.respondWith(
+      caches.match(event.request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            console.log('[ServiceWorker] Serving from cache:', event.request.url);
+            // Return cached response immediately, but update cache in background
+            fetch(event.request)
+              .then((freshResponse) => {
+                if (freshResponse && freshResponse.status === 200) {
+                  caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, freshResponse.clone());
+                    console.log('[ServiceWorker] Updated cache for:', event.request.url);
+                  });
+                }
+              })
+              .catch(() => {
+                console.log('[ServiceWorker] Background update failed, using cached data');
+              });
+            return cachedResponse;
+          }
+          // No cache available, fetch from network
+          return fetch(event.request)
+            .then((response) => {
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+              });
+              return response;
+            });
+        })
+    );
+    return;
+  }
+
+  // For other API requests, always try network first
   if (event.request.url.includes('/api/')) {
     event.respondWith(
       fetch(event.request)
@@ -102,8 +156,61 @@ self.addEventListener('fetch', (event) => {
 
 // Listen for messages from the client
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event.data) return;
+
+  const { type, data } = event.data;
+
+  // Handle skip waiting for service worker updates
+  if (type === 'SKIP_WAITING') {
+    console.log('[ServiceWorker] Skip waiting requested');
     self.skipWaiting();
+    return;
+  }
+
+  // Handle badge updates using the Badge API
+  if (type === 'SET_BADGE') {
+    console.log('[ServiceWorker] Setting badge count:', data?.count);
+    if ('setAppBadge' in navigator) {
+      const count = data?.count || 0;
+      if (count > 0) {
+        navigator.setAppBadge(count)
+          .then(() => console.log('[ServiceWorker] Badge set to:', count))
+          .catch(err => console.error('[ServiceWorker] Badge API error:', err));
+      } else {
+        navigator.clearAppBadge()
+          .then(() => console.log('[ServiceWorker] Badge cleared'))
+          .catch(err => console.error('[ServiceWorker] Badge clear error:', err));
+      }
+    } else {
+      console.log('[ServiceWorker] Badge API not supported');
+    }
+    return;
+  }
+
+  // Handle queuing mutations for offline sync
+  if (type === 'QUEUE_MUTATION') {
+    console.log('[ServiceWorker] Queuing mutation for offline sync:', data);
+    offlineQueue.push({
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      data: data
+    });
+    console.log('[ServiceWorker] Offline queue size:', offlineQueue.length);
+    
+    // Register a sync event if supported
+    if ('sync' in self.registration) {
+      self.registration.sync.register('sync-mutations')
+        .then(() => console.log('[ServiceWorker] Sync registered for mutations'))
+        .catch(err => console.error('[ServiceWorker] Sync registration failed:', err));
+    }
+    
+    // Notify client that mutation was queued
+    event.ports[0]?.postMessage({ 
+      success: true, 
+      queued: true,
+      queueSize: offlineQueue.length 
+    });
+    return;
   }
 });
 
@@ -173,4 +280,176 @@ self.addEventListener('notificationclick', (event) => {
         }
       })
   );
+});
+
+// Background Sync event handler
+// Syncs dashboard data and processes offline queue when connection is restored
+self.addEventListener('sync', (event) => {
+  console.log('[ServiceWorker] Background sync event triggered:', event.tag);
+  
+  if (event.tag === 'sync-dashboard') {
+    console.log('[ServiceWorker] Syncing dashboard data...');
+    event.waitUntil(
+      Promise.all([
+        // Fetch and cache dashboard data
+        fetch('/api/dashboard').then(res => {
+          if (res.ok) {
+            return caches.open(CACHE_NAME).then(cache => {
+              cache.put('/api/dashboard', res.clone());
+              console.log('[ServiceWorker] Dashboard data synced');
+            });
+          }
+        }).catch(err => console.error('[ServiceWorker] Dashboard sync failed:', err)),
+        
+        // Fetch and cache appointments
+        fetch('/api/appointments').then(res => {
+          if (res.ok) {
+            return caches.open(CACHE_NAME).then(cache => {
+              cache.put('/api/appointments', res.clone());
+              console.log('[ServiceWorker] Appointments synced');
+            });
+          }
+        }).catch(err => console.error('[ServiceWorker] Appointments sync failed:', err)),
+        
+        // Fetch and cache customers
+        fetch('/api/customers').then(res => {
+          if (res.ok) {
+            return caches.open(CACHE_NAME).then(cache => {
+              cache.put('/api/customers', res.clone());
+              console.log('[ServiceWorker] Customers synced');
+            });
+          }
+        }).catch(err => console.error('[ServiceWorker] Customers sync failed:', err))
+      ])
+    );
+  }
+  
+  if (event.tag === 'sync-mutations') {
+    console.log('[ServiceWorker] Processing offline mutation queue...');
+    console.log('[ServiceWorker] Queue size:', offlineQueue.length);
+    
+    event.waitUntil(
+      processOfflineQueue()
+        .then(() => {
+          console.log('[ServiceWorker] Offline queue processed successfully');
+          // Notify clients that sync completed
+          return self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+              client.postMessage({ 
+                type: 'SYNC_COMPLETED',
+                tag: 'sync-mutations',
+                success: true 
+              });
+            });
+          });
+        })
+        .catch(err => {
+          console.error('[ServiceWorker] Queue processing failed:', err);
+        })
+    );
+  }
+});
+
+// Helper function to process offline mutation queue
+async function processOfflineQueue() {
+  if (offlineQueue.length === 0) {
+    console.log('[ServiceWorker] Offline queue is empty');
+    return;
+  }
+  
+  const results = [];
+  
+  for (const mutation of offlineQueue) {
+    try {
+      console.log('[ServiceWorker] Processing queued mutation:', mutation.id);
+      
+      // Attempt to send the mutation to the server
+      const response = await fetch(mutation.data.url, {
+        method: mutation.data.method || 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...mutation.data.headers
+        },
+        body: JSON.stringify(mutation.data.body)
+      });
+      
+      if (response.ok) {
+        console.log('[ServiceWorker] Mutation processed successfully:', mutation.id);
+        results.push({ id: mutation.id, success: true });
+      } else {
+        console.error('[ServiceWorker] Mutation failed:', mutation.id, response.status);
+        results.push({ id: mutation.id, success: false, error: response.status });
+      }
+    } catch (error) {
+      console.error('[ServiceWorker] Error processing mutation:', mutation.id, error);
+      results.push({ id: mutation.id, success: false, error: error.message });
+    }
+  }
+  
+  // Remove successfully processed mutations from queue
+  offlineQueue = offlineQueue.filter(mutation => {
+    const result = results.find(r => r.id === mutation.id);
+    return result && !result.success;
+  });
+  
+  console.log('[ServiceWorker] Remaining queue size after processing:', offlineQueue.length);
+  return results;
+}
+
+// Periodic Background Sync event handler
+// Updates weather and calendar data periodically (requires permission)
+self.addEventListener('periodicsync', (event) => {
+  console.log('[ServiceWorker] Periodic sync event triggered:', event.tag);
+  
+  if (event.tag === 'update-weather') {
+    console.log('[ServiceWorker] Updating weather data...');
+    event.waitUntil(
+      fetch('/api/weather')
+        .then(res => {
+          if (res.ok) {
+            return caches.open(CACHE_NAME).then(cache => {
+              cache.put('/api/weather', res.clone());
+              console.log('[ServiceWorker] Weather data updated');
+              
+              // Notify clients about weather update
+              return self.clients.matchAll().then(clients => {
+                clients.forEach(client => {
+                  client.postMessage({ 
+                    type: 'WEATHER_UPDATED',
+                    timestamp: new Date().toISOString() 
+                  });
+                });
+              });
+            });
+          }
+        })
+        .catch(err => console.error('[ServiceWorker] Weather update failed:', err))
+    );
+  }
+  
+  if (event.tag === 'update-calendar') {
+    console.log('[ServiceWorker] Updating calendar data...');
+    event.waitUntil(
+      fetch('/api/appointments')
+        .then(res => {
+          if (res.ok) {
+            return caches.open(CACHE_NAME).then(cache => {
+              cache.put('/api/appointments', res.clone());
+              console.log('[ServiceWorker] Calendar data updated');
+              
+              // Notify clients about calendar update
+              return self.clients.matchAll().then(clients => {
+                clients.forEach(client => {
+                  client.postMessage({ 
+                    type: 'CALENDAR_UPDATED',
+                    timestamp: new Date().toISOString() 
+                  });
+                });
+              });
+            });
+          }
+        })
+        .catch(err => console.error('[ServiceWorker] Calendar update failed:', err))
+    );
+  }
 });
