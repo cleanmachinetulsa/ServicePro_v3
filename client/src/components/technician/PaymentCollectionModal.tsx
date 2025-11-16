@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { DollarSign, Wallet, FileText, Loader2 } from 'lucide-react';
 
 interface PaymentCollectionModalProps {
@@ -24,11 +26,12 @@ interface PaymentCollectionModalProps {
 export function PaymentCollectionModal({
   jobId,
   customerName,
-  amount,
+  amount: expectedAmount,
   onSuccess,
   onCancel,
 }: PaymentCollectionModalProps) {
   const [selectedMethod, setSelectedMethod] = useState<'cash' | 'check' | null>(null);
+  const [amount, setAmount] = useState('');
   const { toast } = useToast();
 
   const completeJobMutation = useMutation({
@@ -39,9 +42,10 @@ export function PaymentCollectionModal({
       });
     },
     onSuccess: (data) => {
+      const finalAmount = parseFloat(amount);
       toast({
         title: 'Payment Recorded!',
-        description: `${selectedMethod?.toUpperCase()} payment of $${amount.toFixed(2)} recorded successfully`,
+        description: `${selectedMethod?.toUpperCase()} payment of $${finalAmount.toFixed(2)} recorded successfully`,
         variant: 'default',
       });
       
@@ -61,11 +65,11 @@ export function PaymentCollectionModal({
   });
 
   const handleConfirm = () => {
-    if (!selectedMethod) return;
+    if (!selectedMethod || !amount || parseFloat(amount) <= 0) return;
     
     completeJobMutation.mutate({
       paymentMethod: selectedMethod,
-      amount,
+      amount: parseFloat(amount),
     });
   };
 
@@ -90,13 +94,28 @@ export function PaymentCollectionModal({
             </p>
           </div>
 
-          {/* Amount Display */}
-          <div className="text-center py-4 bg-primary/5 rounded-lg border-2 border-primary/20">
-            <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
-            <p className="text-4xl font-bold text-primary flex items-center justify-center gap-1" data-testid="text-payment-amount">
-              <DollarSign className="h-8 w-8" />
-              {amount.toFixed(2)}
-            </p>
+          {/* Amount Input */}
+          <div className="space-y-2">
+            <Label htmlFor="payment-amount">Amount Received</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-2xl">$</span>
+              <Input
+                id="payment-amount"
+                data-testid="input-payment-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="pl-10 text-2xl font-bold text-center"
+                placeholder="0.00"
+              />
+            </div>
+            {expectedAmount && (
+              <p className="text-sm text-muted-foreground text-center">
+                Expected: ${expectedAmount.toFixed(2)}
+              </p>
+            )}
           </div>
 
           {/* Payment Method Selection */}

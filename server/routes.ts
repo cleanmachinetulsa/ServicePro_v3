@@ -25,6 +25,7 @@ import { registerConversationRoutes } from './routes.conversations';
 import { registerServiceManagementRoutes } from './serviceManagement';
 import { registerServiceLimitsRoutes } from './routes.serviceLimits';
 import { registerMaintenanceRoutes } from './routes.maintenance';
+import { registerNotificationPreferencesRoutes } from './routes.notificationPreferences';
 import { initializeWebSocket } from './websocketService';
 import quickReplyRoutes from './routes.quickReplies';
 import appointmentRoutes from './routes.appointments';
@@ -1762,6 +1763,7 @@ export async function registerRoutes(app: Express) {
   registerEnhancedCustomerRoutes(app);
   registerQuickBookingRoutes(app);
   registerContactsRoutes(app);
+  registerNotificationPreferencesRoutes(app);
 
   app.post('/api/customers/update', async (req, res) => {
     const { updateCustomer } = await import('./updateCustomer');

@@ -182,9 +182,8 @@ router.post('/menu-selection', verifyTwilioSignature, async (req: Request, res: 
         timeout: 20,
         action: '/api/voice/call-status',
         method: 'POST',
-        // Show YOUR business number as caller ID instead of customer's number
-        // This way you know it's a business call and not spam
-        callerId: twilioPhone || callerPhone
+        // Show customer's actual number as caller ID for easy callback and custom ringtone setup
+        callerId: callerPhone
       });
 
       dial.number(businessPhone);
@@ -322,6 +321,29 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
     const businessPhone = process.env.BUSINESS_OWNER_PHONE;
     if (businessPhone) {
       await sendVoicemailNotification(businessPhone, callerPhone, transcriptionText, recordingUrl);
+    }
+    
+    // Send push notification to owner
+    const { sendPushNotificationToRole } = await import('./pushNotificationService');
+    const { users } = await import('@shared/schema');
+    const { shouldSendNotification } = await import('./notificationHelper');
+    
+    const owner = await db.query.users.findFirst({
+      where: eq(users.role, 'owner')
+    });
+    
+    if (owner && await shouldSendNotification(owner.id, 'voicemailPush')) {
+      await sendPushNotificationToRole('owner', {
+        title: '📞 New Voicemail',
+        body: `From: ${callerPhone}\n${transcriptionText?.substring(0, 100) || 'Transcription pending...'}`,
+        tag: 'voicemail',
+        requireInteraction: false,
+        data: {
+          type: 'voicemail',
+          customerPhone: callerPhone,
+          url: '/phone?tab=voicemail'
+        }
+      });
     }
   } catch (error) {
     console.error('[VOICE] Failed to send voicemail notification:', error);

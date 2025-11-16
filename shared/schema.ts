@@ -999,6 +999,22 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   lastUsedAt: timestamp("last_used_at").defaultNow(), // Track last notification sent
 });
 
+// Notification preferences for granular control over notification channels
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  // Notification types
+  voicemailSms: boolean("voicemail_sms").notNull().default(true),
+  voicemailPush: boolean("voicemail_push").notNull().default(true),
+  cashPaymentSms: boolean("cash_payment_sms").notNull().default(true),
+  cashPaymentPush: boolean("cash_payment_push").notNull().default(true),
+  systemErrorSms: boolean("system_error_sms").notNull().default(true),
+  systemErrorPush: boolean("system_error_push").notNull().default(true),
+  missedCallSms: boolean("missed_call_sms").notNull().default(false), // Auto-reply to customer
+  appointmentReminderPush: boolean("appointment_reminder_push").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Critical monitoring settings for multi-channel alerts on integration failures
 export const criticalMonitoringSettings = pgTable("critical_monitoring_settings", {
   id: serial("id").primaryKey(),
@@ -2221,6 +2237,9 @@ export type InsertSmsTemplateVersion = z.infer<typeof insertSmsTemplateVersionSc
 export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true, lastUsedAt: true });
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+export const insertNotificationPreferencesSchema = createInsertSchema(notificationPreferences).omit({ id: true, updatedAt: true });
+export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreferences = z.infer<typeof insertNotificationPreferencesSchema>;
 export const insertCriticalMonitoringSettingsSchema = createInsertSchema(criticalMonitoringSettings).omit({ id: true, updatedAt: true });
 export type CriticalMonitoringSettings = typeof criticalMonitoringSettings.$inferSelect;
 export type InsertCriticalMonitoringSettings = z.infer<typeof insertCriticalMonitoringSettingsSchema>;
