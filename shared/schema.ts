@@ -847,6 +847,21 @@ export const rewardAudit = pgTable("reward_audit", {
   statusIdx: index("reward_audit_status_idx").on(table.status),
 }));
 
+// QR Code Actions - Configurable QR code actions with scan tracking
+export const qrCodeActions = pgTable("qr_code_actions", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  actionType: varchar("action_type", { length: 50 }).notNull().default("booking"), // 'booking', 'profile', 'loyalty', 'custom', 'deep_link'
+  actionUrl: text("action_url").notNull(), // Target URL or deep link
+  trackingEnabled: boolean("tracking_enabled").notNull().default(true),
+  scans: integer("scans").notNull().default(0), // Track QR code usage
+  lastScannedAt: timestamp("last_scanned_at"), // Last scan timestamp
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  customerIdIdx: index("qr_code_actions_customer_id_idx").on(table.customerId),
+}));
+
 // Tables for post-purchase upsell system
 export const upsellOffers = pgTable("upsell_offers", {
   id: serial("id").primaryKey(),
@@ -1864,6 +1879,18 @@ export const insertRewardAuditSchema = createInsertSchema(rewardAudit).omit({
 
 export type InsertRewardAudit = z.infer<typeof insertRewardAuditSchema>;
 export type SelectRewardAudit = typeof rewardAudit.$inferSelect;
+
+// QR Code Actions schemas and types
+export const insertQrCodeActionSchema = createInsertSchema(qrCodeActions).omit({
+  id: true,
+  scans: true,
+  lastScannedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertQrCodeAction = z.infer<typeof insertQrCodeActionSchema>;
+export type SelectQrCodeAction = typeof qrCodeActions.$inferSelect;
 
 // TypeScript type definitions for reward descriptors
 export type RewardType = 

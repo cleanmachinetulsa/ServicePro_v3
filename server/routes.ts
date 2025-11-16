@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import crypto from 'crypto';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
 import { eq } from 'drizzle-orm';
@@ -104,6 +105,49 @@ import { registerTechDepositRoutes } from './routes.techDeposits';
 import { registerCallEventsRoutes } from './routes.callEvents';
 import { registerCustomerIntelligenceRoutes } from './routes.customerIntelligence';
 import { registerEscalationRoutes } from './routes.escalations';
+
+// QR Code Signing Utilities
+const QR_SECRET = process.env.QR_SECRET || 'your-secret-key-change-in-production';
+
+function generateQRCodeId(customerId: number): string {
+  const timestamp = Date.now();
+  const data = `${customerId}:${timestamp}`;
+  const signature = crypto
+    .createHmac('sha256', QR_SECRET)
+    .update(data)
+    .digest('base64url');
+  
+  return `${customerId}:${timestamp}:${signature}`;
+}
+
+function verifyQRCodeId(qrCodeId: string): number | null {
+  try {
+    const parts = qrCodeId.split(':');
+    if (parts.length !== 3) return null;
+    
+    const [customerIdStr, timestampStr, providedSignature] = parts;
+    const customerId = parseInt(customerIdStr);
+    const timestamp = parseInt(timestampStr);
+    
+    if (isNaN(customerId) || isNaN(timestamp)) return null;
+    
+    const data = `${customerId}:${timestamp}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', QR_SECRET)
+      .update(data)
+      .digest('base64url');
+    
+    if (expectedSignature !== providedSignature) {
+      console.warn(`Invalid QR code signature for customer ${customerId}`);
+      return null;
+    }
+    
+    return customerId;
+  } catch (error) {
+    console.error('QR code verification error:', error);
+    return null;
+  }
+}
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -247,6 +291,7 @@ export async function registerRoutes(app: Express) {
       '/api/recurring-service-booking', // Public recurring service booking
       '/api/referral/validate', // Public referral code validation (for booking flow)
       '/api/referral/signup',   // Public referral signup tracking (for booking flow)
+      '/api/qr/scan',           // Allow anonymous QR code scans (tracking endpoint)
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)
@@ -1858,6 +1903,179 @@ export async function registerRoutes(app: Express) {
   registerPublicCustomerLookupRoutes(app);
   registerUpsellRoutes(app);
   registerInvoiceRoutes(app);
+
+  // QR Code scan tracking redirect endpoint (PUBLIC - no auth required)
+  // This endpoint tracks real QR code scans and redirects to configured action URL
+  app.get('/api/qr/scan/:qrCodeId', async (req: Request, res: Response) => {
+    try {
+      // Verify and extract customer ID from signed QR code
+      const customerId = verifyQRCodeId(req.params.qrCodeId);
+      
+      if (!customerId) {
+        console.warn(`Invalid or tampered QR code: ${req.params.qrCodeId}`);
+        return res.redirect('/'); // Graceful fallback for invalid QR codes
+      }
+
+      const { qrCodeActions, referrals, customers } = await import('@shared/schema');
+      const { sql } = await import('drizzle-orm');
+      
+      // Find QR action for this customer
+      const action = await db.query.qrCodeActions.findFirst({
+        where: eq(qrCodeActions.customerId, customerId)
+      });
+      
+      let redirectUrl: string;
+      
+      if (action) {
+        // Track scan if tracking enabled
+        if (action.trackingEnabled) {
+          await db.update(qrCodeActions)
+            .set({
+              scans: sql`${qrCodeActions.scans} + 1`,
+              lastScannedAt: sql`now()`,
+            })
+            .where(eq(qrCodeActions.id, action.id));
+          
+          console.log(`QR scan tracked for customer ${customerId}: scan #${action.scans + 1}`);
+        }
+        
+        redirectUrl = action.actionUrl;
+      } else {
+        // Default: find customer's referral code and redirect to booking
+        const customer = await db.query.customers.findFirst({
+          where: eq(customers.id, customerId),
+        });
+        
+        if (!customer) {
+          console.warn(`Customer ${customerId} not found or has no referral code`);
+          return res.redirect('/');
+        }
+
+        // Get customer's referral code
+        const referral = await db.query.referrals.findFirst({
+          where: eq(referrals.referrerId, customerId),
+        });
+
+        const referralCode = referral?.referralCode;
+        
+        if (!referralCode) {
+          console.warn(`Customer ${customerId} has no referral code`);
+          return res.redirect('/');
+        }
+        
+        redirectUrl = `/book?ref=${referralCode}`;
+      }
+      
+      // Detect URL type and redirect appropriately
+      const isAbsoluteUrl = /^https?:\/\//i.test(redirectUrl);
+      const isProtocolHandler = /^[a-z][a-z0-9+.-]*:/i.test(redirectUrl);
+      
+      if (isAbsoluteUrl || isProtocolHandler) {
+        return res.redirect(redirectUrl);
+      }
+      
+      const fullUrl = `${req.protocol}://${req.get('host')}${redirectUrl.startsWith('/') ? '' : '/'}${redirectUrl}`;
+      res.redirect(fullUrl);
+      
+    } catch (error) {
+      console.error('QR scan tracking error:', error);
+      res.redirect('/');
+    }
+  });
+
+  // Generate signed QR code ID for customer (requires auth)
+  app.get('/api/qr/generate-id/:customerId', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params.customerId);
+      
+      if (isNaN(customerId)) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Invalid customer ID' 
+        });
+      }
+      
+      const qrCodeId = generateQRCodeId(customerId);
+      
+      res.json({
+        success: true,
+        data: { qrCodeId, customerId }
+      });
+    } catch (error) {
+      console.error('Error generating QR code ID:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate QR code ID'
+      });
+    }
+  });
+
+  // QR Code Action API endpoints
+  app.get('/api/qr/action/:customerId', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params.customerId);
+      
+      if (isNaN(customerId)) {
+        return res.status(400).json({ success: false, message: 'Invalid customer ID' });
+      }
+
+      const { qrCodeActions, referrals, customers } = await import('@shared/schema');
+      const { sql } = await import('drizzle-orm');
+      
+      // Check if customer exists and get their referral code
+      const customer = await db.query.customers.findFirst({
+        where: eq(customers.id, customerId),
+      });
+
+      if (!customer) {
+        return res.status(404).json({ success: false, message: 'Customer not found' });
+      }
+
+      // Get customer's referral code
+      const referral = await db.query.referrals.findFirst({
+        where: eq(referrals.referrerId, customerId),
+      });
+
+      const referralCode = referral?.referralCode;
+
+      // Check for configured QR action
+      const action = await db.query.qrCodeActions.findFirst({
+        where: eq(qrCodeActions.customerId, customerId),
+      });
+
+      if (!action) {
+        // Default: booking with referral code
+        const defaultUrl = referralCode 
+          ? `/book?ref=${referralCode}`
+          : `/book`;
+
+        return res.json({
+          success: true,
+          data: {
+            actionType: 'booking',
+            actionUrl: defaultUrl,
+            trackingEnabled: true,
+            scans: 0,
+          },
+        });
+      }
+
+      // Return configuration only - scan tracking is handled by /api/qr/scan/:customerId endpoint
+      res.json({
+        success: true,
+        data: {
+          actionType: action.actionType,
+          actionUrl: action.actionUrl,
+          trackingEnabled: action.trackingEnabled,
+          scans: action.scans,
+        },
+      });
+
+    } catch (error) {
+      console.error('Error fetching QR action:', error);
+      res.status(500).json({ success: false, message: 'Failed to fetch QR action configuration' });
+    }
+  });
   registerEnhancedCustomerRoutes(app);
   registerQuickBookingRoutes(app);
   registerContactsRoutes(app);

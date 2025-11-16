@@ -75,6 +75,18 @@ export default function ReferralPage() {
     enabled: !!customerId,
   });
 
+  // Fetch QR action configuration
+  const { data: qrActionData } = useQuery<{ success: boolean; data: { actionType: string; actionUrl: string; trackingEnabled: boolean; scans: number } }>({
+    queryKey: [`/api/qr/action/${customerId}`],
+    enabled: !!customerId,
+  });
+
+  // Fetch signed QR code ID
+  const { data: qrCodeIdData } = useQuery<{ success: boolean; data: { qrCodeId: string; customerId: number } }>({
+    queryKey: [`/api/qr/generate-id/${customerId}`],
+    enabled: !!customerId,
+  });
+
   // Search for customer by phone
   const handleSearch = async () => {
     if (!searchPhone.trim()) {
@@ -130,34 +142,80 @@ export default function ReferralPage() {
   const referralCode = codeData?.data?.code;
   const stats = statsData?.data;
   const referrals = listData?.data || [];
+  const qrAction = qrActionData?.data;
+  const qrCodeId = qrCodeIdData?.data?.qrCodeId;
 
-  // Generate QR code
+  // Generate QR code with highest security (ECC Level H, Version 40) and logo embedding
   useEffect(() => {
-    if (referralCode && qrCanvasRef.current) {
-      const shareUrl = `${window.location.origin}/book?ref=${referralCode}`;
-      
-      QRCode.toCanvas(
-        qrCanvasRef.current,
-        shareUrl,
-        {
-          width: 200,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#ffffff',
-          },
+    if (!referralCode || !qrCodeId || !qrCanvasRef.current) return;
+    
+    const canvas = qrCanvasRef.current;
+    const qrUrl = `${window.location.origin}/api/qr/scan/${qrCodeId}`;
+    
+    // Generate QR code first
+    QRCode.toCanvas(
+      canvas,
+      qrUrl,
+      {
+        errorCorrectionLevel: 'H',
+        version: 40,
+        width: 300,
+        margin: 4,
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
         },
-        (error) => {
-          if (error) {
-            console.error('QR code generation failed:', error);
-          } else {
-            // Also generate data URL for download
-            QRCode.toDataURL(shareUrl, { width: 400 }).then(setQrCodeUrl);
-          }
+      },
+      async (error) => {
+        if (error) {
+          console.error('QR code generation failed:', error);
+          return;
         }
-      );
-    }
-  }, [referralCode]);
+        
+        // ALWAYS generate download URL (even if logo fails)
+        const downloadUrl = canvas.toDataURL('image/png');
+        setQrCodeUrl(downloadUrl);
+        
+        // Try to embed logo (optional enhancement)
+        try {
+          const logo = new Image();
+          logo.crossOrigin = 'anonymous';
+          
+          logo.onload = () => {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            
+            // Calculate logo size (20% of QR code)
+            const logoSize = canvas.width * 0.2;
+            const logoX = (canvas.width - logoSize) / 2;
+            const logoY = (canvas.height - logoSize) / 2;
+            
+            // Draw white background circle
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, logoSize / 2 + 4, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw logo
+            ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+            
+            // Update download URL with logo
+            setQrCodeUrl(canvas.toDataURL('image/png'));
+          };
+          
+          logo.onerror = () => {
+            console.warn('Logo failed to load, using QR code without logo');
+            // Download URL already set above
+          };
+          
+          logo.src = '/qr-logo.png';
+        } catch (logoError) {
+          console.warn('Logo embedding failed:', logoError);
+          // Download URL already set, so download still works
+        }
+      }
+    );
+  }, [referralCode, qrCodeId]);
 
   // Send SMS invite mutation
   const sendInviteMutation = useMutation({
