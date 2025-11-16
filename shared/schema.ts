@@ -173,6 +173,44 @@ export const customers = pgTable("customers", {
   loyaltyTier: loyaltyTierEnum("loyalty_tier").default('bronze'),
   hasPriorityBooking: boolean("has_priority_booking").default(false),
   priorityBookingGrantedAt: timestamp("priority_booking_granted_at"),
+  
+  // Customer Intelligence fields (Phase 1)
+  isReturningCustomer: boolean("is_returning_customer").notNull().default(false),
+  firstAppointmentAt: timestamp("first_appointment_at"),
+  lastAppointmentAt: timestamp("last_appointment_at"),
+  totalAppointments: integer("total_appointments").notNull().default(0),
+  lifetimeValue: numeric("lifetime_value", { precision: 10, scale: 2 }).default("0.00"),
+});
+
+// Customer Vehicles - Track customer vehicle information for personalized service
+export const customerVehicles = pgTable("customer_vehicles", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id).notNull(),
+  year: varchar("year", { length: 4 }),
+  make: varchar("make", { length: 100 }),
+  model: varchar("model", { length: 100 }),
+  color: varchar("color", { length: 50 }),
+  licensePlate: varchar("license_plate", { length: 20 }),
+  vin: varchar("vin", { length: 17 }),
+  notes: text("notes"),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Customer Service History - Track all completed services for AI personalization
+export const customerServiceHistory = pgTable("customer_service_history", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => customers.id).notNull(),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  serviceDate: timestamp("service_date").notNull(),
+  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  vehicleId: integer("vehicle_id").references(() => customerVehicles.id),
+  technicianId: integer("technician_id").references(() => users.id),
+  amount: numeric("amount", { precision: 10, scale: 2 }),
+  satisfaction: integer("satisfaction"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const services = pgTable("services", {
@@ -2295,3 +2333,19 @@ export type CreditLedger = typeof creditLedger.$inferSelect;
 export type InsertCreditLedger = z.infer<typeof insertCreditLedgerSchema>;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
 export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
+
+// Types for Customer Intelligence (Phase 1)
+export const insertCustomerVehicleSchema = createInsertSchema(customerVehicles).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type InsertCustomerVehicle = z.infer<typeof insertCustomerVehicleSchema>;
+export type CustomerVehicle = typeof customerVehicles.$inferSelect;
+
+export const insertCustomerServiceHistorySchema = createInsertSchema(customerServiceHistory).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type InsertCustomerServiceHistory = z.infer<typeof insertCustomerServiceHistorySchema>;
+export type CustomerServiceHistory = typeof customerServiceHistory.$inferSelect;
