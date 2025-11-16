@@ -243,6 +243,9 @@ function Router() {
 function App() {
   // Get current location to determine if we're on an admin page
   const [location] = useLocation();
+  
+  // Universal keyboard auto-dismiss for mobile
+  useKeyboardDismiss();
 
   // Check if current page is a customer-facing page
   const isCustomerFacingPage = () => {
