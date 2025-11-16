@@ -2393,6 +2393,161 @@ export async function registerRoutes(app: Express) {
   // Register escalation routes (human handoff system)
   registerEscalationRoutes(app);
   
+  // Proactive Reminder System API Routes (Phase 4B)
+  app.get('/api/reminders/pending', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
+    try {
+      const { getReminderJobs } = await import('./reminderService');
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      
+      const pendingJobs = await getReminderJobs('pending', limit);
+      
+      res.json({
+        success: true,
+        jobs: pendingJobs,
+        count: pendingJobs.length,
+      });
+    } catch (error) {
+      console.error('[API] Error fetching pending reminders:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch pending reminders',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.get('/api/reminders/rules', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { reminderRules } = await import('@shared/schema');
+      
+      const rules = await db.query.reminderRules.findMany({
+        with: {
+          service: true,
+        },
+        orderBy: (reminderRules, { asc }) => [asc(reminderRules.id)],
+      });
+      
+      res.json({
+        success: true,
+        rules,
+        count: rules.length,
+      });
+    } catch (error) {
+      console.error('[API] Error fetching reminder rules:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch reminder rules',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post('/api/reminders/trigger-manual/:customerId', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
+    try {
+      const { createReminderJob } = await import('./reminderService');
+      const { db } = await import('./db');
+      const { reminderRules, customers } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const customerId = parseInt(req.params.customerId);
+      let { ruleId } = req.body;
+      
+      if (isNaN(customerId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid customer ID',
+        });
+      }
+      
+      // Verify customer exists
+      const customer = await db.query.customers.findFirst({
+        where: eq(customers.id, customerId),
+      });
+      
+      if (!customer) {
+        return res.status(404).json({
+          success: false,
+          message: 'Customer not found',
+        });
+      }
+      
+      // If ruleId provided, verify it exists
+      if (ruleId) {
+        const rule = await db.query.reminderRules.findFirst({
+          where: eq(reminderRules.id, ruleId),
+        });
+        
+        if (!rule) {
+          return res.status(404).json({
+            success: false,
+            message: 'Reminder rule not found',
+          });
+        }
+      } else {
+        // FIXED: If no ruleId provided, use default rule and assign its ID
+        const defaultRule = await db.query.reminderRules.findFirst({
+          where: eq(reminderRules.name, 'General Service Reminder - 6 Months'),
+        });
+        
+        if (!defaultRule) {
+          return res.status(404).json({
+            success: false,
+            message: 'Default reminder rule not found',
+          });
+        }
+        
+        // CRITICAL FIX: Assign the default rule ID to ruleId
+        ruleId = defaultRule.id;
+      }
+      
+      const jobId = await createReminderJob(customerId, ruleId, new Date());
+      
+      res.json({
+        success: true,
+        message: `Manual reminder created for customer ${customer.name}`,
+        jobId,
+      });
+    } catch (error) {
+      console.error('[API] Error creating manual reminder:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to create manual reminder',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post('/api/reminders/test', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
+    try {
+      const { identifyCustomersNeedingReminders } = await import('./reminderService');
+      
+      // Run the identification logic without creating jobs
+      const customersNeedingReminders = await identifyCustomersNeedingReminders();
+      
+      res.json({
+        success: true,
+        message: `Test complete: ${customersNeedingReminders.length} customers would receive reminders`,
+        customers: customersNeedingReminders.map(c => ({
+          customerId: c.customerId,
+          customerName: c.customerName,
+          serviceName: c.serviceName,
+          ruleName: c.ruleName,
+          daysSinceLastService: c.daysSinceLastService,
+          lastAppointmentDate: c.lastAppointmentDate,
+        })),
+        count: customersNeedingReminders.length,
+      });
+    } catch (error) {
+      console.error('[API] Error testing reminder system:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to test reminder system',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  
   // Register calendar availability routes
   app.use('/api/calendar', calendarAvailabilityRoutes);
   

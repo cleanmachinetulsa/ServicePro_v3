@@ -1,0 +1,64 @@
+Yeah, that’s the scary part, right? “Cool, thanks Agent… wait, what did you just overwrite?” 😅
+
+You can’t make it 100% impossible for it to touch existing logic, but you can stack the deck heavily in your favor with:
+	•	Prompt constraints,
+	•	Workflow habits in Replit,
+	•	And a couple of cheap “safety nets” (snapshots + tests).
+
+Let me break it into what you can do in Replit and what we should add to the prompt.
+
+⸻
+
+1. Safety habits in Replit (stuff you control)
+
+A. Always keep a clean “checkpoint” before big Agent runs
+
+Do this every time before you ask it to do major work:
+	1.	Fork / snapshot / use the last known-good publish
+	•	In Replit, you can:
+	•	Fork the repl (cheap but very safe), or
+	•	Use the “Saved progress / Rollback here” commit as a checkpoint.
+	•	Mentally label that commit: pre-scheduler-overhaul.
+
+If the Agent goes rogue, you can just roll back / fork from that commit and you’re safe.
+
+⸻
+
+B. Never “Apply all” without skimming the diff
+
+Replit already shows:
+	•	“Preview code changes”
+	•	A list of files with + / - and hunks
+
+Use that like a mini pull request review:
+	•	Scan file names:
+	•	If you see surprise edits in core logic files (like booking logic, Twilio stuff, referral engine, etc.) that you didn’t expect, stop and inspect those first.
+	•	Basic red flags:
+	•	Big deletions of existing functions.
+	•	Name or signature changes to key handlers you care about.
+	•	Removing checks/guards.
+
+If something looks off, don’t apply those hunks; or just cancel, tweak the prompt, and rerun.
+
+⸻
+
+C. Add a couple of “golden behavior tests” before changes
+
+Super simple smoke tests that encode what must not break:
+	•	Example: referral discounts still apply on invoice creation.
+	•	Example: existing booking / /book flow still works.
+
+Even a couple of quick tests mean:
+	•	Agent makes changes
+	•	It runs npm test / npm run test (we’ll tell it to)
+	•	If those fail, you know it broke something critical.
+
+You don’t need a full test suite for this to be useful—just 2–3 “don’t break this” tests.
+
+⸻
+
+2. Add explicit guardrails inside the prompt
+
+We can hard-bake “don’t nuke my logic” rules straight into the master prompt. Here’s a small add-on block you can paste at the top of the big scheduling prompt we wrote:
+
+🔒 Guardrail Add-On (prepend this to the master prompt)

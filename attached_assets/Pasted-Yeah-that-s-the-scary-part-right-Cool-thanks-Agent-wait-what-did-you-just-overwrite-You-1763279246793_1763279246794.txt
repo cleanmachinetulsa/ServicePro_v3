@@ -1,0 +1,155 @@
+Yeah, that’s the scary part, right? “Cool, thanks Agent… wait, what did you just overwrite?” 😅
+
+You can’t make it 100% impossible for it to touch existing logic, but you can stack the deck heavily in your favor with:
+	•	Prompt constraints,
+	•	Workflow habits in Replit,
+	•	And a couple of cheap “safety nets” (snapshots + tests).
+
+Let me break it into what you can do in Replit and what we should add to the prompt.
+
+⸻
+
+1. Safety habits in Replit (stuff you control)
+
+A. Always keep a clean “checkpoint” before big Agent runs
+
+Do this every time before you ask it to do major work:
+	1.	Fork / snapshot / use the last known-good publish
+	•	In Replit, you can:
+	•	Fork the repl (cheap but very safe), or
+	•	Use the “Saved progress / Rollback here” commit as a checkpoint.
+	•	Mentally label that commit: pre-scheduler-overhaul.
+
+If the Agent goes rogue, you can just roll back / fork from that commit and you’re safe.
+
+⸻
+
+B. Never “Apply all” without skimming the diff
+
+Replit already shows:
+	•	“Preview code changes”
+	•	A list of files with + / - and hunks
+
+Use that like a mini pull request review:
+	•	Scan file names:
+	•	If you see surprise edits in core logic files (like booking logic, Twilio stuff, referral engine, etc.) that you didn’t expect, stop and inspect those first.
+	•	Basic red flags:
+	•	Big deletions of existing functions.
+	•	Name or signature changes to key handlers you care about.
+	•	Removing checks/guards.
+
+If something looks off, don’t apply those hunks; or just cancel, tweak the prompt, and rerun.
+
+⸻
+
+C. Add a couple of “golden behavior tests” before changes
+
+Super simple smoke tests that encode what must not break:
+	•	Example: referral discounts still apply on invoice creation.
+	•	Example: existing booking / /book flow still works.
+
+Even a couple of quick tests mean:
+	•	Agent makes changes
+	•	It runs npm test / npm run test (we’ll tell it to)
+	•	If those fail, you know it broke something critical.
+
+You don’t need a full test suite for this to be useful—just 2–3 “don’t break this” tests.
+
+⸻
+
+2. Add explicit guardrails inside the prompt
+
+We can hard-bake “don’t nuke my logic” rules straight into the master prompt. Here’s a small add-on block you can paste at the top of the big scheduling prompt we wrote:
+
+🔒 Guardrail Add-On (prepend this to the master prompt)
+
+CRITICAL NON-DESTRUCTIVE RULES (MUST FOLLOW):
+
+1. Do NOT delete or rewrite existing core business logic.
+   - Never remove or radically change functions that:
+     - Handle bookings/appointments,
+     - Handle SMS/Twilio flows,
+     - Handle invoicing/referrals or payments,
+     - Handle authentication/authorization.
+   - You may CALL these existing functions from new code, but not change their external behavior.
+
+2. Prefer extension over modification:
+   - Add NEW routes, NEW handlers, NEW React components for scheduling.
+   - Only touch existing files when:
+     - You are adding imports/exports,
+     - Adding new endpoints to a router,
+     - Or wiring in new components to existing navigation.
+   - If you MUST touch existing logic, keep the original function as a thin wrapper and call a new helper internally. Preserve existing behavior unless explicitly instructed otherwise.
+
+3. Maintain backwards compatibility:
+   - Do NOT change the signature or URL of existing public API endpoints.
+   - Do NOT remove fields from existing API responses.
+   - If you need new behavior, add:
+     - New fields (non-breaking), or
+     - New endpoints (e.g. /api/admin/schedule/…).
+
+4. Annotate any unavoidable changes:
+   - If you absolutely must adjust existing behavior, add a clear comment above it:
+     // NOTE: scheduling feature: adjusted on <DATE> to support <REASON>.
+     // Original behavior: <short summary>.
+   - Keep such changes as SMALL as possible.
+
+5. Step-by-step workflow:
+   - Step 1: ANALYZE and report.
+     - First, print a short bullet list of:
+       - Files you plan to create.
+       - Files you plan to modify.
+       - Any existing functions you plan to touch.
+   - Step 2: Only then start editing code.
+   - Step 3: After edits, run type checks and tests (npm test or the appropriate command) and fix failures you caused.
+
+If any of these constraints conflict with a change you’re planning, adjust the plan to obey these rules instead of pushing through a risky change.
+
+Paste that before the big v2 scheduling prompt. That forces the Agent to:
+	•	Think in terms of new files & new components, not ripping up old ones.
+	•	Announce what it’s going to touch, so when you scroll the logs you see:
+	•	“I will create: X, Y”
+	•	“I will modify: A, B, C”
+	•	Try to preserve existing external behavior.
+
+⸻
+
+3. Extra trick: Mark certain files as “read-only” in comments
+
+In your most critical files (like:
+	•	your Twilio routing,
+	•	core booking logic,
+	•	referral engine,
+	•	existing invoice generator,
+
+add a top-level comment like:
+
+// IMPORTANT: CORE LOGIC – DO NOT MODIFY BEHAVIOR.
+// The AI assistant must not change or remove logic in this file.
+// Only allowed changes: additive helpers, small non-breaking wiring.
+
+Most LLM-based agents actually respect that kind of comment surprisingly well, especially when it matches the prompt rules.
+
+⸻
+
+4. How all of this works together in practice
+
+When you want to run the big scheduler build:
+	1.	Create a safe checkpoint in Replit.
+	2.	Add the Guardrail Add-On to the top of the prompt, then the master scheduling prompt below it.
+	3.	Let the Agent run.
+	4.	When it’s done:
+	•	Hit Preview code changes.
+	•	Look at:
+	•	Which files are touched.
+	•	Check any core logic files for accidental rewrites.
+	5.	Run tests if you have them, or ask the Agent in the same session to run the test command and fix anything it broke.
+	6.	Only then, click Apply all.
+
+That’s about as close as you can get to “only enhance, don’t destroy” without having a human manually edit every line.
+
+⸻
+
+If you want, I can:
+	•	Help you pick which files are “sacred” to mark as core, and
+	•	Draft a tiny “smoke test pack” for your current booking / referral / Twilio behaviors so the Agent is forced to keep them passing while it adds the scheduler.
