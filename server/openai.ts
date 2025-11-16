@@ -563,6 +563,28 @@ export async function generateAIResponse(
         max_tokens: 500,
       });
       
+      // Log usage for tracking dashboard
+      try {
+        const { logApiUsage } = await import('./usageTracker');
+        const inputTokens = completion.usage?.prompt_tokens || 0;
+        const outputTokens = completion.usage?.completion_tokens || 0;
+        const totalCost = (inputTokens / 1000000) * 2.50 + (outputTokens / 1000000) * 10.00;
+        
+        await logApiUsage(
+          'openai',
+          'tokens',
+          inputTokens + outputTokens,
+          totalCost,
+          {
+            model: 'gpt-4o',
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+          }
+        );
+      } catch (err) {
+        console.error('[OPENAI USAGE LOG] Error:', err);
+      }
+      
       const responseMessage = completion.choices[0].message;
       currentMessages.push(responseMessage);
       
