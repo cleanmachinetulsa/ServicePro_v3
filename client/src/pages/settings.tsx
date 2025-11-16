@@ -15,6 +15,7 @@ import type { QuickReplyCategory, QuickReplyTemplate } from '@shared/schema';
 import { CommunicationsSettings } from '@/components/CommunicationsSettings';
 import BackNavigation from '@/components/BackNavigation';
 import { SmsTemplatesManager } from '@/components/SmsTemplatesManager';
+import { NotificationPreferences } from '@/components/settings/NotificationPreferences';
 
 interface CategoryWithTemplates extends QuickReplyCategory {
   templates: QuickReplyTemplate[];
@@ -458,24 +459,7 @@ function TemplateManager({ categories, isLoading }: { categories: CategoryWithTe
 function NotificationsSettings() {
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Advanced Notification Settings</CardTitle>
-          <CardDescription>Configure voice webhooks, missed call auto-responses, SMS reminders, and more</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            The full notification configuration panel has been moved to a dedicated page for easier management.
-          </p>
-          <Button
-            onClick={() => setLocation('/notifications-settings')}
-            data-testid="button-go-to-notifications"
-          >
-            <Bell className="w-4 h-4 mr-2" />
-            Open Notification Settings
-          </Button>
-        </CardContent>
-      </Card>
+      <NotificationPreferences />
       
       <Card>
         <CardHeader>
