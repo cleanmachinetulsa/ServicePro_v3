@@ -2501,12 +2501,76 @@ export async function registerRoutes(app: Express) {
         ruleId = defaultRule.id;
       }
       
-      const jobId = await createReminderJob(customerId, ruleId, new Date());
+      // Generate personalized message for manual reminder
+      const { generateReminderMessage } = await import('./gptPersonalizationService');
+      const { appointments, services } = await import('@shared/schema');
+      const { desc } = await import('drizzle-orm');
+      const { differenceInDays } = await import('date-fns');
+      
+      // Get customer's last appointment to generate context
+      const lastAppointment = await db.query.appointments.findFirst({
+        where: eq(appointments.customerId, customerId),
+        orderBy: [desc(appointments.scheduledTime)],
+        with: { service: true },
+      });
+      
+      const rule = await db.query.reminderRules.findFirst({
+        where: eq(reminderRules.id, ruleId),
+        with: { service: true },
+      });
+      
+      // Generate message with available context
+      let reminderMessage: string;
+      if (lastAppointment && rule) {
+        const daysSinceService = lastAppointment.scheduledTime 
+          ? differenceInDays(new Date(), new Date(lastAppointment.scheduledTime))
+          : 90;
+        
+        // BUG FIX #2: Wrap weather fetch in try/catch to prevent 500 errors
+        let weatherToday: string;
+        try {
+          const weatherResponse = await fetch(
+            'https://api.open-meteo.com/v1/forecast?latitude=36.15&longitude=-95.99&current_weather=true&temperature_unit=fahrenheit'
+          );
+          const weatherData = weatherResponse.ok ? await weatherResponse.json() : null;
+          weatherToday = weatherData?.current_weather 
+            ? `${weatherData.current_weather.weathercode <= 3 ? 'clear' : 'partly cloudy'} and ${Math.round(weatherData.current_weather.temperature)}°F`
+            : 'pleasant';
+        } catch (error) {
+          console.warn('[MANUAL REMINDER] Weather fetch failed, using defaults:', error);
+          weatherToday = 'clear and 65°F';
+        }
+        
+        reminderMessage = await generateReminderMessage(
+          {
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone || '',
+            loyaltyTier: customer.loyaltyTier || 'bronze',
+            lifetimeValue: customer.lifetimeValue || '0.00',
+          },
+          {
+            lastServiceDate: lastAppointment.scheduledTime || new Date(),
+            lastServiceName: lastAppointment.service?.name || 'detail service',
+            daysSinceService,
+            recommendedService: rule.service?.name || 'maintenance detail',
+            recommendedServicePrice: rule.service?.priceRange || '$150-200',
+            weatherToday,
+          }
+        );
+      } else {
+        // ISSUE #1 FIX: No appointment history - use generic fallback message
+        console.warn('[MANUAL REMINDER] No appointment history for customer, using generic fallback');
+        reminderMessage = `Hi ${customer.name}, we'd love to detail your vehicle again! Book online or call us at Clean Machine.`;
+      }
+      
+      const jobId = await createReminderJob(customerId, ruleId, new Date(), reminderMessage);
       
       res.json({
         success: true,
         message: `Manual reminder created for customer ${customer.name}`,
         jobId,
+        generatedMessage: reminderMessage,
       });
     } catch (error) {
       console.error('[API] Error creating manual reminder:', error);
