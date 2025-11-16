@@ -12,6 +12,7 @@ import {
 } from "./schedulingTools";
 import { conversationState } from "./conversationState";
 import { requestDamagePhotos } from "./damageAssessment";
+import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPersonalizationService";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -393,11 +394,11 @@ export async function generateAIResponse(
     IMPORTANT: Don't ask for information that's already collected above. Remember context across the conversation.
     ` : "";
     
-    // Build conversation messages with history
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      {
-        role: "system",
-        content: `You are a virtual assistant for Clean Machine Auto Detail, a mobile auto detailing service in Tulsa, OK. 
+    // Build customer intelligence context for personalization (Phase 1)
+    const customerContext = phoneNumber ? await buildCustomerContext(phoneNumber) : null;
+    
+    // Build base system prompt
+    const baseSystemPrompt = `You are a virtual assistant for Clean Machine Auto Detail, a mobile auto detailing service in Tulsa, OK. 
         
         ${knowledgeBase}
         
@@ -519,7 +520,16 @@ export async function generateAIResponse(
         8. CRITICAL: Review the conversation history below and remember what the customer has already told you. NEVER ask for information they've already provided.
         
         ${maintenanceDetailInstructions}
-        ${behaviorInstructions ? `\nBehavior Adjustments:${behaviorInstructions}` : ''}`
+        ${behaviorInstructions ? `\nBehavior Adjustments:${behaviorInstructions}` : ''}`;
+    
+    // Apply customer personalization to system prompt (Phase 1)
+    const personalizedSystemPrompt = buildPersonalizedSystemPrompt(baseSystemPrompt, customerContext);
+    
+    // Build conversation messages with history
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: personalizedSystemPrompt
       }
     ];
 

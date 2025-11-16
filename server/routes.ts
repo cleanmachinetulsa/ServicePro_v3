@@ -102,6 +102,7 @@ import phoneSettingsRoutes from './routes.phoneSettings';
 import { registerCallRoutes } from './routes.calls';
 import { registerTechDepositRoutes } from './routes.techDeposits';
 import { registerCallEventsRoutes } from './routes.callEvents';
+import { registerCustomerIntelligenceRoutes } from './routes.customerIntelligence';
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -1758,6 +1759,7 @@ export async function registerRoutes(app: Express) {
   registerReferralConfigRoutes(app);
   registerSmsReferralRoutes(app);
   registerAdminReferralStatsRoutes(app);
+  registerCustomerIntelligenceRoutes(app);
   registerPublicCustomerLookupRoutes(app);
   registerUpsellRoutes(app);
   registerInvoiceRoutes(app);

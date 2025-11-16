@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
-import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users } from '@shared/schema';
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users, customerServiceHistory, services } from '@shared/schema';
+import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { requireTechnician } from './technicianMiddleware';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import multer from 'multer';
@@ -775,14 +775,61 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
         .returning();
 
       // 3. Update job status to completed
-      await tx
+      const [completedAppointment] = await tx
         .update(appointments)
         .set({
           status: 'completed',
           completedAt: new Date(),
           technicianId: technician.id,
         })
-        .where(eq(appointments.id, jobId));
+        .where(eq(appointments.id, jobId))
+        .returning();
+
+      // 3a. Record service in customer history (Phase 1: Customer Intelligence)
+      if (completedAppointment) {
+        const [service] = await tx
+          .select()
+          .from(services)
+          .where(eq(services.id, completedAppointment.serviceId))
+          .limit(1);
+
+        await tx.insert(customerServiceHistory).values({
+          customerId: completedAppointment.customerId,
+          appointmentId: completedAppointment.id,
+          serviceDate: new Date(),
+          serviceType: service?.name || completedAppointment.serviceType || 'Service',
+          vehicleId: null,
+          technicianId: technician.id,
+          amount: amount.toString(),
+        });
+
+        // Update customer stats
+        const customerStats = await tx
+          .select({
+            totalAppointments: sql<number>`count(*)`,
+            lifetimeValue: sql<string>`COALESCE(sum(${customerServiceHistory.amount}), 0)`,
+            firstAppointment: sql<Date>`min(${customerServiceHistory.serviceDate})`,
+            lastAppointment: sql<Date>`max(${customerServiceHistory.serviceDate})`
+          })
+          .from(customerServiceHistory)
+          .where(eq(customerServiceHistory.customerId, completedAppointment.customerId))
+          .groupBy(customerServiceHistory.customerId);
+
+        if (customerStats.length > 0) {
+          const stats = customerStats[0];
+          await tx.update(customers)
+            .set({
+              isReturningCustomer: stats.totalAppointments > 0,
+              totalAppointments: stats.totalAppointments,
+              lifetimeValue: stats.lifetimeValue,
+              firstAppointmentAt: stats.firstAppointment,
+              lastAppointmentAt: stats.lastAppointment
+            })
+            .where(eq(customers.id, completedAppointment.customerId));
+        }
+
+        console.log(`[CUSTOMER INTELLIGENCE] Service history recorded for customer ${completedAppointment.customerId}`);
+      }
 
       // 4. Update or create today's deposit record
       const today = format(new Date(), 'yyyy-MM-dd');
