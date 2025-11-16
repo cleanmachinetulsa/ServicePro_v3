@@ -9,7 +9,7 @@ let monitoringActive = false;
 /**
  * Daily Port Monitoring Service
  * 
- * Tests if the ported number (+19188565304) is fully active by sending test SMS
+ * Tests if the ported number (+19188565711) is fully active by sending test SMS
  * Runs 3x daily at 8 AM, 2 PM, 8 PM Central Time
  * Automatically disables after successful port detection
  */
@@ -22,7 +22,7 @@ async function checkPortStatus(): Promise<boolean> {
   try {
     const portedNumber = process.env.TWILIO_PHONE_NUMBER;
     
-    if (!portedNumber || !portedNumber.includes('5304')) {
+    if (!portedNumber || !portedNumber.includes('5711')) {
       console.log('[PORT MONITOR] Ported number not configured yet');
       return false;
     }
