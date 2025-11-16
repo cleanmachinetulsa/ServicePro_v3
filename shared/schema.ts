@@ -1445,6 +1445,43 @@ export const homepageContent = pgTable('homepage_content', {
   updatedBy: integer('updated_by').references(() => users.id),
 });
 
+// Job Postings - Careers/Employment portal job listings
+export const jobPostings = pgTable('job_postings', {
+  id: serial('id').primaryKey(),
+  title: varchar('title', { length: 200 }).notNull(),
+  department: varchar('department', { length: 100 }),
+  location: varchar('location', { length: 100 }),
+  employmentType: varchar('employment_type', { length: 50 }).notNull(), // 'full-time', 'part-time', 'contract'
+  description: text('description').notNull(),
+  requirements: text('requirements'),
+  benefits: text('benefits'),
+  salaryRange: varchar('salary_range', { length: 100 }),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Job Applications - Applications submitted through careers portal
+export const jobApplications = pgTable('job_applications', {
+  id: serial('id').primaryKey(),
+  jobPostingId: integer('job_posting_id').references(() => jobPostings.id),
+  firstName: varchar('first_name', { length: 100 }).notNull(),
+  lastName: varchar('last_name', { length: 100 }).notNull(),
+  email: varchar('email', { length: 255 }).notNull(),
+  phone: varchar('phone', { length: 20 }).notNull(),
+  resumeUrl: text('resume_url'),
+  coverLetter: text('cover_letter'),
+  linkedinUrl: varchar('linkedin_url', { length: 255 }),
+  portfolioUrl: varchar('portfolio_url', { length: 255 }),
+  yearsExperience: integer('years_experience'),
+  currentCompany: varchar('current_company', { length: 200 }),
+  status: varchar('status', { length: 50 }).default('new').notNull(), // 'new', 'reviewing', 'interviewing', 'rejected', 'hired'
+  notes: text('notes'), // Admin notes
+  reviewedBy: integer('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  submittedAt: timestamp('submitted_at').defaultNow().notNull(),
+});
+
 // Shift Templates - Define standard shift types (Morning, Afternoon, Full Day, etc.)
 export const shiftTemplates = pgTable("shift_templates", {
   id: serial("id").primaryKey(),
@@ -2403,6 +2440,22 @@ export const insertHomepageContentSchema = createInsertSchema(homepageContent).o
 export type InsertHomepageContent = z.infer<typeof insertHomepageContentSchema>;
 export type HomepageContent = typeof homepageContent.$inferSelect;
 
+export const insertJobPostingSchema = createInsertSchema(jobPostings).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+export const insertJobApplicationSchema = createInsertSchema(jobApplications).omit({ 
+  id: true, 
+  submittedAt: true 
+});
+
+export type JobPosting = typeof jobPostings.$inferSelect;
+export type JobApplication = typeof jobApplications.$inferSelect;
+export type InsertJobPosting = z.infer<typeof insertJobPostingSchema>;
+export type InsertJobApplication = z.infer<typeof insertJobApplicationSchema>;
+
 export const insertServiceLimitSchema = createInsertSchema(serviceLimits).omit({
   id: true,
   createdAt: true,
@@ -2609,3 +2662,59 @@ export const insertReminderConsentSchema = createInsertSchema(reminderConsent).o
 });
 export type InsertReminderConsent = z.infer<typeof insertReminderConsentSchema>;
 export type ReminderConsent = typeof reminderConsent.$inferSelect;
+
+// ===== API USAGE TRACKING SYSTEM =====
+
+// API Usage Logs - Track individual API calls with costs
+export const apiUsageLogs = pgTable('api_usage_logs', {
+  id: serial('id').primaryKey(),
+  service: varchar('service', { length: 50 }).notNull(), // 'twilio', 'openai', 'stripe', 'sendgrid', 'google_calendar', etc.
+  apiType: varchar('api_type', { length: 100 }), // 'sms', 'voice', 'email', 'tokens', 'payment', etc.
+  quantity: integer('quantity').notNull(), // count of API calls, tokens, emails, etc.
+  cost: numeric('cost', { precision: 10, scale: 4 }).notNull(), // actual cost in USD
+  metadata: jsonb('metadata'), // additional details (model used, message length, etc.)
+  timestamp: timestamp('timestamp').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  serviceIdx: index('api_usage_logs_service_idx').on(table.service),
+  timestampIdx: index('api_usage_logs_timestamp_idx').on(table.timestamp),
+}));
+
+// Service Health - Monitor health status of external services
+export const serviceHealth = pgTable('service_health', {
+  id: serial('id').primaryKey(),
+  service: varchar('service', { length: 50 }).notNull().unique(), // service identifier
+  status: varchar('status', { length: 20 }).notNull(), // 'healthy', 'degraded', 'down'
+  lastCheck: timestamp('last_check').notNull(),
+  lastSuccess: timestamp('last_success'),
+  lastError: text('last_error'),
+  consecutiveFailures: integer('consecutive_failures').default(0).notNull(),
+  responseTime: integer('response_time'), // in milliseconds
+  apiKeyExpiry: timestamp('api_key_expiry'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Usage Summary - Aggregated usage summaries
+export const usageSummary = pgTable('usage_summary', {
+  id: serial('id').primaryKey(),
+  service: varchar('service', { length: 50 }).notNull(),
+  period: varchar('period', { length: 20 }).notNull(), // 'daily', 'monthly', 'yearly'
+  periodStart: date('period_start').notNull(),
+  totalCalls: integer('total_calls').notNull().default(0),
+  totalCost: numeric('total_cost', { precision: 10, scale: 2 }).notNull().default('0'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// Zod schemas for API usage tracking
+export const insertApiUsageLogSchema = createInsertSchema(apiUsageLogs).omit({ id: true, createdAt: true });
+export const insertServiceHealthSchema = createInsertSchema(serviceHealth).omit({ id: true, updatedAt: true });
+export const insertUsageSummarySchema = createInsertSchema(usageSummary).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Types for API usage tracking
+export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
+export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
+export type ServiceHealth = typeof serviceHealth.$inferSelect;
+export type InsertServiceHealth = z.infer<typeof insertServiceHealthSchema>;
+export type UsageSummary = typeof usageSummary.$inferSelect;
+export type InsertUsageSummary = z.infer<typeof insertUsageSummarySchema>;
