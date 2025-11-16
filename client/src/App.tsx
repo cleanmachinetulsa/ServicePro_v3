@@ -43,6 +43,7 @@ import RecurringServiceBookingPage from './pages/recurring-service-booking';
 import TechWizard from './pages/tech-wizard';
 import TechProfile from './pages/tech-profile';
 import TechProfilePublic from './pages/tech-profile-public';
+import TechnicianSchedule from './pages/TechnicianSchedule';
 import AdminEmployees from './pages/admin-employees';
 import AdminJobEditor from './pages/admin-job-editor';
 import AdminQuoteRequests from './pages/admin-quote-requests';
@@ -61,6 +62,11 @@ import PhoneSettingsPage from './pages/phone-settings';
 import Billing from './pages/billing';
 import EscalationsPage from './pages/escalations';
 import ReminderDashboard from './pages/ReminderDashboard';
+import SchedulingDashboard from './pages/SchedulingDashboard';
+import RequestPTO from './pages/RequestPTO';
+import AdminPTO from './pages/AdminPTO';
+import OpenShifts from './pages/OpenShifts';
+import ShiftTrades from './pages/ShiftTrades';
 
 function Router() {
   return (
@@ -163,6 +169,12 @@ function Router() {
       <Route path="/admin/quote-requests">
         <AuthGuard><AdminQuoteRequests /></AuthGuard>
       </Route>
+      <Route path="/admin/scheduling">
+        <AuthGuard><SchedulingDashboard /></AuthGuard>
+      </Route>
+      <Route path="/admin/pto">
+        <AuthGuard><AdminPTO /></AuthGuard>
+      </Route>
 
       {/* Technician portal routes */}
       <Route path="/technician">
@@ -170,6 +182,18 @@ function Router() {
       </Route>
       <Route path="/tech/wizard" component={TechWizard} />
       <Route path="/tech/profile" component={TechProfile} />
+      <Route path="/tech/schedule">
+        <AuthGuard><TechnicianSchedule /></AuthGuard>
+      </Route>
+      <Route path="/tech/pto">
+        <AuthGuard><RequestPTO /></AuthGuard>
+      </Route>
+      <Route path="/tech/open-shifts">
+        <AuthGuard><OpenShifts /></AuthGuard>
+      </Route>
+      <Route path="/tech/shift-trades">
+        <AuthGuard><ShiftTrades /></AuthGuard>
+      </Route>
       
       {/* Public tech profile (no auth required) */}
       <Route path="/p/:publicId" component={TechProfilePublic} />

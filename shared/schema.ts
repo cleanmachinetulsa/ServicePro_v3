@@ -1425,13 +1425,14 @@ export const shiftTemplates = pgTable("shift_templates", {
 // Shifts - Assigned work periods for technicians
 export const shifts = pgTable("shifts", {
   id: serial("id").primaryKey(),
-  technicianId: integer("technician_id").notNull().references(() => technicians.id),
+  technicianId: integer("technician_id").references(() => technicians.id), // Nullable for open shifts
   templateId: integer("template_id").references(() => shiftTemplates.id),
   shiftDate: date("shift_date").notNull(),
   startTime: text("start_time").notNull(), // "08:00"
   endTime: text("end_time").notNull(), // "16:00"
   status: varchar("status", { length: 20 }).notNull().default("scheduled"), // scheduled, confirmed, in_progress, completed, cancelled
   assignedAppointments: integer("assigned_appointments").array(), // IDs of appointments assigned to this shift
+  appointmentId: integer("appointment_id").references(() => appointments.id), // Primary linked appointment
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   createdBy: integer("created_by").references(() => users.id),
