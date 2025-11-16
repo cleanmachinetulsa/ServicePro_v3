@@ -1,0 +1,375 @@
+You are Replit’s AI Agent working inside my existing Clean Machine / ServicePro app.
+
+Treat this as a **production SaaS** powering real revenue, not a toy project. You are a senior staff-level full-stack engineer + architect with ownership over quality, safety, and maintainability.
+
+================================
+0. IDENTITY & GUARANTEES
+================================
+
+- You MUST respect the existing stack and patterns in this Repl:
+  - Frontend: existing React/TypeScript setup, existing component library/styling.
+  - Backend: existing Node/Express/TypeScript + ORM + db already in the repo.
+- Do NOT:
+  - Introduce new frameworks (no Nest, no Next, etc.).
+  - Introduce a second ORM or state management library.
+  - Rename or break existing public routes / APIs unless clearly necessary AND you provide a compatibility layer.
+- Everything you do should be:
+  - Type-safe.
+  - Tested where the codebase already has tests.
+  - Observed (logs, error reporting) in line with existing patterns.
+  - Backward compatible with existing production data.
+
+Before any big change, prefer **extensions and feature flags** over destructive rewrites.
+
+================================
+1. ORIENT YOURSELF IN THE CODEBASE
+================================
+
+FIRST, do a fast but careful “mapping pass”:
+
+1. Locate and note:
+   - Technician / employee models and related tables.
+   - Existing technicianAvailability, PTO, shift swaps, or any related scheduling concepts.
+   - Jobs/appointments/bookings and how they’re assigned to technicians.
+   - Any existing “Today’s jobs”, “Technician panel”, or similar screens.
+
+2. Create a small internal doc file in the repo:
+   - `docs/scheduling-overview.md` (or similar).
+   - In that file, write a short, human-readable summary:
+     - Entities: Technician, Job, PTO, any existing scheduling-like tables.
+     - Relationships (e.g. Job → technician_id).
+     - Notes on current scheduler-ish functionality (what exists, what’s missing).
+
+Keep this doc up to date as you design.
+
+================================
+2. FUNCTIONAL SCOPE – WHAT WE’RE BUILDING
+================================
+
+We are building an **industry-standard employee scheduling system** comparable to When I Work / Homebase, integrated into this service business app.
+
+Roles & capabilities:
+
+A. Admin/Owner/Manager
+- Build and edit schedules (weekly and, later, monthly).
+- Drag-and-drop shifts across days and technicians.
+- Manage PTO and shift swaps (approve/deny).
+- Create “open shifts” that techs can claim.
+- See coverage, conflicts, and overtime risk.
+- Publish schedules (Draft → Published) for specific date ranges.
+- Trigger notifications (using existing SMS/email plumbing) on publish or changes.
+
+B. Technician/Employee
+- View “My schedule” in a very mobile-friendly UI.
+- See shift details: time, location, job summary, notes.
+- Request time off (PTO).
+- Request shift swaps.
+- See and claim open shifts.
+- Get notified when schedules are published or shifts change.
+
+NON-FUNCTIONAL REQUIREMENTS:
+- Multi-location / multi-route friendly: design schema so locations/teams can be supported.
+- Timezone aware (but this app is currently US-centric; we can assume a single business timezone configured at the org level).
+- Scales to:
+  - Dozens of technicians.
+  - Hundreds of shifts/week.
+- Safe for production:
+  - Migrations are reversible and do not destroy data.
+  - API changes are backwards compatible where possible.
+
+================================
+3. DATA MODEL – DESIGN WITH FUTURE IN MIND
+================================
+
+Use the existing ORM and naming conventions. Extend, don’t rewrite.
+
+Key entities (adjust names to match existing patterns):
+
+1. Technician
+   - Already exists.
+   - If needed, add fields like:
+     - role (OWNER, MANAGER, TECHNICIAN, etc. – align with existing roles).
+     - max_hours_per_week (optional).
+     - primary_location_id (optional).
+
+2. TechnicianAvailability
+   - Reuse existing table if present.
+   - Ensure it supports:
+     - day_of_week (0–6).
+     - start_time, end_time.
+     - Option for date-specific overrides later (you may add a nullable date column that overrides the recurring rule).
+
+3. ShiftTemplate
+   - For reusable patterns (“Full-day shift”, “Morning route AM”).
+   - Fields:
+     - id
+     - name
+     - default_start_time
+     - default_end_time
+     - optional role or tag (e.g. WASH_ONLY, FULL_DETAIL).
+     - optional default_location_id.
+
+4. Shift
+   - Core schedule entity.
+   - Fields (adapt to ORM style):
+     - id
+     - date (or start_datetime, end_datetime; pick the style that matches the codebase).
+     - technician_id (nullable when “open shift”).
+     - location_id or service_area (string or relation, based on existing schema).
+     - status enum (e.g. DRAFT, PUBLISHED, CANCELLED, OPEN, CLAIMED).
+     - schedule_period_id (ties into a published schedule period).
+     - linked_job_id (nullable).
+     - created_by_user_id, updated_by_user_id.
+     - notes.
+
+5. SchedulePeriod
+   - Tracks schedule versions.
+   - Fields:
+     - id
+     - start_date, end_date
+     - status (DRAFT, PUBLISHED, ARCHIVED).
+     - published_at
+     - published_by_user_id.
+
+6. PTORequest
+   - Reuse existing PTO table if present; otherwise create one.
+   - Fields:
+     - id
+     - technician_id
+     - start_date, end_date
+     - status (PENDING, APPROVED, DENIED, CANCELLED).
+     - reason (text)
+     - requested_at, decided_at, decided_by_user_id.
+
+7. ShiftSwap
+   - Use or extend existing shift swap/trade table.
+   - Fields:
+     - id
+     - shift_id
+     - requester_technician_id
+     - target_technician_id (nullable if open to any eligible tech).
+     - status (PENDING, APPROVED, DENIED, CANCELLED).
+     - requested_at, decided_at, decided_by_user_id.
+
+8. Hours & Overtime
+   - Do NOT prematurely optimize by storing aggregates in the DB.
+   - Compute weekly hours per tech by summing shifts over date ranges.
+   - Store only what is necessary (e.g., overtime_threshold_hours per business/org if there’s already a config table).
+
+When creating migrations:
+- Make them additive and backwards compatible.
+- Avoid destructive changes to existing tables.
+- If you must alter existing columns, do it carefully and with default values.
+
+================================
+4. BACKEND – API DESIGN
+================================
+
+Use **existing routing style and auth middleware**. Names below are conceptual; adapt path prefixes (e.g., `/api/admin/…`) to match current patterns.
+
+A. Admin APIs (protected by admin/manager roles)
+
+1) Get schedule view
+- `GET /api/admin/schedule?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- Returns:
+  - List of shifts in range (with technician, job, location info).
+  - PTO requests overlapping the range.
+  - Basic coverage stats per day (e.g. shift count by role).
+  - Counts of conflicts (overlaps, PTO violations, overtime risk).
+
+2) Create/Update/Delete shifts
+- `POST /api/admin/shifts` – Create single or batch shifts.
+- `PUT /api/admin/shifts/:id` – Update shift.
+- `DELETE /api/admin/shifts/:id` – Soft delete / cancel by default.
+
+3) Publish schedule
+- `POST /api/admin/schedule/publish`
+  - Input: start_date, end_date.
+  - Logic:
+    - Create or update a SchedulePeriod.
+    - Validate hard rules (no overlapping shifts for same tech; no shifts during approved PTO).
+    - Mark as PUBLISHED and set published_at.
+    - Call a schedule notification helper (see section 7).
+
+4) Manage open shifts
+- `POST /api/admin/shifts/:id/open` – set technician_id null and status OPEN.
+- `POST /api/admin/shifts/:id/assign` – assign a specific technician and update status accordingly.
+
+5) PTO and swap approvals
+- `GET /api/admin/pto-requests?status=PENDING` – view pending PTO.
+- `POST /api/admin/pto-requests/:id/decision` – approve/deny with reason.
+- `GET /api/admin/shift-swaps?status=PENDING`
+- `POST /api/admin/shift-swaps/:id/decision` – approve/deny.
+
+B. Technician APIs (auth as technician)
+
+1) My schedule
+- `GET /api/me/shifts?start=&end=`
+  - Returns shifts assigned to the current technician.
+
+2) My PTO
+- `GET /api/me/pto-requests`
+- `POST /api/me/pto-requests` – submit new request.
+
+3) Shift swaps
+- `GET /api/me/shift-swaps` – my swap requests / offers.
+- `POST /api/me/shift-swaps` – create new swap request for an upcoming shift.
+
+4) Open shifts
+- `GET /api/me/open-shifts?start=&end=`
+- `POST /api/me/open-shifts/:id/claim`
+  - Ensure atomicity: use db transactions or constraints to prevent double-claim.
+
+AUTH & SECURITY:
+- Use existing auth/role system.
+- Return proper HTTP codes and error messages.
+- Never leak data across orgs/tenants if multi-tenant is present.
+
+================================
+5. FRONTEND – ADMIN SCHEDULER UI
+================================
+
+Create a dedicated **Admin Scheduler Page** with a route like `/admin/schedule`. Integrate with existing admin navigation.
+
+Core UX:
+
+1) Main View
+- A weekly view is required:
+  - Columns = days of week.
+  - Rows = technicians OR a hybrid layout that lets you filter by technician/team.
+- Each shift is a card showing:
+  - Time range (e.g. 8:00–12:00).
+  - Technician name (or “Open shift”).
+  - Linked job info (short summary).
+  - Status (draft/published/open).
+- Visual indicators for:
+  - Conflicts (overlapping shifts, PTO conflicts).
+  - Overtime risk (e.g. red badge when weekly hours exceed threshold).
+
+2) Interactions
+- Drag and drop:
+  - Reassign shift to another tech.
+  - Move shift to another day.
+- Edit modal:
+  - Open on click.
+  - Edit start/end time, tech, notes, linked job.
+- New shift:
+  - “Add shift” button and/or click on empty slot.
+  - Option to pick a ShiftTemplate or manual time.
+
+3) Filters & Controls
+- Filter by:
+  - Technician.
+  - Role (if used).
+  - Location/team.
+- Date navigation:
+  - Previous week / next week.
+  - Jump to date.
+- Publish bar:
+  - Shows period status (Draft vs Published).
+  - “Publish schedule” button with confirmation dialog summarizing:
+    - Range, total shifts, warnings.
+
+4) Performance
+- Use pagination / lazy loading or virtualized lists if needed.
+- Avoid N+1 backend calls (design consolidated endpoints).
+
+================================
+6. FRONTEND – TECHNICIAN SCHEDULE UI
+================================
+
+Create a **technician-facing schedule view**, mobile-first:
+
+- Route like `/me/schedule` or similar.
+- Accessible from the technician’s navigation.
+
+Features:
+
+1) My Shifts
+- Show upcoming shifts (e.g. next 14–30 days).
+- Per day:
+  - Time, location, job title/summary.
+  - Any notes or tags.
+
+2) PTO
+- Simple PTO request form:
+  - Start date, end date, reason.
+- Show existing requests:
+  - Status badges: Pending, Approved, Denied.
+
+3) Swaps & Open Shifts
+- “My shifts” detail view:
+  - Button “Request swap”.
+- “Open Shifts” tab:
+  - List of open shifts they are eligible for.
+  - Claim button with clear confirmation and error messages.
+
+UX must be clean, simple, and easy to use on a phone.
+
+================================
+7. INTEGRATION WITH EXISTING JOBS / BOOKINGS
+================================
+
+Integrate but don’t break anything:
+
+- If jobs already assign technicians and times:
+  - When viewing a day in the scheduler, show jobs and linked shifts together.
+  - Provide a way to link an existing job to an existing shift (or auto-create a shift from a job).
+- Do NOT change existing booking flows or job creation flows in a destructive way.
+- OPTIONAL for this first pass:
+  - When a new job is created and a technician is assigned, offer a small helper function/server-side helper to auto-insert a related shift. This can be turned on later via a feature flag.
+
+================================
+8. NOTIFICATIONS & OBSERVABILITY
+================================
+
+Add a reusable notification helper (or extend an existing one):
+
+- E.g., `scheduleNotifier.notifySchedulePublished(orgId, schedulePeriodId)`:
+  - For now, you may:
+    - Log.
+    - Call existing SMS/email routines with a simple text like:
+      “Your schedule from {start_date} to {end_date} has been published. You have {N} shifts.”
+
+Add logging:
+- Log key events:
+  - Schedule published.
+  - PTO approved/denied.
+  - Shift swap approved/denied.
+  - Open shift claimed (with technician id).
+- Use existing logging patterns (no new logger library).
+
+================================
+9. QUALITY, TESTING, & ROLLOUT
+================================
+
+- Follow existing test approach:
+  - If tests exist for API routes, add tests for new routes.
+  - Add at least smoke tests for:
+    - Creating a shift.
+    - Publishing a schedule.
+    - Claiming an open shift (no double-claims).
+- Manual QA checklist (add as comments in `docs/scheduling-overview.md`):
+  - [ ] Admin can see weekly schedule.
+  - [ ] Admin can create/edit/delete shifts.
+  - [ ] Technicians see their upcoming shifts.
+  - [ ] PTO request works end-to-end.
+  - [ ] Open shift claim prevents double-claim.
+  - [ ] Publishing schedule changes status + triggers notifier.
+
+================================
+10. WORKING STYLE INSIDE THIS REPL
+================================
+
+As you work:
+
+1. Make small, coherent sets of changes:
+   - Prefer completing vertical slices (DB → API → UI) for one feature at a time.
+2. After each major change:
+   - Run type checks and tests.
+   - Fix errors before proceeding.
+3. Keep changes discoverable:
+   - Group related files.
+   - Add comments where reasoning is non-obvious.
+
+Goal: Deliver a **cohesive, fully working scheduling system** that feels like a first-class, flagship feature of this app, not a bolted-on experiment.
