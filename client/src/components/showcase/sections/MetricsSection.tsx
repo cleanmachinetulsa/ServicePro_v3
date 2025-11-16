@@ -1,14 +1,15 @@
 import { motion } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { MetricCard } from '../shared/MetricCard';
-import { Clock, UserX, Repeat, DollarSign, TrendingUp } from 'lucide-react';
+import { Clock, UserX, Repeat, DollarSign, TrendingUp, Settings } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const businessMetrics = [
   { icon: Clock, value: '15-20', suffix: ' hrs', label: 'Time Saved Per Week' },
   { icon: UserX, value: 67, suffix: '%', label: 'No-Show Reduction' },
   { icon: Repeat, value: '+42', suffix: '%', label: 'Repeat Booking Rate' },
-  { icon: DollarSign, value: '+$35', label: 'Avg Ticket Increase' }
+  { icon: DollarSign, value: '+$35', label: 'Avg Ticket Increase' },
+  { icon: Settings, value: '13+', label: 'Admin Features', description: 'Dashboard tools for business management' }
 ];
 
 const chartData = [
@@ -17,7 +18,7 @@ const chartData = [
   { month: 'Week 2', manual: 40, automated: 45, label: 'Learning' },
   { month: 'Week 3', manual: 25, automated: 70, label: 'Adoption' },
   { month: 'Week 4', manual: 15, automated: 85, label: 'Dialed In' },
-  { month: 'Month 2', manual: 5, automated: 95, label: 'Optimized' }
+  { month: 'Month 2', manual: 9, automated: 91, label: 'Optimized' }
 ];
 
 export function MetricsSection() {

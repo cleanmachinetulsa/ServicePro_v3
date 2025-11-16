@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { PillTabs } from '../shared/PillTabs';
 import { GlassCard } from '../shared/GlassCard';
-import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap } from 'lucide-react';
+import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase } from 'lucide-react';
 
 const features = [
   {
@@ -103,6 +103,87 @@ const features = [
       { title: 'Rules Engine', desc: 'Set it and forget it', color: 'from-purple-500/20 to-pink-500/20' },
       { title: 'Analytics', desc: 'Real-time insights', color: 'from-orange-500/20 to-red-500/20' }
     ]
+  },
+  {
+    id: 'employee-scheduling',
+    label: 'Employee Scheduling',
+    icon: Calendar,
+    badge: { text: 'New', color: 'from-purple-500 to-pink-500' },
+    title: 'Employee Scheduling System',
+    description: 'Complete shift management with automated conflict detection',
+    bullets: [
+      'Weekly calendar grid view',
+      '30-day technician schedules',
+      'PTO request workflows with approval',
+      'Shift trading with race condition prevention',
+      'Overtime warnings at 40+ hours/week',
+      'SMS alerts for schedule changes',
+      'Shift-appointment linking'
+    ],
+    mockups: [
+      { title: 'Schedule Grid', desc: 'Weekly view', color: 'from-purple-500/20 to-pink-500/20' },
+      { title: 'PTO Management', desc: 'Approval workflow', color: 'from-indigo-500/20 to-purple-500/20' }
+    ]
+  },
+  {
+    id: 'homepage-cms',
+    label: 'Homepage CMS',
+    icon: Edit,
+    badge: { text: 'New', color: 'from-cyan-500 to-blue-500' },
+    title: 'Homepage CMS Editor',
+    description: 'Visual content management with real-time preview',
+    bullets: [
+      'Live split-screen editing',
+      'Hero, About, Services sections',
+      'Brand color customization (HSL)',
+      'Logo upload and management',
+      'SEO meta tags editor',
+      'Real-time homepage updates'
+    ],
+    mockups: [
+      { title: 'Live Preview', desc: 'Split-screen editing', color: 'from-cyan-500/20 to-blue-500/20' },
+      { title: 'SEO Tools', desc: 'Meta tag editor', color: 'from-blue-500/20 to-indigo-500/20' }
+    ]
+  },
+  {
+    id: 'usage-dashboard',
+    label: 'API Usage & Costs',
+    icon: DollarSign,
+    badge: { text: 'New', color: 'from-green-500 to-emerald-500' },
+    title: 'API Usage & Cost Tracking',
+    description: 'Real-time monitoring of all external service costs',
+    bullets: [
+      'Twilio SMS/Call tracking',
+      'OpenAI token usage & costs',
+      'Stripe payment processing fees',
+      'SendGrid email statistics',
+      'Service health monitoring',
+      'MTD/YTD cost breakdowns'
+    ],
+    mockups: [
+      { title: 'Cost Overview', desc: 'MTD/YTD breakdown', color: 'from-green-500/20 to-emerald-500/20' },
+      { title: 'Health Status', desc: 'Service monitoring', color: 'from-emerald-500/20 to-teal-500/20' }
+    ]
+  },
+  {
+    id: 'careers-portal',
+    label: 'Careers Portal',
+    icon: Briefcase,
+    badge: { text: 'New', color: 'from-orange-500 to-red-500' },
+    title: 'Careers & Employment Portal',
+    description: 'Attract and manage job applicants with ease',
+    bullets: [
+      'Public job listings page',
+      'Application form with validation',
+      'Resume upload (PDF/DOC/DOCX)',
+      'Admin application review dashboard',
+      'Status workflow management',
+      'Candidate tracking & notes'
+    ],
+    mockups: [
+      { title: 'Job Listings', desc: 'Public careers page', color: 'from-orange-500/20 to-red-500/20' },
+      { title: 'Applications', desc: 'Admin review dashboard', color: 'from-red-500/20 to-pink-500/20' }
+    ]
   }
 ];
 
@@ -135,7 +216,7 @@ export function FeatureMapSection() {
         <SectionHeader
           badge="Core Capabilities"
           title="Feature Map"
-          subtitle="Five integrated systems working together to run your entire operation"
+          subtitle="Nine integrated systems working together to run your entire operation"
         />
 
         <div className="relative">
