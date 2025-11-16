@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
 import PhoneLineSwitcher from '@/components/messages/PhoneLineSwitcher';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import {
   Sheet,
   SheetContent,
@@ -58,6 +58,7 @@ interface Conversation {
 function MessagesPageContent() {
   const { selectedPhoneLineId } = usePhoneLine();
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,6 +92,23 @@ function MessagesPageContent() {
   });
 
   const conversations = conversationsData?.data || [];
+
+  // Handle ?phone= URL parameter to open specific conversation
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const phoneParam = params.get('phone');
+    
+    if (phoneParam && conversations.length > 0) {
+      // Find conversation matching this phone number
+      const matchingConv = conversations.find(c => c.customerPhone === phoneParam);
+      
+      if (matchingConv) {
+        setSelectedConversation(matchingConv.id);
+        // Clear the phone parameter from URL
+        setLocation('/messages', { replace: true });
+      }
+    }
+  }, [search, conversations, setLocation]);
 
   useEffect(() => {
     if (darkMode) {
