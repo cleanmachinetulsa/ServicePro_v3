@@ -2,12 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import type { HomepageContent } from "@shared/schema";
 import { getTemplate } from "@/lib/homeTemplates";
 
-import CurrentTemplate from "./templates/CurrentTemplate";
-import LuminousConcierge from "./templates/LuminousConcierge";
-import DynamicSpotlight from "./templates/DynamicSpotlight";
-import PrestigeGrid from "./templates/PrestigeGrid";
-import NightDriveNeon from "./templates/NightDriveNeon";
-import ExecutiveMinimal from "./templates/ExecutiveMinimal";
+import CurrentTemplate from "@/pages/templates/CurrentTemplate";
+import LuminousConcierge from "@/pages/templates/LuminousConcierge";
+import DynamicSpotlight from "@/pages/templates/DynamicSpotlight";
+import PrestigeGrid from "@/pages/templates/PrestigeGrid";
+import NightDriveNeon from "@/pages/templates/NightDriveNeon";
+import ExecutiveMinimal from "@/pages/templates/ExecutiveMinimal";
 
 const TEMPLATE_COMPONENTS: Record<string, React.ComponentType> = {
   current: CurrentTemplate,
