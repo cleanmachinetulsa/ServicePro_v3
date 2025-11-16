@@ -236,6 +236,14 @@ export default function HomePage() {
             </div>
             
             <div className="text-center md:text-right">
+              <div className="flex gap-4 justify-center md:justify-end mb-2">
+                <Link href="/careers" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
+                  Careers
+                </Link>
+                <Link href="/showcase" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
+                  Showcase
+                </Link>
+              </div>
               <p className="text-gray-400 text-sm">© {new Date().getFullYear()} Clean Machine Auto Detail. All rights reserved.</p>
               <p className="text-gray-500 text-xs mt-1">Serving Tulsa and surrounding areas</p>
             </div>

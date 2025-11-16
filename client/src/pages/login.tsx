@@ -72,12 +72,23 @@ export default function LoginPage() {
         // Login complete (no 2FA required)
         toast({ title: 'Login successful', description: 'Welcome back!' });
         
+        // Dismiss mobile keyboard
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        
         setTimeout(() => {
           setLocation('/messages');
         }, 100);
       } else if (data.requires2FA) {
         // Password verified, now need 2FA code
         setRequires2FA(true);
+        
+        // Dismiss mobile keyboard
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+        
         toast({ 
           title: '2FA Required', 
           description: 'Enter the code from your authenticator app',
@@ -127,6 +138,11 @@ export default function LoginPage() {
 
       if (data.success) {
         toast({ title: 'Verification successful', description: 'Welcome back!' });
+        
+        // Dismiss mobile keyboard
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
         
         setTimeout(() => {
           setLocation('/messages');
@@ -254,6 +270,11 @@ export default function LoginPage() {
           title: 'Biometric login successful', 
           description: 'Welcome back!' 
         });
+        
+        // Dismiss mobile keyboard
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
         
         setTimeout(() => {
           setLocation('/messages');
