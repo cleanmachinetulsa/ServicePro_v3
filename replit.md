@@ -75,3 +75,16 @@ The architecture uses a React with TypeScript frontend (Vite, Tailwind CSS, shad
 **Integration Strategy Notes**:
 - Google Calendar & Sheets: Using Replit OAuth connectors with auto-refreshing credentials.
 - Twilio & SendGrid: Using manual secrets.
+
+## Documentation
+
+### Platform Documentation
+- **[PWA Features Guide](PWA_FEATURES.md)** - Comprehensive documentation of all 8 Progressive Web App features, technical implementation, usage examples, and testing checklist.
+- **[ServicePro Fusion Plan](attached_assets/servicepro-fusion-plan_1762477848510.md)** - Complete implementation plan for multi-tenant white-label transformation, including architecture, database schema, tenant isolation, and migration strategy.
+- **[White Label Guide](WHITE_LABEL_GUIDE.md)** - Guide for white-labeling the platform for different service businesses.
+
+### Recent Updates (November 2025)
+- **PWA Enhancements**: All 8 PWA features implemented (offline mode, app shortcuts, install experience, badge notifications, background sync, share API, persistent storage, full-screen mode)
+- **Dashboard Modernization**: Premium glassmorphism redesign with animated counters, gradient text, and enhanced visual quality
+- **iOS/iPad Optimization**: Proper app icon sizes configured for iPhone and iPad (120x120, 152x152, 167x167, 180x180)
+- **Service Worker v17**: Enhanced with background sync, badge API, and offline queue management

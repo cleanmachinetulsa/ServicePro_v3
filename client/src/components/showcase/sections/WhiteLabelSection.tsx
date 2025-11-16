@@ -56,10 +56,23 @@ export function WhiteLabelSection() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: 0.2 }}
-                className="text-xl text-blue-100 mb-8"
+                className="text-xl text-blue-100 mb-4"
               >
                 This platform powers service businesses of all types
               </motion.p>
+              
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.3 }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-white/20 rounded-full mb-8"
+              >
+                <Sparkles className="h-4 w-4 text-purple-300" />
+                <span className="text-sm text-purple-100 font-medium">
+                  ServicePro Multi-Tenant Transformation Ready
+                </span>
+              </motion.div>
             </div>
 
             {/* Benefits */}
