@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2 } from 'lucide-react';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import CommunicationsNav from '@/components/CommunicationsNav';
+import { CustomRingtoneInstructions } from '@/components/phone/CustomRingtoneInstructions';
 
 interface PhoneLine {
   id: number;
@@ -505,6 +506,9 @@ export default function PhoneSettings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Custom Ringtone Instructions */}
+        <CustomRingtoneInstructions />
       </div>
 
       {/* Line Configuration Modal */}
