@@ -105,8 +105,8 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
       timeout: ringDuration,
       action: '/api/voice/call-status',
       method: 'POST',
-      // Show business line number to owner so they know it's a business call
-      callerId: twilioPhone,
+      // Show customer's actual number as caller ID for easy callback and custom ringtone setup
+      callerId: callerPhone,
     });
 
     dial.number(routing.forwardingNumber);
@@ -318,12 +318,6 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
 
   // Send transcription to business phone for record-keeping
   try {
-    const businessPhone = process.env.BUSINESS_OWNER_PHONE;
-    if (businessPhone) {
-      await sendVoicemailNotification(businessPhone, callerPhone, transcriptionText, recordingUrl);
-    }
-    
-    // Send push notification to owner
     const { sendPushNotificationToRole } = await import('./pushNotificationService');
     const { users } = await import('@shared/schema');
     const { shouldSendNotification } = await import('./notificationHelper');
@@ -332,18 +326,27 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
       where: eq(users.role, 'owner')
     });
     
-    if (owner && await shouldSendNotification(owner.id, 'voicemailPush')) {
-      await sendPushNotificationToRole('owner', {
-        title: '📞 New Voicemail',
-        body: `From: ${callerPhone}\n${transcriptionText?.substring(0, 100) || 'Transcription pending...'}`,
-        tag: 'voicemail',
-        requireInteraction: false,
-        data: {
-          type: 'voicemail',
-          customerPhone: callerPhone,
-          url: '/phone?tab=voicemail'
-        }
-      });
+    if (owner) {
+      // Check SMS preference before sending
+      const businessPhone = process.env.BUSINESS_OWNER_PHONE;
+      if (businessPhone && await shouldSendNotification(owner.id, 'voicemailSms')) {
+        await sendVoicemailNotification(businessPhone, callerPhone, transcriptionText, recordingUrl);
+      }
+      
+      // Check Push preference before sending
+      if (await shouldSendNotification(owner.id, 'voicemailPush')) {
+        await sendPushNotificationToRole('owner', {
+          title: '📞 New Voicemail',
+          body: `From: ${callerPhone}\n${transcriptionText?.substring(0, 100) || 'Transcription pending...'}`,
+          tag: 'voicemail',
+          requireInteraction: false,
+          data: {
+            type: 'voicemail',
+            customerPhone: callerPhone,
+            url: '/phone?tab=voicemail'
+          }
+        });
+      }
     }
   } catch (error) {
     console.error('[VOICE] Failed to send voicemail notification:', error);

@@ -863,6 +863,8 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
 
     // 5. Send notifications to owner/manager
     try {
+      const { shouldSendNotification } = await import('./notificationHelper');
+      
       // Get owner/manager users
       const ownerManagers = await db
         .select()
@@ -876,26 +878,31 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
 
       const notificationMessage = `💵 Cash payment recorded: ${customerName} paid $${amount.toFixed(2)} via ${paymentMethod}\nTechnician: ${techName}\nToday's total: $${result.deposit.totalAmount}`;
 
-      // Send push notifications
+      // Send push notifications (check preference)
       for (const owner of ownerManagers) {
-        await sendPushNotification(owner.id, {
-          title: 'Cash Payment Recorded',
-          body: `${customerName} paid $${amount.toFixed(2)} via ${paymentMethod} - ${techName}`,
-          tag: `cash-payment-${result.invoice.id}`,
-          data: {
-            type: 'cash_payment',
-            invoiceId: result.invoice.id,
-            amount: amount,
-            paymentMethod,
-            technicianId: technician.id,
-          },
-        });
+        if (await shouldSendNotification(owner.id, 'cashPaymentPush')) {
+          await sendPushNotification(owner.id, {
+            title: '💵 Cash Payment Recorded',
+            body: `${customerName} paid $${amount.toFixed(2)} via ${paymentMethod} - ${techName}`,
+            tag: `cash-payment-${result.invoice.id}`,
+            data: {
+              type: 'cash_payment',
+              invoiceId: result.invoice.id,
+              amount: amount,
+              paymentMethod,
+              technicianId: technician.id,
+            },
+          });
+        }
       }
 
-      // Send SMS to business owner phone if configured
+      // Send SMS to business owner phone if configured (check preference)
       const businessOwnerPhone = process.env.BUSINESS_OWNER_PHONE;
       if (businessOwnerPhone) {
-        await sendSMS(businessOwnerPhone, notificationMessage);
+        const owner = ownerManagers.find(u => u.role === 'owner');
+        if (owner && await shouldSendNotification(owner.id, 'cashPaymentSms')) {
+          await sendSMS(businessOwnerPhone, notificationMessage);
+        }
       }
 
       console.log(`[TECH JOBS] Notifications sent to ${ownerManagers.length} owner/managers`);
