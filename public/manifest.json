@@ -33,7 +33,7 @@
       "name": "Send Invoice",
       "short_name": "Invoice",
       "description": "Create and send a new invoice",
-      "url": "/invoices",
+      "url": "/dashboard",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
@@ -47,7 +47,7 @@
       "name": "Quick Booking",
       "short_name": "Book",
       "description": "Schedule a new appointment",
-      "url": "/scheduler",
+      "url": "/quick-booking",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ],
