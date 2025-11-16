@@ -2627,6 +2627,185 @@ export async function registerRoutes(app: Express) {
   // Register technician job management routes
   app.use('/api/tech', techJobRoutes);
   
+  // GET /api/tech/my-shifts - Get logged-in technician's upcoming shifts
+  app.get('/api/tech/my-shifts', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians, shifts, shiftTemplates } = await import('@shared/schema');
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.userId, req.user.id),
+      });
+
+      if (!technician) {
+        return res.status(404).json({ success: false, message: 'Technician profile not found' });
+      }
+
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + 30);
+
+      const myShifts = await db.query.shifts.findMany({
+        where: and(
+          eq(shifts.technicianId, technician.id),
+          gte(shifts.shiftDate, today),
+          sql`${shifts.shiftDate} <= ${futureDate}`
+        ),
+        with: {
+          template: true,
+        },
+        orderBy: [asc(shifts.shiftDate)],
+      });
+
+      return res.json({ success: true, shifts: myShifts });
+    } catch (error) {
+      console.error('[TECH SHIFTS] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // GET /api/tech/hours-summary - Get technician's hours for current week
+  app.get('/api/tech/hours-summary', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians, timeEntries } = await import('@shared/schema');
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.userId, req.user.id),
+      });
+
+      if (!technician) {
+        return res.status(404).json({ success: false, message: 'Technician profile not found' });
+      }
+
+      // Get current week's time entries
+      const today = new Date();
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const entries = await db.query.timeEntries.findMany({
+        where: and(
+          eq(timeEntries.technicianId, technician.id),
+          gte(timeEntries.clockInTime, startOfWeek)
+        ),
+      });
+
+      // Calculate total hours
+      let totalHours = 0;
+      entries.forEach(entry => {
+        if (entry.clockOutTime) {
+          const hours = (entry.clockOutTime.getTime() - entry.clockInTime.getTime()) / (1000 * 60 * 60);
+          totalHours += hours;
+        }
+      });
+
+      const isOvertime = totalHours >= 40;
+      const hoursRemaining = Math.max(0, 40 - totalHours);
+
+      return res.json({
+        success: true,
+        summary: {
+          totalHours: Math.round(totalHours * 100) / 100,
+          isOvertime,
+          hoursRemaining: Math.round(hoursRemaining * 100) / 100,
+        },
+      });
+    } catch (error) {
+      console.error('[HOURS SUMMARY] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/shifts-with-notification - Send SMS notification on shift assignment
+  app.post('/api/admin/shifts-with-notification', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { technicianId, shiftDate, shiftTemplateId } = req.body;
+      
+      const schema = z.object({
+        technicianId: z.coerce.number().int().positive(),
+        shiftDate: z.string(),
+        shiftTemplateId: z.coerce.number().int().positive(),
+      });
+
+      const parsed = schema.safeParse({ technicianId, shiftDate, shiftTemplateId });
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input' });
+      }
+
+      const { shifts, technicians, shiftTemplates } = await import('@shared/schema');
+      const { format } = await import('date-fns');
+      
+      // Get template details first
+      const template = await db.query.shiftTemplates.findFirst({
+        where: eq(shiftTemplates.id, parsed.data.shiftTemplateId),
+      });
+
+      if (!template) {
+        return res.status(404).json({ success: false, message: 'Shift template not found' });
+      }
+
+      // Create shift with template details
+      const [newShift] = await db.insert(shifts).values({
+        technicianId: parsed.data.technicianId,
+        shiftDate: new Date(parsed.data.shiftDate),
+        templateId: parsed.data.shiftTemplateId,
+        startTime: template.startTime,
+        endTime: template.endTime,
+        status: 'scheduled',
+      }).returning();
+
+      // Get technician details
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.id, parsed.data.technicianId),
+      });
+
+      // Send SMS notification
+      if (technician?.phone) {
+        const { sendSMS } = await import('./notifications');
+        const message = `New shift assigned: ${template.name} on ${format(new Date(parsed.data.shiftDate), 'MMM dd, yyyy')} (${template.startTime} - ${template.endTime})`;
+        await sendSMS(technician.phone, message);
+      }
+
+      return res.json({ success: true, shift: newShift });
+    } catch (error) {
+      console.error('[SHIFTS NOTIFICATION] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/link-shift-to-appointment - Link existing shift to appointment
+  app.post('/api/admin/link-shift-to-appointment', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { shiftId, appointmentId } = req.body;
+
+      const schema = z.object({
+        shiftId: z.coerce.number().int().positive(),
+        appointmentId: z.coerce.number().int().positive(),
+      });
+
+      const parsed = schema.safeParse({ shiftId, appointmentId });
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input' });
+      }
+
+      const { shifts } = await import('@shared/schema');
+      const [updated] = await db.update(shifts)
+        .set({ appointmentId: parsed.data.appointmentId })
+        .where(eq(shifts.id, parsed.data.shiftId))
+        .returning();
+
+      return res.json({ success: true, shift: updated });
+    } catch (error) {
+      console.error('[LINK SHIFT] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+  
   // Register technician deposit tracking routes
   registerTechDepositRoutes(app);
   
@@ -2659,6 +2838,115 @@ export async function registerRoutes(app: Express) {
   
   // Register escalation routes (human handoff system)
   registerEscalationRoutes(app);
+  
+  // PTO Request System Routes (S4)
+  // POST /api/tech/pto - Submit PTO request
+  app.post('/api/tech/pto', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians, ptoRequests } = await import('@shared/schema');
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.userId, req.user!.id),
+      });
+
+      if (!technician) {
+        return res.status(404).json({ success: false, message: 'Technician profile not found' });
+      }
+
+      const schema = z.object({
+        startDate: z.string().datetime(),
+        endDate: z.string().datetime(),
+        requestType: z.enum(['vacation', 'sick', 'personal', 'unpaid']),
+        notes: z.string().optional(),
+      });
+
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
+      }
+
+      const start = new Date(parsed.data.startDate);
+      const end = new Date(parsed.data.endDate);
+      
+      // Calculate total days (inclusive)
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+      const [request] = await db.insert(ptoRequests).values({
+        technicianId: technician.id,
+        startDate: start,
+        endDate: end,
+        requestType: parsed.data.requestType,
+        reason: parsed.data.notes || null,
+        totalDays: totalDays.toString(),
+        status: 'pending',
+      }).returning();
+
+      return res.json({ success: true, request });
+    } catch (error) {
+      console.error('[PTO REQUEST] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/pto - Get all PTO requests
+  app.get('/api/admin/pto', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.role !== 'owner' && req.user!.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { ptoRequests } = await import('@shared/schema');
+      const requests = await db.query.ptoRequests.findMany({
+        with: {
+          technician: true,
+        },
+        orderBy: (ptoRequests, { desc }) => [desc(ptoRequests.requestedAt)],
+      });
+
+      return res.json({ success: true, requests });
+    } catch (error) {
+      console.error('[PTO GET] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/admin/pto/:id - Approve/deny PTO request
+  app.put('/api/admin/pto/:id', requireAuth, async (req: Request, res: Response) => {
+    if (req.user!.role !== 'owner' && req.user!.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const requestId = parseInt(req.params.id);
+      const { status, adminNotes } = req.body;
+
+      const schema = z.object({
+        status: z.enum(['approved', 'denied']),
+        adminNotes: z.string().optional(),
+      });
+
+      const parsed = schema.safeParse({ status, adminNotes });
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input' });
+      }
+
+      const { ptoRequests } = await import('@shared/schema');
+      const [updated] = await db.update(ptoRequests)
+        .set({
+          status: parsed.data.status,
+          reviewNotes: parsed.data.adminNotes,
+          reviewedBy: req.user!.id,
+          reviewedAt: new Date(),
+        })
+        .where(eq(ptoRequests.id, requestId))
+        .returning();
+
+      return res.json({ success: true, request: updated });
+    } catch (error) {
+      console.error('[PTO UPDATE] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
   
   // Proactive Reminder System API Routes (Phase 4B)
   app.get('/api/reminders/pending', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
@@ -3225,6 +3513,187 @@ export async function registerRoutes(app: Express) {
       });
     }
   });
+
+  // Admin Shift Management Routes
+  
+  // GET /api/admin/shifts - Get all shifts for date range
+  app.get('/api/admin/shifts', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // RBAC check
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      const { startDate, endDate } = req.query;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ success: false, message: 'startDate and endDate are required' });
+      }
+      
+      const { shifts, technicians, shiftTemplates } = await import('@shared/schema');
+      const { lte } = await import('drizzle-orm');
+      
+      const shiftList = await db
+        .select({
+          id: shifts.id,
+          technicianId: shifts.technicianId,
+          templateId: shifts.templateId,
+          shiftDate: shifts.shiftDate,
+          startTime: shifts.startTime,
+          endTime: shifts.endTime,
+          status: shifts.status,
+          notes: shifts.notes,
+          createdAt: shifts.createdAt,
+          technician: {
+            id: technicians.id,
+            preferredName: technicians.preferredName,
+            fullName: technicians.fullName,
+          },
+          template: {
+            id: shiftTemplates.id,
+            name: shiftTemplates.name,
+            startTime: shiftTemplates.startTime,
+            endTime: shiftTemplates.endTime,
+          },
+        })
+        .from(shifts)
+        .leftJoin(technicians, eq(shifts.technicianId, technicians.id))
+        .leftJoin(shiftTemplates, eq(shifts.templateId, shiftTemplates.id))
+        .where(
+          and(
+            gte(shifts.shiftDate, startDate as string),
+            lte(shifts.shiftDate, endDate as string)
+          )
+        )
+        .orderBy(asc(shifts.shiftDate));
+
+      return res.json({ success: true, shifts: shiftList });
+    } catch (error) {
+      console.error('[ADMIN SHIFTS] Error fetching shifts:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // POST /api/admin/shifts - Create new shift assignment
+  app.post('/api/admin/shifts', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // RBAC check
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      const { technicianId, shiftDate, shiftTemplateId } = req.body;
+      
+      // Validate input
+      const schema = z.object({
+        technicianId: z.coerce.number().int().positive(),
+        shiftDate: z.string(),
+        shiftTemplateId: z.coerce.number().int().positive(),
+      });
+      
+      const parsed = schema.safeParse({ technicianId, shiftDate, shiftTemplateId });
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
+      }
+
+      const { shifts, shiftTemplates } = await import('@shared/schema');
+      
+      // Get template to populate shift times
+      const template = await db.query.shiftTemplates.findFirst({
+        where: eq(shiftTemplates.id, parsed.data.shiftTemplateId),
+      });
+      
+      if (!template) {
+        return res.status(404).json({ success: false, message: 'Shift template not found' });
+      }
+
+      const [newShift] = await db.insert(shifts).values({
+        technicianId: parsed.data.technicianId,
+        shiftDate: parsed.data.shiftDate,
+        templateId: parsed.data.shiftTemplateId,
+        startTime: template.startTime,
+        endTime: template.endTime,
+        status: 'scheduled',
+        createdBy: req.user.id,
+      }).returning();
+
+      return res.json({ success: true, shift: newShift });
+    } catch (error) {
+      console.error('[ADMIN SHIFTS] Error creating shift:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // DELETE /api/admin/shifts/:id - Remove shift assignment
+  app.delete('/api/admin/shifts/:id', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // RBAC check
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      const shiftId = parseInt(req.params.id);
+      
+      if (isNaN(shiftId)) {
+        return res.status(400).json({ success: false, message: 'Invalid shift ID' });
+      }
+      
+      const { shifts } = await import('@shared/schema');
+      await db.delete(shifts).where(eq(shifts.id, shiftId));
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error('[ADMIN SHIFTS] Error deleting shift:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // GET /api/admin/shift-templates - Get all shift templates
+  app.get('/api/admin/shift-templates', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { shiftTemplates } = await import('@shared/schema');
+      const templates = await db.query.shiftTemplates.findMany({
+        where: eq(shiftTemplates.isActive, true),
+        orderBy: [asc(shiftTemplates.name)],
+      });
+
+      return res.json({ success: true, templates });
+    } catch (error) {
+      console.error('[ADMIN SHIFTS] Error fetching shift templates:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // GET /api/technicians - Get all active technicians
+  app.get('/api/technicians', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians } = await import('@shared/schema');
+      const techList = await db.query.technicians.findMany({
+        where: eq(technicians.employmentStatus, 'active'),
+        orderBy: [asc(technicians.preferredName)],
+      });
+
+      return res.json({ success: true, technicians: techList });
+    } catch (error) {
+      console.error('[TECHNICIANS] Error fetching technicians:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
   
   // Register calendar availability routes
   app.use('/api/calendar', calendarAvailabilityRoutes);
@@ -3238,6 +3707,236 @@ export async function registerRoutes(app: Express) {
   // Register voice testing routes (admin-only, for production readiness)
   const voiceTestingRoutes = await import('./routes.voiceTesting');
   app.use('/api/voice-testing', voiceTestingRoutes.default);
+
+  // ===== SHIFT TRADING AND OPEN SHIFTS (S5 + S6) =====
+
+  // GET /api/tech/shift-trades - View own shift trade requests
+  app.get('/api/tech/shift-trades', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians, shiftTrades } = await import('@shared/schema');
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.userId, req.user.id),
+      });
+
+      if (!technician) {
+        return res.status(404).json({ success: false, message: 'Technician profile not found' });
+      }
+
+      const trades = await db.query.shiftTrades.findMany({
+        where: or(
+          eq(shiftTrades.offeringTechId, technician.id),
+          eq(shiftTrades.requestingTechId, technician.id)
+        ),
+        with: {
+          offeringTech: true,
+          requestingTech: true,
+          originalShift: {
+            with: {
+              template: true,
+            },
+          },
+        },
+        orderBy: [desc(shiftTrades.requestedAt)],
+      });
+
+      return res.json({ success: true, trades });
+    } catch (error) {
+      console.error('[TECH SHIFT TRADES] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // POST /api/tech/shift-trade - Request shift trade/giveaway
+  app.post('/api/tech/shift-trade', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians, shiftTrades, shifts } = await import('@shared/schema');
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.userId, req.user.id),
+      });
+
+      if (!technician) {
+        return res.status(404).json({ success: false, message: 'Technician profile not found' });
+      }
+
+      const schema = z.object({
+        shiftId: z.coerce.number().int().positive(),
+        requestType: z.enum(['trade', 'giveaway']),
+        targetTechnicianId: z.coerce.number().int().positive().optional(),
+        reason: z.string().optional(),
+      });
+
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
+      }
+
+      const [trade] = await db.insert(shiftTrades).values({
+        offeringTechId: technician.id,
+        requestingTechId: parsed.data.targetTechnicianId || null,
+        originalShiftId: parsed.data.shiftId,
+        tradeType: parsed.data.requestType,
+        message: parsed.data.reason,
+        status: 'pending',
+      }).returning();
+
+      return res.json({ success: true, trade });
+    } catch (error) {
+      console.error('[SHIFT TRADE] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // GET /api/tech/open-shifts - Get all open/unassigned shifts
+  app.get('/api/tech/open-shifts', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { shifts } = await import('@shared/schema');
+      
+      const openShifts = await db.query.shifts.findMany({
+        where: and(
+          isNull(shifts.technicianId),
+          gte(shifts.shiftDate, new Date())
+        ),
+        with: {
+          template: true,
+        },
+        orderBy: [asc(shifts.shiftDate)],
+      });
+
+      return res.json({ success: true, shifts: openShifts });
+    } catch (error) {
+      console.error('[OPEN SHIFTS] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // POST /api/tech/claim-shift/:shiftId - Claim an open shift
+  app.post('/api/tech/claim-shift/:shiftId', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { technicians, shifts } = await import('@shared/schema');
+      const technician = await db.query.technicians.findFirst({
+        where: eq(technicians.userId, req.user.id),
+      });
+
+      if (!technician) {
+        return res.status(404).json({ success: false, message: 'Technician profile not found. Please complete your profile first.' });
+      }
+
+      const shiftId = parseInt(req.params.shiftId);
+
+      // Update shift to assign to technician
+      const [updated] = await db.update(shifts)
+        .set({
+          technicianId: technician.id,
+          status: 'scheduled',
+        })
+        .where(and(
+          eq(shifts.id, shiftId),
+          isNull(shifts.technicianId) // Ensure still open
+        ))
+        .returning();
+
+      if (!updated) {
+        return res.status(400).json({ success: false, message: 'Shift no longer available' });
+      }
+
+      return res.json({ success: true, shift: updated });
+    } catch (error) {
+      console.error('[CLAIM SHIFT] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/shift-trades - View all shift trade requests
+  app.get('/api/admin/shift-trades', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { shiftTrades } = await import('@shared/schema');
+      const trades = await db.query.shiftTrades.findMany({
+        with: {
+          offeringTech: true,
+          requestingTech: true,
+          originalShift: {
+            with: {
+              template: true,
+            },
+          },
+        },
+        orderBy: [desc(shiftTrades.requestedAt)],
+      });
+
+      return res.json({ success: true, trades });
+    } catch (error) {
+      console.error('[SHIFT TRADES] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/admin/shift-trades/:id - Approve/deny shift trade
+  app.put('/api/admin/shift-trades/:id', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const tradeId = parseInt(req.params.id);
+      const { status, reviewNotes } = req.body;
+
+      const updateSchema = z.object({
+        status: z.enum(['approved', 'denied']),
+        reviewNotes: z.string().optional(),
+      });
+
+      const parsed = updateSchema.safeParse({ status, reviewNotes });
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input' });
+      }
+
+      const { shiftTrades, shifts, technicians } = await import('@shared/schema');
+      
+      // Update trade status
+      const [updated] = await db.update(shiftTrades)
+        .set({
+          status: parsed.data.status,
+          reviewNotes: parsed.data.reviewNotes,
+          reviewedBy: req.user.id,
+          reviewedAt: new Date(),
+        })
+        .where(eq(shiftTrades.id, tradeId))
+        .returning();
+
+      // If approved, update the shift assignment
+      if (parsed.data.status === 'approved' && updated.requestingTechId) {
+        // Verify target technician exists and is active
+        const targetTech = await db.query.technicians.findFirst({
+          where: and(
+            eq(technicians.id, updated.requestingTechId),
+            eq(technicians.employmentStatus, 'active')
+          ),
+        });
+
+        if (!targetTech) {
+          return res.status(400).json({
+            success: false,
+            message: 'Target technician not found or inactive. Cannot complete trade.',
+          });
+        }
+
+        // Now safe to reassign shift
+        console.log(`[SHIFT TRADES] Reassigning shift ${updated.originalShiftId} to technician ${updated.requestingTechId}`);
+        await db.update(shifts)
+          .set({ technicianId: updated.requestingTechId })
+          .where(eq(shifts.id, updated.originalShiftId));
+      }
+
+      return res.json({ success: true, trade: updated });
+    } catch (error) {
+      console.error('[SHIFT TRADES] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
 
   const io = new Server(server, {
     cors: {
