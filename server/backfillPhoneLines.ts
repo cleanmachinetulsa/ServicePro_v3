@@ -14,15 +14,15 @@ export async function backfillPhoneLineIds() {
   try {
     console.log('[BACKFILL] Starting phone line ID backfill...');
 
-    // Get the Main Line ID
+    // Get the Main Line ID by label (flexible - works regardless of phone number)
     const [mainLine] = await db
       .select()
       .from(phoneLines)
-      .where(eq(phoneLines.phoneNumber, '+19188565711'))
+      .where(eq(phoneLines.label, 'Main Line'))
       .limit(1);
 
     if (!mainLine) {
-      console.error('[BACKFILL] Main Line not found in database!');
+      console.error('[BACKFILL] Main Line not found in database! Please ensure a phone line with label "Main Line" exists.');
       return;
     }
 

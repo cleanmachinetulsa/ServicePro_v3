@@ -4,8 +4,10 @@ import { eq } from 'drizzle-orm';
 
 /**
  * Seeds the database with Clean Machine's phone lines and default business hours
- * - Main Line: +19188565711 (Twilio business number - primary customer service line)
- * - VIP Line: +19182820103 (Emergency alert number)
+ * Configuration is driven by environment variables for flexibility:
+ * - BUSINESS_PHONE_NUMBER: Main Twilio line (default: +19188565711)
+ * - VIP_PHONE_NUMBER: VIP/Emergency line (default: +19182820103)
+ * - BUSINESS_OWNER_PHONE: Forwarding destination
  */
 export async function seedPhoneLines() {
   try {
@@ -19,23 +21,28 @@ export async function seedPhoneLines() {
       return;
     }
 
-    // Create Main Line (5711) - Twilio business number
+    // Get phone numbers from environment (with fallback defaults)
+    const mainLineNumber = process.env.BUSINESS_PHONE_NUMBER || '+19188565711';
+    const vipLineNumber = process.env.VIP_PHONE_NUMBER || '+19182820103';
+    const forwardingNumber = process.env.BUSINESS_OWNER_PHONE || null;
+
+    // Create Main Line - Primary Twilio business number
     const [mainLine] = await db.insert(phoneLines).values({
-      phoneNumber: '+19188565711',
+      phoneNumber: mainLineNumber,
       label: 'Main Line',
       forwardingEnabled: true,
-      forwardingNumber: process.env.BUSINESS_OWNER_PHONE || null,
+      forwardingNumber: forwardingNumber,
       voicemailGreeting: 'Thank you for calling Clean Machine Auto Detail. Press 1 to receive a text message with booking information and a link to our web app. Press 2 to speak with someone.',
     }).returning();
 
     console.log('[SEED] Created Main Line:', mainLine.phoneNumber);
 
-    // Create VIP Line (2820103) - Emergency alerts only
+    // Create VIP Line - Emergency alerts and priority customers
     const [vipLine] = await db.insert(phoneLines).values({
-      phoneNumber: '+19182820103',
+      phoneNumber: vipLineNumber,
       label: 'VIP Line',
       forwardingEnabled: true,
-      forwardingNumber: process.env.BUSINESS_OWNER_PHONE || null,
+      forwardingNumber: forwardingNumber,
       voicemailGreeting: 'Thank you for calling Clean Machine Auto Detail. Please leave a message and we will get back to you shortly.',
     }).returning();
 

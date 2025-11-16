@@ -98,11 +98,15 @@ async function notifyAdmin(details: ErrorDetails): Promise<void> {
   // For high/critical errors during rollout, send SMS
   if (process.env.ROLLOUT_MODE === 'true') {
     try {
-      const adminPhone = process.env.ADMIN_PHONE || '9188565304';
-      await sendSMS(
-        adminPhone,
-        message
-      );
+      const adminPhone = process.env.ADMIN_PHONE || process.env.BUSINESS_OWNER_PHONE;
+      if (adminPhone) {
+        await sendSMS(
+          adminPhone,
+          message
+        );
+      } else {
+        console.warn('[ERROR MONITOR] No admin phone configured (ADMIN_PHONE or BUSINESS_OWNER_PHONE)');
+      }
     } catch (error) {
       console.error('[ERROR MONITOR] Failed to send SMS alert:', error);
     }
