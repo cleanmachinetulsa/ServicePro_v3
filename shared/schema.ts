@@ -1414,6 +1414,10 @@ export const agentPreferences = pgTable("agent_preferences", {
 export const homepageContent = pgTable('homepage_content', {
   id: serial('id').primaryKey(),
   
+  // Template Selection
+  templateId: varchar('template_id', { length: 50 }).notNull().default('current'),
+  layoutSettings: jsonb('layout_settings'), // Optional template-specific configuration
+  
   // Hero Section
   heroHeading: text('hero_heading').notNull().default('Clean Machine Auto Detail'),
   heroSubheading: text('hero_subheading').notNull().default('Professional Mobile Auto Detailing'),
