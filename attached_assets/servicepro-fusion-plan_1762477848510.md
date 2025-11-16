@@ -770,4 +770,621 @@ servicepro-monorepo/
 │       │   │   ├── jwt-service.ts  # For widget tokens
 │       │   │   └── widget-token-service.ts
 │       │   ├── logging/
-│       │   
+│       │   │       │   │   │   ├── logger.ts
+│       │   │   │   └── log-aggregator.ts
+│       │   └── types/
+│       │       └── shared-types.ts
+│       ├── tests/
+│       ├── package.json
+│       └── tsconfig.json
+│
+└── apps/
+    ├── web/                              # Main web application
+    │   ├── client/                       # Frontend (existing CM structure preserved)
+    │   ├── server/                       # Backend (existing CM structure preserved)
+    │   ├── public/
+    │   ├── vite.config.ts
+    │   ├── package.json
+    │   └── tsconfig.json
+    │
+    └── widget/                           # Embeddable booking widget
+        ├── src/
+        │   ├── widget.tsx                # Entry point
+        │   ├── booking-flow.tsx
+        │   └── jwt-validator.ts
+        ├── vite.config.ts
+        ├── package.json
+        └── tsconfig.json
+```
+
+---
+
+## 22) Multi-Tenant PWA Considerations
+
+### 22.1 Overview
+The production PWA features implemented in Clean Machine (Section 0.2) must be adapted for multi-tenant operation. Each tenant gets isolated PWA capabilities with custom branding while sharing the same codebase infrastructure.
+
+### 22.2 Tenant-Isolated Service Workers
+
+#### Challenge
+Service workers operate at the origin level (`/`), creating potential conflicts when multiple tenants share the same domain.
+
+#### Solution: Tenant-Scoped Registration
+
+**Strategy 1: Subdomain-Based Isolation (Recommended)**
+```typescript
+// Each tenant gets unique subdomain
+// acme-detail.servicepro.app → Registers /sw-acme.js
+// sparkle-lawn.servicepro.app → Registers /sw-sparkle.js
+
+// Dynamic service worker registration
+const tenantSlug = getTenantSlugFromSubdomain();
+const swPath = `/sw-${tenantSlug}.js`;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(swPath, {
+    scope: '/'
+  });
+}
+```
+
+**Strategy 2: Custom Domain Isolation**
+```typescript
+// Custom domains automatically isolate service workers
+// detailpro.com → Registers /service-worker.js (isolated)
+// lawncareplus.com → Registers /service-worker.js (isolated, different origin)
+```
+
+**Dynamic Service Worker Generation:**
+```typescript
+// server/routes/service-worker.ts
+app.get('/sw-:tenantSlug.js', async (req, res) => {
+  const { tenantSlug } = req.params;
+  const tenant = await getTenantBySlug(tenantSlug);
+  
+  // Generate tenant-specific service worker
+  const swCode = generateServiceWorker({
+    tenantId: tenant.id,
+    cacheName: `${tenantSlug}-cache-v1`,
+    offlineDbName: `${tenantSlug}-offline`,
+    badgeColor: tenant.brandColor
+  });
+  
+  res.setHeader('Content-Type', 'application/javascript');
+  res.send(swCode);
+});
+```
+
+### 22.3 Tenant-Isolated Offline Storage
+
+#### IndexedDB Naming Convention
+```typescript
+// Current (Single Tenant)
+const DB_NAME = 'clean-machine-offline';
+
+// Multi-Tenant (Per Tenant)
+const DB_NAME = `${tenantSlug}-offline`; // 'acme-detail-offline'
+
+// Structure
+{
+  [tenantSlug]-offline: {
+    stores: {
+      'dashboard-cache': { keyPath: 'date', tenantId: tenant.id },
+      'appointments-cache': { keyPath: 'id', tenantId: tenant.id },
+      'customers-cache': { keyPath: 'phone', tenantId: tenant.id },
+      'drafts': { keyPath: 'conversationKey', tenantId: tenant.id },
+      'mutation-queue': { autoIncrement: true, tenantId: tenant.id }
+    }
+  }
+}
+```
+
+#### Data Isolation Enforcement
+```typescript
+// Always include tenantId in all IndexedDB operations
+class TenantOfflineDb {
+  constructor(private tenantId: string, private tenantSlug: string) {
+    this.dbName = `${tenantSlug}-offline`;
+  }
+  
+  async addToCache(store: string, data: any) {
+    // Enforce tenant ID in all cached data
+    const dataWithTenant = { ...data, tenantId: this.tenantId };
+    await this.db.add(store, dataWithTenant);
+  }
+  
+  async getFromCache(store: string, key: any) {
+    const data = await this.db.get(store, key);
+    // Verify tenant ID before returning
+    if (data.tenantId !== this.tenantId) {
+      throw new Error('Tenant isolation violation');
+    }
+    return data;
+  }
+}
+```
+
+### 22.4 Custom Branding for PWA Install
+
+#### Manifest Per Tenant
+```typescript
+// server/routes/manifest.ts
+app.get('/manifest-:tenantSlug.json', async (req, res) => {
+  const { tenantSlug } = req.params;
+  const tenant = await getTenantBySlug(tenantSlug);
+  
+  const manifest = {
+    name: tenant.businessName,
+    short_name: tenant.shortName,
+    description: tenant.tagline,
+    start_url: `/${tenant.slug}/dashboard`,
+    display: "standalone",
+    background_color: tenant.brandColors.background,
+    theme_color: tenant.brandColors.primary,
+    icons: [
+      {
+        src: `/tenant-icons/${tenant.id}/icon-192.png`,
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any maskable"
+      },
+      {
+        src: `/tenant-icons/${tenant.id}/icon-512.png`,
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any maskable"
+      }
+    ],
+    shortcuts: tenant.shortcuts || defaultShortcuts
+  };
+  
+  res.json(manifest);
+});
+```
+
+#### Custom Install Prompts
+```typescript
+// client/src/contexts/TenantPwaContext.tsx
+export function TenantPwaProvider({ children, tenant }) {
+  const [installPrompt, setInstallPrompt] = useState(null);
+  
+  const customInstallBanner = (
+    <InstallPromptBanner
+      businessName={tenant.businessName}
+      logoUrl={tenant.logoUrl}
+      primaryColor={tenant.brandColors.primary}
+      onInstall={handleInstall}
+    />
+  );
+  
+  return (
+    <PwaContext.Provider value={{ installPrompt, customBanner }}>
+      {children}
+    </PwaContext.Provider>
+  );
+}
+```
+
+### 22.5 Tenant-Specific Badge Notifications
+
+#### Badge API with Tenant Context
+```typescript
+// Service worker message handler (per tenant)
+self.addEventListener('message', (event) => {
+  if (event.data.type === 'SET_BADGE') {
+    const { count, tenantId } = event.data;
+    
+    // Verify tenant isolation
+    if (tenantId !== self.TENANT_ID) {
+      console.error('Badge update for wrong tenant');
+      return;
+    }
+    
+    if ('setAppBadge' in navigator) {
+      navigator.setAppBadge(count);
+    }
+  }
+});
+```
+
+#### Unread Count Per Tenant
+```typescript
+// client/src/hooks/useTenantBadge.ts
+export function useTenantBadge(tenantId: string) {
+  const { data: unreadCount } = useQuery({
+    queryKey: ['/api/messages/unread-count', tenantId],
+    refetchInterval: 30000 // Poll every 30s
+  });
+  
+  useEffect(() => {
+    if (unreadCount !== undefined) {
+      updateTenantBadge(tenantId, unreadCount);
+    }
+  }, [unreadCount, tenantId]);
+}
+```
+
+### 22.6 Background Sync Per Tenant
+
+#### Tenant-Scoped Sync Events
+```typescript
+// Register sync with tenant prefix
+async function registerTenantSync(tenantId: string, syncType: string) {
+  if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.sync.register(`${tenantId}-${syncType}`);
+  }
+}
+
+// Service worker sync handler
+self.addEventListener('sync', (event) => {
+  const [tenantId, syncType] = event.tag.split('-');
+  
+  if (syncType === 'mutations') {
+    event.waitUntil(syncTenantMutations(tenantId));
+  } else if (syncType === 'dashboard') {
+    event.waitUntil(syncTenantDashboard(tenantId));
+  }
+});
+```
+
+### 22.7 Offline Queue Isolation
+
+#### Tenant-Specific Mutation Queues
+```typescript
+// client/src/lib/tenantOfflineDb.ts
+export class TenantOfflineQueue {
+  constructor(private tenantId: string) {}
+  
+  async add(endpoint: string, method: string, data: any) {
+    const mutation = {
+      tenantId: this.tenantId,
+      endpoint,
+      method,
+      data,
+      timestamp: Date.now(),
+      retries: 0
+    };
+    
+    await offlineDb.put(`${this.tenantId}-queue`, mutation);
+  }
+  
+  async flush() {
+    const mutations = await offlineDb.getAll(`${this.tenantId}-queue`);
+    
+    for (const mutation of mutations) {
+      // Verify tenant ID before processing
+      if (mutation.tenantId !== this.tenantId) {
+        console.error('Tenant isolation violation in queue');
+        continue;
+      }
+      
+      try {
+        await fetch(mutation.endpoint, {
+          method: mutation.method,
+          headers: { 'X-Tenant-ID': this.tenantId },
+          body: JSON.stringify(mutation.data)
+        });
+        
+        await offlineDb.delete(`${this.tenantId}-queue`, mutation.id);
+      } catch (error) {
+        mutation.retries++;
+        await offlineDb.put(`${this.tenantId}-queue`, mutation);
+      }
+    }
+  }
+}
+```
+
+### 22.8 Web Share API Per Tenant
+
+#### Tenant-Branded Sharing
+```typescript
+// client/src/hooks/useTenantShare.ts
+export function useTenantShare(tenant: Tenant) {
+  const canShare = 'share' in navigator;
+  
+  const shareContent = async (data: ShareData) => {
+    if (!canShare) return;
+    
+    const brandedData = {
+      ...data,
+      title: `${data.title} - ${tenant.businessName}`,
+      url: `https://${tenant.customDomain || tenant.slug + '.servicepro.app'}${data.url}`
+    };
+    
+    await navigator.share(brandedData);
+  };
+  
+  return { canShare, shareContent };
+}
+```
+
+### 22.9 App Shortcuts Per Tenant
+
+#### Dynamic Shortcuts Based on Tenant Industry
+```json
+// Auto-detailing tenant shortcuts
+{
+  "shortcuts": [
+    { "name": "Today's Detailing Schedule", "url": "/dashboard" },
+    { "name": "Send Invoice", "url": "/invoices" },
+    { "name": "New Message", "url": "/messages" },
+    { "name": "Quick Booking", "url": "/quick-booking" }
+  ]
+}
+
+// Lawn care tenant shortcuts
+{
+  "shortcuts": [
+    { "name": "Today's Jobs", "url": "/dashboard" },
+    { "name": "Send Estimate", "url": "/estimates" },
+    { "name": "New Message", "url": "/messages" },
+    { "name": "Schedule Service", "url": "/quick-booking" }
+  ]
+}
+```
+
+#### Industry Pack Integration
+```typescript
+// Generate shortcuts based on industry pack
+function generateTenantShortcuts(tenant: Tenant, industryPack: IndustryPack) {
+  return industryPack.shortcuts.map(shortcut => ({
+    name: shortcut.name.replace('{businessType}', industryPack.businessType),
+    short_name: shortcut.shortName,
+    description: shortcut.description,
+    url: shortcut.url,
+    icons: [{ src: `/tenant-icons/${tenant.id}/icon-192.png`, sizes: "192x192" }]
+  }));
+}
+```
+
+### 22.10 Persistent Storage Per Tenant
+
+#### Quota Management
+```typescript
+// Request persistent storage per tenant
+async function requestTenantPersistentStorage(tenantId: string) {
+  if (navigator.storage && navigator.storage.persist) {
+    const isPersistent = await navigator.storage.persist();
+    
+    if (isPersistent) {
+      console.log(`Persistent storage granted for tenant ${tenantId}`);
+      
+      // Estimate quota usage
+      const estimate = await navigator.storage.estimate();
+      const percentUsed = (estimate.usage / estimate.quota) * 100;
+      
+      // Warn if approaching limit
+      if (percentUsed > 80) {
+        notifyTenantAdmin(tenantId, 'Storage quota approaching limit');
+      }
+    }
+  }
+}
+```
+
+### 22.11 Migration Path from Single-Tenant PWA
+
+#### Phase 1: Add Tenant Context to Existing PWA
+```typescript
+// Preserve existing Clean Machine PWA (ROOT tenant)
+const ROOT_TENANT_ID = 'clean-machine-root';
+
+// Wrap existing service worker with tenant context
+if (window.location.hostname === 'app.cleanmachinedetail.com') {
+  // Use existing single-tenant service worker
+  navigator.serviceWorker.register('/service-worker.js');
+} else {
+  // Use multi-tenant service worker
+  const tenantSlug = getTenantSlug();
+  navigator.serviceWorker.register(`/sw-${tenantSlug}.js`);
+}
+```
+
+#### Phase 2: Migrate Offline Storage
+```typescript
+// One-time migration for Clean Machine
+async function migrateToTenantOfflineDb() {
+  const oldDb = await openDB('clean-machine-offline');
+  const newDb = await openDB('clean-machine-root-offline');
+  
+  // Copy all stores
+  for (const storeName of oldDb.objectStoreNames) {
+    const oldStore = oldDb.transaction(storeName, 'readonly').objectStore(storeName);
+    const newStore = newDb.transaction(storeName, 'readwrite').objectStore(storeName);
+    
+    const items = await oldStore.getAll();
+    for (const item of items) {
+      await newStore.add({ ...item, tenantId: ROOT_TENANT_ID });
+    }
+  }
+  
+  // Delete old database
+  await deleteDB('clean-machine-offline');
+}
+```
+
+#### Phase 3: Roll Out to New Tenants
+```typescript
+// Onboarding wizard creates tenant PWA setup
+async function setupTenantPwa(tenant: Tenant) {
+  // 1. Generate tenant manifest
+  await generateTenantManifest(tenant);
+  
+  // 2. Upload tenant icons
+  await uploadTenantIcons(tenant.id, tenant.icons);
+  
+  // 3. Create tenant service worker template
+  await createTenantServiceWorker(tenant.slug);
+  
+  // 4. Initialize offline database
+  await initializeTenantOfflineDb(tenant.id, tenant.slug);
+  
+  // 5. Configure shortcuts based on industry pack
+  await configureTenantShortcuts(tenant, tenant.industryPack);
+  
+  // 6. Test PWA installation
+  await testTenantPwaInstall(tenant.slug);
+}
+```
+
+### 22.12 Testing Multi-Tenant PWA
+
+#### Test Checklist
+- [ ] Each tenant gets isolated service worker
+- [ ] Offline storage is tenant-scoped
+- [ ] Badge notifications work per tenant
+- [ ] Background sync processes correct tenant data
+- [ ] Install prompts show tenant branding
+- [ ] App shortcuts reflect tenant industry
+- [ ] Share API uses tenant custom domain
+- [ ] Persistent storage tracked per tenant
+- [ ] Migration from single-tenant PWA successful
+- [ ] No cross-tenant data leakage
+
+#### Automated Tests
+```typescript
+describe('Multi-Tenant PWA Isolation', () => {
+  it('should isolate service workers by tenant', async () => {
+    const tenant1Sw = await registerTenantServiceWorker('acme-detail');
+    const tenant2Sw = await registerTenantServiceWorker('sparkle-lawn');
+    
+    expect(tenant1Sw.scope).toBe('/');
+    expect(tenant2Sw.scope).toBe('/');
+    expect(tenant1Sw.scriptURL).toContain('sw-acme-detail.js');
+    expect(tenant2Sw.scriptURL).toContain('sw-sparkle-lawn.js');
+  });
+  
+  it('should prevent cross-tenant data access', async () => {
+    const tenant1Db = new TenantOfflineDb('tenant-1', 'acme');
+    const tenant2Db = new TenantOfflineDb('tenant-2', 'sparkle');
+    
+    await tenant1Db.addToCache('drafts', { key: 'test', value: 'secret' });
+    
+    await expect(
+      tenant2Db.getFromCache('drafts', 'test')
+    ).rejects.toThrow('Tenant isolation violation');
+  });
+});
+```
+
+### 22.13 Performance Considerations
+
+#### Service Worker Caching Strategy Per Tenant
+```typescript
+// Optimize cache sizes per tenant
+const TENANT_CACHE_LIMITS = {
+  'dashboard-cache': 50,      // 50 days max
+  'appointments-cache': 100,  // 100 appointments max
+  'customers-cache': 500,     // 500 customers max
+  'drafts': 20                // 20 drafts max
+};
+
+// Eviction policy
+async function evictOldCacheEntries(tenantId: string) {
+  for (const [store, limit] of Object.entries(TENANT_CACHE_LIMITS)) {
+    const entries = await getAllFromStore(tenantId, store);
+    
+    if (entries.length > limit) {
+      const sorted = entries.sort((a, b) => a.timestamp - b.timestamp);
+      const toDelete = sorted.slice(0, entries.length - limit);
+      
+      for (const entry of toDelete) {
+        await deleteFromStore(tenantId, store, entry.id);
+      }
+    }
+  }
+}
+```
+
+### 22.14 Security Considerations
+
+#### Tenant Boundary Enforcement
+```typescript
+// Middleware to verify tenant context in service worker
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  const tenantIdFromUrl = url.searchParams.get('tenantId');
+  
+  // Verify tenant ID matches service worker tenant
+  if (tenantIdFromUrl && tenantIdFromUrl !== self.TENANT_ID) {
+    event.respondWith(
+      new Response('Forbidden', { status: 403 })
+    );
+    return;
+  }
+  
+  // Proceed with tenant-scoped caching
+  event.respondWith(handleTenantFetch(event.request));
+});
+```
+
+#### Audit Logging
+```typescript
+// Log all PWA operations per tenant
+async function logTenantPwaOperation(
+  tenantId: string,
+  operation: string,
+  metadata: any
+) {
+  await auditLog.create({
+    tenantId,
+    category: 'PWA',
+    action: operation,
+    metadata,
+    timestamp: new Date()
+  });
+}
+
+// Example usage
+await logTenantPwaOperation(tenant.id, 'SERVICE_WORKER_REGISTERED', {
+  swPath: `/sw-${tenant.slug}.js`,
+  userAgent: navigator.userAgent
+});
+```
+
+---
+
+## Conclusion
+
+This ServicePro White-Label Super-System implementation plan provides a complete roadmap for transforming Clean Machine Auto Detail's production-ready PWA application into a multi-tenant SaaS platform. The baseline features documented in Section 0 (Current Production State) represent a battle-tested foundation that will be preserved and enhanced during the transformation.
+
+**Key Success Factors:**
+1. **Non-destructive migration** - Clean Machine continues operating as ROOT tenant
+2. **Feature preservation** - All PWA capabilities adapted for multi-tenant use
+3. **Tenant isolation** - Comprehensive data and resource separation
+4. **White-label flexibility** - Custom branding without code changes
+5. **Zero-code onboarding** - Non-technical users can deploy in minutes
+
+**Next Steps:**
+1. Review this plan with technical and business stakeholders
+2. Set up development environment with monorepo structure
+3. Begin Phase 1: Core SDK extraction from Clean Machine
+4. Implement tenant isolation in database layer
+5. Build onboarding wizard with industry pack selection
+6. Test multi-tenant PWA isolation thoroughly
+7. Deploy first white-label tenant (beta)
+8. Iterate based on feedback and scale
+
+**Timeline Estimate:**
+- Phase 1 (Core SDK): 4-6 weeks
+- Phase 2 (Multi-tenant infrastructure): 6-8 weeks
+- Phase 3 (Onboarding wizard): 3-4 weeks
+- Phase 4 (Testing & polish): 2-3 weeks
+- **Total: 15-21 weeks to MVP**
+
+**Investment Required:**
+- 2-3 senior full-stack engineers
+- 1 DevOps engineer
+- 1 product designer
+- QA resources
+- Cloud infrastructure (Neon, Vercel, etc.)
+
+**Revenue Potential:**
+- Base: $99/month per tenant
+- Premium: $299/month per tenant
+- Enterprise: Custom pricing
+- Target: 100 tenants in Year 1 → $120K-$360K ARR
+
+This plan is production-ready and can be executed immediately with the right team and resources.
