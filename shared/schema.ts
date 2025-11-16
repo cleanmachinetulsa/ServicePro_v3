@@ -363,8 +363,31 @@ export const invoices = pgTable("invoices", {
   referralRewardType: varchar("referral_reward_type", { length: 30 }), // fixed_discount, percent_discount, etc.
   referralRewardValue: numeric("referral_reward_value", { precision: 10, scale: 2 }), // Original reward value
   referralOriginalAmount: numeric("referral_original_amount", { precision: 10, scale: 2 }), // Amount before referral discount
+  
+  // Technician cash/check payment tracking
+  technicianId: integer("technician_id").references(() => users.id), // Technician who collected cash/check payment
+  
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Technician Deposits - Daily cash/check payment tracking and reconciliation
+export const technicianDeposits = pgTable("technician_deposits", {
+  id: serial("id").primaryKey(),
+  technicianId: integer("technician_id").notNull().references(() => users.id),
+  depositDate: date("deposit_date").notNull(), // Date of work day
+  cashAmount: numeric("cash_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  checkAmount: numeric("check_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  invoiceIds: integer("invoice_ids").array(), // Array of invoice IDs included
+  notes: text("notes"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // 'pending', 'deposited'
+  depositedAt: timestamp("deposited_at"),
+  depositedBy: integer("deposited_by").references(() => users.id), // Owner who confirmed
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  technicianDateIdx: index("technician_deposits_tech_date_idx").on(table.technicianId, table.depositDate),
+  statusIdx: index("technician_deposits_status_idx").on(table.status),
+}));
 
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
@@ -1672,6 +1695,12 @@ export const insertInvoiceSchema = createInsertSchema(invoices).pick({
   amount: true,
   serviceDescription: true,
   notes: true,
+  technicianId: true,
+});
+
+export const insertTechnicianDepositSchema = createInsertSchema(technicianDeposits).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertLoyaltyPointsSchema = createInsertSchema(loyaltyPoints).pick({
@@ -2060,6 +2089,8 @@ export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type InsertRecurringService = z.infer<typeof insertRecurringServiceSchema>;
 export type InsertQuoteRequest = z.infer<typeof insertQuoteRequestSchema>;
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+export type InsertTechnicianDeposit = z.infer<typeof insertTechnicianDepositSchema>;
+export type TechnicianDeposit = typeof technicianDeposits.$inferSelect;
 export type InsertLoyaltyPoints = z.infer<typeof insertLoyaltyPointsSchema>;
 export type InsertRewardService = z.infer<typeof insertRewardServiceSchema>;
 export type InsertRedeemedReward = z.infer<typeof insertRedeemedRewardSchema>;

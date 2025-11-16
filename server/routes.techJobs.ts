@@ -1,15 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
-import { appointments, conversations, messages as messagesTable, customers, jobPhotos } from '@shared/schema';
+import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users } from '@shared/schema';
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import { requireTechnician } from './technicianMiddleware';
-import { startOfDay, endOfDay } from 'date-fns';
+import { startOfDay, endOfDay, format } from 'date-fns';
 import multer from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { getDriveClient, getAuthClient } from './googleIntegration';
 import { google } from 'googleapis';
+import { createInvoice } from './invoiceService';
+import { sendSMS } from './notifications';
+import { sendPushNotification } from './pushNotificationService';
 
 const router = Router();
 
@@ -680,6 +683,240 @@ router.post('/jobs/:id/photos', requireTechnician, jobPhotoUpload.single('photo'
         console.error(`[TECH JOBS] Failed to clean up temp file:`, cleanupError);
       }
     }
+  }
+});
+
+/**
+ * Complete job with cash/check payment
+ * POST /api/tech/jobs/:jobId/complete
+ * 
+ * Body:
+ * - paymentMethod: 'cash' | 'check'
+ * - amount: number
+ * 
+ * Flow:
+ * 1. Fetch appointment details
+ * 2. Create invoice with technician ID
+ * 3. Update invoice payment method and status
+ * 4. Update job status to completed
+ * 5. Update/create today's deposit record
+ * 6. Send notifications to owner
+ */
+router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res: Response) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const { paymentMethod, amount } = req.body;
+    const technician = (req as any).technician;
+
+    console.log(`[TECH JOBS] Completing job ${jobId} with ${paymentMethod} payment of $${amount}`);
+
+    // Validate input
+    if (!paymentMethod || !['cash', 'check'].includes(paymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid payment method. Must be "cash" or "check"',
+      });
+    }
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid amount. Must be greater than 0',
+      });
+    }
+
+    // Fetch appointment details
+    const [appointment] = await db
+      .select({
+        id: appointments.id,
+        customerId: appointments.customerId,
+        serviceId: appointments.serviceId,
+        technicianId: appointments.technicianId,
+        customerName: customers.name,
+        customerPhone: customers.phone,
+      })
+      .from(appointments)
+      .leftJoin(customers, eq(appointments.customerId, customers.id))
+      .where(eq(appointments.id, jobId))
+      .limit(1);
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found',
+      });
+    }
+
+    // Verify job ownership
+    if (appointment.technicianId && appointment.technicianId !== technician.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot complete job assigned to another technician',
+      });
+    }
+
+    // ATOMIC TRANSACTION: Create invoice, update job, update deposit
+    const result = await db.transaction(async (tx) => {
+      // 1. Create invoice using invoiceService
+      const invoice = await createInvoice(jobId);
+
+      console.log(`[TECH JOBS] Invoice created: ${invoice.id}`);
+
+      // 2. Update invoice with payment method, technician, and status
+      const [updatedInvoice] = await tx
+        .update(invoices)
+        .set({
+          paymentMethod,
+          paymentStatus: 'pending',
+          technicianId: technician.id,
+          amount: amount.toString(),
+        })
+        .where(eq(invoices.id, invoice.id))
+        .returning();
+
+      // 3. Update job status to completed
+      await tx
+        .update(appointments)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          technicianId: technician.id,
+        })
+        .where(eq(appointments.id, jobId));
+
+      // 4. Update or create today's deposit record
+      const today = format(new Date(), 'yyyy-MM-dd');
+
+      // Check if deposit record exists for today
+      const [existingDeposit] = await tx
+        .select()
+        .from(technicianDeposits)
+        .where(
+          and(
+            eq(technicianDeposits.technicianId, technician.id),
+            eq(technicianDeposits.depositDate, today)
+          )
+        )
+        .limit(1);
+
+      let depositRecord;
+
+      if (existingDeposit) {
+        // Update existing deposit
+        const newCashAmount = paymentMethod === 'cash'
+          ? parseFloat(existingDeposit.cashAmount || '0') + amount
+          : parseFloat(existingDeposit.cashAmount || '0');
+
+        const newCheckAmount = paymentMethod === 'check'
+          ? parseFloat(existingDeposit.checkAmount || '0') + amount
+          : parseFloat(existingDeposit.checkAmount || '0');
+
+        const newTotalAmount = newCashAmount + newCheckAmount;
+
+        const updatedInvoiceIds = existingDeposit.invoiceIds || [];
+        if (!updatedInvoiceIds.includes(invoice.id)) {
+          updatedInvoiceIds.push(invoice.id);
+        }
+
+        [depositRecord] = await tx
+          .update(technicianDeposits)
+          .set({
+            cashAmount: newCashAmount.toFixed(2),
+            checkAmount: newCheckAmount.toFixed(2),
+            totalAmount: newTotalAmount.toFixed(2),
+            invoiceIds: updatedInvoiceIds,
+          })
+          .where(eq(technicianDeposits.id, existingDeposit.id))
+          .returning();
+
+        console.log(`[TECH JOBS] Updated deposit record ${depositRecord.id}`);
+      } else {
+        // Create new deposit record
+        const cashAmount = paymentMethod === 'cash' ? amount : 0;
+        const checkAmount = paymentMethod === 'check' ? amount : 0;
+        const totalAmount = cashAmount + checkAmount;
+
+        [depositRecord] = await tx
+          .insert(technicianDeposits)
+          .values({
+            technicianId: technician.id,
+            depositDate: today,
+            cashAmount: cashAmount.toFixed(2),
+            checkAmount: checkAmount.toFixed(2),
+            totalAmount: totalAmount.toFixed(2),
+            invoiceIds: [invoice.id],
+            status: 'pending',
+          })
+          .returning();
+
+        console.log(`[TECH JOBS] Created new deposit record ${depositRecord.id}`);
+      }
+
+      return {
+        invoice: updatedInvoice,
+        deposit: depositRecord,
+      };
+    });
+
+    const techName = technician.fullName || technician.username || 'Technician';
+    const customerName = appointment.customerName || 'Customer';
+
+    // 5. Send notifications to owner/manager
+    try {
+      // Get owner/manager users
+      const ownerManagers = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            eq(users.isActive, true),
+            or(eq(users.role, 'owner'), eq(users.role, 'manager'))
+          )
+        );
+
+      const notificationMessage = `💵 Cash payment recorded: ${customerName} paid $${amount.toFixed(2)} via ${paymentMethod}\nTechnician: ${techName}\nToday's total: $${result.deposit.totalAmount}`;
+
+      // Send push notifications
+      for (const owner of ownerManagers) {
+        await sendPushNotification(owner.id, {
+          title: 'Cash Payment Recorded',
+          body: `${customerName} paid $${amount.toFixed(2)} via ${paymentMethod} - ${techName}`,
+          tag: `cash-payment-${result.invoice.id}`,
+          data: {
+            type: 'cash_payment',
+            invoiceId: result.invoice.id,
+            amount: amount,
+            paymentMethod,
+            technicianId: technician.id,
+          },
+        });
+      }
+
+      // Send SMS to business owner phone if configured
+      const businessOwnerPhone = process.env.BUSINESS_OWNER_PHONE;
+      if (businessOwnerPhone) {
+        await sendSMS(businessOwnerPhone, notificationMessage);
+      }
+
+      console.log(`[TECH JOBS] Notifications sent to ${ownerManagers.length} owner/managers`);
+    } catch (notificationError) {
+      console.error('[TECH JOBS] Failed to send notifications:', notificationError);
+      // Don't fail the request if notifications fail
+    }
+
+    res.json({
+      success: true,
+      invoiceId: result.invoice.id,
+      depositAmount: result.deposit.totalAmount,
+      message: `Job completed with ${paymentMethod} payment of $${amount.toFixed(2)}`,
+    });
+  } catch (error: any) {
+    console.error('[TECH JOBS] Error completing job:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to complete job',
+      message: error.message || 'An unexpected error occurred',
+    });
   }
 });
 
