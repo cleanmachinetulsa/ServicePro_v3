@@ -17,33 +17,30 @@ import { buildCustomerContext } from './gptPersonalizationService';
  * ✅ "I want to talk to Jody"
  * ✅ "Can I speak with the owner?"
  * ✅ "Talk to a manager"
- * ✅ "Talk to the business owner" ← NEW
- * ✅ "Speak with the general manager" ← NEW
- * ✅ "Get the owner"
- * ✅ "Reach Jody"
- * ✅ "Have the owner call me"
- * ✅ "Let Jody know"
- * ✅ "Jody can call me back"
- * ✅ "I'd like Jody to call me" ← NEW
- * ✅ "Have the business owner call" ← NEW
+ * ✅ "Talk to the business owner"
+ * ✅ "Transfer me to the owner" ← FIX
+ * ✅ "Connect me with your manager" ← FIX
+ * ✅ "Get me the owner" ← FIX
+ * ✅ "Let me talk to Jody" ← FIX
+ * ✅ "Have Jody call me back"
+ * ✅ "I'd like Jody to call me"
  * 
  * TIER B - HUMAN ESCALATIONS (should trigger):
  * ✅ "I need to talk to a human"
+ * ✅ "Transfer me to a human" ← FIX
+ * ✅ "Connect me with a real person" ← FIX
  * ✅ "Can I speak with someone there?"
- * ✅ "I want to talk to a real person"
- * ✅ "Transfer me to a live agent"
- * ✅ "Speak with someone on your team"
- * ✅ "Talk to a live representative" ← NEW
+ * ✅ "Transfer me to a live agent" ← FIX
+ * ✅ "Get me a representative" ← FIX
  * ✅ "not a bot please"
  * ✅ "human please"
  * 
  * FALSE POSITIVES - SHOULD NOT TRIGGER:
  * ❌ "I want to talk about pricing"
  * ❌ "I need to speak to my wife first"
- * ❌ "I'll talk to you later"
- * ❌ "Can we discuss the ceramic coating"
- * ❌ "I want to talk to someone at Honda"
- * ❌ "Let me talk to my manager" (blocked by "my manager" exclusion)
+ * ❌ "Transfer me $20" (different context)
+ * ❌ "Get me a quote" (no owner/human target)
+ * ❌ "Connect me to your wifi" (different context)
  */
 
 // ========== ESCALATION DETECTION KEYWORD SETS ==========
@@ -165,39 +162,37 @@ function hasSoftTargetWithQualifier(sentence: string): boolean {
 
 /**
  * Check for owner/Jody reference with action verb (Tier A)
- * Uses flexible regex allowing optional adjectives/modifiers
+ * Handles pronouns between verb and preposition ("transfer me to owner")
  */
 function detectTierA(sentence: string): boolean {
   // Build regex patterns for each owner target
   for (const owner of OWNER_TARGETS) {
-    // Pattern 1: (action verb) + optional "to/with/for" + optional modifiers + (owner)
-    // Allows 0-2 words between preposition and owner target
-    // Matches: "talk to owner", "talk to the owner", "talk to the business owner"
+    // Pattern 1: (action verb) + optional [pronoun + space] + optional preposition + modifiers + owner
+    // (?:\s+(?:me|us))? makes the entire [space + pronoun] block optional
+    // Matches: "talk to owner", "transfer me to owner", "connect me with the owner"
     const actionToOwner = new RegExp(
-      `\\b(${ACTION_VERBS.join('|')})\\s+(to|with|for)?\\s+([\\w]+\\s+){0,2}${owner}\\b`,
+      `\\b(${ACTION_VERBS.join('|')})(?:\\s+(?:me|us))?\\s*(to|with|for)?\\s+([\\w]+\\s+){0,2}${owner}\\b`,
       'i'
     );
     
-    // Pattern 2: "get/reach/contact" + optional modifiers + (owner)
-    // Allows 0-2 words between action and owner
-    // Matches: "get owner", "get the owner", "contact the business owner"
+    // Pattern 2: "get/reach/contact" + optional [pronoun + space] + modifiers + owner
+    // Matches: "get owner", "get me the owner", "contact the business owner"
     const directAction = new RegExp(
-      `\\b(get|reach|contact)\\s+([\\w]+\\s+){0,2}${owner}\\b`,
+      `\\b(get|reach|contact)(?:\\s+(?:me|us))?\\s+([\\w]+\\s+){0,2}${owner}\\b`,
       'i'
     );
     
-    // Pattern 3: Owner name + optional modifiers + action
-    // Allows 0-3 words between owner and action verb
-    // Matches: "jody call me", "jody can call me", "jody to call me"
+    // Pattern 3: Owner name + optional modifiers + action (no change needed)
+    // Matches: "jody call me", "jody can call me", "have jody to call me"
     const ownerAction = new RegExp(
       `\\b${owner}\\s+([\\w]+\\s+){0,3}(call|reach|contact|speak|talk)`,
       'i'
     );
     
-    // Pattern 4: "have/let/get" + optional modifiers + owner + action
-    // Matches: "have owner call", "let the owner call", "get jody to call me"
+    // Pattern 4: "have/let/get" + optional [pronoun + space] + modifiers + owner + action
+    // Matches: "have owner call", "let me talk to the owner", "get jody to call me"
     const haveOwnerAction = new RegExp(
-      `\\b(have|let|get)\\s+([\\w]+\\s+){0,2}${owner}\\s+([\\w]+\\s+){0,2}(call|contact|reach|speak|talk)`,
+      `\\b(have|let|get)(?:\\s+(?:me|us))?\\s+([\\w]+\\s+){0,2}${owner}\\s+([\\w]+\\s+){0,2}(call|contact|reach|speak|talk)`,
       'i'
     );
 
@@ -216,7 +211,7 @@ function detectTierA(sentence: string): boolean {
 
 /**
  * Check for human hand-off request (Tier B)
- * Uses flexible regex allowing optional modifiers
+ * Handles pronouns between verb and preposition
  */
 function detectTierB(sentence: string): boolean {
   // Bot complaints always trigger
@@ -224,15 +219,14 @@ function detectTierB(sentence: string): boolean {
     return true;
   }
 
-  // Build regex patterns for human targets (multi-word targets need special handling)
+  // Single-word human targets with optional pronoun
   const singleWordHumanTargets = ['human', 'representative'];
   
   for (const target of singleWordHumanTargets) {
-    // Pattern: (action verb) + optional "to/with" + optional modifiers + (human target)
-    // Allows 0-2 words between preposition and target
-    // Matches: "talk to human", "talk to a human", "speak with live representative"
+    // Pattern: (action) + optional [pronoun + space] + optional preposition + modifiers + target
+    // Matches: "talk to human", "transfer me to a human", "connect me with a representative"
     const actionToHuman = new RegExp(
-      `\\b(${ACTION_VERBS.join('|')})\\s+(to|with)?\\s+([\\w]+\\s+){0,2}${target}\\b`,
+      `\\b(${ACTION_VERBS.join('|')})(?:\\s+(?:me|us))?\\s*(to|with)?\\s+([\\w]+\\s+){0,2}${target}\\b`,
       'i'
     );
 
@@ -241,7 +235,7 @@ function detectTierB(sentence: string): boolean {
     }
   }
   
-  // Multi-word human targets (e.g., "real person", "live agent")
+  // Multi-word targets
   const multiWordTargets = [
     'real person',
     'live agent',
@@ -249,10 +243,9 @@ function detectTierB(sentence: string): boolean {
   ];
   
   for (const target of multiWordTargets) {
-    // Pattern for multi-word targets
-    // Matches: "talk to a real person", "speak with the live agent"
+    // Pattern with optional pronoun for multi-word targets
     const multiWordPattern = new RegExp(
-      `\\b(${ACTION_VERBS.join('|')})\\s+(to|with)?\\s+(a|the)?\\s*${target}\\b`,
+      `\\b(${ACTION_VERBS.join('|')})(?:\\s+(?:me|us))?\\s*(to|with)?\\s+(a|the)?\\s*${target}\\b`,
       'i'
     );
 
@@ -261,14 +254,12 @@ function detectTierB(sentence: string): boolean {
     }
   }
 
-  // Check soft targets with qualifiers (someone/person)
+  // Soft targets with qualifiers
   for (const softTarget of SOFT_TARGETS) {
     for (const qualifier of SOFT_TARGET_QUALIFIERS) {
-      // Pattern: (action) + optional "to/with" + optional article + (soft target) + (qualifier)
-      // Allows flexible spacing
-      // Matches: "talk to someone there", "speak with person on your team"
+      // Pattern with optional pronoun for soft targets
       const softTargetPattern = new RegExp(
-        `\\b(${ACTION_VERBS.join('|')})\\s+(to|with)?\\s*(a|the)?\\s*${softTarget}\\s+.*${qualifier}\\b`,
+        `\\b(${ACTION_VERBS.join('|')})(?:\\s+(?:me|us))?\\s*(to|with)?\\s*(a|the)?\\s*${softTarget}\\s+.*${qualifier}\\b`,
         'i'
       );
 
