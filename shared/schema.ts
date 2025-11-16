@@ -1737,6 +1737,97 @@ export const customerMilestoneProgress = pgTable("customer_milestone_progress", 
   completedIndex: index("milestone_progress_completed_idx").on(table.completedAt),
 }));
 
+// ===== AUTOMATED SERVICE REMINDER SYSTEM (PHASE 4A) =====
+
+// Reminder Rules - Configuration for different reminder types
+export const reminderRules = pgTable("reminder_rules", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g., "Maintenance Detail Reminder", "3-Month Check-in"
+  serviceId: integer("service_id").references(() => services.id), // Optional - null means applies to all services
+  triggerType: varchar("trigger_type", { length: 30 }).notNull(), // time_since_last, recurring_schedule, manual
+  triggerIntervalDays: integer("trigger_interval_days"), // Days after last service to send reminder
+  reminderWindowDays: integer("reminder_window_days"), // How many days before due date to send
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  serviceIdIdx: index("reminder_rules_service_id_idx").on(table.serviceId),
+  enabledIdx: index("reminder_rules_enabled_idx").on(table.enabled),
+}));
+
+// Reminder Jobs - Scheduled reminders to be sent
+export const reminderJobs = pgTable("reminder_jobs", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  ruleId: integer("rule_id").notNull().references(() => reminderRules.id),
+  scheduledFor: timestamp("scheduled_for").notNull(), // When to send reminder
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, sent, failed, snoozed, cancelled
+  lastAttemptAt: timestamp("last_attempt_at"), // When last send attempt occurred
+  attemptsCount: integer("attempts_count").notNull().default(0),
+  errorMessage: text("error_message"), // If failed
+  createdAt: timestamp("created_at").defaultNow(),
+  sentAt: timestamp("sent_at"), // When successfully sent
+}, (table) => ({
+  customerIdx: index("reminder_jobs_customer_idx").on(table.customerId),
+  ruleIdx: index("reminder_jobs_rule_idx").on(table.ruleId),
+  statusScheduledIdx: index("reminder_jobs_status_scheduled_idx").on(table.status, table.scheduledFor), // For cron queries
+}));
+
+// Reminder Events - History of all reminder interactions
+export const reminderEvents = pgTable("reminder_events", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => reminderJobs.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  eventType: varchar("event_type", { length: 20 }).notNull(), // sent, delivered, opened, clicked, booked, snoozed, opted_out, failed
+  channel: varchar("channel", { length: 20 }).notNull(), // sms, email, push
+  messageContent: text("message_content"), // The actual message sent
+  metadata: jsonb("metadata"), // Additional data (e.g., booking link, snooze duration)
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  jobIdIdx: index("reminder_events_job_id_idx").on(table.jobId),
+  customerIdx: index("reminder_events_customer_idx").on(table.customerId),
+  eventTypeIdx: index("reminder_events_event_type_idx").on(table.eventType),
+}));
+
+// Reminder Snoozes - Customer snooze preferences
+export const reminderSnoozes = pgTable("reminder_snoozes", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => reminderJobs.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  snoozedUntil: timestamp("snoozed_until").notNull(), // When to resume reminders
+  snoozeDuration: varchar("snooze_duration", { length: 20 }).notNull(), // 1_week, 2_weeks, 1_month, 3_months
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  jobIdIdx: index("reminder_snoozes_job_id_idx").on(table.jobId),
+  customerIdx: index("reminder_snoozes_customer_idx").on(table.customerId),
+  snoozedUntilIdx: index("reminder_snoozes_snoozed_until_idx").on(table.snoozedUntil),
+}));
+
+// Reminder Opt-outs - Customers who opted out of reminders
+export const reminderOptOuts = pgTable("reminder_opt_outs", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  optedOutAt: timestamp("opted_out_at").defaultNow(),
+  reason: text("reason"), // Optional reason for opting out
+  channel: varchar("channel", { length: 20 }), // Which channel they opted out from (null = all channels)
+}, (table) => ({
+  customerIdx: index("reminder_opt_outs_customer_idx").on(table.customerId),
+  channelIdx: index("reminder_opt_outs_channel_idx").on(table.channel),
+}));
+
+// Reminder Consent - Track TCPA consent for reminder communications
+export const reminderConsent = pgTable("reminder_consent", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  consentType: varchar("consent_type", { length: 20 }).notNull(), // sms, email, push, all
+  consentGiven: boolean("consent_given").notNull().default(true),
+  consentedAt: timestamp("consented_at").defaultNow(),
+  consentSource: text("consent_source"), // Where consent was obtained (e.g., "booking_form", "website_signup")
+  revokedAt: timestamp("revoked_at"), // When consent was revoked (null if active)
+}, (table) => ({
+  customerConsentIdx: index("reminder_consent_customer_consent_idx").on(table.customerId, table.consentType),
+  consentGivenIdx: index("reminder_consent_given_idx").on(table.consentGiven),
+}));
+
 // Create schemas for data insertion
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -2427,3 +2518,49 @@ export const insertCustomerServiceHistorySchema = createInsertSchema(customerSer
 });
 export type InsertCustomerServiceHistory = z.infer<typeof insertCustomerServiceHistorySchema>;
 export type CustomerServiceHistory = typeof customerServiceHistory.$inferSelect;
+
+// Insert schemas and types for Automated Service Reminder System (Phase 4A)
+export const insertReminderRuleSchema = createInsertSchema(reminderRules).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertReminderRule = z.infer<typeof insertReminderRuleSchema>;
+export type ReminderRule = typeof reminderRules.$inferSelect;
+
+export const insertReminderJobSchema = createInsertSchema(reminderJobs).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  lastAttemptAt: true,
+});
+export type InsertReminderJob = z.infer<typeof insertReminderJobSchema>;
+export type ReminderJob = typeof reminderJobs.$inferSelect;
+
+export const insertReminderEventSchema = createInsertSchema(reminderEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertReminderEvent = z.infer<typeof insertReminderEventSchema>;
+export type ReminderEvent = typeof reminderEvents.$inferSelect;
+
+export const insertReminderSnoozeSchema = createInsertSchema(reminderSnoozes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertReminderSnooze = z.infer<typeof insertReminderSnoozeSchema>;
+export type ReminderSnooze = typeof reminderSnoozes.$inferSelect;
+
+export const insertReminderOptOutSchema = createInsertSchema(reminderOptOuts).omit({
+  id: true,
+  optedOutAt: true,
+});
+export type InsertReminderOptOut = z.infer<typeof insertReminderOptOutSchema>;
+export type ReminderOptOut = typeof reminderOptOuts.$inferSelect;
+
+export const insertReminderConsentSchema = createInsertSchema(reminderConsent).omit({
+  id: true,
+  consentedAt: true,
+  revokedAt: true,
+});
+export type InsertReminderConsent = z.infer<typeof insertReminderConsentSchema>;
+export type ReminderConsent = typeof reminderConsent.$inferSelect;

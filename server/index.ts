@@ -241,6 +241,12 @@ app.use((req, res, next) => {
   initializeEscalationExpiry();
   console.log('[SERVER] Recurring services scheduler, reminders, deposit reminders, and escalation expiry started');
   
+  // Initialize proactive reminder system (Phase 4B)
+  const { seedDefaultReminderRules, initializeProactiveReminderScheduler } = await import('./reminderService');
+  await seedDefaultReminderRules();
+  initializeProactiveReminderScheduler();
+  console.log('[SERVER] Proactive reminder system initialized - scheduler running every 6 hours');
+  
   // Start email campaign scheduler (hourly batch processor)
   const { initializeCampaignScheduler } = await import('./campaignScheduler');
   initializeCampaignScheduler();
