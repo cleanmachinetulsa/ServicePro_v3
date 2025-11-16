@@ -65,7 +65,7 @@ export function PwaProvider({ children }: PwaProviderProps) {
       console.log('[PWA] App is online');
       
       // Trigger background sync when coming online
-      if ('serviceWorker' in navigator && 'sync' in window) {
+      if ('serviceWorker' in navigator && 'SyncManager' in window) {
         navigator.serviceWorker.ready.then((registration: any) => {
           registration.sync.register('sync-mutations').catch((error: Error) => {
             console.error('[PWA] Failed to register sync:', error);
