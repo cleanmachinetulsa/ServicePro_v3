@@ -28,6 +28,7 @@ import ConversationList from '@/components/messages/ConversationList';
 import Composer from '@/components/messages/Composer';
 import { AppShell } from '@/components/AppShell';
 import { useToast } from '@/hooks/use-toast';
+import { RecentCallersWidget } from '@/components/messages/RecentCallersWidget';
 
 interface Conversation {
   id: number;
@@ -239,8 +240,8 @@ function MessagesPageContent() {
           {selectedConversation ? (
             <ThreadView conversationId={selectedConversation} />
           ) : (
-            <div className="text-center px-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="glass-card p-10 rounded-3xl max-w-md mx-auto">
+            <div className="w-full max-w-2xl px-4 py-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="text-center glass-card p-10 rounded-3xl">
                 <div className="bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
                   <MessageCircle className="h-12 w-12 text-primary" />
                 </div>
@@ -251,6 +252,8 @@ function MessagesPageContent() {
                   Choose a conversation from the list to view messages and reply
                 </p>
               </div>
+              
+              <RecentCallersWidget />
             </div>
           )}
         </div>
