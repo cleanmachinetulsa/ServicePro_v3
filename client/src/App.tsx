@@ -52,7 +52,7 @@ import SMSConsentPage from './pages/sms-consent';
 import PrivacyPolicyPage from './pages/privacy-policy';
 import CallMetricsPage from './pages/CallMetrics';
 import Maintenance from './pages/maintenance';
-import ShowcasePage from './pages/showcase';
+import ShowcasePage from './pages/Showcase';
 import CleanMachineShowcase from './pages/clean-machine-showcase';
 import SecuritySettingsPage from './pages/security-settings';
 import TechnicianPage from './pages/technician';

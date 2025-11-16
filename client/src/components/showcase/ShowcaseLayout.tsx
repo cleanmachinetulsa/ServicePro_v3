@@ -1,12 +1,11 @@
-import { ReactNode, useState, useEffect } from 'react';
-import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { ReactNode, useMemo, useEffect } from 'react';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 interface ShowcaseLayoutProps {
   children: ReactNode;
 }
 
 export function ShowcaseLayout({ children }: ShowcaseLayoutProps) {
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
   
@@ -14,13 +13,27 @@ export function ShowcaseLayout({ children }: ShowcaseLayoutProps) {
   const x = useSpring(mouseX, springConfig);
   const y = useSpring(mouseY, springConfig);
 
+  const gradientX = useTransform(mouseX, [0, 100], [30, 70]);
+  const gradientY = useTransform(mouseY, [0, 100], [40, 60]);
+  
+  const gradientXSecondary = useTransform(mouseX, [0, 100], [12.5, 37.5]);
+  const gradientYSecondary = useTransform(mouseY, [0, 100], [25, 40]);
+
+  const particles = useMemo(() => 
+    Array.from({ length: 20 }).map((_, i) => ({
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      size: Math.random() * 4 + 2,
+      delay: i * 0.1
+    })),
+    []
+  );
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Convert mouse position to percentage (0-100)
       const xPercent = (e.clientX / window.innerWidth) * 100;
       const yPercent = (e.clientY / window.innerHeight) * 100;
       
-      setMousePosition({ x: xPercent, y: yPercent });
       mouseX.set(xPercent);
       mouseY.set(yPercent);
     };
@@ -35,33 +48,41 @@ export function ShowcaseLayout({ children }: ShowcaseLayoutProps) {
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         {/* Primary gradient - follows mouse */}
         <motion.div
-          className="absolute inset-0 bg-[radial-gradient(circle_at_var(--mouse-x)_var(--mouse-y),rgba(30,64,175,0.2),transparent_50%)]"
+          className="absolute inset-0"
           style={{
-            '--mouse-x': `${mousePosition.x}%`,
-            '--mouse-y': `${mousePosition.y}%`,
-          } as React.CSSProperties}
+            background: useTransform(
+              [gradientX, gradientY],
+              ([x, y]) => `radial-gradient(circle at ${x}% ${y}%, rgba(30,64,175,0.2), transparent 50%)`
+            )
+          }}
         />
         
         {/* Secondary gradient - parallax effect (slower) */}
         <motion.div
           className="absolute inset-0 opacity-80"
           style={{
-            background: `radial-gradient(circle at ${mousePosition.x * 0.5 + 25}% ${mousePosition.y * 0.5 + 30}%, rgba(76,29,149,0.15), transparent 50%)`,
+            background: useTransform(
+              [gradientXSecondary, gradientYSecondary],
+              ([x, y]) => `radial-gradient(circle at ${x}% ${y}%, rgba(76,29,149,0.15), transparent 50%)`
+            )
           }}
         />
         
         {/* Tertiary gradient - subtle bottom glow */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_90%,rgba(99,102,241,0.1),transparent_50%)]" />
         
-        {/* Floating particles */}
+        {/* Floating particles with stable positions */}
         <div className="absolute inset-0">
-          {[...Array(20)].map((_, i) => (
+          {particles.map((particle, i) => (
             <motion.div
               key={i}
-              className="absolute w-1 h-1 bg-blue-400/20 rounded-full"
+              className="absolute rounded-full"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
+                left: `${particle.x}%`,
+                top: `${particle.y}%`,
+                width: particle.size,
+                height: particle.size,
+                backgroundColor: 'rgba(96, 165, 250, 0.2)',
               }}
               animate={{
                 y: [0, -30, 0],
@@ -70,7 +91,7 @@ export function ShowcaseLayout({ children }: ShowcaseLayoutProps) {
               transition={{
                 duration: 3 + Math.random() * 4,
                 repeat: Infinity,
-                delay: Math.random() * 2,
+                delay: particle.delay,
                 ease: "easeInOut",
               }}
             />
