@@ -67,6 +67,7 @@ import RequestPTO from './pages/RequestPTO';
 import AdminPTO from './pages/AdminPTO';
 import OpenShifts from './pages/OpenShifts';
 import ShiftTrades from './pages/ShiftTrades';
+import HomepageEditor from './pages/HomepageEditor';
 
 function Router() {
   return (
@@ -174,6 +175,9 @@ function Router() {
       </Route>
       <Route path="/admin/pto">
         <AuthGuard><AdminPTO /></AuthGuard>
+      </Route>
+      <Route path="/admin/homepage-editor">
+        <AuthGuard><HomepageEditor /></AuthGuard>
       </Route>
 
       {/* Technician portal routes */}
