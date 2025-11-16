@@ -442,6 +442,75 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // API Usage Dashboard - Get usage summary and health
+  app.get('/api/usage-dashboard', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { apiUsageLogs, serviceHealth } = await import('@shared/schema');
+      const { sql } = await import('drizzle-orm');
+
+      // Get last 30 days of usage
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const logs = await db.select()
+        .from(apiUsageLogs)
+        .where(sql`${apiUsageLogs.timestamp} >= ${thirtyDaysAgo}`)
+        .orderBy(sql`${apiUsageLogs.timestamp} DESC`)
+        .limit(1000);
+
+      // Get service health
+      const health = await db.select().from(serviceHealth);
+
+      // Calculate summaries
+      const totalCost = logs.reduce((sum, log) => sum + parseFloat(log.cost), 0);
+      
+      // Group by service
+      const byService = logs.reduce((acc: any, log) => {
+        if (!acc[log.service]) {
+          acc[log.service] = { cost: 0, calls: 0 };
+        }
+        acc[log.service].cost += parseFloat(log.cost);
+        acc[log.service].calls += log.quantity;
+        return acc;
+      }, {});
+
+      return res.json({
+        success: true,
+        summary: {
+          totalCost: totalCost.toFixed(2),
+          period: '30 days',
+          byService,
+        },
+        health,
+        recentLogs: logs.slice(0, 100),
+      });
+    } catch (error) {
+      console.error('[USAGE DASHBOARD] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // API Usage Sync - Manually trigger usage sync
+  app.post('/api/usage-sync', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { syncAllUsage } = await import('./usageTracker');
+      const results = await syncAllUsage();
+      
+      return res.json({ success: true, results });
+    } catch (error) {
+      console.error('[USAGE SYNC] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
   // Business settings endpoints
   app.get('/api/business-settings', requireAuth, async (req: Request, res: Response) => {
     try {
@@ -667,6 +736,148 @@ export async function registerRoutes(app: Express) {
 
     const logoUrl = `/attached_assets/uploads/${req.file.filename}`;
     return res.json({ success: true, logoUrl });
+  });
+
+  // Resume upload configuration for job applications
+  const resumeStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      const uploadDir = path.join(process.cwd(), 'attached_assets', 'uploads');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+      const ext = path.extname(file.originalname);
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, `resume-${uniqueSuffix}${ext}`);
+    }
+  });
+
+  const resumeUpload = multer({
+    storage: resumeStorage,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB max size
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = /pdf|doc|docx/;
+      const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+      const mimetype = /application\/(pdf|msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)/.test(file.mimetype);
+      
+      if (extname && mimetype) {
+        return cb(null, true);
+      } else {
+        cb(new Error('Only PDF, DOC, and DOCX files are allowed!'));
+      }
+    }
+  });
+
+  // GET /api/jobs - Get active job postings (public)
+  app.get('/api/jobs', async (req: Request, res: Response) => {
+    try {
+      const { jobPostings } = await import('@shared/schema');
+      
+      const jobs = await db.select()
+        .from(jobPostings)
+        .where(eq(jobPostings.isActive, true))
+        .orderBy(desc(jobPostings.createdAt));
+      
+      return res.json({ success: true, jobs });
+    } catch (error) {
+      console.error('[JOBS] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // POST /api/jobs/apply - Submit job application (public)
+  app.post('/api/jobs/apply', resumeUpload.single('resume'), async (req: Request, res: Response) => {
+    try {
+      const { jobApplications, insertJobApplicationSchema } = await import('@shared/schema');
+      
+      const schema = insertJobApplicationSchema.omit({ resumeUrl: true, reviewedBy: true, reviewedAt: true });
+      const parsed = schema.safeParse(req.body);
+      
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
+      }
+      
+      let resumeUrl = null;
+      if (req.file) {
+        resumeUrl = `/attached_assets/uploads/${req.file.filename}`;
+      }
+      
+      const [application] = await db.insert(jobApplications).values({
+        ...parsed.data,
+        resumeUrl,
+      }).returning();
+      
+      console.log(`[JOB APPLICATION] New application from ${application.firstName} ${application.lastName}`);
+      
+      return res.json({ success: true, application });
+    } catch (error) {
+      console.error('[JOB APPLICATION] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/applications - Get all applications (admin only)
+  app.get('/api/admin/applications', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const { jobApplications, jobPostings } = await import('@shared/schema');
+      
+      const applications = await db.query.jobApplications.findMany({
+        with: {
+          jobPosting: true,
+        },
+        orderBy: (apps, { desc }) => [desc(apps.submittedAt)],
+      });
+      
+      return res.json({ success: true, applications });
+    } catch (error) {
+      console.error('[ADMIN APPLICATIONS] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/admin/applications/:id - Update application status
+  app.put('/api/admin/applications/:id', requireAuth, async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    try {
+      const applicationId = parseInt(req.params.id);
+      const { status, notes } = req.body;
+      
+      const schema = z.object({
+        status: z.enum(['new', 'reviewing', 'interviewing', 'rejected', 'hired']).optional(),
+        notes: z.string().optional(),
+      });
+      
+      const parsed = schema.safeParse({ status, notes });
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input' });
+      }
+      
+      const { jobApplications } = await import('@shared/schema');
+      const [updated] = await db.update(jobApplications)
+        .set({
+          ...parsed.data,
+          reviewedBy: req.user.id,
+          reviewedAt: new Date(),
+        })
+        .where(eq(jobApplications.id, applicationId))
+        .returning();
+      
+      return res.json({ success: true, application: updated });
+    } catch (error) {
+      console.error('[UPDATE APPLICATION] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
   });
 
   // Critical Monitoring Settings endpoints

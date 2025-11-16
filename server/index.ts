@@ -11,6 +11,7 @@ import loyaltyRouter from "./loyaltyApi";
 import techProfilesRouter from "./routes.techProfiles";
 import aiBioCoachRouter from "./routes.aiBioCoach";
 import adminEmployeesRouter from "./routes.adminEmployees";
+import jobApplicationsRouter from "./routes.jobApplications";
 import payerApprovalRouter from "./routes.payerApproval";
 import { registerContactsRoutes } from "./routes.contacts";
 import stripeWebhooksRouter from "./routes.stripeWebhooks";
@@ -142,6 +143,8 @@ app.use(techProfilesRouter);
 app.use(aiBioCoachRouter);
 // Register admin employees routes
 app.use(adminEmployeesRouter);
+// Register job applications routes
+app.use(jobApplicationsRouter);
 // Register push notification routes
 app.use('/api/push', pushNotificationsRouter);
 // Register payer approval routes (public, no auth)

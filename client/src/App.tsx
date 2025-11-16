@@ -47,12 +47,14 @@ import TechnicianSchedule from './pages/TechnicianSchedule';
 import AdminEmployees from './pages/admin-employees';
 import AdminJobEditor from './pages/admin-job-editor';
 import AdminQuoteRequests from './pages/admin-quote-requests';
+import AdminApplications from './pages/AdminApplications';
 import PayerApprovalPage from './pages/payer-approval';
 import QuoteApprovalPage from './pages/quote-approval';
 import SMSConsentPage from './pages/sms-consent';
 import PrivacyPolicyPage from './pages/privacy-policy';
 import CallMetricsPage from './pages/CallMetrics';
 import Maintenance from './pages/maintenance';
+import Careers from './pages/Careers';
 import ShowcasePage from './pages/Showcase';
 import CleanMachineShowcase from './pages/clean-machine-showcase';
 import SecuritySettingsPage from './pages/security-settings';
@@ -68,6 +70,7 @@ import AdminPTO from './pages/AdminPTO';
 import OpenShifts from './pages/OpenShifts';
 import ShiftTrades from './pages/ShiftTrades';
 import HomepageEditor from './pages/HomepageEditor';
+import UsageDashboard from './pages/UsageDashboard';
 
 function Router() {
   return (
@@ -170,6 +173,9 @@ function Router() {
       <Route path="/admin/quote-requests">
         <AuthGuard><AdminQuoteRequests /></AuthGuard>
       </Route>
+      <Route path="/admin/applications">
+        <AuthGuard><AdminApplications /></AuthGuard>
+      </Route>
       <Route path="/admin/scheduling">
         <AuthGuard><SchedulingDashboard /></AuthGuard>
       </Route>
@@ -178,6 +184,9 @@ function Router() {
       </Route>
       <Route path="/admin/homepage-editor">
         <AuthGuard><HomepageEditor /></AuthGuard>
+      </Route>
+      <Route path="/admin/usage-dashboard">
+        <AuthGuard><UsageDashboard /></AuthGuard>
       </Route>
 
       {/* Technician portal routes */}
@@ -220,6 +229,7 @@ function Router() {
       <Route path="/recurring-booking/:serviceId" component={RecurringServiceBookingPage} />
       <Route path="/sms-consent" component={SMSConsentPage} />
       <Route path="/privacy-policy" component={PrivacyPolicyPage} />
+      <Route path="/careers" component={Careers} />
 
       {/* Home route must come after other routes */}
       <Route path="/" component={HomePage} />
