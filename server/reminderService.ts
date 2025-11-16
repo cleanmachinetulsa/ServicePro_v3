@@ -14,7 +14,7 @@ import {
 import { eq, and, sql, desc, lte, gte, isNull, or } from 'drizzle-orm';
 import { addDays, subDays, differenceInDays } from 'date-fns';
 import cron from 'node-cron';
-import { generateReminderMessage } from './gptPersonalizationService';
+import { generateReminderMessage, appendActionLinks } from './gptPersonalizationService';
 
 /**
  * Identify customers who need service reminders based on their last appointment
@@ -171,6 +171,9 @@ export async function identifyCustomersNeedingReminders() {
 
 /**
  * Create a new reminder job for a customer
+ * 
+ * BUG FIX #1: Always appends action links after job creation
+ * This ensures ALL reminders have booking, snooze, and opt-out links
  */
 export async function createReminderJob(
   customerId: number,
@@ -179,12 +182,13 @@ export async function createReminderJob(
   messageContent?: string
 ): Promise<number> {
   try {
-    // ISSUE #3 FIX: Defensive check - ensure message content always exists
+    // BUG FIX #1: Use fallback WITHOUT ${data.link} placeholder
     if (!messageContent) {
       console.warn('[CREATE JOB] No message content provided, using generic fallback');
       messageContent = `Hi! It's time for your next auto detail service. Book online or call Clean Machine today!`;
     }
 
+    // Create job with initial message
     const [job] = await db
       .insert(reminderJobs)
       .values({
@@ -198,6 +202,18 @@ export async function createReminderJob(
       .returning();
 
     console.log(`[REMINDER SERVICE] Created reminder job ${job.id} for customer ${customerId}`);
+
+    // BUG FIX #1: ALWAYS append action links after job creation
+    const messageWithLinks = appendActionLinks(messageContent, customerId, job.id);
+    
+    // Update job with links
+    await db
+      .update(reminderJobs)
+      .set({ messageContent: messageWithLinks })
+      .where(eq(reminderJobs.id, job.id));
+    
+    console.log(`[REMINDER SERVICE] ✅ Added action links to job ${job.id}`);
+
     return job.id;
   } catch (error) {
     console.error('[REMINDER SERVICE] Error creating reminder job:', error);
@@ -388,6 +404,33 @@ export async function processProactiveReminders() {
 
     // Create reminder jobs for each customer
     for (const customer of customersNeedingReminders) {
+      // PHASE 4D: Skip customers who have opted out of reminders
+      const { reminderOptOuts } = await import('@shared/schema');
+      const optOut = await db.query.reminderOptOuts.findFirst({
+        where: eq(reminderOptOuts.customerId, customer.customerId),
+      });
+      
+      if (optOut) {
+        console.log(`[PROACTIVE REMINDERS] ⏭️ Skipping customer ${customer.customerId} - opted out on ${optOut.optedOutAt?.toISOString()}`);
+        continue;
+      }
+      
+      // PHASE 4D: Skip customers with active snoozes
+      const { reminderSnoozes } = await import('@shared/schema');
+      const { and, gte } = await import('drizzle-orm');
+      
+      const activeSnooze = await db.query.reminderSnoozes.findFirst({
+        where: and(
+          eq(reminderSnoozes.customerId, customer.customerId),
+          gte(reminderSnoozes.snoozedUntil, new Date())
+        ),
+      });
+      
+      if (activeSnooze) {
+        console.log(`[PROACTIVE REMINDERS] ⏭️ Skipping customer ${customer.customerId} - snoozed until ${activeSnooze.snoozedUntil?.toISOString()}`);
+        continue;
+      }
+      
       // Get full customer details with loyalty tier
       const customerData = await db.query.customers.findFirst({
         where: eq(customers.id, customer.customerId),
@@ -408,47 +451,55 @@ export async function processProactiveReminders() {
       const recommendedService = rule?.service?.name || 'maintenance detail';
       const recommendedServicePrice = rule?.service?.priceRange || '$150-200';
 
-      // BUG FIX #1: Separate GPT call from job creation to ensure job is ALWAYS created
-      let reminderMessage: string;
-      try {
-        // Generate personalized reminder message using GPT
-        reminderMessage = await generateReminderMessage(
-          {
-            id: customerData.id,
-            name: customerData.name,
-            phone: customerData.phone || '',
-            loyaltyTier: customerData.loyaltyTier || 'bronze',
-            lifetimeValue: customerData.lifetimeValue || '0.00',
-          },
-          {
-            lastServiceDate: customer.lastAppointmentDate,
-            lastServiceName: customer.serviceName,
-            daysSinceService: customer.daysSinceLastService,
-            recommendedService,
-            recommendedServicePrice,
-            weatherToday,
-          }
-        );
-      } catch (error) {
-        console.error('[PROACTIVE REMINDERS] GPT error, using generic fallback:', error);
-        reminderMessage = `Hi! It's time for your next auto detail service. Book online or call Clean Machine today!`;
-        errorCount++;
-      }
-
-      // ALWAYS create job, even if GPT failed (with fallback message)
+      // PHASE 4D: Create job first to get jobId for action links
       try {
         const scheduledFor = new Date();
+        const fallbackMessage = `Hi! It's time for your next auto detail service. Book online or call Clean Machine today!`;
         
-        await createReminderJob(
+        // Create job with fallback message first
+        const jobId = await createReminderJob(
           customer.customerId,
           customer.ruleId,
           scheduledFor,
-          reminderMessage
+          fallbackMessage
         );
+
+        // Now generate personalized message WITH jobId for action links
+        let reminderMessage: string;
+        try {
+          reminderMessage = await generateReminderMessage(
+            {
+              id: customerData.id,
+              name: customerData.name,
+              phone: customerData.phone || '',
+              loyaltyTier: customerData.loyaltyTier || 'bronze',
+              lifetimeValue: customerData.lifetimeValue || '0.00',
+            },
+            {
+              lastServiceDate: customer.lastAppointmentDate,
+              lastServiceName: customer.serviceName,
+              daysSinceService: customer.daysSinceLastService,
+              recommendedService,
+              recommendedServicePrice,
+              weatherToday,
+            },
+            jobId  // PHASE 4D: Pass jobId for action links
+          );
+          
+          // Update job with personalized message
+          await db.update(reminderJobs)
+            .set({ messageContent: reminderMessage })
+            .where(eq(reminderJobs.id, jobId));
+            
+        } catch (error) {
+          console.error('[PROACTIVE REMINDERS] GPT error, keeping fallback message:', error);
+          errorCount++;
+          // Job already created with fallback message, no need to update
+        }
 
         createdCount++;
         console.log(
-          `[PROACTIVE REMINDERS] ✅ Created reminder for ${customer.customerName} - ` +
+          `[PROACTIVE REMINDERS] ✅ Created reminder job ${jobId} for ${customer.customerName} - ` +
           `${customer.serviceName} (${customer.daysSinceLastService} days since service)`
         );
       } catch (error) {

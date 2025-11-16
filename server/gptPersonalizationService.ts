@@ -209,14 +209,20 @@ function generateFallbackMessage(
 /**
  * Generate personalized reminder message using GPT-4o
  * Falls back to templates if GPT fails
+ * 
+ * @param customer - Customer information for personalization
+ * @param context - Service context (last service, recommended service, etc.)
+ * @param jobId - Optional reminder job ID for generating action links
  */
 export async function generateReminderMessage(
   customer: ReminderCustomer,
-  context: ReminderContext
+  context: ReminderContext,
+  jobId?: number
 ): Promise<string> {
   if (!process.env.OPENAI_API_KEY) {
     console.warn('[REMINDER GPT] OPENAI_API_KEY not configured, using fallback template');
-    return generateFallbackMessage(customer, context);
+    const fallbackMessage = generateFallbackMessage(customer, context);
+    return appendActionLinks(fallbackMessage, customer.id, jobId);
   }
 
   try {
@@ -231,19 +237,20 @@ Last Service: ${context.lastServiceName} on ${format(context.lastServiceDate, 'M
 Recommended Service: ${context.recommendedService} (${context.recommendedServicePrice})
 Weather Today: ${context.weatherToday}
 
-Write a personalized 160-character SMS reminder that:
+Write a personalized SMS reminder that:
 1. References their last service naturally
 2. Recommends the next service appropriate for their vehicle
 3. Includes loyalty tier recognition if gold/platinum (otherwise skip tier mention)
 4. Has a friendly, professional tone matching Clean Machine's brand
-5. Ends with a call-to-action (book online or call)
-6. Keeps it under 160 characters for single SMS
+5. Ends with a call-to-action
+6. Keeps the main message concise (action links will be added separately)
 
 DO NOT include:
 - Salesy language or pressure tactics
 - Multiple exclamation points
 - Emojis
 - Hashtags
+- URLs (those will be added automatically)
 
 Return ONLY the SMS text, nothing else.`;
 
@@ -260,7 +267,7 @@ Return ONLY the SMS text, nothing else.`;
         },
       ],
       temperature: 0.7,
-      max_tokens: 100,
+      max_tokens: 150,
     });
 
     const generatedMessage = completion.choices[0]?.message?.content?.trim();
@@ -269,18 +276,49 @@ Return ONLY the SMS text, nothing else.`;
       throw new Error('GPT returned empty message');
     }
     
-    if (generatedMessage.length > 160) {
-      console.warn(`[GPT PERSONALIZATION] Generated message too long (${generatedMessage.length} chars), truncating`);
-      const truncated = generatedMessage.substring(0, 157) + '...';
-      console.log(`[GPT PERSONALIZATION] Generated reminder: ${truncated}`);
-      return truncated;
-    }
-    
     console.log(`[GPT PERSONALIZATION] ✅ Generated reminder (${generatedMessage.length} chars): ${generatedMessage}`);
-    return generatedMessage;
+    
+    // Append action links
+    return appendActionLinks(generatedMessage, customer.id, jobId);
     
   } catch (error) {
     console.error('[GPT PERSONALIZATION] Error generating reminder with GPT, falling back to template:', error);
-    return generateFallbackMessage(customer, context);
+    const fallbackMessage = generateFallbackMessage(customer, context);
+    return appendActionLinks(fallbackMessage, customer.id, jobId);
   }
+}
+
+/**
+ * Append action links to reminder message
+ * Adds booking link, snooze link, and opt-out instructions
+ * 
+ * EXPORTED for use in reminderService.ts and routes.ts
+ */
+export function appendActionLinks(
+  message: string,
+  customerId: number,
+  jobId?: number
+): string {
+  // If no jobId provided, return message without action links
+  if (!jobId) {
+    return message;
+  }
+
+  const { buildFullUrl, createBookingLink, createSnoozeLink } = require('./reminderActionTokens');
+  
+  const bookingPath = createBookingLink(customerId, jobId);
+  const snoozePath = createSnoozeLink(customerId, jobId);
+  
+  const bookingUrl = buildFullUrl(bookingPath);
+  const snoozeUrl = buildFullUrl(snoozePath);
+  
+  // Append action links with clear labels
+  const withLinks = `${message}
+
+📅 Book now: ${bookingUrl}
+⏰ Snooze 7 days: ${snoozeUrl}
+🚫 Reply STOP to opt out`;
+  
+  console.log(`[GPT PERSONALIZATION] Added action links (total ${withLinks.length} chars)`);
+  return withLinks;
 }

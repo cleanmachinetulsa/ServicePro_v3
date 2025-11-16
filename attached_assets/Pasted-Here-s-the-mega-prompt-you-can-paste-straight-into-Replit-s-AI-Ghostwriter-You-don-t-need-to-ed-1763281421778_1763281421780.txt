@@ -1,0 +1,473 @@
+Here’s the “mega-prompt” you can paste straight into Replit’s AI (Ghostwriter).
+You don’t need to edit it – just drop the whole thing in and let it go to town.
+
+⸻
+
+
+You are an elite front-end engineer, UX/UI designer, and product storyteller building a **triple-A, production-ready showcase page** for my app **Clean Machine**.
+
+This is NOT a generic demo. This is a **flagship marketing + product showcase experience** that:
+
+- Shows off **every major feature** of the Clean Machine app.
+- Visually explains some of the **automation logic and rules** behind SMS, email, scheduling, service logic, etc.
+- Is polished enough to impress:
+  - Friends & family (wow factor).
+  - Other service business owners (so they say: “I want this for my business”).
+  - Potential partners or future investors.
+
+> IMPORTANT BRAND POSITIONING:
+> - Primary focus: **Clean Machine app** — what it does today and what it’s capable of.
+> - White-label / “get this for your business” is **ONE contained section** or sub-page, not the whole focus.
+> - Do **NOT** mention “ServicePro” anywhere in the UI. If needed, call it “white-label Clean Machine for your business” only.
+
+---
+
+## TECH + PROJECT ASSUMPTIONS
+
+Assume this project is:
+
+- A React + TypeScript SPA (Vite or CRA).
+- Using Tailwind CSS (if Tailwind not present, propose adding it OR use a similar utility class pattern).
+- You may add **Framer Motion** or a minimal animation library (or pure CSS) for micro-interactions, but:
+  - Keep bundle size reasonable.
+  - No cheesy, over-the-top animations. Everything should feel **subtle, premium, intentional**.
+
+If the current repo differs (Next.js, plain React, etc.), **adapt structure & imports accordingly**, but keep the ideas and architecture intact.
+
+---
+
+## BRAND + VISUAL STYLE
+
+Design language: **high-end SaaS for service businesses**, like “Apple x Tesla x Stripe” but for **mobile car detailing & similar service businesses**.
+
+- **Primary Color:** `#1e40af` (Clean Machine blue).
+- **Accent Color(s):** rich purple/indigo variants (e.g. `#4c1d95` / `#6366f1`) and soft teal/cyan for highlights.
+- **Background:** dark-to-indigo gradients, subtle noise or vignette, **glassmorphism-style** cards.
+- **Typography:** modern, clean sans-serif (e.g. `Inter`, `SF Pro`, `Plus Jakarta Sans` or similar).
+- **Overall vibe:**
+  - Clean, minimal, **NO clutter**.
+  - Micro-animations on hover/press.
+  - Soft shadows, slight scale, and blur for depth.
+  - Visuals should **explain features**, not just decorate.
+
+Accessibility:
+
+- Color contrast must be sufficient.
+- Keyboard focus states visible.
+- Semantic HTML structure.
+
+---
+
+## PAGE GOAL
+
+Build a **single, premium, long-scroll showcase page** (with internal sections & possibly a few sub-routes if needed) that:
+
+1. Tells a story:
+   - _“Here’s what Clean Machine is.”_
+   - _“Here’s what it actually does in the real world.”_
+   - _“Here’s how it automates your service business.”_
+   - _“Here’s why it’s different.”_
+2. Shows **interactive previews** of:
+   - Booking & scheduling flows.
+   - SMS & email automation.
+   - Customer dashboard views.
+   - Technician / on-site workflow.
+3. Includes **one focused section** (or tab) about:
+   - “Use this for your own service business” + **14-day free trial CTA**.
+
+---
+
+## INFORMATION ARCHITECTURE / SECTIONS
+
+Create a new top-level page, for example:
+
+- `src/pages/CleanMachineShowcase.tsx`  
+  OR (if using a pages router)
+- `src/pages/showcase/clean-machine.tsx`
+
+This page should have the following main sections (IDs used for smooth-scroll navigation):
+
+1. `#hero` – **Hero / Overview**
+2. `#feature-map` – **Feature Map / Interactive Tabs**
+3. `#flows` – **Real-World Flow: From Lead → Repeat Customer**
+4. `#automation-logic` – **Logic & Rules Visualized**
+5. `#experience` – **UX Highlights: Customer & Technician Experience**
+6. `#metrics` – **Business Impact & KPIs**
+7. `#whitelabel` – **(Single) White-Label / 14-Day Trial Section**
+8. `#faq` – **FAQ & Closing CTA**
+
+Add a **sticky top nav** that highlights the current section and allows smooth scroll to these anchors.
+
+---
+
+## SECTION DETAILS (CONTENT & INTERACTIONS)
+
+### 1. HERO (`#hero`)
+
+Goal: instant clarity and wow.
+
+- Background: dark gradient with a **faint outline of a car**, phone screen mockups, and subtle animated glow.
+- Main headline: short, bold line explaining Clean Machine:
+  - Example direction: “Clean Machine: The Brain of Your Detailing Business.”
+- Subheadline: 1–2 sentences clearly describing:
+  - It handles **scheduling, SMS, email, customer history, technician workflows**, etc.
+- Primary CTA: “Explore the Clean Machine App”
+- Secondary CTA: “See it for Your Business”
+- Include a **hero device mock** (simple card UI that looks like a phone or dashboard) with some animated content:
+  - e.g., animated “incoming SMS → automated reply → scheduled appointment” loop.
+- Microinteractions:
+  - CTAs have gradient background with hover state (slight scale + shadow).
+  - Hero device mock has a gentle floating animation.
+
+### 2. FEATURE MAP (`#feature-map`)
+
+Goal: show breadth of features, grouped logically.
+
+Implement an **interactive tabbed interface**:
+
+- Feature groups (as tabs / pills across the top):
+  - Scheduling & Routing
+  - Smart SMS & Email
+  - Customer Profiles & Service History
+  - Technician / Van Mode
+  - Admin Dashboard & Rules
+
+When a user selects a tab:
+
+- Left side: Title, description, bullet list of 4–6 concrete capabilities.
+- Right side: **UI preview card(s)** showing a mock of the relevant screens.
+  - Use glassy cards with subtle drop shadows & hover effects.
+  - Include small animated elements (e.g. highlight the “auto-fill address”, animate a status badge, etc).
+
+Tab transitions:
+
+- Animate with Framer Motion or CSS transitions:
+  - Fade + slide for content.
+  - Underline slider for active tab.
+
+All feature copy must be **real, rich, descriptive**, aimed at **service business owners** (car detailing, lawn care, cleaning, etc.), no “Lorem ipsum.”
+
+### 3. REAL-WORLD FLOW (`#flows`)
+
+Goal: narratively show how Clean Machine works when a customer contacts the business.
+
+Create a **horizontal stepper / timeline** showing a canonical flow:
+
+1. Customer finds Clean Machine online and submits a request / sends SMS.
+2. Clean Machine auto-replies, checks service area, collects details.
+3. It proposes time slots based on calendar + location clusters.
+4. Appointment is confirmed; technician gets route and prep notes.
+5. After the job, customer gets a thank-you + review / upsell message.
+6. Customer is added to a **follow-up cadence** (e.g. seasonal reminders).
+
+Interactions:
+
+- Each step is a card with:
+  - Step number.
+  - Short title.
+  - Descriptive copy.
+  - Tiny “logic tag” (e.g. “Uses: Service area rules + schedule optimizer”).
+- Hover / click reveals a inline mini UI snippet or code-like snippet showing what’s happening under the hood (simple pseudo-code or flow diagram style).
+- Use scroll snapping or a horizontal carousel for mobile.
+
+### 4. AUTOMATION LOGIC & RULES (`#automation-logic`)
+
+Goal: surface the “brains” behind the app – logic & rules for SMS, email, scheduling, service limits, etc.
+
+Use **toggleable views** (like tabs within the section) for:
+
+- SMS Flows
+- Email Sequences
+- Scheduling & Routing Rules
+- Rain / Weather Policies
+- Service Area & Upsell Logic
+
+For each, display:
+
+- Left: human-readable explanation of the rules:
+  - Example: “If customer is >25 minutes outside base radius, send alternate message suggesting a different day or location, or ask for a minimum spend.”
+- Right: stylized **pseudo-logic card** (code block-like) or flow chart card showing structured logic.
+
+Example of what to render (for Ghostwriter to elaborate from):
+
+```tsx
+const automationRules = [
+  {
+    id: "sms-flows",
+    label: "Smart SMS Flows",
+    description:
+      "Clean Machine automatically replies to new leads, confirms details, and keeps customers updated without you typing a word.",
+    pseudoLogic: [
+      "WHEN new_inquiry VIA sms OR form:",
+      "  IF number_in_service_area AND open_slots_available:",
+      "    SEND 'Thanks for reaching out!' + 2-3 optimized time slots",
+      "  ELSE IF just_outside_service_area:",
+      "    SEND alternate options message (different day / minimum package)",
+      "  ALWAYS:",
+      "    Tag conversation with status, vehicle, and location for the dashboard"
+    ]
+  },
+  // ...email sequences, scheduling, rain policy, etc.
+];
+
+Render these with syntax-highlight style, but it’s NOT real backend code – it’s illustrative.
+
+Make this section feel like a peek at the control center.
+
+5. EXPERIENCE HIGHLIGHTS (#experience)
+
+Goal: show both Customer Experience and Technician / Owner Experience.
+
+Layout:
+	•	Split section with two main columns or tabs:
+	•	“For Your Customers”
+	•	“For You & Your Team”
+
+For customers, highlight:
+	•	Smooth booking (few questions, clear steps).
+	•	Confirmations and reminder messages.
+	•	Live ETAs / “we’re on the way” messages.
+	•	Friendly, on-brand language.
+
+For you & your team, highlight:
+	•	A daily “Today’s Schedule” dashboard.
+	•	Address + map cards (no real API calls, but visually mimic).
+	•	Customer history and notes.
+	•	One-tap SMS/email templates.
+	•	Rain / weather decision helpers.
+
+Visually:
+	•	Use stacked cards showing UI mockups for:
+	•	A “Today’s Jobs” technician view.
+	•	A customer “Your Upcoming Appointment” SMS / email preview.
+	•	Microinteractions on hover: cards gently lift, slight parallax for icons.
+
+6. METRICS & IMPACT (#metrics)
+
+Goal: showcase business impact (even if sample metrics).
+
+Implement metric cards and a simple chart:
+	•	Metric cards for:
+	•	Time saved per week.
+	•	No-show reduction (%).
+	•	Repeat booking rate.
+	•	Average ticket increase from upsells.
+	•	A small, tasteful area/line chart showing “Manual chaos → Clean Machine automation” improvement over time.
+
+Use artificial but plausible numbers and label as “Example results when Clean Machine is fully dialed in.”
+
+7. WHITE-LABEL / TRIAL SECTION (#whitelabel)
+
+This is the ONLY section that speaks to white labeling. It should stay in the background as a “oh, by the way, you can have this too” moment.
+
+Content:
+	•	Heading along the lines of:
+	•	“Want Clean Machine for Your Service Business?”
+	•	Subtext:
+	•	“We designed Clean Machine for real-world mobile detailing — but it’s built to power any service business that books jobs, drives to customers, and communicates by text/email.”
+	•	Bullet points:
+	•	Works for detailing, lawn care, home cleaning, etc.
+	•	Fully branded with your logo, colors, and service lists.
+	•	Handles your SMS, email, scheduling, follow-ups, and more.
+	•	CTA:
+	•	“Start a 14-Day Free Trial” button.
+	•	Optional secondary CTA: “Book a Walkthrough”
+
+Design:
+	•	Brighter card over a darker background.
+	•	Subtle “Your Logo Here” illustration (generic logo placeholder).
+	•	NO mention of “ServicePro” or internal naming.
+
+8. FAQ & CLOSING CTA (#faq)
+	•	5–7 FAQs that service business owners would realistically ask:
+	•	“Can it work with my existing phone number?”
+	•	“Is it only for car detailing?”
+	•	“How hard is it to get started?”
+	•	“What if I’m not techy?”
+	•	etc.
+	•	Each FAQ as an accordion with smooth expand/collapse animation.
+	•	Final CTA strip:
+	•	Short pitch.
+	•	Two buttons: “See the App in Action” (scrolls up to feature map) and “Talk About Using This For My Business” (link to contact).
+
+⸻
+
+INTERACTIONS & ANIMATION REQUIREMENTS
+	•	Smooth scroll for in-page navigation.
+	•	Section reveal animations on scroll:
+	•	E.g. fade + slight upward motion, staggered for cards.
+	•	Hover states for:
+	•	Buttons: scale + shadow + gradient shift.
+	•	Cards: subtle lift and shadow, maybe a border glow.
+	•	Tab transitions:
+	•	Content fades and slides horizontally.
+	•	Active tab indicator bar animates to the new position.
+	•	Keep animations snappy and responsive, not slow or distracting.
+
+If using Framer Motion, keep usage focused:
+	•	AnimatePresence for tabbed content.
+	•	Simple motion.div wrappers for cards.
+
+⸻
+
+COMPONENT ARCHITECTURE
+
+Build a modular component structure, not a monolithic file. Example:
+
+src/
+  components/showcase/
+    ShowcaseLayout.tsx
+    HeroSection.tsx
+    FeatureMapSection.tsx
+    FlowsSection.tsx
+    AutomationLogicSection.tsx
+    ExperienceSection.tsx
+    MetricsSection.tsx
+    WhiteLabelSection.tsx
+    FaqSection.tsx
+    Shared/
+      SectionHeader.tsx
+      PillTabs.tsx
+      MetricCard.tsx
+      CodeCard.tsx
+      DeviceMock.tsx
+      Timeline.tsx
+  pages/
+    CleanMachineShowcase.tsx
+
+Make CleanMachineShowcase.tsx just orchestrate the sections:
+
+import HeroSection from "../components/showcase/HeroSection";
+import FeatureMapSection from "../components/showcase/FeatureMapSection";
+import FlowsSection from "../components/showcase/FlowsSection";
+import AutomationLogicSection from "../components/showcase/AutomationLogicSection";
+import ExperienceSection from "../components/showcase/ExperienceSection";
+import MetricsSection from "../components/showcase/MetricsSection";
+import WhiteLabelSection from "../components/showcase/WhiteLabelSection";
+import FaqSection from "../components/showcase/FaqSection";
+
+const CleanMachineShowcase: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-50">
+      {/* Sticky nav with anchors */}
+      {/* Each section has a unique id for scroll linking */}
+      <HeroSection id="hero" />
+      <FeatureMapSection id="feature-map" />
+      <FlowsSection id="flows" />
+      <AutomationLogicSection id="automation-logic" />
+      <ExperienceSection id="experience" />
+      <MetricsSection id="metrics" />
+      <WhiteLabelSection id="whitelabel" />
+      <FaqSection id="faq" />
+    </div>
+  );
+};
+
+export default CleanMachineShowcase;
+
+Each section component should:
+	•	Accept id prop and set id={id} on the root element.
+	•	Use shared sub-components for consistency (headers, pills, etc.).
+	•	Read data from local arrays/config objects instead of hardcoding everything inline.
+
+⸻
+
+DESIGN SYSTEM & UTILITIES
+
+Create a minimal design system for reuse:
+
+// SectionHeader.tsx
+type SectionHeaderProps = {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  alignment?: "left" | "center";
+};
+
+export const SectionHeader: React.FC<SectionHeaderProps> = ({
+  eyebrow,
+  title,
+  subtitle,
+  alignment = "left",
+}) => (
+  <div
+    className={`max-w-3xl ${
+      alignment === "center" ? "mx-auto text-center" : ""
+    } space-y-3`}
+  >
+    {eyebrow && (
+      <p className="text-xs font-semibold tracking-[0.2em] uppercase text-sky-400">
+        {eyebrow}
+      </p>
+    )}
+    <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+      {title}
+    </h2>
+    {subtitle && (
+      <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+        {subtitle}
+      </p>
+    )}
+  </div>
+);
+
+	•	similar small components:
+
+	•	PillTabs (for feature map & automation toggles).
+	•	DeviceMock (phone / tablet frame).
+	•	CodeCard (for pseudo-logic).
+	•	MetricCard, Timeline, etc.
+
+⸻
+
+COPYWRITING REQUIREMENTS
+
+All text must be:
+	•	Written for busy service business owners (detailing, lawn care, cleaning, etc.).
+	•	Concrete and benefit-driven:
+	•	“Fewer no-shows.”
+	•	“Automatic reminders.”
+	•	“More repeat customers.”
+	•	No filler lorem ipsum.
+	•	Tone:
+	•	Friendly, confident, knowledgeable.
+	•	Not corporate, not “bro-marketing.”
+	•	Slightly conversational, but still professional.
+
+Describe features Clean Machine has / is aiming for:
+	•	Online booking & scheduling.
+	•	Smart SMS replies and templates.
+	•	Email follow-ups and review requests.
+	•	Customer profiles and vehicle/service histories.
+	•	Technician “today’s jobs” view.
+	•	Intelligent routing and service-area logic.
+	•	Rain / weather handling (reschedule workflows).
+	•	Upsell recommendations (e.g., coatings, protectants, extras).
+	•	White-label option as a bonus, not front and center.
+
+⸻
+
+WHAT I WANT FROM YOU (REPLIT)
+	1.	Create all components & sections described above, wired together into a new CleanMachineShowcase page.
+	2.	Implement:
+	•	Sticky nav.
+	•	Smooth scrolling to section anchors.
+	•	Tabs with animated content transitions.
+	•	Scroll reveal + hover microinteractions.
+	3.	Use TailwindCSS (or equivalent utility classes) with the color palette and styles described.
+	4.	Use real, polished copy targeted at service business owners.
+	5.	Ensure:
+	•	Responsive design (great on desktop, tablet, and mobile).
+	•	Accessible HTML and contrast.
+	•	Clean, organized file structure.
+
+After generating, review your own work and:
+	•	Refactor repetitive patterns into reusable components.
+	•	Improve naming for clarity.
+	•	Ensure the experience feels like a production-ready marketing site I can proudly show to people as the “home” of my app’s capabilities.
+
+Now, based on all of the above, generate the full implementation for this Clean Machine showcase page and all necessary supporting components.
+
+---
+
+If you want, next step after you paste this into Replit and it spits out a first version, you can send me what it made and I’ll help you tune, refactor, or push it even more toward “holy sh*t this is nice.”
