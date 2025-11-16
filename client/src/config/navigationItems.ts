@@ -9,7 +9,8 @@ import {
   Wrench, 
   Settings, 
   Shield,
-  DollarSign
+  DollarSign,
+  AlertCircle
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -34,6 +35,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Messages',
     icon: MessageSquare,
     path: '/messages',
+  },
+  {
+    id: 'escalations',
+    label: 'Escalations',
+    icon: AlertCircle,
+    path: '/escalations',
   },
   {
     id: 'phone',

@@ -295,6 +295,7 @@ async function processRecurringServiceReminders() {
 // Singleton guard for reminders to prevent duplicate cron job registration
 let reminderSchedulerInitialized = false;
 let depositReminderSchedulerInitialized = false;
+let escalationExpirySchedulerInitialized = false;
 
 /**
  * Initialize recurring services reminder scheduler
@@ -334,6 +335,27 @@ export function initializeDepositReminders() {
 
   depositReminderSchedulerInitialized = true;
   console.log('[DEPOSIT] Reminder scheduler initialized - will run every 4 hours');
+}
+
+/**
+ * Initialize escalation expiry scheduler
+ * Runs every hour to expire old escalation requests
+ */
+export function initializeEscalationExpiry() {
+  if (escalationExpirySchedulerInitialized) {
+    console.log('[ESCALATION] Expiry scheduler already initialized, skipping...');
+    return;
+  }
+
+  // Run every hour
+  cron.schedule('0 * * * *', async () => {
+    console.log('[ESCALATION] Running scheduled task: checking for expired escalations');
+    const { expireOldEscalations } = await import('./escalationService');
+    await expireOldEscalations();
+  });
+
+  escalationExpirySchedulerInitialized = true;
+  console.log('[ESCALATION] Expiry scheduler initialized - will run every hour');
 }
 
 // Export for manual testing

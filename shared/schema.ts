@@ -466,6 +466,12 @@ export const conversations = pgTable("conversations", {
   pinnedAt: timestamp("pinned_at"), // When conversation was pinned
   archivedAt: timestamp("archived_at"), // When conversation was archived
   starredAt: timestamp("starred_at"), // When conversation was starred
+  
+  // Human escalation tracking (Phase 2: "Ask for Jody" VIP Escalation System)
+  humanEscalationActive: boolean("human_escalation_active").notNull().default(false),
+  humanEscalationRequestedAt: timestamp("human_escalation_requested_at"),
+  humanHandledAt: timestamp("human_handled_at"),
+  humanHandledBy: integer("human_handled_by").references(() => users.id),
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),
@@ -535,6 +541,44 @@ export const scheduledMessages = pgTable("scheduled_messages", {
 }, (table) => ({
   // Composite index on (status, scheduledFor) for efficient cron queries
   statusScheduledIndex: index("scheduled_messages_status_scheduled_idx").on(table.status, table.scheduledFor),
+}));
+
+// Human Escalation Requests - Phase 2: "Ask for Jody" VIP Escalation System
+// Tracks customer requests to speak with owner directly (pauses AI, sends notifications)
+export const humanEscalationRequests = pgTable("human_escalation_requests", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").references(() => conversations.id).notNull(),
+  customerId: integer("customer_id").references(() => customers.id).notNull(),
+  customerPhone: varchar("customer_phone", { length: 20 }).notNull(),
+  customerName: varchar("customer_name", { length: 255 }),
+  
+  // Trigger info
+  triggerPhrase: varchar("trigger_phrase", { length: 500 }), // What they said to trigger
+  triggerMessageId: integer("trigger_message_id").references(() => messages.id),
+  
+  // Status
+  status: varchar("status", { length: 50 }).notNull().default("pending"), // pending, acknowledged, resolved, expired
+  
+  // Context for owner
+  recentMessageSummary: text("recent_message_summary"), // Last few messages for context
+  customerVehicle: varchar("customer_vehicle", { length: 255 }),
+  lastServiceDate: timestamp("last_service_date"),
+  
+  // Timing
+  requestedAt: timestamp("requested_at").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  resolvedAt: timestamp("resolved_at"),
+  expiresAt: timestamp("expires_at").notNull(), // Auto-expire after 24hrs
+  
+  // Notifications sent
+  smsNotificationSent: boolean("sms_notification_sent").notNull().default(false),
+  pushNotificationSent: boolean("push_notification_sent").notNull().default(false),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  conversationIdIdx: index("human_escalation_requests_conversation_idx").on(table.conversationId),
+  statusIdx: index("human_escalation_requests_status_idx").on(table.status),
+  expiresAtIdx: index("human_escalation_requests_expires_at_idx").on(table.expiresAt),
 }));
 
 // Call Events - Logs all inbound and outbound calls
@@ -1945,6 +1989,11 @@ export const insertScheduledMessageSchema = createInsertSchema(scheduledMessages
   sentAt: true,
 });
 
+export const insertHumanEscalationRequestSchema = createInsertSchema(humanEscalationRequests).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertNotificationSettingsSchema = createInsertSchema(notificationSettings).pick({
   settingKey: true,
   enabled: true,
@@ -2161,6 +2210,8 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type InsertMessageReaction = z.infer<typeof insertMessageReactionSchema>;
 export type InsertMessageEditHistory = z.infer<typeof insertMessageEditHistorySchema>;
 export type InsertScheduledMessage = z.infer<typeof insertScheduledMessageSchema>;
+export type InsertHumanEscalationRequest = z.infer<typeof insertHumanEscalationRequestSchema>;
+export type HumanEscalationRequest = typeof humanEscalationRequests.$inferSelect;
 export type InsertCancellationFeedback = z.infer<typeof insertCancellationFeedbackSchema>;
 export type InsertFollowUpReminder = z.infer<typeof insertFollowUpReminderSchema>;
 

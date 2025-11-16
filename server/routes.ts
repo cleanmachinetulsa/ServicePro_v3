@@ -103,6 +103,7 @@ import { registerCallRoutes } from './routes.calls';
 import { registerTechDepositRoutes } from './routes.techDeposits';
 import { registerCallEventsRoutes } from './routes.callEvents';
 import { registerCustomerIntelligenceRoutes } from './routes.customerIntelligence';
+import { registerEscalationRoutes } from './routes.escalations';
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -1087,7 +1088,101 @@ export async function registerRoutes(app: Express) {
         console.log(`[WEB CHAT] After handoff, controlMode is now: ${conversation.controlMode}`);
       }
 
-      await addMessage(conversation.id, message, 'customer', platform, null, phoneLineId);
+      const savedMessage = await addMessage(conversation.id, message, 'customer', platform, null, phoneLineId);
+
+      // Check for escalation triggers (Phase 2: "Ask for Jody" VIP Escalation System)
+      if (conversation.controlMode === 'auto' && !conversation.humanEscalationActive) {
+        const { detectEscalationTrigger, createEscalationRequest } = await import('./escalationService');
+        const { getConversationById } = await import('./conversationService');
+        
+        const escalationMatch = detectEscalationTrigger(message);
+        
+        if (escalationMatch) {
+          console.log('[ESCALATION] Escalation trigger detected:', escalationMatch.tier, '-', escalationMatch.match);
+          
+          // Get full conversation for context
+          const fullConversation = await getConversationById(conversation.id);
+          const messageHistory = fullConversation?.messages?.map(m => ({
+            role: m.fromCustomer ? 'customer' : 'agent',
+            content: m.content
+          })) || [];
+          
+          // Get or create customer record
+          const { customers } = await import('@shared/schema');
+          const { eq } = await import('drizzle-orm');
+          let customer = await db.query.customers.findFirst({
+            where: eq(customers.phone, phone)
+          });
+          
+          // Create customer if doesn't exist
+          if (!customer) {
+            const [newCustomer] = await db.insert(customers).values({
+              phone: phone,
+              name: conversation.customerName || undefined,
+              isReturningCustomer: false,
+            }).returning();
+            customer = newCustomer;
+          }
+          
+          // Create escalation request
+          await createEscalationRequest({
+            conversationId: conversation.id,
+            customerId: customer.id,
+            customerPhone: phone,
+            triggerPhrase: escalationMatch.match,
+            triggerMessageId: savedMessage?.id,
+            recentMessages: messageHistory,
+          });
+          
+          // Send confirmation to customer (don't call AI)
+          const confirmationMessage = `Thank you! I've notified our owner, Jody. She'll respond to you directly very soon. In the meantime, I'm here if you need anything else.`;
+          
+          // Save and send confirmation message
+          await addMessage(conversation.id, confirmationMessage, 'agent', platform, null, phoneLineId);
+          
+          // Send TwiML response for SMS
+          if (!isWebClient && platform === 'sms') {
+            res.set('Content-Type', 'text/xml');
+            return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(confirmationMessage)}</Message></Response>`);
+          }
+          
+          // For web client, return JSON
+          return res.json({ success: true, message: confirmationMessage });
+        }
+      }
+
+      // Check if conversation is currently escalated (AI paused)
+      if (conversation.humanEscalationActive) {
+        console.log('[ESCALATION] Conversation is escalated, AI paused');
+        
+        // Don't generate AI response - human is handling
+        // Send gentle reminder only if last message wasn't already a paused message
+        const { getConversationById } = await import('./conversationService');
+        const fullConversation = await getConversationById(conversation.id);
+        const lastAgentMessage = fullConversation?.messages?.filter(m => !m.fromCustomer).pop();
+        const shouldSendReminder = !lastAgentMessage || 
+          !lastAgentMessage.content.includes('Jody has been notified');
+        
+        if (shouldSendReminder) {
+          const pausedMessage = `Jody has been notified and will respond shortly. Feel free to wait here or she'll reach out directly!`;
+          await addMessage(conversation.id, pausedMessage, 'agent', platform, null, phoneLineId);
+          
+          if (!isWebClient && platform === 'sms') {
+            res.set('Content-Type', 'text/xml');
+            return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(pausedMessage)}</Message></Response>`);
+          }
+          
+          return res.json({ success: true, message: pausedMessage });
+        }
+        
+        // Already sent reminder, just acknowledge receipt
+        if (!isWebClient && platform === 'sms') {
+          res.set('Content-Type', 'text/xml');
+          return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+        }
+        
+        return res.json({ success: true });
+      }
 
       // Check for handoff needs (only for auto mode conversations)
       if (conversation.controlMode === 'auto') {
@@ -1930,6 +2025,9 @@ export async function registerRoutes(app: Express) {
   
   // Register call events routes (recent callers)
   registerCallEventsRoutes(app);
+  
+  // Register escalation routes (human handoff system)
+  registerEscalationRoutes(app);
   
   // Register calendar availability routes
   app.use('/api/calendar', calendarAvailabilityRoutes);
