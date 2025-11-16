@@ -1761,6 +1761,7 @@ export const reminderJobs = pgTable("reminder_jobs", {
   ruleId: integer("rule_id").notNull().references(() => reminderRules.id),
   scheduledFor: timestamp("scheduled_for").notNull(), // When to send reminder
   status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, sent, failed, snoozed, cancelled
+  messageContent: text("message_content"), // GPT-generated or template message
   lastAttemptAt: timestamp("last_attempt_at"), // When last send attempt occurred
   attemptsCount: integer("attempts_count").notNull().default(0),
   errorMessage: text("error_message"), // If failed

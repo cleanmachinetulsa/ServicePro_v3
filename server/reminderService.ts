@@ -14,6 +14,7 @@ import {
 import { eq, and, sql, desc, lte, gte, isNull, or } from 'drizzle-orm';
 import { addDays, subDays, differenceInDays } from 'date-fns';
 import cron from 'node-cron';
+import { generateReminderMessage } from './gptPersonalizationService';
 
 /**
  * Identify customers who need service reminders based on their last appointment
@@ -174,15 +175,23 @@ export async function identifyCustomersNeedingReminders() {
 export async function createReminderJob(
   customerId: number,
   ruleId: number,
-  scheduledFor: Date = new Date()
+  scheduledFor: Date = new Date(),
+  messageContent?: string
 ): Promise<number> {
   try {
+    // ISSUE #3 FIX: Defensive check - ensure message content always exists
+    if (!messageContent) {
+      console.warn('[CREATE JOB] No message content provided, using generic fallback');
+      messageContent = `Hi! It's time for your next auto detail service. Book online or call Clean Machine today!`;
+    }
+
     const [job] = await db
       .insert(reminderJobs)
       .values({
         customerId,
         ruleId,
         scheduledFor,
+        messageContent,
         status: 'pending',
         attemptsCount: 0,
       })
@@ -317,6 +326,44 @@ export async function markReminderFailed(
 }
 
 /**
+ * Fetch current weather for Tulsa, OK
+ */
+async function fetchWeather(): Promise<{ temperature: number; condition: string }> {
+  try {
+    const response = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=36.15&longitude=-95.99&current_weather=true&temperature_unit=fahrenheit'
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Weather API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    return {
+      temperature: Math.round(data.current_weather?.temperature || 65),
+      condition: mapWeatherCode(data.current_weather?.weathercode || 0),
+    };
+  } catch (error) {
+    console.error('[REMINDER SERVICE] Error fetching weather:', error);
+    return { temperature: 65, condition: 'clear' };
+  }
+}
+
+/**
+ * Map weather code to human-readable condition
+ */
+function mapWeatherCode(code: number): string {
+  if (code === 0) return 'clear';
+  if (code <= 3) return 'partly cloudy';
+  if (code <= 49) return 'foggy';
+  if (code <= 69) return 'rainy';
+  if (code <= 79) return 'snowy';
+  if (code <= 99) return 'stormy';
+  return 'clear';
+}
+
+/**
  * Main function to process proactive reminders
  * Called by cron job every 6 hours
  */
@@ -332,30 +379,82 @@ export async function processProactiveReminders() {
       return { created: 0, errors: 0 };
     }
 
+    // Fetch weather once for all reminders
+    const weather = await fetchWeather();
+    const weatherToday = `${weather.condition} and ${weather.temperature}°F`;
+
     let createdCount = 0;
     let errorCount = 0;
 
     // Create reminder jobs for each customer
     for (const customer of customersNeedingReminders) {
-      try {
-        // Schedule for immediate sending (can be customized)
-        const scheduledFor = new Date();
+      // Get full customer details with loyalty tier
+      const customerData = await db.query.customers.findFirst({
+        where: eq(customers.id, customer.customerId),
+      });
 
+      if (!customerData) {
+        console.error(`[PROACTIVE REMINDERS] Customer ${customer.customerId} not found`);
+        errorCount++;
+        continue;
+      }
+
+      // Get recommended service details
+      const rule = await db.query.reminderRules.findFirst({
+        where: eq(reminderRules.id, customer.ruleId),
+        with: { service: true },
+      });
+
+      const recommendedService = rule?.service?.name || 'maintenance detail';
+      const recommendedServicePrice = rule?.service?.priceRange || '$150-200';
+
+      // BUG FIX #1: Separate GPT call from job creation to ensure job is ALWAYS created
+      let reminderMessage: string;
+      try {
+        // Generate personalized reminder message using GPT
+        reminderMessage = await generateReminderMessage(
+          {
+            id: customerData.id,
+            name: customerData.name,
+            phone: customerData.phone || '',
+            loyaltyTier: customerData.loyaltyTier || 'bronze',
+            lifetimeValue: customerData.lifetimeValue || '0.00',
+          },
+          {
+            lastServiceDate: customer.lastAppointmentDate,
+            lastServiceName: customer.serviceName,
+            daysSinceService: customer.daysSinceLastService,
+            recommendedService,
+            recommendedServicePrice,
+            weatherToday,
+          }
+        );
+      } catch (error) {
+        console.error('[PROACTIVE REMINDERS] GPT error, using generic fallback:', error);
+        reminderMessage = `Hi! It's time for your next auto detail service. Book online or call Clean Machine today!`;
+        errorCount++;
+      }
+
+      // ALWAYS create job, even if GPT failed (with fallback message)
+      try {
+        const scheduledFor = new Date();
+        
         await createReminderJob(
           customer.customerId,
           customer.ruleId,
-          scheduledFor
+          scheduledFor,
+          reminderMessage
         );
 
         createdCount++;
         console.log(
-          `[PROACTIVE REMINDERS] Created reminder for ${customer.customerName} - ` +
+          `[PROACTIVE REMINDERS] ✅ Created reminder for ${customer.customerName} - ` +
           `${customer.serviceName} (${customer.daysSinceLastService} days since service)`
         );
       } catch (error) {
         errorCount++;
         console.error(
-          `[PROACTIVE REMINDERS] Failed to create reminder for customer ${customer.customerId}:`,
+          `[PROACTIVE REMINDERS] Error creating job for customer ${customer.customerId}:`,
           error
         );
       }
