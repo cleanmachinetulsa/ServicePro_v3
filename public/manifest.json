@@ -21,6 +21,36 @@
       "purpose": "any maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Today's Schedule",
+      "short_name": "Schedule",
+      "description": "View today's appointments and schedule",
+      "url": "/dashboard",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Send Invoice",
+      "short_name": "Invoice",
+      "description": "Create and send a new invoice",
+      "url": "/invoices",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "New Message",
+      "short_name": "Message",
+      "description": "Send a new message to a customer",
+      "url": "/messages",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Quick Booking",
+      "short_name": "Book",
+      "description": "Schedule a new appointment",
+      "url": "/scheduler",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
   "categories": ["business", "productivity"],
   "scope": "/",
   "screenshots": []
