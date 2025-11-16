@@ -292,6 +292,7 @@ export async function registerRoutes(app: Express) {
       '/api/referral/validate', // Public referral code validation (for booking flow)
       '/api/referral/signup',   // Public referral signup tracking (for booking flow)
       '/api/qr/scan',           // Allow anonymous QR code scans (tracking endpoint)
+      '/api/customers/check-phone', // Public customer lookup for smart booking (Phase 3)
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)
@@ -2084,6 +2085,151 @@ export async function registerRoutes(app: Express) {
   app.post('/api/customers/update', async (req, res) => {
     const { updateCustomer } = await import('./updateCustomer');
     return updateCustomer(req, res);
+  });
+
+  // Check if customer is returning and fetch their data (public endpoint for booking flow)
+  app.get('/api/customers/check-phone/:phone', async (req: Request, res: Response) => {
+    try {
+      const phone = req.params.phone;
+      const normalizedPhone = phone.startsWith('+1') ? phone : `+1${phone.replace(/\D/g, '')}`;
+      
+      // Import schema
+      const { customers, appointments, recurringServices, loyaltyPoints } = await import('@shared/schema');
+      const { desc, and } = await import('drizzle-orm');
+      
+      // Find customer - use simple query, NO complex select
+      const customerData = await db.query.customers.findFirst({
+        where: eq(customers.phone, normalizedPhone),
+      });
+      
+      if (!customerData) {
+        return res.json({
+          success: true,
+          isReturning: false,
+          customer: null,
+          recentAppointment: null,
+          pastAppointments: [],
+          recurringServices: [],
+        });
+      }
+      
+      // Calculate loyalty tier from lifetimeValue
+      const lifetimeValue = Number(customerData.lifetimeValue) || 0;
+      let loyaltyTier = 'bronze';
+      if (lifetimeValue >= 1000) loyaltyTier = 'platinum';
+      else if (lifetimeValue >= 500) loyaltyTier = 'gold';
+      else if (lifetimeValue >= 250) loyaltyTier = 'silver';
+      
+      // Fetch loyalty points from separate table
+      const loyaltyPointsRecord = await db.query.loyaltyPoints?.findFirst({
+        where: eq(loyaltyPoints.customerId, customerData.id),
+      });
+      
+      // Build customer object
+      const customer = {
+        id: customerData.id,
+        name: customerData.name,
+        phone: customerData.phone,
+        email: customerData.email,
+        address: customerData.address,
+        isReturning: customerData.isReturningCustomer || false,
+        loyaltyPoints: loyaltyPointsRecord?.points || 0,
+        loyaltyTier,
+        lifetimeValue,
+      };
+      
+      // Fetch recent appointment with service relation
+      // Use ONLY "with", NO "select"
+      const recentAppt = await db.query.appointments.findFirst({
+        where: eq(appointments.customerId, customerData.id),
+        orderBy: (appointments, { desc }) => [desc(appointments.scheduledTime)],
+        with: {
+          service: true, // Drizzle will auto-join service table
+        },
+      });
+      
+      const recentAppointment = recentAppt ? {
+        id: recentAppt.id,
+        vehicleYear: recentAppt.vehicleYear,
+        vehicleMake: recentAppt.vehicleMake,
+        vehicleModel: recentAppt.vehicleModel,
+        vehicleColor: recentAppt.vehicleColor,
+        address: recentAppt.address,
+        scheduledTime: recentAppt.scheduledTime,
+        serviceId: recentAppt.serviceId,
+        service: recentAppt.service, // Full service object from relation
+      } : null;
+      
+      // Fetch past completed appointments with service relation
+      const pastApptsRaw = await db.query.appointments.findMany({
+        where: and(
+          eq(appointments.customerId, customerData.id),
+          eq(appointments.status, 'completed')
+        ),
+        orderBy: (appointments, { desc }) => [desc(appointments.scheduledTime)],
+        limit: 5,
+        with: {
+          service: true, // Auto-join service table
+        },
+      });
+      
+      const pastAppointments = pastApptsRaw.map(appt => ({
+        id: appt.id,
+        vehicleYear: appt.vehicleYear,
+        vehicleMake: appt.vehicleMake,
+        vehicleModel: appt.vehicleModel,
+        vehicleColor: appt.vehicleColor,
+        address: appt.address,
+        scheduledTime: appt.scheduledTime,
+        serviceId: appt.serviceId,
+        finalPrice: appt.finalPrice,
+        status: appt.status,
+        service: appt.service, // Full service object
+      }));
+      
+      // Fetch active recurring services
+      const recurringServicesRaw = await db.query.recurringServices?.findMany({
+        where: and(
+          eq(recurringServices.customerId, customerData.id),
+          eq(recurringServices.status, 'active')
+        ),
+      }) || [];
+      
+      // Map frequency from database format to frontend format
+      const frequencyMap: Record<string, string> = {
+        'every_3_months': '3months',
+        'quarterly': '3months',
+        'every_6_months': '6months',
+        'yearly': '12months',
+      };
+      
+      const recurringServicesData = recurringServicesRaw.map(rs => ({
+        id: rs.id,
+        serviceId: rs.serviceId,
+        frequency: frequencyMap[rs.frequency] || rs.frequency, // Map to frontend format
+        nextServiceDate: rs.nextScheduledDate, // Correct field name
+      }));
+      
+      res.json({
+        success: true,
+        isReturning: true,
+        customer,
+        recentAppointment,
+        pastAppointments,
+        recurringServices: recurringServicesData,
+      });
+      
+    } catch (error) {
+      console.error('[Customer Check] Error:', error);
+      res.status(500).json({
+        success: true, // Graceful degradation
+        isReturning: false,
+        customer: null,
+        recentAppointment: null,
+        pastAppointments: [],
+        recurringServices: [],
+      });
+    }
   });
 
   // Get all customers for dropdown selector (authenticated endpoint)

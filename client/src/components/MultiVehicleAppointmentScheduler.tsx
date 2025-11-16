@@ -32,8 +32,14 @@ import {
   Clock, 
   CheckCircle2,
   Sparkles,
-  Award
+  Award,
+  History,
+  RefreshCw,
+  Check,
+  Loader2
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { useDebounce } from "@/hooks/use-debounce";
 
 // Premium Design Tokens
 const GLASS_CARD = "bg-gray-900/40 backdrop-blur-xl border border-blue-500/20 shadow-2xl shadow-blue-500/10";
@@ -139,6 +145,20 @@ export default function MultiVehicleAppointmentScheduler({
     error?: string;
   } | null>(null);
   const referralCacheRef = useRef<Record<string, typeof referralStatus>>({});
+
+  // Returning Customer Detection state
+  const [returningCustomerData, setReturningCustomerData] = useState<{
+    isReturning: boolean;
+    customer: any;
+    recentAppointment: any;
+    pastAppointments: any[];
+  } | null>(null);
+  const [showBookAgain, setShowBookAgain] = useState(false);
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
+
+  // Recurring service setup state
+  const [setupRecurring, setSetupRecurring] = useState(false);
+  const [recurringInterval, setRecurringInterval] = useState<'3months' | '6months' | '12months'>('3months');
 
   // Power/Water Access information
   const [accessInfo, setAccessInfo] = useState<{
@@ -651,6 +671,115 @@ export default function MultiVehicleAppointmentScheduler({
     }
   }, [initialReferralCode]);
 
+  // Check if customer is returning based on phone number
+  const checkReturningCustomer = async (phoneValue: string) => {
+    // Only check if phone is 10 digits (US format)
+    const digitsOnly = phoneValue.replace(/\D/g, '');
+    if (digitsOnly.length !== 10) {
+      setReturningCustomerData(null);
+      return;
+    }
+    
+    setIsCheckingPhone(true);
+    
+    try {
+      const response = await fetch(`/api/customers/check-phone/${phoneValue}`);
+      
+      // Check for HTTP errors BEFORE parsing JSON
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.error('Customer check endpoint requires authentication - check publicPaths configuration');
+          toast({
+            title: "System Error",
+            description: "Unable to verify customer status. Please continue with booking.",
+            variant: "destructive",
+          });
+        }
+        setReturningCustomerData(null);
+        setIsCheckingPhone(false);
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.isReturning) {
+        setReturningCustomerData(data);
+        
+        // Auto-prefill name if recent appointment exists
+        if (data.customer && data.customer.name && !name) {
+          setName(data.customer.name);
+        }
+        
+        // Auto-prefill address if available
+        if (data.customer && data.customer.address && !customerAddress) {
+          setCustomerAddress(data.customer.address);
+        }
+        
+        // Prefill vehicle from most recent appointment
+        if (data.recentAppointment && vehicles.length === 1 && !vehicles[0].make && !vehicles[0].model) {
+          setVehicles([{
+            year: data.recentAppointment.vehicleYear || '',
+            make: data.recentAppointment.vehicleMake || '',
+            model: data.recentAppointment.vehicleModel || '',
+            color: data.recentAppointment.vehicleColor || '',
+            conditions: []
+          }]);
+        }
+        
+        toast({
+          title: "Welcome back!",
+          description: `Hi ${data.customer.name}! We've prefilled your information.`,
+        });
+      } else {
+        setReturningCustomerData(null);
+      }
+    } catch (error) {
+      console.error('Failed to check customer:', error);
+      // Don't show error to user - just silently disable smart prefill
+      setReturningCustomerData(null);
+    } finally {
+      setIsCheckingPhone(false);
+    }
+  };
+
+  // Debounced version to avoid too many API calls
+  const debouncedPhone = useDebounce(phone, 500);
+  
+  useEffect(() => {
+    if (debouncedPhone) {
+      checkReturningCustomer(debouncedPhone);
+    }
+  }, [debouncedPhone]);
+
+  // Prefill from past appointment (Book Again feature)
+  const prefillFromPastAppointment = (appointment: any) => {
+    // Set service
+    const matchingService = services.find((s: any) => s.id === appointment.serviceId || s.name === appointment.service?.name);
+    if (matchingService) {
+      setSelectedService(matchingService);
+      setStep("addons");
+    }
+    
+    // Set vehicle
+    setVehicles([{
+      year: appointment.vehicleYear || '',
+      make: appointment.vehicleMake || '',
+      model: appointment.vehicleModel || '',
+      color: appointment.vehicleColor || '',
+      conditions: []
+    }]);
+    
+    // Set address if available
+    if (appointment.address && !customerAddress) {
+      setCustomerAddress(appointment.address);
+    }
+    
+    toast({
+      title: "Booking prefilled!",
+      description: `Ready to schedule your ${appointment.service?.name || 'service'}`,
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -718,6 +847,44 @@ export default function MultiVehicleAppointmentScheduler({
       const data = await response.json();
 
       if (data.success) {
+        // Create recurring service if enabled
+        if (setupRecurring && recurringInterval && data.customerId) {
+          try {
+            // Calculate next service date based on selected interval
+            const scheduledDate = new Date(selectedTime);
+            let monthsToAdd = 3;
+            if (recurringInterval === '6months') monthsToAdd = 6;
+            if (recurringInterval === '12months') monthsToAdd = 12;
+            
+            const nextServiceDate = new Date(scheduledDate);
+            nextServiceDate.setMonth(nextServiceDate.getMonth() + monthsToAdd);
+            
+            // Create recurring service record
+            await fetch('/api/recurring-services', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                customerId: data.customerId,
+                serviceId: selectedService?.id,
+                serviceName: selectedService?.name,
+                frequency: recurringInterval,
+                nextServiceDate: nextServiceDate.toISOString(),
+                active: true,
+              }),
+            });
+            
+            toast({
+              title: "Recurring Service Set Up",
+              description: `We'll remind you in ${recurringInterval === '3months' ? '3 months' : recurringInterval === '6months' ? '6 months' : '1 year'} for your next service!`,
+            });
+          } catch (error) {
+            console.error('Failed to set up recurring service:', error);
+            // Don't fail the entire booking if recurring service setup fails
+          }
+        }
+
         toast({
           title: "Success",
           description: "Your appointment has been scheduled!",
@@ -1661,17 +1828,96 @@ export default function MultiVehicleAppointmentScheduler({
 
             <div>
               <Label htmlFor="phone" className="text-blue-100">Phone Number *</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Your phone number"
-                required
-                className="bg-gray-700/30 border-blue-400/30 text-blue-100 placeholder:text-blue-200/40"
-                data-testid="input-phone"
-              />
+              <div className="relative">
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Your phone number"
+                  required
+                  className="bg-gray-700/30 border-blue-400/30 text-blue-100 placeholder:text-blue-200/40"
+                  data-testid="input-phone"
+                />
+                {isCheckingPhone && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-blue-400" />
+                )}
+                {returningCustomerData?.isReturning && !isCheckingPhone && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                  >
+                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30 text-xs">
+                      <Check className="w-3 h-3 mr-1" />
+                      Returning
+                    </Badge>
+                  </motion.div>
+                )}
+              </div>
             </div>
+
+            {/* Book Again Panel */}
+            {returningCustomerData?.isReturning && returningCustomerData.pastAppointments?.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="mt-4"
+              >
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-blue-100 font-semibold flex items-center gap-2 text-sm">
+                      <History className="w-4 h-4" />
+                      Book Again
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowBookAgain(!showBookAgain)}
+                      className="text-blue-300 hover:text-blue-200 h-auto py-1 text-xs"
+                      data-testid="button-toggle-book-again"
+                    >
+                      {showBookAgain ? 'Hide' : 'Show'} ({returningCustomerData.pastAppointments.length})
+                    </Button>
+                  </div>
+                  
+                  {showBookAgain && (
+                    <div className="space-y-2">
+                      {returningCustomerData.pastAppointments.map((appt: any) => (
+                        <motion.button
+                          key={appt.id}
+                          type="button"
+                          onClick={() => prefillFromPastAppointment(appt)}
+                          className="w-full text-left bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg p-3 transition-all group"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          data-testid={`button-book-again-${appt.id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-blue-100 font-medium text-sm">{appt.service?.name || 'Service'}</p>
+                              <p className="text-xs text-gray-400">
+                                {appt.vehicleYear} {appt.vehicleMake} {appt.vehicleModel}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {format(new Date(appt.scheduledTime), 'MMM d, yyyy')}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge className="bg-blue-500/20 text-blue-300 text-xs">
+                                {appt.service?.priceRange || 'Contact'}
+                              </Badge>
+                              <RefreshCw className="w-4 h-4 text-blue-400 group-hover:rotate-180 transition-transform duration-300" />
+                            </div>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
 
             <div>
               <Label htmlFor="referralCode" className="text-blue-100">
@@ -1727,6 +1973,52 @@ export default function MultiVehicleAppointmentScheduler({
                 placeholder="Gate code, special instructions, issues or concerns?"
                 className="min-h-[100px] w-full rounded-md border border-blue-400/30 bg-gray-700/30 px-3 py-2 text-sm text-blue-100 placeholder:text-blue-200/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               />
+            </div>
+
+            {/* Recurring Service Setup */}
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+              <h3 className="text-blue-100 font-semibold mb-3 flex items-center gap-2 text-sm">
+                <CalendarIcon className="w-4 h-4" />
+                Set Up Recurring Service
+              </h3>
+              
+              <div className="flex items-center justify-between space-y-0 mb-3">
+                <div>
+                  <Label className="text-blue-100 text-sm">Enable Automatic Reminders</Label>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Get reminded when it's time for your next detail
+                  </p>
+                </div>
+                <Switch
+                  checked={setupRecurring}
+                  onCheckedChange={setSetupRecurring}
+                  data-testid="switch-recurring"
+                />
+              </div>
+              
+              {setupRecurring && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  transition={{ duration: 0.3 }}
+                  className="mt-3"
+                >
+                  <Label className="text-blue-100 text-sm mb-2 block">Reminder Frequency</Label>
+                  <Select value={recurringInterval} onValueChange={(value: any) => setRecurringInterval(value)}>
+                    <SelectTrigger className="bg-gray-700/30 border-blue-400/30 text-blue-100" data-testid="select-recurring-interval">
+                      <SelectValue placeholder="Choose frequency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3months">Every 3 months</SelectItem>
+                      <SelectItem value="6months">Every 6 months</SelectItem>
+                      <SelectItem value="12months">Yearly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-400 mt-2">
+                    We'll send you a reminder when it's time to book your next service
+                  </p>
+                </motion.div>
+              )}
             </div>
 
             {/* Live Pricing Calculator */}

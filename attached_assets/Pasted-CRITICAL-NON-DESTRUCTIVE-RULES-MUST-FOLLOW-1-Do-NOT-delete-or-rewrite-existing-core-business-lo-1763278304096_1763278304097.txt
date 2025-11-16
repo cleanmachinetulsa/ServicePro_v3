@@ -1,0 +1,41 @@
+CRITICAL NON-DESTRUCTIVE RULES (MUST FOLLOW):
+
+1. Do NOT delete or rewrite existing core business logic.
+   - Never remove or radically change functions that:
+     - Handle bookings/appointments,
+     - Handle SMS/Twilio flows,
+     - Handle invoicing/referrals or payments,
+     - Handle authentication/authorization.
+   - You may CALL these existing functions from new code, but not change their external behavior.
+
+2. Prefer extension over modification:
+   - Add NEW routes, NEW handlers, NEW React components for scheduling.
+   - Only touch existing files when:
+     - You are adding imports/exports,
+     - Adding new endpoints to a router,
+     - Or wiring in new components to existing navigation.
+   - If you MUST touch existing logic, keep the original function as a thin wrapper and call a new helper internally. Preserve existing behavior unless explicitly instructed otherwise.
+
+3. Maintain backwards compatibility:
+   - Do NOT change the signature or URL of existing public API endpoints.
+   - Do NOT remove fields from existing API responses.
+   - If you need new behavior, add:
+     - New fields (non-breaking), or
+     - New endpoints (e.g. /api/admin/schedule/…).
+
+4. Annotate any unavoidable changes:
+   - If you absolutely must adjust existing behavior, add a clear comment above it:
+     // NOTE: scheduling feature: adjusted on <DATE> to support <REASON>.
+     // Original behavior: <short summary>.
+   - Keep such changes as SMALL as possible.
+
+5. Step-by-step workflow:
+   - Step 1: ANALYZE and report.
+     - First, print a short bullet list of:
+       - Files you plan to create.
+       - Files you plan to modify.
+       - Any existing functions you plan to touch.
+   - Step 2: Only then start editing code.
+   - Step 3: After edits, run type checks and tests (npm test or the appropriate command) and fix failures you caused.
+
+If any of these constraints conflict with a change you’re planning, adjust the plan to obey these rules instead of pushing through a risky change.
