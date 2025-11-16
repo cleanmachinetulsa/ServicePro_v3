@@ -234,11 +234,12 @@ app.use((req, res, next) => {
   console.log('[SERVER] Damage assessment monitoring started');
   
   // Start recurring services scheduler and deposit reminders
-  const { initializeRecurringServicesScheduler, initializeRecurringServiceReminders, initializeDepositReminders } = await import('./recurringServicesScheduler');
+  const { initializeRecurringServicesScheduler, initializeRecurringServiceReminders, initializeDepositReminders, initializeEscalationExpiry } = await import('./recurringServicesScheduler');
   initializeRecurringServicesScheduler();
   initializeRecurringServiceReminders();
   initializeDepositReminders();
-  console.log('[SERVER] Recurring services scheduler, reminders, and deposit reminders started');
+  initializeEscalationExpiry();
+  console.log('[SERVER] Recurring services scheduler, reminders, deposit reminders, and escalation expiry started');
   
   // Start email campaign scheduler (hourly batch processor)
   const { initializeCampaignScheduler } = await import('./campaignScheduler');
