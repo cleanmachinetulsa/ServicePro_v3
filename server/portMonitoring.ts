@@ -20,10 +20,11 @@ let monitoringActive = false;
  */
 async function checkPortStatus(): Promise<boolean> {
   try {
-    const portedNumber = process.env.TWILIO_PHONE_NUMBER;
+    // Use BUSINESS_PHONE_NUMBER env var for flexibility (supports any ported number)
+    const portedNumber = process.env.BUSINESS_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER;
     
-    if (!portedNumber || !portedNumber.includes('5711')) {
-      console.log('[PORT MONITOR] Ported number not configured yet');
+    if (!portedNumber) {
+      console.log('[PORT MONITOR] Business phone number not configured in environment variables');
       return false;
     }
 

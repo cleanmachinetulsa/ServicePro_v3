@@ -14,6 +14,18 @@ if (!process.env.SENDGRID_API_KEY) {
 // Your verified business email address - read from environment
 const BUSINESS_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'info@cleanmachinetulsa.com';
 
+// Business phone number - configurable via environment variable
+const getBusinessPhoneNumber = () => process.env.BUSINESS_PHONE_NUMBER || '+19188565711';
+const getBusinessPhoneDisplay = () => {
+  const phone = getBusinessPhoneNumber();
+  // Format +19188565711 as (918) 856-5711
+  if (phone.startsWith('+1')) {
+    const digits = phone.slice(2); // Remove +1
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return phone;
+};
+
 if (process.env.SENDGRID_FROM_EMAIL) {
   console.log(`[EMAIL] Sender configured: ${BUSINESS_EMAIL}`);
 } else {
@@ -243,7 +255,7 @@ export async function sendBookingConfirmationEmail(
             <h3 style="color: #92400e; margin-top: 0; font-size: 18px; font-weight: bold;">Need to Change Your Appointment?</h3>
             <p style="margin: 10px 0; color: #1f2937;"><strong>To reschedule:</strong> Reply to this email with "RESCHEDULE" in the subject line.</p>
             <p style="margin: 10px 0; color: #1f2937;"><strong>To cancel:</strong> Reply to this email with "CANCEL" in the subject line.</p>
-            <p style="margin: 10px 0; color: #1f2937;"><strong>For other questions:</strong> Call us at <strong style="color: #7c3aed;">(918) 856-5304</strong></p>
+            <p style="margin: 10px 0; color: #1f2937;"><strong>For other questions:</strong> Call us at <strong style="color: #7c3aed;">${getBusinessPhoneDisplay()}</strong></p>
           </div>
         `
       }
@@ -256,7 +268,7 @@ export async function sendBookingConfirmationEmail(
       },
       {
         text: 'Reschedule',
-        url: `tel:+19188565304`,
+        url: `tel:${getBusinessPhoneNumber()}`,
         style: 'secondary'
       }
     ],
@@ -355,7 +367,7 @@ export async function sendReminderEmail(
             <h3 style="color: #92400e; margin-top: 0; font-size: 18px; font-weight: bold;">Need to Change Your Appointment?</h3>
             <p style="margin: 10px 0; color: #1f2937;"><strong>To reschedule:</strong> Reply to this email with "RESCHEDULE" in the subject line.</p>
             <p style="margin: 10px 0; color: #1f2937;"><strong>To cancel:</strong> Reply to this email with "CANCEL" in the subject line.</p>
-            <p style="margin: 10px 0; color: #1f2937;"><strong>For other questions:</strong> Call us at <strong style="color: #7c3aed;">(918) 856-5304</strong></p>
+            <p style="margin: 10px 0; color: #1f2937;"><strong>For other questions:</strong> Call us at <strong style="color: #7c3aed;">${getBusinessPhoneDisplay()}</strong></p>
           </div>
         `
       }
@@ -368,7 +380,7 @@ export async function sendReminderEmail(
       },
       {
         text: 'Call Us',
-        url: `tel:+19188565304`,
+        url: `tel:${getBusinessPhoneNumber()}`,
         style: 'secondary'
       }
     ],
@@ -456,12 +468,12 @@ export async function sendCancellationConfirmationEmail(
     ctas: [
       {
         text: 'Book Again',
-        url: `tel:+19188565304`,
+        url: `tel:${getBusinessPhoneNumber()}`,
         style: 'primary'
       },
       {
         text: 'Contact Us',
-        url: `tel:+19188565304`,
+        url: `tel:${getBusinessPhoneNumber()}`,
         style: 'secondary'
       }
     ],
@@ -564,7 +576,7 @@ export async function sendReviewRequestEmail(
       },
       {
         text: 'Book Next Service',
-        url: 'tel:+19188565304',
+        url: `tel:${getBusinessPhoneNumber()}`,
         style: 'secondary'
       }
     ],
@@ -702,7 +714,7 @@ export async function sendPostServiceThankYouEmail(
       },
       {
         text: 'Book Next Service',
-        url: 'tel:+19188565304',
+        url: `tel:${getBusinessPhoneNumber()}`,
         style: 'secondary'
       }
     ],
