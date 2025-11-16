@@ -4,9 +4,10 @@ import { Server } from 'socket.io';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import crypto from 'crypto';
+import { z } from 'zod';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
-import { eq } from 'drizzle-orm';
+import { eq, and, or, desc, asc, isNull, gte, sql } from 'drizzle-orm';
 import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema } from '@shared/schema';
 import { requireRole } from './rbacMiddleware';
 import { criticalMonitor } from './criticalMonitoring';
@@ -148,6 +149,30 @@ function verifyQRCodeId(qrCodeId: string): number | null {
     return null;
   }
 }
+
+// Reminder API Input Validation Schemas
+const reminderJobsQuerySchema = z.object({
+  status: z.enum(['pending', 'sent', 'failed', 'snoozed', 'cancelled']).optional(),
+  limit: z.coerce.number().int().positive().optional().default(50),
+});
+
+const analyticsQuerySchema = z.object({
+  days: z.coerce.number().int().positive().optional().default(7),
+});
+
+const customerIdParamSchema = z.object({
+  customerId: z.coerce.number().int().positive(),
+});
+
+const ruleIdParamSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
+
+const updateRuleBodySchema = z.object({
+  enabled: z.boolean().optional(),
+  triggerIntervalDays: z.coerce.number().int().positive().optional(),
+  reminderWindowDays: z.coerce.number().int().positive().optional(),
+});
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -2861,6 +2886,342 @@ export async function registerRoutes(app: Express) {
         success: false,
         message: 'Failed to test reminder system',
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  // Phase 4E: Reminder Admin API Routes
+  
+  // 1. GET /api/reminders/jobs - Get reminder queue with filters and pagination
+  app.get('/api/reminders/jobs', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Only admins and managers can access
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Validate query parameters
+      const queryParsed = reminderJobsQuerySchema.safeParse(req.query);
+      if (!queryParsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid query parameters', 
+          errors: queryParsed.error.issues 
+        });
+      }
+
+      const { status, limit } = queryParsed.data;
+      
+      // Reuse existing getReminderJobs function from reminderService
+      const { getReminderJobs } = await import('./reminderService');
+      const jobs = await getReminderJobs(status, limit);
+      
+      return res.json({ success: true, jobs });
+    } catch (error) {
+      console.error('[REMINDER API] Error fetching reminder jobs:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // 2. POST /api/reminders/send-now/:customerId - Manually trigger reminder for specific customer
+  app.post('/api/reminders/send-now/:customerId', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Only admins and managers
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Validate customerId param
+      const paramParsed = customerIdParamSchema.safeParse(req.params);
+      if (!paramParsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid customer ID',
+          errors: paramParsed.error.issues,
+        });
+      }
+
+      const customerId = paramParsed.data.customerId;
+      
+      // Check if customer opted out
+      const { reminderOptOuts } = await import('@shared/schema');
+      const optOut = await db.query.reminderOptOuts.findFirst({
+        where: eq(reminderOptOuts.customerId, customerId),
+      });
+      
+      if (optOut) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Customer has opted out of reminders',
+          optedOutAt: optOut.optedOutAt 
+        });
+      }
+      
+      // Get customer's most recent appointment
+      const { appointments, customers } = await import('@shared/schema');
+      const customer = await db.query.customers.findFirst({
+        where: eq(customers.id, customerId),
+      });
+      
+      if (!customer) {
+        return res.status(404).json({ success: false, message: 'Customer not found' });
+      }
+      
+      const lastAppt = await db.query.appointments.findFirst({
+        where: and(
+          eq(appointments.customerId, customerId),
+          eq(appointments.completed, true)
+        ),
+        orderBy: [desc(appointments.scheduledTime)],
+        with: {
+          service: true,
+        },
+      });
+      
+      if (!lastAppt) {
+        return res.status(400).json({ success: false, message: 'No completed appointments for customer' });
+      }
+      
+      // Find applicable rule
+      const { reminderRules } = await import('@shared/schema');
+      const rule = await db.query.reminderRules.findFirst({
+        where: and(
+          eq(reminderRules.enabled, true),
+          or(
+            eq(reminderRules.serviceId, lastAppt.serviceId),
+            isNull(reminderRules.serviceId)
+          )
+        ),
+      });
+      
+      if (!rule) {
+        return res.status(400).json({ success: false, message: 'No reminder rule found for this service' });
+      }
+      
+      const daysSinceService = Math.floor((Date.now() - lastAppt.scheduledTime.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Fetch weather data
+      let weatherToday: string;
+      try {
+        const weatherResponse = await fetch(
+          'https://api.open-meteo.com/v1/forecast?latitude=36.15&longitude=-95.99&current_weather=true&temperature_unit=fahrenheit'
+        );
+        const weatherData = weatherResponse.ok ? await weatherResponse.json() : null;
+        weatherToday = weatherData?.current_weather 
+          ? `${weatherData.current_weather.weathercode <= 3 ? 'clear' : 'partly cloudy'} and ${Math.round(weatherData.current_weather.temperature)}°F`
+          : 'pleasant';
+      } catch (error) {
+        console.warn('[SEND NOW] Weather fetch failed, using defaults:', error);
+        weatherToday = 'clear and 65°F';
+      }
+      
+      // Generate personalized message via GPT
+      const { generateReminderMessage } = await import('./gptPersonalizationService');
+      const message = await generateReminderMessage(
+        {
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone || '',
+          loyaltyTier: customer.loyaltyTier || 'bronze',
+          lifetimeValue: customer.lifetimeValue || '0.00',
+        },
+        {
+          lastServiceDate: lastAppt.scheduledTime,
+          lastServiceName: lastAppt.service?.name || 'detail service',
+          daysSinceService,
+          recommendedService: rule.service?.name || 'maintenance detail',
+          recommendedServicePrice: rule.service?.priceRange || '$150-200',
+          weatherToday,
+        }
+      );
+      
+      // Create reminder job with scheduledFor = NOW
+      const { createReminderJob } = await import('./reminderService');
+      const jobId = await createReminderJob(customerId, rule.id, new Date(), message);
+      
+      // Send immediately (don't wait for cron)
+      const { sendSMS } = await import('./notifications');
+      if (customer.phone && customer.smsConsent) {
+        await sendSMS(customer.phone, message);
+        
+        // Mark job as sent
+        const { markReminderSent } = await import('./reminderService');
+        await markReminderSent(jobId, 'sms');
+      }
+      
+      return res.json({ 
+        success: true, 
+        jobId,
+        message: 'Reminder sent successfully',
+        sentVia: customer.phone && customer.smsConsent ? 'sms' : 'none',
+      });
+    } catch (error) {
+      console.error('[REMINDER API] Manual send error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // 3. GET /api/reminders/analytics - Get aggregated stats for reminder performance
+  app.get('/api/reminders/analytics', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Only admins and managers
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Validate query parameters
+      const queryParsed = analyticsQuerySchema.safeParse(req.query);
+      if (!queryParsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid query parameters', 
+          errors: queryParsed.error.issues 
+        });
+      }
+
+      const { days } = queryParsed.data;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      
+      const { reminderJobs, reminderOptOuts } = await import('@shared/schema');
+      
+      // Count pending jobs
+      const pendingCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(reminderJobs)
+        .where(eq(reminderJobs.status, 'pending'));
+      
+      // Count sent in last N days
+      const sentCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(reminderJobs)
+        .where(and(
+          eq(reminderJobs.status, 'sent'),
+          gte(reminderJobs.sentAt, startDate)
+        ));
+      
+      // Count failed in last N days
+      const failedCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(reminderJobs)
+        .where(and(
+          eq(reminderJobs.status, 'failed'),
+          gte(reminderJobs.lastAttemptAt, startDate)
+        ));
+      
+      // Count opt-outs
+      const optOutCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(reminderOptOuts);
+      
+      // Success rate = sent / (sent + failed)
+      const totalAttempts = (sentCount[0]?.count || 0) + (failedCount[0]?.count || 0);
+      const successRate = totalAttempts > 0 
+        ? Math.round((sentCount[0]?.count || 0) / totalAttempts * 100) 
+        : 0;
+      
+      return res.json({
+        success: true,
+        analytics: {
+          pending: pendingCount[0]?.count || 0,
+          sentLast7Days: sentCount[0]?.count || 0,
+          failedLast7Days: failedCount[0]?.count || 0,
+          successRate: successRate,
+          totalOptOuts: optOutCount[0]?.count || 0,
+          timeRange: `${days} days`,
+        },
+      });
+    } catch (error) {
+      console.error('[REMINDER API] Error fetching reminder analytics:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // 4. GET /api/reminders/rules - Get all reminder rules
+  app.get('/api/reminders/rules', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Only admins and managers
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      const { reminderRules } = await import('@shared/schema');
+      const rules = await db.query.reminderRules.findMany({
+        with: {
+          service: true,
+        },
+        orderBy: [desc(reminderRules.enabled), asc(reminderRules.name)],
+      });
+      
+      return res.json({ success: true, rules });
+    } catch (error) {
+      console.error('[REMINDER API] Error fetching reminder rules:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+      });
+    }
+  });
+
+  // 5. PUT /api/reminders/rules/:id - Update reminder rule
+  app.put('/api/reminders/rules/:id', requireAuth, async (req: Request, res: Response) => {
+    try {
+      // Only admins and managers
+      if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+
+      // Validate rule ID param
+      const paramParsed = ruleIdParamSchema.safeParse(req.params);
+      if (!paramParsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid rule ID', 
+          errors: paramParsed.error.issues 
+        });
+      }
+
+      // Validate request body
+      const bodyParsed = updateRuleBodySchema.safeParse(req.body);
+      if (!bodyParsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid request body', 
+          errors: bodyParsed.error.issues 
+        });
+      }
+
+      const ruleId = paramParsed.data.id;
+      const updateData = bodyParsed.data;
+      
+      const { reminderRules } = await import('@shared/schema');
+      
+      // Update rule
+      const [updated] = await db
+        .update(reminderRules)
+        .set(updateData)
+        .where(eq(reminderRules.id, ruleId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ success: false, message: 'Rule not found' });
+      }
+      
+      return res.json({ success: true, rule: updated });
+    } catch (error) {
+      console.error('[REMINDER API] Error updating reminder rule:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
       });
     }
   });
