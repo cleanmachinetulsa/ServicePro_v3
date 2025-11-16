@@ -691,6 +691,68 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // Template switching endpoint - non-destructive update of only templateId
+  app.put('/api/homepage-content/template', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { homepageContent } = await import('@shared/schema');
+      
+      // Validate templateId against available templates
+      const templateIdSchema = z.object({
+        templateId: z.enum([
+          'current',
+          'luminous_concierge',
+          'dynamic_spotlight',
+          'prestige_grid',
+          'night_drive_neon',
+          'executive_minimal'
+        ]),
+      });
+      
+      const parsed = templateIdSchema.safeParse(req.body);
+      
+      if (!parsed.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid template ID',
+          errors: parsed.error.issues
+        });
+      }
+      
+      // Get existing row
+      let [existing] = await db.select().from(homepageContent).limit(1);
+      
+      let updated;
+      if (existing) {
+        // Update only the templateId field (non-destructive)
+        [updated] = await db.update(homepageContent)
+          .set({
+            templateId: parsed.data.templateId,
+            updatedAt: new Date(),
+            updatedBy: req.user.id,
+          })
+          .where(eq(homepageContent.id, existing.id))
+          .returning();
+      } else {
+        // Create new row with the selected template
+        [updated] = await db.insert(homepageContent)
+          .values({
+            templateId: parsed.data.templateId,
+            updatedBy: req.user.id,
+          })
+          .returning();
+      }
+      
+      return res.json({
+        success: true,
+        content: updated,
+        message: `Template switched to ${parsed.data.templateId}`
+      });
+    } catch (error) {
+      console.error('[HOMEPAGE TEMPLATE] Error switching template:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
   // Logo upload configuration
   const logoStorage = multer.diskStorage({
     destination: function (req, file, cb) {
