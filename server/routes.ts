@@ -99,6 +99,7 @@ import calendarAvailabilityRoutes from './routes.calendarAvailability';
 import { registerHealthRoutes } from './healthCheck';
 import phoneSettingsRoutes from './routes.phoneSettings';
 import { registerCallRoutes } from './routes.calls';
+import { registerTechDepositRoutes } from './routes.techDeposits';
 
 // Main function to register all routes
 export async function registerRoutes(app: Express) {
@@ -1894,6 +1895,9 @@ export async function registerRoutes(app: Express) {
   
   // Register technician job management routes
   app.use('/api/tech', techJobRoutes);
+  
+  // Register technician deposit tracking routes
+  registerTechDepositRoutes(app);
   
   // Register notification settings routes
   app.use('/api/notifications', notificationRoutes);

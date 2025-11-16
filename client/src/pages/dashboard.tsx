@@ -19,6 +19,9 @@ import { AppShell } from "@/components/AppShell";
 import { DashboardOverview } from "@/components/DashboardOverview";
 import BusinessChatInterface from "@/components/BusinessChatInterface";
 import { Home, Moon, Sun, Mail } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
+import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
 
 interface Appointment {
   id: string;
@@ -58,6 +61,10 @@ interface InvoiceDetails {
 
 export default function Dashboard() {
   const [location, navigate] = useLocation();
+  const { data: currentUserData } = useQuery<{ success: boolean; user: { id: number; role: string } }>({
+    queryKey: ['/api/users/me'],
+  });
+  const currentUser = currentUserData?.user;
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [todayDate, setTodayDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -303,6 +310,16 @@ export default function Dashboard() {
           onViewHistory={viewServiceHistory}
           onSendInvoice={openInvoiceModal}
         />
+
+        {/* Cash Deposit Tracking Widgets - Owner/Manager Only */}
+        {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
+          <div className="space-y-4 p-6 pt-0">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <CashCollectionsWidget />
+              <DepositHistoryWidget />
+            </div>
+          </div>
+        )}
       </AppShell>
 
       {/* Invoice Modal */}

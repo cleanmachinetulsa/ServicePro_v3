@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, CheckCircle, Mic } from 'lucide-react';
 import { useTechnician } from '@/contexts/TechnicianContext';
 import { useToast } from '@/hooks/use-toast';
+import { PaymentCollectionModal } from './PaymentCollectionModal';
 
 const STATUS_WORKFLOW = [
   { value: 'assigned', label: 'Assigned', color: 'bg-gray-500' },
@@ -20,6 +21,7 @@ export function WorkflowPod() {
   const [notes, setNotes] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -43,6 +45,12 @@ export function WorkflowPod() {
 
   const handleStatusChange = async (status: string) => {
     if (!selectedJob) return;
+
+    // If status is 'completed', show payment collection modal for cash/check payment
+    if (status === 'completed') {
+      setShowPaymentModal(true);
+      return;
+    }
 
     setIsUpdating(true);
     try {
@@ -232,6 +240,22 @@ export function WorkflowPod() {
           </div>
         </div>
       </CardContent>
+
+      {/* Payment Collection Modal */}
+      {showPaymentModal && selectedJob && (
+        <PaymentCollectionModal
+          jobId={selectedJob.id}
+          customerName={selectedJob.customerName}
+          amount={150} // Default amount - could be fetched from service pricing
+          onSuccess={() => {
+            setShowPaymentModal(false);
+            // Queries will be invalidated by the modal's mutation
+          }}
+          onCancel={() => {
+            setShowPaymentModal(false);
+          }}
+        />
+      )}
     </Card>
   );
 }
