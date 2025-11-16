@@ -4,6 +4,9 @@ import { Server } from 'socket.io';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import crypto from 'crypto';
+import multer from 'multer';
+import * as fs from 'fs';
+import * as path from 'path';
 import { z } from 'zod';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
@@ -617,6 +620,53 @@ export async function registerRoutes(app: Express) {
       console.error('[HOMEPAGE CONTENT] Error updating:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }
+  });
+
+  // Logo upload configuration
+  const logoStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      const uploadDir = path.join(process.cwd(), 'attached_assets', 'uploads');
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+      const ext = path.extname(file.originalname);
+      cb(null, `logo${ext}`);
+    }
+  });
+
+  const logoUpload = multer({
+    storage: logoStorage,
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB max size
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
+      const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+      const mimetype = /image\/.+/.test(file.mimetype);
+      
+      if (extname && mimetype) {
+        return cb(null, true);
+      } else {
+        cb(new Error('Only image files are allowed!'));
+      }
+    }
+  });
+
+  // POST /api/upload-logo - Upload logo file
+  app.post('/api/upload-logo', requireAuth, logoUpload.single('logo'), async (req: Request, res: Response) => {
+    if (req.user.role !== 'owner' && req.user.role !== 'manager') {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const logoUrl = `/attached_assets/uploads/${req.file.filename}`;
+    return res.json({ success: true, logoUrl });
   });
 
   // Critical Monitoring Settings endpoints

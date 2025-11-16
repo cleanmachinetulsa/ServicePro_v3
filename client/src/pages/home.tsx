@@ -1,17 +1,40 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Carousel } from "@/components/ui/carousel";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import ServicesCarousel from "@/components/ServicesCarousel";
 import GoogleReviews from "@/components/GoogleReviews";
 import SophisticatedAnimatedLogo from "@/components/SophisticatedAnimatedLogo";
 import FeatureActionButtons from "@/components/FeatureActionButtons";
 import EnhancedChatbotUI from "@/components/EnhancedChatbotUI";
 import { CalendarClock, MessageSquare, Phone } from "lucide-react";
+import type { HomepageContent } from "@shared/schema";
 
 export default function HomePage() {
+  // Fetch CMS content for homepage
+  const { data } = useQuery<{ success: boolean; content: HomepageContent }>({
+    queryKey: ['/api/homepage-content'],
+  });
+
+  const content = data?.content;
+
+  // Update SEO meta tags when content loads
+  useEffect(() => {
+    if (content) {
+      document.title = content.metaTitle;
+      
+      let metaDesc = document.querySelector('meta[name="description"]');
+      if (!metaDesc) {
+        metaDesc = document.createElement('meta');
+        metaDesc.setAttribute('name', 'description');
+        document.head.appendChild(metaDesc);
+      }
+      metaDesc.setAttribute('content', content.metaDescription);
+    }
+  }, [content]);
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-blue-950/10 to-black text-white overflow-hidden relative">
       {/* Animated gradient background with soft pulse */}
@@ -53,7 +76,7 @@ export default function HomePage() {
             transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
             className="text-base md:text-lg text-blue-100/70 mb-8 max-w-3xl mx-auto leading-relaxed font-light"
           >
-            Clean Machine Auto Detail offers extensive detailing services ranging from Upholstery shampoo & Headlight restoration to Paint Correction & Ceramic Coatings, right in your driveway!
+            {content?.aboutText || 'Clean Machine Auto Detail offers extensive detailing services ranging from Upholstery shampoo & Headlight restoration to Paint Correction & Ceramic Coatings, right in your driveway!'}
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -65,12 +88,15 @@ export default function HomePage() {
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <Button 
                 size="lg" 
-                className="bg-blue-600 hover:bg-blue-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-blue-500/30 text-white font-semibold relative overflow-hidden group px-8 py-6 rounded-md"
+                className="transform hover:scale-105 transition-all duration-300 shadow-lg text-white font-semibold relative overflow-hidden group px-8 py-6 rounded-md"
+                style={{
+                  backgroundColor: content?.primaryColor ? `hsl(${content.primaryColor})` : 'hsl(220, 90%, 56%)',
+                }}
                 asChild
               >
-                <Link href="/chat" className="relative z-10 flex items-center gap-2">
+                <Link href={content?.heroCtaLink || '/chat'} className="relative z-10 flex items-center gap-2">
                   <MessageSquare className="h-5 w-5 mr-1" />
-                  <span>Clean Machine Assistant</span>
+                  <span>{content?.heroCtaText || 'Clean Machine Assistant'}</span>
                   <span className="ml-1 group-hover:ml-2 transition-all duration-300">→</span>
                   <span className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-400/10 to-blue-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
                 </Link>
@@ -81,7 +107,11 @@ export default function HomePage() {
                 <Button 
                   size="lg" 
                   variant="outline"
-                  className="border-blue-400 text-blue-100 hover:bg-blue-500/10 bg-blue-600/10 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-blue-500/20 font-semibold relative overflow-hidden group px-8 py-6 rounded-md"
+                  className="transform hover:scale-105 transition-all duration-300 shadow-lg font-semibold relative overflow-hidden group px-8 py-6 rounded-md text-white"
+                  style={{
+                    borderColor: content?.accentColor ? `hsl(${content.accentColor})` : 'hsl(340, 80%, 55%)',
+                    backgroundColor: content?.accentColor ? `hsl(${content.accentColor} / 0.1)` : 'hsl(220, 90%, 56% / 0.1)',
+                  }}
                   asChild
                 >
                   <Link href="/schedule" className="relative z-10 flex items-center gap-2">
@@ -128,8 +158,13 @@ export default function HomePage() {
             className="relative z-10 px-4 py-2"
           >
             <h2 className="text-2xl md:text-3xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200">
-              Premium Auto Detailing Services
+              {content?.servicesHeading || 'Premium Auto Detailing Services'}
             </h2>
+            {content?.servicesSubheading && (
+              <p className="text-center text-blue-200/70 mb-8 -mt-8">
+                {content.servicesSubheading}
+              </p>
+            )}
             <ServicesCarousel />
           </motion.div>
         </motion.section>
@@ -166,11 +201,19 @@ export default function HomePage() {
         <section className="py-10 border-t border-blue-900/30 mt-16">
           <div className="flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="flex items-center gap-3">
-              <img 
-                src="/logo.jpg" 
-                alt="Clean Machine Auto Detail" 
-                className="h-16 transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-blue-500/20 rounded cursor-pointer" 
-              />
+              {content?.logoUrl ? (
+                <img 
+                  src={content.logoUrl} 
+                  alt={content.metaTitle || 'Clean Machine Auto Detail'} 
+                  className="h-16 w-auto transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-blue-500/20 rounded cursor-pointer" 
+                />
+              ) : (
+                <img 
+                  src="/logo.jpg" 
+                  alt="Clean Machine Auto Detail" 
+                  className="h-16 transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-blue-500/20 rounded cursor-pointer" 
+                />
+              )}
               <div>
                 <p className="text-white font-medium">Clean Machine Auto Detail</p>
                 <p className="text-sm text-gray-400">Premium detailing services in Tulsa</p>
