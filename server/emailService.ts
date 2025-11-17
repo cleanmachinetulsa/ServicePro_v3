@@ -267,6 +267,11 @@ export async function sendBookingConfirmationEmail(
         style: 'primary'
       },
       {
+        text: 'My Services',
+        url: `${process.env.VITE_DEPLOYMENT_URL || 'https://cleanmachinetulsa.replit.app'}/my-services`,
+        style: 'secondary'
+      },
+      {
         text: 'Reschedule',
         url: `tel:${getBusinessPhoneNumber()}`,
         style: 'secondary'

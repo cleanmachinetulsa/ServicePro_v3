@@ -24,7 +24,7 @@ const DEFAULT_TEMPLATES = [
     category: "booking",
     name: "Booking Confirmation",
     description: "Sent when customer successfully books an appointment",
-    body: "Thanks {firstName}! Your {serviceName} appointment is confirmed for {date} at {time}. We'll send you a reminder 24 hours before. Reply STOP to opt out.",
+    body: "Thanks {firstName}! Your {serviceName} appointment is confirmed for {date} at {time}. We'll send you a reminder 24 hours before.\n\nView your services: https://cleanmachinetulsa.replit.app/my-services\n\nReply STOP to opt out.",
     variables: [
       { name: "firstName", description: "Customer's first name", sample: "Sarah", required: true },
       { name: "serviceName", description: "Service booked", sample: "Full Detail", required: true },

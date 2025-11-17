@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { PillTabs } from '../shared/PillTabs';
 import { GlassCard } from '../shared/GlassCard';
-import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase } from 'lucide-react';
+import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase, Phone, Map, QrCode, Smartphone } from 'lucide-react';
 
 const features = [
   {
@@ -24,6 +24,66 @@ const features = [
     mockups: [
       { title: 'Today\'s Route', desc: '5 stops, optimized path', color: 'from-blue-500/20 to-cyan-500/20' },
       { title: 'Calendar View', desc: 'Week at a glance', color: 'from-purple-500/20 to-pink-500/20' }
+    ]
+  },
+  {
+    id: 'address-mapping',
+    label: 'Address Verification',
+    icon: Map,
+    badge: { text: 'New', color: 'from-cyan-500 to-blue-500' },
+    title: 'Interactive Address Confirmation',
+    description: 'Google Maps integration ensures accurate service locations',
+    bullets: [
+      'Visual map confirmation with draggable pin',
+      'Automatic address validation and geocoding',
+      'Customers verify location before booking',
+      'Lat/lng coordinates saved for technicians',
+      'Address review flags for uncertain locations',
+      'One-tap navigation to exact customer location'
+    ],
+    mockups: [
+      { title: 'Map Confirm', desc: 'Drag pin to exact spot', color: 'from-cyan-500/20 to-blue-500/20' },
+      { title: 'Auto-Geocode', desc: 'Validates addresses', color: 'from-blue-500/20 to-indigo-500/20' }
+    ]
+  },
+  {
+    id: 'qr-security',
+    label: 'QR Security',
+    icon: QrCode,
+    badge: { text: 'New', color: 'from-purple-500 to-pink-500' },
+    title: 'HMAC-Signed QR Codes',
+    description: 'Secure customer identification without passwords',
+    bullets: [
+      'HMAC-SHA256 signed QR codes for security',
+      'One-scan access to service history',
+      'No passwords or login required',
+      'Tamper-proof with cryptographic signatures',
+      'Time-limited tokens prevent replay attacks',
+      'Perfect for on-site customer verification'
+    ],
+    mockups: [
+      { title: 'QR Generate', desc: 'Secure customer tokens', color: 'from-purple-500/20 to-pink-500/20' },
+      { title: 'Scan Access', desc: 'Instant verification', color: 'from-pink-500/20 to-red-500/20' }
+    ]
+  },
+  {
+    id: 'phone-voice',
+    label: 'Phone & Voice',
+    icon: Phone,
+    badge: { text: 'New', color: 'from-green-500 to-emerald-500' },
+    title: 'Twilio Voice Integration',
+    description: 'Professional phone system with voicemail transcription and intelligent routing',
+    bullets: [
+      'IVR menu for booking or speaking with owner',
+      'Call forwarding with caller ID passthrough',
+      'Voicemail recording and transcription',
+      'SMS alerts for missed calls and voicemails',
+      'Recent callers widget with click-to-call',
+      'Dual phone line support with routing'
+    ],
+    mockups: [
+      { title: 'Call Dashboard', desc: 'Recent calls & voicemail', color: 'from-green-500/20 to-emerald-500/20' },
+      { title: 'IVR Menu', desc: 'Smart call routing', color: 'from-teal-500/20 to-cyan-500/20' }
     ]
   },
   {
@@ -68,21 +128,22 @@ const features = [
   },
   {
     id: 'technician-mode',
-    label: 'Technician Mode',
-    icon: Truck,
-    title: 'Mobile-First Technician Experience',
-    description: 'Everything your team needs, nothing they don\'t',
+    label: 'Technician iPad App',
+    icon: Smartphone,
+    badge: { text: 'PWA', color: 'from-blue-500 to-cyan-500' },
+    title: 'App-Like PWA Experience',
+    description: 'Install as an app on any device - no app store required',
     bullets: [
+      'Progressive Web App with offline capability',
+      'Add to home screen for native app feel',
       'Today\'s jobs with one-tap navigation',
       'Mobile workflow for check-in/check-out',
-      'Customer notes and special requests',
-      'On-site photo capture and upload',
-      'Real-time status updates to customers',
-      'Payment collection and invoice generation'
+      'Push notifications for new assignments',
+      'Real-time status updates to customers'
     ],
     mockups: [
-      { title: 'Job List', desc: 'Today\'s schedule', color: 'from-blue-500/20 to-indigo-500/20' },
-      { title: 'Navigation', desc: 'One-tap directions', color: 'from-cyan-500/20 to-blue-500/20' }
+      { title: 'PWA Install', desc: 'Works like a native app', color: 'from-blue-500/20 to-cyan-500/20' },
+      { title: 'Offline Mode', desc: 'View jobs without signal', color: 'from-cyan-500/20 to-teal-500/20' }
     ]
   },
   {
@@ -216,7 +277,7 @@ export function FeatureMapSection() {
         <SectionHeader
           badge="Core Capabilities"
           title="Feature Map"
-          subtitle="Nine integrated systems working together to run your entire operation"
+          subtitle="Twelve integrated systems working together to run your entire operation"
         />
 
         <div className="relative">
