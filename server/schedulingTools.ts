@@ -506,3 +506,323 @@ export function buildInvoiceSummary(phone: string): string {
   
   return summary;
 }
+
+/**
+ * Tool 6: Get Existing Appointment
+ * Find an existing appointment for a customer by phone number
+ */
+export async function getExistingAppointment(phone: string): Promise<{
+  found: boolean;
+  appointmentId?: string;
+  service?: string;
+  scheduledTime?: string;
+  address?: string;
+  status?: string;
+  technicianId?: number | null;
+  message: string;
+}> {
+  try {
+    const { db } = await import('./db');
+    const { appointments, customers } = await import('@shared/schema');
+    const { eq, and, gte, sql } = await import('drizzle-orm');
+    
+    // Normalize phone
+    const normalizedPhone = phone.replace(/\D/g, '');
+    
+    // Find customer by phone
+    const customer = await db.select()
+      .from(customers)
+      .where(sql`REPLACE(REPLACE(REPLACE(${customers.phone}, '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`)
+      .limit(1);
+    
+    if (!customer || customer.length === 0) {
+      return {
+        found: false,
+        message: 'No customer account found with this phone number.',
+      };
+    }
+    
+    // Find upcoming appointments for this customer
+    const now = new Date();
+    const appointment = await db.select()
+      .from(appointments)
+      .where(and(
+        eq(appointments.customerId, customer[0].id),
+        gte(appointments.scheduledTime, now)
+      ))
+      .orderBy(appointments.scheduledTime)
+      .limit(1);
+    
+    if (!appointment || appointment.length === 0) {
+      return {
+        found: false,
+        message: 'No upcoming appointments found for this customer.',
+      };
+    }
+    
+    const appt = appointment[0];
+    
+    return {
+      found: true,
+      appointmentId: appt.googleCalendarEventId || appt.id.toString(),
+      service: appt.serviceType || undefined,
+      scheduledTime: appt.scheduledTime.toISOString(),
+      address: appt.customerAddress || undefined,
+      status: appt.status,
+      technicianId: appt.technicianId,
+      message: `Found appointment: ${appt.serviceType} on ${appt.scheduledTime.toLocaleDateString()} at ${appt.scheduledTime.toLocaleTimeString()}`,
+    };
+    
+  } catch (error) {
+    console.error('❌ ERROR getting existing appointment:', error);
+    return {
+      found: false,
+      message: 'Error retrieving appointment information: ' + (error as Error).message,
+    };
+  }
+}
+
+/**
+ * Tool 7: Update Appointment Address
+ * Modify the address for an existing appointment
+ */
+export async function updateAppointmentAddress(phone: string, newAddress: string): Promise<{
+  success: boolean;
+  message: string;
+  updatedAddress?: string;
+}> {
+  try {
+    // First, validate the new address
+    const validation = await validateAddress(phone, newAddress);
+    
+    if (!validation.inServiceArea) {
+      return {
+        success: false,
+        message: `The new address "${newAddress}" is outside our service area. We can only service locations within 26 minutes of Tulsa.`,
+      };
+    }
+    
+    // Find existing appointment
+    const existingAppt = await getExistingAppointment(phone);
+    
+    if (!existingAppt.found) {
+      return {
+        success: false,
+        message: existingAppt.message,
+      };
+    }
+    
+    // Update appointment in database
+    const { db } = await import('./db');
+    const { appointments, customers } = await import('@shared/schema');
+    const { eq, sql } = await import('drizzle-orm');
+    
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const customer = await db.select()
+      .from(customers)
+      .where(sql`REPLACE(REPLACE(REPLACE(${customers.phone}, '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`)
+      .limit(1);
+    
+    if (!customer || customer.length === 0) {
+      return {
+        success: false,
+        message: 'Customer not found.',
+      };
+    }
+    
+    await db.update(appointments)
+      .set({
+        customerAddress: validation.formattedAddress || newAddress,
+      })
+      .where(eq(appointments.customerId, customer[0].id));
+    
+    // Update customer record with new address
+    await db.update(customers)
+      .set({
+        address: validation.formattedAddress || newAddress,
+      })
+      .where(eq(customers.id, customer[0].id));
+    
+    // Update conversation state
+    conversationState.updateState(phone, {
+      address: validation.formattedAddress || newAddress,
+      addressValidated: true,
+      isInServiceArea: true,
+    });
+    
+    customerMemory.updateCustomer(phone, {
+      address: validation.formattedAddress || newAddress,
+    });
+    
+    return {
+      success: true,
+      message: `Address updated successfully to: ${validation.formattedAddress || newAddress}`,
+      updatedAddress: validation.formattedAddress || newAddress,
+    };
+    
+  } catch (error) {
+    console.error('❌ ERROR updating appointment address:', error);
+    return {
+      success: false,
+      message: 'Failed to update address due to system error: ' + (error as Error).message,
+    };
+  }
+}
+
+/**
+ * Tool 8: Add Appointment Notes
+ * Add notes to an existing appointment (e.g., "customer prefers back driveway", "running 20 min late")
+ */
+export async function addAppointmentNotes(phone: string, notes: string): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  try {
+    // Find existing appointment
+    const existingAppt = await getExistingAppointment(phone);
+    
+    if (!existingAppt.found) {
+      return {
+        success: false,
+        message: existingAppt.message,
+      };
+    }
+    
+    // Update appointment in database
+    const { db } = await import('./db');
+    const { appointments, customers } = await import('@shared/schema');
+    const { eq, sql } = await import('drizzle-orm');
+    
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const customer = await db.select()
+      .from(customers)
+      .where(sql`REPLACE(REPLACE(REPLACE(${customers.phone}, '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`)
+      .limit(1);
+    
+    if (!customer || customer.length === 0) {
+      return {
+        success: false,
+        message: 'Customer not found.',
+      };
+    }
+    
+    // Get current notes and append new ones
+    const currentAppt = await db.select()
+      .from(appointments)
+      .where(eq(appointments.customerId, customer[0].id))
+      .limit(1);
+    
+    const currentNotes = currentAppt[0]?.jobNotes || '';
+    const updatedNotes = currentNotes 
+      ? `${currentNotes}\n\n[${new Date().toLocaleString()}] ${notes}`
+      : notes;
+    
+    await db.update(appointments)
+      .set({
+        jobNotes: updatedNotes,
+      })
+      .where(eq(appointments.customerId, customer[0].id));
+    
+    return {
+      success: true,
+      message: `Notes added successfully: "${notes}"`,
+    };
+    
+  } catch (error) {
+    console.error('❌ ERROR adding appointment notes:', error);
+    return {
+      success: false,
+      message: 'Failed to add notes due to system error: ' + (error as Error).message,
+    };
+  }
+}
+
+/**
+ * Tool 9: Reschedule Appointment
+ * Change the date/time of an existing appointment
+ */
+export async function rescheduleAppointment(phone: string, newDateTime: string): Promise<{
+  success: boolean;
+  message: string;
+  newTime?: string;
+}> {
+  try {
+    // Find existing appointment
+    const existingAppt = await getExistingAppointment(phone);
+    
+    if (!existingAppt.found) {
+      return {
+        success: false,
+        message: existingAppt.message,
+      };
+    }
+    
+    // Parse new date/time
+    const newDate = new Date(newDateTime);
+    
+    if (isNaN(newDate.getTime())) {
+      return {
+        success: false,
+        message: `Invalid date/time format: "${newDateTime}". Please provide a valid date and time.`,
+      };
+    }
+    
+    // Check if new time is in the future
+    if (newDate < new Date()) {
+      return {
+        success: false,
+        message: 'Cannot reschedule to a past date/time. Please choose a future date.',
+      };
+    }
+    
+    // Update appointment in database
+    const { db } = await import('./db');
+    const { appointments, customers } = await import('@shared/schema');
+    const { eq, sql } = await import('drizzle-orm');
+    
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const customer = await db.select()
+      .from(customers)
+      .where(sql`REPLACE(REPLACE(REPLACE(${customers.phone}, '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`)
+      .limit(1);
+    
+    if (!customer || customer.length === 0) {
+      return {
+        success: false,
+        message: 'Customer not found.',
+      };
+    }
+    
+    await db.update(appointments)
+      .set({
+        scheduledTime: newDate,
+      })
+      .where(eq(appointments.customerId, customer[0].id));
+    
+    // Update Google Calendar event if applicable
+    // TODO: Integrate with Google Calendar API to update the event
+    
+    const formattedTime = newDate.toLocaleString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/Chicago',
+    });
+    
+    return {
+      success: true,
+      message: `Appointment rescheduled successfully to: ${formattedTime}`,
+      newTime: formattedTime,
+    };
+    
+  } catch (error) {
+    console.error('❌ ERROR rescheduling appointment:', error);
+    return {
+      success: false,
+      message: 'Failed to reschedule due to system error: ' + (error as Error).message,
+    };
+  }
+}
