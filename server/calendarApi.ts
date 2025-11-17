@@ -631,6 +631,53 @@ export async function handleBook(req: any, res: any) {
           response.data.id,
         );
 
+        // Save appointment to database
+        let customerId: number | undefined;
+        try {
+          const { db: dbInstance } = await import('./db');
+          const { customers, appointments } = await import('@shared/schema');
+          const { eq } = await import('drizzle-orm');
+
+          // Find or create customer
+          let customer = await dbInstance.query.customers.findFirst({
+            where: eq(customers.phone, phone),
+          });
+
+          if (!customer) {
+            const [newCustomer] = await dbInstance.insert(customers).values({
+              name,
+              phone,
+              email: email || null,
+              address: address || null,
+              vehicleInfo: vehicles && vehicles.length > 0 ? JSON.stringify(vehicles) : null,
+              smsConsent: smsConsent || false,
+              smsConsentTimestamp: smsConsent ? new Date() : null,
+            }).returning();
+            customer = newCustomer;
+          }
+
+          customerId = customer.id;
+
+          // Create appointment record with lat/lng
+          await dbInstance.insert(appointments).values({
+            customerId: customer.id,
+            serviceId: serviceId,
+            scheduledTime: startTime,
+            address: address || '',
+            latitude: latitude || null,
+            longitude: longitude || null,
+            addressConfirmedByCustomer: !!latitude,
+            addressNeedsReview: addressNeedsReview || false,
+            addOns: addOns.length > 0 ? addOns : null,
+            additionalRequests: notes ? [notes] : null,
+          });
+
+          console.log('[DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
+        } catch (dbError) {
+          console.error('[DB] Error saving appointment to database:', dbError);
+          // Continue even if DB save fails - calendar event was created
+        }
+
         // Return successful response with event details
         return res.json({
           success: true,
@@ -639,6 +686,7 @@ export async function handleBook(req: any, res: any) {
           eventLink: response.data.htmlLink,
           appointmentTime: time,
           addOns: addOns,
+          customerId,
         });
       } else {
         throw new Error("No event ID received from Google Calendar");
@@ -651,6 +699,58 @@ export async function handleBook(req: any, res: any) {
       );
       console.error("Calendar error details:", calendarError.message);
       // Fall back to basic confirmation if calendar API fails
+    }
+
+    // FALLBACK PATH: Calendar API failed, save to database anyway
+    console.log('[FALLBACK] Calendar API unavailable - saving appointment to database only');
+    let fallbackCustomerId: number | undefined;
+    try {
+      const { db: dbInst } = await import('./db');
+      const { customers, appointments } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      // Find or create customer
+      let customer = await dbInst.query.customers.findFirst({
+        where: eq(customers.phone, phone),
+      });
+
+      if (!customer) {
+        const [newCustomer] = await dbInst.insert(customers).values({
+          name,
+          phone,
+          email: email || null,
+          address: address || null,
+          vehicleInfo: vehicles && vehicles.length > 0 ? JSON.stringify(vehicles) : null,
+          smsConsent: smsConsent || false,
+          smsConsentTimestamp: smsConsent ? new Date() : null,
+        }).returning();
+        customer = newCustomer;
+      }
+
+      fallbackCustomerId = customer.id;
+
+      // Get service ID from database
+      const fallbackServiceInfo = await getServiceInfo(service);
+      const fallbackServiceId = fallbackServiceInfo.serviceId;
+
+      // Create appointment record with lat/lng
+      await dbInst.insert(appointments).values({
+        customerId: customer.id,
+        serviceId: fallbackServiceId,
+        scheduledTime: new Date(time),
+        address: address || '',
+        latitude: latitude || null,
+        longitude: longitude || null,
+        addressConfirmedByCustomer: !!latitude,
+        addressNeedsReview: addressNeedsReview || false,
+        addOns: addOns.length > 0 ? addOns : null,
+        additionalRequests: notes ? [notes] : null,
+      });
+
+      console.log('[FALLBACK DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
+    } catch (dbError) {
+      console.error('[FALLBACK DB] Error saving appointment to database:', dbError);
+      // Continue - notifications will still be sent
     }
 
     // Get customer information from memory
@@ -700,6 +800,7 @@ export async function handleBook(req: any, res: any) {
       service: service,
       addOns: addOns,
       notificationsSent: true,
+      customerId: fallbackCustomerId,
     });
   } catch (error) {
     console.error("Error booking appointment:", error);
