@@ -511,3 +511,19 @@ main {
 .animate-pulse-slow {
   animation: pulse-slow 6s ease-in-out infinite;
 }
+
+/* GPU-accelerated gradient animation for text */
+@keyframes gradient-x {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 3s ease infinite;
+  will-change: background-position;
+}

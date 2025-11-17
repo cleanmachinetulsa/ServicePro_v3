@@ -15,16 +15,21 @@ interface Service {
   overview: string;
 }
 
-export default function DynamicSpotlight() {
+interface DynamicSpotlightProps {
+  content?: HomepageContent;
+}
+
+export default function DynamicSpotlight({ content: propsContent }: DynamicSpotlightProps = {}) {
   const { data: contentData } = useQuery<{ success: boolean; content: HomepageContent }>({
     queryKey: ['/api/homepage-content'],
+    enabled: !propsContent,
   });
 
   const { data: servicesData } = useQuery<{ success: boolean; services: Service[] }>({
     queryKey: ['/api/services'],
   });
 
-  const content = contentData?.content;
+  const content = propsContent || contentData?.content;
   const services = servicesData?.services || [];
 
   const { scrollYProgress } = useScroll();

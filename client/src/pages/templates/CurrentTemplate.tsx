@@ -13,13 +13,18 @@ import EnhancedChatbotUI from "@/components/EnhancedChatbotUI";
 import { CalendarClock, MessageSquare, Phone } from "lucide-react";
 import type { HomepageContent } from "@shared/schema";
 
-export default function CurrentTemplate() {
-  // Fetch CMS content for homepage
+interface CurrentTemplateProps {
+  content?: HomepageContent;
+}
+
+export default function CurrentTemplate({ content: propsContent }: CurrentTemplateProps = {}) {
+  // Fetch CMS content for homepage (fallback if not provided via props)
   const { data } = useQuery<{ success: boolean; content: HomepageContent }>({
     queryKey: ['/api/homepage-content'],
+    enabled: !propsContent, // Only fetch if not provided via props
   });
 
-  const content = data?.content;
+  const content = propsContent || data?.content;
 
   // Update SEO meta tags when content loads
   useEffect(() => {

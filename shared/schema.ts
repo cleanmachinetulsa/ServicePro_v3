@@ -2720,5 +2720,43 @@ export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
 export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
 export type ServiceHealth = typeof serviceHealth.$inferSelect;
 export type InsertServiceHealth = z.infer<typeof insertServiceHealthSchema>;
+
+// ============================================================
+// GOOGLE SHEETS SERVICE SCHEMAS
+// ============================================================
+// These types represent the data structure returned from Google Sheets
+// (not the database), used by the public-facing services API
+
+export const publicSheetServiceSchema = z.object({
+  name: z.string(),
+  priceRange: z.string(),
+  overview: z.string(),
+  detailedDescription: z.string(),
+  duration: z.string().optional(),
+  imageUrl: z.string().optional(),
+});
+
+export const publicSheetAddonSchema = z.object({
+  name: z.string(),
+  priceRange: z.string(),
+  overview: z.string(),
+  detailedDescription: z.string(),
+  imageUrl: z.string().optional(),
+});
+
+export const publicSheetServicesResponseSchema = z.object({
+  success: z.boolean(),
+  services: z.array(publicSheetServiceSchema),
+});
+
+export const publicSheetAddonsResponseSchema = z.object({
+  success: z.boolean(),
+  addOns: z.array(publicSheetAddonSchema),
+});
+
+export type PublicSheetService = z.infer<typeof publicSheetServiceSchema>;
+export type PublicSheetAddon = z.infer<typeof publicSheetAddonSchema>;
+export type PublicSheetServicesResponse = z.infer<typeof publicSheetServicesResponseSchema>;
+export type PublicSheetAddonsResponse = z.infer<typeof publicSheetAddonsResponseSchema>;
 export type UsageSummary = typeof usageSummary.$inferSelect;
 export type InsertUsageSummary = z.infer<typeof insertUsageSummarySchema>;
