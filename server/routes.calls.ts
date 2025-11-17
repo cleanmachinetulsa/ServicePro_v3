@@ -179,22 +179,66 @@ export function registerCallRoutes(app: Router) {
   app.post('/api/calls/initiate', requireAuth, normalizePhone('to', { required: true }), async (req: Request, res: Response) => {
     try {
       const { to } = req.body;
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+      const businessPhone = process.env.BUSINESS_OWNER_PHONE;
 
-      // Phone number is now validated and normalized to E.164 by middleware
-      console.log(`[CALL] Initiating call to ${to}`);
+      if (!accountSid || !authToken || !twilioPhone || !businessPhone) {
+        console.error('[CALL] Missing Twilio credentials');
+        return res.status(500).json({
+          success: false,
+          message: 'Phone service not configured. Please contact support.',
+        });
+      }
 
-      // TODO: Implement with Twilio Voice SDK
-      // Example:
-      // const call = await twilioClient.calls.create({
-      //   to: to,
-      //   from: process.env.TWILIO_PHONE_NUMBER,
-      //   url: 'https://your-app.com/voice/outbound-call'
-      // });
+      // Get public base URL for TwiML callbacks
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.PUBLIC_URL || 'https://cleanmachine.app';
 
-      res.status(501).json({
-        success: false,
-        message: 'Twilio Voice not configured. Please set up Twilio Voice integration to make calls.',
-        needsSetup: true,
+      if (!baseUrl) {
+        return res.status(500).json({ error: 'Public URL not configured' });
+      }
+
+      console.log(`[CALL] Initiating click-to-call from dialer to ${to}`);
+
+      const twilio = (await import('twilio')).default;
+      const client = twilio(accountSid, authToken);
+
+      // Create TwiML URL for connecting to customer
+      const twimlUrl = `${baseUrl}/api/voice/connect-customer?phone=${encodeURIComponent(to)}`;
+
+      // Initiate call to business phone first (will then connect to customer)
+      const call = await client.calls.create({
+        from: twilioPhone,
+        to: businessPhone,
+        url: twimlUrl,
+        statusCallback: `${baseUrl}/api/voice/click-to-call-status`,
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+        statusCallbackMethod: 'POST',
+      });
+
+      console.log(`[CALL] Successfully initiated call: CallSid ${call.sid}, connecting ${businessPhone} to ${to}`);
+
+      // Log the outbound call
+      try {
+        const { logCallEvent } = await import('./callLoggingService');
+        await logCallEvent({
+          callSid: call.sid,
+          direction: 'outbound',
+          from: twilioPhone,
+          to: to,
+          status: 'initiated',
+        });
+      } catch (error) {
+        console.error('[CALL] Failed to log call event:', error);
+      }
+
+      res.json({ 
+        success: true, 
+        callSid: call.sid,
+        message: 'Call initiated successfully'
       });
     } catch (error) {
       console.error('Error initiating call:', error);
