@@ -8,8 +8,75 @@ import { CommunicationsPod } from '@/components/technician/CommunicationsPod';
 import { MediaPod } from '@/components/technician/MediaPod';
 import { QuickActionsFooter } from '@/components/technician/QuickActionsFooter';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, Smartphone } from 'lucide-react';
+import { usePwa } from '@/contexts/PwaContext';
+import { AlertCircle, Smartphone, Download, Maximize, X } from 'lucide-react';
 import { format } from 'date-fns';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+
+// Technician PWA Install Prompt
+function TechnicianInstallPrompt() {
+  const { isInstallable, isInstalled, promptInstall } = usePwa();
+  const [isDismissed, setIsDismissed] = useState(false);
+
+  // Don't show if already installed or dismissed
+  if (isInstalled || !isInstallable || isDismissed) {
+    return null;
+  }
+
+  return (
+    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-2xl px-4 animate-in slide-in-from-top">
+      <Card className="bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600 text-white border-0 shadow-2xl backdrop-blur-lg">
+        <div className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 p-4 bg-white/20 rounded-2xl backdrop-blur-sm">
+              <Download className="h-8 w-8" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-lg mb-2">Install Technician App</h3>
+              <p className="text-sm text-blue-50 mb-3">
+                Get the best iPad experience with fullscreen mode, offline access, and instant access from your home screen
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                <div className="flex items-center gap-2 bg-white/10 rounded-lg p-2">
+                  <Maximize className="h-4 w-4 flex-shrink-0" />
+                  <span>Fullscreen Mode</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/10 rounded-lg p-2">
+                  <Smartphone className="h-4 w-4 flex-shrink-0" />
+                  <span>Works Offline</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/10 rounded-lg p-2">
+                  <Download className="h-4 w-4 flex-shrink-0" />
+                  <span>Quick Access</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-white hover:bg-white/20 h-9 w-9 p-0"
+                onClick={() => setIsDismissed(true)}
+                data-testid="button-dismiss-technician-install"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+              <Button
+                size="sm"
+                className="bg-white text-blue-600 hover:bg-blue-50 font-semibold px-6"
+                onClick={promptInstall}
+                data-testid="button-install-technician-app"
+              >
+                Install Now
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
 // Demo data for when no real jobs exist
 const DEMO_JOBS = [
@@ -254,6 +321,9 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
       jobsCompleted={jobs.filter(j => j.status === 'completed').length}
       totalJobs={jobs.length}
     >
+      {/* PWA Install Prompt */}
+      <TechnicianInstallPrompt />
+      
       {/* Demo Mode Banner */}
       {demoMode && (
         <div className="bg-red-600 text-white px-4 py-2 text-center font-semibold flex items-center justify-center gap-2 text-sm">

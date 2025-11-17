@@ -212,6 +212,86 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         required: ["phone", "customerName", "issueDescription", "damageType"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_existing_appointment",
+      description: "Check if customer has an existing/upcoming appointment. Use this when customer contacts you about an already-scheduled service.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: {
+            type: "string",
+            description: "Customer's phone number"
+          }
+        },
+        required: ["phone"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_appointment_address",
+      description: "Update the address for an existing appointment. Use when customer says they need to change the service location (e.g., 'I need to change address to 123 Oak St', 'Can you come to my work instead').",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: {
+            type: "string",
+            description: "Customer's phone number"
+          },
+          newAddress: {
+            type: "string",
+            description: "The new address for the appointment"
+          }
+        },
+        required: ["phone", "newAddress"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_appointment_notes",
+      description: "Add important notes to an existing appointment (e.g., customer preferences, delays, special instructions). Use for messages like 'I'm running 20 minutes late', 'Please park in back driveway', 'Look for the red car'.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: {
+            type: "string",
+            description: "Customer's phone number"
+          },
+          notes: {
+            type: "string",
+            description: "Notes to add to the appointment"
+          }
+        },
+        required: ["phone", "notes"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "reschedule_appointment",
+      description: "Change the date/time of an existing appointment. Use when customer requests to move their appointment to a different time.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: {
+            type: "string",
+            description: "Customer's phone number"
+          },
+          newDateTime: {
+            type: "string",
+            description: "New date and time for the appointment (ISO format or natural language like '2025-11-20T14:00:00')"
+          }
+        },
+        required: ["phone", "newDateTime"]
+      }
+    }
   }
 ];
 
@@ -274,6 +354,30 @@ async function executeFunctionCall(
           poNumber: args.poNumber,
           photoUrls: args.photoUrls || [],
         });
+        return JSON.stringify(result);
+      }
+      
+      case "get_existing_appointment": {
+        const { getExistingAppointment } = await import('./schedulingTools');
+        const result = await getExistingAppointment(args.phone);
+        return JSON.stringify(result);
+      }
+      
+      case "update_appointment_address": {
+        const { updateAppointmentAddress } = await import('./schedulingTools');
+        const result = await updateAppointmentAddress(args.phone, args.newAddress);
+        return JSON.stringify(result);
+      }
+      
+      case "add_appointment_notes": {
+        const { addAppointmentNotes } = await import('./schedulingTools');
+        const result = await addAppointmentNotes(args.phone, args.notes);
+        return JSON.stringify(result);
+      }
+      
+      case "reschedule_appointment": {
+        const { rescheduleAppointment } = await import('./schedulingTools');
+        const result = await rescheduleAppointment(args.phone, args.newDateTime);
         return JSON.stringify(result);
       }
       

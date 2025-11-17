@@ -179,16 +179,36 @@ export function registerCallRoutes(app: Router) {
   app.post('/api/calls/initiate', requireAuth, normalizePhone('to', { required: true }), async (req: Request, res: Response) => {
     try {
       const { to } = req.body;
+      const userId = (req as any).user?.id;
+      const userEmail = (req as any).user?.username;
+      
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
       const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
       const businessPhone = process.env.BUSINESS_OWNER_PHONE;
 
+      // Safety check: prevent calling business numbers
+      const businessNumbers = [
+        businessPhone?.replace(/\D/g, ''),
+        twilioPhone?.replace(/\D/g, ''),
+        '9188565711', // Main line
+        '9182820103', // Emergency line
+      ].filter(Boolean);
+      
+      const toNormalized = to.replace(/\D/g, '');
+      if (businessNumbers.includes(toNormalized)) {
+        console.warn(`[CALL SAFETY] Admin ${userEmail} (${userId}) attempted to call business number ${to}`);
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot initiate call to business phone numbers. This would create a call loop.',
+        });
+      }
+
       if (!accountSid || !authToken || !twilioPhone || !businessPhone) {
         console.error('[CALL] Missing Twilio credentials');
-        return res.status(500).json({
+        return res.status(503).json({
           success: false,
-          message: 'Phone service not configured. Please contact support.',
+          message: 'Phone service temporarily unavailable. Please try again or contact support.',
         });
       }
 
@@ -198,10 +218,13 @@ export function registerCallRoutes(app: Router) {
         : process.env.PUBLIC_URL || 'https://cleanmachine.app';
 
       if (!baseUrl) {
-        return res.status(500).json({ error: 'Public URL not configured' });
+        return res.status(503).json({
+          success: false,
+          message: 'Service configuration error. Please contact support.',
+        });
       }
 
-      console.log(`[CALL] Initiating click-to-call from dialer to ${to}`);
+      console.log(`[CALL INITIATE] Admin ${userEmail} (ID: ${userId}) initiating click-to-call to ${to}`);
 
       const twilio = (await import('twilio')).default;
       const client = twilio(accountSid, authToken);
@@ -219,9 +242,9 @@ export function registerCallRoutes(app: Router) {
         statusCallbackMethod: 'POST',
       });
 
-      console.log(`[CALL] Successfully initiated call: CallSid ${call.sid}, connecting ${businessPhone} to ${to}`);
+      console.log(`[CALL SUCCESS] Admin ${userEmail} initiated CallSid ${call.sid}, connecting ${businessPhone} to ${to}`);
 
-      // Log the outbound call
+      // Log the outbound call with admin user info
       try {
         const { logCallEvent } = await import('./callLoggingService');
         await logCallEvent({
@@ -231,20 +254,48 @@ export function registerCallRoutes(app: Router) {
           to: to,
           status: 'initiated',
         });
+        
+        // Log to audit table
+        await db.insert(await import('@shared/schema').then(s => s.auditLog)).values({
+          userId: userId || null,
+          action: 'click_to_call_initiated',
+          entityType: 'call',
+          entityId: call.sid,
+          metadata: { 
+            customerPhone: to,
+            adminEmail: userEmail 
+          },
+        });
       } catch (error) {
         console.error('[CALL] Failed to log call event:', error);
+        // Don't fail the call if logging fails
       }
 
       res.json({ 
         success: true, 
         callSid: call.sid,
-        message: 'Call initiated successfully'
+        message: 'Call initiated successfully - you will receive a call shortly'
       });
-    } catch (error) {
-      console.error('Error initiating call:', error);
+    } catch (error: any) {
+      console.error(`[CALL ERROR] Failed to initiate call to ${req.body.to}:`, error);
+      
+      // Provide better error messages based on error type
+      let userMessage = 'Failed to initiate call. Please try again.';
+      
+      if (error.code === 21211) {
+        userMessage = 'Invalid phone number format. Please check the number and try again.';
+      } else if (error.code === 20429) {
+        userMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
+      } else if (error.message?.includes('authentication')) {
+        userMessage = 'Phone service authentication error. Please contact support.';
+      } else if (error.message?.includes('timeout')) {
+        userMessage = 'Call request timed out. Please check your connection and try again.';
+      }
+      
       res.status(500).json({
         success: false,
-        message: 'Failed to initiate call',
+        message: userMessage,
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
   });

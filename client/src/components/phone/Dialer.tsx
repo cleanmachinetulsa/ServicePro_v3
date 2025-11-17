@@ -2,15 +2,26 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
-import { Phone, Delete, MessageCircle } from 'lucide-react';
+import { Phone, Delete, MessageCircle, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useLocation } from 'wouter';
 import { toE164, formatAsYouType, isValid } from '@/lib/phone';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Dialer() {
   const [phoneNumber, setPhoneNumber] = useState('');
-  const { toast } = useToast();
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const { toast} = useToast();
   const [, setLocation] = useLocation();
 
   const callMutation = useMutation({
@@ -80,7 +91,16 @@ export default function Dialer() {
       return;
     }
     
-    callMutation.mutate(e164Number);
+    // Show confirmation dialog before calling
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmCall = () => {
+    const e164Number = toE164(phoneNumber);
+    if (e164Number) {
+      callMutation.mutate(e164Number);
+    }
+    setShowConfirmDialog(false);
   };
 
   const handleMessage = () => {
@@ -194,6 +214,36 @@ export default function Dialer() {
           <Delete className="h-6 w-6" />
         </Button>
       </div>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Confirm Call
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              Are you sure you want to call <span className="font-semibold text-foreground">{phoneNumber}</span>?
+              <br />
+              <br />
+              <span className="text-sm text-muted-foreground">You will receive a call first, then be connected to the customer.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-call">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmCall}
+              className="bg-green-600 hover:bg-green-700"
+              data-testid="button-confirm-call"
+            >
+              Call Now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
