@@ -242,6 +242,9 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             
             <div className="text-center md:text-right">
               <div className="flex gap-4 justify-center md:justify-end mb-2">
+                <Link href="/my-services" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
+                  My Services
+                </Link>
                 <Link href="/careers" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
                   Careers
                 </Link>

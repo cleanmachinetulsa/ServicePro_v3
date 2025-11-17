@@ -87,22 +87,24 @@ export function HeroSection() {
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }}>
             <Button 
               size="lg"
+              onClick={() => document.getElementById('sandbox')?.scrollIntoView({ behavior: 'smooth' })}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-6 text-lg rounded-full shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 relative overflow-hidden group"
               data-testid="button-explore-app"
             >
               <span className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
               <Play className="w-5 h-5 mr-2 relative z-10" />
-              <span className="relative z-10">Explore the Clean Machine App</span>
+              <span className="relative z-10">Try Interactive Demo</span>
             </Button>
           </motion.div>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }}>
             <Button 
               size="lg" 
               variant="outline"
+              onClick={() => document.getElementById('whitelabel')?.scrollIntoView({ behavior: 'smooth' })}
               className="border-2 border-blue-400/50 bg-white/5 backdrop-blur-sm hover:bg-white/10 text-white px-8 py-6 text-lg rounded-full transition-all duration-300"
               data-testid="button-see-for-business"
             >
-              See it for Your Business
+              White-Label Your Brand
               <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
           </motion.div>
