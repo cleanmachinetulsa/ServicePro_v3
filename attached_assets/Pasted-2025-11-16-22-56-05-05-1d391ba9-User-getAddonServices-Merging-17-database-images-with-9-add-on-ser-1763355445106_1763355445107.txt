@@ -1,0 +1,129 @@
+2025-11-16 22:56:05.05
+1d391ba9
+User
+[getAddonServices] Merging 17 database images with 9 add-on services
+2025-11-16 22:56:05.05
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.05
+1d391ba9
+User
+4:56:05 AM [express] GET /api/addon-services 304 in 168ms :: {"success":true,"addOns":[{"name":"Leat…
+2025-11-16 22:56:05.06
+1d391ba9
+User
+Successfully loaded 9 services from Google Sheet
+2025-11-16 22:56:05.06
+1d391ba9
+User
+4:56:05 AM [express] GET /api/services 304 in 33ms :: {"success":true,"services":[{"id":1,"name":"Fu…
+2025-11-16 22:56:05.07
+1d391ba9
+User
+4:56:05 AM [express] GET /api/google-reviews 401 in 1ms :: {"success":false,"message":"Authenticatio…
+2025-11-16 22:56:05.07
+1d391ba9
+User
+4:56:05 AM [express] GET /api/homepage-content 401 in 0ms :: {"success":false,"message":"Authenticat…
+2025-11-16 22:56:05.10
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.11
+1d391ba9
+User
+Successfully loaded 9 services from Google Sheet
+2025-11-16 22:56:05.13
+1d391ba9
+User
+4:56:05 AM [express] GET /api/google-reviews 401 in 1ms :: {"success":false,"message":"Authenticatio…
+2025-11-16 22:56:05.13
+1d391ba9
+User
+4:56:05 AM [express] GET /api/addon-services 304 in 35ms :: {"success":true,"addOns":[{"name":"Leath…
+2025-11-16 22:56:05.13
+1d391ba9
+User
+[getAddonServices] Merging 17 database images with 9 add-on services
+2025-11-16 22:56:05.13
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.14
+1d391ba9
+User
+4:56:05 AM [express] GET /api/homepage-content 401 in 1ms :: {"success":false,"message":"Authenticat…
+2025-11-16 22:56:05.14
+1d391ba9
+User
+Successfully loaded 9 services from Google Sheet
+2025-11-16 22:56:05.14
+1d391ba9
+User
+4:56:05 AM [express] GET /api/services 304 in 34ms :: {"success":true,"services":[{"id":1,"name":"Fu…
+2025-11-16 22:56:05.20
+1d391ba9
+User
+4:56:05 AM [express] GET /api/google-reviews 401 in 1ms :: {"success":false,"message":"Authenticatio…
+2025-11-16 22:56:05.21
+1d391ba9
+User
+4:56:05 AM [express] GET /api/homepage-content 401 in 0ms :: {"success":false,"message":"Authenticat…
+2025-11-16 22:56:05.21
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.21
+1d391ba9
+User
+4:56:05 AM [express] GET /api/addon-services 304 in 34ms :: {"success":true,"addOns":[{"name":"Leath…
+2025-11-16 22:56:05.22
+1d391ba9
+User
+Successfully loaded 9 services from Google Sheet
+2025-11-16 22:56:05.22
+1d391ba9
+User
+4:56:05 AM [express] GET /api/services 304 in 34ms :: {"success":true,"services":[{"id":1,"name":"Fu…
+2025-11-16 22:56:05.26
+1d391ba9
+User
+Successfully loaded 9 services from Google Sheet
+2025-11-16 22:56:05.28
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.29
+1d391ba9
+User
+4:56:05 AM [express] GET /api/google-reviews 401 in 1ms :: {"success":false,"message":"Authenticatio…
+2025-11-16 22:56:05.29
+1d391ba9
+User
+4:56:05 AM [express] GET /api/homepage-content 401 in 0ms :: {"success":false,"message":"Authenticat…
+2025-11-16 22:56:05.36
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.38
+1d391ba9
+User
+4:56:05 AM [express] GET /api/homepage-content 401 in 0ms :: {"success":false,"message":"Authenticat…
+
+2025-11-16 22:56:05.41
+1d391ba9
+User
+Successfully loaded 9 add-on services from Google Sheet
+2025-11-16 22:56:05.44
+1d391ba9
+User
+4:56:05 AM [express] GET /api/google-reviews 401 in 0ms :: {"success":false,"message":"Authenticatio…
+2025-11-16 22:56:05.44
+1d391ba9
+User
+4:56:05 AM [express] GET /api/addon-services 304 in 35ms :: {"success":true,"addOns":[{"name":"Leath…
+2025-11-16 22:56:05.44
+1d391ba9
+User
+4:56:05 AM [express] GET /api/addon-services 304 in 35ms :: {"success":true,"addOns":[{"name":"Leath…
