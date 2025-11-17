@@ -192,7 +192,8 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
   };
 
   const handleEmergencyCall = () => {
-    const officeNumber = import.meta.env.VITE_BUSINESS_PHONE || '+18005551234';
+    // Use the actual business phone number (918-856-5711 main line)
+    const officeNumber = '+19188565711';
     window.location.href = `tel:${officeNumber}`;
   };
 
