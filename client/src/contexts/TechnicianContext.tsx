@@ -15,6 +15,8 @@ interface Job {
   customerAddress: string;
   latitude: string | null;
   longitude: string | null;
+  addressConfirmedByCustomer: boolean | null;
+  addressNeedsReview: boolean | null;
   jobNotes: string | null;
   statusUpdatedAt: string | null;
 }

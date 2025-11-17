@@ -226,6 +226,10 @@ export function registerQuickBookingRoutes(app: Express) {
         serviceId: serviceId || 1, // Default to service ID 1 if not provided
         scheduledTime: new Date(scheduledTime),
         address: address || '',
+        latitude: req.body.latitude || null,
+        longitude: req.body.longitude || null,
+        addressConfirmedByCustomer: req.body.addressConfirmedByCustomer || false,
+        addressNeedsReview: req.body.addressNeedsReview || false,
         addOns: addOns || null,
         additionalRequests: notes ? [notes] : null,
       }).returning();

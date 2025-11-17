@@ -1,6 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, CloudOff, TestTube2, Sun, Cloud, CloudRain } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { RefreshCw, CloudOff, TestTube2, Sun, Cloud, CloudRain, MapPin, AlertTriangle } from 'lucide-react';
 import { useTechnician } from '@/contexts/TechnicianContext';
 import { format } from 'date-fns';
 
@@ -76,11 +77,25 @@ export function SchedulePanel({ demoMode, onToggleDemo }: SchedulePanelProps) {
                 }`}
                 data-testid={`button-select-job-${job.id}`}
               >
-                <div className="font-semibold text-white text-sm mb-1">
-                  {job.customerName || 'Unknown Customer'}
-                </div>
-                <div className="text-xs text-blue-200">
-                  {format(new Date(job.scheduledTime), 'h:mm a')}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white text-sm mb-1">
+                      {job.customerName || 'Unknown Customer'}
+                    </div>
+                    <div className="text-xs text-blue-200">
+                      {format(new Date(job.scheduledTime), 'h:mm a')}
+                    </div>
+                  </div>
+                  {job.addressNeedsReview && (
+                    <Badge 
+                      variant="destructive" 
+                      className="bg-amber-500/20 text-amber-300 border-amber-400/30 flex-shrink-0"
+                      data-testid={`badge-address-review-${job.id}`}
+                    >
+                      <MapPin className="w-3 h-3 mr-1" />
+                      Review Address
+                    </Badge>
+                  )}
                 </div>
                 <div className="mt-2">
                   <span className={`text-xs px-2 py-0.5 rounded ${
