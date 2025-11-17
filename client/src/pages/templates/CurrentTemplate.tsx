@@ -193,7 +193,7 @@ export default function CurrentTemplate() {
             </p>
           </motion.div>
           <div className="px-4">
-            <GoogleReviews placeId="ChIJVX4B3d2TtocRCjnc7bJevHw" />
+            <GoogleReviews />
           </div>
         </motion.section>
         

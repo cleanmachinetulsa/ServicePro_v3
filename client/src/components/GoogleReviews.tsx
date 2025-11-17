@@ -12,7 +12,7 @@ interface Review {
 }
 
 interface GoogleReviewsProps {
-  placeId: string;
+  placeId?: string;
 }
 
 const GoogleReviews: React.FC<GoogleReviewsProps> = ({ placeId }) => {
@@ -27,8 +27,11 @@ const GoogleReviews: React.FC<GoogleReviewsProps> = ({ placeId }) => {
       try {
         setLoading(true);
         
-        // Try to fetch from API first
-        const response = await fetch(`/api/google-reviews?placeId=${placeId}`);
+        // Try to fetch from API first - backend will use GOOGLE_PLACE_ID env var if no placeId provided
+        const url = placeId 
+          ? `/api/google-reviews?placeId=${placeId}`
+          : `/api/google-reviews`;
+        const response = await fetch(url);
         
         if (response.ok) {
           const data = await response.json();
@@ -52,12 +55,7 @@ const GoogleReviews: React.FC<GoogleReviewsProps> = ({ placeId }) => {
       }
     };
     
-    if (placeId) {
-      fetchReviews();
-    } else {
-      setError('No Place ID provided');
-      setLoading(false);
-    }
+    fetchReviews();
   }, [placeId]);
 
   const renderStars = (rating: number) => {
