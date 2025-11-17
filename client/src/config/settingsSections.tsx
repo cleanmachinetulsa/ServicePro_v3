@@ -18,7 +18,6 @@ import { PhoneSettings } from "../components/PhoneSettings";
 import ServicesManagement from "../components/ServicesManagement";
 import { CustomerManagement } from "../components/CustomerManagement";
 import { LoyaltyPointsSystem } from "../components/LoyaltyPointsSystem";
-import GalleryPhotoManager from "../components/GalleryPhotoManager";
 import AdminReferralStats from "../components/AdminReferralStats";
 
 export interface SettingsItem {
@@ -54,7 +53,6 @@ export const settingsSections: SettingsSection[] = [
       { id: 'customer-management', label: 'Customer Database', component: CustomerManagement },
       { id: 'loyalty', label: 'Loyalty Program', component: LoyaltyPointsSystem },
       { id: 'referrals', label: 'Referral Program', component: AdminReferralStats },
-      { id: 'gallery', label: 'Gallery Photos', component: GalleryPhotoManager },
     ]
   },
   {
