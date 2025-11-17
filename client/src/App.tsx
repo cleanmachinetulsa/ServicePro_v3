@@ -73,6 +73,7 @@ import OpenShifts from './pages/OpenShifts';
 import ShiftTrades from './pages/ShiftTrades';
 import HomepageEditor from './pages/HomepageEditor';
 import UsageDashboard from './pages/UsageDashboard';
+import GalleryManagementPage from './pages/gallery-management';
 
 function Router() {
   return (
@@ -189,6 +190,12 @@ function Router() {
       </Route>
       <Route path="/admin/usage-dashboard">
         <AuthGuard><UsageDashboard /></AuthGuard>
+      </Route>
+      <Route path="/admin/gallery-management">
+        <AuthGuard><GalleryManagementPage /></AuthGuard>
+      </Route>
+      <Route path="/admin/banner-management">
+        <AuthGuard><BannerManagement /></AuthGuard>
       </Route>
 
       {/* Technician portal routes */}
