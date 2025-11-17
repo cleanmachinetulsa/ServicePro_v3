@@ -142,21 +142,38 @@ export async function validateAddress(phone: string, address: string): Promise<A
     const result = await checkDistanceToBusinessLocation(address);
     
     if (!result.success) {
-      // Provide more helpful error message based on the specific failure
-      let errorMessage = 'Unable to validate that address. ';
+      // SMART CORRECTION: Instead of hard-rejecting, try to help them fix it
+      let errorMessage = '';
+      let suggestedAddress = address;
       
       if ('enhancedAddress' in result && result.enhancedAddress) {
-        // Show what we tried
-        errorMessage += `I tried "${result.enhancedAddress}" but couldn't find it. `;
+        // We enhanced the address (added Tulsa, OK) - use that as suggestion
+        suggestedAddress = result.enhancedAddress;
+        errorMessage = `I couldn't verify "${address}" exactly. Did you mean "${suggestedAddress}"? `;
+      } else {
+        // No enhancement possible, ask for clarification
+        errorMessage = `I'm having trouble finding "${address}". `;
       }
       
-      // Helpful suggestions
-      errorMessage += 'Please include your street number and name (like "2710 South Hudson Place"). You don\'t need to include "Tulsa, OK" - I\'ll add that automatically!';
+      // Helpful suggestions with examples
+      errorMessage += 'Please check the street number and name. Examples: "2710 South Hudson Place" or "4644 S Troost Ave". I can work with partial addresses - you don\'t need to include "Tulsa, OK"!';
+      
+      // PERMISSIVE FALLBACK: Store the address anyway so booking can proceed
+      // This prevents blocking customers with valid but hard-to-geocode addresses
+      conversationState.updateState(phone, {
+        address: suggestedAddress,
+        addressValidated: false, // Flag as unverified
+        isInServiceArea: true, // Allow booking to proceed
+      });
+      
+      customerMemory.updateCustomer(phone, {
+        address: suggestedAddress,
+      });
       
       return {
-        valid: false,
-        inServiceArea: false,
-        message: errorMessage,
+        valid: true, // Changed to true to allow proceeding
+        inServiceArea: true, // Allow booking
+        message: errorMessage + ' I\'ll save what you entered and we can confirm the exact address later.',
       };
     }
     
