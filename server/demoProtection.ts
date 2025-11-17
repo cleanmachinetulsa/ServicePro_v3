@@ -8,6 +8,27 @@ const DEMO_MODE = process.env.DEMO_MODE === 'true';
  * and apply appropriate restrictions
  */
 export function demoProtectionMiddleware(req: Request, res: Response, next: NextFunction) {
+  // Skip demo protection for Vite assets and static files
+  if (
+    req.path.startsWith('/@vite') ||
+    req.path.startsWith('/src/') ||
+    req.path.startsWith('/node_modules/') ||
+    req.path.endsWith('.js') ||
+    req.path.endsWith('.css') ||
+    req.path.endsWith('.tsx') ||
+    req.path.endsWith('.ts') ||
+    req.path.endsWith('.jsx') ||
+    req.path.endsWith('.png') ||
+    req.path.endsWith('.jpg') ||
+    req.path.endsWith('.svg') ||
+    req.path.endsWith('.webp') ||
+    req.path.endsWith('.woff') ||
+    req.path.endsWith('.woff2') ||
+    req.path.endsWith('.ttf')
+  ) {
+    return next();
+  }
+  
   // Add a header to indicate demo mode
   res.setHeader('X-Demo-Mode', DEMO_MODE ? 'true' : 'false');
   

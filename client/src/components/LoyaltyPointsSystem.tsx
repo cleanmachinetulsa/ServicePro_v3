@@ -1522,7 +1522,7 @@ export function LoyaltyPointsSystem() {
                                 variant="outline"
                                 onClick={() => {
                                   // Navigate to booking page with pre-selected service
-                                  setLocation(`/booking?service=${encodeURIComponent(reward.name)}&redeem=true&customerId=${selectedCustomer.id}&rewardId=${reward.id}`);
+                                  setLocation(`/book?service=${encodeURIComponent(reward.name)}&redeem=true&customerId=${selectedCustomer.id}&rewardId=${reward.id}`);
                                 }}
                               >
                                 Schedule & Redeem
