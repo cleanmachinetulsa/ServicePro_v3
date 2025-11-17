@@ -22,6 +22,7 @@ import WeatherAlertDialog from "./WeatherAlertDialog";
 import BookingLoyaltyDisplay from "./BookingLoyaltyDisplay";
 import BookingPriceCalculator from "./BookingPriceCalculator";
 import { SMSConsentCheckbox } from "./SMSConsentCheckbox";
+import { AddressMapConfirmation } from "./AddressMapConfirmation";
 import { 
   Plus, 
   X, 
@@ -119,9 +120,12 @@ export default function MultiVehicleAppointmentScheduler({
   initialService,
   initialReferralCode,
 }: MultiVehicleAppointmentSchedulerProps = {}) {
-  const [step, setStep] = useState<"address" | "accessVerification" | "service" | "addons" | "vehicle" | "date" | "time" | "details">("address");
+  const [step, setStep] = useState<"address" | "mapConfirmation" | "accessVerification" | "service" | "addons" | "vehicle" | "date" | "time" | "details">("address");
   const [customerAddress, setCustomerAddress] = useState<string>("");
   const [isExtendedAreaRequest, setIsExtendedAreaRequest] = useState<boolean>(false);
+  const [addressLatitude, setAddressLatitude] = useState<number | undefined>();
+  const [addressLongitude, setAddressLongitude] = useState<number | undefined>();
+  const [addressNeedsReview, setAddressNeedsReview] = useState<boolean>(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
 
@@ -830,6 +834,9 @@ export default function MultiVehicleAppointmentScheduler({
           email: customerEmail, // Use the state variable for email
           address: customerAddress,
           isExtendedAreaRequest,
+          latitude: addressLatitude,
+          longitude: addressLongitude,
+          addressNeedsReview,
           service: selectedService!.name, // Use the selected service name
           addOns: selectedAddOns,
           vehicles,
@@ -930,9 +937,25 @@ export default function MultiVehicleAppointmentScheduler({
   };
 
   // Handler for service area check
-  const handleAddressNext = (address: string, isExtendedArea: boolean = false) => {
+  const handleAddressNext = (address: string, isExtendedArea: boolean = false, lat?: number, lng?: number) => {
     setCustomerAddress(address);
     setIsExtendedAreaRequest(isExtendedArea);
+    setAddressLatitude(lat);
+    setAddressLongitude(lng);
+    
+    // If we have coordinates, show map confirmation; otherwise skip to access verification
+    if (lat && lng) {
+      setStep("mapConfirmation");
+    } else {
+      setStep("accessVerification");
+    }
+  };
+  
+  // Handler for map confirmation
+  const handleMapConfirmation = (lat: number, lng: number, needsReview: boolean) => {
+    setAddressLatitude(lat);
+    setAddressLongitude(lng);
+    setAddressNeedsReview(needsReview);
     setStep("accessVerification");
   };
 
@@ -1160,6 +1183,25 @@ export default function MultiVehicleAppointmentScheduler({
             <ServiceAreaCheck
               onNext={handleAddressNext}
               onBack={onClose || (() => {})}
+            />
+          </motion.div>
+        )}
+
+        {step === "mapConfirmation" && addressLatitude && addressLongitude && (
+          <motion.div
+            key="mapConfirmation"
+            variants={stepVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={stepTransition}
+          >
+            <AddressMapConfirmation
+              address={customerAddress}
+              latitude={addressLatitude}
+              longitude={addressLongitude}
+              onConfirm={handleMapConfirmation}
+              onCancel={() => setStep("address")}
             />
           </motion.div>
         )}

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface ServiceAreaCheckProps {
-  onNext: (address: string, isExtendedArea?: boolean) => void;
+  onNext: (address: string, isExtendedArea?: boolean, lat?: number, lng?: number) => void;
   onBack: () => void;
 }
 
@@ -28,6 +28,8 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
   const [formattedAddress, setFormattedAddress] = useState<string>("");
   const [distance, setDistance] = useState<string>("");
   const [driveTime, setDriveTime] = useState<string>("");
+  const [latitude, setLatitude] = useState<number | undefined>();
+  const [longitude, setLongitude] = useState<number | undefined>();
   const { toast } = useToast();
 
   // Real service area check using Google Maps Distance Matrix API
@@ -45,6 +47,10 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
       if (!geocodeData.success || !geocodeData.location) {
         throw new Error('Invalid address or geocoding failed');
       }
+      
+      // Store lat/lng for map confirmation
+      setLatitude(geocodeData.location.lat);
+      setLongitude(geocodeData.location.lng);
       
       // Now check distance from business location (Tulsa)
       const distanceResponse = await fetch(`/api/distance-check?address=${encodeURIComponent(address)}`);
@@ -103,10 +109,10 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
       // Address is in service area, proceed to next step
       toast({
         title: "Great news!",
-        description: driveTime ? `You're in our service area (${driveTime} drive). Let's schedule your appointment.` : "You're in our service area. Let's schedule your appointment.",
+        description: driveTime ? `You're in our service area (${driveTime} drive). Let's confirm your location on the map.` : "You're in our service area. Let's confirm your location on the map.",
       });
-      // Use the formatted address from Google if available
-      onNext(formattedAddress || address, false); // Not an extended area request
+      // Use the formatted address from Google if available, and pass lat/lng
+      onNext(formattedAddress || address, false, latitude, longitude);
     } else {
       // Address is outside service area, show dialog
       setShowOutOfAreaDialog(true);
@@ -118,12 +124,12 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
     setShowOutOfAreaDialog(false);
     
     // Proceed to next step with flag indicating this is an extended area request
-    // Use the formatted address from Google if available
-    onNext(formattedAddress || address, true);
+    // Use the formatted address from Google if available and pass lat/lng
+    onNext(formattedAddress || address, true, latitude, longitude);
     
     toast({
       title: "Extended Area Request",
-      description: "Your appointment will be marked as an extended service area request.",
+      description: "Your appointment will be marked as an extended service area request. Please confirm your location on the map.",
     });
   };
 
