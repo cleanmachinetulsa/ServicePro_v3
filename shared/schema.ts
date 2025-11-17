@@ -293,6 +293,8 @@ export const appointments = pgTable("appointments", {
   technicianId: integer("technician_id").references(() => technicians.id, { onDelete: "set null" }), // Assigned technician (nulled if tech deleted)
   latitude: numeric("latitude", { precision: 10, scale: 7 }), // Geocoded address latitude
   longitude: numeric("longitude", { precision: 10, scale: 7 }), // Geocoded address longitude
+  addressConfirmedByCustomer: boolean("address_confirmed_by_customer").default(false), // Customer confirmed address via map pin
+  addressNeedsReview: boolean("address_needs_review").default(false), // Manual review needed if customer moved pin but validation failed
   jobNotes: text("job_notes"), // Field technician notes during job
   statusUpdatedAt: timestamp("status_updated_at"), // Last status change timestamp
 }, (table) => ({
