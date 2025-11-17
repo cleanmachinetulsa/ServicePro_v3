@@ -8,6 +8,7 @@ import DynamicSpotlight from "@/pages/templates/DynamicSpotlight";
 import PrestigeGrid from "@/pages/templates/PrestigeGrid";
 import NightDriveNeon from "@/pages/templates/NightDriveNeon";
 import ExecutiveMinimal from "@/pages/templates/ExecutiveMinimal";
+import QuantumConcierge from "@/pages/templates/QuantumConcierge";
 
 const TEMPLATE_COMPONENTS: Record<string, React.ComponentType> = {
   current: CurrentTemplate,
@@ -16,6 +17,7 @@ const TEMPLATE_COMPONENTS: Record<string, React.ComponentType> = {
   prestige_grid: PrestigeGrid,
   night_drive_neon: NightDriveNeon,
   executive_minimal: ExecutiveMinimal,
+  quantum_concierge: QuantumConcierge,
 };
 
 export default function HomePage() {
@@ -34,5 +36,5 @@ export default function HomePage() {
   const templateId = data?.content?.templateId || 'current';
   const TemplateComponent = TEMPLATE_COMPONENTS[templateId] || CurrentTemplate;
 
-  return <TemplateComponent />;
+  return <TemplateComponent content={data?.content} />;
 }

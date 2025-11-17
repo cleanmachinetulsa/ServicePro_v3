@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
 import { eq, and, or, desc, asc, isNull, gte, sql } from 'drizzle-orm';
-import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema } from '@shared/schema';
+import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema, publicSheetServiceSchema, publicSheetAddonSchema } from '@shared/schema';
 import { requireRole } from './rbacMiddleware';
 import { criticalMonitor } from './criticalMonitoring';
 import { registerLoyaltyRoutes } from './routes.loyalty';
@@ -1261,13 +1261,23 @@ export async function registerRoutes(app: Express) {
       const googleSheetServices = await getAllServices();
 
       if (googleSheetServices && Array.isArray(googleSheetServices) && googleSheetServices.length > 0) {
-        console.log(`Successfully loaded ${googleSheetServices.length} services from Google Sheet`);
-        // Add temporary IDs to Google Sheet services for compatibility
-        const servicesWithIds = googleSheetServices.map((service, index) => ({
-          id: index + 1,
-          ...service,
-        }));
-        return res.json({ success: true, services: servicesWithIds });
+        // Validate and sanitize Google Sheets data
+        const validatedServices = googleSheetServices
+          .map((service, index) => {
+            const result = publicSheetServiceSchema.safeParse(service);
+            if (!result.success) {
+              console.warn(`Invalid service data at index ${index}:`, result.error);
+              return null;
+            }
+            return { id: index + 1, ...result.data };
+          })
+          .filter(Boolean);
+
+        if (validatedServices.length > 0) {
+          console.log(`Successfully validated ${validatedServices.length}/${googleSheetServices.length} services from Google Sheet`);
+          return res.json({ success: true, services: validatedServices });
+        }
+        console.warn('All services failed validation, using fallback');
       }
     } catch (error) {
       console.error('Failed to load services from Google Sheet:', error);
@@ -1326,7 +1336,34 @@ export async function registerRoutes(app: Express) {
   });
 
   app.get('/api/addon-services', async (req, res) => {
-    // Hardcoded add-on services that will always work
+    // Load from Google Sheets with validation
+    try {
+      const googleSheetAddons = await getAddonServices();
+      
+      if (googleSheetAddons && Array.isArray(googleSheetAddons) && googleSheetAddons.length > 0) {
+        // Validate and sanitize Google Sheets data
+        const validatedAddons = googleSheetAddons
+          .map((addon, index) => {
+            const result = publicSheetAddonSchema.safeParse(addon);
+            if (!result.success) {
+              console.warn(`Invalid addon data at index ${index}:`, result.error);
+              return null;
+            }
+            return result.data;
+          })
+          .filter(Boolean);
+
+        if (validatedAddons.length > 0) {
+          console.log(`Successfully validated ${validatedAddons.length}/${googleSheetAddons.length} add-ons from Google Sheet`);
+          return res.json({ success: true, addOns: validatedAddons });
+        }
+        console.warn('All add-ons failed validation, using fallback');
+      }
+    } catch (error) {
+      console.error('Failed to load add-ons from Google Sheet:', error);
+    }
+
+    // Fallback: Hardcoded add-on services that will always work
     const addOns = [
       {
         name: 'Paint Protection',
@@ -1385,19 +1422,6 @@ export async function registerRoutes(app: Express) {
         durationHours: 1
       }
     ];
-
-    // Try to get add-ons from Google Sheet first
-    try {
-      const googleSheetAddOns = await getAddonServices();
-
-      // Only use Google Sheet data if it's valid and has entries
-      if (googleSheetAddOns && Array.isArray(googleSheetAddOns) && googleSheetAddOns.length > 0) {
-        console.log(`Successfully loaded ${googleSheetAddOns.length} add-on services from Google Sheet`);
-        return res.json({ success: true, addOns: googleSheetAddOns });
-      }
-    } catch (error) {
-      console.error('Failed to load add-on services from Google Sheet, using defaults:', error);
-    }
 
     // Fallback to hardcoded add-on services
     console.log('Using hardcoded add-on service data');
