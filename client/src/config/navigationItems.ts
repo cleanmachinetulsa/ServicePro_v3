@@ -10,7 +10,8 @@ import {
   Settings, 
   Shield,
   DollarSign,
-  AlertCircle
+  AlertCircle,
+  Palette
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -90,6 +91,13 @@ export const navigationItems: NavigationItem[] = [
     icon: Home,
     path: '',
     separator: true,
+  },
+  {
+    id: 'homepage-editor',
+    label: 'Website Design',
+    icon: Palette,
+    path: '/admin/homepage-editor',
+    badge: 'Admin',
   },
   {
     id: 'settings',
