@@ -41,7 +41,16 @@ export function AppShell({
       <nav className="space-y-1">
         {navigationItems.map((item) => {
           if (item.separator) {
-            return <Separator key={item.id} className="my-2" />;
+            return (
+              <div key={item.id} className="my-3">
+                {item.sectionHeader && (
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-3 mb-2">
+                    {item.sectionHeader}
+                  </p>
+                )}
+                <Separator className="my-1" />
+              </div>
+            );
           }
 
           const active = isActive(item.path);
