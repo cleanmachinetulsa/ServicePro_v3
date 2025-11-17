@@ -315,6 +315,8 @@ export async function registerRoutes(app: Express) {
       '/api/available-slots',   // Public availability check
       '/api/services',          // Public service listing (needed for booking)
       '/api/addon-services',    // Public addon services
+      '/api/homepage-content',  // Public homepage CMS content
+      '/api/google-reviews',    // Public Google reviews for homepage
       '/api/privacy-policy',    // Public privacy policy
       '/api/recurring-service-booking', // Public recurring service booking
       '/api/referral/validate', // Public referral code validation (for booking flow)
