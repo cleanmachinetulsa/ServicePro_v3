@@ -1,44 +1,49 @@
 /**
  * Google Calendar Replit Connector Integration
  * Uses Replit's managed OAuth tokens with automatic refresh
+ * Includes retry logic for transient failures
  */
 
 import { google } from 'googleapis';
+import { retryCalendarOperation } from './googleApiRetry';
 
 let connectionSettings: any;
 
 async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-  
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
-  }
-
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-calendar',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
+  // Retry token fetch with exponential backoff
+  return retryCalendarOperation(async () => {
+    if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
+      return connectionSettings.settings.access_token;
     }
-  ).then(res => res.json()).then(data => data.items?.[0]);
+    
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY 
+      ? 'repl ' + process.env.REPL_IDENTITY 
+      : process.env.WEB_REPL_RENEWAL 
+      ? 'depl ' + process.env.WEB_REPL_RENEWAL 
+      : null;
 
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
+    if (!xReplitToken) {
+      throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+    }
 
-  if (!connectionSettings || !accessToken) {
-    throw new Error('Google Calendar not connected');
-  }
-  return accessToken;
+    connectionSettings = await fetch(
+      'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-calendar',
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X_REPLIT_TOKEN': xReplitToken
+        }
+      }
+    ).then(res => res.json()).then(data => data.items?.[0]);
+
+    const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
+
+    if (!connectionSettings || !accessToken) {
+      throw new Error('Google Calendar not connected');
+    }
+    return accessToken;
+  }, 'fetch access token');
 }
 
 /**
