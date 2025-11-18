@@ -134,11 +134,16 @@ export default function QuickBookingPage() {
           const data = await response.json();
           
           if (!data.success || !data.data) {
+            // Token expired, used, or invalid - clear state and show error
             toast({
-              title: "Quote Link Expired",
+              title: "Booking Link Issue",
               description: data.error || "This booking link is no longer valid. Please contact us to schedule.",
               variant: "destructive",
             });
+            // Reset to lookup step so user can manually enter contact info
+            setStep('lookup');
+            setContact('');
+            setCustomerData(null);
             return;
           }
           
