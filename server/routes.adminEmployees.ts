@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
-import { technicians, ptoRequests, shiftTrades, applicants, extensionPool } from '@shared/schema';
+import { technicians, ptoRequests, shiftTrades, applicants, extensionPool, businessSettings } from '@shared/schema';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 
 const router = Router();
@@ -646,6 +646,404 @@ router.post('/api/admin/employees/:id/retry-provision', async (req: Request, res
       success: false,
       error: error.message || 'Failed to retry provisioning',
     });
+  }
+});
+
+/**
+ * PATCH /api/admin/employees/:id
+ * Update technician details (including employmentStatus)
+ * Sends multi-channel notifications when status changes to non-active states
+ * 
+ * SECURITY: Requires admin role (owner/manager) and only allows whitelisted fields
+ */
+router.patch('/api/admin/employees/:id', async (req: Request, res: Response) => {
+  try {
+    // SECURITY CHECK 1: Authentication required
+    if (!req.session || !req.session.userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+
+    // Get authenticated user from database
+    const { users } = await import('@shared/schema');
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, req.session.userId))
+      .limit(1);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+
+    // SECURITY CHECK 2: Authorization - Admin privileges required
+    if (!['owner', 'manager'].includes(user.role)) {
+      console.warn(`[EMPLOYEE UPDATE] Unauthorized access attempt by user ${user.id} (${user.role})`);
+      return res.status(403).json({
+        success: false,
+        error: 'Admin privileges required',
+      });
+    }
+
+    // Attach user to request for downstream use in notifications
+    (req as any).user = user;
+
+    const { id } = req.params;
+    
+    // Validate employee ID
+    const techId = parseInt(id);
+    if (isNaN(techId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid employee ID',
+      });
+    }
+    
+    // Fetch existing technician record
+    const [existingTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    
+    if (!existingTech) {
+      return res.status(404).json({
+        success: false,
+        error: 'Technician not found',
+      });
+    }
+    
+    // SECURITY: Whitelist allowed fields to prevent mass assignment
+    // Only employmentStatus and terminationDate can be updated via this endpoint
+    const updateData: Partial<typeof technicians.$inferSelect> = {};
+    
+    // Extract and validate employmentStatus if provided
+    if (req.body.employmentStatus !== undefined) {
+      const validStatuses = ['active', 'inactive', 'on_leave', 'terminated'];
+      if (!validStatuses.includes(req.body.employmentStatus)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid employmentStatus. Must be one of: ${validStatuses.join(', ')}`,
+        });
+      }
+      updateData.employmentStatus = req.body.employmentStatus;
+    }
+    
+    // Extract terminationDate if provided
+    if (req.body.terminationDate !== undefined) {
+      updateData.terminationDate = req.body.terminationDate;
+    }
+    
+    // Detect status change
+    const statusChanged = updateData.employmentStatus && 
+                         updateData.employmentStatus !== existingTech.employmentStatus;
+    const oldStatus = existingTech.employmentStatus;
+    const newStatus = updateData.employmentStatus;
+    
+    // Auto-set terminationDate if status = terminated and none provided
+    if (updateData.employmentStatus === 'terminated' && !updateData.terminationDate) {
+      updateData.terminationDate = new Date().toISOString().split('T')[0];
+    }
+    
+    // Always set updatedAt timestamp
+    updateData.updatedAt = new Date();
+    
+    // AUDIT LOG: Log employee update for security audit trail
+    console.log(`[EMPLOYEE UPDATE] Admin ${user.username} (${user.role}) updating employee ${existingTech.fullName} (ID: ${techId})`);
+    if (statusChanged) {
+      console.log(`[EMPLOYEE UPDATE] Status change: ${oldStatus} → ${newStatus}`);
+    }
+    console.log(`[EMPLOYEE UPDATE] Whitelisted fields updated:`, Object.keys(updateData).filter(k => k !== 'updatedAt'));
+    
+    // Update technician record with ONLY whitelisted fields
+    await db.update(technicians)
+      .set(updateData)
+      .where(eq(technicians.id, techId));
+    
+    // Fetch updated technician
+    const [updatedTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    
+    if (!updatedTech) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update technician',
+      });
+    }
+    
+    // Send notifications if status changed to non-active states
+    if (statusChanged && ['inactive', 'on_leave', 'terminated'].includes(newStatus)) {
+      console.log(`[EMPLOYEE UPDATE] Status changed: ${oldStatus} → ${newStatus} for ${existingTech.fullName}`);
+      
+      // Wrap all notifications in try-catch to prevent breaking the update flow
+      try {
+        // Fetch business settings for notification contacts
+        const [settings] = await db.select().from(businessSettings).limit(1);
+        
+        // Get admin user who made the change (if authenticated)
+        const adminUserId = (req.user as any)?.id;
+        let adminName = 'Admin';
+        if (adminUserId) {
+          const { users } = await import('@shared/schema');
+          const [adminUser] = await db.select().from(users).where(eq(users.id, adminUserId)).limit(1);
+          if (adminUser) {
+            adminName = adminUser.fullName || adminUser.username;
+          }
+        }
+        
+        // Format status labels for display
+        const formatStatus = (status: string) => {
+          const labels: Record<string, string> = {
+            'active': 'Active',
+            'inactive': 'Inactive (Suspended)',
+            'on_leave': 'On Leave',
+            'terminated': 'Terminated',
+          };
+          return labels[status] || status;
+        };
+        
+        // CHANNEL 1: SMS to business owner
+        if (settings?.alertPhone) {
+          try {
+            const { sendSMS } = await import('./notifications');
+            
+            const smsMessage = `⚠️ Technician Status Changed
+${updatedTech.fullName} (${updatedTech.phone || 'No phone'})
+Status: ${formatStatus(oldStatus)} → ${formatStatus(newStatus)}${newStatus === 'terminated' && updatedTech.terminationDate ? `\nTermination Date: ${updatedTech.terminationDate}` : ''}
+
+Next: Review employee record and update schedules.`;
+            
+            await sendSMS(settings.alertPhone, smsMessage);
+            console.log(`[EMPLOYEE UPDATE] SMS notification sent to ${settings.alertPhone}`);
+          } catch (smsError: any) {
+            console.error('[EMPLOYEE UPDATE] Failed to send SMS notification:', smsError.message);
+          }
+        } else {
+          console.warn('[EMPLOYEE UPDATE] No alertPhone configured, skipping SMS notification');
+        }
+        
+        // CHANNEL 2: Email to business owner (branded template)
+        if (settings?.backupEmail) {
+          try {
+            const { sendBusinessEmail } = await import('./emailService');
+            
+            const subject = `⚠️ Technician Status Changed - ${updatedTech.fullName}`;
+            
+            // Plain text version
+            const textContent = `
+Technician Status Changed
+
+Technician: ${updatedTech.fullName}
+Phone: ${updatedTech.phone || 'N/A'}
+Email: ${updatedTech.email || 'N/A'}
+Status Change: ${formatStatus(oldStatus)} → ${formatStatus(newStatus)}
+Role: ${updatedTech.role || 'technician'}
+Hire Date: ${updatedTech.hireDate || 'N/A'}
+${newStatus === 'terminated' && updatedTech.terminationDate ? `Termination Date: ${updatedTech.terminationDate}` : ''}
+Updated By: ${adminName}
+
+Next Steps:
+- Review employee record
+- Update schedules/assignments
+- Cancel active jobs (if needed)
+${newStatus === 'terminated' ? '- Archive employee data' : ''}
+
+View Employee Profile: ${process.env.REPLIT_DOMAIN || 'https://yourapp.replit.app'}/admin/employees
+            `.trim();
+            
+            // HTML version with branded styling
+            const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <!-- Header with alert styling -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%); padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
+                ⚠️ Technician Status Changed
+              </h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 30px;">
+              <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.5;">
+                A technician's employment status has been updated in the system.
+              </p>
+              
+              <!-- Details Table -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Technician</td>
+                  <td style="padding: 10px; background-color: #ffffff; border: 1px solid #e5e7eb; color: #1f2937;">${updatedTech.fullName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Phone</td>
+                  <td style="padding: 10px; background-color: #ffffff; border: 1px solid #e5e7eb; color: #1f2937;">${updatedTech.phone || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Email</td>
+                  <td style="padding: 10px; background-color: #ffffff; border: 1px solid #e5e7eb; color: #1f2937;">${updatedTech.email || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Status Change</td>
+                  <td style="padding: 10px; background-color: #fff7ed; border: 1px solid #fed7aa; color: #c2410c; font-weight: 600;">
+                    ${formatStatus(oldStatus)} → ${formatStatus(newStatus)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Role</td>
+                  <td style="padding: 10px; background-color: #ffffff; border: 1px solid #e5e7eb; color: #1f2937;">${updatedTech.role || 'technician'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Hire Date</td>
+                  <td style="padding: 10px; background-color: #ffffff; border: 1px solid #e5e7eb; color: #1f2937;">${updatedTech.hireDate || 'N/A'}</td>
+                </tr>
+                ${newStatus === 'terminated' && updatedTech.terminationDate ? `
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Termination Date</td>
+                  <td style="padding: 10px; background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-weight: 600;">${updatedTech.terminationDate}</td>
+                </tr>
+                ` : ''}
+                <tr>
+                  <td style="padding: 10px; background-color: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600; color: #374151;">Updated By</td>
+                  <td style="padding: 10px; background-color: #ffffff; border: 1px solid #e5e7eb; color: #1f2937;">${adminName}</td>
+                </tr>
+              </table>
+              
+              <!-- Next Steps -->
+              <div style="margin: 25px 0; padding: 20px; background-color: #f0f9ff; border-left: 4px solid #0ea5e9; border-radius: 4px;">
+                <h3 style="margin: 0 0 10px; color: #0c4a6e; font-size: 16px; font-weight: 600;">Next Steps</h3>
+                <ul style="margin: 0; padding-left: 20px; color: #374151; line-height: 1.6;">
+                  <li>Review employee record</li>
+                  <li>Update schedules/assignments</li>
+                  <li>Cancel active jobs (if needed)</li>
+                  ${newStatus === 'terminated' ? '<li>Archive employee data</li>' : ''}
+                </ul>
+              </div>
+              
+              <!-- CTA Buttons -->
+              <table role="presentation" style="width: 100%; margin: 25px 0;">
+                <tr>
+                  <td align="center" style="padding: 10px;">
+                    <a href="${process.env.REPLIT_DOMAIN || 'https://yourapp.replit.app'}/admin/employees/${techId}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">View Employee Profile</a>
+                  </td>
+                  <td align="center" style="padding: 10px;">
+                    <a href="${process.env.REPLIT_DOMAIN || 'https://yourapp.replit.app'}/admin/employees" style="display: inline-block; padding: 12px 24px; background-color: #64748b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Manage Employees</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px; background-color: #f9fafb; border-radius: 0 0 8px 8px; text-align: center;">
+              <p style="margin: 0; color: #6b7280; font-size: 12px;">
+                Clean Machine Auto Detail | Employee Management System
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+            `.trim();
+            
+            await sendBusinessEmail(settings.backupEmail, subject, textContent, htmlContent);
+            console.log(`[EMPLOYEE UPDATE] Email notification sent to ${settings.backupEmail}`);
+          } catch (emailError: any) {
+            console.error('[EMPLOYEE UPDATE] Failed to send email notification:', emailError.message);
+          }
+        } else {
+          console.warn('[EMPLOYEE UPDATE] No backupEmail configured, skipping email notification');
+        }
+        
+        // CHANNEL 3: Push notifications to admin users (owner/manager roles)
+        try {
+          const { sendPushNotification } = await import('./pushNotificationService');
+          const { users } = await import('@shared/schema');
+          const { inArray } = await import('drizzle-orm');
+          
+          // Get all owner/manager users
+          const adminUsers = await db
+            .select({ id: users.id, role: users.role })
+            .from(users)
+            .where(inArray(users.role, ['owner', 'manager']))
+            .groupBy(users.id, users.role);
+          
+          if (adminUsers.length > 0) {
+            const pushPayload = {
+              title: '⚠️ Technician Status Changed',
+              body: `${updatedTech.fullName}: ${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`,
+              tag: `technician-status-${techId}`,
+              data: {
+                type: 'technician_status_change',
+                technicianId: techId,
+                oldStatus: oldStatus,
+                newStatus: newStatus,
+                url: `/admin/employees/${techId}`,
+              },
+            };
+            
+            for (const admin of adminUsers) {
+              try {
+                await sendPushNotification(admin.id, pushPayload);
+                console.log(`[EMPLOYEE UPDATE] Push notification sent to admin user ${admin.id}`);
+              } catch (pushError: any) {
+                console.error(`[EMPLOYEE UPDATE] Failed to send push to admin ${admin.id}:`, pushError.message);
+              }
+            }
+          } else {
+            console.warn('[EMPLOYEE UPDATE] No admin users found for push notifications');
+          }
+        } catch (pushError: any) {
+          console.error('[EMPLOYEE UPDATE] Failed to send push notifications:', pushError.message);
+        }
+        
+      } catch (notificationError: any) {
+        // Log notification errors but don't fail the request
+        console.error('[EMPLOYEE UPDATE] Notification error:', notificationError);
+      }
+    }
+    
+    // Always return success with updated employee
+    return res.json({
+      success: true,
+      employee: updatedTech,
+      message: statusChanged 
+        ? `Employee status updated from ${formatStatus(oldStatus)} to ${formatStatus(newStatus)}`
+        : 'Employee updated successfully',
+    });
+    
+  } catch (error: any) {
+    console.error('[EMPLOYEE UPDATE] Error updating employee:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update employee',
+    });
+  }
+  
+  // Helper function for status labels
+  function formatStatus(status: string): string {
+    const labels: Record<string, string> = {
+      'active': 'Active',
+      'inactive': 'Inactive (Suspended)',
+      'on_leave': 'On Leave',
+      'terminated': 'Terminated',
+    };
+    return labels[status] || status;
   }
 });
 
