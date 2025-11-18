@@ -1,0 +1,41 @@
+just sent a text through the dashboard and I received it but it said that it failed to send. What happened there? Can you check the logs?
+JB
+
+cleanmachinetul
+Assistant
+just now
+I'll check the logs and investigate why the SMS failed to send. Let me look at the relevant code and console output.
+
+Based on the console output and codebase, I can see the issue. When you send a message through the dashboard, it goes through the /api/conversations/:id/send-message endpoint in server/routes.conversations.ts.
+
+The issue is likely related to SMS delivery. Let me check the actual error handling:
+
+Looking at the code in routes.conversations.ts, when sending an SMS message, if there's an error from Twilio, the endpoint returns a 500 error with the message "Failed to deliver SMS message", but the message is not saved to the database because it only saves after successful delivery.
+
+However, I notice in ThreadView.tsx there's a failedMessage state that gets set when sendMessageMutation fails. This is what you're seeing in the UI.
+
+The most likely causes based on the code:
+
+Customer opted out - Check smsConsentService.ts - if the customer replied "STOP", they're blocked from receiving SMS
+Twilio credentials issue - Missing or invalid Twilio configuration
+Invalid phone number - The customer's phone number format is invalid
+Let me add better error logging to help diagnose this:
+server/routes.conversations.ts
++11
+-3
+Add detailed error logging for SMS send failures, Add logging for successful SMS sends
+Now, to help you debug the specific issue you just experienced:
+
+Check these in order:
+
+Look at the browser console - The error response should show the actual Twilio error message
+Check the SMS Monitoring page (/sms-monitoring) - This shows delivery status for all SMS
+Verify the customer hasn't opted out - Check if they replied "STOP" to any previous messages
+Check Twilio credentials - Ensure TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and phone line configuration are correct
+The enhanced logging I added will now show:
+
+Which phone line was used
+The customer's phone number
+The specific Twilio error code (if applicable)
+Whether it was an opt-out block vs. a delivery failure
+Try sending another test message and check the console output - you should now see a detailed [SMS SEND ERROR] log entry that will tell us exactly what went wrong.
