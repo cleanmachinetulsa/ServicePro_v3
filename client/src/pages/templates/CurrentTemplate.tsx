@@ -18,13 +18,9 @@ interface CurrentTemplateProps {
 }
 
 export default function CurrentTemplate({ content: propsContent }: CurrentTemplateProps = {}) {
-  // Fetch CMS content for homepage (fallback if not provided via props)
-  const { data } = useQuery<{ success: boolean; content: HomepageContent }>({
-    queryKey: ['/api/homepage-content'],
-    enabled: !propsContent, // Only fetch if not provided via props
-  });
-
-  const content = propsContent || data?.content;
+  // ALWAYS use props content - fetching is handled by parent (home.tsx)
+  // This prevents double-fetching and content flash
+  const content = propsContent;
 
   // Update SEO meta tags when content loads
   useEffect(() => {
