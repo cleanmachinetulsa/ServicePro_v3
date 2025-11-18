@@ -26,6 +26,7 @@ import smsTemplatesRouter from "./routes.smsTemplates";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import { setupGoogleOAuth } from "./googleOAuth";
 import path from "path";
+import { runStartupHealthChecks } from "./healthChecks";
 
 const app = express();
 
@@ -251,6 +252,9 @@ app.use((req, res, next) => {
   
   // Register phone settings routes (phone line configuration)
   app.use('/api/phone-settings', phoneSettingsRouter);
+
+  // Run startup health checks for external services
+  await runStartupHealthChecks();
 
   // Start timeout monitoring for manual mode conversations
   const { startTimeoutMonitoring } = await import('./timeoutMonitorService');
