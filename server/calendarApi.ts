@@ -7,6 +7,7 @@ import {
   scheduleDayBeforeReminder,
 } from "./notifications";
 import { trackReferralSignup } from "./referralService";
+import { recordAppointmentCreated } from "./customerBookingStats";
 
 // COMMIT
 // Configuration for booking appointments
@@ -658,18 +659,23 @@ export async function handleBook(req: any, res: any) {
 
           customerId = customer.id;
 
-          // Create appointment record with lat/lng
-          await dbInstance.insert(appointments).values({
-            customerId: customer.id,
-            serviceId: serviceId,
-            scheduledTime: startTime,
-            address: address || '',
-            latitude: latitude || null,
-            longitude: longitude || null,
-            addressConfirmedByCustomer: !!latitude,
-            addressNeedsReview: addressNeedsReview || false,
-            addOns: addOns.length > 0 ? addOns : null,
-            additionalRequests: notes ? [notes] : null,
+          // Create appointment record with lat/lng - wrap in transaction with stats update
+          await dbInstance.transaction(async (tx) => {
+            await tx.insert(appointments).values({
+              customerId: customer.id,
+              serviceId: serviceId,
+              scheduledTime: startTime,
+              address: address || '',
+              latitude: latitude || null,
+              longitude: longitude || null,
+              addressConfirmedByCustomer: !!latitude,
+              addressNeedsReview: addressNeedsReview || false,
+              addOns: addOns.length > 0 ? addOns : null,
+              additionalRequests: notes ? [notes] : null,
+            });
+
+            // Track booking stats for customer - in same transaction
+            await recordAppointmentCreated(customer.id, startTime, tx);
           });
 
           console.log('[DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
@@ -733,18 +739,23 @@ export async function handleBook(req: any, res: any) {
       const fallbackServiceInfo = await getServiceInfo(service);
       const fallbackServiceId = fallbackServiceInfo.serviceId;
 
-      // Create appointment record with lat/lng
-      await dbInst.insert(appointments).values({
-        customerId: customer.id,
-        serviceId: fallbackServiceId,
-        scheduledTime: new Date(time),
-        address: address || '',
-        latitude: latitude || null,
-        longitude: longitude || null,
-        addressConfirmedByCustomer: !!latitude,
-        addressNeedsReview: addressNeedsReview || false,
-        addOns: addOns.length > 0 ? addOns : null,
-        additionalRequests: notes ? [notes] : null,
+      // Create appointment record with lat/lng - wrap in transaction with stats update
+      await dbInst.transaction(async (tx) => {
+        await tx.insert(appointments).values({
+          customerId: customer.id,
+          serviceId: fallbackServiceId,
+          scheduledTime: new Date(time),
+          address: address || '',
+          latitude: latitude || null,
+          longitude: longitude || null,
+          addressConfirmedByCustomer: !!latitude,
+          addressNeedsReview: addressNeedsReview || false,
+          addOns: addOns.length > 0 ? addOns : null,
+          additionalRequests: notes ? [notes] : null,
+        });
+
+        // Track booking stats for customer - in same transaction
+        await recordAppointmentCreated(customer.id, new Date(time), tx);
       });
 
       console.log('[FALLBACK DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
