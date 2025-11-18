@@ -480,15 +480,13 @@ export default function EnhancedChatbotUI() {
     setIsTyping(true);
 
     try {
-      const response = await fetch("/sms", {
+      const response = await fetch("/api/web-chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Client-Type": "web", // Add header to identify this as a web client request
         },
         body: JSON.stringify({
           Body: messageText,
-          From: customerPhone || "+15551234567", // Use customer phone or placeholder
         }),
       });
 
@@ -518,6 +516,8 @@ export default function EnhancedChatbotUI() {
     } catch (err) {
       console.error("Error sending message:", err);
       const error = err as Error;
+
+      // Error logging happens server-side in /api/web-chat endpoint
 
       // Add error message to chat
       const errorMessage: Message = {

@@ -537,15 +537,46 @@ export function registerConversationRoutes(app: Express) {
 
       // Save message to database after successful delivery (or for web chat)
       const messageMetadata = attachments.length > 0 ? { attachments } : null;
-      const message = await addMessage(
-        conversationId, 
-        processedContent || '', 
-        'agent', 
-        channel || 'web',
-        messageMetadata,
-        phoneLineId || conversation.phoneLineId || undefined
-      );
-      // For web chat, the message is broadcast via WebSocket in addMessage
+      let message;
+      
+      try {
+        message = await addMessage(
+          conversationId, 
+          processedContent || '', 
+          'agent', 
+          channel || 'web',
+          messageMetadata,
+          phoneLineId || conversation.phoneLineId || undefined
+        );
+        // For web chat, the message is broadcast via WebSocket in addMessage
+      } catch (dbError: any) {
+        // Log the database error but don't fail the request if message was already sent
+        console.error('[MESSAGE DB SAVE ERROR] Message was delivered but failed to save to database:', {
+          conversationId,
+          error: dbError.message || String(dbError),
+          platform: conversation.platform,
+        });
+        
+        // If message was sent via SMS/Facebook/Instagram, still return success
+        // since the customer received it (database save is secondary)
+        if (conversation.platform !== 'web') {
+          return res.json({
+            success: true,
+            data: null,
+            message: conversation.platform === 'sms' 
+              ? 'Message sent successfully via SMS (note: database save failed)'
+              : conversation.platform === 'facebook'
+              ? 'Message sent successfully via Facebook Messenger (note: database save failed)'
+              : conversation.platform === 'instagram'
+              ? 'Message sent successfully via Instagram DM (note: database save failed)'
+              : 'Message sent successfully',
+            warning: 'Message was delivered but not saved to message history',
+          });
+        }
+        
+        // For web chat, database save is critical since there's no external delivery
+        throw dbError;
+      }
 
       res.json({
         success: true,

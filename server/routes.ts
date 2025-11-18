@@ -184,6 +184,9 @@ export async function registerRoutes(app: Express) {
   // Register health check routes (FIRST - no auth required)
   registerHealthRoutes(app);
 
+  // SECURITY NOTE: Removed client-side error reporting endpoints to prevent abuse
+  // All chatbot errors are now logged server-side in /api/web-chat endpoint
+
   // Register authentication routes
   registerAuthRoutes(app);
   
@@ -1677,6 +1680,98 @@ export async function registerRoutes(app: Express) {
           </body>
         </html>
       `);
+    }
+  });
+
+  // Web Chat endpoint (for homepage chatbot)
+  // SECURITY: No Twilio signature required - this is for web clients only
+  // Rate-limited to prevent abuse
+  const webChatAttempts = new Map<string, number[]>();
+  const WEB_CHAT_RATE_LIMIT = 20; // Max 20 messages per IP per 5 minutes
+  const WEB_CHAT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+  
+  app.post('/api/web-chat', async (req: Request, res: Response) => {
+    try {
+      const clientIp = req.ip || 'unknown';
+      const now = Date.now();
+      
+      // Rate limiting check
+      if (!webChatAttempts.has(clientIp)) {
+        webChatAttempts.set(clientIp, []);
+      }
+      
+      const attempts = webChatAttempts.get(clientIp)!;
+      const recentAttempts = attempts.filter(timestamp => now - timestamp < WEB_CHAT_WINDOW_MS);
+      
+      if (recentAttempts.length >= WEB_CHAT_RATE_LIMIT) {
+        console.warn(`[WEB CHAT] Rate limit exceeded for IP ${clientIp}`);
+        return res.status(429).json({ 
+          success: false, 
+          error: 'Too many messages. Please slow down.' 
+        });
+      }
+      
+      recentAttempts.push(now);
+      webChatAttempts.set(clientIp, recentAttempts);
+      
+      const { Body } = req.body;
+      const message = Body || '';
+      
+      if (!message.trim()) {
+        return res.status(400).json({ success: false, error: 'Message is required' });
+      }
+      
+      // SECURITY: Generate a unique session-based identifier for web users
+      // NEVER trust client-supplied phone numbers - prevents customer impersonation
+      const sessionId = (req as any).session?.id || `web-${clientIp}-${Math.random().toString(36).substr(2, 9)}`;
+      const webIdentifier = `web-chat-${sessionId}`;
+      
+      // Process the web chat message (isolated from SMS customers)
+      const { getOrCreateConversation, addMessage } = await import('./conversationService');
+      const { processConversation } = await import('./conversationHandler');
+      
+      const conversation = await getOrCreateConversation(
+        webIdentifier, // Use session-based ID, not client-supplied phone
+        null, // customerName
+        'web', // platform
+        undefined, undefined, undefined, undefined, undefined, undefined
+      );
+      
+      // Save incoming message
+      await addMessage(conversation.id, message, 'customer', 'web');
+      
+      // Process with AI
+      const response = await processConversation(webIdentifier, message, 'web');
+      
+      return res.json({
+        success: true,
+        message: response.response,
+      });
+    } catch (error: any) {
+      console.error('[WEB CHAT] Error processing web chat message:', error);
+      
+      // Log critical chatbot errors server-side (triggers SMS alerts)
+      try {
+        const { logError } = await import('./errorMonitoring');
+        await logError({
+          type: 'api',
+          severity: 'critical',
+          message: `Homepage chatbot error: ${error.message || 'Unknown error'}`,
+          endpoint: '/api/web-chat',
+          metadata: {
+            errorStack: error.stack,
+            clientIp,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch (logErr) {
+        console.error('[WEB CHAT] Failed to log error:', logErr);
+      }
+      
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to process message',
+      });
     }
   });
 
