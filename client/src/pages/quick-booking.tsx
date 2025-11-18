@@ -121,6 +121,72 @@ export default function QuickBookingPage() {
     }
   }, []);
 
+  // Handle quote-to-booking workflow (auto-fill from approved quote)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const quoteToken = params.get('quote');
+    
+    if (quoteToken) {
+      // Fetch booking data from quote approval
+      const loadQuoteData = async () => {
+        try {
+          const response = await fetch(`/api/quote-approval/booking-data/${quoteToken}`);
+          const data = await response.json();
+          
+          if (!data.success || !data.data) {
+            toast({
+              title: "Quote Link Expired",
+              description: data.error || "This booking link is no longer valid. Please contact us to schedule.",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          const quoteData = data.data;
+          
+          // Auto-fill customer data
+          setCustomerData({
+            found: true,
+            name: quoteData.customerName,
+            phone: quoteData.phone,
+            email: quoteData.email || '',
+            address: '', // Quote doesn't have address
+            loyaltyPoints: 0,
+            lastAppointment: null,
+            vehicleInfo: '',
+          });
+          
+          setContact(quoteData.phone);
+          
+          // Set service name to damage type (specialty job)
+          setSelectedServiceName(quoteData.damageType);
+          setBookUsual(false); // Not booking usual service
+          
+          // Initialize vehicles array
+          setVehicles([{ make: "", model: "", year: "" }]);
+          setConfirmedVehicles([true]);
+          
+          // Skip to confirmation step
+          setStep('confirmation');
+          
+          toast({
+            title: "Quote Data Loaded",
+            description: `Ready to schedule your ${quoteData.damageType} service`,
+          });
+        } catch (error) {
+          console.error('Error loading quote data:', error);
+          toast({
+            title: "Error Loading Quote",
+            description: "Could not load quote data. Please try again or contact us.",
+            variant: "destructive",
+          });
+        }
+      };
+      
+      loadQuoteData();
+    }
+  }, []);
+
   // Validate referral code (matches Schedule.tsx pattern)
   const validateReferralCode = async (code: string) => {
     const normalizedCode = code.trim().toUpperCase();

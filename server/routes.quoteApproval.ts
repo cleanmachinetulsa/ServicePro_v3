@@ -55,6 +55,53 @@ function consumeOTP(phone: string, code: string): boolean {
 const router = Router();
 
 /**
+ * GET /api/quote-approval/booking-data/:token
+ * Retrieve booking data from quote approval token
+ * Allows customers to proceed to booking after approving a quote
+ */
+router.get('/booking-data/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    // Retrieve from global store
+    const bookingTokenStore = (global as any).bookingTokenStore || new Map();
+    const bookingData = bookingTokenStore.get(token);
+    
+    if (!bookingData) {
+      return res.status(404).json({
+        error: 'Booking token not found or expired'
+      });
+    }
+    
+    // Check expiration
+    if (Date.now() > bookingData.expiresAt) {
+      bookingTokenStore.delete(token);
+      return res.status(410).json({
+        error: 'Booking token has expired. Please contact us to schedule.'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        quoteId: bookingData.quoteId,
+        customerName: bookingData.customerName,
+        phone: bookingData.phone,
+        email: bookingData.email,
+        damageType: bookingData.damageType,
+        customQuoteAmount: bookingData.customQuoteAmount,
+        issueDescription: bookingData.issueDescription,
+      }
+    });
+  } catch (error) {
+    console.error('[QUOTE APPROVAL] Error retrieving booking data:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve booking data'
+    });
+  }
+});
+
+/**
  * GET /api/quote-approval/:token
  * Fetch quote data for approval page (public, no auth required)
  */
@@ -274,13 +321,32 @@ router.post('/:token/approve', async (req, res) => {
       await sendSMS(businessPhone, ownerMessage);
     }
 
-    // TODO: Task 11 will add automatic transition to booking flow here
+    // Generate booking token for automatic transition to booking flow
+    // This allows the customer to immediately schedule the approved service
+    const bookingToken = crypto.randomBytes(32).toString('hex');
+    
+    // Store booking token with quote data (expires in 24 hours)
+    const bookingData = {
+      quoteId: quote.id,
+      customerName: quote.customerName,
+      phone: quote.phone,
+      email: quote.email || '',
+      damageType: quote.damageType,
+      customQuoteAmount: quote.customQuoteAmount,
+      issueDescription: quote.issueDescription,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+    };
+    
+    // Store in memory (TODO: Move to Redis for production)
+    (global as any).bookingTokenStore = (global as any).bookingTokenStore || new Map();
+    (global as any).bookingTokenStore.set(bookingToken, bookingData);
 
-    console.log(`[QUOTE APPROVAL] Quote ${quote.id} approved by ${approverType}`);
+    console.log(`[QUOTE APPROVAL] Quote ${quote.id} approved by ${approverType}, booking token generated: ${bookingToken}`);
 
     res.json({
       success: true,
-      message: 'Quote approved successfully'
+      message: 'Quote approved successfully',
+      bookingToken, // Frontend will use this to redirect to booking
     });
   } catch (error) {
     console.error('[QUOTE APPROVAL] Error approving quote:', error);
