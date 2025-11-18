@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { RecurringServicesCalendar } from '@/components/RecurringServicesCalendar';
 import { FlexibleIntervalPicker, IntervalType } from '@/components/FlexibleIntervalPicker';
 import { Calendar, Clock, CheckCircle, AlertCircle, Loader2, CalendarClock } from 'lucide-react';
@@ -28,6 +30,13 @@ interface CalendarDay {
   timeSlots?: any[];
 }
 
+const TIME_OPTIONS = [
+  '8:00 AM', '8:30 AM', '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM',
+  '2:00 PM', '2:30 PM', '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM', '6:00 PM'
+];
+
 export default function RecurringServiceBookingPage() {
   const [location, setLocation] = useLocation();
   const [, params] = useRoute('/recurring-booking/:serviceId');
@@ -39,6 +48,7 @@ export default function RecurringServiceBookingPage() {
   const [isDeferred, setIsDeferred] = useState(false);
   const [currentStep, setCurrentStep] = useState<'interval' | 'dates' | 'confirm'>('interval');
   const [customerId, setCustomerId] = useState<number | null>(null);
+  const [selectedTime, setSelectedTime] = useState('9:00 AM');
 
   const serviceId = params?.serviceId ? parseInt(params.serviceId) : null;
 
@@ -158,7 +168,7 @@ export default function RecurringServiceBookingPage() {
       intervalType: selectedInterval,
       autoRenew: true,
       status: 'active',
-      preferredTime: '9:00 AM', // TODO: Add time picker
+      preferredTime: selectedTime,
     };
 
     // Only include intervalCustomDates for custom_dates interval
@@ -374,6 +384,30 @@ export default function RecurringServiceBookingPage() {
                     </div>
                   </div>
                 )}
+
+                <div>
+                  <Label htmlFor="time-picker" className="font-semibold text-sm text-gray-600 dark:text-gray-400">
+                    Preferred Service Time
+                  </Label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                    We'll try to schedule around this time
+                  </p>
+                  <Select value={selectedTime} onValueChange={setSelectedTime}>
+                    <SelectTrigger id="time-picker" className="w-full sm:w-64" data-testid="select-time">
+                      <SelectValue placeholder="Select a time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIME_OPTIONS.map((time) => (
+                        <SelectItem key={time} value={time}>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-gray-500" />
+                            {time}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
