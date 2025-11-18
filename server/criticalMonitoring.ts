@@ -232,11 +232,144 @@ class CriticalMonitor {
   }
 
   /**
-   * Send email alerts (stub for future implementation)
+   * Send email alerts using branded template system
    */
   private async sendEmailAlerts(recipients: string[], integrationName: string, health: IntegrationHealth) {
-    console.log(`[CRITICAL MONITOR] 📧 Email alerts to ${recipients.length} recipients (not yet implemented)`);
-    // TODO: Implement email sending when needed
+    console.log(`[CRITICAL MONITOR] 📧 Sending critical alert emails to ${recipients.length} recipients`);
+    
+    // Import email functions dynamically
+    const { sendBusinessEmail } = await import('./emailService');
+    const { renderBrandedEmail, renderBrandedEmailPlainText } = await import('./emailTemplates/base');
+    
+    const timestamp = new Date().toLocaleString('en-US', {
+      dateStyle: 'full',
+      timeStyle: 'long',
+      timeZone: 'America/Chicago'
+    });
+    
+    // Build alert details table
+    const alertDetails: Array<{ label: string; value: string }> = [
+      { label: 'Integration', value: integrationName },
+      { label: 'Status', value: '🔴 FAILED' },
+      { label: 'Consecutive Failures', value: health.consecutiveFailures.toString() },
+      { label: 'Threshold', value: `${this.config.failureThreshold} failures` },
+      { label: 'Timestamp', value: timestamp }
+    ];
+    
+    if (health.lastError) {
+      alertDetails.push({
+        label: 'Last Error',
+        value: health.lastError.substring(0, 200) + (health.lastError.length > 200 ? '...' : '')
+      });
+    }
+    
+    // Create email data using branded template
+    const emailData: any = {
+      preheader: `CRITICAL: ${integrationName} has failed ${health.consecutiveFailures} times. Immediate action required.`,
+      subject: `🚨 CRITICAL ALERT: ${integrationName} System Failure`,
+      hero: {
+        title: '🚨 Critical System Failure',
+        subtitle: `${integrationName} requires immediate attention`
+      },
+      sections: [
+        {
+          type: 'text',
+          content: `
+            <div style="background-color: #fef2f2; padding: 20px; border-radius: 8px; border-left: 4px solid #dc2626; margin: 20px 0;">
+              <h3 style="color: #991b1b; margin-top: 0; font-size: 18px; font-weight: bold;">⚠️ Urgent Action Required</h3>
+              <p style="margin: 10px 0; color: #1f2937; font-size: 16px;">
+                The <strong>${integrationName}</strong> integration has failed <strong>${health.consecutiveFailures} consecutive times</strong>, 
+                exceeding the critical threshold of ${this.config.failureThreshold} failures.
+              </p>
+              <p style="margin: 10px 0; color: #1f2937;">
+                This may be affecting customer experience and business operations. Please investigate and resolve immediately.
+              </p>
+            </div>
+          `
+        },
+        {
+          type: 'spacer',
+          padding: '10px'
+        },
+        {
+          type: 'text',
+          content: '<h3 style="color: #1f2937; font-size: 18px; margin-bottom: 10px;">📊 Failure Details</h3>'
+        },
+        {
+          type: 'table',
+          items: alertDetails
+        },
+        {
+          type: 'spacer',
+          padding: '20px'
+        },
+        {
+          type: 'highlight',
+          content: `
+            <strong>🔍 Recommended Actions:</strong><br><br>
+            1. Check the monitoring dashboard for real-time status<br>
+            2. Review system logs for detailed error messages<br>
+            3. Verify API credentials and service connectivity<br>
+            4. Test the integration manually if possible<br>
+            5. Contact support if the issue persists
+          `
+        },
+        {
+          type: 'spacer',
+          padding: '20px'
+        },
+        {
+          type: 'text',
+          content: `
+            <div style="background-color: #fffbeb; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0;">
+              <h3 style="color: #92400e; margin-top: 0; font-size: 16px; font-weight: bold;">📝 Alert Information</h3>
+              <p style="margin: 5px 0; color: #1f2937; font-size: 14px;">
+                <strong>Cooldown Period:</strong> ${this.config.cooldownMinutes} minutes between alerts
+              </p>
+              <p style="margin: 5px 0; color: #1f2937; font-size: 14px;">
+                <strong>Alert Channels:</strong> ${Object.entries(this.config.alertChannels).filter(([_, enabled]) => enabled).map(([channel]) => channel.toUpperCase()).join(', ')}
+              </p>
+              <p style="margin: 5px 0; color: #1f2937; font-size: 14px;">
+                You will receive recovery notification once the system is back online.
+              </p>
+            </div>
+          `
+        }
+      ],
+      ctas: [
+        {
+          text: 'View Monitor Dashboard',
+          url: `${process.env.VITE_DEPLOYMENT_URL || 'http://localhost:5000'}/monitor`,
+          style: 'primary'
+        },
+        {
+          text: 'Check System Logs',
+          url: `${process.env.VITE_DEPLOYMENT_URL || 'http://localhost:5000'}/monitor`,
+          style: 'secondary'
+        }
+      ],
+      notes: 'This is an automated critical alert from your Clean Machine monitoring system. Please do not reply to this email. Take action immediately to resolve the system failure.'
+    };
+    
+    // Render HTML and plain text versions
+    const htmlContent = renderBrandedEmail(emailData);
+    const textContent = renderBrandedEmailPlainText(emailData);
+    const subject = `🚨 CRITICAL ALERT: ${integrationName} System Failure`;
+    
+    // Send to all recipients
+    for (const recipient of recipients) {
+      try {
+        const result = await sendBusinessEmail(recipient, subject, textContent, htmlContent);
+        
+        if (result.success) {
+          console.log(`[CRITICAL MONITOR] ✅ Critical alert email sent to ${recipient}`);
+        } else {
+          console.error(`[CRITICAL MONITOR] ❌ Failed to send email to ${recipient}:`, result.error);
+        }
+      } catch (error) {
+        console.error(`[CRITICAL MONITOR] ❌ Exception sending email to ${recipient}:`, error);
+      }
+    }
   }
 
   /**
@@ -271,6 +404,133 @@ class CriticalMonitor {
         }
       } catch (error) {
         console.error('[CRITICAL MONITOR] Error sending recovery push notifications:', error);
+      }
+    }
+
+    // Send email recovery notifications
+    if (this.config.alertChannels.email && this.config.emailRecipients.length > 0) {
+      await this.sendEmailRecoveryAlerts(this.config.emailRecipients, integrationName);
+    }
+  }
+
+  /**
+   * Send email recovery notifications using branded template system
+   */
+  private async sendEmailRecoveryAlerts(recipients: string[], integrationName: string) {
+    console.log(`[CRITICAL MONITOR] 📧 Sending recovery notification emails to ${recipients.length} recipients`);
+    
+    // Import email functions dynamically
+    const { sendBusinessEmail } = await import('./emailService');
+    const { renderBrandedEmail, renderBrandedEmailPlainText } = await import('./emailTemplates/base');
+    
+    const timestamp = new Date().toLocaleString('en-US', {
+      dateStyle: 'full',
+      timeStyle: 'long',
+      timeZone: 'America/Chicago'
+    });
+    
+    // Build recovery details table
+    const recoveryDetails: Array<{ label: string; value: string }> = [
+      { label: 'Integration', value: integrationName },
+      { label: 'Status', value: '✅ RECOVERED' },
+      { label: 'Recovery Time', value: timestamp }
+    ];
+    
+    // Create email data using branded template
+    const emailData: any = {
+      preheader: `Good news! ${integrationName} has recovered and is now working normally.`,
+      subject: `✅ RECOVERY: ${integrationName} System Restored`,
+      hero: {
+        title: '✅ System Recovered',
+        subtitle: `${integrationName} is now working normally`
+      },
+      sections: [
+        {
+          type: 'text',
+          content: `
+            <div style="background-color: #f0fdf4; padding: 20px; border-radius: 8px; border-left: 4px solid #10b981; margin: 20px 0;">
+              <h3 style="color: #065f46; margin-top: 0; font-size: 18px; font-weight: bold;">✅ System Back Online</h3>
+              <p style="margin: 10px 0; color: #1f2937; font-size: 16px;">
+                Good news! The <strong>${integrationName}</strong> integration has recovered and is now functioning normally.
+              </p>
+              <p style="margin: 10px 0; color: #1f2937;">
+                Normal operations have resumed. You can continue to monitor the system for stability.
+              </p>
+            </div>
+          `
+        },
+        {
+          type: 'spacer',
+          padding: '10px'
+        },
+        {
+          type: 'text',
+          content: '<h3 style="color: #1f2937; font-size: 18px; margin-bottom: 10px;">📊 Recovery Details</h3>'
+        },
+        {
+          type: 'table',
+          items: recoveryDetails
+        },
+        {
+          type: 'spacer',
+          padding: '20px'
+        },
+        {
+          type: 'highlight',
+          content: `
+            <strong>📝 Next Steps:</strong><br><br>
+            1. Continue monitoring the dashboard for system stability<br>
+            2. Review logs to identify the root cause of the failure<br>
+            3. Consider implementing preventive measures if applicable<br>
+            4. Document any lessons learned for future reference
+          `
+        },
+        {
+          type: 'spacer',
+          padding: '20px'
+        },
+        {
+          type: 'text',
+          content: `
+            <div style="background-color: #eff6ff; padding: 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin: 20px 0;">
+              <h3 style="color: #1e40af; margin-top: 0; font-size: 16px; font-weight: bold;">ℹ️ Monitoring Information</h3>
+              <p style="margin: 5px 0; color: #1f2937; font-size: 14px;">
+                The system is now being continuously monitored. You'll receive another alert if issues recur.
+              </p>
+              <p style="margin: 5px 0; color: #1f2937; font-size: 14px;">
+                <strong>Alert Threshold:</strong> ${this.config.failureThreshold} consecutive failures
+              </p>
+            </div>
+          `
+        }
+      ],
+      ctas: [
+        {
+          text: 'View Monitor Dashboard',
+          url: `${process.env.VITE_DEPLOYMENT_URL || 'http://localhost:5000'}/monitor`,
+          style: 'primary'
+        }
+      ],
+      notes: 'This is an automated recovery notification from your Clean Machine monitoring system. The integration is now functioning normally.'
+    };
+    
+    // Render HTML and plain text versions
+    const htmlContent = renderBrandedEmail(emailData);
+    const textContent = renderBrandedEmailPlainText(emailData);
+    const subject = `✅ RECOVERY: ${integrationName} System Restored`;
+    
+    // Send to all recipients
+    for (const recipient of recipients) {
+      try {
+        const result = await sendBusinessEmail(recipient, subject, textContent, htmlContent);
+        
+        if (result.success) {
+          console.log(`[CRITICAL MONITOR] ✅ Recovery notification email sent to ${recipient}`);
+        } else {
+          console.error(`[CRITICAL MONITOR] ❌ Failed to send recovery email to ${recipient}:`, result.error);
+        }
+      } catch (error) {
+        console.error(`[CRITICAL MONITOR] ❌ Exception sending recovery email to ${recipient}:`, error);
       }
     }
   }
