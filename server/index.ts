@@ -75,6 +75,28 @@ app.get('/service-worker.js', (req, res) => {
   res.sendFile(path.join(process.cwd(), 'public', 'service-worker.js'));
 });
 
+// Cache-busting middleware - prevent users from seeing stale code after deployments
+app.use((req, res, next) => {
+  const url = req.url;
+  
+  // HTML files: Never cache (always get latest version)
+  if (url.endsWith('.html') || url === '/' || !url.includes('.')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  // Hashed assets (e.g., main-abc123.js from Vite build): Cache forever
+  else if (/\.(js|css)$/.test(url) && /[a-f0-9]{8,}/.test(url)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  // Other static assets: Cache for 1 hour
+  else if (/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/.test(url)) {
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  }
+  
+  next();
+});
+
 // SECURITY: Strict CORS with explicit origin whitelist
 // Environment-based origin configuration for production security
 const allowedOrigins = process.env.ALLOWED_ORIGINS

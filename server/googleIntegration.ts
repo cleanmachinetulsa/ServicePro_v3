@@ -229,20 +229,20 @@ export async function getGoogleReviews(placeId?: string) {
     const placeIdToUse = placeId || GOOGLE_PLACE_ID;
     
     if (!GOOGLE_API_KEY) {
-      console.error('Google API key not configured');
+      console.error('[GOOGLE REVIEWS] API key not configured');
       throw new Error('Google API key is required to fetch reviews');
     }
 
     if (!placeIdToUse) {
-      console.warn('Google Place ID not provided');
-      // Return empty array if Place ID not configured
+      console.warn('[GOOGLE REVIEWS] Place ID not provided - returning empty array');
       return [];
     }
 
     // Use Google Places API (New) to fetch place details including reviews
     const url = `https://places.googleapis.com/v1/places/${placeIdToUse}`;
     
-    console.log('Fetching real-time reviews from Google Places API');
+    console.log(`[GOOGLE REVIEWS] Fetching reviews for Place ID: ${placeIdToUse}`);
+    console.log(`[GOOGLE REVIEWS] API endpoint: ${url}`);
     
     // Google Places API v1 requires NESTED field masks for review data
     // Reference: https://developers.google.com/maps/documentation/places/web-service/choose-fields
@@ -278,9 +278,9 @@ export async function getGoogleReviews(placeId?: string) {
     }
 
     const data = response.data;
-    console.log(`Google Places API response status: ${response.status}`);
-    console.log(`Business: ${data.displayName?.text || 'Unknown'}`);
-    console.log(`Rating: ${data.rating || 'N/A'} (${data.userRatingCount || 0} total reviews)`);
+    console.log(`[GOOGLE REVIEWS] ✅ Success - Status: ${response.status}`);
+    console.log(`[GOOGLE REVIEWS] Business: ${data.displayName?.text || 'Unknown'}`);
+    console.log(`[GOOGLE REVIEWS] Rating: ${data.rating || 'N/A'} (${data.userRatingCount || 0} total reviews)`);
 
     // Transform Google Places API reviews to match expected format
     const reviews = (data.reviews || []).map((review: any) => ({
@@ -293,14 +293,50 @@ export async function getGoogleReviews(placeId?: string) {
       relative_time_description: review.relativePublishTimeDescription || ''
     }));
 
-    console.log(`Found ${reviews.length} reviews from Google Places API`);
+    console.log(`[GOOGLE REVIEWS] ✅ Found ${reviews.length} reviews`);
     
     return reviews;
   } catch (error: any) {
-    console.error('Error fetching Google reviews:', error.message);
+    // Enhanced error logging for debugging
+    if (error.response) {
+      console.error('[GOOGLE REVIEWS] ❌ API Error:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        placeId: placeId || GOOGLE_PLACE_ID
+      });
+      
+      if (error.response.status === 404) {
+        console.error('[GOOGLE REVIEWS] ❌ 404 NOT FOUND - The GOOGLE_PLACE_ID secret is likely incorrect.');
+        console.error('[GOOGLE REVIEWS] Current Place ID:', placeId || GOOGLE_PLACE_ID);
+        console.error('[GOOGLE REVIEWS] To fix: Update the GOOGLE_PLACE_ID secret with the correct Place ID from Google Business Profile');
+      } else if (error.response.status === 400) {
+        console.error('[GOOGLE REVIEWS] ❌ 400 BAD REQUEST - Invalid API key or Place ID format');
+      }
+    } else {
+      console.error('[GOOGLE REVIEWS] ❌ Network/Unknown Error:', error.message);
+    }
     
-    // If API call fails, return empty array instead of mock data
-    console.log('Returning empty reviews array due to API error');
+    // Log to critical monitoring for owner notification
+    try {
+      const { logError } = await import('./errorMonitoring');
+      await logError({
+        type: 'external_api',
+        severity: 'medium',
+        message: `Google Reviews API failure: ${error.message}`,
+        endpoint: '/api/google-reviews',
+        metadata: {
+          placeId: placeId || GOOGLE_PLACE_ID,
+          status: error.response?.status,
+          errorDetails: error.response?.data
+        }
+      });
+    } catch (logErr) {
+      console.error('[GOOGLE REVIEWS] Failed to log error to monitoring:', logErr);
+    }
+    
+    // Return empty array so homepage doesn't break
+    console.log('[GOOGLE REVIEWS] Returning empty array as fallback');
     return [];
   }
 }
