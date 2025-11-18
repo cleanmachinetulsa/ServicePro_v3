@@ -27,16 +27,26 @@ interface CalendarDay {
 }
 
 /**
+ * Format hour and minute as 12-hour time string (e.g., "9:00 AM")
+ */
+function formatTime(hour: number, minute: number): string {
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+  const displayMinute = minute.toString().padStart(2, '0');
+  return `${displayHour}:${displayMinute} ${period}`;
+}
+
+/**
  * Get business hours from settings
  */
 async function getBusinessHours() {
   const [settings] = await db.select().from(businessSettings).limit(1);
   
   if (!settings) {
-    // Default business hours
+    // Default business hours (matching schema defaults)
     return {
-      start: '8:00 AM',
-      end: '5:00 PM',
+      start: '9:00 AM',
+      end: '3:00 PM',
       lunchStart: '12:00 PM',
       lunchEnd: '1:00 PM',
       hasLunchBreak: true,
@@ -44,11 +54,11 @@ async function getBusinessHours() {
   }
 
   return {
-    start: '8:00 AM', // TODO: Add to business settings schema
-    end: '5:00 PM',
-    lunchStart: settings.lunchBreakStart || '12:00 PM',
-    lunchEnd: settings.lunchBreakEnd || '1:00 PM',
-    hasLunchBreak: settings.lunchBreakEnabled || false,
+    start: formatTime(settings.startHour, settings.startMinute),
+    end: formatTime(settings.endHour, settings.endMinute),
+    lunchStart: formatTime(settings.lunchHour, settings.lunchMinute),
+    lunchEnd: formatTime(settings.lunchHour + 1, settings.lunchMinute),
+    hasLunchBreak: settings.enableLunchBreak,
   };
 }
 
