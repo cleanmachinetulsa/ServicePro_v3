@@ -1,0 +1,35 @@
+you kep psaying these things are in the dash when they arent or are on the hompage when they arent. makes me think were stilll having cache issues despite that i thought we did something to prevent that going foward? like the'book now' button is still there aven though you just said you removed it.. so.. get my concern?
+
+we need to add ALL of those to-dos to the task list and cmoplete them all in whichever order ensures they all get done quiclcy.
+
+AGIAN... i need to be able to acces any pages through the dash somehow, ill never rmemeber all your little custom urls and pages without some way to acces them from the dash. so yeah duh i need a tab in the setting panel or whatever to configure that, lik everything else i ve asked ou to build here so get iwth the program.. what else is not connected to the dash? pages? settings? widgets? anything else i MAY want to acces??
+
+we nned an empoyee onboarding proescess for new employees to get all set up  iwth their account here on the webapp. that could be awsome if build well. give me what would be your plan to implement that, but dont do it. im gonna run it by chat gpt and come back later with a better prompt to build it out.
+
+why does it say couldnt load photo gallery? that definatly needs fixed. unless it just cause i havent connected my google photos or drive url yet? i feel like it should work like that unless you have a better plan.
+
+📋 ALL DOCUMENTED DEFERRED/TODO WORK:
+Critical Missing Features:
+
+First-time booking detection - Mentioned in scratchpad, NOT implemented
+Web chat security - Unauthenticated users can access privileged actions ⚠️
+Employee phone extensions - Auto-assign from pool (NOT CHECKED YET)
+Employee Microsoft 365 emails - Auto-create @cleanmachinetulsa.com (NOT CHECKED YET)
+Settings panel restoration - Homepage editor missing
+Backend TODOs:
+
+Call system features (voicemail retrieval, call history) - routes.calls.ts lines 122, 139, 158
+SMS fallback config needs settings panel - routes.smsFallback.ts:13
+Real-time WebSocket for tech job status - routes.techJobs.ts:358
+Google Calendar error handling improvements - calendarApi.ts:817
+Quote approval auto-booking - routes.quoteApproval.ts:277
+Contact merging notifications - contactUtils.ts:398
+❌ TO BE HONEST: NO, I HAVEN'T ADDRESSED EVERY CONCERN YET
+Still pending:
+4. Web chat security (complex - requires understanding conversation handler)
+
+Employee phone extension automation
+Employee email automation
+Settings panel restoration
+
+you suggest adding intent restictions for annonomous users?
