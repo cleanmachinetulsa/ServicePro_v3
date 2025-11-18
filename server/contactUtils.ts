@@ -5,7 +5,15 @@
  */
 
 import { db } from "./db";
-import { contacts, type Contact, type InsertContact } from "@shared/schema";
+import { 
+  contacts, 
+  appointments, 
+  invoices, 
+  authorizations, 
+  paymentLinks,
+  type Contact, 
+  type InsertContact 
+} from "@shared/schema";
 import { eq, or, sql, and } from "drizzle-orm";
 
 /**
@@ -350,6 +358,108 @@ export async function searchContacts(
 }
 
 /**
+ * Update all contact references across the database
+ * Replaces oldContactId with newContactId in all referencing tables
+ * 
+ * @param tx - Transaction client from db.transaction()
+ * @param oldContactId - Contact ID to replace
+ * @param newContactId - Contact ID to use instead
+ * @returns Summary of updates made
+ */
+export async function updateContactReferences(
+  tx: any,
+  oldContactId: number,
+  newContactId: number
+): Promise<{
+  appointmentsUpdated: number;
+  invoicesUpdated: number;
+  authorizationsUpdated: number;
+  paymentLinksUpdated: number;
+  totalUpdated: number;
+}> {
+  console.log(`[Contact Merge] Updating references from contact #${oldContactId} to contact #${newContactId}`);
+
+  let appointmentsUpdated = 0;
+  let invoicesUpdated = 0;
+  let authorizationsUpdated = 0;
+  let paymentLinksUpdated = 0;
+
+  // 1. Update appointments table (4 contact reference fields)
+  // Update requesterContactId
+  const requesterUpdates = await tx
+    .update(appointments)
+    .set({ requesterContactId: newContactId })
+    .where(eq(appointments.requesterContactId, oldContactId))
+    .execute();
+  appointmentsUpdated += requesterUpdates.rowCount || 0;
+
+  // Update serviceContactId
+  const serviceUpdates = await tx
+    .update(appointments)
+    .set({ serviceContactId: newContactId })
+    .where(eq(appointments.serviceContactId, oldContactId))
+    .execute();
+  appointmentsUpdated += serviceUpdates.rowCount || 0;
+
+  // Update vehicleOwnerContactId
+  const vehicleOwnerUpdates = await tx
+    .update(appointments)
+    .set({ vehicleOwnerContactId: newContactId })
+    .where(eq(appointments.vehicleOwnerContactId, oldContactId))
+    .execute();
+  appointmentsUpdated += vehicleOwnerUpdates.rowCount || 0;
+
+  // Update billingContactId
+  const billingUpdates = await tx
+    .update(appointments)
+    .set({ billingContactId: newContactId })
+    .where(eq(appointments.billingContactId, oldContactId))
+    .execute();
+  appointmentsUpdated += billingUpdates.rowCount || 0;
+
+  console.log(`[Contact Merge] Updated ${appointmentsUpdated} appointment contact references`);
+
+  // 2. Update invoices table (billToContactId)
+  const invoiceUpdates = await tx
+    .update(invoices)
+    .set({ billToContactId: newContactId })
+    .where(eq(invoices.billToContactId, oldContactId))
+    .execute();
+  invoicesUpdated = invoiceUpdates.rowCount || 0;
+  console.log(`[Contact Merge] Updated ${invoicesUpdated} invoice references`);
+
+  // 3. Update authorizations table (signerContactId)
+  const authUpdates = await tx
+    .update(authorizations)
+    .set({ signerContactId: newContactId })
+    .where(eq(authorizations.signerContactId, oldContactId))
+    .execute();
+  authorizationsUpdated = authUpdates.rowCount || 0;
+  console.log(`[Contact Merge] Updated ${authorizationsUpdated} authorization references`);
+
+  // 4. Update paymentLinks table (contactId)
+  const paymentLinkUpdates = await tx
+    .update(paymentLinks)
+    .set({ contactId: newContactId })
+    .where(eq(paymentLinks.contactId, oldContactId))
+    .execute();
+  paymentLinksUpdated = paymentLinkUpdates.rowCount || 0;
+  console.log(`[Contact Merge] Updated ${paymentLinksUpdated} payment link references`);
+
+  const totalUpdated = appointmentsUpdated + invoicesUpdated + authorizationsUpdated + paymentLinksUpdated;
+
+  console.log(`[Contact Merge] Total references updated: ${totalUpdated}`);
+
+  return {
+    appointmentsUpdated,
+    invoicesUpdated,
+    authorizationsUpdated,
+    paymentLinksUpdated,
+    totalUpdated,
+  };
+}
+
+/**
  * Merge two contacts - combine data and update references
  * Keeps primaryContactId and deletes duplicateContactId
  */
@@ -357,6 +467,8 @@ export async function mergeContacts(
   primaryContactId: number,
   duplicateContactId: number
 ): Promise<Contact> {
+  console.log(`[Contact Merge] Starting merge: keeping contact #${primaryContactId}, removing #${duplicateContactId}`);
+
   // Get both contacts
   const [primary, duplicate] = await Promise.all([
     db.select().from(contacts).where(eq(contacts.id, primaryContactId)).execute(),
@@ -367,39 +479,48 @@ export async function mergeContacts(
     throw new Error('Contact not found');
   }
 
-  // Merge strategy: keep primary data, fill in missing fields from duplicate
-  const merged = {
-    ...primary[0],
-    email: primary[0].email || duplicate[0].email,
-    company: primary[0].company || duplicate[0].company,
-    address: primary[0].address || duplicate[0].address,
-    city: primary[0].city || duplicate[0].city,
-    state: primary[0].state || duplicate[0].state,
-    zip: primary[0].zip || duplicate[0].zip,
-    notes: primary[0].notes
-      ? `${primary[0].notes}\n\n[Merged from contact #${duplicateContactId}]: ${duplicate[0].notes || ''}`
-      : duplicate[0].notes,
-    roleTags: Array.from(
-      new Set([
-        ...(primary[0].roleTags as string[] || []),
-        ...(duplicate[0].roleTags as string[] || []),
-      ])
-    ),
-  };
+  console.log(`[Contact Merge] Merging "${duplicate[0].name}" (${duplicate[0].phoneE164}) into "${primary[0].name}" (${primary[0].phoneE164})`);
 
-  // Update primary contact
-  const updated = await db
-    .update(contacts)
-    .set(merged)
-    .where(eq(contacts.id, primaryContactId))
-    .returning()
-    .execute();
+  // Use transaction for the entire merge operation
+  return await db.transaction(async (tx) => {
+    // Merge strategy: keep primary data, fill in missing fields from duplicate
+    const merged = {
+      ...primary[0],
+      email: primary[0].email || duplicate[0].email,
+      company: primary[0].company || duplicate[0].company,
+      address: primary[0].address || duplicate[0].address,
+      city: primary[0].city || duplicate[0].city,
+      state: primary[0].state || duplicate[0].state,
+      zip: primary[0].zip || duplicate[0].zip,
+      notes: primary[0].notes
+        ? `${primary[0].notes}\n\n[Merged from contact #${duplicateContactId}]: ${duplicate[0].notes || ''}`
+        : duplicate[0].notes,
+      roleTags: Array.from(
+        new Set([
+          ...(primary[0].roleTags as string[] || []),
+          ...(duplicate[0].roleTags as string[] || []),
+        ])
+      ),
+    };
 
-  // TODO: Update all references (appointments, authorizations, payment_links)
-  // to point to primaryContactId instead of duplicateContactId
+    // Update primary contact with merged data
+    const updated = await tx
+      .update(contacts)
+      .set(merged)
+      .where(eq(contacts.id, primaryContactId))
+      .returning()
+      .execute();
 
-  // Delete duplicate contact
-  await db.delete(contacts).where(eq(contacts.id, duplicateContactId)).execute();
+    console.log(`[Contact Merge] Updated primary contact data`);
 
-  return updated[0];
+    // Update all references in other tables to point to the primary contact
+    await updateContactReferences(tx, duplicateContactId, primaryContactId);
+
+    // Delete duplicate contact
+    await tx.delete(contacts).where(eq(contacts.id, duplicateContactId)).execute();
+    console.log(`[Contact Merge] Deleted duplicate contact #${duplicateContactId}`);
+    console.log(`[Contact Merge] Merge completed successfully`);
+
+    return updated[0];
+  });
 }
