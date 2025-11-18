@@ -27,6 +27,9 @@ import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import { setupGoogleOAuth } from "./googleOAuth";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
+import { db } from './db';
+import { businessSettings } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 const app = express();
 
@@ -241,6 +244,32 @@ app.use((req, res, next) => {
   // Initialize referral program configuration (singleton - only runs once)
   const { initializeReferralConfig } = await import('./referralConfigService');
   await initializeReferralConfig();
+  
+  // Migrate SMS fallback settings - auto-disable if enabled without phone (safety migration)
+  async function migrateSmsFallbackSettings() {
+    try {
+      // Find settings with enabled=true but phone=null (broken state)
+      const [settings] = await db.select().from(businessSettings).limit(1);
+      
+      if (settings && settings.smsFallbackEnabled && (!settings.smsFallbackPhone || settings.smsFallbackPhone.trim() === '')) {
+        console.warn('[STARTUP MIGRATION] Detected SMS fallback enabled without phone - AUTO-DISABLING for safety');
+        
+        await db.update(businessSettings)
+          .set({ smsFallbackEnabled: false })
+          .where(eq(businessSettings.id, settings.id));
+        
+        console.log('[STARTUP MIGRATION] SMS fallback auto-disabled - system cleaned up');
+      } else {
+        console.log('[STARTUP MIGRATION] SMS fallback settings are valid or fallback already disabled');
+      }
+    } catch (error) {
+      console.error('[STARTUP MIGRATION] Error checking SMS fallback settings:', error);
+      throw error;
+    }
+  }
+  
+  // Run SMS fallback migration on startup
+  await migrateSmsFallbackSettings();
   
   const server = await registerRoutes(app);
   

@@ -17,7 +17,8 @@ import {
   TrendingDown,
   Plus,
   Trash2,
-  Shield
+  Shield,
+  MessageSquare
 } from "lucide-react";
 import logoBlue from '@assets/generated_images/Clean_Machine_logo_blue_0f30335d.png';
 import logoBadge from '@assets/generated_images/Clean_Machine_badge_circular_ff904963.png';
@@ -389,29 +390,62 @@ function MaintenanceModeTab() {
       alertPhone: string | null;
       autoFailoverThreshold: number;
       lastFailoverAt: Date | null;
+      smsFallbackEnabled: boolean;
+      smsFallbackPhone: string | null;
+      smsFallbackAutoReply: string | null;
     };
   }>({
     queryKey: ['/api/maintenance/settings'],
   });
 
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [maintenanceMessage, setMaintenanceMessage] = useState(
-    "We're currently performing maintenance. Please check back soon or contact us directly."
-  );
-  const [backupEmail, setBackupEmail] = useState('');
-  const [alertPhone, setAlertPhone] = useState('');
-  const [autoFailoverThreshold, setAutoFailoverThreshold] = useState(5);
+  // Derive state directly from data (prevents flash)
+  const settings = maintenanceData?.settings;
+  
+  const defaultAutoReplyMessage = "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly.";
+  const defaultMaintenanceMessage = "We're currently performing maintenance. Please check back soon or contact us directly.";
+  
+  // Derive SMS fallback values from server data
+  const smsFallbackPhone = settings?.smsFallbackPhone || '';
+  const smsFallbackAutoReply = settings?.smsFallbackAutoReply || defaultAutoReplyMessage;
+  const hasPhone = smsFallbackPhone && smsFallbackPhone.trim() !== '';
+  const smsFallbackEnabled = hasPhone && (settings?.smsFallbackEnabled ?? false);
+  
+  // Local state for controlled inputs (maintenance mode)
+  const [maintenanceMode, setMaintenanceMode] = useState(settings?.maintenanceMode ?? false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState(settings?.maintenanceMessage || defaultMaintenanceMessage);
+  const [backupEmail, setBackupEmail] = useState(settings?.backupEmail || '');
+  const [alertPhone, setAlertPhone] = useState(settings?.alertPhone || '');
+  const [autoFailoverThreshold, setAutoFailoverThreshold] = useState(settings?.autoFailoverThreshold ?? 5);
+  
+  // Local state for controlled inputs (SMS fallback)
+  const [localSmsFallbackPhone, setLocalSmsFallbackPhone] = useState(smsFallbackPhone);
+  const [localSmsFallbackAutoReply, setLocalSmsFallbackAutoReply] = useState(smsFallbackAutoReply);
+  const [localSmsFallbackEnabled, setLocalSmsFallbackEnabled] = useState(smsFallbackEnabled);
 
-  // Update state when data loads
+  // Sync local state when server data changes
   useEffect(() => {
-    if (maintenanceData?.settings) {
-      setMaintenanceMode(maintenanceData.settings.maintenanceMode);
-      setMaintenanceMessage(maintenanceData.settings.maintenanceMessage);
-      setBackupEmail(maintenanceData.settings.backupEmail || '');
-      setAlertPhone(maintenanceData.settings.alertPhone || '');
-      setAutoFailoverThreshold(maintenanceData.settings.autoFailoverThreshold);
+    if (settings) {
+      setMaintenanceMode(settings.maintenanceMode);
+      setMaintenanceMessage(settings.maintenanceMessage);
+      setBackupEmail(settings.backupEmail || '');
+      setAlertPhone(settings.alertPhone || '');
+      setAutoFailoverThreshold(settings.autoFailoverThreshold);
     }
-  }, [maintenanceData]);
+  }, [settings]);
+  
+  // Sync SMS fallback local state when derived values change
+  useEffect(() => {
+    setLocalSmsFallbackPhone(smsFallbackPhone);
+    setLocalSmsFallbackAutoReply(smsFallbackAutoReply);
+    setLocalSmsFallbackEnabled(smsFallbackEnabled);
+  }, [smsFallbackPhone, smsFallbackAutoReply, smsFallbackEnabled]);
+
+  // Auto-disable SMS fallback when phone is cleared (safety mechanism)
+  useEffect(() => {
+    if (!localSmsFallbackPhone || localSmsFallbackPhone.trim() === '') {
+      setLocalSmsFallbackEnabled(false);
+    }
+  }, [localSmsFallbackPhone]);
 
   // Update maintenance settings mutation
   const updateMaintenanceMutation = useMutation({
@@ -421,6 +455,9 @@ function MaintenanceModeTab() {
       backupEmail?: string | null;
       alertPhone?: string | null;
       autoFailoverThreshold?: number;
+      smsFallbackEnabled?: boolean;
+      smsFallbackPhone?: string | null;
+      smsFallbackAutoReply?: string | null;
     }) => {
       return await apiRequest('PUT', '/api/maintenance/settings', data);
     },
@@ -447,6 +484,9 @@ function MaintenanceModeTab() {
       backupEmail: backupEmail || null,
       alertPhone: alertPhone || null,
       autoFailoverThreshold,
+      smsFallbackEnabled: localSmsFallbackEnabled,
+      smsFallbackPhone: localSmsFallbackPhone || null,
+      smsFallbackAutoReply: localSmsFallbackAutoReply || null,
     });
   };
 
@@ -557,6 +597,82 @@ function MaintenanceModeTab() {
               <p className="text-xs text-gray-500">
                 Number of consecutive failures before triggering automatic failover (recommended: 3-10)
               </p>
+            </div>
+
+            {/* SMS Fallback System */}
+            <div className="p-4 rounded-lg border border-purple-200 bg-purple-50 dark:bg-purple-900/20 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <h3 className="font-semibold text-purple-900 dark:text-purple-100">SMS Fallback System</h3>
+              </div>
+              <p className="text-sm text-purple-700 dark:text-purple-300 mb-4">
+                Configure backup SMS handling when the main system is offline
+              </p>
+
+              {/* Fallback Phone Number - MOVED ABOVE TOGGLE for better UX */}
+              <div className="space-y-2">
+                <Label htmlFor="smsFallbackPhone">Fallback Phone Number</Label>
+                <Input
+                  id="smsFallbackPhone"
+                  type="tel"
+                  placeholder="+1 918-555-0100"
+                  value={localSmsFallbackPhone}
+                  onChange={(e) => setLocalSmsFallbackPhone(e.target.value)}
+                  data-testid="input-sms-fallback-phone"
+                />
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Phone number to forward messages to (e.g., business owner's personal phone)
+                </p>
+              </div>
+
+              {/* Enable/Disable Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label htmlFor="smsFallbackEnabled" className="text-sm font-medium">
+                    Enable SMS Fallback
+                  </Label>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Forward customer messages when the main system is down
+                  </p>
+                </div>
+                <Switch
+                  id="smsFallbackEnabled"
+                  checked={localSmsFallbackEnabled}
+                  onCheckedChange={setLocalSmsFallbackEnabled}
+                  disabled={!localSmsFallbackPhone || localSmsFallbackPhone.trim() === ''}
+                  data-testid="switch-sms-fallback-enabled"
+                />
+              </div>
+              
+              {/* Guidance text when phone is missing */}
+              {(!localSmsFallbackPhone || localSmsFallbackPhone.trim() === '') && (
+                <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                  <p className="text-xs text-amber-700 dark:text-amber-300 font-medium">
+                    ⚠️ Please enter a fallback phone number before enabling SMS fallback
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Without a phone number, customer messages will be silently dropped when the system is offline.
+                  </p>
+                </div>
+              )}
+
+              {/* Auto-Reply Message */}
+              <div className="space-y-2">
+                <Label htmlFor="smsFallbackAutoReply">Customer Auto-Reply Message</Label>
+                <Textarea
+                  id="smsFallbackAutoReply"
+                  rows={3}
+                  placeholder="Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."
+                  value={localSmsFallbackAutoReply}
+                  onChange={(e) => setLocalSmsFallbackAutoReply(e.target.value)}
+                  maxLength={160}
+                  disabled={!localSmsFallbackEnabled}
+                  data-testid="textarea-sms-fallback-auto-reply"
+                />
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {localSmsFallbackAutoReply?.length || 0}/160 characters (SMS limit)
+                </p>
+              </div>
             </div>
 
             {/* Info Box */}

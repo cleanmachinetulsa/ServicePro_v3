@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
 import * as Twilio from 'twilio';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
+import { db } from './db';
+import { businessSettings } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 const router = Router();
 
@@ -8,10 +11,6 @@ const router = Router();
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-
-// Business owner's personal phone (for fallback forwarding)
-// TODO: Move to settings panel after cleanup
-const FALLBACK_PHONE = process.env.BUSINESS_OWNER_PHONE || process.env.TWILIO_PHONE_NUMBER;
 
 let twilio: any = null;
 if (twilioAccountSid && twilioAuthToken) {
@@ -33,6 +32,19 @@ if (twilioAccountSid && twilioAuthToken) {
  */
 router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Response) => {
   try {
+    // Query business settings for SMS fallback config
+    const [settings] = await db.select().from(businessSettings).limit(1);
+    
+    // Check if SMS fallback is enabled
+    if (!settings || !settings.smsFallbackEnabled) {
+      console.log('[SMS FALLBACK] System is disabled in settings');
+      res.type('text/xml');
+      return res.send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+    }
+
+    const fallbackPhone = settings.smsFallbackPhone;
+    const autoReplyMessage = settings.smsFallbackAutoReply || "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly.";
+    
     const { From: customerPhone, Body: messageBody } = req.body;
     
     console.log('[SMS FALLBACK] Main system is down - forwarding message');
@@ -41,12 +53,23 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
 
     if (!twilio) {
       console.error('[SMS FALLBACK] Twilio client not initialized');
-      return res.status(500).send('SMS service not configured');
+      res.type('text/xml');
+      return res.send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
 
-    if (!FALLBACK_PHONE) {
-      console.error('[SMS FALLBACK] No fallback phone number configured');
-      return res.status(500).send('Fallback phone not configured');
+    // SELF-HEALING: If enabled but no phone, auto-disable and persist the change
+    if (!fallbackPhone || fallbackPhone.trim() === '') {
+      console.warn('[SMS FALLBACK] Enabled but no phone configured - AUTO-DISABLING for safety (migration self-heal)');
+      
+      // Persist the auto-disable to database
+      await db.update(businessSettings)
+        .set({ smsFallbackEnabled: false })
+        .where(eq(businessSettings.id, settings.id));
+      
+      console.log('[SMS FALLBACK] Auto-disabled SMS fallback in database - system self-healed');
+      
+      res.type('text/xml');
+      return res.send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
 
     // Forward the message to business owner's personal phone
@@ -55,16 +78,14 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
     await twilio.messages.create({
       body: forwardedMessage,
       from: twilioPhoneNumber,
-      to: FALLBACK_PHONE,
+      to: fallbackPhone,
     });
 
-    console.log('[SMS FALLBACK] Message forwarded successfully to:', FALLBACK_PHONE);
+    console.log('[SMS FALLBACK] Message forwarded successfully to:', fallbackPhone);
 
     // Send auto-reply to customer
-    const autoReply = "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly.";
-    
     await twilio.messages.create({
-      body: autoReply,
+      body: autoReplyMessage,
       from: twilioPhoneNumber,
       to: customerPhone,
     });
@@ -90,16 +111,28 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
  * 
  * GET /sms-fallback/health
  */
-router.get('/sms-fallback/health', (req: Request, res: Response) => {
-  const status = {
-    status: 'operational',
-    twilioConfigured: !!twilio,
-    fallbackPhone: FALLBACK_PHONE ? 'configured' : 'not configured',
-    timestamp: new Date().toISOString(),
-  };
-  
-  console.log('[SMS FALLBACK] Health check:', status);
-  res.json(status);
+router.get('/sms-fallback/health', async (req: Request, res: Response) => {
+  try {
+    const [settings] = await db.select().from(businessSettings).limit(1);
+    
+    const status = {
+      status: 'operational',
+      twilioConfigured: !!twilio,
+      fallbackEnabled: settings?.smsFallbackEnabled ?? false,
+      fallbackPhone: settings?.smsFallbackPhone ? 'configured' : 'not configured',
+      timestamp: new Date().toISOString(),
+    };
+    
+    console.log('[SMS FALLBACK] Health check:', status);
+    res.json(status);
+  } catch (error) {
+    console.error('[SMS FALLBACK] Health check error:', error);
+    res.status(500).json({
+      status: 'error',
+      error: 'Failed to check fallback settings',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 export default router;

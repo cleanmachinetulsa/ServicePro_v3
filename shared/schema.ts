@@ -1271,6 +1271,11 @@ export const businessSettings = pgTable("business_settings", {
   autoFailoverThreshold: integer("auto_failover_threshold").default(5), // High-severity errors within 5 min triggers maintenance
   lastFailoverAt: timestamp("last_failover_at"),
   
+  // SMS Fallback settings
+  smsFallbackEnabled: boolean("sms_fallback_enabled").default(false), // Enable/disable SMS fallback system (defaults to false for safety)
+  smsFallbackPhone: text("sms_fallback_phone"), // Phone number to forward messages to when main system is down
+  smsFallbackAutoReply: text("sms_fallback_auto_reply").default("Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."), // Auto-reply message sent to customers
+  
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
 });

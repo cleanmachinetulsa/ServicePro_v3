@@ -23,6 +23,18 @@ const updateMaintenanceSchema = z.object({
   backupEmail: z.string().email().optional().nullable(),
   alertPhone: z.string().optional().nullable(),
   autoFailoverThreshold: z.number().int().min(1).max(20).optional(),
+  smsFallbackEnabled: z.boolean().optional(),
+  smsFallbackPhone: z.string().optional().nullable(),
+  smsFallbackAutoReply: z.string().max(160, "Auto-reply message must be 160 characters or less").optional().nullable(),
+}).refine((data) => {
+  // If SMS fallback is enabled, require fallback phone
+  if (data.smsFallbackEnabled === true && !data.smsFallbackPhone) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Fallback phone number is required when SMS fallback is enabled",
+  path: ["smsFallbackPhone"],
 });
 
 export function registerMaintenanceRoutes(app: Express) {
@@ -45,6 +57,9 @@ export function registerMaintenanceRoutes(app: Express) {
             alertPhone: null,
             autoFailoverThreshold: 5,
             lastFailoverAt: null,
+            smsFallbackEnabled: false,
+            smsFallbackPhone: null,
+            smsFallbackAutoReply: "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly.",
           },
         });
       }
@@ -58,6 +73,9 @@ export function registerMaintenanceRoutes(app: Express) {
           alertPhone: settings.alertPhone,
           autoFailoverThreshold: settings.autoFailoverThreshold,
           lastFailoverAt: settings.lastFailoverAt,
+          smsFallbackEnabled: settings.smsFallbackEnabled,
+          smsFallbackPhone: settings.smsFallbackPhone,
+          smsFallbackAutoReply: settings.smsFallbackAutoReply,
         },
       });
     } catch (error) {
@@ -80,19 +98,46 @@ export function registerMaintenanceRoutes(app: Express) {
       // Get existing settings
       const [existingSettings] = await db.select().from(businessSettings).limit(1);
 
+      // CRITICAL VALIDATION: Prevent enabling SMS fallback without phone number
+      if (validatedData.smsFallbackEnabled) {
+        // Require phone number when enabling
+        const phoneToUse = validatedData.smsFallbackPhone || existingSettings?.smsFallbackPhone;
+        
+        if (!phoneToUse || phoneToUse.trim() === '') {
+          return res.status(400).json({
+            success: false,
+            error: 'SMS fallback phone number is required when enabling the fallback system',
+          });
+        }
+      }
+
+      // MIGRATION SAFETY: Auto-disable fallback if phone is missing (fixes broken existing installations)
+      let updateData = { ...validatedData };
+      if (existingSettings && existingSettings.smsFallbackEnabled && !existingSettings.smsFallbackPhone) {
+        console.warn('[MAINTENANCE] Auto-disabling SMS fallback - no phone number configured (migration safety)');
+        updateData.smsFallbackEnabled = false;
+      }
+
       let updatedSettings;
       if (existingSettings) {
         // Update existing settings
         [updatedSettings] = await db
           .update(businessSettings)
           .set({
-            ...validatedData,
+            ...updateData,
             updatedAt: new Date(),
           })
           .where(eq(businessSettings.id, existingSettings.id))
           .returning();
       } else {
-        // Create new settings record
+        // Create new settings record - validate phone requirement
+        if (validatedData.smsFallbackEnabled && !validatedData.smsFallbackPhone) {
+          return res.status(400).json({
+            success: false,
+            error: 'SMS fallback phone number is required when enabling the fallback system',
+          });
+        }
+        
         [updatedSettings] = await db
           .insert(businessSettings)
           .values({
