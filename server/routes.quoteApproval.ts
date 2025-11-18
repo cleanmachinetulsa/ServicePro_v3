@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from './db';
 import { eq, and } from 'drizzle-orm';
-import { quoteRequests, bookingTokens } from '@shared/schema';
+import { quoteRequests, bookingTokens, businessSettings } from '@shared/schema';
 import { sendSMS } from './notifications';
 import crypto from 'crypto';
 
@@ -424,6 +424,12 @@ router.post('/:token/decline', async (req, res) => {
       });
     }
 
+    // Fetch business settings for notification recipients
+    const [settings] = await db
+      .select()
+      .from(businessSettings)
+      .limit(1);
+
     // Consume OTP before declining (verifies and deletes to prevent reuse)
     const phoneToVerify = quote.thirdPartyPayerPhone || quote.phone;
     const isOtpValid = consumeOTP(phoneToVerify, otp);
@@ -450,7 +456,160 @@ router.post('/:token/decline', async (req, res) => {
       `We've noted that the specialty job quote was declined. We appreciate your consideration. If you'd like to discuss alternatives, please call us. - Clean Machine Auto Detail`
     );
 
-    // TODO: Notify business owner about decline with reason
+    // Notify business owner about decline (multi-channel)
+    try {
+      // Use settings from database for notification recipients
+      const businessPhone = settings?.alertPhone || process.env.BUSINESS_OWNER_PHONE || process.env.TWILIO_PHONE_NUMBER || '';
+      const businessEmail = settings?.backupEmail;
+
+      // 1. SMS notification to business owner
+      if (businessPhone) {
+        try {
+          let ownerMessage = `❌ Quote DECLINED - ${quote.customerName} (${quote.phone})\n`;
+          ownerMessage += `Service: ${quote.damageType}\n`;
+          ownerMessage += `Amount: $${quote.customQuoteAmount}\n`;
+          if (reason) {
+            ownerMessage += `Reason: ${reason}\n`;
+          }
+          ownerMessage += `\nNext: Follow up with customer to discuss alternatives.`;
+          
+          await sendSMS(businessPhone, ownerMessage);
+          console.log(`[QUOTE APPROVAL] ✅ SMS decline notification sent to business owner`);
+        } catch (smsError) {
+          console.error(`[QUOTE APPROVAL] Failed to send SMS to business owner:`, smsError);
+        }
+      }
+
+      // 2. Email notification to business owner (branded template)
+      if (businessEmail) {
+        try {
+          const { renderBrandedEmail, renderBrandedEmailPlainText } = await import('./emailTemplates/base');
+          const { sendBusinessEmail } = await import('./emailService');
+
+          const emailData = {
+            preheader: `${quote.customerName} declined the ${quote.damageType} quote`,
+            subject: `❌ Quote Declined - ${quote.customerName}`,
+            hero: {
+              title: '❌ Quote Declined',
+              subtitle: 'Customer Decision Notification'
+            },
+            sections: [
+              {
+                type: 'text' as const,
+                content: '<p style="font-size: 16px; margin-bottom: 20px; color: #dc2626; font-weight: bold;">A customer has declined their quote. Review the details below and consider follow-up actions.</p>'
+              },
+              {
+                type: 'table' as const,
+                items: [
+                  { label: 'Customer Name', value: quote.customerName },
+                  { label: 'Phone', value: quote.phone },
+                  { label: 'Service Type', value: quote.damageType },
+                  { label: 'Quote Amount', value: `$${quote.customQuoteAmount}` },
+                  { label: 'Decline Reason', value: reason || 'No reason provided' },
+                  { label: 'Quote Date', value: new Date(quote.createdAt).toLocaleDateString('en-US', { dateStyle: 'medium' }) }
+                ]
+              },
+              {
+                type: 'spacer' as const,
+                padding: '20px'
+              },
+              {
+                type: 'text' as const,
+                content: `
+                  <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0;">
+                    <h3 style="color: #92400e; margin-top: 0; font-size: 18px; font-weight: bold;">💡 Recommended Next Steps</h3>
+                    <ul style="margin: 10px 0; padding-left: 20px; color: #1f2937;">
+                      <li style="margin-bottom: 8px;"><strong>Follow up with customer</strong> - Understand their concerns and offer alternatives</li>
+                      <li style="margin-bottom: 8px;"><strong>Discuss alternatives</strong> - Present different service options or pricing tiers</li>
+                      <li style="margin-bottom: 8px;"><strong>Review pricing strategy</strong> - Analyze if pricing adjustments are needed</li>
+                      <li style="margin-bottom: 8px;"><strong>Gather feedback</strong> - Learn what would make them reconsider</li>
+                    </ul>
+                  </div>
+                `
+              }
+            ],
+            ctas: [
+              {
+                text: 'View Quote Details',
+                url: `${process.env.REPLIT_DEV_DOMAIN || 'https://your-domain.repl.co'}/admin-quote-requests?id=${quote.id}`,
+                style: 'primary' as const
+              },
+              {
+                text: 'Contact Customer',
+                url: `tel:${quote.phone}`,
+                style: 'secondary' as const
+              }
+            ],
+            notes: `Quote ID: ${quote.id} | Declined at: ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}`
+          };
+
+          const htmlContent = renderBrandedEmail(emailData);
+          const textContent = renderBrandedEmailPlainText(emailData);
+
+          const result = await sendBusinessEmail(
+            businessEmail,
+            emailData.subject,
+            textContent,
+            htmlContent
+          );
+
+          if (result.success) {
+            console.log(`[QUOTE APPROVAL] ✅ Email decline notification sent to business owner`);
+          } else {
+            throw new Error(result.error || 'Email send failed');
+          }
+        } catch (emailError) {
+          console.error(`[QUOTE APPROVAL] Failed to send email to business owner:`, emailError);
+        }
+      }
+
+      // 3. Push notifications to admin users (owners/managers)
+      try {
+        const { users, pushSubscriptions } = await import('@shared/schema');
+        const { inArray, eq } = await import('drizzle-orm');
+        const { sendPushNotification } = await import('./pushNotificationService');
+
+        const adminUsers = await db
+          .select({ id: users.id, role: users.role })
+          .from(users)
+          .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
+          .where(inArray(users.role, ['owner', 'manager']))
+          .groupBy(users.id, users.role);
+
+        if (adminUsers.length > 0) {
+          const pushPayload = {
+            title: '❌ Quote Declined',
+            body: `${quote.customerName} declined the ${quote.damageType} quote ($${quote.customQuoteAmount})`,
+            icon: '/icon-512.png',
+            badge: '/icon-192.png',
+            tag: `quote-declined-${quote.id}`,
+            requireInteraction: false,
+            data: {
+              type: 'quote_declined',
+              quoteId: quote.id,
+              customerId: quote.customerId,
+              url: `/admin-quote-requests?id=${quote.id}`,
+              reason: reason || 'No reason provided'
+            },
+          };
+
+          for (const user of adminUsers) {
+            try {
+              await sendPushNotification(user.id, pushPayload);
+              console.log(`[QUOTE APPROVAL] ✅ Push notification sent to user ${user.id} (${user.role})`);
+            } catch (pushError) {
+              console.error(`[QUOTE APPROVAL] Failed to send push to user ${user.id}:`, pushError);
+            }
+          }
+        } else {
+          console.log('[QUOTE APPROVAL] No admin users with push subscriptions found');
+        }
+      } catch (pushError) {
+        console.error(`[QUOTE APPROVAL] Failed to send push notifications:`, pushError);
+      }
+    } catch (notificationError) {
+      console.error('[QUOTE APPROVAL] Error in business owner notification system:', notificationError);
+    }
 
     console.log(`[QUOTE APPROVAL] Quote ${quote.id} declined. Reason: ${reason || 'None provided'}`);
 
