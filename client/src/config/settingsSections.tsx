@@ -2,7 +2,8 @@ import {
   Wrench, 
   Users, 
   MessageSquare, 
-  Building
+  Building,
+  Palette
 } from "lucide-react";
 import AgentSettings from "../components/AgentSettings";
 import BusinessSettings from "../pages/business-settings";
@@ -19,6 +20,7 @@ import ServicesManagement from "../components/ServicesManagement";
 import { CustomerManagement } from "../components/CustomerManagement";
 import { LoyaltyPointsSystem } from "../components/LoyaltyPointsSystem";
 import AdminReferralStats from "../components/AdminReferralStats";
+import HomepageEditor from "../pages/HomepageEditor";
 
 export interface SettingsItem {
   id: string;
@@ -76,6 +78,14 @@ export const settingsSections: SettingsSection[] = [
       { id: 'business-settings', label: 'Business Settings', component: BusinessSettings },
       { id: 'agent-settings', label: 'Agent Settings', component: AgentSettings },
       { id: 'subscriptions', label: 'Subscription Plans', component: SubscriptionManager },
+    ]
+  },
+  {
+    id: 'website',
+    label: 'Website & Branding',
+    icon: <Palette className="h-4 w-4" />,
+    items: [
+      { id: 'homepage-editor', label: 'Homepage Editor', component: HomepageEditor },
     ]
   },
 ];
