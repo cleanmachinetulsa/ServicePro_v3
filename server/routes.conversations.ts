@@ -464,13 +464,21 @@ export function registerConversationRoutes(app: Express) {
             phoneLineId || conversation.phoneLineId || undefined
           );
           
-          console.log(`Manual message sent via SMS to ${conversation.customerPhone}`);
+          console.log(`[SMS SEND SUCCESS] Manual message sent via SMS to ${conversation.customerPhone} using phone line ${phoneLineId || conversation.phoneLineId || 'default'}`);
         } catch (smsError: any) {
-          console.error('Error sending SMS:', smsError);
+          console.error('[SMS SEND ERROR] Failed to deliver SMS:', {
+            conversationId,
+            customerPhone: conversation.customerPhone,
+            error: smsError.message || String(smsError),
+            errorCode: smsError.code,
+            errorStatus: smsError.status,
+            phoneLineId: phoneLineId || conversation.phoneLineId,
+          });
           return res.status(500).json({
             success: false,
             message: 'Failed to deliver SMS message',
             error: smsError.message || String(smsError),
+            errorCode: smsError.code,
             details: 'The message was not sent to the customer. Please try again or contact them via another channel.',
           });
         }
