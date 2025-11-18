@@ -93,23 +93,23 @@ export async function logError(details: ErrorDetails): Promise<void> {
  * Send notifications to admin about critical errors
  */
 async function notifyAdmin(details: ErrorDetails): Promise<void> {
-  const message = `CRITICAL ERROR: ${details.type} - ${details.message.substring(0, 100)}`;
+  const message = `🚨 CRITICAL: ${details.type} error at ${details.endpoint || 'unknown'}\n\n${details.message.substring(0, 150)}\n\nCheck dashboard immediately.`;
 
-  // For high/critical errors during rollout, send SMS
-  if (process.env.ROLLOUT_MODE === 'true') {
-    try {
-      const adminPhone = process.env.ADMIN_PHONE || process.env.BUSINESS_OWNER_PHONE;
-      if (adminPhone) {
-        await sendSMS(
-          adminPhone,
-          message
-        );
-      } else {
-        console.warn('[ERROR MONITOR] No admin phone configured (ADMIN_PHONE or BUSINESS_OWNER_PHONE)');
-      }
-    } catch (error) {
-      console.error('[ERROR MONITOR] Failed to send SMS alert:', error);
+  // Always send SMS for critical errors to catch issues immediately
+  try {
+    const adminPhone = process.env.BUSINESS_OWNER_PHONE;
+    if (adminPhone) {
+      console.log('[ERROR MONITOR] 📱 Sending critical error SMS to business owner');
+      await sendSMS(
+        adminPhone,
+        message
+      );
+      console.log('[ERROR MONITOR] ✅ Critical error SMS sent successfully');
+    } else {
+      console.warn('[ERROR MONITOR] ⚠️ No BUSINESS_OWNER_PHONE configured - cannot send SMS alerts');
     }
+  } catch (error) {
+    console.error('[ERROR MONITOR] ❌ Failed to send SMS alert:', error);
   }
 }
 
