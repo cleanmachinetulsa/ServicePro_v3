@@ -250,6 +250,26 @@ export function broadcastTypingIndicator(conversationId: number, username: strin
   });
 }
 
+/**
+ * Broadcast job status update to admin dashboard
+ * Used for real-time updates when technicians update job status
+ */
+export function broadcastJobStatusUpdate(appointmentId: number, status: string, appointment: any) {
+  if (!io) {
+    console.warn('WebSocket not initialized, cannot broadcast job status update');
+    return;
+  }
+
+  console.log(`[WEBSOCKET] Broadcasting job status update for appointment ${appointmentId}: ${status}`);
+  
+  io.to('monitoring').emit('job_status_updated', {
+    appointmentId,
+    status,
+    appointment,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export function getWebSocketServer() {
   return io;
 }
