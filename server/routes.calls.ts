@@ -119,10 +119,40 @@ export function registerCallRoutes(app: Router) {
   // Get active calls
   app.get('/api/calls/active', requireAuth, async (req: Request, res: Response) => {
     try {
-      // TODO: Implement with Twilio Voice SDK
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+      if (!accountSid || !authToken) {
+        // No Twilio configured - return empty array
+        return res.json({
+          success: true,
+          calls: [],
+        });
+      }
+
+      // Query Twilio for active calls (in-progress status)
+      const twilio = (await import('twilio')).default;
+      const client = twilio(accountSid, authToken);
+
+      const activeCalls = await client.calls.list({
+        status: 'in-progress',
+        limit: 20,
+      });
+
+      // Format for frontend
+      const formattedCalls = activeCalls.map(call => ({
+        callSid: call.sid,
+        direction: call.direction,
+        from: call.from,
+        to: call.to,
+        status: call.status,
+        duration: call.duration,
+        timestamp: call.dateCreated?.toISOString() || new Date().toISOString(),
+      }));
+
       res.json({
         success: true,
-        calls: [], // No active calls until Twilio is configured
+        calls: formattedCalls,
       });
     } catch (error) {
       console.error('Error fetching active calls:', error);
@@ -136,10 +166,31 @@ export function registerCallRoutes(app: Router) {
   // Get recent calls
   app.get('/api/calls/recent', requireAuth, async (req: Request, res: Response) => {
     try {
-      // TODO: Fetch from database (calls table)
+      // Fetch recent calls from database (last 50 calls)
+      const recentCalls = await db
+        .select()
+        .from(callEvents)
+        .orderBy(desc(callEvents.createdAt))
+        .limit(50);
+
+      // Format for frontend
+      const formattedCalls = recentCalls.map(call => ({
+        id: call.id,
+        callSid: call.callSid,
+        direction: call.direction,
+        from: call.from,
+        to: call.to,
+        status: call.status,
+        duration: call.duration,
+        timestamp: call.createdAt?.toISOString() || new Date().toISOString(),
+        recordingUrl: call.recordingUrl,
+        transcriptionText: call.transcriptionText,
+        answeredBy: call.answeredBy,
+      }));
+
       res.json({
         success: true,
-        calls: [], // Empty until real call data exists
+        calls: formattedCalls,
       });
     } catch (error) {
       console.error('Error fetching recent calls:', error);
@@ -155,15 +206,39 @@ export function registerCallRoutes(app: Router) {
     try {
       const callId = parseInt(req.params.id);
       
-      // TODO: Fetch from database
+      // Fetch call details from database
+      const [call] = await db
+        .select()
+        .from(callEvents)
+        .where(eq(callEvents.id, callId))
+        .limit(1);
+
+      if (!call) {
+        return res.status(404).json({
+          success: false,
+          message: 'Call not found',
+        });
+      }
+
+      // Format for frontend
       res.json({
         success: true,
         call: {
-          id: callId,
-          status: 'in-progress',
-          from: '+19182820103',
-          to: '+19188565711',
-          direction: 'outbound',
+          id: call.id,
+          callSid: call.callSid,
+          direction: call.direction,
+          from: call.from,
+          to: call.to,
+          status: call.status,
+          duration: call.duration,
+          recordingUrl: call.recordingUrl,
+          recordingSid: call.recordingSid,
+          transcriptionText: call.transcriptionText,
+          transcriptionStatus: call.transcriptionStatus,
+          answeredBy: call.answeredBy,
+          price: call.price,
+          priceUnit: call.priceUnit,
+          timestamp: call.createdAt?.toISOString() || new Date().toISOString(),
         },
       });
     } catch (error) {
@@ -303,18 +378,41 @@ export function registerCallRoutes(app: Router) {
   // End call
   app.post('/api/calls/:id/end', requireAuth, async (req: Request, res: Response) => {
     try {
-      const callId = parseInt(req.params.id);
+      const callSid = req.params.id; // This is the Twilio CallSid, not database ID
 
-      // TODO: Implement with Twilio Voice SDK
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+      if (!accountSid || !authToken) {
+        return res.status(503).json({
+          success: false,
+          message: 'Phone service not configured',
+        });
+      }
+
+      // Use Twilio API to end the call
+      const twilio = (await import('twilio')).default;
+      const client = twilio(accountSid, authToken);
+
+      await client.calls(callSid).update({ status: 'completed' });
+
+      console.log(`[CALL END] Call ${callSid} terminated by admin`);
+
       res.json({
         success: true,
-        message: 'Call ended',
+        message: 'Call ended successfully',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error ending call:', error);
+      
+      let userMessage = 'Failed to end call';
+      if (error.code === 20404) {
+        userMessage = 'Call not found or already ended';
+      }
+
       res.status(500).json({
         success: false,
-        message: 'Failed to end call',
+        message: userMessage,
       });
     }
   });
@@ -322,19 +420,57 @@ export function registerCallRoutes(app: Router) {
   // Mute/unmute call
   app.post('/api/calls/:id/mute', requireAuth, async (req: Request, res: Response) => {
     try {
-      const callId = parseInt(req.params.id);
+      const callSid = req.params.id; // This is the Twilio CallSid
       const { muted } = req.body;
 
-      // TODO: Implement with Twilio Voice SDK
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+      if (!accountSid || !authToken) {
+        return res.status(503).json({
+          success: false,
+          message: 'Phone service not configured',
+        });
+      }
+
+      // Use Twilio API to mute/unmute via TwiML update
+      const twilio = (await import('twilio')).default;
+      const client = twilio(accountSid, authToken);
+
+      // Fetch call details to get customer phone number for reconnection
+      const call = await client.calls(callSid).fetch();
+      const customerPhone = call.from; // The customer's phone number
+
+      // Get public base URL for TwiML callbacks
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.PUBLIC_URL || 'https://cleanmachine.app';
+
+      // TwiML URL for mute (silence) or unmute (reconnect with customer phone)
+      const twimlUrl = muted
+        ? `${baseUrl}/api/voice/mute-call`
+        : `${baseUrl}/api/voice/unmute-call?phone=${encodeURIComponent(customerPhone)}`;
+
+      await client.calls(callSid).update({ url: twimlUrl });
+
+      console.log(`[CALL ${muted ? 'MUTE' : 'UNMUTE'}] Call ${callSid} ${muted ? 'muted' : 'unmuted'}`);
+
       res.json({
         success: true,
         muted,
+        message: muted ? 'Call muted' : 'Call unmuted',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error muting call:', error);
+      
+      let userMessage = 'Failed to mute call';
+      if (error.code === 20404) {
+        userMessage = 'Call not found or already ended';
+      }
+
       res.status(500).json({
         success: false,
-        message: 'Failed to mute call',
+        message: userMessage,
       });
     }
   });
@@ -342,19 +478,57 @@ export function registerCallRoutes(app: Router) {
   // Hold/unhold call
   app.post('/api/calls/:id/hold', requireAuth, async (req: Request, res: Response) => {
     try {
-      const callId = parseInt(req.params.id);
+      const callSid = req.params.id; // This is the Twilio CallSid
       const { held } = req.body;
 
-      // TODO: Implement with Twilio Voice SDK
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+      if (!accountSid || !authToken) {
+        return res.status(503).json({
+          success: false,
+          message: 'Phone service not configured',
+        });
+      }
+
+      // Use Twilio API to update call with hold music or resume
+      const twilio = (await import('twilio')).default;
+      const client = twilio(accountSid, authToken);
+
+      // Fetch call details to get customer phone number for reconnection
+      const call = await client.calls(callSid).fetch();
+      const customerPhone = call.from; // The customer's phone number
+
+      // Get public base URL for TwiML callbacks
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.PUBLIC_URL || 'https://cleanmachine.app';
+
+      // TwiML URL for hold music or resume (with customer phone for reconnection)
+      const twimlUrl = held 
+        ? `${baseUrl}/api/voice/hold-music`
+        : `${baseUrl}/api/voice/resume-call?phone=${encodeURIComponent(customerPhone)}`;
+
+      await client.calls(callSid).update({ url: twimlUrl });
+
+      console.log(`[CALL ${held ? 'HOLD' : 'RESUME'}] Call ${callSid} ${held ? 'on hold' : 'resumed'}`);
+
       res.json({
         success: true,
         held,
+        message: held ? 'Call placed on hold' : 'Call resumed',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error holding call:', error);
+      
+      let userMessage = 'Failed to hold call';
+      if (error.code === 20404) {
+        userMessage = 'Call not found or already ended';
+      }
+
       res.status(500).json({
         success: false,
-        message: 'Failed to hold call',
+        message: userMessage,
       });
     }
   });

@@ -677,4 +677,106 @@ router.get('/token', requireTechnician, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Hold Music - Play hold music when call is placed on hold
+ * GET /api/voice/hold-music
+ */
+router.get('/hold-music', (req: Request, res: Response) => {
+  const twiml = new VoiceResponse();
+  
+  twiml.say({
+    voice: 'alice',
+    language: 'en-US'
+  }, 'Please hold.');
+  
+  // Play hold music on loop
+  twiml.play({ loop: 0 }, 'http://com.twilio.sounds.music.s3.amazonaws.com/MARKOVICHAMP-Borghestral.mp3');
+  
+  console.log('[VOICE] Playing hold music');
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+/**
+ * Resume Call - Resume call from hold
+ * GET /api/voice/resume-call
+ * 
+ * NOTE: This requires the original call context (customer phone) as a query parameter
+ * to reconnect the bridge. Called via: /resume-call?phone=+1234567890
+ */
+router.get('/resume-call', (req: Request, res: Response) => {
+  const twiml = new VoiceResponse();
+  const customerPhone = req.query.phone as string;
+  
+  if (!customerPhone) {
+    console.error('[VOICE] Resume call called without phone parameter');
+    twiml.say({
+      voice: 'alice',
+      language: 'en-US'
+    }, 'Unable to resume call. Missing connection information.');
+    res.type('text/xml');
+    return res.send(twiml.toString());
+  }
+  
+  // Redirect back to the connect-customer endpoint to re-establish bridge
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : process.env.PUBLIC_URL || 'https://cleanmachine.app';
+  
+  twiml.redirect(`${baseUrl}/api/voice/connect-customer?phone=${encodeURIComponent(customerPhone)}`);
+  
+  console.log(`[VOICE] Resuming call from hold - redirecting to connect-customer for ${customerPhone}`);
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+/**
+ * Mute Call - Play silence to mute the call
+ * GET /api/voice/mute-call
+ */
+router.get('/mute-call', (req: Request, res: Response) => {
+  const twiml = new VoiceResponse();
+  
+  // Play silence (effectively muting the call from admin's perspective)
+  // Note: This is a workaround - true bidirectional mute requires conference calls
+  twiml.pause({ length: 3600 }); // Pause for up to 1 hour (or until unmuted)
+  
+  console.log('[VOICE] Call muted (playing silence)');
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+/**
+ * Unmute Call - Resume normal audio
+ * GET /api/voice/unmute-call
+ * 
+ * NOTE: This requires the original call context (customer phone) as a query parameter
+ * to reconnect the bridge. Called via: /unmute-call?phone=+1234567890
+ */
+router.get('/unmute-call', (req: Request, res: Response) => {
+  const twiml = new VoiceResponse();
+  const customerPhone = req.query.phone as string;
+  
+  if (!customerPhone) {
+    console.error('[VOICE] Unmute call called without phone parameter');
+    twiml.say({
+      voice: 'alice',
+      language: 'en-US'
+    }, 'Unable to unmute call. Missing connection information.');
+    res.type('text/xml');
+    return res.send(twiml.toString());
+  }
+  
+  // Redirect back to the connect-customer endpoint to re-establish bridge
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : process.env.PUBLIC_URL || 'https://cleanmachine.app';
+  
+  twiml.redirect(`${baseUrl}/api/voice/connect-customer?phone=${encodeURIComponent(customerPhone)}`);
+  
+  console.log(`[VOICE] Unmuting call - redirecting to connect-customer for ${customerPhone}`);
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
 export default router;
