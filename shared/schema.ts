@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum, sql } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1381,8 +1381,29 @@ export const technicians = pgTable("technicians", {
   skillLevel: integer("skill_level").default(1), // 1-5 skill rating for scheduling
   specialties: text("specialties").array(), // Services they specialize in
   maxJobsPerDay: integer("max_jobs_per_day").default(6), // Capacity constraint
+  
+  // Employee Provisioning - Auto-generated email and phone extension
+  generatedEmail: varchar("generated_email", { length: 255 }), // Auto-generated email alias (firstname.lastname@cleanmachine.com)
+  phoneExtension: integer("phone_extension"), // Sequential extension number (101, 102, 103...)
+  provisioningStatus: varchar("provisioning_status", { length: 20 }).default("pending"), // pending, provisioned, failed
+  provisioningError: text("provisioning_error"), // Error details if provisioning failed
+  provisionedAt: timestamp("provisioned_at"), // When provisioning succeeded
+  provisionedBy: integer("provisioned_by").references(() => users.id), // Admin who triggered provisioning
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint on phone extension to prevent duplicates at database level
+  phoneExtensionUniqueIdx: uniqueIndex("technicians_phone_extension_unique_idx").on(table.phoneExtension),
+}));
+
+// Extension Pool - Tracks available phone extensions for employee provisioning
+export const extensionPool = pgTable("extension_pool", {
+  id: serial("id").primaryKey(),
+  nextExtension: integer("next_extension").notNull().default(101), // Next available extension to assign
+  assignedExtensions: integer("assigned_extensions").array(), // List of all assigned extensions
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
 });
 
 // Org Settings - Feature flags and configuration for bio profiles and other features

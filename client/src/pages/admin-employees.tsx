@@ -48,6 +48,12 @@ interface Employee {
   specialties?: string[] | null;
   tags?: string[] | null;
   hireDate?: string | null;
+  // Employee provisioning fields
+  generatedEmail?: string | null;
+  phoneExtension?: number | null;
+  provisioningStatus?: string | null;
+  provisioningError?: string | null;
+  provisionedAt?: string | null;
 }
 
 export default function AdminEmployees() {
@@ -181,6 +187,83 @@ export default function AdminEmployees() {
         variant: "destructive",
         title: "Request Failed",
         description: error.message || "Failed to request changes. Please try again.",
+      });
+    },
+  });
+
+  // Provision employee mutation (email + phone extension)
+  const provisionMutation = useMutation({
+    mutationFn: async (employeeId: number) => {
+      const response = await fetch(`/api/admin/employees/${employeeId}/provision`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok && response.status !== 207) {
+        throw new Error(data.error || 'Failed to provision employee');
+      }
+      
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/employees'], exact: false });
+      
+      if (data.success) {
+        toast({
+          title: "Employee Provisioned",
+          description: `Email: ${data.provisioning?.email} | Extension: ${data.provisioning?.extension}`,
+        });
+      } else {
+        // Partial success (207 status)
+        toast({
+          variant: "destructive",
+          title: "Partial Provisioning",
+          description: data.message || "Manual email setup required. Check employee details for instructions.",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Provisioning Failed",
+        description: error.message || "Failed to provision employee. Please try again.",
+      });
+    },
+  });
+
+  // Retry provisioning mutation (only for failed provisions)
+  const retryProvisionMutation = useMutation({
+    mutationFn: async (employeeId: number) => {
+      const response = await fetch(`/api/admin/employees/${employeeId}/retry-provision`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to retry provisioning');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/employees'], exact: false });
+      toast({
+        title: "Provisioning Successful",
+        description: "Email alias has been created in Google Workspace.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Retry Failed",
+        description: error.message || "Failed to retry provisioning. You may need to create the alias manually.",
       });
     },
   });
@@ -777,6 +860,90 @@ export default function AdminEmployees() {
                               </div>
                             </div>
                           )}
+
+                          {/* Employee Provisioning Status */}
+                          <div className="space-y-2 p-3 bg-muted/50 rounded border">
+                            <label className="text-xs font-medium text-muted-foreground uppercase">Employee Provisioning</label>
+                            
+                            {employee.provisioningStatus === 'provisioned' && (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                  <span className="text-sm font-medium text-green-700 dark:text-green-400">Fully Provisioned</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Email Alias</p>
+                                    <p className="font-mono text-xs">{employee.generatedEmail || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Phone Extension</p>
+                                    <p className="font-mono text-xs">Ext. {employee.phoneExtension || 'N/A'}</p>
+                                  </div>
+                                </div>
+                                {employee.provisionedAt && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Provisioned {new Date(employee.provisionedAt).toLocaleDateString()}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {employee.provisioningStatus === 'failed' && (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <XCircle className="w-4 h-4 text-red-500" />
+                                  <span className="text-sm font-medium text-red-700 dark:text-red-400">Provisioning Failed</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Email Alias</p>
+                                    <p className="font-mono text-xs">{employee.generatedEmail || 'N/A'}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">Phone Extension</p>
+                                    <p className="font-mono text-xs">Ext. {employee.phoneExtension || 'N/A'}</p>
+                                  </div>
+                                </div>
+                                {employee.provisioningError && (
+                                  <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-900">
+                                    <p className="text-xs text-red-700 dark:text-red-400">{employee.provisioningError}</p>
+                                  </div>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => retryProvisionMutation.mutate(employee.id)}
+                                  disabled={retryProvisionMutation.isPending}
+                                  data-testid={`button-retry-provision-${employee.id}`}
+                                >
+                                  <AlertCircle className="w-4 h-4 mr-2" />
+                                  {retryProvisionMutation.isPending ? 'Retrying...' : 'Retry Provisioning'}
+                                </Button>
+                              </div>
+                            )}
+
+                            {(!employee.provisioningStatus || employee.provisioningStatus === 'pending') && (
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <AlertCircle className="w-4 h-4 text-yellow-500" />
+                                  <span className="text-sm font-medium text-yellow-700 dark:text-yellow-400">Not Provisioned</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  This employee needs email and extension provisioning for full system access.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  onClick={() => provisionMutation.mutate(employee.id)}
+                                  disabled={provisionMutation.isPending}
+                                  data-testid={`button-provision-${employee.id}`}
+                                >
+                                  <UserPlus className="w-4 h-4 mr-2" />
+                                  {provisionMutation.isPending ? 'Provisioning...' : 'Provision Employee'}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
 
                           {/* Actions */}
                           <div className="flex gap-2 pt-2 border-t">
