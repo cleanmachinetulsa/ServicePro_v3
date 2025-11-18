@@ -108,8 +108,14 @@ export default function QuoteApprovalPage() {
       });
       return response.json();
     },
-    onSuccess: () => {
-      // Quote approved successfully
+    onSuccess: (data) => {
+      // Quote approved successfully - redirect to booking if token provided
+      if (data.bookingToken) {
+        // Give user a moment to see success, then redirect to booking
+        setTimeout(() => {
+          window.location.href = `/quick-booking?quote=${data.bookingToken}`;
+        }, 2000);
+      }
     },
     onError: (error: any) => {
       alert(error.message || 'Failed to approve quote. Please try again.');
@@ -251,7 +257,7 @@ export default function QuoteApprovalPage() {
               <div className="w-full text-left space-y-2">
                 <p className="text-sm font-medium">Next Steps:</p>
                 <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  <li>You'll receive a call/text to schedule the appointment</li>
+                  <li>⏱️ Redirecting you to schedule your appointment...</li>
                   <li>Service will be completed as quoted</li>
                   <li>Payment will be collected as discussed</li>
                 </ul>
