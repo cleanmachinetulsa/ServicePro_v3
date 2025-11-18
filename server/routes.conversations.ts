@@ -550,27 +550,49 @@ export function registerConversationRoutes(app: Express) {
         );
         // For web chat, the message is broadcast via WebSocket in addMessage
       } catch (dbError: any) {
-        // Log the database error but don't fail the request if message was already sent
-        console.error('[MESSAGE DB SAVE ERROR] Message was delivered but failed to save to database:', {
+        // CRITICAL ERROR: Database save failed - this is unacceptable
+        console.error('[MESSAGE DB SAVE ERROR] CRITICAL: Message was delivered but failed to save to database:', {
           conversationId,
           error: dbError.message || String(dbError),
           platform: conversation.platform,
+          stack: dbError.stack,
         });
         
-        // If message was sent via SMS/Facebook/Instagram, still return success
-        // since the customer received it (database save is secondary)
+        // Log as CRITICAL error - triggers SMS alert to business owner
+        try {
+          const { logError } = await import('./errorMonitoring');
+          await logError({
+            type: 'database',
+            severity: 'critical',
+            message: `Database save failed for delivered message (conversation ${conversationId})`,
+            endpoint: req.path,
+            metadata: {
+              conversationId,
+              platform: conversation.platform,
+              errorMessage: dbError.message || String(dbError),
+              errorStack: dbError.stack,
+              messageContent: processedContent ? processedContent.substring(0, 100) : '[no text content]',
+            },
+          });
+        } catch (logErr) {
+          console.error('[MESSAGE DB SAVE ERROR] Failed to log critical error:', logErr);
+        }
+        
+        // If message was sent via SMS/Facebook/Instagram, return success=false but 200 status
+        // This ensures Twilio doesn't retry, but UI knows there was a problem
         if (conversation.platform !== 'web') {
-          return res.json({
-            success: true,
+          return res.status(200).json({
+            success: false,
             data: null,
-            message: conversation.platform === 'sms' 
-              ? 'Message sent successfully via SMS (note: database save failed)'
+            message: 'Message delivered but database save failed',
+            error: 'Database save failed - message history may be incomplete',
+            details: conversation.platform === 'sms' 
+              ? 'Message sent via SMS but not saved to database. Technical team has been notified.'
               : conversation.platform === 'facebook'
-              ? 'Message sent successfully via Facebook Messenger (note: database save failed)'
+              ? 'Message sent via Facebook Messenger but not saved to database. Technical team has been notified.'
               : conversation.platform === 'instagram'
-              ? 'Message sent successfully via Instagram DM (note: database save failed)'
-              : 'Message sent successfully',
-            warning: 'Message was delivered but not saved to message history',
+              ? 'Message sent via Instagram DM but not saved to database. Technical team has been notified.'
+              : 'Message sent but not saved to database. Technical team has been notified.',
           });
         }
         

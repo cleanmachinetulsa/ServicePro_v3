@@ -1,0 +1,19 @@
+address all these issues without skipping any, one by one. 
+
+wait, weve already discuss the fact that quite failures are unacceotable, why would you allow the database to fail to save messages without flagging that as a major error? fix this with a long term solution.
+
+we use so mnay differnt terms for similar things and im confused. what are you referring to when you say home page chat bot? there is the button that says book now, this opnes the chat bot , and i dont wan that button or chat bot anymore. if you are talking about the pop up chat bot on the home page then we have a bigger issue as this is a MAIN communication channel for customers to my business. we must drill down on this if that is the case. if its the button, i dont want it anyway so remove it. let me know what youre plan is exactly before you do anything with the chats, to be sure of which one youre talking about.
+
+also, why is i that youre only just NOW noticing this critical secuity issue after weve been live for days?
+
+why is there a strange delay and 'flash' of loading when navigating to my webapp? thtas not smooth feeling like a premium webpage. also, can we have animated transition effects to the home page opening? make it feel ultra premium app like expercience. ihate this ulra long loadin time we have, i dont understamd why its like that. does it have to be? didnt we discuss a system to minimize hat sort of thing by starting the page early and then continuing to fining loading stuff in the background so there isnt a delay? something like that. remind me and execute best plan/best practices.
+
+does the employee managment system allow us to add in new indivdual phone 'extentions' for each new employee? can this be automated or must i do something about it in twilio or something? 
+
+also automate the option of adding a custom email address thats connected to my same system as info@cleanmachinetulsa.com and admin@cleanmachintulsa.com business emails i have though microsoft office 365/outlook.
+
+set rollout mode to true and tell me everything in the app that has any connection to the rollout mode and what the intention of that mode is/was.
+
+didnt we discuss removing th ebook now button since it is the same as the pop up chat?
+
+didnt you reformat the setting panel recently? i dont see all the options that should be there, including the homepade editor and liekly any other new features built over the last few days. seek deeply to find and be certain of this and then fix it.

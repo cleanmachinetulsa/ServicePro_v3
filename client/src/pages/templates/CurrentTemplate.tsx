@@ -89,57 +89,38 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             transition={{ duration: 0.6, delay: 0.3 }}
             className="flex flex-col items-center"
           >
-            <p className="text-blue-200/90 mb-3 italic">ask anything. book anytime.</p>
-            <div className="flex flex-col sm:flex-row items-center gap-4">
+            <p className="text-blue-200/90 mb-3 italic">book anytime. chat with our floating assistant.</p>
+            <div className="flex flex-col items-center gap-4">
               <Button 
                 size="lg" 
-                className="transform hover:scale-105 transition-all duration-300 shadow-lg text-white font-semibold relative overflow-hidden group px-8 py-6 rounded-md"
+                variant="outline"
+                className="transform hover:scale-105 transition-all duration-300 shadow-lg font-semibold relative overflow-hidden group px-8 py-6 rounded-md text-white"
                 style={{
-                  backgroundColor: content?.primaryColor ? `hsl(${content.primaryColor})` : 'hsl(220, 90%, 56%)',
+                  borderColor: content?.accentColor ? `hsl(${content.accentColor})` : 'hsl(340, 80%, 55%)',
+                  backgroundColor: content?.accentColor ? `hsl(${content.accentColor} / 0.1)` : 'hsl(220, 90%, 56% / 0.1)',
                 }}
                 asChild
               >
-                <Link href={content?.heroCtaLink || '/chat'} className="relative z-10 flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 mr-1" />
-                  <span>{content?.heroCtaText || 'Clean Machine Assistant'}</span>
+                <Link href="/schedule" className="relative z-10 flex items-center gap-2">
+                  <CalendarClock className="h-5 w-5 mr-1" />
+                  <span>Visual Scheduler</span>
                   <span className="ml-1 group-hover:ml-2 transition-all duration-300">→</span>
-                  <span className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-400/10 to-blue-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
+                  <span className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-400/5 to-blue-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
                 </Link>
               </Button>
               
-              <div className="flex flex-col items-center">
-                <p className="text-blue-200 text-xs mb-1">Or use our</p>
-                <Button 
-                  size="lg" 
-                  variant="outline"
-                  className="transform hover:scale-105 transition-all duration-300 shadow-lg font-semibold relative overflow-hidden group px-8 py-6 rounded-md text-white"
-                  style={{
-                    borderColor: content?.accentColor ? `hsl(${content.accentColor})` : 'hsl(340, 80%, 55%)',
-                    backgroundColor: content?.accentColor ? `hsl(${content.accentColor} / 0.1)` : 'hsl(220, 90%, 56% / 0.1)',
-                  }}
-                  asChild
-                >
-                  <Link href="/schedule" className="relative z-10 flex items-center gap-2">
-                    <CalendarClock className="h-5 w-5 mr-1" />
-                    <span>Visual Scheduler</span>
-                    <span className="ml-1 group-hover:ml-2 transition-all duration-300">→</span>
-                    <span className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-400/5 to-blue-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
-                  </Link>
-                </Button>
-                
-                {/* Call Now Button */}
-                <Button 
-                  size="default" 
-                  className="bg-green-600 hover:bg-green-700 text-white transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-green-500/30 font-medium relative overflow-hidden group px-6 py-3 rounded-md mt-3"
-                  asChild
-                >
-                  <a href="tel:+19188565304" className="relative z-10 flex items-center gap-2">
-                    <Phone className="h-4 w-4 mr-1" />
-                    <span>Call Now</span>
-                    <span className="absolute inset-0 bg-gradient-to-r from-green-600/0 via-green-400/10 to-green-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
-                  </a>
-                </Button>
-              </div>
+              {/* Call Now Button */}
+              <Button 
+                size="default" 
+                className="bg-green-600 hover:bg-green-700 text-white transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-green-500/30 font-medium relative overflow-hidden group px-6 py-3 rounded-md mt-3"
+                asChild
+              >
+                <a href="tel:+19188565304" className="relative z-10 flex items-center gap-2">
+                  <Phone className="h-4 w-4 mr-1" />
+                  <span>Call Now</span>
+                  <span className="absolute inset-0 bg-gradient-to-r from-green-600/0 via-green-400/10 to-green-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
+                </a>
+              </Button>
             </div>
             
             {/* Feature Action Buttons */}
