@@ -4,6 +4,7 @@ import { recurringServices, appointments, customers, services } from '@shared/sc
 import { eq, and, lte, gte } from 'drizzle-orm';
 import { addDays, addWeeks, addMonths, addYears, format } from 'date-fns';
 import { processDepositReminders } from './depositManager';
+import { recordAppointmentCreated } from './customerBookingStats';
 
 /**
  * Calculate the next scheduled date based on frequency
@@ -98,38 +99,43 @@ async function processRecurringServices() {
           scheduledDate.setHours(9, 0, 0, 0); // Default to 9:00 AM
         }
 
-        // Create the appointment
-        const [newAppointment] = await db
-          .insert(appointments)
-          .values({
-            customerId: customer.id,
-            serviceId: service.id,
-            scheduledTime: scheduledDate,
-            address: customer.address || '',
-            completed: false,
-            reminderSent: false,
-          })
-          .returning();
+        // Create the appointment - wrap in transaction with stats update and recurring service update
+        await db.transaction(async (tx) => {
+          const [newAppointment] = await tx
+            .insert(appointments)
+            .values({
+              customerId: customer.id,
+              serviceId: service.id,
+              scheduledTime: scheduledDate,
+              address: customer.address || '',
+              completed: false,
+              reminderSent: false,
+            })
+            .returning();
 
-        console.log(`[RECURRING] Created appointment ${newAppointment.id} for ${customer.name} - ${service.name}`);
+          // Track booking stats for customer - in same transaction
+          await recordAppointmentCreated(customer.id, scheduledDate, tx);
 
-        // Calculate next scheduled date
-        const nextDate = calculateNextDate(
-          new Date(recurringService.nextScheduledDate),
-          recurringService.frequency
-        );
+          console.log(`[RECURRING] Created appointment ${newAppointment.id} for ${customer.name} - ${service.name}`);
 
-        // Update the recurring service
-        await db
-          .update(recurringServices)
-          .set({
-            nextScheduledDate: nextDate.toISOString().split('T')[0],
-            lastAppointmentCreatedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(recurringServices.id, recurringService.id));
+          // Calculate next scheduled date
+          const nextDate = calculateNextDate(
+            new Date(recurringService.nextScheduledDate),
+            recurringService.frequency
+          );
 
-        console.log(`[RECURRING] Updated recurring service ${recurringService.id}, next date: ${nextDate.toISOString().split('T')[0]}`);
+          // Update the recurring service - in same transaction
+          await tx
+            .update(recurringServices)
+            .set({
+              nextScheduledDate: nextDate.toISOString().split('T')[0],
+              lastAppointmentCreatedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(recurringServices.id, recurringService.id));
+
+          console.log(`[RECURRING] Updated recurring service ${recurringService.id}, next date: ${nextDate.toISOString().split('T')[0]}`);
+        });
         
         createdCount++;
       } catch (error) {

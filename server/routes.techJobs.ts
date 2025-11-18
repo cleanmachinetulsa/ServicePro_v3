@@ -13,6 +13,7 @@ import { google } from 'googleapis';
 import { createInvoice } from './invoiceService';
 import { sendSMS } from './notifications';
 import { sendPushNotification } from './pushNotificationService';
+import { recordAppointmentCompleted } from './customerBookingStats';
 
 const router = Router();
 
@@ -791,6 +792,9 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
         })
         .where(eq(appointments.id, jobId))
         .returning();
+
+      // 3b. Track completion in customer booking stats (mark as returning customer)
+      await recordAppointmentCompleted(appointment.customerId, tx);
 
       // 3a. Record service in customer history (Phase 1: Customer Intelligence)
       if (completedAppointment) {

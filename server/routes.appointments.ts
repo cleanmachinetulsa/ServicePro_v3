@@ -3,6 +3,7 @@ import { db } from './db';
 import { appointments, conversations, services, customers } from '@shared/schema';
 import { eq, and, lte, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { recordAppointmentCreated } from './customerBookingStats';
 
 const router = Router();
 
@@ -101,24 +102,29 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
       
       appointmentId = conversation.appointmentId;
     } else {
-      // Create new appointment
-      const [newAppointment] = await db.insert(appointments)
-        .values({
-          customerId: data.customerId,
-          serviceId: data.serviceId,
-          scheduledTime: data.scheduledTime,
-          address: data.address,
-          additionalRequests: data.additionalRequests,
-          addOns: data.addOns,
-        })
-        .returning();
-      
-      appointmentId = newAppointment.id;
-      
-      // Link appointment to conversation
-      await db.update(conversations)
-        .set({ appointmentId })
-        .where(eq(conversations.id, conversationId));
+      // Create new appointment - wrap in transaction with stats update
+      await db.transaction(async (tx) => {
+        const [newAppointment] = await tx.insert(appointments)
+          .values({
+            customerId: data.customerId,
+            serviceId: data.serviceId,
+            scheduledTime: data.scheduledTime,
+            address: data.address,
+            additionalRequests: data.additionalRequests,
+            addOns: data.addOns,
+          })
+          .returning();
+        
+        appointmentId = newAppointment.id;
+        
+        // Track booking stats for customer - in same transaction
+        await recordAppointmentCreated(data.customerId, data.scheduledTime, tx);
+        
+        // Link appointment to conversation - in same transaction
+        await tx.update(conversations)
+          .set({ appointmentId })
+          .where(eq(conversations.id, conversationId));
+      });
     }
     
     // Fetch updated appointment

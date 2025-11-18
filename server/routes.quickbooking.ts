@@ -3,6 +3,7 @@ import { eq, desc } from 'drizzle-orm';
 import { db } from './db';
 import { appointments, customers, loyaltyPoints } from '@shared/schema';
 import { getEnhancedCustomerServiceHistory } from './enhancedCustomerSearch';
+import { recordAppointmentCreated } from './customerBookingStats';
 
 /**
  * Register Quick Booking routes for returning customers
@@ -220,19 +221,27 @@ export function registerQuickBookingRoutes(app: Express) {
           .where(eq(customers.id, customer.id));
       }
       
-      // Create appointment - serviceId cannot be null in schema
-      const [appointment] = await db.insert(appointments).values({
-        customerId: customer.id,
-        serviceId: serviceId || 1, // Default to service ID 1 if not provided
-        scheduledTime: new Date(scheduledTime),
-        address: address || '',
-        latitude: req.body.latitude || null,
-        longitude: req.body.longitude || null,
-        addressConfirmedByCustomer: req.body.addressConfirmedByCustomer || false,
-        addressNeedsReview: req.body.addressNeedsReview || false,
-        addOns: addOns || null,
-        additionalRequests: notes ? [notes] : null,
-      }).returning();
+      // Create appointment - wrap in transaction with stats update
+      let appointment: any;
+      await db.transaction(async (tx) => {
+        const [newAppointment] = await tx.insert(appointments).values({
+          customerId: customer.id,
+          serviceId: serviceId || 1, // Default to service ID 1 if not provided
+          scheduledTime: new Date(scheduledTime),
+          address: address || '',
+          latitude: req.body.latitude || null,
+          longitude: req.body.longitude || null,
+          addressConfirmedByCustomer: req.body.addressConfirmedByCustomer || false,
+          addressNeedsReview: req.body.addressNeedsReview || false,
+          addOns: addOns || null,
+          additionalRequests: notes ? [notes] : null,
+        }).returning();
+        
+        appointment = newAppointment;
+        
+        // Track booking stats for customer - in same transaction
+        await recordAppointmentCreated(customer.id, new Date(scheduledTime), tx);
+      });
       
       console.log(`[Quick Booking] Appointment created:`, {
         appointmentId: appointment.id,
