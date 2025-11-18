@@ -355,7 +355,14 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
       }
     }
 
-    // TODO: Broadcast status update via WebSocket for real-time UI updates
+    // Broadcast status update via WebSocket for real-time dashboard updates
+    try {
+      const { broadcastJobStatusUpdate } = await import('./websocketService');
+      broadcastJobStatusUpdate(appointmentId, status, updatedAppointment);
+    } catch (wsError) {
+      // Log error but don't fail the status update
+      console.error('[TECH JOBS] Failed to broadcast WebSocket update:', wsError);
+    }
 
     res.json({
       success: true,
