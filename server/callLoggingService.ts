@@ -7,6 +7,7 @@ export interface CallEventData {
   direction: 'inbound' | 'outbound' | 'technician_outbound';
   from: string;
   to: string;
+  customerPhone?: string; // Optional: The actual customer's phone number for bridge preservation
   status: string;
   duration?: number;
   recordingUrl?: string;
@@ -32,7 +33,7 @@ export async function logCallEvent(callData: CallEventData): Promise<number> {
     
     // For inbound calls, the customer is calling FROM a number
     // For outbound/technician calls, the customer is being called TO a number
-    const customerPhone = callData.direction === 'inbound' ? callData.from : callData.to;
+    const customerPhone = callData.customerPhone || (callData.direction === 'inbound' ? callData.from : callData.to);
     
     // Try to find existing conversation
     const [existingConv] = await db
@@ -50,13 +51,14 @@ export async function logCallEvent(callData: CallEventData): Promise<number> {
       conversationId = newConv.id;
     }
     
-    // Insert call event with technician metadata
+    // Insert call event with customer phone metadata for bridge preservation
     const [callEvent] = await db.insert(callEvents).values({
       conversationId,
       callSid: callData.callSid,
       direction: callData.direction,
       from: callData.from,
       to: callData.to,
+      customerPhone, // Store for hold/mute operations
       status: callData.status,
       duration: callData.duration,
       recordingUrl: callData.recordingUrl,

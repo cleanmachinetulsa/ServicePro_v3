@@ -319,7 +319,7 @@ export function registerCallRoutes(app: Router) {
 
       console.log(`[CALL SUCCESS] Admin ${userEmail} initiated CallSid ${call.sid}, connecting ${businessPhone} to ${to}`);
 
-      // Log the outbound call with admin user info
+      // Log the outbound call with admin user info and customer phone for bridge preservation
       try {
         const { logCallEvent } = await import('./callLoggingService');
         await logCallEvent({
@@ -327,6 +327,7 @@ export function registerCallRoutes(app: Router) {
           direction: 'outbound',
           from: twilioPhone,
           to: to,
+          customerPhone: to, // Store customer phone for mute/hold operations
           status: 'initiated',
         });
         
@@ -433,13 +434,26 @@ export function registerCallRoutes(app: Router) {
         });
       }
 
+      // Fetch customer phone from database (stored during call logging)
+      const [callEvent] = await db
+        .select({ customerPhone: callEvents.customerPhone })
+        .from(callEvents)
+        .where(eq(callEvents.callSid, callSid))
+        .limit(1);
+
+      if (!callEvent?.customerPhone) {
+        console.error(`[CALL MUTE] No customerPhone found for CallSid ${callSid}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Call not found or customer phone missing',
+        });
+      }
+
+      const customerPhone = callEvent.customerPhone;
+
       // Use Twilio API to mute/unmute via TwiML update
       const twilio = (await import('twilio')).default;
       const client = twilio(accountSid, authToken);
-
-      // Fetch call details to get customer phone number for reconnection
-      const call = await client.calls(callSid).fetch();
-      const customerPhone = call.from; // The customer's phone number
 
       // Get public base URL for TwiML callbacks
       const baseUrl = process.env.REPLIT_DEV_DOMAIN 
@@ -491,13 +505,26 @@ export function registerCallRoutes(app: Router) {
         });
       }
 
+      // Fetch customer phone from database (stored during call logging)
+      const [callEvent] = await db
+        .select({ customerPhone: callEvents.customerPhone })
+        .from(callEvents)
+        .where(eq(callEvents.callSid, callSid))
+        .limit(1);
+
+      if (!callEvent?.customerPhone) {
+        console.error(`[CALL HOLD] No customerPhone found for CallSid ${callSid}`);
+        return res.status(404).json({
+          success: false,
+          message: 'Call not found or customer phone missing',
+        });
+      }
+
+      const customerPhone = callEvent.customerPhone;
+
       // Use Twilio API to update call with hold music or resume
       const twilio = (await import('twilio')).default;
       const client = twilio(accountSid, authToken);
-
-      // Fetch call details to get customer phone number for reconnection
-      const call = await client.calls(callSid).fetch();
-      const customerPhone = call.from; // The customer's phone number
 
       // Get public base URL for TwiML callbacks
       const baseUrl = process.env.REPLIT_DEV_DOMAIN 

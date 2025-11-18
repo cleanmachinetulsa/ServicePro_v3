@@ -611,6 +611,7 @@ export const callEvents = pgTable("call_events", {
   direction: varchar("direction", { length: 20 }).notNull(), // inbound, outbound, technician_outbound
   from: text("from").notNull(), // Caller phone number
   to: text("to").notNull(), // Recipient phone number
+  customerPhone: text("customer_phone"), // The actual customer's phone (for bridge preservation during hold/mute)
   status: varchar("status", { length: 20 }).notNull(), // queued, ringing, in-progress, completed, busy, no-answer, failed, canceled
   duration: integer("duration"), // Call duration in seconds (null if not answered)
   recordingUrl: text("recording_url"), // URL to call recording
