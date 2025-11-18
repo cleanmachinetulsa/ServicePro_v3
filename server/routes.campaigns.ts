@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { 
   getAllCampaigns as getAllEmailCampaigns,
   createCampaign as createEmailCampaign,
@@ -17,6 +17,20 @@ import {
 import { z } from 'zod';
 
 const router = Router();
+
+// SECURITY: Require authentication for all campaign routes
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required'
+    });
+  }
+  next();
+}
+
+// Apply auth middleware to all routes
+router.use(requireAuth);
 
 // Validation schemas
 const emailCampaignSchema = z.object({
