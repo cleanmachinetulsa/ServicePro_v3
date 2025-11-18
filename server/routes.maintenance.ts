@@ -11,6 +11,10 @@ import { eq } from "drizzle-orm";
 import { requireAuth } from "./authMiddleware";
 import { z } from "zod";
 import { invalidateMaintenanceCache } from "./maintenanceMode";
+import { 
+  sendMaintenanceEnabledNotifications, 
+  sendMaintenanceDisabledNotifications 
+} from "./maintenanceNotifications";
 
 // Validation schema
 const updateMaintenanceSchema = z.object({
@@ -121,6 +125,35 @@ export function registerMaintenanceRoutes(app: Express) {
         console.error('[MAINTENANCE] Failed to invalidate cache:', cacheError);
       }
 
+      // Send notifications if maintenance mode was toggled
+      // Works for both first-time creation (insert) and updates
+      if (validatedData.maintenanceMode !== undefined && updatedSettings) {
+        // Default to false if no existing settings (first-time creation)
+        const previousMode = existingSettings?.maintenanceMode ?? false;
+        const wasToggled = validatedData.maintenanceMode !== previousMode;
+        
+        if (wasToggled) {
+          console.log(`[MAINTENANCE] Maintenance mode toggled: ${previousMode} → ${validatedData.maintenanceMode}`);
+          
+          // Don't await notifications - send async to avoid blocking the response
+          // Errors in notifications won't break the main toggle functionality
+          if (validatedData.maintenanceMode === true) {
+            // ENABLED - send critical alerts
+            sendMaintenanceEnabledNotifications(
+              updatedSettings, 
+              'Manual activation via admin dashboard'
+            ).catch(error => {
+              console.error('[MAINTENANCE] Failed to send enabled notifications:', error);
+            });
+          } else {
+            // DISABLED - send recovery notifications
+            sendMaintenanceDisabledNotifications(updatedSettings).catch(error => {
+              console.error('[MAINTENANCE] Failed to send disabled notifications:', error);
+            });
+          }
+        }
+      }
+
       res.json({ success: true, settings: updatedSettings });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -164,8 +197,22 @@ export function registerMaintenanceRoutes(app: Express) {
         .where(eq(businessSettings.id, settings.id))
         .returning();
 
-      // TODO: Send alerts via email/SMS to configured contacts
-      // This would be implemented in a separate alerting service
+      // Invalidate cache to apply changes immediately
+      try {
+        invalidateMaintenanceCache();
+        console.log('[MAINTENANCE] Cache invalidated after manual failover trigger');
+      } catch (cacheError) {
+        console.error('[MAINTENANCE] Failed to invalidate cache:', cacheError);
+      }
+
+      // Send critical alerts - manual failover trigger
+      // Don't await to avoid blocking the response
+      sendMaintenanceEnabledNotifications(
+        updatedSettings, 
+        'Manual failover triggered via admin dashboard'
+      ).catch(error => {
+        console.error('[MAINTENANCE] Failed to send failover notifications:', error);
+      });
 
       res.json({
         success: true,

@@ -179,12 +179,93 @@ async function triggerMaintenanceMode(
     if (settings.backupEmail) {
       try {
         const { sendBusinessEmail } = await import('./emailService');
+        const { renderBrandedEmail, renderBrandedEmailPlainText } = await import('./emailTemplates/base');
+        
+        const timestamp = new Date().toLocaleString('en-US', {
+          dateStyle: 'full',
+          timeStyle: 'long',
+          timeZone: 'America/Chicago'
+        });
+        
+        // Build professional branded email alert
+        const emailData: any = {
+          preheader: `Automatic maintenance mode triggered: ${reason}`,
+          subject: '🚨 CRITICAL: Automatic Maintenance Mode Activated',
+          hero: {
+            title: '🚨 Auto-Failover Triggered',
+            subtitle: 'Critical System Alert - Automatic Maintenance Mode'
+          },
+          sections: [
+            {
+              type: 'text',
+              content: '<p style="font-size: 16px; margin-bottom: 20px; color: #dc2626; font-weight: bold;">The system has automatically entered maintenance mode due to critical errors exceeding the configured threshold.</p>'
+            },
+            {
+              type: 'table',
+              items: [
+                { label: 'Status', value: '🔴 AUTO-FAILOVER ACTIVE' },
+                { label: 'Trigger Type', value: 'Automatic' },
+                { label: 'Reason', value: reason },
+                { label: 'Activated At', value: timestamp },
+                { label: 'Impact', value: 'Public bookings paused' }
+              ]
+            },
+            {
+              type: 'spacer',
+              padding: '20px'
+            },
+            {
+              type: 'highlight',
+              content: '<strong>🔍 Immediate Action Required</strong><br><br>The auto-failover system detected a pattern of critical errors and automatically paused public bookings to protect system integrity. Please investigate the root cause immediately.'
+            },
+            {
+              type: 'spacer',
+              padding: '20px'
+            },
+            {
+              type: 'text',
+              content: `
+                <div style="background-color: #fef3c7; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0;">
+                  <h3 style="color: #92400e; margin-top: 0; font-size: 18px; font-weight: bold;">What Happened?</h3>
+                  <p style="margin: 10px 0; color: #1f2937;">The system detected multiple critical errors within a 5-minute window, indicating a potential system-wide issue. To prevent data loss or service degradation, maintenance mode was automatically enabled.</p>
+                  <br>
+                  <h3 style="color: #92400e; margin-top: 15px; font-size: 18px; font-weight: bold;">Next Steps</h3>
+                  <ol style="margin: 10px 0; padding-left: 20px; color: #1f2937;">
+                    <li style="margin-bottom: 8px;">Check the System Monitor for error details</li>
+                    <li style="margin-bottom: 8px;">Review server logs for root cause analysis</li>
+                    <li style="margin-bottom: 8px;">Resolve the underlying issues</li>
+                    <li style="margin-bottom: 8px;">Test critical functionality</li>
+                    <li style="margin-bottom: 8px;">Disable maintenance mode when safe</li>
+                  </ol>
+                </div>
+              `
+            }
+          ],
+          ctas: [
+            {
+              text: 'View System Monitor',
+              url: `${process.env.REPLIT_DEV_DOMAIN || 'https://your-domain.repl.co'}/monitor`,
+              style: 'primary'
+            },
+            {
+              text: 'Check Admin Dashboard',
+              url: `${process.env.REPLIT_DEV_DOMAIN || 'https://your-domain.repl.co'}/dashboard`,
+              style: 'secondary'
+            }
+          ],
+          notes: 'This is an automatic alert from the system monitoring service. The auto-failover feature is designed to protect your business by preventing cascading failures.'
+        };
+        
+        const htmlContent = renderBrandedEmail(emailData);
+        const textContent = renderBrandedEmailPlainText(emailData);
+        
         await sendBusinessEmail(
           settings.backupEmail,
-          '🚨 CRITICAL: Automatic Maintenance Mode Activated',
-          `Automatic maintenance mode has been triggered.\n\nReason: ${reason}\n\nAll public booking functionality has been paused. Please investigate and resolve the issues immediately.\n\nTo disable maintenance mode, log into the admin dashboard and toggle it off from Business Settings.`
+          emailData.subject,
+          textContent,
+          htmlContent
         );
-        console.log(`[AUTO-FAILOVER] Email alert sent to ${settings.backupEmail}`);
+        console.log(`[AUTO-FAILOVER] Branded email alert sent to ${settings.backupEmail}`);
       } catch (emailError) {
         console.error('[AUTO-FAILOVER] Failed to send email alert:', emailError);
       }
