@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { db } from './db';
-import { eq } from 'drizzle-orm';
-import { quoteRequests } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
+import { quoteRequests, bookingTokens } from '@shared/schema';
 import { sendSMS } from './notifications';
+import crypto from 'crypto';
 
 // Simple in-memory OTP store (for MVP - consider using Redis in production)
 const otpStore = new Map<string, { code: string; expiresAt: number; verified: boolean }>();
@@ -56,41 +57,75 @@ const router = Router();
 
 /**
  * GET /api/quote-approval/booking-data/:token
- * Retrieve booking data from quote approval token
- * Allows customers to proceed to booking after approving a quote
+ * Retrieve booking data from quote approval token (ONE-TIME USE)
+ * Marks token as used after retrieval to prevent replay attacks
  */
 router.get('/booking-data/:token', async (req, res) => {
   try {
     const { token } = req.params;
     
-    // Retrieve from global store
-    const bookingTokenStore = (global as any).bookingTokenStore || new Map();
-    const bookingData = bookingTokenStore.get(token);
+    // ATOMIC UPDATE: Mark as used ONLY if not already used (prevents race condition)
+    // This ensures only ONE request can successfully retrieve the token data
+    const [bookingToken] = await db
+      .update(bookingTokens)
+      .set({ 
+        used: true, 
+        usedAt: new Date() 
+      })
+      .where(
+        and(
+          eq(bookingTokens.token, token),
+          eq(bookingTokens.used, false)
+        )
+      )
+      .returning();
     
-    if (!bookingData) {
-      return res.status(404).json({
-        error: 'Booking token not found or expired'
+    // If no row was updated, token is either used, expired, or doesn't exist
+    if (!bookingToken) {
+      // Check if token exists to provide better error message
+      const [existingToken] = await db
+        .select()
+        .from(bookingTokens)
+        .where(eq(bookingTokens.token, token))
+        .limit(1);
+      
+      if (!existingToken) {
+        return res.status(404).json({
+          error: 'Booking token not found'
+        });
+      }
+      
+      if (existingToken.used) {
+        return res.status(410).json({
+          error: 'This booking link has already been used. Please contact us to schedule.'
+        });
+      }
+      
+      // If not used but update failed, must be expired or other issue
+      return res.status(410).json({
+        error: 'Booking token is no longer valid. Please contact us to schedule.'
       });
     }
     
-    // Check expiration
-    if (Date.now() > bookingData.expiresAt) {
-      bookingTokenStore.delete(token);
+    // Check expiration (even though update succeeded)
+    if (new Date() > bookingToken.expiresAt) {
       return res.status(410).json({
         error: 'Booking token has expired. Please contact us to schedule.'
       });
     }
     
+    console.log(`[QUOTE APPROVAL] Booking token ${token} atomically consumed for quote #${bookingToken.quoteId}`);
+    
     res.json({
       success: true,
       data: {
-        quoteId: bookingData.quoteId,
-        customerName: bookingData.customerName,
-        phone: bookingData.phone,
-        email: bookingData.email,
-        damageType: bookingData.damageType,
-        customQuoteAmount: bookingData.customQuoteAmount,
-        issueDescription: bookingData.issueDescription,
+        quoteId: bookingToken.quoteId,
+        customerName: bookingToken.customerName,
+        phone: bookingToken.phone,
+        email: bookingToken.email || '',
+        damageType: bookingToken.damageType,
+        customQuoteAmount: bookingToken.customQuoteAmount ? Number(bookingToken.customQuoteAmount) : 0,
+        issueDescription: bookingToken.issueDescription || '',
       }
     });
   } catch (error) {
@@ -321,27 +356,26 @@ router.post('/:token/approve', async (req, res) => {
       await sendSMS(businessPhone, ownerMessage);
     }
 
-    // Generate booking token for automatic transition to booking flow
+    // Generate secure booking token for automatic transition to booking flow
     // This allows the customer to immediately schedule the approved service
     const bookingToken = crypto.randomBytes(32).toString('hex');
     
-    // Store booking token with quote data (expires in 24 hours)
-    const bookingData = {
+    // Store booking token in database (expires in 24 hours, one-time use)
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    
+    await db.insert(bookingTokens).values({
+      token: bookingToken,
       quoteId: quote.id,
       customerName: quote.customerName,
       phone: quote.phone,
-      email: quote.email || '',
+      email: quote.email || null,
       damageType: quote.damageType,
       customQuoteAmount: quote.customQuoteAmount,
       issueDescription: quote.issueDescription,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-    };
-    
-    // Store in memory (TODO: Move to Redis for production)
-    (global as any).bookingTokenStore = (global as any).bookingTokenStore || new Map();
-    (global as any).bookingTokenStore.set(bookingToken, bookingData);
+      expiresAt,
+    });
 
-    console.log(`[QUOTE APPROVAL] Quote ${quote.id} approved by ${approverType}, booking token generated: ${bookingToken}`);
+    console.log(`[QUOTE APPROVAL] Quote ${quote.id} approved by ${approverType}, booking token saved to DB: ${bookingToken}`);
 
     res.json({
       success: true,

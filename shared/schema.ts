@@ -58,6 +58,26 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Booking tokens for quote-to-booking workflow (one-time-use, auto-expires in 24h)
+export const bookingTokens = pgTable("booking_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  quoteId: integer("quote_id").notNull(),
+  customerName: text("customer_name").notNull(),
+  phone: text("phone").notNull(),
+  email: text("email"),
+  damageType: text("damage_type").notNull(),
+  customQuoteAmount: numeric("custom_quote_amount", { precision: 10, scale: 2 }),
+  issueDescription: text("issue_description"),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  tokenIdx: index("booking_tokens_token_idx").on(table.token),
+  expiresAtIdx: index("booking_tokens_expires_at_idx").on(table.expiresAt),
+}));
+
 // Session table for connect-pg-simple (PostgreSQL session store)
 export const sessions = pgTable("session", {
   sid: varchar("sid").primaryKey(),
