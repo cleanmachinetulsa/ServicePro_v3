@@ -94,6 +94,10 @@ function Router() {
       {/* Public payer approval (no auth required) */}
       <Route path="/approve/:token" component={PayerApprovalPage} />
       
+      {/* Payment Success/Cancel Pages - Public */}
+      <Route path="/deposit-payment-success" component={lazy(() => import('./pages/deposit-payment-success'))} />
+      <Route path="/deposit-payment-cancelled" component={lazy(() => import('./pages/deposit-payment-cancelled'))} />
+      
       {/* Public quote approval (no auth required) */}
       <Route path="/quote-approval/:token" component={QuoteApprovalPage} />
 

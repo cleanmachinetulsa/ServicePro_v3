@@ -14,6 +14,22 @@ import { appointments, contacts, authorizations, paymentLinks, auditLog } from '
 import { eq, and } from 'drizzle-orm';
 import { sendSMS } from './notifications';
 import crypto from 'crypto';
+import Stripe from 'stripe';
+
+// Stripe client initialized lazily inside handlers to avoid crashing server if misconfigured
+let stripe: Stripe | null = null;
+
+function getStripeClient(): Stripe {
+  if (!stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('STRIPE_SECRET_KEY not configured');
+    }
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2023-10-16",
+    });
+  }
+  return stripe;
+}
 
 const router = Router();
 
@@ -529,19 +545,90 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
     
     // Create Stripe payment link if deposit required
     if (depositAmount && depositAmount > 0) {
-      // TODO: Integrate with Stripe API to create payment link
-      // For now, return placeholder
-      paymentLink = `https://checkout.stripe.com/pay/cs_test_${crypto.randomBytes(16).toString('hex')}`;
-      
-      // Store payment link
-      await db.insert(paymentLinks).values({
-        appointmentId: appointment.id,
-        amount: depositAmount, // Use potentially discounted amount from authorization
-        description: `Deposit for ${appointment.serviceType}`,
-        url: paymentLink,
-        status: 'pending',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-      });
+      try {
+        // Convert to cents for Stripe (e.g., $50 → 5000 cents)
+        const amountInCents = Math.round(Number(depositAmount) * 100);
+        
+        // Get base URL for success/cancel redirects from environment variable
+        // MUST be HTTPS for Stripe to accept redirects
+        // Example: https://cleanmachinetulsa.com or https://yourapp.repl.co
+        const baseUrl = process.env.PUBLIC_BASE_URL || 
+          (process.env.REPL_SLUG && process.env.REPL_OWNER 
+            ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+            : 'https://cleanmachinetulsa.com'); // Fallback to production domain
+        
+        // Get Stripe client (lazy initialization)
+        const stripeClient = getStripeClient();
+        
+        // Create Stripe Checkout Session
+        const session = await stripeClient.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: `Deposit for ${appointment.serviceType}`,
+                  description: `Clean Machine Auto Detail - ${appointment.customerName}`,
+                },
+                unit_amount: amountInCents,
+              },
+              quantity: 1,
+            },
+          ],
+          mode: 'payment',
+          success_url: `${baseUrl}/deposit-payment-success?session_id={CHECKOUT_SESSION_ID}&auth=${authorization.token}`,
+          cancel_url: `${baseUrl}/deposit-payment-cancelled?auth=${authorization.token}`,
+          metadata: {
+            appointmentId: appointment.id.toString(),
+            authorizationId: authorization.id.toString(),
+            type: 'deposit',
+          },
+          expires_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 hours from now
+        });
+        
+        paymentLink = session.url;
+        
+        // Store payment link in database (matching actual schema)
+        await db.insert(paymentLinks).values({
+          appointmentId: appointment.id,
+          contactId: authorization.payerId, // Who should pay
+          linkType: 'deposit',
+          amount: depositAmount.toString(), // Use potentially discounted amount from authorization
+          stripePaymentLinkId: session.id, // Stripe checkout session ID
+          publicUrl: paymentLink!,
+          status: 'pending',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+          tenantId: 'default', // Multi-tenancy support
+        });
+        
+        console.log(`[PAYER APPROVAL] Created Stripe checkout session ${session.id} for appointment ${appointment.id}`);
+      } catch (stripeError: any) {
+        console.error('[PAYER APPROVAL] Stripe checkout creation failed:', stripeError);
+        
+        // Log critical error (triggers SMS alert to business owner)
+        try {
+          const { logError } = await import('./errorMonitoring');
+          await logError({
+            type: 'payment',
+            severity: 'critical',
+            message: `Stripe checkout failed for deposit: ${stripeError.message}`,
+            endpoint: '/api/payer-approval/:token/approve',
+            metadata: {
+              appointmentId: appointment.id,
+              depositAmount,
+              stripeErrorCode: stripeError.code,
+              stripeErrorType: stripeError.type,
+            },
+          });
+        } catch (logErr) {
+          console.error('[PAYER APPROVAL] Failed to log Stripe error:', logErr);
+        }
+        
+        // Don't fail the entire approval - customer can pay another way
+        // Continue without payment link
+        paymentLink = null;
+      }
     }
     
     res.json({
@@ -554,6 +641,43 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
   } catch (error: any) {
     console.error('[PAYER APPROVAL] Error approving:', error);
     res.status(500).json({ error: 'Failed to process approval' });
+  }
+});
+
+/**
+ * GET /api/payer-approval/verify-payment/:sessionId
+ * Verify Stripe Checkout session payment status
+ * Returns payment status without requiring authentication
+ */
+router.get('/api/payer-approval/verify-payment/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId || !sessionId.startsWith('cs_')) {
+      return res.status(400).json({ error: 'Invalid session ID' });
+    }
+    
+    try {
+      const stripeClient = getStripeClient();
+      const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+      
+      return res.json({
+        success: true,
+        paymentStatus: session.payment_status, // 'paid', 'unpaid', 'no_payment_required'
+        status: session.status, // 'complete', 'expired', 'open'
+        amountTotal: session.amount_total,
+        customerEmail: session.customer_details?.email,
+      });
+    } catch (stripeError: any) {
+      console.error('[PAYMENT VERIFY] Stripe error:', stripeError);
+      return res.status(404).json({ 
+        error: 'Payment session not found',
+        code: stripeError.code 
+      });
+    }
+  } catch (error: any) {
+    console.error('[PAYMENT VERIFY] Error:', error);
+    res.status(500).json({ error: 'Failed to verify payment' });
   }
 });
 
