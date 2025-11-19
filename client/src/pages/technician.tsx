@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { usePwa } from '@/contexts/PwaContext';
 import { AlertCircle, Smartphone, Download, Maximize, X } from 'lucide-react';
 import { format } from 'date-fns';
-import { Card } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 // Technician PWA Install Prompt
@@ -129,7 +129,7 @@ const DEMO_JOBS = [
 
 interface TechnicianContentProps {
   demoMode: boolean;
-  onToggleDemo: () => void;
+  onToggleDemo: (enabled: boolean) => void;
 }
 
 function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
@@ -299,9 +299,9 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
     }
   };
 
-  const handleToggleDemoMode = () => {
-    onToggleDemo();
-    if (!demoMode) {
+  const handleToggleDemoMode = (enabled: boolean) => {
+    onToggleDemo(enabled);
+    if (enabled) {
       toast({
         title: 'Demo Mode Activated',
         description: '3 sample jobs loaded for preview',
@@ -321,6 +321,8 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
       shiftStart={format(new Date().setHours(8, 0, 0, 0), 'h:mm a')}
       jobsCompleted={jobs.filter(j => j.status === 'completed').length}
       totalJobs={jobs.length}
+      demoMode={demoMode}
+      onToggleDemo={onToggleDemo}
     >
       {/* PWA Install Prompt */}
       <TechnicianInstallPrompt />
@@ -338,6 +340,34 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
         <div className="bg-orange-600 text-white px-4 py-2 text-center font-semibold flex items-center justify-center gap-2 text-sm">
           <AlertCircle className="w-4 h-4" />
           Working Offline {queuedActions.length > 0 && `- ${queuedActions.length} actions queued for sync`}
+        </div>
+      )}
+
+      {/* Demo Actions Queue Display */}
+      {demoMode && queuedActions.length > 0 && (
+        <div className="px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/30">
+          <Card className="border-yellow-500/50 bg-yellow-500/10">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2 text-yellow-700 dark:text-yellow-400">
+                <AlertCircle className="h-4 w-4" />
+                Demo Actions Queued ({queuedActions.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {queuedActions.slice(-3).map(action => (
+                <div key={action.id} className="text-xs text-muted-foreground bg-white/50 dark:bg-black/20 rounded px-2 py-1">
+                  {action.type === 'status_update' 
+                    ? `Status → ${action.payload.status}`
+                    : 'Message sent'}
+                </div>
+              ))}
+              {queuedActions.length > 3 && (
+                <div className="text-xs text-muted-foreground italic">
+                  ...and {queuedActions.length - 3} more
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -413,15 +443,27 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
 }
 
 export default function TechnicianPage() {
-  const [demoMode, setDemoMode] = useState(false);
+  const [demoMode, setDemoMode] = useState(() => {
+    const saved = localStorage.getItem('technicianDemoMode');
+    return saved === 'true';
+  });
   const [hasAutoEnabled, setHasAutoEnabled] = useState(false);
   const [userPreferenceSet, setUserPreferenceSet] = useState(false);
+
+  const toggleDemoMode = () => {
+    setDemoMode(prev => {
+      const newValue = !prev;
+      localStorage.setItem('technicianDemoMode', String(newValue));
+      return newValue;
+    });
+    setUserPreferenceSet(true);
+  };
 
   return (
     <TechnicianProvider demoMode={demoMode} demoJobs={DEMO_JOBS}>
       <TechnicianContentWrapper 
         demoMode={demoMode} 
-        setDemoMode={setDemoMode}
+        toggleDemoMode={toggleDemoMode}
         hasAutoEnabled={hasAutoEnabled}
         setHasAutoEnabled={setHasAutoEnabled}
         userPreferenceSet={userPreferenceSet}
@@ -433,14 +475,14 @@ export default function TechnicianPage() {
 
 function TechnicianContentWrapper({ 
   demoMode, 
-  setDemoMode,
+  toggleDemoMode,
   hasAutoEnabled,
   setHasAutoEnabled,
   userPreferenceSet,
   setUserPreferenceSet,
 }: { 
   demoMode: boolean; 
-  setDemoMode: (val: boolean) => void;
+  toggleDemoMode: () => void;
   hasAutoEnabled: boolean;
   setHasAutoEnabled: (val: boolean) => void;
   userPreferenceSet: boolean;
@@ -457,7 +499,7 @@ function TechnicianContentWrapper({
   useEffect(() => {
     if (!isLoadingJobs && !userPreferenceSet && !hasAutoEnabled && jobs.length === 0) {
       console.log('[TECH PAGE] No real jobs found - auto-enabling demo mode');
-      setDemoMode(true);
+      toggleDemoMode();
       setHasAutoEnabled(true);
       toast({
         title: 'Demo Mode Activated',
@@ -469,12 +511,12 @@ function TechnicianContentWrapper({
     if (jobs.length > 0 && hasAutoEnabled) {
       setHasAutoEnabled(false);
     }
-  }, [isLoadingJobs, jobs.length, userPreferenceSet, hasAutoEnabled, setDemoMode, setHasAutoEnabled, toast]);
+  }, [isLoadingJobs, jobs.length, userPreferenceSet, hasAutoEnabled, toggleDemoMode, setHasAutoEnabled, toast]);
 
-  const handleToggleDemo = () => {
-    setDemoMode(!demoMode);
-    setUserPreferenceSet(true); // User has made a choice - respect it permanently
-    if (!demoMode) {
+  const handleToggleDemo = (enabled: boolean) => {
+    setDemoMode(enabled);
+    localStorage.setItem('technicianDemoMode', String(enabled));
+    if (enabled) {
       toast({
         title: 'Demo Mode Activated',
         description: '3 sample jobs loaded for preview',

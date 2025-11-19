@@ -695,41 +695,46 @@ router.post('/jobs/:id/photos', requireTechnician, jobPhotoUpload.single('photo'
 });
 
 /**
- * Complete job with cash/check payment
+ * Complete job with comprehensive payment handling
  * POST /api/tech/jobs/:jobId/complete
  * 
  * Body:
- * - paymentMethod: 'cash' | 'check'
+ * - paymentMethod: 'cash' | 'check' | 'online' | 'free'
  * - amount: number
+ * - servicesPerformed: Array<{ serviceId, serviceName, price }> (optional)
  * 
  * Flow:
  * 1. Fetch appointment details
  * 2. Create invoice with technician ID
  * 3. Update invoice payment method and status
  * 4. Update job status to completed
- * 5. Update/create today's deposit record
+ * 5. Update/create today's deposit record (cash/check only)
  * 6. Send notifications to owner
  */
 router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res: Response) => {
   try {
     const jobId = parseInt(req.params.jobId);
-    const { paymentMethod, amount } = req.body;
+    const { paymentMethod, amount, servicesPerformed = [] } = req.body;
     const technician = (req as any).technician;
 
     console.log(`[TECH JOBS] Completing job ${jobId} with ${paymentMethod} payment of $${amount}`);
+    if (servicesPerformed.length > 0) {
+      console.log(`[TECH JOBS] Services performed:`, servicesPerformed);
+    }
 
     // Validate input
-    if (!paymentMethod || !['cash', 'check'].includes(paymentMethod)) {
+    if (!paymentMethod || !['cash', 'check', 'online', 'free'].includes(paymentMethod)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid payment method. Must be "cash" or "check"',
+        error: 'Invalid payment method. Must be "cash", "check", "online", or "free"',
       });
     }
 
-    if (!amount || amount <= 0) {
+    // Allow amount to be 0 for 'free' payment method
+    if (paymentMethod !== 'free' && (!amount || amount < 0)) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid amount. Must be greater than 0',
+        error: 'Invalid amount. Must be greater than or equal to 0',
       });
     }
 
@@ -771,14 +776,25 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
       console.log(`[TECH JOBS] Invoice created: ${invoice.id}`);
 
       // 2. Update invoice with payment method, technician, and status
+      const invoiceUpdate: any = {
+        paymentMethod,
+        paymentStatus: paymentMethod === 'free' ? 'paid' : 
+                      paymentMethod === 'online' ? 'pending' : 
+                      'pending',
+        technicianId: technician.id,
+        amount: amount.toString(),
+      };
+      
+      // Add itemized services to invoice notes if provided
+      if (servicesPerformed.length > 0) {
+        invoiceUpdate.notes = `Services performed: ${servicesPerformed.map(s => 
+          `${s.serviceName} ($${s.price.toFixed(2)})`
+        ).join(', ')}`;
+      }
+
       const [updatedInvoice] = await tx
         .update(invoices)
-        .set({
-          paymentMethod,
-          paymentStatus: 'pending',
-          technicianId: technician.id,
-          amount: amount.toString(),
-        })
+        .set(invoiceUpdate)
         .where(eq(invoices.id, invoice.id))
         .returning();
 
@@ -842,72 +858,78 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
         console.log(`[CUSTOMER INTELLIGENCE] Service history recorded for customer ${completedAppointment.customerId}`);
       }
 
-      // 4. Update or create today's deposit record
-      const today = format(new Date(), 'yyyy-MM-dd');
+      // 4. Update or create today's deposit record (only for cash/check payments)
+      let depositRecord = null;
+      
+      if (paymentMethod === 'cash' || paymentMethod === 'check') {
+        const today = format(new Date(), 'yyyy-MM-dd');
 
-      // Check if deposit record exists for today
-      const [existingDeposit] = await tx
-        .select()
-        .from(technicianDeposits)
-        .where(
-          and(
-            eq(technicianDeposits.technicianId, technician.id),
-            eq(technicianDeposits.depositDate, today)
+        // Check if deposit record exists for today
+        const [existingDeposit] = await tx
+          .select()
+          .from(technicianDeposits)
+          .where(
+            and(
+              eq(technicianDeposits.technicianId, technician.id),
+              eq(technicianDeposits.depositDate, today)
+            )
           )
-        )
-        .limit(1);
+          .limit(1);
 
-      let depositRecord;
+        if (existingDeposit) {
+          // Update existing deposit
+          const newCashAmount = paymentMethod === 'cash'
+            ? parseFloat(existingDeposit.cashAmount || '0') + amount
+            : parseFloat(existingDeposit.cashAmount || '0');
 
-      if (existingDeposit) {
-        // Update existing deposit
-        const newCashAmount = paymentMethod === 'cash'
-          ? parseFloat(existingDeposit.cashAmount || '0') + amount
-          : parseFloat(existingDeposit.cashAmount || '0');
+          const newCheckAmount = paymentMethod === 'check'
+            ? parseFloat(existingDeposit.checkAmount || '0') + amount
+            : parseFloat(existingDeposit.checkAmount || '0');
 
-        const newCheckAmount = paymentMethod === 'check'
-          ? parseFloat(existingDeposit.checkAmount || '0') + amount
-          : parseFloat(existingDeposit.checkAmount || '0');
+          const newTotalAmount = newCashAmount + newCheckAmount;
 
-        const newTotalAmount = newCashAmount + newCheckAmount;
+          const updatedInvoiceIds = existingDeposit.invoiceIds || [];
+          if (!updatedInvoiceIds.includes(invoice.id)) {
+            updatedInvoiceIds.push(invoice.id);
+          }
 
-        const updatedInvoiceIds = existingDeposit.invoiceIds || [];
-        if (!updatedInvoiceIds.includes(invoice.id)) {
-          updatedInvoiceIds.push(invoice.id);
+          [depositRecord] = await tx
+            .update(technicianDeposits)
+            .set({
+              cashAmount: newCashAmount.toFixed(2),
+              checkAmount: newCheckAmount.toFixed(2),
+              totalAmount: newTotalAmount.toFixed(2),
+              invoiceIds: updatedInvoiceIds,
+            })
+            .where(eq(technicianDeposits.id, existingDeposit.id))
+            .returning();
+
+          console.log(`[TECH JOBS] Updated deposit record ${depositRecord.id}`);
+        } else {
+          // Create new deposit record
+          const cashAmount = paymentMethod === 'cash' ? amount : 0;
+          const checkAmount = paymentMethod === 'check' ? amount : 0;
+          const totalAmount = cashAmount + checkAmount;
+
+          [depositRecord] = await tx
+            .insert(technicianDeposits)
+            .values({
+              technicianId: technician.id,
+              depositDate: today,
+              cashAmount: cashAmount.toFixed(2),
+              checkAmount: checkAmount.toFixed(2),
+              totalAmount: totalAmount.toFixed(2),
+              invoiceIds: [invoice.id],
+              status: 'pending',
+            })
+            .returning();
+
+          console.log(`[TECH JOBS] Created new deposit record ${depositRecord.id}`);
         }
-
-        [depositRecord] = await tx
-          .update(technicianDeposits)
-          .set({
-            cashAmount: newCashAmount.toFixed(2),
-            checkAmount: newCheckAmount.toFixed(2),
-            totalAmount: newTotalAmount.toFixed(2),
-            invoiceIds: updatedInvoiceIds,
-          })
-          .where(eq(technicianDeposits.id, existingDeposit.id))
-          .returning();
-
-        console.log(`[TECH JOBS] Updated deposit record ${depositRecord.id}`);
-      } else {
-        // Create new deposit record
-        const cashAmount = paymentMethod === 'cash' ? amount : 0;
-        const checkAmount = paymentMethod === 'check' ? amount : 0;
-        const totalAmount = cashAmount + checkAmount;
-
-        [depositRecord] = await tx
-          .insert(technicianDeposits)
-          .values({
-            technicianId: technician.id,
-            depositDate: today,
-            cashAmount: cashAmount.toFixed(2),
-            checkAmount: checkAmount.toFixed(2),
-            totalAmount: totalAmount.toFixed(2),
-            invoiceIds: [invoice.id],
-            status: 'pending',
-          })
-          .returning();
-
-        console.log(`[TECH JOBS] Created new deposit record ${depositRecord.id}`);
+      } else if (paymentMethod === 'online') {
+        console.log(`[TECH JOBS] Online payment - invoice already sent, no deposit record needed`);
+      } else if (paymentMethod === 'free') {
+        console.log(`[TECH JOBS] Free service - no deposit record needed`);
       }
 
       return {
@@ -934,7 +956,15 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
           )
         );
 
-      const notificationMessage = `💵 Cash payment recorded: ${customerName} paid $${amount.toFixed(2)} via ${paymentMethod}\nTechnician: ${techName}\nToday's total: $${result.deposit.totalAmount}`;
+      let notificationMessage = '';
+      
+      if (paymentMethod === 'cash' || paymentMethod === 'check') {
+        notificationMessage = `💵 ${paymentMethod.toUpperCase()} payment recorded: ${customerName} paid $${amount.toFixed(2)}\nTechnician: ${techName}\nToday's total: $${result.deposit?.totalAmount || '0.00'}`;
+      } else if (paymentMethod === 'online') {
+        notificationMessage = `💳 Online invoice sent: ${customerName} - $${amount.toFixed(2)}\nTechnician: ${techName}`;
+      } else if (paymentMethod === 'free') {
+        notificationMessage = `🎁 Free service completed: ${customerName}\nTechnician: ${techName}`;
+      }
 
       // Send push notifications (check preference)
       for (const owner of ownerManagers) {

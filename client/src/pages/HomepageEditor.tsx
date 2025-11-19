@@ -55,7 +55,7 @@ export default function HomepageEditor() {
         logoUrl = uploadData.logoUrl;
       }
 
-      return await apiRequest('/api/homepage-content', 'PUT', {
+      return await apiRequest('PUT', '/api/homepage-content', {
         ...formData,
         logoUrl,
       });
@@ -77,7 +77,7 @@ export default function HomepageEditor() {
   // Apply template mutation
   const applyTemplateMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      return await apiRequest('/api/homepage-content/template', 'PUT', { templateId });
+      return await apiRequest('PUT', '/api/homepage-content/template', { templateId });
     },
     onSuccess: () => {
       toast({ title: 'Template Applied!', description: 'Homepage template updated successfully' });
@@ -455,7 +455,6 @@ export default function HomepageEditor() {
             </div>
           </CardContent>
         </Card>
-      </div>
       </div>
     </AppShell>
   );

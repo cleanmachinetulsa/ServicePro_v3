@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Device, Call } from '@twilio/voice-sdk';
+import { useToast } from '@/hooks/use-toast';
 
 interface Job {
   id: number;
@@ -35,6 +36,7 @@ interface QueuedAction {
   type: 'status_update' | 'send_message';
   payload: any;
   timestamp: number;
+  isDemo?: boolean;
 }
 
 interface TechnicianContextType {
@@ -74,6 +76,7 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'ringing' | 'in-progress' | 'disconnected'>('idle');
   const [queuedActions, setQueuedActions] = useState<QueuedAction[]>([]);
+  const { toast } = useToast();
 
   // Fetch jobs with auto-refresh (skip if in demo mode)
   const { data: jobsData, isLoading: isLoadingJobs, refetch: refreshJobs } = useQuery<{ success: boolean; jobs: Job[] }>({
@@ -138,9 +141,11 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
       const savedQueue = localStorage.getItem('tech_queued_actions');
       if (savedQueue) {
         const queue: QueuedAction[] = JSON.parse(savedQueue);
+        // Filter out demo actions - they should never sync to production API
+        const realActions = queue.filter(a => !a.isDemo && !a.id.startsWith('demo_'));
         const failedActions: QueuedAction[] = [];
         
-        for (const action of queue) {
+        for (const action of realActions) {
           try {
             if (action.type === 'status_update') {
               await apiRequest('POST', `/api/tech/jobs/${action.payload.jobId}/status`, {
@@ -193,6 +198,24 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Clear queued actions when demo mode is toggled off
+  useEffect(() => {
+    if (!demoMode && queuedActions.length > 0) {
+      // Filter out demo actions when switching out of demo mode
+      const nonDemoActions = queuedActions.filter(a => !a.isDemo && !a.id.startsWith('demo_'));
+      setQueuedActions(nonDemoActions);
+      
+      // Update localStorage to remove demo actions
+      if (nonDemoActions.length > 0) {
+        localStorage.setItem('tech_queued_actions', JSON.stringify(nonDemoActions));
+      } else {
+        localStorage.removeItem('tech_queued_actions');
+      }
+      
+      console.log('[DEMO MODE] Cleared queued demo actions - demo mode disabled');
+    }
+  }, [demoMode]);
 
   // Persist selected job to localStorage
   useEffect(() => {
@@ -249,6 +272,30 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
   };
 
   const updateJobStatus = async (status: string, notes?: string) => {
+    if (!selectedJob) return;
+    
+    // Handle demo mode locally without API call
+    if (demoMode) {
+      const action: QueuedAction = {
+        id: `demo_action_${Date.now()}`, // Prefix with 'demo_' for easy filtering
+        type: 'status_update',
+        payload: { jobId: selectedJob.id, status, notes },
+        timestamp: Date.now(),
+        isDemo: true // Flag as demo action
+      };
+      
+      setQueuedActions(prev => [...prev, action]);
+      
+      toast({
+        title: 'Status Updated (Demo)',
+        description: `Job status changed to ${status}. This is a demo update and won't affect real data.`,
+        duration: 3000
+      });
+      
+      return;
+    }
+    
+    // Handle offline mode
     if (!isOnline) {
       // Queue for later if offline - use functional update for atomicity
       const queuedAction: QueuedAction = {
@@ -266,10 +313,35 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
       return Promise.resolve();
     }
     
+    // Real mode - call API
     await updateStatusMutation.mutateAsync({ status, notes });
   };
 
   const sendMessage = async (content: string) => {
+    if (!selectedJob) return;
+    
+    // Handle demo mode locally
+    if (demoMode) {
+      const action: QueuedAction = {
+        id: `demo_message_${Date.now()}`, // Prefix with 'demo_' for easy filtering
+        type: 'send_message',
+        payload: { jobId: selectedJob.id, content },
+        timestamp: Date.now(),
+        isDemo: true // Flag as demo action
+      };
+      
+      setQueuedActions(prev => [...prev, action]);
+      
+      toast({
+        title: 'Message Sent (Demo)',
+        description: 'Message queued. This is a demo and won\'t send a real SMS.',
+        duration: 3000
+      });
+      
+      return;
+    }
+    
+    // Handle offline mode
     if (!isOnline) {
       // Queue for later if offline - use functional update for atomicity
       const queuedAction: QueuedAction = {
@@ -291,6 +363,7 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
       return Promise.resolve();
     }
     
+    // Real mode - call API
     await sendMessageMutation.mutateAsync(content);
   };
 

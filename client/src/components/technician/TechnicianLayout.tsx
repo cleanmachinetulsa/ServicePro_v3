@@ -1,5 +1,10 @@
 import { ReactNode } from 'react';
 import logoImage from '@assets/generated_images/Clean_Machine_white_logo_transparent_f0645d6c.png';
+import { Settings } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface TechnicianLayoutProps {
   children: ReactNode;
@@ -8,6 +13,8 @@ interface TechnicianLayoutProps {
   shiftStart?: string;
   jobsCompleted?: number;
   totalJobs?: number;
+  demoMode?: boolean;
+  onToggleDemo?: (enabled: boolean) => void;
 }
 
 export function TechnicianLayout({
@@ -17,6 +24,8 @@ export function TechnicianLayout({
   shiftStart,
   jobsCompleted = 0,
   totalJobs = 0,
+  demoMode = false,
+  onToggleDemo,
 }: TechnicianLayoutProps) {
   const statusColors = {
     available: 'bg-green-500',
@@ -44,9 +53,20 @@ export function TechnicianLayout({
               style={{ filter: 'brightness(1.1)' }}
             />
             <div>
-              <h1 className="text-xl md:text-2xl font-bold text-white">
-                TECHNICIAN MODE
-              </h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl md:text-2xl font-bold text-white">
+                  TECHNICIAN MODE
+                </h1>
+                {demoMode && (
+                  <Badge 
+                    variant="secondary" 
+                    className="bg-yellow-500/20 text-yellow-300 border-yellow-500 hidden md:inline-flex"
+                    data-testid="badge-demo-mode"
+                  >
+                    DEMO MODE
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs md:text-sm text-blue-200">
                 {technicianName}
               </p>
@@ -77,6 +97,46 @@ export function TechnicianLayout({
                 {statusLabels[technicianStatus]}
               </span>
             </div>
+
+            {/* Settings Popover with Demo Mode Toggle */}
+            {onToggleDemo && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-white hover:bg-white/10"
+                    data-testid="button-settings"
+                  >
+                    <Settings className="h-5 w-5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" data-testid="popover-settings">
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-lg">Settings</h3>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <label className="text-sm font-medium" htmlFor="demo-mode-switch">
+                          Demo Mode
+                        </label>
+                        <p className="text-xs text-muted-foreground">
+                          Show sample jobs
+                        </p>
+                      </div>
+                      <Switch 
+                        id="demo-mode-switch"
+                        checked={demoMode} 
+                        onCheckedChange={onToggleDemo}
+                        data-testid="switch-demo-mode"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                      Enable to test with sample data without affecting real jobs or making API calls
+                    </p>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         </div>
       </header>

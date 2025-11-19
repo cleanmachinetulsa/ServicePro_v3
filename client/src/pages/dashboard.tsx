@@ -18,7 +18,7 @@ import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { DashboardOverview } from "@/components/DashboardOverview";
 import BusinessChatInterface from "@/components/BusinessChatInterface";
-import { Home, Moon, Sun, Mail } from "lucide-react";
+import { Home, Moon, Sun, Mail, Plus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
 import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
@@ -73,6 +73,7 @@ export default function Dashboard() {
   const [weatherData, setWeatherData] = useState<Record<string, any>>({});
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceDetails, setInvoiceDetails] = useState<InvoiceDetails | null>(null);
+  const [isManualInvoice, setIsManualInvoice] = useState(false);
   const [showBusinessChat, setShowBusinessChat] = useState(false);
   const [chatCustomer, setChatCustomer] = useState<{ phone: string; name: string } | null>(null);
   const [darkMode, setDarkMode] = useState(() => {
@@ -261,7 +262,91 @@ export default function Dashboard() {
       includeReviewLink: true
     });
 
+    setIsManualInvoice(false);
     setShowInvoiceModal(true);
+  };
+
+  // Open invoice modal for manual entry (walk-in customers)
+  const openManualInvoiceModal = () => {
+    const basePrice = 150;
+    const tax = invoiceSettings.taxEnabled ? Math.round(basePrice * invoiceSettings.taxRate * 100) / 100 : 0;
+    const total = basePrice + tax;
+
+    setInvoiceDetails({
+      customerName: "",
+      customerEmail: "",
+      phone: "",
+      address: "",
+      vehicleInfo: "",
+      serviceDate: new Date().toLocaleDateString(),
+      items: [{
+        service: "Service",
+        price: basePrice,
+        quantity: 1
+      }],
+      subtotal: basePrice,
+      tax,
+      total,
+      notes: "Thank you for choosing Clean Machine Auto Detail!",
+      includeReviewLink: true
+    });
+
+    setIsManualInvoice(true);
+    setShowInvoiceModal(true);
+  };
+
+  // Validate manual invoice before sending
+  const validateManualInvoice = (): boolean => {
+    if (!invoiceDetails) return false;
+
+    if (!invoiceDetails.customerName.trim()) {
+      toast({
+        title: 'Missing Information',
+        description: 'Customer name is required',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    if (!invoiceDetails.phone.trim()) {
+      toast({
+        title: 'Missing Information',
+        description: 'Phone number is required',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    // Validate phone format (basic check)
+    const phoneDigits = invoiceDetails.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+      toast({
+        title: 'Invalid Phone',
+        description: 'Please enter a valid phone number (at least 10 digits)',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    if (!invoiceDetails.items[0].service || invoiceDetails.items[0].service === "Service") {
+      toast({
+        title: 'Missing Information',
+        description: 'Service description is required',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    if (invoiceDetails.total <= 0) {
+      toast({
+        title: 'Invalid Amount',
+        description: 'Invoice amount must be greater than $0',
+        variant: 'destructive'
+      });
+      return false;
+    }
+
+    return true;
   };
 
   // Handle date change
@@ -273,6 +358,17 @@ export default function Dashboard() {
   // Page-specific actions
   const pageActions = (
     <>
+      {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
+        <Button
+          size="sm"
+          onClick={openManualInvoiceModal}
+          data-testid="button-create-manual-invoice"
+          className="bg-green-600 hover:bg-green-700 text-white"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Walk-in Invoice
+        </Button>
+      )}
       <Button
         size="sm"
         variant="ghost"
@@ -330,10 +426,12 @@ export default function Dashboard() {
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-white dark:bg-gray-900">
           <DialogHeader>
             <DialogTitle className="text-2xl text-blue-800 dark:text-blue-200">
-              Send Invoice & Thank You Message
+              {isManualInvoice ? 'Create Walk-in Invoice' : 'Send Invoice & Thank You Message'}
             </DialogTitle>
             <DialogDescription className="text-blue-600 dark:text-blue-400">
-              Send an invoice and thank you message to your customer via SMS and email
+              {isManualInvoice 
+                ? 'Enter customer information and service details for walk-in customer'
+                : 'Send an invoice and thank you message to your customer via SMS and email'}
             </DialogDescription>
           </DialogHeader>
 
@@ -342,21 +440,29 @@ export default function Dashboard() {
               {/* Customer Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="customerName" className="text-blue-700 dark:text-blue-300">Customer Name</Label>
+                  <Label htmlFor="customerName" className="text-blue-700 dark:text-blue-300">
+                    Customer Name {isManualInvoice && <span className="text-red-500">*</span>}
+                  </Label>
                   <Input
                     id="customerName"
+                    data-testid="input-manual-customer-name"
                     value={invoiceDetails.customerName}
                     onChange={(e) => setInvoiceDetails({ ...invoiceDetails, customerName: e.target.value })}
                     className="border-blue-200"
+                    placeholder={isManualInvoice ? "John Doe" : ""}
                   />
                 </div>
                 <div>
-                  <Label htmlFor="phone" className="text-blue-700 dark:text-blue-300">Phone</Label>
+                  <Label htmlFor="phone" className="text-blue-700 dark:text-blue-300">
+                    Phone {isManualInvoice && <span className="text-red-500">*</span>}
+                  </Label>
                   <Input
                     id="phone"
+                    data-testid="input-manual-customer-phone"
                     value={invoiceDetails.phone}
                     onChange={(e) => setInvoiceDetails({ ...invoiceDetails, phone: e.target.value })}
                     className="border-blue-200"
+                    placeholder={isManualInvoice ? "555-0100" : ""}
                   />
                 </div>
               </div>
@@ -365,6 +471,7 @@ export default function Dashboard() {
                 <Label htmlFor="email" className="text-blue-700 dark:text-blue-300">Email (Optional)</Label>
                 <Input
                   id="email"
+                  data-testid="input-manual-customer-email"
                   type="email"
                   value={invoiceDetails.customerEmail}
                   onChange={(e) => setInvoiceDetails({ ...invoiceDetails, customerEmail: e.target.value })}
@@ -376,30 +483,102 @@ export default function Dashboard() {
               {/* Service Details */}
               <div className="space-y-2">
                 <Label className="text-blue-700 dark:text-blue-300">Service Details</Label>
-                <Card className="p-4 bg-blue-50/50 dark:bg-gray-800">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="font-medium">{invoiceDetails.items[0].service}</span>
-                      <span>${invoiceDetails.items[0].price.toFixed(2)}</span>
+                {isManualInvoice ? (
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="serviceName" className="text-sm">
+                        Service Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="serviceName"
+                        data-testid="input-manual-service-name"
+                        value={invoiceDetails.items[0].service}
+                        onChange={(e) => {
+                          const updatedItems = [...invoiceDetails.items];
+                          updatedItems[0].service = e.target.value;
+                          setInvoiceDetails({ ...invoiceDetails, items: updatedItems });
+                        }}
+                        placeholder="Full Detail, Interior Clean, etc."
+                        className="border-blue-200"
+                      />
                     </div>
-                    <div className="border-t border-blue-200 dark:border-gray-700 pt-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Subtotal:</span>
-                        <span>${invoiceDetails.subtotal.toFixed(2)}</span>
+                    <div>
+                      <Label htmlFor="servicePrice" className="text-sm">
+                        Amount <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                        <Input
+                          id="servicePrice"
+                          data-testid="input-manual-service-amount"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={invoiceDetails.items[0].price}
+                          onChange={(e) => {
+                            const price = parseFloat(e.target.value) || 0;
+                            const tax = invoiceSettings.taxEnabled ? Math.round(price * invoiceSettings.taxRate * 100) / 100 : 0;
+                            const total = price + tax;
+                            const updatedItems = [...invoiceDetails.items];
+                            updatedItems[0].price = price;
+                            setInvoiceDetails({ 
+                              ...invoiceDetails, 
+                              items: updatedItems,
+                              subtotal: price,
+                              tax,
+                              total
+                            });
+                          }}
+                          placeholder="150.00"
+                          className="border-blue-200 pl-7"
+                        />
                       </div>
-                      {invoiceDetails.tax > 0 && (
+                    </div>
+                    <Card className="p-4 bg-blue-50/50 dark:bg-gray-800">
+                      <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span>Tax:</span>
-                          <span>${invoiceDetails.tax.toFixed(2)}</span>
+                          <span>Subtotal:</span>
+                          <span>${invoiceDetails.subtotal.toFixed(2)}</span>
                         </div>
-                      )}
-                      <div className="flex justify-between font-bold text-lg mt-2 pt-2 border-t border-blue-200 dark:border-gray-700">
-                        <span>Total:</span>
-                        <span>${invoiceDetails.total.toFixed(2)}</span>
+                        {invoiceDetails.tax > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span>Tax:</span>
+                            <span>${invoiceDetails.tax.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold text-lg pt-2 border-t border-blue-200 dark:border-gray-700">
+                          <span>Total:</span>
+                          <span>${invoiceDetails.total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+                ) : (
+                  <Card className="p-4 bg-blue-50/50 dark:bg-gray-800">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="font-medium">{invoiceDetails.items[0].service}</span>
+                        <span>${invoiceDetails.items[0].price.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t border-blue-200 dark:border-gray-700 pt-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Subtotal:</span>
+                          <span>${invoiceDetails.subtotal.toFixed(2)}</span>
+                        </div>
+                        {invoiceDetails.tax > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span>Tax:</span>
+                            <span>${invoiceDetails.tax.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-bold text-lg mt-2 pt-2 border-t border-blue-200 dark:border-gray-700">
+                          <span>Total:</span>
+                          <span>${invoiceDetails.total.toFixed(2)}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Card>
+                  </Card>
+                )}
               </div>
 
               {/* Notes */}
@@ -440,6 +619,11 @@ export default function Dashboard() {
             <Button 
               onClick={async () => {
                 if (!invoiceDetails) return;
+
+                // Validate manual invoice fields
+                if (isManualInvoice && !validateManualInvoice()) {
+                  return;
+                }
 
                 const notificationMethods = ['SMS'];
                 if (invoiceDetails.customerEmail.trim() !== '') {
@@ -497,7 +681,7 @@ export default function Dashboard() {
                     
                     toast({
                       title: "Invoice Sent!",
-                      description: `Thank you message and invoice sent to ${invoiceDetails.customerName} via ${notificationMethods.join(' and ')}.${pointsMessage}`,
+                      description: `${isManualInvoice ? 'Walk-in invoice' : 'Thank you message and invoice'} sent to ${invoiceDetails.customerName} via ${notificationMethods.join(' and ')}.${pointsMessage}`,
                     });
                   } else {
                     toast({
@@ -519,9 +703,10 @@ export default function Dashboard() {
               }}
               className="bg-green-600 hover:bg-green-700"
               disabled={!invoiceDetails}
+              data-testid="button-send-invoice"
             >
               <Mail className="mr-2 h-4 w-4" />
-              Send Invoice & Thank You
+              {isManualInvoice ? 'Send Walk-in Invoice' : 'Send Invoice & Thank You'}
             </Button>
           </DialogFooter>
         </DialogContent>

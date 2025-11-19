@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,20 +32,9 @@ export default function DamageAssessment() {
   const { toast } = useToast();
   
   // Fetch pending damage assessments
-  const { data: assessmentsData, isLoading, error } = useQuery({
+  const { data: assessmentsData, isLoading } = useQuery({
     queryKey: ['/api/appointments/damage-assessment/pending'],
   });
-  
-  // Show error toast if fetch fails (wrapped in useEffect to prevent infinite loop)
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error Loading Assessments",
-        description: "Failed to fetch pending damage assessments. Please refresh the page.",
-        variant: "destructive",
-      });
-    }
-  }, [error, toast]);
   
   const pendingAssessments: PendingAssessment[] = assessmentsData?.appointments || [];
   

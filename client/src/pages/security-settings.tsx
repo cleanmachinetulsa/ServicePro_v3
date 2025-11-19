@@ -421,6 +421,29 @@ export default function SecuritySettingsPage() {
                   />
                 </div>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!setupData.qrCodeUrl) return;
+                    const link = document.createElement('a');
+                    link.href = setupData.qrCodeUrl;
+                    link.download = `2fa-qr-code-${Date.now()}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    toast({
+                      title: "QR code downloaded",
+                      description: "Save this for backup access",
+                    });
+                  }}
+                  className="w-full"
+                  data-testid="button-download-qr"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download QR Code
+                </Button>
+
                 <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded">
                   <p className="text-xs text-slate-600 dark:text-slate-400 mb-1">Manual Entry Code:</p>
                   <code className="text-sm font-mono break-all" data-testid="text-secret-code">{setupData.secret}</code>
