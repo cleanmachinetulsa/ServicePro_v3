@@ -1,7 +1,16 @@
 // Cache version - increment to force update
-const CACHE_NAME = 'comm-hub-v17-force-update';
+const CACHE_NAME = 'comm-hub-v18-dev-bypass';
 
-// URLs to cache on install
+// Development mode detection - check if running on localhost or .replit.dev
+const isDevelopment = () => {
+  return self.location.hostname === 'localhost' ||
+         self.location.hostname === '127.0.0.1' ||
+         self.location.hostname.includes('.replit.dev') ||
+         self.location.port === '5173' ||
+         self.location.port === '5000';
+};
+
+// URLs to cache on install (only in production)
 const urlsToCache = [
   '/',
   '/messages',
@@ -9,7 +18,7 @@ const urlsToCache = [
   '/manifest.json',
 ];
 
-// Dashboard data endpoints that use cache-first strategy
+// Dashboard data endpoints that use cache-first strategy (only in production)
 const DASHBOARD_ENDPOINTS = [
   '/api/dashboard',
   '/api/appointments',
@@ -22,6 +31,13 @@ let offlineQueue = [];
 // Install service worker and cache app shell
 self.addEventListener('install', (event) => {
   console.log('[ServiceWorker] Installing...');
+  
+  // Skip caching in development mode
+  if (isDevelopment()) {
+    console.log('[ServiceWorker] DEVELOPMENT MODE - Skipping cache installation');
+    return self.skipWaiting();
+  }
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -41,6 +57,26 @@ self.addEventListener('install', (event) => {
 // Activate service worker and clean up old caches
 self.addEventListener('activate', (event) => {
   console.log('[ServiceWorker] Activating...');
+  
+  // In development mode, clear ALL caches to prevent stale data
+  if (isDevelopment()) {
+    console.log('[ServiceWorker] DEVELOPMENT MODE - Clearing all caches');
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            console.log('[ServiceWorker] Deleting cache:', cacheName);
+            return caches.delete(cacheName);
+          })
+        );
+      }).then(() => {
+        console.log('[ServiceWorker] All caches cleared in development mode');
+        return self.clients.claim();
+      })
+    );
+    return;
+  }
+  
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -60,6 +96,25 @@ self.addEventListener('activate', (event) => {
 
 // Fetch strategy: Smart caching based on resource type
 self.addEventListener('fetch', (event) => {
+  // DEVELOPMENT MODE: Never cache, always fetch fresh
+  if (isDevelopment()) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          console.log('[ServiceWorker] DEV MODE - Fresh fetch:', event.request.url);
+          return response;
+        })
+        .catch(error => {
+          console.error('[ServiceWorker] DEV MODE - Fetch failed:', error);
+          return new Response('Network error in development mode', { 
+            status: 503,
+            statusText: 'Service Unavailable' 
+          });
+        })
+    );
+    return;
+  }
+  
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
     return;

@@ -4,13 +4,43 @@ import "./index.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-// Register service worker for PWA support
+// Development mode detection
+const isDevelopment = window.location.hostname === 'localhost' ||
+                     window.location.hostname === '127.0.0.1' ||
+                     window.location.hostname.includes('.replit.dev');
+
+// Service Worker management for PWA support
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    // In development mode, unregister any existing service workers to prevent caching issues
+    if (isDevelopment) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (let registration of registrations) {
+          registration.unregister().then(() => {
+            console.log('[PWA] DEV MODE - Service Worker unregistered to prevent caching');
+          });
+        }
+      });
+      
+      // Clear all caches in development mode
+      if ('caches' in window) {
+        caches.keys().then((cacheNames) => {
+          cacheNames.forEach((cacheName) => {
+            caches.delete(cacheName);
+            console.log('[PWA] DEV MODE - Cache cleared:', cacheName);
+          });
+        });
+      }
+      
+      console.log('[PWA] DEV MODE - Service Worker disabled for fresh reloads');
+      return;
+    }
+    
+    // In production mode, register service worker normally
     navigator.serviceWorker
       .register('/service-worker.js')
       .then((registration) => {
-        console.log('[PWA] Service Worker registered successfully:', registration.scope);
+        console.log('[PWA] PRODUCTION - Service Worker registered successfully:', registration.scope);
         
         // Check for updates
         registration.addEventListener('updatefound', () => {
