@@ -95,7 +95,7 @@ class CriticalMonitor {
     this.integrations.set(integrationName, health);
 
     // Send recovery notification if it was previously failed
-    if (wasFailedBefore && this.config.enabled) {
+    if (wasFailedBefore) {
       this.sendRecoveryAlert(integrationName);
     }
   }
