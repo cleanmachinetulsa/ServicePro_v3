@@ -1159,6 +1159,7 @@ export const galleryPhotos = pgTable("gallery_photos", {
   isActive: boolean("is_active").default(true), // Show/hide without deleting
   uploadedAt: timestamp("uploaded_at").defaultNow(),
   uploadedBy: integer("uploaded_by").references(() => users.id),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("1"), // Multi-tenant support
 });
 
 // Subscription cost tracking for managing all website service subscriptions
@@ -2254,6 +2255,7 @@ export const insertGalleryPhotoSchema = createInsertSchema(galleryPhotos).pick({
   displayOrder: true,
   isActive: true,
   uploadedBy: true,
+  tenantId: true,
 });
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).pick({

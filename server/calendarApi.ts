@@ -36,20 +36,23 @@ async function getServiceInfo(serviceName: string): Promise<{ duration: number; 
       .limit(1);
     
     if (result.length === 0) {
-      throw new Error(`CRITICAL: Service "${serviceName}" not found in database. Cannot schedule without duration data.`);
+      console.warn(`⚠️ Service "${serviceName}" not found in database - using default 2-hour duration for legacy service`);
+      return { duration: 2, serviceId: 0 };
     }
     
     const avgDuration = parseFloat(result[0].duration as string);
     
     if (!avgDuration || avgDuration === 0) {
-      throw new Error(`CRITICAL: Service "${serviceName}" has invalid duration (${avgDuration}). Please update service configuration.`);
+      console.warn(`⚠️ Service "${serviceName}" has invalid duration (${avgDuration}) - using default 2-hour duration`);
+      return { duration: 2, serviceId: result[0].id };
     }
     
     console.log(`Service "${serviceName}": blocking ${avgDuration}hrs (range: ${result[0].minDuration}-${result[0].maxDuration}hrs)`);
     return { duration: avgDuration, serviceId: result[0].id };
   } catch (error) {
-    console.error('❌ CRITICAL ERROR fetching service info:', error);
-    throw error;
+    console.error('❌ ERROR fetching service info:', error);
+    console.warn(`⚠️ Falling back to default 2-hour duration for service "${serviceName}"`);
+    return { duration: 2, serviceId: 0 };
   }
 }
 

@@ -179,7 +179,7 @@ export default function CustomerProfilePanel({ conversationId }: Props) {
                     {conversation.customerName || 'Unknown'}
                   </div>
                   {customer && (
-                    customer.isReturningCustomer ? (
+                    (customer.totalAppointments > 0) ? (
                       <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
                         <UserCheck className="h-3 w-3 mr-1" />
                         Returning

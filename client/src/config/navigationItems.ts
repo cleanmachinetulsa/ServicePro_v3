@@ -30,7 +30,9 @@ import {
   UserPlus,
   CalendarDays,
   Plane,
-  MessageCircle
+  MessageCircle,
+  History,
+  Wallet
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -45,20 +47,30 @@ export interface NavigationItem {
 }
 
 export const navigationItems: NavigationItem[] = [
-  // CORE OPERATIONS
+  // DASHBOARD
   {
-    id: 'separator-core',
+    id: 'separator-dashboard',
     label: '',
     icon: Home,
     path: '',
     separator: true,
-    sectionHeader: 'Core Operations',
+    sectionHeader: 'Dashboard',
   },
   {
     id: 'dashboard',
     label: 'Dashboard',
     icon: Home,
     path: '/dashboard',
+  },
+
+  // COMMUNICATIONS
+  {
+    id: 'separator-communications',
+    label: '',
+    icon: MessageSquare,
+    path: '',
+    separator: true,
+    sectionHeader: 'Communications',
   },
   {
     id: 'messages',
@@ -79,10 +91,42 @@ export const navigationItems: NavigationItem[] = [
     path: '/phone',
   },
   {
+    id: 'live-conversations',
+    label: 'Live Conversations',
+    icon: Activity,
+    path: '/live-conversations',
+  },
+
+  // CUSTOMER MANAGEMENT
+  {
+    id: 'separator-customers',
+    label: '',
+    icon: Users,
+    path: '',
+    separator: true,
+    sectionHeader: 'Customer Management',
+  },
+  {
     id: 'customers',
-    label: 'Customers',
+    label: 'Customer Database',
     icon: Users,
     path: '/customer-database',
+  },
+  {
+    id: 'service-history',
+    label: 'Service History',
+    icon: History,
+    path: '/service-history',
+  },
+
+  // SCHEDULING & OPERATIONS
+  {
+    id: 'separator-scheduling',
+    label: '',
+    icon: Calendar,
+    path: '',
+    separator: true,
+    sectionHeader: 'Scheduling & Operations',
   },
   {
     id: 'schedule',
@@ -91,29 +135,23 @@ export const navigationItems: NavigationItem[] = [
     path: '/admin/scheduling',
   },
   {
-    id: 'analytics',
-    label: 'Analytics',
-    icon: TrendingUp,
-    path: '/analytics',
-  },
-  {
-    id: 'billing',
-    label: 'Billing',
-    icon: DollarSign,
-    path: '/billing',
-  },
-  {
     id: 'technician',
-    label: 'Technician',
+    label: 'Technician Hub',
     icon: Wrench,
     path: '/technician',
+  },
+  {
+    id: 'damage-assessment',
+    label: 'Damage Assessment',
+    icon: Camera,
+    path: '/damage-assessment',
   },
 
   // MARKETING & CONTENT
   {
     id: 'separator-marketing',
     label: '',
-    icon: Home,
+    icon: Palette,
     path: '',
     separator: true,
     sectionHeader: 'Marketing & Content',
@@ -144,23 +182,79 @@ export const navigationItems: NavigationItem[] = [
     path: '/admin/banner-management',
   },
   {
-    id: 'damage-assessment',
-    label: 'Damage Assessment',
-    icon: Camera,
-    path: '/damage-assessment',
-  },
-  {
     id: 'referrals',
     label: 'Referral Management',
     icon: Gift,
     path: '/referrals',
   },
 
+  // REPORTS & ANALYTICS
+  {
+    id: 'separator-analytics',
+    label: '',
+    icon: TrendingUp,
+    path: '',
+    separator: true,
+    sectionHeader: 'Reports & Analytics',
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    icon: TrendingUp,
+    path: '/analytics',
+  },
+  {
+    id: 'monitor',
+    label: 'Monitor Dashboard',
+    icon: Monitor,
+    path: '/monitor',
+  },
+  {
+    id: 'call-metrics',
+    label: 'Call Metrics',
+    icon: BarChart3,
+    path: '/call-metrics',
+  },
+  {
+    id: 'sms-monitoring',
+    label: 'SMS Monitoring',
+    icon: MessagesSquare,
+    path: '/sms-monitoring',
+  },
+  {
+    id: 'conversation-insights',
+    label: 'Conversation Insights',
+    icon: FileText,
+    path: '/conversation-insights',
+  },
+
+  // FINANCE
+  {
+    id: 'separator-finance',
+    label: '',
+    icon: DollarSign,
+    path: '',
+    separator: true,
+    sectionHeader: 'Finance',
+  },
+  {
+    id: 'billing',
+    label: 'Billing',
+    icon: DollarSign,
+    path: '/billing',
+  },
+  {
+    id: 'usage-dashboard',
+    label: 'Usage Dashboard',
+    icon: Wallet,
+    path: '/admin/usage-dashboard',
+  },
+
   // WORKFORCE MANAGEMENT
   {
     id: 'separator-workforce',
     label: '',
-    icon: Home,
+    icon: Briefcase,
     path: '',
     separator: true,
     sectionHeader: 'Workforce Management',
@@ -194,7 +288,7 @@ export const navigationItems: NavigationItem[] = [
   {
     id: 'separator-tech-portal',
     label: '',
-    icon: Home,
+    icon: Wrench,
     path: '',
     separator: true,
     sectionHeader: 'Technician Portal',
@@ -224,54 +318,26 @@ export const navigationItems: NavigationItem[] = [
     path: '/tech/shift-trades',
   },
 
-  // SYSTEM MONITORING
-  {
-    id: 'separator-monitoring',
-    label: '',
-    icon: Home,
-    path: '',
-    separator: true,
-    sectionHeader: 'System Monitoring',
-  },
-  {
-    id: 'monitor',
-    label: 'Monitor Dashboard',
-    icon: Monitor,
-    path: '/monitor',
-  },
-  {
-    id: 'call-metrics',
-    label: 'Call Metrics',
-    icon: BarChart3,
-    path: '/call-metrics',
-  },
-  {
-    id: 'sms-monitoring',
-    label: 'SMS Monitoring',
-    icon: MessagesSquare,
-    path: '/sms-monitoring',
-  },
-  {
-    id: 'live-conversations',
-    label: 'Live Conversations',
-    icon: Activity,
-    path: '/live-conversations',
-  },
-  {
-    id: 'conversation-insights',
-    label: 'Conversation Insights',
-    icon: FileText,
-    path: '/conversation-insights',
-  },
-
-  // ADMINISTRATION
+  // SETTINGS & ADMINISTRATION
   {
     id: 'separator-admin',
     label: '',
-    icon: Home,
+    icon: Settings,
     path: '',
     separator: true,
-    sectionHeader: 'Administration',
+    sectionHeader: 'Settings & Administration',
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: Settings,
+    path: '/settings',
+  },
+  {
+    id: 'business-settings',
+    label: 'Business Settings',
+    icon: Building2,
+    path: '/business-settings',
   },
   {
     id: 'user-management',
@@ -280,10 +346,10 @@ export const navigationItems: NavigationItem[] = [
     path: '/user-management',
   },
   {
-    id: 'business-settings',
-    label: 'Business Settings',
-    icon: Building2,
-    path: '/business-settings',
+    id: 'security',
+    label: 'Security',
+    icon: Shield,
+    path: '/security-settings',
   },
   {
     id: 'notifications-settings',
@@ -314,23 +380,5 @@ export const navigationItems: NavigationItem[] = [
     label: 'Reminders',
     icon: Clock,
     path: '/reminders',
-  },
-  {
-    id: 'usage-dashboard',
-    label: 'Usage Dashboard',
-    icon: Activity,
-    path: '/admin/usage-dashboard',
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    icon: Settings,
-    path: '/settings',
-  },
-  {
-    id: 'security',
-    label: 'Security',
-    icon: Shield,
-    path: '/security-settings',
   },
 ];
