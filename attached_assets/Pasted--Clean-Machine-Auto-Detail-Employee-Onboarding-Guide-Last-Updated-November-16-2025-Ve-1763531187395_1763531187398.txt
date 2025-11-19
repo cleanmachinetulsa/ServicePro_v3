@@ -1,0 +1,417 @@
+
+# Clean Machine Auto Detail - Employee Onboarding Guide
+
+**Last Updated:** November 16, 2025  
+**Version:** 1.0
+
+---
+
+## Table of Contents
+1. [Overview](#overview)
+2. [Employee Roles](#employee-roles)
+3. [Onboarding Process](#onboarding-process)
+4. [System Access](#system-access)
+5. [Training Resources](#training-resources)
+6. [Daily Operations](#daily-operations)
+7. [Features Available to Employees](#features-available-to-employees)
+
+---
+
+## Overview
+
+Clean Machine Auto Detail uses a comprehensive digital platform to manage all aspects of the business. This guide will help new employees understand how to use the system effectively.
+
+---
+
+## Employee Roles
+
+### Available Roles:
+1. **Owner** - Full system access, business management
+2. **Manager** - Administrative access, employee management, scheduling
+3. **Technician** - Field operations, job management, customer communication
+4. **Employee** - Basic access for support staff
+
+---
+
+## Onboarding Process
+
+### Phase 1: Application & Hiring
+1. **Job Application** (Public-facing at `/careers`)
+   - Submit application with resume
+   - Provide contact information
+   - Answer screening questions
+
+2. **Application Review** (Admin at `/admin-applications`)
+   - Manager reviews application
+   - Status: New → Screening → Interviewing → Rejected/Hired
+
+3. **Account Creation** (Admin at `/user-management`)
+   - Manager creates employee account
+   - Assigns role (Technician, Employee, Manager)
+   - Sets up login credentials
+
+### Phase 2: Profile Setup
+1. **First Login**
+   - Change temporary password at `/change-password`
+   - Set up profile at `/tech-profile`
+
+2. **Complete Bio Profile** (For Technicians)
+   - Upload professional photo
+   - Write bio (AI assistance available via `/tech-wizard`)
+   - Add specialties and certifications
+   - Manager reviews and approves profile
+
+### Phase 3: Training & Orientation
+1. **System Navigation**
+   - Dashboard overview
+   - Communication tools
+   - Schedule management
+   - Job workflows
+
+2. **Safety & Procedures**
+   - Vehicle handling protocols
+   - Chemical safety
+   - Customer interaction guidelines
+   - Quality standards
+
+---
+
+## System Access
+
+### Login
+- **URL:** Your Replit deployment URL + `/login`
+- **Credentials:** Provided by manager during onboarding
+- **First-Time:** Must change password immediately
+
+### Access Levels by Role
+
+#### Technician Access:
+- ✅ Personal schedule (`/technician-schedule`)
+- ✅ Job dashboard (`/technician`)
+- ✅ Customer communication
+- ✅ Job status updates
+- ✅ Photo uploads
+- ✅ Cash collection tracking
+- ✅ PTO requests (`/request-pto`)
+- ✅ Shift trading (`/shift-trades`)
+- ❌ Other employees' schedules
+- ❌ Financial data
+- ❌ System settings
+
+#### Manager Access:
+- ✅ All technician features
+- ✅ Employee management (`/admin-employees`)
+- ✅ Scheduling dashboard (`/scheduling-dashboard`)
+- ✅ PTO approval (`/admin-pto`)
+- ✅ Customer database (`/customer-database`)
+- ✅ Analytics (`/analytics`)
+- ✅ Settings management
+
+#### Owner Access:
+- ✅ All features (no restrictions)
+
+---
+
+## Training Resources
+
+### For Technicians
+
+#### 1. **Tech Wizard** (`/tech-wizard`)
+- AI-powered bio writing assistant
+- Helps create professional, trust-building bios
+- Suggests specialties and tags
+- Preview how customers see your profile
+
+#### 2. **Daily Workflow**
+**Morning:**
+- Check schedule at `/technician-schedule`
+- Review job details for the day
+- Check weather forecasts
+- Ensure supplies are stocked
+
+**During Jobs:**
+- Navigate to customer location (GPS integration)
+- Update job status to "On Site" when arriving
+- Take before/after photos
+- Collect payment if cash job
+- Update job status to "Completed"
+
+**End of Day:**
+- Submit daily deposit summary
+- Review tomorrow's schedule
+- Check for new messages
+
+#### 3. **Communication Hub**
+- View all customer conversations at `/messages`
+- Respond to customer questions
+- Escalate issues to management if needed
+
+### For Managers
+
+#### 1. **Employee Management** (`/admin-employees`)
+- View all employee profiles
+- Approve bio submissions
+- Request profile changes
+- Monitor employee activity
+
+#### 2. **Scheduling** (`/scheduling-dashboard`)
+- Weekly calendar grid view
+- 30-day technician schedules
+- Assign shifts using templates
+- Manage conflicts and overtime
+
+#### 3. **PTO Management** (`/admin-pto`)
+- Review PTO requests
+- Approve/deny with reasons
+- Track PTO balances
+- Monitor coverage gaps
+
+---
+
+## Daily Operations
+
+### Technician Dashboard (`/technician`)
+
+**Four Main Pods:**
+
+1. **Schedule Panel** (Left)
+   - Today's appointments with times
+   - Customer names and addresses
+   - Service types
+   - Click for navigation
+
+2. **Workflow Pod** (Top Right)
+   - Update job status
+   - Upload photos
+   - Add notes
+   - Mark completed
+
+3. **Communications Pod** (Middle Right)
+   - Recent conversations
+   - Unread message count
+   - Quick reply to customers
+   - SMS notifications
+
+4. **Media Pod** (Bottom Right)
+   - Upload before/after photos
+   - Link photos to specific jobs
+   - Preview uploaded images
+
+### Schedule Management
+
+#### Viewing Your Schedule
+- **30-Day View:** `/technician-schedule`
+- **Shows:**
+  - All your assigned shifts
+  - Shift times (e.g., 8:00 AM - 5:00 PM)
+  - Shift templates (Opening, Closing, Mid-Shift)
+  - PTO/time off
+  - Open shifts available to claim
+
+#### Requesting Time Off
+1. Go to `/request-pto`
+2. Select date range
+3. Choose PTO type (Vacation, Sick, Personal, etc.)
+4. Add reason/notes
+5. Submit for approval
+6. Manager reviews and responds
+
+#### Shift Trading
+1. Go to `/shift-trades`
+2. Select shift you want to trade
+3. Choose technician to trade with
+4. Submit trade request
+5. Both parties and manager must approve
+6. System validates no conflicts/overtime
+
+---
+
+## Features Available to Employees
+
+### Customer Communication
+- **SMS Integration:** Respond to customer texts
+- **Read Receipts:** See when customers read messages
+- **Typing Indicators:** Real-time conversation status
+- **Message Reactions:** Quick emoji responses
+- **Offline Drafts:** Write messages even without internet
+
+### Navigation & GPS
+- **Driving Directions:** One-click navigation to job sites
+- **Drive Time Calculation:** Automatic route optimization
+- **Traffic Integration:** Real-time traffic updates
+- **Address Verification:** Customers confirm location with map pin
+
+### Job Management
+- **Status Updates:**
+  - Scheduled → Confirmed → On Site → In Progress → Completed
+- **Photo Documentation:**
+  - Before/after photos required
+  - Automatic upload to customer record
+  - Accessible in job history
+- **Customer Notes:**
+  - View previous service notes
+  - Add notes for next visit
+  - Flag special instructions
+
+### Payment Collection
+- **Cash Tracking:**
+  - Record cash payments on-site
+  - Daily deposit summary widget
+  - Automatic calculation of totals
+  - Manager visibility for accountability
+
+### Self-Service Tools
+- **Profile Management:** Update bio, photo, specialties
+- **Password Reset:** Self-service password changes
+- **Notification Preferences:** Customize alerts
+- **Security Settings:** Optional biometric login (WebAuthn)
+
+---
+
+## Common Tasks & How-To's
+
+### How to Update Job Status
+1. Open Technician Dashboard (`/technician`)
+2. Find job in Schedule Panel
+3. Click on job card
+4. Use Workflow Pod dropdown
+5. Select new status
+6. Add notes if needed
+7. Click "Update Status"
+
+### How to Upload Photos
+1. Click on job in Workflow Pod
+2. Scroll to Media Pod
+3. Click "Upload Photos"
+4. Select images from device
+5. Photos auto-link to current job
+6. Add captions (optional)
+7. Submit
+
+### How to Respond to Customers
+1. Go to Messages (`/messages`)
+2. Click customer conversation
+3. Type reply in text box
+4. Click Send or press Enter
+5. Message sent via SMS to customer
+
+### How to Request a Shift Trade
+1. Go to Shift Trades (`/shift-trades`)
+2. Click "Request Trade"
+3. Select your shift to trade
+4. Choose who to trade with
+5. Add message explaining why
+6. Submit request
+7. Wait for approval from peer and manager
+
+### How to Check PTO Balance
+1. Go to Request PTO (`/request-pto`)
+2. Balance shown at top of page
+3. View pending requests
+4. See approved/denied history
+
+---
+
+## Troubleshooting
+
+### Can't Log In
+- Verify username/password with manager
+- Use "Forgot Password" link if needed
+- Clear browser cache and try again
+- Contact manager if still failing
+
+### Photos Won't Upload
+- Check internet connection
+- File size must be under 10MB
+- Supported formats: JPG, PNG, HEIC
+- Try reducing photo quality in camera settings
+
+### Schedule Not Showing
+- Refresh page
+- Check if shift was assigned (ask manager)
+- Verify you're logged in as correct user
+- Clear browser cache
+
+### Customer Not Responding
+- Check message was sent (green checkmark)
+- Verify customer phone number is correct
+- Try calling customer directly
+- Escalate to manager if urgent
+
+---
+
+## Best Practices
+
+### Communication
+✅ Respond to customer messages within 1 hour  
+✅ Use professional, friendly tone  
+✅ Confirm details before jobs (time, address, services)  
+✅ Update customers on delays immediately  
+❌ Don't ignore messages or leave on "read"  
+❌ Don't share personal contact info  
+
+### Photography
+✅ Take before AND after photos of every job  
+✅ Show problem areas in detail  
+✅ Capture full vehicle angles  
+✅ Upload same day as job completion  
+❌ Don't forget to take photos (required)  
+❌ Don't upload blurry or dark images  
+
+### Professionalism
+✅ Arrive on time (call if running late)  
+✅ Dress in uniform  
+✅ Park considerately at customer locations  
+✅ Clean up work area completely  
+❌ Don't smoke/vape near customer property  
+❌ Don't use customer facilities without permission  
+
+---
+
+## Support & Questions
+
+### Need Help?
+- **Manager:** Contact via Messages app
+- **Technical Issues:** Email IT support
+- **Urgent:** Call business phone (918-856-5711)
+
+### Reporting Issues
+1. Note the error message (screenshot if possible)
+2. Write down what you were doing when it happened
+3. Try logging out and back in
+4. If persists, message manager with details
+
+---
+
+## Appendix: Quick Reference
+
+### Important URLs
+- Login: `/login`
+- Dashboard: `/technician`
+- Schedule: `/technician-schedule`
+- Messages: `/messages`
+- PTO: `/request-pto`
+- Shift Trades: `/shift-trades`
+- Profile: `/tech-profile`
+- Bio Wizard: `/tech-wizard`
+
+### Keyboard Shortcuts
+- `Enter` - Send message in chat
+- `Esc` - Close dialogs/modals
+- `Ctrl+K` - Open search (if enabled)
+
+### Status Definitions
+- **Scheduled** - Job booked but not started
+- **Confirmed** - Customer confirmed appointment
+- **On Site** - Arrived at customer location
+- **In Progress** - Actively working on vehicle
+- **Completed** - Job finished, awaiting payment
+- **Paid** - Payment received and recorded
+
+---
+
+**Questions or Feedback?**  
+Contact your manager or suggest improvements to this guide.
+
+**Version History:**  
+- v1.0 (Nov 2025) - Initial employee onboarding guide
