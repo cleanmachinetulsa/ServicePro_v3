@@ -31,6 +31,8 @@ import {
   AlertCircle,
   PhoneOff,
   PhoneCall,
+  Sparkles,
+  UserCheck,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -171,9 +173,24 @@ export default function CustomerProfilePanel({ conversationId }: Props) {
           <CardContent className="space-y-3">
             <div className="flex items-start gap-3">
               <User className="h-4 w-4 text-muted-foreground mt-0.5" />
-              <div>
-                <div className="text-sm font-medium">
-                  {conversation.customerName || 'Unknown'}
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium">
+                    {conversation.customerName || 'Unknown'}
+                  </div>
+                  {customer && (
+                    customer.isReturningCustomer ? (
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Returning
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        First-Time
+                      </Badge>
+                    )
+                  )}
                 </div>
               </div>
             </div>
