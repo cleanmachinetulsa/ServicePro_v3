@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLocation } from 'wouter';
+import { useShowcase } from '@/contexts/ShowcaseContext';
 
 const navItems = [
   { id: 'hero', label: 'Home' },
@@ -17,6 +18,7 @@ const navItems = [
 
 export function StickyNav() {
   const [, setLocation] = useLocation();
+  const { openTrialModal } = useShowcase();
   const [activeSection, setActiveSection] = useState('hero');
   const [isVisible, setIsVisible] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -138,6 +140,7 @@ export function StickyNav() {
               {/* CTA */}
               <Button
                 size="sm"
+                onClick={openTrialModal}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white hidden lg:block transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/50"
                 data-testid="button-nav-cta"
               >
@@ -203,8 +206,9 @@ export function StickyNav() {
                 </nav>
                 
                 {/* CTA in mobile menu */}
-                <div className="mt-8 pt-8 border-t border-white/10">
+                <div className="mt-8 pt-8 border-white/10">
                   <Button
+                    onClick={openTrialModal}
                     className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
                     data-testid="button-mobile-cta"
                   >

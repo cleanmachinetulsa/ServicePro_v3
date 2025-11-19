@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { ChevronDown, Phone, Wrench, Rocket, HelpCircle, DollarSign, ArrowRight, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useShowcase } from '@/contexts/ShowcaseContext';
 
 const faqs = [
   {
@@ -38,6 +39,7 @@ const faqs = [
 ];
 
 export function FaqSection() {
+  const { openTrialModal } = useShowcase();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const toggleFaq = (index: number) => {
@@ -137,6 +139,7 @@ export function FaqSection() {
             <Button
               size="lg"
               variant="outline"
+              onClick={openTrialModal}
               className="border-2 border-blue-400/50 bg-white/5 backdrop-blur-sm hover:bg-white/10 text-white px-8 py-6 text-lg rounded-full"
               data-testid="button-start-trial"
             >
