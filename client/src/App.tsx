@@ -222,6 +222,25 @@ function Router() {
         <AuthGuard><ShiftTrades /></AuthGuard>
       </Route>
       
+      {/* Route aliases for backward compatibility with onboarding documentation */}
+      <Route path="/tech-profile" component={TechProfile} />
+      <Route path="/tech-wizard" component={TechWizard} />
+      <Route path="/admin-applications">
+        <AuthGuard><AdminApplications /></AuthGuard>
+      </Route>
+      <Route path="/technician-schedule">
+        <AuthGuard><TechnicianSchedule /></AuthGuard>
+      </Route>
+      <Route path="/request-pto">
+        <AuthGuard><RequestPTO /></AuthGuard>
+      </Route>
+      <Route path="/shift-trades">
+        <AuthGuard><ShiftTrades /></AuthGuard>
+      </Route>
+      <Route path="/scheduling-dashboard">
+        <AuthGuard><SchedulingDashboard /></AuthGuard>
+      </Route>
+      
       {/* Public tech profile (no auth required) */}
       <Route path="/p/:publicId" component={TechProfilePublic} />
 
