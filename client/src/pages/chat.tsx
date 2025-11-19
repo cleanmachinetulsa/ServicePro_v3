@@ -21,7 +21,8 @@ import {
   Loader2,
   Paperclip,
   X,
-  MessageSquare
+  MessageSquare,
+  Smile
 } from "lucide-react";
 import MultiVehicleAppointmentScheduler from "@/components/MultiVehicleAppointmentScheduler";
 import {
@@ -30,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 interface Message {
   id: string;
@@ -93,6 +95,16 @@ export default function ChatPage() {
   
   useEffect(() => {
     setIsClient(true);
+    
+    // Check if desktop (width >= 768px)
+    const checkIsDesktop = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    
+    checkIsDesktop();
+    window.addEventListener('resize', checkIsDesktop);
+    
+    return () => window.removeEventListener('resize', checkIsDesktop);
   }, []);
   
   // Save messages to localStorage whenever they change
@@ -103,19 +115,23 @@ export default function ChatPage() {
       console.error('Failed to save messages to localStorage:', e);
     }
   }, [messages]);
-  const [inputText, setInputText] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [showSchedulerDialog, setShowSchedulerDialog] = useState(false);
-  const [customerInfo, setCustomerInfo] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    vehicle: "",
-  });
 
-  const messageEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -215,6 +231,12 @@ export default function ChatPage() {
       minute: "2-digit",
       hour12: true,
     });
+  };
+
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    setInputText((prev) => prev + emojiData.emoji);
+    setShowEmojiPicker(false);
+    inputRef.current?.focus();
   };
 
   return (
@@ -444,7 +466,25 @@ export default function ChatPage() {
             </div>
 
             {/* Input Field */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 relative">
+              {/* Emoji Picker - Desktop Only */}
+              {isDesktop && showEmojiPicker && (
+                <div 
+                  ref={emojiPickerRef}
+                  className="absolute bottom-full mb-2 left-0 z-50"
+                  data-testid="emoji-picker-container"
+                >
+                  <EmojiPicker
+                    onEmojiClick={handleEmojiClick}
+                    theme="dark"
+                    width={350}
+                    height={450}
+                    searchPlaceHolder="Search emojis..."
+                    previewConfig={{ showPreview: false }}
+                  />
+                </div>
+              )}
+
               <div className="flex-1 relative">
                 <Input
                   ref={inputRef}
@@ -458,6 +498,19 @@ export default function ChatPage() {
                 />
                 <Sparkles className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-400/50" />
               </div>
+
+              {/* Emoji Button - Desktop Only */}
+              {isDesktop && (
+                <Button
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  disabled={isTyping}
+                  variant="outline"
+                  className="bg-gray-800/70 backdrop-blur-sm border-blue-500/30 hover:bg-blue-600/20 text-blue-300 hover:text-blue-200 transition-all duration-200"
+                  data-testid="button-emoji-picker"
+                >
+                  <Smile className="h-5 w-5" />
+                </Button>
+              )}
 
               <Button
                 onClick={() => handleSendMessage()}

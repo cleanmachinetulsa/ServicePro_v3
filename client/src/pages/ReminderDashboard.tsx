@@ -4,18 +4,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Clock, Send, Users, CheckCircle, TrendingUp } from 'lucide-react';
 import { format } from 'date-fns';
+import { ContactPicker, type Contact } from '@/components/ContactPicker';
 
 export default function ReminderDashboard() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [manualSendDialogOpen, setManualSendDialogOpen] = useState(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const { toast } = useToast();
 
   // Fetch analytics
@@ -49,6 +50,7 @@ export default function ReminderDashboard() {
       queryClient.invalidateQueries({ queryKey: ['/api/reminders/jobs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/reminders/analytics'] });
       setManualSendDialogOpen(false);
+      setSelectedContact(null);
     },
     onError: (error: any) => {
       toast({
@@ -58,6 +60,18 @@ export default function ReminderDashboard() {
       });
     },
   });
+
+  const handleSendManualReminder = () => {
+    if (!selectedContact) {
+      toast({
+        title: 'No Customer Selected',
+        description: 'Please select a customer to send a reminder',
+        variant: 'destructive',
+      });
+      return;
+    }
+    sendNowMutation.mutate(selectedContact.id);
+  };
 
   const jobs = (jobsData as any)?.jobs || [];
   const stats = (analytics as any)?.analytics || {};
@@ -77,19 +91,43 @@ export default function ReminderDashboard() {
               Send Manual Reminder
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Send Manual Reminder</DialogTitle>
               <DialogDescription>
-                Send an immediate reminder to a specific customer
+                Select a customer and send an immediate reminder
               </DialogDescription>
             </DialogHeader>
-            {/* Manual send form - simplified for MVP */}
-            <Alert>
-              <AlertDescription>
-                Manual send requires customer ID. Coming soon: customer search and selection.
-              </AlertDescription>
-            </Alert>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="customer">Customer *</Label>
+                <ContactPicker
+                  value={selectedContact}
+                  onChange={setSelectedContact}
+                  placeholder="Search for a customer..."
+                  data-testid="picker-manual-reminder-customer"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setManualSendDialogOpen(false);
+                  setSelectedContact(null);
+                }}
+                data-testid="button-cancel-manual-send"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendManualReminder}
+                disabled={!selectedContact || sendNowMutation.isPending}
+                data-testid="button-confirm-manual-send"
+              >
+                {sendNowMutation.isPending ? 'Sending...' : 'Send Reminder'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

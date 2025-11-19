@@ -95,20 +95,51 @@ app.get('/service-worker.js', (req, res) => {
 // Cache-busting middleware - prevent users from seeing stale code after deployments
 app.use((req, res, next) => {
   const url = req.url;
+  const isDevelopment = process.env.NODE_ENV === 'development';
   
-  // HTML files: Never cache (always get latest version)
-  if (url.endsWith('.html') || url === '/' || !url.includes('.')) {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+  // DEVELOPMENT MODE: Aggressive no-cache for everything except static assets
+  if (isDevelopment) {
+    // API endpoints: Never cache in development
+    if (url.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    }
+    // HTML files and routes: Never cache in development
+    else if (url.endsWith('.html') || url === '/' || !url.includes('.')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    }
+    // JS/CSS files: Never cache in development (even hashed ones)
+    else if (/\.(js|css)$/.test(url)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    // Static assets: Short cache in development
+    else if (/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/.test(url)) {
+      res.setHeader('Cache-Control', 'public, max-age=60');
+    }
   }
-  // Hashed assets (e.g., main-abc123.js from Vite build): Cache forever
-  else if (/\.(js|css)$/.test(url) && /[a-f0-9]{8,}/.test(url)) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  }
-  // Other static assets: Cache for 1 hour
-  else if (/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/.test(url)) {
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+  // PRODUCTION MODE: Smart caching based on resource type
+  else {
+    // HTML files: Never cache (always get latest version)
+    if (url.endsWith('.html') || url === '/' || !url.includes('.')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    // Hashed assets (e.g., main-abc123.js from Vite build): Cache forever
+    else if (/\.(js|css)$/.test(url) && /[a-f0-9]{8,}/.test(url)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+    // Other static assets: Cache for 1 hour
+    else if (/\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/.test(url)) {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
   }
   
   next();
