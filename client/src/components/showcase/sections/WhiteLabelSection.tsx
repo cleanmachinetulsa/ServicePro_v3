@@ -7,9 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import { useShowcase } from '@/contexts/ShowcaseContext';
 
 export function WhiteLabelSection() {
-  const [modalOpen, setModalOpen] = useState(false);
+  const { trialModalOpen, openTrialModal, closeTrialModal } = useShowcase();
   const [submitted, setSubmitted] = useState(false);
   const [email, setEmail] = useState('');
   const [industry, setIndustry] = useState('');
@@ -176,7 +177,7 @@ export function WhiteLabelSection() {
             >
               <Button
                 size="lg"
-                onClick={() => setModalOpen(true)}
+                onClick={openTrialModal}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-12 py-6 text-lg rounded-full shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 hover:scale-105"
                 data-testid="button-free-trial"
               >
@@ -190,9 +191,11 @@ export function WhiteLabelSection() {
       </div>
 
       {/* Lead Capture Modal */}
-      <Dialog open={modalOpen} onOpenChange={(open) => {
-        setModalOpen(open);
-        if (!open) {
+      <Dialog open={trialModalOpen} onOpenChange={(open) => {
+        if (open) {
+          openTrialModal();
+        } else {
+          closeTrialModal();
           setTimeout(() => {
             setSubmitted(false);
             setEmail('');
@@ -258,7 +261,7 @@ export function WhiteLabelSection() {
                   We'll reach out with onboarding info shortly!
                 </p>
               </div>
-              <Button onClick={() => setModalOpen(false)} className="mt-4">
+              <Button onClick={closeTrialModal} className="mt-4">
                 Close
               </Button>
             </div>

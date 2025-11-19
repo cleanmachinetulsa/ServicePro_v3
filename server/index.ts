@@ -49,19 +49,32 @@ app.use(helmet({
   frameguard: false,
 }));
 
-// SECURITY: Global rate limiting (300 requests per IP per minute)
+// SECURITY: Global rate limiting (600 requests per IP per minute)
+// Increased from 300 to accommodate automated testing and heavy usage scenarios
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 300, // Max 300 requests per window per IP
+  max: 600, // Max 600 requests per window per IP (10/sec)
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  message: 'Too many requests from this IP, please try again later.',
+  message: {
+    error: 'Too many requests',
+    message: 'Rate limit exceeded. Please wait a moment and try again.',
+    retryAfter: 60
+  },
   skip: (req) => {
     // Skip rate limiting for webhooks (they have their own verification)
     return req.path.startsWith('/api/webhooks') || 
            req.path.startsWith('/api/voice') || 
            req.path.startsWith('/api/twilio');
   },
+  handler: (req, res) => {
+    log(`Rate limit exceeded for IP: ${req.ip} on path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please wait a moment and try again.',
+      retryAfter: 60
+    });
+  }
 });
 app.use(limiter);
 

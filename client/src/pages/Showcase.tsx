@@ -10,6 +10,7 @@ import { MetricsSection } from '@/components/showcase/sections/MetricsSection';
 import { WhiteLabelSection } from '@/components/showcase/sections/WhiteLabelSection';
 import { FaqSection } from '@/components/showcase/sections/FaqSection';
 import { SandboxSection } from '@/components/showcase/sandbox/SandboxSection';
+import { ShowcaseProvider } from '@/contexts/ShowcaseContext';
 
 export default function Showcase() {
   useEffect(() => {
@@ -21,7 +22,8 @@ export default function Showcase() {
   }, []);
 
   return (
-    <ShowcaseLayout>
+    <ShowcaseProvider>
+      <ShowcaseLayout>
       <StickyNav />
       
       <HeroSection />
@@ -51,5 +53,6 @@ export default function Showcase() {
         </div>
       </footer>
     </ShowcaseLayout>
+    </ShowcaseProvider>
   );
 }
