@@ -1,17 +1,41 @@
+import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Bell, MessageSquare, DollarSign, AlertTriangle } from 'lucide-react';
+import { Bell, MessageSquare, DollarSign, AlertTriangle, PhoneForwarded, Save } from 'lucide-react';
 
 export function NotificationPreferences() {
   const { toast } = useToast();
+  const [smsFallbackSettings, setSmsFallbackSettings] = useState({
+    enabled: false,
+    phone: '',
+    autoReply: ''
+  });
 
   const { data: prefs, isLoading } = useQuery({
     queryKey: ['/api/notification-preferences/me']
   });
+
+  const { data: businessSettings, isLoading: isLoadingBusiness } = useQuery({
+    queryKey: ['/api/business-settings']
+  });
+
+  // Initialize SMS fallback settings from business settings
+  useState(() => {
+    if (businessSettings?.data) {
+      setSmsFallbackSettings({
+        enabled: businessSettings.data.smsFallbackEnabled || false,
+        phone: businessSettings.data.smsFallbackPhone || '',
+        autoReply: businessSettings.data.smsFallbackAutoReply || "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."
+      });
+    }
+  }, [businessSettings]);
 
   const updateMutation = useMutation({
     mutationFn: async (updates: any) => {
@@ -29,11 +53,35 @@ export function NotificationPreferences() {
     }
   });
 
+  const updateSmsFallbackMutation = useMutation({
+    mutationFn: async (updates: any) => {
+      return apiRequest('/api/business-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          smsFallbackEnabled: updates.enabled,
+          smsFallbackPhone: updates.phone,
+          smsFallbackAutoReply: updates.autoReply
+        })
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/business-settings'] });
+      toast({
+        title: 'SMS Fallback updated',
+        description: 'Emergency fallback settings saved successfully'
+      });
+    }
+  });
+
   const handleToggle = (field: string, value: boolean) => {
     updateMutation.mutate({ ...prefs, [field]: value });
   };
 
-  if (isLoading) return <div>Loading...</div>;
+  const handleSmsFallbackSave = () => {
+    updateSmsFallbackMutation.mutate(smsFallbackSettings);
+  };
+
+  if (isLoading || isLoadingBusiness) return <div>Loading...</div>;
 
   return (
     <div className="space-y-6">
@@ -144,6 +192,79 @@ export function NotificationPreferences() {
               onCheckedChange={(checked) => handleToggle('appointmentReminderPush', checked)}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-orange-200 dark:border-orange-800">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <PhoneForwarded className="h-5 w-5 text-orange-600" />
+            <CardTitle className="text-orange-600 dark:text-orange-400">Emergency SMS Fallback</CardTitle>
+          </div>
+          <CardDescription>
+            When the main system is down, forward customer messages to your personal phone
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="sms-fallback-enabled">Enable SMS Fallback System</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Automatically forward messages when the system is offline
+              </p>
+            </div>
+            <Switch
+              id="sms-fallback-enabled"
+              data-testid="toggle-sms-fallback-enabled"
+              checked={smsFallbackSettings.enabled}
+              onCheckedChange={(checked) => setSmsFallbackSettings({ ...smsFallbackSettings, enabled: checked })}
+            />
+          </div>
+
+          {smsFallbackSettings.enabled && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="sms-fallback-phone">Forwarding Phone Number</Label>
+                <Input
+                  id="sms-fallback-phone"
+                  data-testid="input-sms-fallback-phone"
+                  type="tel"
+                  placeholder="+1 918-856-5711"
+                  value={smsFallbackSettings.phone}
+                  onChange={(e) => setSmsFallbackSettings({ ...smsFallbackSettings, phone: e.target.value })}
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Customer messages will be forwarded here when the system is down
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sms-fallback-auto-reply">Auto-Reply Message</Label>
+                <Textarea
+                  id="sms-fallback-auto-reply"
+                  data-testid="textarea-sms-fallback-auto-reply"
+                  placeholder="Thanks for your message! Our automated system is currently offline..."
+                  value={smsFallbackSettings.autoReply}
+                  onChange={(e) => setSmsFallbackSettings({ ...smsFallbackSettings, autoReply: e.target.value })}
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Customers receive this automatic response during system downtime
+                </p>
+              </div>
+
+              <Button
+                onClick={handleSmsFallbackSave}
+                disabled={updateSmsFallbackMutation.isPending}
+                data-testid="button-save-sms-fallback"
+                className="w-full"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                {updateSmsFallbackMutation.isPending ? 'Saving...' : 'Save Fallback Settings'}
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
