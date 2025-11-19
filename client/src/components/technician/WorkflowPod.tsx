@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, CheckCircle, Mic } from 'lucide-react';
 import { useTechnician } from '@/contexts/TechnicianContext';
 import { useToast } from '@/hooks/use-toast';
-import { PaymentCollectionModal } from './PaymentCollectionModal';
+import { JobCompletionDialog } from './JobCompletionDialog';
 
 const STATUS_WORKFLOW = [
   { value: 'assigned', label: 'Assigned', color: 'bg-gray-500' },
@@ -21,7 +21,7 @@ export function WorkflowPod() {
   const [notes, setNotes] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,9 +46,9 @@ export function WorkflowPod() {
   const handleStatusChange = async (status: string) => {
     if (!selectedJob) return;
 
-    // If status is 'completed', show payment collection modal for cash/check payment
+    // If status is 'completed', show the new comprehensive job completion dialog
     if (status === 'completed') {
-      setShowPaymentModal(true);
+      setShowCompletionDialog(true);
       return;
     }
 
@@ -241,18 +241,26 @@ export function WorkflowPod() {
         </div>
       </CardContent>
 
-      {/* Payment Collection Modal */}
-      {showPaymentModal && selectedJob && (
-        <PaymentCollectionModal
-          jobId={selectedJob.id}
-          customerName={selectedJob.customerName}
-          amount={150} // Default amount - could be fetched from service pricing
-          onSuccess={() => {
-            setShowPaymentModal(false);
-            // Queries will be invalidated by the modal's mutation
+      {/* Job Completion Dialog */}
+      {showCompletionDialog && selectedJob && (
+        <JobCompletionDialog
+          job={{
+            id: selectedJob.id,
+            customerId: selectedJob.customerId,
+            serviceId: selectedJob.serviceId,
+            customerName: selectedJob.customerName,
+            customerPhone: selectedJob.customerPhone,
+            customerEmail: (selectedJob as any).customerEmail,
+            scheduledTime: selectedJob.scheduledTime,
           }}
-          onCancel={() => {
-            setShowPaymentModal(false);
+          onClose={() => {
+            setShowCompletionDialog(false);
+          }}
+          onComplete={() => {
+            toast({
+              title: 'Job Completed!',
+              description: 'The job has been successfully completed',
+            });
           }}
         />
       )}

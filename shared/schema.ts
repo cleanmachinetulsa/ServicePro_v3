@@ -1099,6 +1099,7 @@ export const smsTemplates = pgTable("sms_templates", {
 export const smsTemplateVersions = pgTable("sms_template_versions", {
   id: serial("id").primaryKey(),
   templateId: integer("template_id").notNull().references(() => smsTemplates.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").notNull().default(1),
   version: integer("version").notNull(),
   body: text("body").notNull(),
   variables: jsonb("variables").notNull(),

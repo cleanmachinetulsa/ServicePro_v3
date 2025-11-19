@@ -328,6 +328,7 @@ export async function registerRoutes(app: Express) {
       '/api/referral/signup',   // Public referral signup tracking (for booking flow)
       '/api/qr/scan',           // Allow anonymous QR code scans (tracking endpoint)
       '/api/customers/check-phone', // Public customer lookup for smart booking (Phase 3)
+      '/api/leads',             // Public lead capture for trial requests
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)
@@ -2202,6 +2203,70 @@ export async function registerRoutes(app: Express) {
         success: false,
         message: 'Failed to fetch Google reviews',
         error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Lead capture for 14-day trial requests
+  app.post('/api/leads/trial-request', async (req: Request, res: Response) => {
+    try {
+      const { email, industry } = req.body;
+      
+      // Validate inputs
+      if (!email || !industry) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Email and industry are required' 
+        });
+      }
+      
+      console.log('[LEAD CAPTURE] New trial request:', { email, industry });
+      
+      // Send notification email to admin
+      const subject = 'New 14-Day Trial Request from Showcase';
+      const textContent = `
+New Trial Request
+
+Email: ${email}
+Industry: ${industry}
+Submitted: ${new Date().toLocaleString()}
+
+Follow up with this lead to set up their 14-day trial!
+      `.trim();
+      
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #7c3aed; border-bottom: 2px solid #7c3aed; padding-bottom: 10px;">New Trial Request</h2>
+          <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 10px 0;"><strong>Email:</strong> ${email}</p>
+            <p style="margin: 10px 0;"><strong>Industry:</strong> ${industry}</p>
+            <p style="margin: 10px 0;"><strong>Submitted:</strong> ${new Date().toLocaleString()}</p>
+          </div>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #4b5563;">Follow up with this lead to set up their 14-day trial!</p>
+        </div>
+      `;
+      
+      const emailResult = await sendBusinessEmail(
+        'admin@cleanmachine.com',
+        subject,
+        textContent,
+        htmlContent
+      );
+      
+      if (emailResult.success) {
+        console.log('[LEAD CAPTURE] Email sent successfully to admin@cleanmachine.com');
+        res.json({ success: true, message: 'Lead captured successfully' });
+      } else {
+        console.error('[LEAD CAPTURE] Email send failed:', emailResult.error);
+        res.status(500).json({ success: false, message: 'Failed to send notification email' });
+      }
+      
+    } catch (error) {
+      console.error('[LEAD CAPTURE] Error processing request:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to submit request' 
       });
     }
   });

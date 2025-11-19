@@ -3,7 +3,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { PillTabs } from '../shared/PillTabs';
 import { GlassCard } from '../shared/GlassCard';
-import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase, Phone, Map, QrCode, Smartphone } from 'lucide-react';
+import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase, Phone, Map, QrCode, Smartphone, User, Star, Clock, FileText } from 'lucide-react';
+
+const mockupDetails: Record<string, { icon: any; text: string }[]> = {
+  'Profile View': [
+    { icon: User, text: 'Complete contact information & preferences' },
+    { icon: Calendar, text: 'Full appointment history & scheduling' },
+    { icon: MessageSquare, text: 'Communication logs across all channels' },
+    { icon: Star, text: 'Service ratings & loyalty status' }
+  ],
+  'Service History': [
+    { icon: Clock, text: 'Chronological service records with photos' },
+    { icon: DollarSign, text: 'Payment history & invoices' },
+    { icon: FileText, text: 'Service notes & technician feedback' },
+    { icon: TrendingUp, text: 'Spending trends & service recommendations' }
+  ]
+};
 
 const features = [
   {
@@ -335,30 +350,57 @@ export function FeatureMapSection() {
 
             {/* Right: UI Mockups */}
             <div className="space-y-4">
-              {active.mockups.map((mockup, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.2 + i * 0.1 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className={`bg-gradient-to-br ${mockup.color} backdrop-blur-xl border border-white/20 rounded-2xl p-8 cursor-pointer group relative overflow-hidden`}
-                >
-                  {/* Glow effect on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  
-                  <div className="relative z-10">
-                    <h4 className="text-xl font-semibold text-white mb-2">{mockup.title}</h4>
-                    <p className="text-blue-200">{mockup.desc}</p>
-                    <div className="mt-6 space-y-2">
-                      {/* Mock UI elements */}
-                      <div className="h-3 bg-white/10 rounded-full w-3/4" />
-                      <div className="h-3 bg-white/10 rounded-full w-full" />
-                      <div className="h-3 bg-white/10 rounded-full w-1/2" />
+              {active.mockups.map((mockup, i) => {
+                const details = mockupDetails[mockup.title];
+                
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.2 + i * 0.1 }}
+                    whileHover={{ scale: 1.02, y: -5 }}
+                    className={`bg-gradient-to-br ${mockup.color} backdrop-blur-xl border border-white/20 rounded-2xl p-8 cursor-pointer group relative overflow-hidden`}
+                  >
+                    {/* Glow effect on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    
+                    <div className="relative z-10">
+                      <h4 className="text-xl font-semibold text-white mb-2">{mockup.title}</h4>
+                      <p className="text-blue-200">{mockup.desc}</p>
+                      
+                      {details ? (
+                        <div className="mt-6 space-y-3">
+                          {details.map((feature, featureIndex) => {
+                            const FeatureIcon = feature.icon;
+                            return (
+                              <motion.div
+                                key={featureIndex}
+                                initial={{ opacity: 0, x: -20 }}
+                                whileInView={{ opacity: 1, x: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ delay: featureIndex * 0.1 }}
+                                className="flex items-start gap-3"
+                              >
+                                <div className="p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg">
+                                  <FeatureIcon className="w-4 h-4 text-blue-300" />
+                                </div>
+                                <span className="text-sm text-blue-100/80">{feature.text}</span>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="mt-6 space-y-2">
+                          <div className="h-3 bg-white/10 rounded-full w-3/4" />
+                          <div className="h-3 bg-white/10 rounded-full w-full" />
+                          <div className="h-3 bg-white/10 rounded-full w-1/2" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </div>
           </motion.div>
         </AnimatePresence>

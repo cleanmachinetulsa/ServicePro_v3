@@ -624,7 +624,7 @@ export function registerAuthRoutes(app: Express) {
 
       res.json({
         success: true,
-        qrCode: setup.qrCodeDataUrl,
+        qrCodeUrl: setup.qrCodeDataUrl,
         secret: setup.secret,
         backupCodes: setup.backupCodes,
       });
