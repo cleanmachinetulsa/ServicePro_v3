@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import BackNavigation from '@/components/BackNavigation';
+import { AppShell } from '@/components/AppShell';
 import { ArrowLeft } from 'lucide-react';
 import { 
   Table, 
@@ -116,14 +116,9 @@ export default function ServiceHistoryPage() {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-4">
-          <BackNavigation fallbackPath="/dashboard" />
-        </div>
-        <h1 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-blue-400 bg-clip-text text-transparent">
-          Customer Service History
-        </h1>
+    <AppShell title="Service History">
+      <div className="p-6">
+        <div className="max-w-4xl mx-auto space-y-6">
         
         <Card className="mb-8">
           <CardHeader className="bg-gradient-to-r from-blue-600 to-blue-500 text-white">
@@ -262,7 +257,8 @@ export default function ServiceHistoryPage() {
             </CardContent>
           </Card>
         )}
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

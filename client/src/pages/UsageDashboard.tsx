@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { AppShell } from '@/components/AppShell';
 import { 
   DollarSign, 
   Activity, 
@@ -99,22 +100,21 @@ export default function UsageDashboard() {
 
   const healthyCount = health.filter(h => h.status === 'healthy').length;
 
+  const pageActions = (
+    <Button
+      onClick={() => syncMutation.mutate()}
+      disabled={syncMutation.isPending}
+      data-testid="button-sync"
+      size="sm"
+    >
+      <RefreshCw className={`w-4 h-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+      Sync Now
+    </Button>
+  );
+
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">API Usage & Costs</h1>
-          <p className="text-muted-foreground">Live monitoring of all external services</p>
-        </div>
-        <Button
-          onClick={() => syncMutation.mutate()}
-          disabled={syncMutation.isPending}
-          data-testid="button-sync"
-        >
-          <RefreshCw className={`w-4 h-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-          Sync Now
-        </Button>
-      </div>
+    <AppShell title="API Usage & Costs" pageActions={pageActions}>
+      <div className="p-6 space-y-6">
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -283,6 +283,7 @@ export default function UsageDashboard() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </AppShell>
   );
 }

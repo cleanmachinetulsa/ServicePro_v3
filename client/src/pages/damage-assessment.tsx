@@ -7,6 +7,7 @@ import { AlertCircle, CheckCircle, XCircle, ExternalLink, Clock } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
+import { AppShell } from "@/components/AppShell";
 
 interface PendingAssessment {
   appointment: {
@@ -101,20 +102,15 @@ export default function DamageAssessment() {
     return `${minutesWaiting}m`;
   };
   
+  const pageActions = (
+    <Badge variant={pendingAssessments.length > 0 ? "destructive" : "outline"}>
+      {pendingAssessments.length} Pending Review{pendingAssessments.length !== 1 ? 's' : ''}
+    </Badge>
+  );
+
   return (
-    <div className="container mx-auto py-6 space-y-8">
-      <header className="flex flex-col md:flex-row justify-between items-center mb-8">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight">Damage Assessment</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-2">
-            Review and approve appointments with reported vehicle damage
-          </p>
-        </div>
-        
-        <Badge variant={pendingAssessments.length > 0 ? "destructive" : "outline"} className="mt-4 md:mt-0">
-          {pendingAssessments.length} Pending Review{pendingAssessments.length !== 1 ? 's' : ''}
-        </Badge>
-      </header>
+    <AppShell title="Damage Assessment" pageActions={pageActions}>
+      <div className="p-6 space-y-6">
       
       {isLoading ? (
         <div className="text-center py-12">
@@ -240,6 +236,7 @@ export default function DamageAssessment() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </AppShell>
   );
 }

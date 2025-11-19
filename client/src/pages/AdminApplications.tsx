@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Briefcase, Mail, Phone, Calendar, ExternalLink, FileText } from 'lucide-react';
+import { AppShell } from '@/components/AppShell';
 
 interface Application {
   id: number;
@@ -98,11 +99,8 @@ export default function AdminApplications() {
   };
 
   return (
-    <div className="container mx-auto p-4 md:p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Job Applications</h1>
-        <p className="text-muted-foreground">Review and manage candidate applications</p>
-      </div>
+    <AppShell title="Job Applications">
+      <div className="p-6">
 
       <Tabs defaultValue="all">
         <TabsList className="grid grid-cols-3 sm:grid-cols-6 w-full">
@@ -289,6 +287,7 @@ export default function AdminApplications() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AppShell>
   );
 }

@@ -12,6 +12,7 @@ import { Save, RotateCcw, ExternalLink, Upload, X, Palette } from 'lucide-react'
 import type { HomepageContent } from '@shared/schema';
 import { getAllTemplates } from '@/lib/homeTemplates';
 import { Badge } from '@/components/ui/badge';
+import { AppShell } from '@/components/AppShell';
 
 export default function HomepageEditor() {
   const { toast } = useToast();
@@ -109,20 +110,39 @@ export default function HomepageEditor() {
     setFormData({ ...formData, logoUrl: null });
   };
 
-  if (isLoading) return <div className="container mx-auto p-6">Loading...</div>;
+  if (isLoading) return <AppShell title="Homepage Editor"><div className="p-6">Loading...</div></AppShell>;
+
+  const pageActions = (
+    <>
+      <Button
+        variant="outline"
+        onClick={() => window.open('/', '_blank')}
+        data-testid="button-preview"
+        size="sm"
+      >
+        <ExternalLink className="mr-2 h-4 w-4" />
+        Preview
+      </Button>
+      <Button
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+        data-testid="button-save"
+        size="sm"
+      >
+        <Save className="mr-2 h-4 w-4" />
+        {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+      </Button>
+    </>
+  );
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Homepage Editor</h1>
-          <p className="text-muted-foreground">Customize your homepage content and styling</p>
-        </div>
-        <div className="flex gap-2">
+    <AppShell title="Homepage Editor" pageActions={pageActions}>
+      <div className="p-6">
+        <div className="hidden flex gap-2">
           <Button
             variant="outline"
             onClick={() => window.open('/', '_blank')}
-            data-testid="button-preview"
+            data-testid="button-preview-hidden"
           >
             <ExternalLink className="w-4 h-4 mr-2" />
             Preview
@@ -436,6 +456,7 @@ export default function HomepageEditor() {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </AppShell>
   );
 }

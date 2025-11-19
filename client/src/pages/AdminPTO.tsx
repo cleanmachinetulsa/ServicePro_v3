@@ -8,6 +8,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { ClipboardCheck, Check, X, Calendar as CalendarIcon, User } from 'lucide-react';
 import { format } from 'date-fns';
+import { AppShell } from '@/components/AppShell';
 import {
   Dialog,
   DialogContent,
@@ -120,6 +121,12 @@ export default function AdminPTO() {
     return data.requests.filter(req => req.status === status);
   };
 
+  const pendingCount = data?.requests.filter(r => r.status === 'pending').length || 0;
+
+  const pageActions = pendingCount > 0 ? (
+    <Badge variant="destructive">{pendingCount} Pending</Badge>
+  ) : null;
+
   const PtoRequestCard = ({ request }: { request: PtoRequest }) => (
     <Card key={request.id} data-testid={`card-pto-${request.id}`}>
       <CardContent className="p-4 md:p-6">
@@ -211,23 +218,26 @@ export default function AdminPTO() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Loading PTO requests...</p>
+      <AppShell title="PTO Requests" pageActions={pageActions}>
+        <div className="p-6">
+          <div className="flex items-center justify-center h-64">
+            <p className="text-muted-foreground">Loading PTO requests...</p>
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
-  const pendingCount = filterRequests('pending').length;
+  const pendingCountStats = filterRequests('pending').length;
   const approvedCount = filterRequests('approved').length;
   const deniedCount = filterRequests('denied').length;
 
   return (
-    <div className="container mx-auto p-4 md:p-6">
-      <Card className="mb-4 md:mb-6">
-        <CardHeader className="p-4 md:p-6">
-          <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
+    <AppShell title="PTO Requests" pageActions={pageActions}>
+      <div className="p-6">
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
             <ClipboardCheck className="w-5 h-5" />
             PTO Request Management
           </CardTitle>
@@ -366,6 +376,7 @@ export default function AdminPTO() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AppShell>
   );
 }
