@@ -16,6 +16,7 @@
 import { db } from './db';
 import { businessSettings } from '@shared/schema';
 import { Request, Response, Express } from 'express';
+import axios from 'axios';
 
 // Service check result interface
 interface ServiceHealth {
@@ -80,7 +81,7 @@ async function checkSendGrid(): Promise<ServiceHealth> {
   
   try {
     // Verify API key by calling SendGrid user account endpoint
-    const response = await fetch('https://api.sendgrid.com/v3/user/account', {
+    const response = await axios.get('https://api.sendgrid.com/v3/user/account', {
       headers: {
         'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`
       }
@@ -88,7 +89,7 @@ async function checkSendGrid(): Promise<ServiceHealth> {
     
     const latency = Date.now() - start;
     
-    if (response.ok) {
+    if (response.status === 200) {
       return {
         status: 'healthy',
         latency_ms: latency,
@@ -242,11 +243,11 @@ async function checkGoogleMaps(): Promise<ServiceHealth> {
   
   try {
     // Make a simple geocoding request to verify the API
-    const response = await fetch(
+    const response = await axios.get(
       `https://maps.googleapis.com/maps/api/geocode/json?address=Tulsa,OK&key=${process.env.GOOGLE_MAPS_API_KEY}`
     );
     
-    const data = await response.json();
+    const data = response.data;
     const latency = Date.now() - start;
     
     if (data.status === 'OK') {
