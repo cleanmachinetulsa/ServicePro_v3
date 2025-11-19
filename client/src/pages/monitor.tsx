@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { io, Socket } from 'socket.io-client';
+import { AppShell } from '@/components/AppShell';
 
 interface Message {
   id: number;
@@ -299,16 +300,16 @@ export default function MonitorDashboard() {
   const currentConversation = conversationDetail?.data || selectedConversation;
   const messages = currentConversation?.messages || [];
 
+  const pageActions = (
+    <Badge variant="outline" className="bg-blue-500/10 text-blue-300 border-blue-500/30">
+      {conversations.length} Active
+    </Badge>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-950/10 to-black p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 mb-2">
-            Chat Monitoring Dashboard
-          </h1>
-          <p className="text-gray-400">Monitor and manage all customer conversations in real-time</p>
-        </div>
+    <AppShell title="AI Monitor" pageActions={pageActions} showSearch={false}>
+      <div className="bg-gradient-to-br from-gray-900 via-blue-950/10 to-black p-4 min-h-full">
+        <div className="max-w-7xl mx-auto">
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -593,7 +594,8 @@ export default function MonitorDashboard() {
             )}
           </Card>
         </div>
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

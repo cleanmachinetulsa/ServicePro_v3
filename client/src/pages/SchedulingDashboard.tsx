@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { format, addDays, startOfWeek, endOfWeek, isSameDay } from 'date-fns';
 import { Calendar as CalendarIcon, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AppShell } from '@/components/AppShell';
 
 export default function SchedulingDashboard() {
   const [selectedWeek, setSelectedWeek] = useState(new Date());
@@ -117,12 +118,18 @@ export default function SchedulingDashboard() {
   const scheduledShifts = shifts.filter((s: any) => s.status === 'scheduled').length;
   const completedShifts = shifts.filter((s: any) => s.status === 'completed').length;
 
+  const pageActions = (
+    <Button onClick={() => setAssignDialogOpen(true)} data-testid="button-assign-shift">
+      <Plus className="mr-2 h-4 w-4" />
+      Assign Shift
+    </Button>
+  );
+
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Scheduling Dashboard</h1>
-          <p className="text-sm md:text-base text-muted-foreground">Manage technician shifts and schedules</p>
+    <AppShell title="Shift Scheduling" pageActions={pageActions}>
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">Manage technician shifts and schedules</div>
         </div>
         <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
           <DialogTrigger asChild>
@@ -408,6 +415,7 @@ export default function SchedulingDashboard() {
           </TabsContent>
         </Tabs>
       </Card>
-    </div>
+      </div>
+    </AppShell>
   );
 }
