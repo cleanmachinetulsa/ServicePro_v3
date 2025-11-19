@@ -207,8 +207,12 @@ function Router() {
       <Route path="/technician">
         <AuthGuard><TechnicianPage /></AuthGuard>
       </Route>
-      <Route path="/tech/wizard" component={TechWizard} />
-      <Route path="/tech/profile" component={TechProfile} />
+      <Route path="/tech/wizard">
+        <AuthGuard><TechWizard /></AuthGuard>
+      </Route>
+      <Route path="/tech/profile">
+        <AuthGuard><TechProfile /></AuthGuard>
+      </Route>
       <Route path="/tech/schedule">
         <AuthGuard><TechnicianSchedule /></AuthGuard>
       </Route>
@@ -223,8 +227,12 @@ function Router() {
       </Route>
       
       {/* Route aliases for backward compatibility with onboarding documentation */}
-      <Route path="/tech-profile" component={TechProfile} />
-      <Route path="/tech-wizard" component={TechWizard} />
+      <Route path="/tech-profile">
+        <AuthGuard><TechProfile /></AuthGuard>
+      </Route>
+      <Route path="/tech-wizard">
+        <AuthGuard><TechWizard /></AuthGuard>
+      </Route>
       <Route path="/admin-applications">
         <AuthGuard><AdminApplications /></AuthGuard>
       </Route>

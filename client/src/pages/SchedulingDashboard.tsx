@@ -415,7 +415,6 @@ export default function SchedulingDashboard() {
           </TabsContent>
         </Tabs>
       </Card>
-      </div>
     </AppShell>
   );
 }
