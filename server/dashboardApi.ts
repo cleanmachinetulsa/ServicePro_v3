@@ -271,7 +271,7 @@ export async function updateService(req: Request, res: Response) {
       spreadsheetId: SPREADSHEET_ID
     });
     
-    const sheetNames = spreadsheet.data.sheets?.map(sheet => 
+    const sheetNames = spreadsheet.data.sheets?.map((sheet: any) => 
       sheet.properties?.title
     ) || [];
     
@@ -280,14 +280,14 @@ export async function updateService(req: Request, res: Response) {
     // Find the correct sheet dynamically (matches pricing.ts logic)
     let sheetName: string | undefined;
     if (isAddon) {
-      sheetName = sheetNames.find(name => 
+      sheetName = sheetNames.find((name: string | undefined) => 
         name && (
           (name.toLowerCase().includes('add') && name.toLowerCase().includes('on')) ||
           name.toLowerCase().includes('addon')
         )
       );
     } else {
-      sheetName = sheetNames.find(name => 
+      sheetName = sheetNames.find((name: string | undefined) => 
         name && 
         name.toLowerCase().includes('service') && 
         !name.toLowerCase().includes('add')
@@ -618,7 +618,7 @@ export async function getMonthlyAppointmentCounts(req: Request, res: Response) {
     const countsByDate: Record<string, number> = {};
     
     // Count events per day
-    events.forEach((event: any) => {
+    events?.forEach((event: any) => {
       const startDate = event.start.dateTime || event.start.date;
       const dateKey = startDate.split('T')[0]; // YYYY-MM-DD format
       countsByDate[dateKey] = (countsByDate[dateKey] || 0) + 1;
@@ -784,10 +784,10 @@ export async function navigateAndSendETA(req: Request, res: Response) {
     // Calculate ETA and generate navigation link
     const etaResult = await calculateETAAndGenerateNavLink(address);
     
-    if (!etaResult.success) {
+    if (!etaResult.success || !etaResult.eta || !etaResult.navigation) {
       return res.status(500).json({
         success: false,
-        error: etaResult.error || 'Failed to calculate ETA'
+        error: 'error' in etaResult ? etaResult.error : 'Failed to calculate ETA'
       });
     }
     
@@ -863,7 +863,7 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
 
     const { sendSMS, sendEmail } = await import('./notifications');
     const Stripe = (await import('stripe')).default;
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-04-30.basil' as any });
     
     // Get base URL from environment or construct from available vars
     const baseUrl = process.env.APP_BASE_URL || 

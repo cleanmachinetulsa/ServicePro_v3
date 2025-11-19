@@ -143,11 +143,11 @@ async function generateConflictSafeFallbackSlots(serviceName: string): Promise<s
   const existingAppointments = await dbInstance
     .select({
       scheduledTime: appointments.scheduledTime,
-      serviceName: appointments.serviceName,
+      serviceName: appointments.service,
       serviceDuration: services.durationHours,
     })
     .from(appointments)
-    .leftJoin(services, eq(appointments.serviceName, services.name))
+    .leftJoin(services, eq(appointments.service, services.name))
     .where(gte(appointments.scheduledTime, now));
   
   console.log(`[FALLBACK] Found ${existingAppointments.length} existing appointments in database`);
@@ -439,21 +439,7 @@ export async function handleBook(req: any, res: any) {
       },
     );
 
-    // Always initialize the calendar service to ensure we have the latest credentials
-    try {
-      const auth = getAuthClient();
-      if (auth) {
-        calendarService = google.calendar({ version: "v3", auth });
-        console.log("Google Calendar API initialized for booking");
-      } else {
-        console.error("Could not get auth client for calendar");
-      }
-    } catch (error: any) {
-      console.error(
-        "Failed to initialize calendar service:",
-        error?.message || error,
-      );
-    }
+    // Calendar service will be initialized freshly below
 
     // Always create a fresh calendar service for each booking
     try {
@@ -892,7 +878,7 @@ export async function generateAvailableSlots(serviceName: string) {
       orderBy: "startTime",
     });
 
-    const busyTimes = existingEvents.data.items
+    const busyTimes = (existingEvents.data.items || [])
       .filter((event: any) => event.start && event.start.dateTime)
       .map((event: any) => {
         let eventServiceId = event.extendedProperties?.private?.serviceId;
@@ -1104,14 +1090,14 @@ async function bookAppointment(
 
     const response = await calendarService.events.insert({
       calendarId: CALENDAR_ID,
-      resource: event,
+      requestBody: event,
     });
 
     return {
       success: true,
       message: `Appointment for ${serviceName} booked successfully`,
-      eventId: response.data.id,
-      eventLink: response.data.htmlLink,
+      eventId: response.data.id || '',
+      eventLink: response.data.htmlLink || '',
       appointmentTime: startTimeISO,
       service: serviceName,
     };
