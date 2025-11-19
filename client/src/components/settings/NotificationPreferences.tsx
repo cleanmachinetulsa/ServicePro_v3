@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -12,11 +12,6 @@ import { Bell, MessageSquare, DollarSign, AlertTriangle, PhoneForwarded, Save } 
 
 export function NotificationPreferences() {
   const { toast } = useToast();
-  const [smsFallbackSettings, setSmsFallbackSettings] = useState({
-    enabled: false,
-    phone: '',
-    autoReply: ''
-  });
 
   const { data: prefs, isLoading } = useQuery({
     queryKey: ['/api/notification-preferences/me']
@@ -26,16 +21,19 @@ export function NotificationPreferences() {
     queryKey: ['/api/business-settings']
   });
 
-  // Initialize SMS fallback settings from business settings
-  useState(() => {
-    if (businessSettings?.data) {
-      setSmsFallbackSettings({
-        enabled: businessSettings.data.smsFallbackEnabled || false,
-        phone: businessSettings.data.smsFallbackPhone || '',
-        autoReply: businessSettings.data.smsFallbackAutoReply || "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."
-      });
-    }
-  }, [businessSettings]);
+  // Derive SMS fallback settings directly from business settings (prevents stale defaults)
+  const smsFallbackDefaults = useMemo(() => ({
+    enabled: businessSettings?.data?.smsFallbackEnabled || false,
+    phone: businessSettings?.data?.smsFallbackPhone || '',
+    autoReply: businessSettings?.data?.smsFallbackAutoReply || "Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."
+  }), [businessSettings?.data]);
+
+  const [smsFallbackSettings, setSmsFallbackSettings] = useState(smsFallbackDefaults);
+
+  // Sync local state when businessSettings data changes (e.g., after query refetch)
+  useEffect(() => {
+    setSmsFallbackSettings(smsFallbackDefaults);
+  }, [smsFallbackDefaults]);
 
   const updateMutation = useMutation({
     mutationFn: async (updates: any) => {
@@ -58,6 +56,7 @@ export function NotificationPreferences() {
       return apiRequest('/api/business-settings', {
         method: 'PUT',
         body: JSON.stringify({
+          ...businessSettings?.data,
           smsFallbackEnabled: updates.enabled,
           smsFallbackPhone: updates.phone,
           smsFallbackAutoReply: updates.autoReply
