@@ -504,6 +504,7 @@ export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   conversationId: integer("conversation_id").notNull().references(() => conversations.id),
   content: text("content").notNull(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("1"), // Multi-tenant support
   sender: varchar("sender", { length: 20 }).notNull(), // customer, ai, agent
   fromCustomer: boolean("from_customer").notNull(), // Keep for backwards compatibility
   timestamp: timestamp("timestamp").defaultNow(),
