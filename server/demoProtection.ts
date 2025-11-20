@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 // Set to true if you want to enable demo mode restrictions
-const DEMO_MODE = process.env.DEMO_MODE === 'true';
+const DEMO_MODE = false; // PRODUCTION: Demo mode disabled for live customers
 
 /**
  * Check if the request is coming from a demo session

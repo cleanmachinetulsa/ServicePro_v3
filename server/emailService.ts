@@ -1,7 +1,7 @@
 import sgMail from '@sendgrid/mail';
 import { RewardService } from "@shared/schema";
 
-const DEMO_MODE = process.env.DEMO_MODE === 'true';
+const DEMO_MODE = false; // PRODUCTION: Demo mode disabled for live customers
 
 // Initialize SendGrid with API key
 if (!process.env.SENDGRID_API_KEY) {
@@ -15,7 +15,7 @@ if (!process.env.SENDGRID_API_KEY) {
 const BUSINESS_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'info@cleanmachinetulsa.com';
 
 // Business phone number - configurable via environment variable
-const getBusinessPhoneNumber = () => process.env.BUSINESS_PHONE_NUMBER || '+19188565711';
+const getBusinessPhoneNumber = () => process.env.BUSINESS_PHONE_NUMBER || '+19188565304';
 const getBusinessPhoneDisplay = () => {
   const phone = getBusinessPhoneNumber();
   // Format +19188565711 as (918) 856-5711
