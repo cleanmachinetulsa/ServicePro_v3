@@ -1,8 +1,9 @@
 import { generateAIResponse } from './openai';
 import { getOrCreateConversation, addMessage } from './conversationService';
 import { db } from './db';
-import { conversations } from '@shared/schema';
+import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { asc } from 'drizzle-orm';
 
 /**
  * SECURITY: Web chat conversation processor with privilege restrictions
@@ -104,20 +105,20 @@ CRITICAL RESTRICTIONS:
 
 Customer message: ${message}`;
 
-    // Get conversation history
+    // Get conversation history (lookup by phone for web platform)
     const conv = await db.query.conversations.findFirst({
-      where: eq(conversations.identifier, identifier),
+      where: eq(conversations.customerPhone, identifier),
       with: {
         messages: {
-          orderBy: (messages, { asc }) => [asc(messages.timestamp)],
+          orderBy: [asc(messagesTable.timestamp)],
           limit: 10 // Last 10 messages for context
         }
       }
     });
 
-    const conversationHistory = conv?.messages?.map(msg => ({
-      content: msg.message,
-      role: msg.sender === 'customer' ? 'user' : 'assistant',
+    const conversationHistory = conv?.messages?.map((msg) => ({
+      content: msg.content,
+      role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
       sender: msg.sender
     })) || [];
 
@@ -130,7 +131,7 @@ Customer message: ${message}`;
       conversationHistory
     );
 
-    return { response: response.text || response.content || 'I apologize, but I had trouble processing that. Could you rephrase your question?' };
+    return { response: response || 'I apologize, but I had trouble processing that. Could you rephrase your question?' };
     
   } catch (error) {
     console.error('[WEB CHAT RESTRICTED] Error:', error);
@@ -158,20 +159,20 @@ async function processAuthenticatedConversation(
 ): Promise<{ response: string; functionsCalled?: string[] }> {
   
   try {
-    // Get conversation history
+    // Get conversation history (lookup by phone for authenticated platforms)
     const conv = await db.query.conversations.findFirst({
-      where: eq(conversations.identifier, identifier),
+      where: eq(conversations.customerPhone, identifier),
       with: {
         messages: {
-          orderBy: (messages, { asc }) => [asc(messages.timestamp)],
+          orderBy: [asc(messagesTable.timestamp)],
           limit: 20 // More history for authenticated users
         }
       }
     });
 
-    const conversationHistory = conv?.messages?.map(msg => ({
-      content: msg.message,
-      role: msg.sender === 'customer' ? 'user' : 'assistant',
+    const conversationHistory = conv?.messages?.map((msg) => ({
+      content: msg.content,
+      role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
       sender: msg.sender
     })) || [];
 
@@ -185,8 +186,8 @@ async function processAuthenticatedConversation(
     );
 
     return {
-      response: response.text || response.content || 'I apologize, but I had trouble processing that. Could you try again?',
-      functionsCalled: response.functionsCalled || []
+      response: response || 'I apologize, but I had trouble processing that. Could you try again?',
+      functionsCalled: []
     };
     
   } catch (error) {
