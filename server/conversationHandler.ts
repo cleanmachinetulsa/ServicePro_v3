@@ -76,9 +76,9 @@ async function processWebChatConversation(
 
 For the fastest service, you have 3 options:
 
-📱 **Call Us:** (918) 856-5711
+📱 **Call Us:** (918) 856-5304
 📅 **Online Booking:** Visit our booking page for real-time availability
-💬 **Text Us:** Send us a text at (918) 856-5711 and we'll get you scheduled right away
+💬 **Text Us:** Send us a text at (918) 856-5304 and we'll get you scheduled right away
 
 Is there anything else I can help you with regarding our services or pricing?`
     };
@@ -99,7 +99,7 @@ CRITICAL RESTRICTIONS:
 - You CANNOT book appointments through this chat
 - You CANNOT access customer information
 - You CANNOT provide personalized quotes without photos
-- If someone wants to book, direct them to call (918) 856-5711 or use the online booking system
+- If someone wants to book, direct them to call (918) 856-5304 or use the online booking system
 - Keep responses concise and helpful
 
 Customer message: ${message}`;
@@ -143,7 +143,7 @@ What would you like to know about:
 - Service area and availability
 - Detailing tips and recommendations
 
-Or, call us at (918) 856-5711 to book an appointment!`
+Or, call us at (918) 856-5304 to book an appointment!`
     };
   }
 }

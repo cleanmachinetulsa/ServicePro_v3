@@ -157,14 +157,14 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
               transition={{ duration: 0.6, delay: 0.3 }}
             >
               <Card className="p-6 bg-white/5 backdrop-blur-xl border-white/20 hover:bg-white/10 transition-all duration-300 cursor-pointer group">
-                <a href={`tel:${content?.phoneNumber || '918-856-5711'}`}>
+                <a href={`tel:${content?.phoneNumber || '918-856-5304'}`}>
                   <div className="flex flex-col items-center gap-4">
                     <div className="p-4 rounded-2xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-400/30 group-hover:scale-110 transition-transform">
                       <Phone className="h-8 w-8 text-green-400" />
                     </div>
                     <div>
                       <h3 className="text-xl font-semibold mb-2">Call Now</h3>
-                      <p className="text-sm text-blue-200/70">{content?.phoneNumber || '918-856-5711'}</p>
+                      <p className="text-sm text-blue-200/70">{content?.phoneNumber || '918-856-5304'}</p>
                     </div>
                   </div>
                 </a>
@@ -283,7 +283,7 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
             <div>
               <h3 className="font-bold text-lg mb-4">Contact</h3>
               <p className="text-sm text-blue-200/70 mb-2">
-                {content?.phoneNumber || '918-856-5711'}
+                {content?.phoneNumber || '918-856-5304'}
               </p>
               <p className="text-sm text-blue-200/70">
                 Tulsa, Oklahoma

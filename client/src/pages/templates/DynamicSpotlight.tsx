@@ -180,7 +180,7 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                         className="w-full border-2 border-orange-500/50 text-orange-400 hover:bg-orange-500/10 hover:border-orange-400 font-semibold py-6"
                         asChild
                       >
-                        <a href={`tel:${content?.phoneNumber || '918-856-5711'}`} data-testid="button-call">
+                        <a href={`tel:${content?.phoneNumber || '918-856-5304'}`} data-testid="button-call">
                           <Phone className="mr-2 h-5 w-5" />
                           Call Us
                         </a>
@@ -388,7 +388,7 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
             <div>
               <h3 className="font-bold text-lg text-orange-400 mb-4">Contact</h3>
               <p className="text-gray-400 mb-2 font-semibold">
-                {content?.phoneNumber || '918-856-5711'}
+                {content?.phoneNumber || '918-856-5304'}
               </p>
               <p className="text-gray-400">
                 Tulsa, Oklahoma

@@ -17,9 +17,9 @@ The system supports production-ready message attachments with Google Drive, TCPA
 
 #### Phone System Configuration
 **Official Phone Number Definitions:**
-1.  **Main Line: 918-856-5711** - Twilio business number for all customer communications.
-2.  **Owner Cell: BUSINESS_OWNER_PHONE (Replit Secret)** - Destination for forwarded calls.
-3.  **Emergency Alert Number: 918-282-0103** - For critical system alerts (direct SMS to owner).
+1.  **Main Business Line: 918-856-5304** - Ported Google Voice number for all customer communications (primary).
+2.  **Jody's Business Line: 918-856-5711** - Twilio number for direct business calls.
+3.  **Emergency Alert Number: 918-282-0103** - For critical system alerts (personal number).
 **Call Flow Architecture:** Customer calls Main Line → IVR Menu (booking SMS or speak with someone) → Call forwards to Owner Cell → Caller ID shows customer's actual number.
 **Caller ID Configuration:** Twilio TwiML configured with `callerId="${callerNumber}"` ensures owner sees customer's real phone number.
 **Notification System:** Configurable preferences via Dashboard → Settings → Notifications for Voicemail, Cash Payments, System Errors, Appointment Reminders, and Missed Calls.

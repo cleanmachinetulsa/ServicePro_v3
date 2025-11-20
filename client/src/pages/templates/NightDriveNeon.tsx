@@ -281,7 +281,7 @@ export default function NightDriveNeon({ content: propsContent }: NightDriveNeon
               transition={{ duration: 0.5, delay: 0.3 }}
               whileHover={{ scale: 1.05 }}
             >
-              <a href={`tel:${content?.phoneNumber || '918-856-5711'}`}>
+              <a href={`tel:${content?.phoneNumber || '918-856-5304'}`}>
                 <Card 
                   className="p-6 bg-black border-2 border-cyan-500/50 hover:border-cyan-400 transition-all duration-300 cursor-pointer group"
                   style={{
@@ -309,7 +309,7 @@ export default function NightDriveNeon({ content: propsContent }: NightDriveNeon
                     </motion.div>
                     <div>
                       <h3 className="text-xl font-bold mb-2 uppercase text-cyan-400">DIRECT LINE</h3>
-                      <p className="text-sm text-purple-300">{content?.phoneNumber || '918-856-5711'}</p>
+                      <p className="text-sm text-purple-300">{content?.phoneNumber || '918-856-5304'}</p>
                     </div>
                   </div>
                 </Card>
@@ -471,7 +471,7 @@ export default function NightDriveNeon({ content: propsContent }: NightDriveNeon
                 Connect
               </h3>
               <p className="text-sm text-purple-300 mb-2 font-mono">
-                {content?.phoneNumber || '918-856-5711'}
+                {content?.phoneNumber || '918-856-5304'}
               </p>
               <p className="text-sm text-purple-300 uppercase tracking-wide">
                 Tulsa, Oklahoma
