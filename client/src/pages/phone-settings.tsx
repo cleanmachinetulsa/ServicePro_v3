@@ -83,10 +83,7 @@ export default function PhoneSettings() {
   // Update line configuration mutation
   const updateLineMutation = useMutation({
     mutationFn: async (data: { id: number; updates: any }) => {
-      return await apiRequest(`/api/phone-settings/lines/${data.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data.updates),
-      });
+      return await apiRequest('PATCH', `/api/phone-settings/lines/${data.id}`, data.updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
@@ -108,10 +105,7 @@ export default function PhoneSettings() {
   // Create schedule mutation
   const createScheduleMutation = useMutation({
     mutationFn: async (data: any) => {
-      return await apiRequest('/api/phone-settings/schedules', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('POST', '/api/phone-settings/schedules', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
@@ -133,10 +127,7 @@ export default function PhoneSettings() {
   // Update schedule mutation
   const updateScheduleMutation = useMutation({
     mutationFn: async (data: { id: number; updates: any }) => {
-      return await apiRequest(`/api/phone-settings/schedules/${data.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data.updates),
-      });
+      return await apiRequest('PATCH', `/api/phone-settings/schedules/${data.id}`, data.updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
@@ -159,9 +150,7 @@ export default function PhoneSettings() {
   // Delete schedule mutation
   const deleteScheduleMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest(`/api/phone-settings/schedules/${id}`, {
-        method: 'DELETE',
-      });
+      return await apiRequest('DELETE', `/api/phone-settings/schedules/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
