@@ -115,16 +115,25 @@ router.post('/voice/menu-handler', async (req: Request, res: Response) => {
 
       if (businessHours) {
         // During business hours - attempt to reach Jody via SIP
-        const sipUser = process.env.SIP_USER || 'jody';
-        const sipDomain = process.env.SIP_DOMAIN || 'cleanmachinetulsa.sip.twilio.com';
-
-        // Get ring duration from database (default 10 seconds)
+        // Get all settings from database (nothing hardcoded)
         const line = await db.query.phoneLines.findFirst({
           where: eq(phoneLines.id, phoneLineId),
         });
+        
+        const sipEndpoint = line?.sipEndpoint;
         const ringDuration = line?.ringDuration || 10;
 
-        console.log(`[TWILIO VOICE] User pressed 3 during business hours, dialing SIP for ${ringDuration}s`);
+        if (!sipEndpoint) {
+          console.log('[TWILIO VOICE] SIP endpoint not configured, going to voicemail');
+          response.redirect({
+            method: 'POST',
+          }, '/twilio/voice/voicemail');
+          res.type('text/xml');
+          res.send(response.toString());
+          return;
+        }
+
+        console.log(`[TWILIO VOICE] User pressed 3 during business hours, dialing SIP ${sipEndpoint} for ${ringDuration}s`);
 
         // Dial with configurable timeout
         const dial = response.dial({
@@ -133,7 +142,7 @@ router.post('/voice/menu-handler', async (req: Request, res: Response) => {
           timeout: ringDuration,
         });
 
-        dial.sip(`sip:${sipUser}@${sipDomain}`);
+        dial.sip(`sip:${sipEndpoint}`);
 
         // If dial times out or is rejected, go to voicemail
         response.redirect({
@@ -165,18 +174,29 @@ router.post('/voice/menu-handler', async (req: Request, res: Response) => {
 /**
  * Voicemail Handler
  * Records customer voicemail message
- * Set VOICEMAIL_GREETING_URL environment variable to play custom greeting
+ * Uses custom greeting from phone line configuration
  */
 router.post('/voice/voicemail', async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
-    // Play custom voicemail greeting if available, otherwise use default
-    const greetingUrl = process.env.VOICEMAIL_GREETING_URL;
-    
-    if (greetingUrl) {
-      response.play({}, greetingUrl);
+    // Get voicemail greeting from database for main phone line
+    const phoneLineId = 1;
+    const line = await db.query.phoneLines.findFirst({
+      where: eq(phoneLines.id, phoneLineId),
+    });
+
+    // Play custom voicemail greeting URL if available
+    if (line?.voicemailGreetingUrl) {
+      response.play({}, line.voicemailGreetingUrl);
+    } else if (line?.voicemailGreeting) {
+      // Fall back to text greeting if audio URL not set
+      response.say(
+        { voice: 'alice', language: 'en-US' },
+        line.voicemailGreeting
+      );
     } else {
+      // Default greeting if nothing configured
       response.say(
         { voice: 'alice', language: 'en-US' },
         'Sorry, Jody is unavailable right now. Please leave a detailed message with your name, ' +
