@@ -1406,21 +1406,16 @@ export default function ThreadView({
                   </PopoverContent>
                 </Popover>
                 
-                <div className="flex-1 relative">
+                <div className="flex-1 relative min-w-0">
                   <Textarea
                     ref={textareaRef}
                     value={messageInput}
                     onChange={(e) => handleInputChange(e.target.value)}
                     placeholder="Type your message here..."
-                    className="min-h-[140px] max-h-[240px] resize-none text-base leading-relaxed bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 rounded-xl pr-24 pb-8 font-sans"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
+                    className="w-full min-h-[64px] max-h-[240px] resize-none text-base leading-relaxed bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 focus:border-primary rounded-xl pr-20 pb-8 font-sans"
                     disabled={sendMessageMutation.isPending}
                     data-testid="input-message"
+                    rows={2}
                   />
                   {messageInput.length > 0 && (
                     <div className="absolute bottom-2 right-3 text-xs text-muted-foreground pointer-events-none">

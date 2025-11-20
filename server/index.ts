@@ -330,6 +330,9 @@ app.use((req, res, next) => {
   // Register phone settings routes (phone line configuration)
   app.use('/api/phone-settings', phoneSettingsRouter);
 
+  // Register Twilio Voice webhook (handles incoming calls to business number)
+  app.use('/twilio', twilioVoiceRouter);
+
   // Run startup health checks for external services
   await runStartupHealthChecks();
 
