@@ -14,6 +14,20 @@ const VoiceResponse = twilio.twiml.VoiceResponse;
 const AccessToken = twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
 
+// Clean Machine joke bank for Press 9 easter egg
+const cleanMachineJokes = [
+  "Why don't dirty cars tell secrets? Because there are too many bugs listening.",
+  "Why did the car apply for a job? It wanted to get its headlights on a brighter future.",
+  "I asked a Tulsa traffic cone what its plans were this weekend. It said: standing around, probably blocking something important.",
+  "Why did the entrepreneur take a ladder to work? Because the business was on another level.",
+  "Did you hear the rumor about butter? I'm not going to spread it."
+];
+
+function getRandomJoke(): string {
+  const i = Math.floor(Math.random() * cleanMachineJokes.length);
+  return cleanMachineJokes[i];
+}
+
 // Helper function to get voice webhook settings
 async function getVoiceSettings() {
   try {
@@ -35,16 +49,18 @@ async function getVoiceSettings() {
 }
 
 /**
- * Twilio Voice Webhook - Handles incoming calls with business hours routing
+ * Twilio Voice Webhook - Handles incoming calls with business hours routing + IVR
  * 
  * Flow:
  * 1. Check business hours for the called number
  * 2. During business hours: Direct forward to business owner
- * 3. After hours: Show IVR menu
+ * 3. After hours: Show IVR menu with Jody's personalized greeting
  * 
  * IVR Menu:
- * Press 1: Receive booking SMS with link to web app
- * Press 2: Transfer call to business owner
+ * Press 1: Receive booking/pricing SMS with link to web app
+ * Press 3: Leave a voicemail message for Jody
+ * Press 5: Repeat menu
+ * Press 9: Hidden joke easter egg
  * 
  * SECURITY: Twilio signature verification enabled
  */
@@ -53,165 +69,223 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
   const callerPhone = req.body.From;
   const twilioPhone = req.body.To;
   const callSid = req.body.CallSid;
+  const digits = (req.body.Digits || '').trim();
 
-  console.log(`[VOICE] Incoming call from ${callerPhone} to ${twilioPhone}, CallSid: ${callSid}`);
+  // Check if this is the true initial call
+  // - Initial call: No Digits AND no redirect query param
+  // - Redirect: No Digits BUT has redirect=true param
+  // - Menu selection: Has Digits
+  const isRedirect = req.query.redirect === 'true';
+  const isInitialCall = typeof req.body.Digits === 'undefined' && !isRedirect;
+  
+  console.log(`[VOICE] Incoming call from ${callerPhone} to ${twilioPhone}, CallSid: ${callSid}, Digits: ${digits}, isInitialCall: ${isInitialCall}`);
 
-  // Log the incoming call
-  try {
-    const { logCallEvent } = await import('./callLoggingService');
-    await logCallEvent({
-      callSid,
-      direction: 'inbound',
-      from: callerPhone,
-      to: twilioPhone,
-      status: 'ringing',
-    });
-  } catch (error) {
-    console.error('[VOICE] Failed to log call event:', error);
+  // Log the incoming call ONLY on first entry, not on redirects/menu loops
+  if (isInitialCall) {
+    try {
+      const { logCallEvent } = await import('./callLoggingService');
+      await logCallEvent({
+        callSid,
+        direction: 'inbound',
+        from: callerPhone,
+        to: twilioPhone,
+        status: 'ringing',
+      });
+    } catch (error) {
+      console.error('[VOICE] Failed to log call event:', error);
+    }
   }
 
-  // Check business hours routing for this phone line
-  let routing = { shouldForward: false, forwardingNumber: null, voicemailGreeting: null };
-  try {
-    const { getPhoneLineRoutingDecision } = await import('./routes.phoneSettings');
-    routing = await getPhoneLineRoutingDecision(twilioPhone);
-    console.log(`[VOICE] Routing decision for ${twilioPhone}:`, routing);
-  } catch (error) {
-    console.error('[VOICE] Error checking business hours, defaulting to IVR:', error);
-    // Fail-safe: If business hours check fails, fall back to IVR menu
+  // Check business hours routing for this phone line (ONLY on initial call to prevent re-evaluation)
+  let routing: { shouldForward: boolean; forwardingNumber: string | null; voicemailGreeting: string | null } = { 
+    shouldForward: false, 
+    forwardingNumber: null, 
+    voicemailGreeting: null 
+  };
+  
+  if (isInitialCall) {
+    try {
+      const { getPhoneLineRoutingDecision } = await import('./routes.phoneSettings');
+      routing = await getPhoneLineRoutingDecision(twilioPhone);
+      console.log(`[VOICE] Routing decision for ${twilioPhone}:`, routing);
+    } catch (error) {
+      console.error('[VOICE] Error checking business hours, defaulting to IVR:', error);
+    }
   }
 
   // If during business hours and forwarding enabled, skip IVR and forward directly
-  if (routing.shouldForward && routing.forwardingNumber) {
+  // This ONLY runs on initial call, never on menu redirects
+  if (routing.shouldForward && routing.forwardingNumber && isInitialCall) {
     console.log(`[VOICE] Business hours active - forwarding ${callerPhone} to ${routing.forwardingNumber}`);
 
     twiml.say({
-      voice: 'alice',
+      voice: 'Polly.Matthew',
       language: 'en-US'
     }, 'Please hold while we connect you.');
 
-    // Get ring duration from notification settings
     const [voiceSettings] = await db
       .select()
       .from(notificationSettings)
       .where(eq(notificationSettings.settingKey, 'voice_webhook'))
       .limit(1);
 
-    const ringDuration = voiceSettings?.config?.ringDuration || 20; // Default to 20 seconds
-
-    console.log(`[VOICE] Forwarding call to ${routing.forwardingNumber} for ${twilioPhone} (ring duration: ${ringDuration}s)`);
+    const config = voiceSettings?.config as any;
+    const ringDuration = config?.ringDuration || 20;
 
     const dial = twiml.dial({
       timeout: ringDuration,
       action: '/api/voice/call-status',
       method: 'POST',
-      // Show customer's actual number as caller ID for easy callback and custom ringtone setup
       callerId: callerPhone,
     });
 
     dial.number(routing.forwardingNumber);
   } else {
-    // After hours or forwarding disabled - show IVR menu
-    console.log(`[VOICE] After hours or forwarding disabled - showing IVR menu`);
+    // After hours or customer pressed a digit - handle IVR menu
+    if (isInitialCall) {
+      // First call - show main greeting and menu
+      console.log(`[VOICE] Showing IVR menu to ${callerPhone}`);
 
-    const gather = twiml.gather({
-      numDigits: 1,
-      action: '/api/voice/menu-selection',
-      method: 'POST',
-      timeout: 8,
-    });
-
-    // Use custom voicemail greeting if available, otherwise default IVR message
-    const greeting = routing.voicemailGreeting || 
-      'Thank you for calling Clean Machine Auto Detail. Press 1 to receive a text message with booking information and a link to our web app. Press 2 to speak with someone.';
-
-    gather.say({
-      voice: 'alice',
-      language: 'en-US'
-    }, greeting);
-
-    // If no input, repeat the menu
-    twiml.redirect('/api/voice/voice');
-  }
-
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-/**
- * IVR Menu Selection Handler
- * Handles customer's menu choice (1 or 2)
- */
-router.post('/menu-selection', verifyTwilioSignature, async (req: Request, res: Response) => {
-  const twiml = new VoiceResponse();
-  const choice = req.body.Digits;
-  const callerPhone = req.body.From;
-  const callSid = req.body.CallSid;
-
-  console.log(`[VOICE] Menu selection: ${choice} from ${callerPhone}`);
-
-  if (choice === '1') {
-    // Press 1: Send booking SMS with link
-    twiml.say({
-      voice: 'alice',
-      language: 'en-US'
-    }, 'Perfect! I\'m sending you a text message right now with booking information and a link to our web app. Have a great day!');
-
-    // Send SMS with booking link
-    try {
-      const bookingMessage = `Thanks for calling Clean Machine Auto Detail! 📱\n\nBook online: https://cleanmachinetulsa.com\n\nNeed help? Just reply to this message and I'll assist you with scheduling, pricing, or any questions!\n\n- Clean Machine Auto Detail`;
-      await sendSMS(callerPhone, bookingMessage);
-      console.log(`[VOICE] Sent booking SMS to ${callerPhone}`);
-    } catch (error) {
-      console.error('[VOICE] Failed to send booking SMS:', error);
-    }
-
-    twiml.hangup();
-  } else if (choice === '2') {
-    // Press 2: Transfer to business owner
-    twiml.say({
-      voice: 'alice',
-      language: 'en-US'
-    }, 'Connecting you now. Please hold.');
-
-    const businessPhone = process.env.BUSINESS_OWNER_PHONE;
-    const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-
-    if (businessPhone) {
-      const dial = twiml.dial({
-        timeout: 20,
-        action: '/api/voice/call-status',
+      const gather = twiml.gather({
+        input: ['dtmf'] as any,
+        numDigits: 1,
+        action: '/api/voice/voice?redirect=true',
         method: 'POST',
-        // Show customer's actual number as caller ID for easy callback and custom ringtone setup
-        callerId: callerPhone
+        timeout: 8,
       });
 
-      dial.number(businessPhone);
-    } else {
-      twiml.say({
-        voice: 'alice',
+      gather.say({
+        voice: 'Polly.Matthew',
         language: 'en-US'
-      }, 'Sorry, I\'m unable to transfer your call right now. Please leave a voicemail after the beep.');
+      }, 
+        "Hi, this is Jody with Clean Machine Auto Detail here in Tulsa, thanks for calling. " +
+        "If you'd like the fastest service, you can text this number any time and we'll send you a quick link " +
+        "with current pricing, packages, and a way to check availability and book your detail. " +
+        "Otherwise, please choose from the following options. " +
+        "Press 1 to have that link sent to your phone right now. " +
+        "Press 3 to leave a message for me, Jody, and I'll call you back personally between jobs. " +
+        "Press 5 to hear these options again."
+      );
 
-      twiml.record({
-        timeout: 10,
-        transcribe: true,
-        transcribeCallback: '/api/voice/transcription',
-        maxLength: 120,
-      });
+      twiml.say({
+        voice: 'Polly.Matthew',
+        language: 'en-US'
+      }, "I didn't catch that, let's try again.");
+      twiml.redirect('/api/voice/voice?redirect=true');
+    } else {
+      // We have a digit - route based on choice
+      console.log(`[VOICE] Processing menu choice: ${digits} from ${callerPhone}`);
+
+      switch (digits) {
+        case '1':
+        case '2': // Alias 2 to same as 1 for backwards compatibility
+          // Press 1: Send master booking + pricing link
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, 
+            "Perfect. We'll text you a quick link with current pricing, packages, " +
+            "and a way to check availability and schedule your detail. " +
+            "If you don't receive a text in the next minute, you can also visit cleanmachinetulsa dot com. " +
+            "Thanks for calling Clean Machine Auto Detail."
+          );
+
+          try {
+            const bookingMessage = `Thanks for calling Clean Machine Auto Detail! 📱\n\nBook online & view pricing: https://cleanmachinetulsa.com\n\nNeed help? Just reply to this message and I'll assist you with scheduling, pricing, or any questions!\n\n- Jody`;
+            await sendSMS(callerPhone, bookingMessage);
+            console.log(`[VOICE] Sent booking SMS to ${callerPhone}`);
+          } catch (error) {
+            console.error('[VOICE] Failed to send booking SMS:', error);
+          }
+
+          twiml.hangup();
+          break;
+
+        case '3':
+          // Press 3: Leave voicemail for Jody
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          },
+            "Please leave your name, number, and a brief description of your vehicle " +
+            "and what you're looking to have done. I'll call you back personally between jobs. " +
+            "You'll hear a beep, then you can start your message."
+          );
+
+          twiml.record({
+            maxLength: 120,
+            playBeep: true,
+            transcribe: true,
+            transcribeCallback: '/api/voice/transcription',
+            timeout: 10,
+          });
+
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, "Thanks for your message. We'll get back to you as soon as we can.");
+          twiml.hangup();
+          break;
+
+        case '5':
+          // Press 5: Repeat menu
+          twiml.redirect('/api/voice/voice?redirect=true');
+          break;
+
+        case '9':
+          // HIDDEN Press 9: Easter egg joke
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, "Well look at you. You found the Clean Machine secret button.");
+
+          twiml.pause({ length: 1 });
+
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, getRandomJoke());
+
+          twiml.pause({ length: 1 });
+
+          const jokeGather = twiml.gather({
+            input: ['dtmf'] as any,
+            numDigits: 1,
+            action: '/api/voice/voice?redirect=true',
+            method: 'POST',
+            timeout: 8,
+          });
+
+          jokeGather.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, "Press 9 for another joke, or press 5 to go back to the main menu.");
+
+          // If no input after joke options, go back to main menu
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, "Going back to the main menu.");
+          twiml.redirect('/api/voice/voice?redirect=true');
+          break;
+
+        default:
+          // Invalid choice
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, "Sorry, I didn't recognize that choice.");
+          twiml.redirect('/api/voice/voice?redirect=true');
+          break;
+      }
     }
-  } else {
-    // Invalid choice - redirect back to menu
-    twiml.say({
-      voice: 'alice',
-      language: 'en-US'
-    }, 'Sorry, that wasn\'t a valid option.');
-    twiml.redirect('/api/voice/voice');
   }
 
   res.type('text/xml');
   res.send(twiml.toString());
 });
+
+// Old /menu-selection route removed - all IVR logic now integrated into /voice route
 
 /**
  * Call Status Webhook - Triggered after dial attempt
@@ -318,7 +392,6 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
 
   // Send transcription to business phone for record-keeping
   try {
-    const { sendPushNotificationToRole } = await import('./pushNotificationService');
     const { users } = await import('@shared/schema');
     const { shouldSendNotification } = await import('./notificationHelper');
     
@@ -327,25 +400,10 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
     });
     
     if (owner) {
-      // Check SMS preference before sending
+      // Send SMS notification with voicemail details
       const businessPhone = process.env.BUSINESS_OWNER_PHONE;
       if (businessPhone && await shouldSendNotification(owner.id, 'voicemailSms')) {
         await sendVoicemailNotification(businessPhone, callerPhone, transcriptionText, recordingUrl);
-      }
-      
-      // Check Push preference before sending
-      if (await shouldSendNotification(owner.id, 'voicemailPush')) {
-        await sendPushNotificationToRole('owner', {
-          title: '📞 New Voicemail',
-          body: `From: ${callerPhone}\n${transcriptionText?.substring(0, 100) || 'Transcription pending...'}`,
-          tag: 'voicemail',
-          requireInteraction: false,
-          data: {
-            type: 'voicemail',
-            customerPhone: callerPhone,
-            url: '/phone?tab=voicemail'
-          }
-        });
       }
     }
   } catch (error) {
