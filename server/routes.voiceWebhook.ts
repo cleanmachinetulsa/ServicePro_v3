@@ -96,53 +96,9 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
     }
   }
 
-  // Check business hours routing for this phone line (ONLY on initial call to prevent re-evaluation)
-  let routing: { shouldForward: boolean; forwardingNumber: string | null; voicemailGreeting: string | null } = { 
-    shouldForward: false, 
-    forwardingNumber: null, 
-    voicemailGreeting: null 
-  };
-  
+  // ALWAYS show IVR menu (no business hours forwarding enabled yet)
+  // User will enable forwarding later when ready
   if (isInitialCall) {
-    try {
-      const { getPhoneLineRoutingDecision } = await import('./routes.phoneSettings');
-      routing = await getPhoneLineRoutingDecision(twilioPhone);
-      console.log(`[VOICE] Routing decision for ${twilioPhone}:`, routing);
-    } catch (error) {
-      console.error('[VOICE] Error checking business hours, defaulting to IVR:', error);
-    }
-  }
-
-  // If during business hours and forwarding enabled, skip IVR and forward directly
-  // This ONLY runs on initial call, never on menu redirects
-  if (routing.shouldForward && routing.forwardingNumber && isInitialCall) {
-    console.log(`[VOICE] Business hours active - forwarding ${callerPhone} to ${routing.forwardingNumber}`);
-
-    twiml.say({
-      voice: 'Polly.Matthew',
-      language: 'en-US'
-    }, 'Please hold while we connect you.');
-
-    const [voiceSettings] = await db
-      .select()
-      .from(notificationSettings)
-      .where(eq(notificationSettings.settingKey, 'voice_webhook'))
-      .limit(1);
-
-    const config = voiceSettings?.config as any;
-    const ringDuration = config?.ringDuration || 20;
-
-    const dial = twiml.dial({
-      timeout: ringDuration,
-      action: '/api/voice/call-status',
-      method: 'POST',
-      callerId: callerPhone,
-    });
-
-    dial.number(routing.forwardingNumber);
-  } else {
-    // After hours or customer pressed a digit - handle IVR menu
-    if (isInitialCall) {
       // First call - show main greeting and menu
       console.log(`[VOICE] Showing IVR menu to ${callerPhone}`);
 
@@ -167,14 +123,14 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
         "Press 5 to hear these options again."
       );
 
-      twiml.say({
-        voice: 'Polly.Matthew',
-        language: 'en-US'
-      }, "I didn't catch that, let's try again.");
-      twiml.redirect('/api/voice/voice?redirect=true');
-    } else {
-      // We have a digit - route based on choice
-      console.log(`[VOICE] Processing menu choice: ${digits} from ${callerPhone}`);
+    twiml.say({
+      voice: 'Polly.Matthew',
+      language: 'en-US'
+    }, "I didn't catch that, let's try again.");
+    twiml.redirect('/api/voice/voice?redirect=true');
+  } else {
+    // We have a digit - route based on choice
+    console.log(`[VOICE] Processing menu choice: ${digits} from ${callerPhone}`);
 
       switch (digits) {
         case '1':
@@ -269,15 +225,14 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
           twiml.redirect('/api/voice/voice?redirect=true');
           break;
 
-        default:
-          // Invalid choice
-          twiml.say({
-            voice: 'Polly.Matthew',
-            language: 'en-US'
-          }, "Sorry, I didn't recognize that choice.");
-          twiml.redirect('/api/voice/voice?redirect=true');
-          break;
-      }
+      default:
+        // Invalid choice
+        twiml.say({
+          voice: 'Polly.Matthew',
+          language: 'en-US'
+        }, "Sorry, I didn't recognize that choice.");
+        twiml.redirect('/api/voice/voice?redirect=true');
+        break;
     }
   }
 
