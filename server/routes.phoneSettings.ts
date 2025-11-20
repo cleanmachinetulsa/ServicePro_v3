@@ -199,6 +199,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
   ringDuration: number;
   voicemailGreeting: string | null;
   voicemailGreetingUrl: string | null;
+  isAfterHours: boolean;
+  afterHoursVoicemailGreeting: string | null;
+  afterHoursVoicemailGreetingUrl: string | null;
 }> {
   try {
     // Get phone line config
@@ -209,7 +212,16 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       .limit(1);
 
     if (!line) {
-      return { shouldForward: false, forwardingNumber: null, ringDuration: 10, voicemailGreeting: null, voicemailGreetingUrl: null };
+      return { 
+        shouldForward: false, 
+        forwardingNumber: null, 
+        ringDuration: 10, 
+        voicemailGreeting: null, 
+        voicemailGreetingUrl: null,
+        isAfterHours: false,
+        afterHoursVoicemailGreeting: null,
+        afterHoursVoicemailGreetingUrl: null,
+      };
     }
 
     if (!line.forwardingEnabled || !line.forwardingNumber) {
@@ -219,6 +231,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
         ringDuration: line.ringDuration || 10,
         voicemailGreeting: line.voicemailGreeting,
         voicemailGreetingUrl: line.voicemailGreetingUrl,
+        isAfterHours: false,
+        afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting,
+        afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl,
       };
     }
 
@@ -252,7 +267,43 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       .from(phoneSchedules)
       .where(eq(phoneSchedules.phoneLineId, line.id));
 
-    // Find matching schedule for current day and time
+    // Find schedules for today
+    const todaySchedules = schedules.filter(s => s.dayOfWeek === dayOfWeek);
+    
+    // Check for after-hours (30 minutes after the last schedule end time for today)
+    if (todaySchedules.length > 0) {
+      // Find the latest end time for today's schedules
+      const latestEndTime = todaySchedules.reduce((latest, schedule) => {
+        return schedule.endTime > latest ? schedule.endTime : latest;
+      }, '00:00');
+      
+      // Parse latest end time and add 30 minutes
+      const [endHour, endMinute] = latestEndTime.split(':').map(Number);
+      const endTimeInMinutes = endHour * 60 + endMinute;
+      const afterHoursStartMinutes = endTimeInMinutes + 30; // 30-minute buffer
+      
+      // Parse current time
+      const currentHour = parseInt(hour);
+      const currentMinute = parseInt(minute);
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      
+      // Check if we're in the after-hours period
+      if (currentTimeInMinutes >= afterHoursStartMinutes) {
+        console.log(`[PHONE ROUTING] After hours detected - current: ${currentTime}, latest schedule ends: ${latestEndTime}, after-hours starts at ${Math.floor(afterHoursStartMinutes / 60)}:${String(afterHoursStartMinutes % 60).padStart(2, '0')}`);
+        return {
+          shouldForward: false,
+          forwardingNumber: null,
+          ringDuration: line.ringDuration || 10,
+          voicemailGreeting: line.voicemailGreeting,
+          voicemailGreetingUrl: line.voicemailGreetingUrl,
+          isAfterHours: true,
+          afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting,
+          afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl,
+        };
+      }
+    }
+
+    // Find matching schedule for current day and time (normal business hours)
     const activeSchedule = schedules.find(s => {
       return s.dayOfWeek === dayOfWeek &&
              currentTime >= s.startTime &&
@@ -266,10 +317,22 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       ringDuration: line.ringDuration || 10,
       voicemailGreeting: line.voicemailGreeting,
       voicemailGreetingUrl: line.voicemailGreetingUrl,
+      isAfterHours: false,
+      afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting,
+      afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl,
     };
   } catch (error) {
     console.error('[PHONE ROUTING] Error determining routing:', error);
-    return { shouldForward: false, forwardingNumber: null, ringDuration: 10, voicemailGreeting: null, voicemailGreetingUrl: null };
+    return { 
+      shouldForward: false, 
+      forwardingNumber: null, 
+      ringDuration: 10, 
+      voicemailGreeting: null, 
+      voicemailGreetingUrl: null,
+      isAfterHours: false,
+      afterHoursVoicemailGreeting: null,
+      afterHoursVoicemailGreetingUrl: null,
+    };
   }
 }
 

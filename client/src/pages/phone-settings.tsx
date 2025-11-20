@@ -27,6 +27,8 @@ interface PhoneLine {
   ringDuration: number | null;
   voicemailGreeting: string | null;
   voicemailGreetingUrl: string | null;
+  afterHoursVoicemailGreeting: string | null;
+  afterHoursVoicemailGreetingUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
   schedules: PhoneSchedule[];
@@ -69,11 +71,15 @@ export default function PhoneSettings() {
     ringDuration: 10,
     voicemailGreeting: '',
     voicemailGreetingUrl: null as string | null,
+    afterHoursVoicemailGreeting: '',
+    afterHoursVoicemailGreetingUrl: null as string | null,
   });
 
   // Audio file upload state
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [afterHoursAudioFile, setAfterHoursAudioFile] = useState<File | null>(null);
+  const [isUploadingAfterHoursAudio, setIsUploadingAfterHoursAudio] = useState(false);
 
   // Schedule form state
   const [scheduleForm, setScheduleForm] = useState({
@@ -180,8 +186,11 @@ export default function PhoneSettings() {
       ringDuration: line.ringDuration || 10,
       voicemailGreeting: line.voicemailGreeting || '',
       voicemailGreetingUrl: line.voicemailGreetingUrl || null,
+      afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting || '',
+      afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl || null,
     });
     setAudioFile(null);
+    setAfterHoursAudioFile(null);
     setShowLineConfigModal(true);
   };
 
@@ -207,6 +216,16 @@ export default function PhoneSettings() {
       toast({
         title: 'Validation Error',
         description: 'Voicemail greeting must be 500 characters or less.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate after-hours voicemail greeting length
+    if (lineConfig.afterHoursVoicemailGreeting && lineConfig.afterHoursVoicemailGreeting.length > 500) {
+      toast({
+        title: 'Validation Error',
+        description: 'After-hours voicemail greeting must be 500 characters or less.',
         variant: 'destructive',
       });
       return;
@@ -371,6 +390,109 @@ export default function PhoneSettings() {
       toast({
         title: 'Audio Deleted',
         description: 'Voicemail greeting audio has been removed.',
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
+    } catch (error: any) {
+      toast({
+        title: 'Delete Failed',
+        description: error.message || 'Failed to delete audio file.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Handle after-hours audio file upload
+  const handleAfterHoursAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedLine) return;
+
+    // Validate file type
+    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/ogg'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Invalid File Type',
+        description: 'Please upload an MP3, WAV, M4A, or OGG audio file.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: 'Audio file must be 5MB or less.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setAfterHoursAudioFile(file);
+    setIsUploadingAfterHoursAudio(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      formData.append('phoneLineId', selectedLine.id.toString());
+      formData.append('type', 'after-hours');
+
+      const response = await fetch('/api/phone-settings/upload-voicemail-greeting', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+
+      setLineConfig({
+        ...lineConfig,
+        afterHoursVoicemailGreetingUrl: data.greetingUrl,
+      });
+
+      toast({
+        title: 'Upload Successful',
+        description: 'After-hours voicemail greeting audio uploaded successfully.',
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
+    } catch (error: any) {
+      toast({
+        title: 'Upload Failed',
+        description: error.message || 'Failed to upload audio file.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingAfterHoursAudio(false);
+    }
+  };
+
+  // Handle delete after-hours audio greeting
+  const handleDeleteAfterHoursAudio = async () => {
+    if (!selectedLine) return;
+
+    try {
+      const response = await fetch(`/api/phone-settings/delete-voicemail-greeting/${selectedLine.id}?type=after-hours`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Delete failed');
+      }
+
+      setLineConfig({
+        ...lineConfig,
+        afterHoursVoicemailGreetingUrl: null,
+      });
+
+      setAfterHoursAudioFile(null);
+
+      toast({
+        title: 'Audio Deleted',
+        description: 'After-hours voicemail greeting audio has been removed.',
       });
 
       queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
@@ -758,6 +880,94 @@ export default function PhoneSettings() {
                   </p>
                 </div>
               )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4 pt-2">
+              <div className="flex items-start gap-2">
+                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                <div>
+                  <Label className="text-base font-semibold">After Hours Voicemail</Label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <Info className="h-3 w-3 inline mr-1" />
+                    Automatically activates 30 minutes after your last schedule ends for the day
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="after-hours-greeting">
+                  After Hours Greeting (Text-to-Speech)
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    ({lineConfig.afterHoursVoicemailGreeting.length}/500 characters)
+                  </span>
+                </Label>
+                <Textarea
+                  id="after-hours-greeting"
+                  placeholder="You've reached Clean Machine Auto Detail after business hours. Please leave a brief message about your vehicle and we'll get back to you by the next business day."
+                  value={lineConfig.afterHoursVoicemailGreeting}
+                  onChange={(e) =>
+                    setLineConfig({ ...lineConfig, afterHoursVoicemailGreeting: e.target.value })
+                  }
+                  maxLength={500}
+                  rows={4}
+                  data-testid="textarea-after-hours-greeting"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  This greeting will play when callers reach you after hours. If not set, the regular voicemail greeting will be used.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2">
+                  <Voicemail className="h-4 w-4" />
+                  After Hours Audio Recording (Optional)
+                </Label>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Upload a custom after-hours greeting audio file. This takes priority over text-to-speech.
+                </p>
+
+                {lineConfig.afterHoursVoicemailGreetingUrl ? (
+                  <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                        After-hours audio greeting uploaded
+                      </p>
+                      <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                        Custom audio will be played for after-hours calls
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteAfterHoursAudio}
+                      data-testid="button-delete-after-hours-audio"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Input
+                      type="file"
+                      accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a,audio/ogg"
+                      onChange={handleAfterHoursAudioUpload}
+                      disabled={isUploadingAfterHoursAudio}
+                      data-testid="input-after-hours-audio-file"
+                    />
+                    {isUploadingAfterHoursAudio && (
+                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Uploading after-hours audio...
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Supported formats: MP3, WAV, M4A, OGG (max 5MB)
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

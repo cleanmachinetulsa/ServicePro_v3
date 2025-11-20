@@ -627,10 +627,14 @@ View photo: ${result}`;
         return res.status(400).json({ error: 'Valid phone line ID is required' });
       }
       
-      console.log(`[VOICEMAIL GREETING] Received audio upload for phone line ${phoneLineId}:`, {
+      const greetingType = req.body.type || 'regular';
+      const isAfterHours = greetingType === 'after-hours';
+      
+      console.log(`[VOICEMAIL GREETING] Received ${isAfterHours ? 'after-hours ' : ''}audio upload for phone line ${phoneLineId}:`, {
         filename: req.file.originalname,
         size: req.file.size,
-        type: req.file.mimetype
+        type: req.file.mimetype,
+        greetingType
       });
       
       // Upload to Google Drive
@@ -703,12 +707,13 @@ View photo: ${result}`;
         const { phoneLines } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
         
+        const updateData = isAfterHours
+          ? { afterHoursVoicemailGreetingUrl: uploadedFile.data.webContentLink, updatedAt: new Date() }
+          : { voicemailGreetingUrl: uploadedFile.data.webContentLink, updatedAt: new Date() };
+        
         const [updated] = await db
           .update(phoneLines)
-          .set({ 
-            voicemailGreetingUrl: uploadedFile.data.webContentLink,
-            updatedAt: new Date()
-          })
+          .set(updateData)
           .where(eq(phoneLines.id, phoneLineId))
           .returning();
         
@@ -755,17 +760,21 @@ View photo: ${result}`;
         return res.status(400).json({ error: 'Valid phone line ID is required' });
       }
       
+      const greetingType = req.query.type as string || 'regular';
+      const isAfterHours = greetingType === 'after-hours';
+      
       // Update phone line to remove greeting URL
       const { db } = await import('./db');
       const { phoneLines } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       
+      const updateData = isAfterHours
+        ? { afterHoursVoicemailGreetingUrl: null, updatedAt: new Date() }
+        : { voicemailGreetingUrl: null, updatedAt: new Date() };
+      
       const [updated] = await db
         .update(phoneLines)
-        .set({ 
-          voicemailGreetingUrl: null,
-          updatedAt: new Date()
-        })
+        .set(updateData)
         .where(eq(phoneLines.id, phoneLineId))
         .returning();
       
