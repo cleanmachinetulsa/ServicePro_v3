@@ -268,13 +268,13 @@ function PhoneLineSettings({
           <Input
             id={`sip-endpoint-${line.id}`}
             type="text"
-            placeholder="jody@sip.cleanmachinetulsa.com"
+            placeholder="jody@cleanmachinetulsa.sip.twilio.com"
             value={localLine.sipEndpoint || ''}
             onChange={(e) => handleChange('sipEndpoint', e.target.value)}
             data-testid={`input-sip-endpoint-${line.phoneNumber}`}
           />
           <p className="text-xs text-muted-foreground">
-            Your SIP address for custom ringtones on Samsung phones with Groundwire
+            SIP address for Groundwire (format: username@cleanmachinetulsa.sip.twilio.com)
           </p>
         </div>
 
