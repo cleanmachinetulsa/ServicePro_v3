@@ -6,16 +6,24 @@ Before republishing to production, verify these critical settings:
 
 ### 1. **Session & Authentication** ✅ CRITICAL
 ```typescript
-// server/index.ts
+// server/index.ts - Express trust proxy setting
 app.set('trust proxy', true); // MUST be true for Replit multi-proxy setup
+
+// server/sessionMiddleware.ts - Session cookie configuration
+cookie: {
+  secure: 'auto', // Auto-detect HTTPS based on trust proxy
+  sameSite: 'none', // Required for Replit's proxy chain
+  proxy: true, // Trust proxy for session handling
+}
 ```
 
-**Why:** Replit uses Cloudflare + Load Balancer. Setting `trust proxy` to `1` breaks session cookies on production.
+**Why:** Replit uses Cloudflare + Load Balancer. The `secure: 'auto'` setting allows Express to auto-detect HTTPS based on proxy headers, ensuring cookies work correctly in both dev and production.
 
-**Test:** After deployment, open browser DevTools → Application → Cookies and verify `connect.sid` has:
-- ✅ `Secure` flag set
-- ✅ `SameSite=None` or `SameSite=Lax`
+**Test:** After deployment, open browser DevTools → Application → Cookies and verify `sessionId` has:
+- ✅ `Secure` flag set (production only)
+- ✅ `SameSite=None`
 - ✅ Cookie is present after login
+- ✅ Cookie persists across page refreshes
 
 ### 2. **Service Worker Version** 
 Check `public/service-worker.js`:
@@ -87,8 +95,12 @@ After republishing, manually test these critical flows:
 ## Common Deployment Issues & Fixes
 
 ### Issue 1: "401 Unauthorized" on all admin features
-**Cause:** `trust proxy` misconfiguration
-**Fix:** Set `app.set('trust proxy', true)` in server/index.ts
+**Root Cause:** Session cookie not persisting due to incorrect `secure` setting
+**Fix:** 
+1. Verify `app.set('trust proxy', true)` in server/index.ts
+2. Set `cookie.secure = 'auto'` in server/sessionMiddleware.ts (NOT hard-coded to true)
+3. Ensure `proxy: true` in session configuration
+**Validation:** Check browser DevTools → Cookies → verify `sessionId` appears and persists
 
 ### Issue 2: Users see old version after deployment
 **Cause:** Stale service worker cache

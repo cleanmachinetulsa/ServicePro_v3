@@ -51,13 +51,14 @@ app.use(helmet({
 
 // SECURITY: Global rate limiting (600 requests per IP per minute)
 // Increased from 300 to accommodate automated testing and heavy usage scenarios
-// Note: validate.trustProxy set to false because we use 'trust proxy: true' for Replit multi-proxy setup
+// Note: validate.trustProxy disabled because Replit's secure proxy chain is fully trusted
+// See: https://express-rate-limit.github.io/ERR_ERL_PERMISSIVE_TRUST_PROXY/
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 600, // Max 600 requests per window per IP (10/sec)
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  validate: { trustProxy: false }, // Disable validation - we need trust proxy: true for production auth
+  validate: { trustProxy: false }, // Replit's proxy infrastructure is trusted - validation not needed
   message: {
     error: 'Too many requests',
     message: 'Rate limit exceeded. Please wait a moment and try again.',
