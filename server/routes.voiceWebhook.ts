@@ -151,7 +151,51 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
       const { getPhoneLineRoutingDecision } = await import('./routes.phoneSettings');
       const routing = await getPhoneLineRoutingDecision(twilioPhone);
 
-      if (routing.shouldForward && routing.forwardingNumber) {
+      if (routing.isAfterHours) {
+        // AFTER HOURS: Skip IVR, go straight to voicemail with after-hours greeting
+        console.log(`[VOICE] After hours - going straight to voicemail`);
+        
+        // Use after-hours greeting if available, otherwise fall back to regular greeting
+        if (routing.afterHoursVoicemailGreetingUrl) {
+          console.log('[VOICE] Using after-hours audio greeting for voicemail');
+          twiml.play(routing.afterHoursVoicemailGreetingUrl);
+        } else if (routing.afterHoursVoicemailGreeting) {
+          console.log('[VOICE] Using after-hours text-to-speech greeting for voicemail');
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, routing.afterHoursVoicemailGreeting);
+        } else if (routing.voicemailGreetingUrl) {
+          console.log('[VOICE] Using regular audio greeting for after-hours voicemail');
+          twiml.play(routing.voicemailGreetingUrl);
+        } else if (routing.voicemailGreeting) {
+          console.log('[VOICE] Using regular text-to-speech greeting for after-hours voicemail');
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, routing.voicemailGreeting);
+        } else {
+          console.log('[VOICE] Using default greeting for after-hours voicemail');
+          twiml.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+          }, "You've reached Clean Machine Auto Detail after business hours. Please leave a brief message and we'll get back to you by the next business day.");
+        }
+        
+        // Record voicemail
+        twiml.record({
+          maxLength: 180,
+          recordingStatusCallback: '/api/voice/recording',
+          recordingStatusCallbackMethod: 'POST',
+          transcribe: true,
+          transcribeCallback: '/api/voice/transcription',
+        });
+        
+        twiml.say({
+          voice: 'Polly.Matthew',
+          language: 'en-US'
+        }, "We didn't get your message. Please try again later.");
+      } else if (routing.shouldForward && routing.forwardingNumber) {
         // BUSINESS HOURS: Forward call to owner's phone with caller ID passthrough
         console.log(`[VOICE] Forwarding ${callerPhone} to ${routing.forwardingNumber} for ${routing.ringDuration}s`);
         
@@ -165,8 +209,8 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
 
         // If no answer, fall through to voicemail in dial-status callback
       } else {
-        // AFTER HOURS: Show IVR menu
-        console.log(`[VOICE] Showing IVR menu to ${callerPhone} (after hours or forwarding disabled)`);
+        // NOT FORWARDING (forwarding disabled or no active schedule): Show IVR menu
+        console.log(`[VOICE] Showing IVR menu to ${callerPhone} (forwarding disabled or no active schedule)`);
 
         const gather = twiml.gather({
           input: ['dtmf'] as any,

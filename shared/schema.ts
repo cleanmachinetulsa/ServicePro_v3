@@ -652,6 +652,8 @@ export const phoneLines = pgTable("phone_lines", {
   ringDuration: integer("ring_duration").default(10), // How long to ring forwarding number before voicemail (seconds, 10-60)
   voicemailGreeting: text("voicemail_greeting"), // Custom voicemail greeting message (text-to-speech)
   voicemailGreetingUrl: text("voicemail_greeting_url"), // Custom voicemail greeting audio recording URL (Google Drive)
+  afterHoursVoicemailGreeting: text("after_hours_voicemail_greeting"), // After-hours voicemail greeting (30min buffer after last schedule)
+  afterHoursVoicemailGreetingUrl: text("after_hours_voicemail_greeting_url"), // After-hours voicemail greeting audio URL
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
