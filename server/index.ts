@@ -21,6 +21,7 @@ import { registerBackupBookingRoutes } from "./routes.backupBookings";
 import { registerBannerRoutes } from "./routes.banners";
 import phoneSettingsRouter from "./routes.phoneSettings";
 import sendgridWebhookRouter from "./routes.sendgridWebhook";
+import twilioVoiceRouter from "./routes.twilioVoice";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";

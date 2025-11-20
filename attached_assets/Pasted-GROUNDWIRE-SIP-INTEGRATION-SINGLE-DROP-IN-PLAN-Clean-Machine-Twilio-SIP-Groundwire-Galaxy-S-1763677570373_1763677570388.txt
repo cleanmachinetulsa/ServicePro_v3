@@ -1,0 +1,333 @@
+GROUNDWIRE SIP INTEGRATION – SINGLE DROP-IN PLAN
+Clean Machine – Twilio → SIP → Groundwire (Galaxy S24)
+
+CONTEXT / GOAL
+--------------
+We want to:
+
+- Keep using the Clean Machine backend (Express/Node) as the brain.
+- Keep using Twilio as the public business phone number.
+- Because the Galaxy S24 has NO native SIP dialer, we’ll use the Groundwire app as a dedicated business line.
+- When a customer calls the Twilio business number:
+  - Twilio sends the call to the Clean Machine backend (webhook).
+  - The backend returns TwiML that dials a Twilio SIP Domain.
+  - Groundwire on the S24 is registered to that SIP Domain.
+  - Groundwire rings with a special ringtone and shows the REAL customer caller ID.
+- Personal calls still go through the normal Samsung Phone app with your regular number.
+
+This plan is written so the Replit Agent can do the code changes and you (the user) can do the Twilio + phone setup.
+
+IMPORTANT CONSTRAINT
+--------------------
+Samsung Galaxy S24 does NOT have built-in SIP support in the stock Phone app. That means:
+- We cannot add a SIP account to the native dialer.
+- We MUST use a third-party SIP app (Groundwire) as the business “line”.
+
+That’s okay: business calls will ring in Groundwire with a special ringtone; personal calls still ring in the normal Phone app.
+
+
+========================================
+PART A – CODE CHANGES (REPLIT AGENT WORK)
+========================================
+AGENT: You are in the Clean Machine Repl (the MAIN, up-to-date app). DO NOT replace or overwrite unrelated code. Only add/modify what is described here.
+
+OBJECTIVE:
+- Add Twilio Voice webhook endpoint: POST /twilio/voice/incoming
+- This route:
+  - Reads the incoming Twilio request body
+  - Extracts the original caller’s number from req.body.From
+  - Generates TwiML that dials a SIP endpoint using callerId = original caller
+- Ensure the server has the proper body parsing for Twilio (x-www-form-urlencoded).
+- Mount the router under /twilio.
+
+STEP A1 – Create Twilio Voice route file
+----------------------------------------
+Create the file:
+
+  server/routes/twilioVoice.ts
+
+with EXACTLY this content (TypeScript):
+
+  import express from 'express';
+  import { twiml } from 'twilio';
+
+  const router = express.Router();
+
+  // POST /twilio/voice/incoming
+  router.post('/voice/incoming', (req, res) => {
+    const VoiceResponse = twiml.VoiceResponse;
+    const response = new VoiceResponse();
+
+    // Twilio sends the caller's number in req.body.From, e.g. "+19185551234"
+    const fromNumber = (req.body.From as string) || '';
+
+    // SIP credentials (configured via environment variables)
+    const sipUser = process.env.SIP_USER || 'jody';
+    const sipDomain =
+      process.env.SIP_DOMAIN || 'cleanmachinetulsa.sip.twilio.com';
+
+    // Build <Dial> which preserves ORIGINAL callerId
+    const dial = response.dial({
+      callerId: fromNumber || undefined,
+      answerOnBridge: true,
+    });
+
+    // Target SIP URI like: sip:jody@cleanmachinetulsa.sip.twilio.com
+    const sipUri = `sip:${sipUser}@${sipDomain}`;
+    dial.sip(sipUri);
+
+    res.type('text/xml');
+    res.send(response.toString());
+  });
+
+  export default router;
+
+NOTES FOR AGENT:
+- Do NOT assume any other code structure changes.
+- If TypeScript types complain about req.body, you may add a simple type annotation for req as express.Request, or rely on any; but keep changes minimal and local.
+
+STEP A2 – Mount the Twilio Voice router
+---------------------------------------
+Find the main Express server entrypoint (for example, server/index.ts or similar). It will be the file that creates the Express app and calls app.listen.
+
+1) Ensure body parsing is enabled for URL-encoded and JSON (if not already):
+
+  import express from 'express';
+  import twilioVoiceRouter from './routes/twilioVoice';
+
+  const app = express();
+
+  // Twilio sends application/x-www-form-urlencoded by default for webhooks
+  app.use(express.urlencoded({ extended: false }));
+  app.use(express.json());
+
+  // Mount Twilio voice routes
+  app.use('/twilio', twilioVoiceRouter);
+
+  // ... existing routes and app.listen remain unchanged
+
+2) Do NOT remove existing middleware or routes.
+3) The new line app.use('/twilio', twilioVoiceRouter); should simply add the /twilio namespace.
+
+STEP A3 – Do NOT touch SMS or other logic
+-----------------------------------------
+This plan only concerns the VOICE webhook path. Do NOT modify existing SMS routes, schedulers, or agent logic. Only the /twilio/voice/incoming path is affected.
+
+STEP A4 – Quick internal verification
+-------------------------------------
+- Ensure the TypeScript compiles.
+- Ensure the server starts (e.g., npm run dev).
+- Confirm that POST /twilio/voice/incoming returns valid TwiML, for example if you simulate a minimal request with a From field; but the agent does not need to over-test this, just ensure basic functionality.
+
+
+====================================
+PART B – ENV VARS (USER + REPLIT UI)
+====================================
+USER TASKS:
+
+1) In the Clean Machine Repl, open the “Secrets / Environment Variables” panel.
+2) Add the following environment variables:
+
+   SIP_USER   = jody
+   SIP_DOMAIN = cleanmachinetulsa.sip.twilio.com
+
+3) Save them and restart the Repl so the backend sees these values.
+
+You can change names later, but for now we standardize around these.
+
+
+==========================================
+PART C – TWILIO: SIP DOMAIN & CREDENTIALS
+==========================================
+USER TASKS IN TWILIO CONSOLE:
+
+OBJECTIVE:
+- Create a Twilio SIP Domain.
+- Create a SIP credential for username: jody.
+- Attach the credential list to the SIP Domain so Twilio allows registration & calling.
+
+STEP C1 – Create Twilio SIP Domain
+----------------------------------
+1) Go to Twilio Console.
+2) Navigate to:
+   Voice → Manage → SIP → Domains (exact navigation may vary slightly).
+3) Click “Create new SIP Domain”.
+
+4) Fill in:
+   - Friendly Name: Clean Machine SIP
+   - SIP Domain: cleanmachinetulsa
+
+   Twilio will generate the full domain:
+   cleanmachinetulsa.sip.twilio.com
+
+5) Enable SIP registration if there is a toggle or configuration for it.
+
+6) Save the SIP Domain.
+
+STEP C2 – Create Credential List + User
+---------------------------------------
+1) In Twilio Console, go to:
+   Voice → Manage → SIP → Credential Lists
+2) Click “Create new Credential List”:
+   - Name: Clean Machine SIP Users
+
+3) Inside this new list, add a credential:
+   - Username: jody
+   - Password: (generate a strong password; store it somewhere safe – you will use it in Groundwire)
+
+4) Save.
+
+STEP C3 – Attach Credential List to SIP Domain
+----------------------------------------------
+1) Go back to the SIP Domain you created:
+   cleanmachinetulsa.sip.twilio.com
+2) Attach the “Clean Machine SIP Users” credential list to this domain under authentication/credentials so that Twilio will accept registrations for jody@cleanmachinetulsa.sip.twilio.com.
+
+
+=========================================
+PART D – TWILIO: POINT NUMBER TO WEBHOOK
+=========================================
+USER TASKS:
+
+OBJECTIVE:
+- Make your existing Clean Machine business number (local 918) send incoming calls to the new webhook at /twilio/voice/incoming.
+
+STEP D1 – Configure Voice Webhook on Phone Number
+-------------------------------------------------
+1) In Twilio Console, go to:
+   Phone Numbers → Manage → Active Numbers.
+2) Click your Clean Machine Twilio number (the 918 number you give to customers).
+3) Under “Voice & Fax” (or similar Voice settings):
+   - For “A CALL COMES IN”:
+     - Choose: Webhook (if asked)
+     - Method: POST
+     - URL: https://YOUR_REPL_URL/twilio/voice/incoming
+
+   Replace YOUR_REPL_URL with your actual Repl live URL. For example:
+   If your repl is:
+   https://cleanmachine-svc.yourusername.repl.co
+   Then the webhook URL is:
+   https://cleanmachine-svc.yourusername.repl.co/twilio/voice/incoming
+
+4) Save the changes.
+
+Now, whenever someone calls that Twilio number, Twilio will:
+- POST the call info (including From) to /twilio/voice/incoming
+- Your server will respond with TwiML that instructs Twilio to dial sip:jody@cleanmachinetulsa.sip.twilio.com with callerId set to the original From number.
+
+
+===================================
+PART E – GROUNWIRE SETUP ON S24
+===================================
+USER TASKS ON GALAXY S24:
+
+OBJECTIVE:
+- Install Groundwire and register the Twilio SIP account.
+- Assign a special ringtone for business calls.
+- Make sure Groundwire can receive calls reliably in background.
+
+STEP E1 – Install Groundwire
+----------------------------
+1) On the Galaxy S24, open Google Play Store.
+2) Search for: Groundwire by Acrobits (a paid app; one-time purchase).
+3) Purchase and install Groundwire.
+
+STEP E2 – Add SIP Account in Groundwire
+---------------------------------------
+1) Open Groundwire.
+2) Go to Settings or Accounts (location may vary slightly by version).
+3) Add a new account:
+   - Account type / provider: Generic SIP (or plain SIP)
+4) Fill in the SIP settings:
+
+   - Username: jody
+   - Password: (the same password you created in Twilio credential list)
+   - Domain/Server/Registrar: cleanmachinetulsa.sip.twilio.com
+   - Display Name: Clean Machine Line (or similar label so you recognize it)
+
+5) Save the account and wait for Groundwire to show it as:
+   Registered / Online / Connected (wording may vary).
+
+If it fails to register:
+- Double-check username, password, domain, and internet connectivity.
+- Confirm Twilio SIP Domain has the correct credential list attached.
+
+STEP E3 – Set Custom Ringtone in Groundwire
+-------------------------------------------
+1) In Groundwire’s settings, find incoming call / ringtone settings.
+2) Choose a unique ringtone that you will ONLY use for Clean Machine calls.
+   - For example, an obvious sound or spoken phrase that screams “Business call!”
+3) This ensures:
+   - When Groundwire rings: it’s a Twilio SIP business call.
+   - When the normal Samsung Phone app rings: it’s personal/spam/other.
+
+STEP E4 – Allow Groundwire in Background
+----------------------------------------
+1) On the Galaxy S24, open Android Settings → Apps → Groundwire.
+2) Allow notifications for Groundwire.
+3) Turn off or relax battery optimization for Groundwire:
+   - Battery → Optimizations → exclude Groundwire if possible.
+4) In Groundwire settings, enable push / background incoming calls (if there’s a setting for that).
+
+This is important so Groundwire rings even when the phone is locked or the app is not in the foreground.
+
+
+====================================
+PART F – TESTING & WHAT TO EXPECT
+====================================
+USER TASKS:
+
+STEP F1 – Confirm backend is running
+------------------------------------
+1) In Replit, start your Clean Machine server (e.g. npm run dev).
+2) Optionally, temporarily add a console.log(req.body) in the /twilio/voice/incoming handler so you can see Twilio’s payload in the Replit logs. (Remove once you’re sure it works.)
+
+STEP F2 – Make a test call
+--------------------------
+1) From another phone (personal cell or a friend’s phone), call your Twilio 918 business number.
+2) EXPECTED BEHAVIOR:
+
+   - Twilio receives the call and sends a POST to /twilio/voice/incoming.
+   - Your server responds with TwiML: <Dial callerId="ORIGINAL_CALLER"><Sip>jody@cleanmachinetulsa.sip.twilio.com</Sip></Dial>.
+   - Twilio then initiates a SIP call to jody@cleanmachinetulsa.sip.twilio.com.
+   - Groundwire on your S24 rings:
+     - With the special business ringtone you set.
+     - With the caller ID showing the REAL number that called (the phone you used to call).
+
+3) Verify:
+   - Does Groundwire ring (not just the Samsung Phone app)?
+   - Is the ringtone the business one?
+   - Is caller ID the actual caller number, not the Twilio business number?
+
+If yes:
+- Business vs personal calls are clearly separated.
+- You can answer only the Groundwire calls when you want work calls, and ignore regular spam hitting the personal line.
+
+STEP F3 – Ensure existing SMS flows unaffected
+----------------------------------------------
+- This webhook only affects voice calls. Your SMS scheduling/agent logic should remain unchanged.
+- Do a quick sanity check: send an SMS to the business number and confirm your existing SMS logic behaves as before.
+
+====================================
+PART G – FUTURE ENHANCEMENTS (OPTIONAL)
+====================================
+(Not required to complete the Groundwire SIP setup, but kept here for the big picture.)
+
+Possible future steps:
+- Add IVR in front of SIP:
+  - Twilio <Gather> DTMF:
+    - Press 1 → AI voice assistant
+    - Press 2 → SMS scheduling link + agent flow
+    - Press 3 → log “callback between appointments” and do not ring immediately
+    - Press 7 → easter-egg car detail joke
+  - Only forward to your SIP (Groundwire) when caller chooses to talk to you.
+- Integrate OpenAI Realtime voice for a conversational receptionist before reaching you.
+- Multi-tenant telephony for ServicePro:
+  - Same pattern replicated per tenant with their own Twilio numbers and SIP accounts.
+
+For now, the primary objective is:
+- SIP via Twilio → Groundwire working.
+- Special ringtone and REAL caller ID on business calls.
+- Clear separation between business calls (Groundwire) and personal calls (native Phone app).
+
+END OF PLAN
