@@ -66,7 +66,7 @@ export default function PhoneSettings() {
   const [lineConfig, setLineConfig] = useState({
     forwardingEnabled: false,
     forwardingNumber: '',
-    ringDuration: 30,
+    ringDuration: 10,
     voicemailGreeting: '',
     voicemailGreetingUrl: null as string | null,
   });
@@ -669,7 +669,7 @@ export default function PhoneSettings() {
                   </Label>
                   <Slider
                     id="ring-duration"
-                    min={15}
+                    min={10}
                     max={60}
                     step={5}
                     value={[lineConfig.ringDuration]}
