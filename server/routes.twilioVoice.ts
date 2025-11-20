@@ -1,8 +1,9 @@
 import express, { Request, Response } from 'express';
 import twilio from 'twilio';
 import { db } from './db';
-import { phoneLines } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { phoneLines, customers, conversations, messages } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
+import { OpenAI } from 'openai';
 
 const router = express.Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -204,13 +205,15 @@ router.post('/voice/voicemail', async (req: Request, res: Response) => {
       );
     }
 
-    // Record the voicemail
+    // Record the voicemail with transcription callback
     response.record({
       action: '/twilio/voice/voicemail-saved',
       method: 'POST',
       maxLength: 120, // Max 2 minutes
       timeout: 5, // End recording after 5 seconds of silence
       trim: 'trim-silence',
+      transcribe: true, // Enable transcription
+      transcribeCallback: '/twilio/voice/voicemail-transcribed', // Callback when transcription completes
       recordingStatusCallback: '/twilio/voice/recording-status',
     });
 
@@ -260,6 +263,143 @@ router.post('/voice/voicemail-saved', async (req: Request, res: Response) => {
 
   res.type('text/xml');
   res.send(response.toString());
+});
+
+/**
+ * Voicemail Transcription Callback
+ * Twilio calls this when voicemail transcription is complete
+ * Analyzes transcription with OpenAI and sends SMS response
+ */
+router.post('/voice/voicemail-transcribed', async (req: Request, res: Response) => {
+  try {
+    const transcriptionText = req.body.TranscriptionText as string;
+    const callSid = req.body.CallSid as string;
+    const fromNumber = req.body.From as string;
+
+    console.log('[TWILIO VOICE] Voicemail transcribed:', {
+      callSid,
+      fromNumber,
+      transcription: transcriptionText?.substring(0, 100),
+    });
+
+    if (!transcriptionText || transcriptionText.length === 0) {
+      console.log('[TWILIO VOICE] Transcription empty, skipping AI analysis');
+      return res.status(200).send('');
+    }
+
+    // Find or create customer record
+    let customer = await db.query.customers.findFirst({
+      where: eq(customers.phone, fromNumber),
+    });
+
+    if (!customer) {
+      console.log('[TWILIO VOICE] Creating new customer from voicemail:', fromNumber);
+      // Extract name from transcription if possible (look for "this is" or "my name is")
+      let extractedName = 'Customer';
+      const nameMatch = transcriptionText.match(/(?:my name is|this is)\s+([A-Za-z]+)/i);
+      if (nameMatch) {
+        extractedName = nameMatch[1];
+      }
+
+      const [created] = await db
+        .insert(customers)
+        .values({
+          phone: fromNumber,
+          name: extractedName,
+          source: 'voicemail',
+        })
+        .returning();
+      customer = created;
+    }
+
+    // Analyze voicemail with OpenAI
+    const openai = new OpenAI();
+    const analysisPrompt = `You are an auto-detail business assistant. A customer left this voicemail:
+
+"${transcriptionText}"
+
+Provide a BRIEF (1-2 sentences max) acknowledgment and next step for the customer via SMS. Be friendly and professional. Examples:
+- "Thanks for reaching out! We'll check your vehicle's condition and get back to you within 2 hours with a quote."
+- "Got it! We have availability tomorrow morning if you'd like to book. Reply YES to confirm."
+
+Respond ONLY with the SMS message text, nothing else.`;
+
+    const aiResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: analysisPrompt,
+        },
+      ],
+      max_tokens: 150,
+    });
+
+    const smsResponse =
+      aiResponse.choices[0]?.message?.content || 'Thanks for calling! We will get back to you shortly.';
+
+    // Send SMS response
+    const twilio = require('twilio');
+    const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    const mainPhoneNumber = process.env.TWILIO_PHONE_NUMBER || '+19188565304';
+
+    await twilioClient.messages.create({
+      body: smsResponse,
+      from: mainPhoneNumber,
+      to: fromNumber,
+    });
+
+    console.log('[TWILIO VOICE] Auto SMS response sent to', fromNumber, ':', smsResponse);
+
+    // Store voicemail transcript and auto-response in conversation
+    let conversation = await db.query.conversations.findFirst({
+      where: and(
+        eq(conversations.customerPhone, fromNumber),
+        eq(conversations.platform, 'voice'),
+      ),
+      orderBy: (c) => [c.id], // Get latest
+    });
+
+    if (!conversation) {
+      const [created] = await db
+        .insert(conversations)
+        .values({
+          customerId: customer.id,
+          platform: 'voice',
+          channel: 'voice',
+          customerPhone: fromNumber,
+          isAIActive: false,
+          lastMessageTime: new Date(),
+        })
+        .returning();
+      conversation = created;
+    }
+
+    // Log voicemail and auto-response
+    await db.insert(messages).values([
+      {
+        conversationId: conversation.id,
+        content: `Voicemail: ${transcriptionText}`,
+        sender: 'customer',
+        fromCustomer: true,
+        timestamp: new Date(),
+        isAutomated: false,
+      },
+      {
+        conversationId: conversation.id,
+        content: smsResponse,
+        sender: 'ai',
+        fromCustomer: false,
+        timestamp: new Date(),
+        isAutomated: true,
+      },
+    ]);
+
+    res.status(200).send('');
+  } catch (error) {
+    console.error('[TWILIO VOICE] Error processing voicemail transcription:', error);
+    res.status(200).send(''); // Still return 200 to acknowledge Twilio
+  }
 });
 
 /**

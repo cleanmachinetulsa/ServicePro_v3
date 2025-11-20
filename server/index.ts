@@ -31,6 +31,11 @@ import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
 import { businessSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 
@@ -39,6 +44,9 @@ const app = express();
 // We must trust ALL proxies in the chain for secure cookies to work
 // Setting to true ensures session authentication works on deployed sites
 app.set('trust proxy', true);
+
+// Serve static assets (MP3 voicemail greeting, etc.)
+app.use('/assets', express.static(path.join(__dirname, '../attached_assets')));
 
 // SECURITY: Helmet middleware for security headers
 // Disable all cross-origin policies for Replit preview compatibility
