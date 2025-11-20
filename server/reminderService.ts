@@ -24,12 +24,9 @@ export async function identifyCustomersNeedingReminders() {
   try {
     console.log('[REMINDER SERVICE] Identifying customers needing reminders...');
 
-    // Get all enabled reminder rules
+    // Get all enabled reminder rules (without relations to avoid Drizzle error)
     const enabledRules = await db.query.reminderRules.findMany({
       where: eq(reminderRules.enabled, true),
-      with: {
-        service: true,
-      },
     });
 
     if (enabledRules.length === 0) {
@@ -445,11 +442,21 @@ export async function processProactiveReminders() {
       // Get recommended service details
       const rule = await db.query.reminderRules.findFirst({
         where: eq(reminderRules.id, customer.ruleId),
-        with: { service: true },
       });
 
-      const recommendedService = rule?.service?.name || 'maintenance detail';
-      const recommendedServicePrice = rule?.service?.priceRange || '$150-200';
+      // Get service details separately if serviceId exists
+      let recommendedService = 'maintenance detail';
+      let recommendedServicePrice = '$150-200';
+      
+      if (rule?.serviceId) {
+        const service = await db.query.services.findFirst({
+          where: eq(services.id, rule.serviceId),
+        });
+        if (service) {
+          recommendedService = service.name;
+          recommendedServicePrice = service.priceRange || '$150-200';
+        }
+      }
 
       // PHASE 4D: Create job first to get jobId for action links
       try {
