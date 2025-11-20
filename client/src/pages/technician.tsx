@@ -135,7 +135,7 @@ interface TechnicianContentProps {
 function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
   const [showOrientationWarning, setShowOrientationWarning] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  const { selectedJob, updateJobStatus, jobs, queuedActions, isOnline } = useTechnician();
+  const { selectedJob, updateJobStatus, jobs, queuedActions, isOnline, makeCall } = useTechnician();
   const { toast } = useToast();
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -191,10 +191,26 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
     }
   };
 
-  const handleEmergencyCall = () => {
-    // Use the actual business phone number (918-856-5711 main line)
+  const handleEmergencyCall = async () => {
+    // Use WebRTC calling instead of FaceTime for iPad compatibility
     const officeNumber = '+19188565711';
-    window.location.href = `tel:${officeNumber}`;
+    
+    try {
+      await makeCall(officeNumber);
+      toast({
+        title: 'Calling Office',
+        description: 'Connecting via WebRTC...',
+      });
+    } catch (error) {
+      console.error('Failed to make WebRTC call:', error);
+      // Fallback to tel: link if WebRTC fails
+      window.location.href = `tel:${officeNumber}`;
+      toast({
+        title: 'Call Failed',
+        description: 'Trying traditional phone call instead',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleQuickPhoto = () => {
