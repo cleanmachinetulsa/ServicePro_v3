@@ -649,7 +649,8 @@ export const phoneLines = pgTable("phone_lines", {
   label: varchar("label", { length: 100 }).notNull(), // "Main Line", "VIP Line"
   forwardingEnabled: boolean("forwarding_enabled").default(true), // Enable/disable call forwarding
   forwardingNumber: varchar("forwarding_number", { length: 20 }), // Business owner's personal cell to forward to
-  voicemailGreeting: text("voicemail_greeting"), // Custom voicemail greeting message
+  voicemailGreeting: text("voicemail_greeting"), // Custom voicemail greeting message (text-to-speech)
+  voicemailGreetingUrl: text("voicemail_greeting_url"), // Custom voicemail greeting audio recording URL (Google Drive)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
