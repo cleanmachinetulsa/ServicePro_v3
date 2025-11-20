@@ -145,12 +145,59 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
     }
   }
 
-  // ALWAYS show IVR menu (no business hours forwarding enabled yet)
-  // User will enable forwarding later when ready
+  // Business hours forwarding check - call routing decision function
   if (isInitialCall) {
-      // First call - show main greeting and menu
-      console.log(`[VOICE] Showing IVR menu to ${callerPhone}`);
+    try {
+      const { getPhoneLineRoutingDecision } = await import('./routes.phoneSettings');
+      const routing = await getPhoneLineRoutingDecision(twilioPhone);
 
+      if (routing.shouldForward && routing.forwardingNumber) {
+        // BUSINESS HOURS: Forward call to owner's phone with caller ID passthrough
+        console.log(`[VOICE] Forwarding ${callerPhone} to ${routing.forwardingNumber} for ${routing.ringDuration}s`);
+        
+        const dial = twiml.dial({
+          callerId: callerPhone, // 🔑 CALLER ID PASSTHROUGH - shows customer's real number on Samsung
+          timeout: routing.ringDuration, // 🔑 RING DURATION - configured in Phone Settings
+          action: '/api/voice/voice-dial-status',
+          method: 'POST',
+        });
+        dial.number(routing.forwardingNumber);
+
+        // If no answer, fall through to voicemail in dial-status callback
+      } else {
+        // AFTER HOURS: Show IVR menu
+        console.log(`[VOICE] Showing IVR menu to ${callerPhone} (after hours or forwarding disabled)`);
+
+        const gather = twiml.gather({
+          input: ['dtmf'] as any,
+          numDigits: 1,
+          action: '/api/voice/voice?redirect=true',
+          method: 'POST',
+          timeout: 8,
+        });
+
+        gather.say({
+          voice: 'Polly.Matthew',
+          language: 'en-US'
+        }, 
+          "Hi, this is Jody with Clean Machine Auto Detail here in Tulsa, thanks for calling. " +
+          "If you'd like the fastest service, you can text this number any time and we'll send you a quick link " +
+          "with current pricing, packages, and a way to check availability and book your detail. " +
+          "Otherwise, please choose from the following options. " +
+          "Press 1 to have that link sent to your phone right now. " +
+          "Press 3 to leave a message for me, Jody, and I'll call you back personally between jobs. " +
+          "Press 5 to hear these options again."
+        );
+
+        twiml.say({
+          voice: 'Polly.Matthew',
+          language: 'en-US'
+        }, "I didn't catch that, let's try again.");
+        twiml.redirect('/api/voice/voice?redirect=true');
+      }
+    } catch (error) {
+      console.error('[VOICE] Error checking routing decision:', error);
+      // Fallback to IVR on error
       const gather = twiml.gather({
         input: ['dtmf'] as any,
         numDigits: 1,
@@ -172,11 +219,12 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
         "Press 5 to hear these options again."
       );
 
-    twiml.say({
-      voice: 'Polly.Matthew',
-      language: 'en-US'
-    }, "I didn't catch that, let's try again.");
-    twiml.redirect('/api/voice/voice?redirect=true');
+      twiml.say({
+        voice: 'Polly.Matthew',
+        language: 'en-US'
+      }, "I didn't catch that, let's try again.");
+      twiml.redirect('/api/voice/voice?redirect=true');
+    }
   } else {
     // We have a digit - route based on choice
     console.log(`[VOICE] Processing menu choice: ${digits} from ${callerPhone}`);
@@ -361,6 +409,64 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
       voice: 'alice',
       language: 'en-US'
     }, 'Thank you for calling. Goodbye.');
+  }
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+/**
+ * Dial Status Callback - Handles forwarding call completion
+ * Called after attempting to forward call to business owner
+ * Routes to voicemail if call wasn't answered
+ */
+router.post('/voice-dial-status', verifyTwilioSignature, async (req: Request, res: Response) => {
+  const dialCallStatus = req.body.DialCallStatus;
+  const callerPhone = req.body.From;
+  const twilioPhone = req.body.To;
+  const callSid = req.body.CallSid;
+  
+  console.log(`[VOICE] Dial status for ${callerPhone}: ${dialCallStatus}`);
+
+  const twiml = new VoiceResponse();
+
+  if (dialCallStatus === 'completed') {
+    // Call was answered - do nothing, let it end naturally
+    console.log(`[VOICE] Call answered successfully`);
+  } else {
+    // no-answer, busy, failed, canceled - route to voicemail
+    console.log(`[VOICE] Call not answered (${dialCallStatus}), routing to voicemail`);
+    
+    // Get voicemail greeting for this phone line
+    try {
+      const { getPhoneLineRoutingDecision } = await import('./routes.phoneSettings');
+      const routing = await getPhoneLineRoutingDecision(twilioPhone);
+      
+      await addVoicemailGreeting(
+        twiml,
+        twilioPhone,
+        routing.voicemailGreeting || "Thank you for calling Clean Machine Auto Detail. Please leave your name, number, and a brief message after the beep."
+      );
+    } catch (error) {
+      console.error('[VOICE] Error getting voicemail greeting:', error);
+      twiml.say({
+        voice: 'Polly.Matthew',
+        language: 'en-US'
+      }, "Thank you for calling Clean Machine Auto Detail. Please leave your name, number, and a brief message after the beep.");
+    }
+
+    twiml.record({
+      maxLength: 120,
+      playBeep: true,
+      transcribe: true,
+      transcribeCallback: '/api/voice/transcription',
+      timeout: 10,
+    });
+    
+    twiml.say({
+      voice: 'Polly.Matthew',
+      language: 'en-US'
+    }, "Thank you for your message. Goodbye.");
   }
 
   res.type('text/xml');

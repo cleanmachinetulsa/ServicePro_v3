@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2 } from 'lucide-react';
+import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer } from 'lucide-react';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import CommunicationsNav from '@/components/CommunicationsNav';
 import { CustomRingtoneInstructions } from '@/components/phone/CustomRingtoneInstructions';
@@ -23,6 +24,7 @@ interface PhoneLine {
   label: string;
   forwardingEnabled: boolean;
   forwardingNumber: string | null;
+  ringDuration: number | null;
   voicemailGreeting: string | null;
   voicemailGreetingUrl: string | null;
   createdAt: Date;
@@ -64,6 +66,7 @@ export default function PhoneSettings() {
   const [lineConfig, setLineConfig] = useState({
     forwardingEnabled: false,
     forwardingNumber: '',
+    ringDuration: 30,
     voicemailGreeting: '',
     voicemailGreetingUrl: null as string | null,
   });
@@ -174,6 +177,7 @@ export default function PhoneSettings() {
     setLineConfig({
       forwardingEnabled: line.forwardingEnabled,
       forwardingNumber: line.forwardingNumber || '',
+      ringDuration: line.ringDuration || 30,
       voicemailGreeting: line.voicemailGreeting || '',
       voicemailGreetingUrl: line.voicemailGreetingUrl || null,
     });
@@ -639,22 +643,45 @@ export default function PhoneSettings() {
             </div>
 
             {lineConfig.forwardingEnabled && (
-              <div className="space-y-2">
-                <Label htmlFor="forwarding-number">
-                  Forwarding Number
-                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-                    (E.164 format: +19188565304)
-                  </span>
-                </Label>
-                <Input
-                  id="forwarding-number"
-                  placeholder="+19188565304"
-                  value={lineConfig.forwardingNumber}
-                  onChange={(e) =>
-                    setLineConfig({ ...lineConfig, forwardingNumber: e.target.value })
-                  }
-                  data-testid="input-forwarding-number"
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forwarding-number">
+                    Forwarding Number
+                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                      (E.164 format: +19188565304)
+                    </span>
+                  </Label>
+                  <Input
+                    id="forwarding-number"
+                    placeholder="+19188565304"
+                    value={lineConfig.forwardingNumber}
+                    onChange={(e) =>
+                      setLineConfig({ ...lineConfig, forwardingNumber: e.target.value })
+                    }
+                    data-testid="input-forwarding-number"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ring-duration" className="flex items-center gap-2">
+                    <Timer className="h-4 w-4" />
+                    Ring Duration: {lineConfig.ringDuration} seconds
+                  </Label>
+                  <Slider
+                    id="ring-duration"
+                    min={15}
+                    max={60}
+                    step={5}
+                    value={[lineConfig.ringDuration]}
+                    onValueChange={([value]) =>
+                      setLineConfig({ ...lineConfig, ringDuration: value })
+                    }
+                    data-testid="slider-ring-duration"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    How long the phone will ring before going to voicemail (15-60 seconds)
+                  </p>
+                </div>
               </div>
             )}
 
