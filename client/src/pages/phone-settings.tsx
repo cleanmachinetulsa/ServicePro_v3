@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer } from 'lucide-react';
+import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer, Settings } from 'lucide-react';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import CommunicationsNav from '@/components/CommunicationsNav';
 import { CustomRingtoneInstructions } from '@/components/phone/CustomRingtoneInstructions';
