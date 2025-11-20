@@ -84,6 +84,42 @@ const messageAttachmentUpload = multer({
   }
 });
 
+// Voicemail greeting audio uploader
+const voicemailGreetingStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(os.tmpdir(), 'voicemail-greetings');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `voicemail-greeting-${uniqueSuffix}${ext}`);
+  }
+});
+
+const voicemailGreetingUpload = multer({
+  storage: voicemailGreetingStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max size for audio
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept common audio formats that Twilio supports
+    const allowedTypes = /mp3|wav|m4a|ogg/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetypePatterns = ['audio/'];
+    const mimetype = mimetypePatterns.some(pattern => file.mimetype.includes(pattern));
+    
+    if (extname && mimetype) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only audio files (MP3, WAV, M4A, OGG) are allowed!'));
+    }
+  }
+});
+
 // Storage configuration for service images (saved to public directory)
 const serviceImageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -572,6 +608,181 @@ View photo: ${result}`;
           console.error(`[MESSAGE ATTACHMENT] Failed to clean up temp file:`, cleanupError);
         }
       }
+    }
+  });
+
+  // Route for voicemail greeting upload - upload to Google Drive (AUTHENTICATED)
+  app.post('/api/phone-settings/upload-voicemail-greeting', requireAuth, voicemailGreetingUpload.single('audio'), async (req: Request, res: Response) => {
+    let tempFilePath: string | null = null;
+    
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      
+      tempFilePath = req.file.path;
+      
+      const phoneLineId = parseInt(req.body.phoneLineId);
+      if (!phoneLineId || isNaN(phoneLineId)) {
+        return res.status(400).json({ error: 'Valid phone line ID is required' });
+      }
+      
+      console.log(`[VOICEMAIL GREETING] Received audio upload for phone line ${phoneLineId}:`, {
+        filename: req.file.originalname,
+        size: req.file.size,
+        type: req.file.mimetype
+      });
+      
+      // Upload to Google Drive
+      try {
+        const drive = getDriveClient();
+        if (!drive) {
+          throw new Error('Google Drive API not initialized');
+        }
+        
+        // Create folder name for voicemail greetings
+        const folderName = 'Voicemail Greetings';
+        
+        // Upload file
+        const fileMetadata = {
+          name: `${req.file.originalname}`,
+          parents: [] as string[]
+        };
+        
+        // Try to find or create folder
+        const folderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const folderSearch = await drive.files.list({
+          q: folderQuery,
+          fields: 'files(id, name)',
+          spaces: 'drive'
+        });
+        
+        let folderId: string;
+        if (folderSearch.data.files && folderSearch.data.files.length > 0) {
+          folderId = folderSearch.data.files[0].id!;
+        } else {
+          // Create folder
+          const folderMetadata = {
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder'
+          };
+          const folder = await drive.files.create({
+            requestBody: folderMetadata,
+            fields: 'id'
+          });
+          folderId = folder.data.id!;
+        }
+        
+        fileMetadata.parents.push(folderId);
+        
+        // Upload file
+        const media = {
+          mimeType: req.file.mimetype,
+          body: fs.createReadStream(req.file.path)
+        };
+        
+        const uploadedFile = await drive.files.create({
+          requestBody: fileMetadata,
+          media: media,
+          fields: 'id, name, webViewLink, webContentLink, mimeType, size'
+        });
+        
+        // Make file publicly accessible (required for Twilio to play it)
+        await drive.permissions.create({
+          fileId: uploadedFile.data.id!,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone'
+          }
+        });
+        
+        console.log(`[VOICEMAIL GREETING] File uploaded successfully:`, uploadedFile.data.webContentLink);
+        
+        // Update phone line with greeting URL
+        const { db } = await import('./db');
+        const { phoneLines } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        
+        const [updated] = await db
+          .update(phoneLines)
+          .set({ 
+            voicemailGreetingUrl: uploadedFile.data.webContentLink,
+            updatedAt: new Date()
+          })
+          .where(eq(phoneLines.id, phoneLineId))
+          .returning();
+        
+        if (!updated) {
+          return res.status(404).json({ error: 'Phone line not found' });
+        }
+        
+        res.status(200).json({
+          success: true,
+          greetingUrl: uploadedFile.data.webContentLink,
+          fileName: uploadedFile.data.name
+        });
+      } catch (driveError: any) {
+        console.error('[VOICEMAIL GREETING] Google Drive error:', driveError);
+        res.status(500).json({
+          error: 'Failed to upload to Google Drive',
+          message: driveError.message
+        });
+      }
+    } catch (error: any) {
+      console.error('[VOICEMAIL GREETING] Error:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error.message || 'An unexpected error occurred'
+      });
+    } finally {
+      // Always clean up temp file
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+          console.log(`[VOICEMAIL GREETING] Cleaned up temp file: ${tempFilePath}`);
+        } catch (cleanupError) {
+          console.error(`[VOICEMAIL GREETING] Failed to clean up temp file:`, cleanupError);
+        }
+      }
+    }
+  });
+
+  // Route for deleting voicemail greeting
+  app.delete('/api/phone-settings/delete-voicemail-greeting/:id', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const phoneLineId = parseInt(req.params.id);
+      if (!phoneLineId || isNaN(phoneLineId)) {
+        return res.status(400).json({ error: 'Valid phone line ID is required' });
+      }
+      
+      // Update phone line to remove greeting URL
+      const { db } = await import('./db');
+      const { phoneLines } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const [updated] = await db
+        .update(phoneLines)
+        .set({ 
+          voicemailGreetingUrl: null,
+          updatedAt: new Date()
+        })
+        .where(eq(phoneLines.id, phoneLineId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: 'Phone line not found' });
+      }
+      
+      res.status(200).json({
+        success: true,
+        message: 'Voicemail greeting deleted successfully'
+      });
+    } catch (error: any) {
+      console.error('[VOICEMAIL GREETING] Error deleting:', error);
+      res.status(500).json({
+        error: 'Internal server error',
+        message: error.message || 'An unexpected error occurred'
+      });
     }
   });
 }
