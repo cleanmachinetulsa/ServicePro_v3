@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Phone, Clock, Save, CheckCircle2 } from 'lucide-react';
@@ -146,6 +147,9 @@ function PhoneLineSettings({
     if (localLine.label !== line.label) {
       updates.label = localLine.label;
     }
+    if (localLine.ringDuration !== line.ringDuration) {
+      updates.ringDuration = localLine.ringDuration;
+    }
 
     if (Object.keys(updates).length > 0) {
       onUpdate(updates);
@@ -228,6 +232,28 @@ function PhoneLineSettings({
             Calls forward during these hours, otherwise go to voicemail
           </p>
         </div>
+      </div>
+
+      <div className="space-y-3">
+        <Label htmlFor={`ring-duration-${line.id}`} className="flex items-center justify-between">
+          <span>Ring Duration</span>
+          <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+            {localLine.ringDuration || 10}s
+          </span>
+        </Label>
+        <Slider
+          id={`ring-duration-${line.id}`}
+          min={10}
+          max={60}
+          step={5}
+          value={[localLine.ringDuration || 10]}
+          onValueChange={(value) => handleChange('ringDuration', value[0])}
+          className="w-full"
+          data-testid={`slider-ring-duration-${line.phoneNumber}`}
+        />
+        <p className="text-xs text-muted-foreground">
+          How long to ring your phone before going to voicemail (10-60 seconds)
+        </p>
       </div>
 
       <div className="space-y-2">
