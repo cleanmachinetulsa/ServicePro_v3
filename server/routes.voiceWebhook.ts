@@ -48,6 +48,55 @@ async function getVoiceSettings() {
   }
 }
 
+// Helper function to get phone line greeting configuration
+async function getPhoneLineGreeting(phoneNumber: string) {
+  try {
+    const { phoneLines } = await import('@shared/schema');
+    const [line] = await db
+      .select()
+      .from(phoneLines)
+      .where(eq(phoneLines.phoneNumber, phoneNumber))
+      .limit(1);
+
+    if (!line) {
+      return null;
+    }
+
+    return {
+      voicemailGreeting: line.voicemailGreeting,
+      voicemailGreetingUrl: line.voicemailGreetingUrl,
+    };
+  } catch (error) {
+    console.error('[VOICE] Error fetching phone line greeting:', error);
+    return null;
+  }
+}
+
+// Helper function to add voicemail greeting to TwiML
+async function addVoicemailGreeting(twiml: any, phoneNumber: string, defaultGreeting: string) {
+  const greetingConfig = await getPhoneLineGreeting(phoneNumber);
+  
+  if (greetingConfig?.voicemailGreetingUrl) {
+    // Play audio recording if available
+    console.log('[VOICE] Using custom audio greeting for voicemail');
+    twiml.play(greetingConfig.voicemailGreetingUrl);
+  } else if (greetingConfig?.voicemailGreeting) {
+    // Use text-to-speech with custom text
+    console.log('[VOICE] Using custom text-to-speech greeting for voicemail');
+    twiml.say({
+      voice: 'Polly.Matthew',
+      language: 'en-US'
+    }, greetingConfig.voicemailGreeting);
+  } else {
+    // Use default greeting
+    console.log('[VOICE] Using default greeting for voicemail');
+    twiml.say({
+      voice: 'Polly.Matthew',
+      language: 'en-US'
+    }, defaultGreeting);
+  }
+}
+
 /**
  * Twilio Voice Webhook - Handles incoming calls with business hours routing + IVR
  * 
@@ -159,10 +208,9 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
 
         case '3':
           // Press 3: Leave voicemail for Jody
-          twiml.say({
-            voice: 'Polly.Matthew',
-            language: 'en-US'
-          },
+          await addVoicemailGreeting(
+            twiml,
+            twilioPhone,
             "Please leave your name, number, and a brief description of your vehicle " +
             "and what you're looking to have done. I'll call you back personally between jobs. " +
             "You'll hear a beep, then you can start your message."
@@ -295,10 +343,11 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
     }
 
     // Offer voicemail
-    twiml.say({
-      voice: 'alice',
-      language: 'en-US'
-    }, 'Sorry we missed your call. We\'ve sent you a text message. You can also leave a voicemail after the beep.');
+    await addVoicemailGreeting(
+      twiml,
+      twilioPhone,
+      'Sorry we missed your call. We\'ve sent you a text message. You can also leave a voicemail after the beep.'
+    );
 
     twiml.record({
       timeout: 10,
