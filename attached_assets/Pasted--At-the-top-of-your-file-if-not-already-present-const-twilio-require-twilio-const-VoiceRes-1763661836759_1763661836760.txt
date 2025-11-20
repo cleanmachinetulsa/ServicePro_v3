@@ -1,0 +1,230 @@
+// At the top of your file (if not already present)
+const twilio = require('twilio');
+const VoiceResponse = twilio.twiml.VoiceResponse;
+
+// If you don't already have a Twilio REST client, uncomment this:
+/*
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER; // your Clean Machine number
+*/
+
+// --- Clean Machine IVR with hidden Press 9 joke ---
+
+// 1) HELPER: send booking+pricing link via SMS
+async function sendBookingAndPricingLink(toNumber) {
+  // ⚠️ Replace this with your actual SMS logic or existing helper.
+  // Example using Twilio client:
+  /*
+  const bookingUrl = "https://cleanmachinetulsa.com/book"; // or your real URL
+  await client.messages.create({
+    from: TWILIO_FROM_NUMBER,
+    to: toNumber,
+    body:
+      "Here’s your Clean Machine fast lane link with pricing, packages, and booking: " +
+      bookingUrl
+  });
+  */
+}
+
+// 2) HELPER: notify you when there’s a new voicemail
+async function notifyNewVoicemail(recordingUrl, transcriptionText) {
+  // ⚠️ Replace with however you want to be notified (SMS, email, Slack, etc.).
+  // Simple SMS example to you:
+  /*
+  const ownerNumber = process.env.OWNER_MOBILE; // your personal cell
+  const preview =
+    (transcriptionText || "No transcription available").slice(0, 140);
+
+  await client.messages.create({
+    from: TWILIO_FROM_NUMBER,
+    to: ownerNumber,
+    body:
+      "New Clean Machine voicemail:\n" +
+      preview +
+      "\nRecording: " +
+      recordingUrl
+  });
+  */
+}
+
+// Simple joke bank for the Easter egg
+const cleanMachineJokes = [
+  "Why don't dirty cars tell secrets? Because there are too many bugs listening.",
+  "Why did the car apply for a job? It wanted to get its headlights on a brighter future.",
+  "I asked a Tulsa traffic cone what its plans were this weekend. It said: standing around, probably blocking something important.",
+  "Why did the entrepreneur take a ladder to work? Because the business was on another level.",
+  "Did you hear the rumor about butter? I'm not going to spread it."
+];
+
+function getRandomJoke() {
+  const i = Math.floor(Math.random() * cleanMachineJokes.length);
+  return cleanMachineJokes[i];
+}
+
+// Main IVR route (note: async so we can await helpers)
+app.post('/voice', async (req, res) => {
+  const twiml = new VoiceResponse();
+  const digits = (req.body.Digits || '').trim();
+
+  // No digits yet? Play main greeting and gather 1 digit
+  if (!digits) {
+    const gather = twiml.gather({
+      input: 'dtmf',
+      numDigits: 1,
+      action: '/voice',   // send result back to this same route
+      method: 'POST'
+    });
+
+    // Mixed Option C + B tone, Polly male voice
+    gather.say(
+      {
+        voice: 'Polly.Matthew',
+        language: 'en-US'
+      },
+      "Hi, this is Jody with Clean Machine Auto Detail here in Tulsa, thanks for calling. " +
+      "If you'd like the fastest service, you can text this number any time and we'll send you a quick link " +
+      "with current pricing, packages, and a way to check availability and book your detail. " +
+      "Otherwise, please choose from the following options. " +
+      "Press 1 to have that link sent to your phone right now. " +
+      "Press 3 to leave a message for me, Jody, and I'll call you back personally between jobs. " +
+      "Press 5 to hear these options again."
+    );
+
+    // If they don't press anything, retry once
+    twiml.say(
+      { voice: 'Polly.Matthew', language: 'en-US' },
+      "I didn't catch that, let's try again."
+    );
+    twiml.redirect('/voice');
+
+    res.type('text/xml');
+    return res.send(twiml.toString());
+  }
+
+  try {
+    // We have a digit, route based on choice
+    switch (digits) {
+      case '1':
+      case '2': // alias 2 to same behavior as 1, just in case
+        // PRESS 1 (and 2): send master link (pricing + packages + booking)
+        twiml.say(
+          { voice: 'Polly.Matthew', language: 'en-US' },
+          "Perfect. We'll text you a quick link with current pricing, packages, " +
+          "and a way to check availability and schedule your detail. " +
+          "If you don't receive a text in the next minute, you can also visit Clean Machine Tulsa dot com. " +
+          "Thanks for calling Clean Machine Auto Detail."
+        );
+
+        // 🔌 PREWIRED: plug this into your existing SMS logic
+        const callerNumber = req.body.From;
+        if (callerNumber) {
+          await sendBookingAndPricingLink(callerNumber);
+        }
+
+        twiml.hangup();
+        break;
+
+      case '3':
+        // PRESS 3: leave a message for Jody
+        twiml.say(
+          { voice: 'Polly.Matthew', language: 'en-US' },
+          "Please leave your name, number, and a brief description of your vehicle " +
+          "and what you're looking to have done. I'll call you back personally between jobs. " +
+          "You'll hear a beep, then you can start your message."
+        );
+
+        twiml.record({
+          maxLength: 120,          // up to 2 minutes
+          playBeep: true,
+          transcribe: true,        // can turn off if not needed
+          action: '/voice/voicemail-complete',
+          method: 'POST'
+        });
+
+        break;
+
+      case '5':
+        // PRESS 5: repeat menu
+        twiml.redirect('/voice');
+        break;
+
+      case '9':
+        // HIDDEN PRESS 9: Easter egg joke
+        twiml.say(
+          { voice: 'Polly.Matthew', language: 'en-US' },
+          "Well look at you. You found the Clean Machine secret button."
+        );
+
+        twiml.pause({ length: 1 });
+
+        twiml.say(
+          { voice: 'Polly.Matthew', language: 'en-US' },
+          getRandomJoke()
+        );
+
+        twiml.pause({ length: 1 });
+
+        // Let them choose: another joke, or main menu
+        const jokeGather = twiml.gather({
+          input: 'dtmf',
+          numDigits: 1,
+          action: '/voice',
+          method: 'POST'
+        });
+
+        jokeGather.say(
+          { voice: 'Polly.Matthew', language: 'en-US' },
+          "Press 9 for another joke, or press 5 to go back to the main menu."
+        );
+
+        // If they don't press anything after the joke, go back to menu
+        twiml.redirect('/voice');
+        break;
+
+      default:
+        // Invalid choice
+        twiml.say(
+          { voice: 'Polly.Matthew', language: 'en-US' },
+          "Sorry, I didn't recognize that choice."
+        );
+        twiml.redirect('/voice');
+        break;
+    }
+  } catch (err) {
+    console.error('Error in /voice IVR handler:', err);
+    twiml.say(
+      { voice: 'Polly.Matthew', language: 'en-US' },
+      "Sorry, something went wrong on our end. Please try again later."
+    );
+    twiml.hangup();
+  }
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+// Voicemail completion webhook (Twilio calls this after recording)
+app.post('/voice/voicemail-complete', async (req, res) => {
+  const twiml = new VoiceResponse();
+
+  const recordingUrl = req.body.RecordingUrl;
+  const transcriptionText = req.body.TranscriptionText;
+
+  try {
+    await notifyNewVoicemail(recordingUrl, transcriptionText);
+  } catch (err) {
+    console.error('Error notifying about voicemail:', err);
+  }
+
+  twiml.say(
+    { voice: 'Polly.Matthew', language: 'en-US' },
+    "Thanks for your message. We'll get back to you as soon as we can."
+  );
+  twiml.hangup();
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
