@@ -79,14 +79,8 @@ router.patch('/lines/:id', async (req: Request, res: Response) => {
       }
     }
     
-    // Validate SIP credential SID format if provided
-    if (updates.sipCredentialSid) {
-      if (!updates.sipCredentialSid.startsWith('CL')) {
-        return res.status(400).json({ 
-          error: 'Invalid credential SID format. Must start with "CL" (Twilio format)' 
-        });
-      }
-    }
+    // SIP credential SID is optional - can be left blank
+    // No validation needed if provided
     
     // Validate SIP fallback number format if provided
     if (updates.sipFallbackNumber) {
