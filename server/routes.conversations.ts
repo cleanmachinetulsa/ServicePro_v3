@@ -984,6 +984,57 @@ export function registerConversationRoutes(app: Express) {
         }
       }
 
+      // Get more appointment details if available
+      let serviceName = '';
+      let appointmentDate = '';
+      let appointmentTime = '';
+      let daysUntilAppointment = '';
+      let estimatedDuration = '';
+      
+      if (conversation.customerPhone) {
+        const customerData = await db
+          .select()
+          .from(customers)
+          .where(eq(customers.phone, conversation.customerPhone))
+          .limit(1);
+
+        if (customerData.length > 0) {
+          const nextAppointment = await db
+            .select()
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.customerId, customerData[0].id),
+                gte(appointments.scheduledTime, new Date())
+              )
+            )
+            .orderBy(appointments.scheduledTime)
+            .limit(1);
+
+          if (nextAppointment.length > 0) {
+            serviceName = nextAppointment[0].serviceType || 'Auto Detail';
+            const apptDate = new Date(nextAppointment[0].scheduledTime);
+            appointmentDate = apptDate.toLocaleDateString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric' 
+            });
+            appointmentTime = apptDate.toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: '2-digit',
+              hour12: true 
+            });
+            
+            const now = new Date();
+            const diffTime = apptDate.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            daysUntilAppointment = diffDays === 0 ? 'today' : diffDays === 1 ? 'tomorrow' : `${diffDays} days`;
+            
+            estimatedDuration = nextAppointment[0].estimatedDuration ? `${nextAppointment[0].estimatedDuration} min` : '2-3 hours';
+          }
+        }
+      }
+
       // Build variables with actual values
       const variables = [
         {
@@ -1002,19 +1053,49 @@ export function registerConversationRoutes(app: Express) {
           value: vehicleInfo,
         },
         {
-          variable: '{{next_available_slot}}',
-          description: 'Next available appointment',
-          value: nextSlot,
-        },
-        {
           variable: '{{business_name}}',
           description: 'Your business name',
           value: 'Clean Machine Auto Detail',
         },
         {
+          variable: '{{business_phone}}',
+          description: 'Main business phone',
+          value: '918-856-5304',
+        },
+        {
           variable: '{{operator_name}}',
           description: 'Name of person sending message',
           value: operatorName,
+        },
+        {
+          variable: '{{service_name}}',
+          description: 'Upcoming service type',
+          value: serviceName || 'Auto detail service',
+        },
+        {
+          variable: '{{appointment_date}}',
+          description: 'Date of next appointment',
+          value: appointmentDate || 'Contact us to schedule',
+        },
+        {
+          variable: '{{appointment_time}}',
+          description: 'Time of next appointment',
+          value: appointmentTime || 'TBD',
+        },
+        {
+          variable: '{{days_until_appointment}}',
+          description: 'Days until next appointment',
+          value: daysUntilAppointment || 'No appointment scheduled',
+        },
+        {
+          variable: '{{estimated_duration}}',
+          description: 'Estimated service duration',
+          value: estimatedDuration || '2-3 hours',
+        },
+        {
+          variable: '{{next_available_slot}}',
+          description: 'Full next appointment details',
+          value: nextSlot,
         },
       ];
 
