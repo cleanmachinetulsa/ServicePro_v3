@@ -40,7 +40,7 @@ export const sessionMiddleware = session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true, // Prevents JavaScript access (XSS protection)
-    secure: 'auto', // Auto-detect based on request protocol and trust proxy setting
+    secure: isReplit || process.env.NODE_ENV === 'production', // Always secure on Replit
     sameSite: (isReplit || process.env.NODE_ENV === 'production') ? 'none' : 'lax', // 'none' for Replit/production
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days (extended session)
     path: '/', // Ensure cookie is available on all paths
