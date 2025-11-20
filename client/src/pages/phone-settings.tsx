@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useLocation } from 'wouter';
+import { useLocation, Link } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,11 @@ interface PhoneLine {
   voicemailGreetingUrl: string | null;
   afterHoursVoicemailGreeting: string | null;
   afterHoursVoicemailGreetingUrl: string | null;
+  // SIP routing fields
+  sipEnabled: boolean;
+  sipEndpoint: string | null;
+  sipCredentialSid: string | null;
+  sipFallbackNumber: string | null;
   createdAt: Date;
   updatedAt: Date;
   schedules: PhoneSchedule[];
@@ -73,6 +78,11 @@ export default function PhoneSettings() {
     voicemailGreetingUrl: null as string | null,
     afterHoursVoicemailGreeting: '',
     afterHoursVoicemailGreetingUrl: null as string | null,
+    // SIP routing fields
+    sipEnabled: false,
+    sipEndpoint: '',
+    sipCredentialSid: '',
+    sipFallbackNumber: '',
   });
 
   // Audio file upload state
@@ -188,6 +198,11 @@ export default function PhoneSettings() {
       voicemailGreetingUrl: line.voicemailGreetingUrl || null,
       afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting || '',
       afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl || null,
+      // SIP routing fields
+      sipEnabled: line.sipEnabled || false,
+      sipEndpoint: line.sipEndpoint || '',
+      sipCredentialSid: line.sipCredentialSid || '',
+      sipFallbackNumber: line.sipFallbackNumber || '',
     });
     setAudioFile(null);
     setAfterHoursAudioFile(null);
@@ -229,6 +244,55 @@ export default function PhoneSettings() {
         variant: 'destructive',
       });
       return;
+    }
+
+    // SIP Validation
+    if (lineConfig.sipEnabled) {
+      // If SIP is enabled, sipEndpoint is required
+      if (!lineConfig.sipEndpoint || lineConfig.sipEndpoint.trim() === '') {
+        toast({
+          title: 'Validation Error',
+          description: 'SIP endpoint is required when SIP routing is enabled.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      // Validate SIP endpoint format: username@domain
+      const sipEndpointRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!sipEndpointRegex.test(lineConfig.sipEndpoint)) {
+        toast({
+          title: 'Validation Error',
+          description: 'Invalid SIP endpoint format. Must be username@domain (e.g., jody@sip.cleanmachinetulsa.com)',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+    
+    // Validate SIP credential SID format if provided
+    if (lineConfig.sipCredentialSid && lineConfig.sipCredentialSid.trim() !== '') {
+      if (!lineConfig.sipCredentialSid.startsWith('CL')) {
+        toast({
+          title: 'Validation Error',
+          description: 'Invalid credential SID format. Must start with "CL" (Twilio format)',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+    
+    // Validate SIP fallback number format if provided
+    if (lineConfig.sipFallbackNumber && lineConfig.sipFallbackNumber.trim() !== '') {
+      const e164Regex = /^\+[1-9]\d{10,14}$/;
+      if (!e164Regex.test(lineConfig.sipFallbackNumber)) {
+        toast({
+          title: 'Validation Error',
+          description: 'Invalid SIP fallback number. Must be in E.164 format (e.g., +19188565711)',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
 
     updateLineMutation.mutate({
@@ -968,6 +1032,120 @@ export default function PhoneSettings() {
                   </div>
                 )}
               </div>
+            </div>
+
+            <Separator />
+
+            {/* SIP Routing Configuration */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="sip-enabled" className="flex flex-col gap-1">
+                  <span className="flex items-center gap-2">
+                    <Phone className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    Enable SIP Routing
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 font-normal">
+                    Route calls through SIP for custom ringtones on your Samsung phone. Requires Twilio SIP Domain setup.
+                  </span>
+                </Label>
+                <Switch
+                  id="sip-enabled"
+                  checked={lineConfig.sipEnabled}
+                  onCheckedChange={(checked) =>
+                    setLineConfig({ ...lineConfig, sipEnabled: checked })
+                  }
+                  data-testid="toggle-sip-enabled"
+                />
+              </div>
+
+              {lineConfig.sipEnabled && (
+                <div className="space-y-4 p-4 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg">
+                  <div className="space-y-2">
+                    <Label htmlFor="sip-endpoint" className="text-purple-900 dark:text-purple-100">
+                      SIP Endpoint
+                      <span className="text-xs text-purple-600 dark:text-purple-400 ml-2">
+                        (username@domain)
+                      </span>
+                    </Label>
+                    <Input
+                      id="sip-endpoint"
+                      placeholder="jody@sip.cleanmachinetulsa.com"
+                      value={lineConfig.sipEndpoint}
+                      onChange={(e) =>
+                        setLineConfig({ ...lineConfig, sipEndpoint: e.target.value })
+                      }
+                      data-testid="input-sip-endpoint"
+                      className="border-purple-300 dark:border-purple-700 focus:ring-purple-500"
+                    />
+                    <p className="text-xs text-purple-600 dark:text-purple-400">
+                      Your SIP address from Twilio SIP Domain configuration
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="sip-credential-sid" className="text-purple-900 dark:text-purple-100">
+                      Credential SID
+                      <span className="text-xs text-purple-600 dark:text-purple-400 ml-2">
+                        (optional)
+                      </span>
+                    </Label>
+                    <Input
+                      id="sip-credential-sid"
+                      placeholder="CLxxx..."
+                      value={lineConfig.sipCredentialSid}
+                      onChange={(e) =>
+                        setLineConfig({ ...lineConfig, sipCredentialSid: e.target.value })
+                      }
+                      data-testid="input-sip-credential-sid"
+                      className="border-purple-300 dark:border-purple-700 focus:ring-purple-500"
+                    />
+                    <p className="text-xs text-purple-600 dark:text-purple-400">
+                      From Twilio Console → Voice → SIP Domains → Credential Lists
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="sip-fallback-number" className="text-purple-900 dark:text-purple-100">
+                      Fallback Number
+                      <span className="text-xs text-purple-600 dark:text-purple-400 ml-2">
+                        (optional - E.164 format)
+                      </span>
+                    </Label>
+                    <Input
+                      id="sip-fallback-number"
+                      placeholder="+19188565711"
+                      value={lineConfig.sipFallbackNumber}
+                      onChange={(e) =>
+                        setLineConfig({ ...lineConfig, sipFallbackNumber: e.target.value })
+                      }
+                      data-testid="input-sip-fallback-number"
+                      className="border-purple-300 dark:border-purple-700 focus:ring-purple-500"
+                    />
+                    <p className="text-xs text-purple-600 dark:text-purple-400">
+                      Tries SIP first, then this number if SIP fails (optional)
+                    </p>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-3 bg-purple-100 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-700 rounded">
+                    <Info className="h-4 w-4 text-purple-700 dark:text-purple-300 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-purple-700 dark:text-purple-300">
+                      <strong>Note:</strong> SIP routing allows you to set custom ringtones on your Samsung phone for business calls. 
+                      You'll need to configure a Twilio SIP Domain and register it on your phone's SIP settings.
+                    </p>
+                  </div>
+
+                  <Link href="/sip-setup-guide">
+                    <Button
+                      variant="outline"
+                      className="w-full border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/30"
+                      data-testid="button-sip-setup-guide"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      View Complete SIP Setup Guide
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
 
