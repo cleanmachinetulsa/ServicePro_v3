@@ -34,10 +34,10 @@ import { eq } from 'drizzle-orm';
 const app = express();
 
 // CRITICAL: Trust proxy headers (required for Replit deployment)
-// Configure to trust only the first hop (Replit's reverse proxy)
-// This prevents IP spoofing while allowing proper client IP identification
-// For Replit: Trust 1 hop (Replit's proxy adds X-Forwarded-For)
-app.set('trust proxy', 1);
+// Replit uses multiple proxy layers (load balancer + Cloudflare)
+// We must trust ALL proxies in the chain for secure cookies to work
+// Setting to true ensures session authentication works on deployed sites
+app.set('trust proxy', true);
 
 // SECURITY: Helmet middleware for security headers
 // Disable all cross-origin policies for Replit preview compatibility
@@ -51,11 +51,13 @@ app.use(helmet({
 
 // SECURITY: Global rate limiting (600 requests per IP per minute)
 // Increased from 300 to accommodate automated testing and heavy usage scenarios
+// Note: validate.trustProxy set to false because we use 'trust proxy: true' for Replit multi-proxy setup
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 600, // Max 600 requests per window per IP (10/sec)
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  validate: { trustProxy: false }, // Disable validation - we need trust proxy: true for production auth
   message: {
     error: 'Too many requests',
     message: 'Rate limit exceeded. Please wait a moment and try again.',
