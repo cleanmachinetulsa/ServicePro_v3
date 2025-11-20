@@ -145,6 +145,6 @@ export const AVAILABLE_VARIABLES = [
   {
     variable: '{{operator_name}}',
     description: 'Name of person sending message',
-    example: 'Sarah',
+    example: 'Jody',
   },
 ];

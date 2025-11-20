@@ -2,8 +2,8 @@ import { Express, Request, Response, NextFunction } from 'express';
 import twilio from 'twilio';
 import axios from 'axios';
 import { db } from './db';
-import { facebookPageTokens, conversations, messageReactions, messages } from '@shared/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { facebookPageTokens, conversations, messageReactions, messages, customers, appointments } from '@shared/schema';
+import { eq, and, inArray, gte } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { normalizePhone } from './phoneValidationMiddleware';
 import {
@@ -899,13 +899,137 @@ export function registerConversationRoutes(app: Express) {
     }
   });
 
-  // Get available template variables
+  // Get available template variables (static list with examples)
   app.get('/api/template-variables', async (req: Request, res: Response) => {
     const { AVAILABLE_VARIABLES } = await import('./templateVariableService');
     res.json({
       success: true,
       variables: AVAILABLE_VARIABLES,
     });
+  });
+
+  // Get template variables with REAL values for a specific conversation
+  app.get('/api/conversations/:id/template-variables', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+
+      if (isNaN(conversationId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid conversation ID',
+        });
+      }
+
+      // Get conversation
+      const conversation = await getConversationById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversation not found',
+        });
+      }
+
+      // Get customer data
+      let vehicleInfo = 'your vehicle';
+      let nextSlot = 'Contact us to schedule';
+      if (conversation.customerPhone) {
+        const customerData = await db
+          .select()
+          .from(customers)
+          .where(eq(customers.phone, conversation.customerPhone))
+          .limit(1);
+
+        if (customerData.length > 0) {
+          if (customerData[0].vehicleInfo) {
+            vehicleInfo = customerData[0].vehicleInfo;
+          }
+
+          // Get next appointment
+          const upcomingAppointment = await db
+            .select()
+            .from(appointments)
+            .where(
+              and(
+                eq(appointments.customerId, customerData[0].id),
+                gte(appointments.scheduledTime, new Date())
+              )
+            )
+            .orderBy(appointments.scheduledTime)
+            .limit(1);
+
+          if (upcomingAppointment.length > 0) {
+            nextSlot = new Date(upcomingAppointment[0].scheduledTime).toLocaleString('en-US', {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            });
+          }
+        }
+      }
+
+      // Get operator name from current user
+      let operatorName = 'Jody';
+      if ((req as any).session?.userId) {
+        const { users } = await import('@shared/schema');
+        const userData = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, (req as any).session.userId))
+          .limit(1);
+        
+        if (userData.length > 0 && userData[0].operatorName) {
+          operatorName = userData[0].operatorName;
+        }
+      }
+
+      // Build variables with actual values
+      const variables = [
+        {
+          variable: '{{customer_name}}',
+          description: "Customer's name",
+          value: conversation.customerName || 'there',
+        },
+        {
+          variable: '{{phone}}',
+          description: "Customer's phone number",
+          value: conversation.customerPhone || '',
+        },
+        {
+          variable: '{{vehicle}}',
+          description: "Customer's vehicle",
+          value: vehicleInfo,
+        },
+        {
+          variable: '{{next_available_slot}}',
+          description: 'Next available appointment',
+          value: nextSlot,
+        },
+        {
+          variable: '{{business_name}}',
+          description: 'Your business name',
+          value: 'Clean Machine Auto Detail',
+        },
+        {
+          variable: '{{operator_name}}',
+          description: 'Name of person sending message',
+          value: operatorName,
+        },
+      ];
+
+      res.json({
+        success: true,
+        variables,
+      });
+    } catch (error) {
+      console.error('Error fetching template variables:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch template variables',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   // Assign conversation to agent
