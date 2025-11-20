@@ -31,6 +31,9 @@ Key features include multi-platform messaging (Facebook Messenger, Instagram DMs
 ### System Design Choices
 The architecture consists of a React with TypeScript frontend (Vite, Tailwind CSS, shadcn/ui, TanStack React Query, React Hook Form with Zod, Stripe) and an Express.js backend with TypeScript. Core architectural patterns include a monolithic service layer, multi-channel response formatting for AI, a customer memory system, and Google Sheets integration as a dynamic knowledge base. Data is stored in PostgreSQL (Neon serverless) with Drizzle ORM, Google Sheets, and Google Drive. Authentication is session-based.
 
+### Deployment & Production Safety
+**Critical Configuration:** The Express server uses `app.set('trust proxy', true)` to properly handle Replit's multi-layer proxy infrastructure (Cloudflare + Load Balancer). This setting is CRITICAL for production - using `trust proxy: 1` breaks session authentication on deployed sites by preventing secure cookies from being set correctly. Always verify this setting before publishing to prevent 401 errors and connection failures. See `DEPLOYMENT_SAFETY_CHECKLIST.md` for comprehensive pre-deployment verification steps.
+
 ## External Dependencies
 
 **Google Workspace Suite**:
