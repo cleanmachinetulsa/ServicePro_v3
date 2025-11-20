@@ -31,7 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 
 interface Message {
   id: string;
@@ -54,7 +54,23 @@ const suggestionChips = [
 ];
 
 export default function ChatPage() {
+  const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
+  
+  // Chat input and UI state
+  const [inputText, setInputText] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [showSchedulerDialog, setShowSchedulerDialog] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  
+  // Refs for DOM elements
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const messageEndRef = useRef<HTMLDivElement>(null);
+  
+  // Customer info (could be enhanced with actual user data)
+  const customerInfo = { phone: "", name: "" };
   
   // Load messages from localStorage for persistence across views
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -476,7 +492,7 @@ export default function ChatPage() {
                 >
                   <EmojiPicker
                     onEmojiClick={handleEmojiClick}
-                    theme="dark"
+                    theme={Theme.DARK}
                     width={350}
                     height={450}
                     searchPlaceHolder="Search emojis..."
