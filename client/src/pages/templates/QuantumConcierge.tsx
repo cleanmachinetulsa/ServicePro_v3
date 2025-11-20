@@ -428,9 +428,9 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
                 asChild
                 data-testid="button-cta-call"
               >
-                <a href="tel:+19188565711" className="flex items-center gap-2">
+                <a href="tel:+19188565304" className="flex items-center gap-2">
                   <Phone className="w-5 h-5" />
-                  (918) 856-5711
+                  (918) 856-5304
                 </a>
               </Button>
             </div>

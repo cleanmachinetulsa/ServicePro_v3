@@ -228,7 +228,7 @@ export function NotificationPreferences() {
                   id="sms-fallback-phone"
                   data-testid="input-sms-fallback-phone"
                   type="tel"
-                  placeholder="+1 918-856-5711"
+                  placeholder="+1 918-856-5304"
                   value={smsFallbackSettings.phone}
                   onChange={(e) => setSmsFallbackSettings({ ...smsFallbackSettings, phone: e.target.value })}
                   className="font-mono"

@@ -180,11 +180,11 @@ export default function ExecutiveMinimal({ content: propsContent }: ExecutiveMin
               transition={{ duration: 0.8, delay: 0.2 }}
               className="bg-white p-8 hover:bg-gray-50 transition-colors cursor-pointer"
             >
-              <a href={`tel:${content?.phoneNumber || '918-856-5711'}`}>
+              <a href={`tel:${content?.phoneNumber || '918-856-5304'}`}>
                 <div className="text-center">
                   <Phone className="h-8 w-8 text-gray-900 mx-auto mb-4" strokeWidth={1.5} />
                   <h3 className="text-lg font-light mb-2 text-gray-900">Call Direct</h3>
-                  <p className="text-sm text-gray-500 font-light">{content?.phoneNumber || '918-856-5711'}</p>
+                  <p className="text-sm text-gray-500 font-light">{content?.phoneNumber || '918-856-5304'}</p>
                 </div>
               </a>
             </motion.div>
@@ -288,7 +288,7 @@ export default function ExecutiveMinimal({ content: propsContent }: ExecutiveMin
             <div>
               <h3 className="font-light text-lg mb-4 text-gray-900">Contact</h3>
               <p className="text-sm text-gray-600 font-light mb-2">
-                {content?.phoneNumber || '918-856-5711'}
+                {content?.phoneNumber || '918-856-5304'}
               </p>
               <p className="text-sm text-gray-600 font-light">
                 Tulsa, Oklahoma

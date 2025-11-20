@@ -160,9 +160,9 @@ export default function PrestigeGrid({ content: propsContent }: PrestigeGridProp
                 className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10"
                 asChild
               >
-                <a href={`tel:${content?.phoneNumber || '918-856-5711'}`} data-testid="button-call">
+                <a href={`tel:${content?.phoneNumber || '918-856-5304'}`} data-testid="button-call">
                   <Phone className="h-4 w-4 mr-2" />
-                  {content?.phoneNumber || '918-856-5711'}
+                  {content?.phoneNumber || '918-856-5304'}
                 </a>
               </Button>
             </div>
@@ -301,7 +301,7 @@ export default function PrestigeGrid({ content: propsContent }: PrestigeGridProp
             <div>
               <h3 className="font-bold text-lg mb-4">Contact</h3>
               <p className="text-sm text-gray-400 mb-2">
-                {content?.phoneNumber || '918-856-5711'}
+                {content?.phoneNumber || '918-856-5304'}
               </p>
               <p className="text-sm text-gray-400">
                 Tulsa, Oklahoma

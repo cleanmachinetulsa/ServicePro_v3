@@ -51,11 +51,11 @@ export default function DepositPaymentCancelled() {
           <Button 
             variant="outline" 
             className="w-full"
-            onClick={() => window.location.href = 'tel:918-856-5711'}
+            onClick={() => window.location.href = 'tel:918-856-5304'}
             data-testid="button-call"
           >
             <Phone className="w-4 h-4 mr-2" />
-            Call Us: 918-856-5711
+            Call Us: 918-856-5304
           </Button>
         </div>
       </Card>
