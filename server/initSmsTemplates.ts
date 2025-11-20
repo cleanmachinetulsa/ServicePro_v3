@@ -26,12 +26,12 @@ const DEFAULT_TEMPLATES = [
     description: "Sent when customer successfully books an appointment",
     body: "Thanks {firstName}! Your {serviceName} appointment is confirmed for {date} at {time}. We'll send you a reminder 24 hours before.\n\nView your services: https://cleanmachinetulsa.replit.app/my-services\n\nReply STOP to opt out.",
     variables: [
-      { name: "firstName", description: "Customer's first name", sample: "Sarah", required: true },
+      { name: "firstName", description: "Customer's first name", sample: "Alex", required: true },
       { name: "serviceName", description: "Service booked", sample: "Full Detail", required: true },
       { name: "date", description: "Appointment date", sample: "Dec 15", required: true },
       { name: "time", description: "Appointment time", sample: "2:00 PM", required: true },
     ],
-    defaultPayload: { firstName: "Sarah", serviceName: "Full Detail", date: "Dec 15", time: "2:00 PM" },
+    defaultPayload: { firstName: "Alex", serviceName: "Full Detail", date: "Dec 15", time: "2:00 PM" },
     enabled: true,
   },
   {
@@ -144,16 +144,16 @@ const DEFAULT_TEMPLATES = [
     description: "Sent when customer sends referral invite to a friend via SMS",
     body: "Hey! {referrerName} thinks you'd love Clean Machine Auto Detail! 🚗✨\n\nUse code {referralCode} to get {refereeReward} your first detail, and we'll both get {referrerReward}!\n\nBook now: {bookingUrl}",
     variables: [
-      { name: "referrerName", description: "Referrer's first name", sample: "Sarah", required: true },
-      { name: "referralCode", description: "Unique referral code", sample: "SARAH-AB3C5", required: true },
-      { name: "bookingUrl", description: "Booking URL with referral code", sample: "https://cleanmachinetulsa.com/book?ref=SARAH-AB3C5", required: true },
+      { name: "referrerName", description: "Referrer's first name", sample: "Jordan", required: true },
+      { name: "referralCode", description: "Unique referral code", sample: "JORDAN-AB3C5", required: true },
+      { name: "bookingUrl", description: "Booking URL with referral code", sample: "https://cleanmachinetulsa.com/book?ref=JORDAN-AB3C5", required: true },
       { name: "referrerReward", description: "Reward for referrer (from config)", sample: "500 loyalty points", required: true },
       { name: "refereeReward", description: "Reward for referee (from config)", sample: "$25 off", required: true },
     ],
     defaultPayload: {
-      referrerName: "Sarah",
-      referralCode: "SARAH-AB3C5",
-      bookingUrl: "https://cleanmachinetulsa.com/book?ref=SARAH-AB3C5",
+      referrerName: "Jordan",
+      referralCode: "JORDAN-AB3C5",
+      bookingUrl: "https://cleanmachinetulsa.com/book?ref=JORDAN-AB3C5",
       referrerReward: "500 loyalty points",
       refereeReward: "$25 off"
     },

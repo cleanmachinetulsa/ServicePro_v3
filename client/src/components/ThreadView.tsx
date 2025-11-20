@@ -190,9 +190,10 @@ export default function ThreadView({
 
   const quickReplyCategories = quickRepliesData?.categories || [];
 
-  // Fetch template variables
-  const { data: templateVariablesData } = useQuery<{ success: boolean; variables: Array<{ variable: string; description: string; example: string }> }>({
-    queryKey: ['/api/template-variables'],
+  // Fetch template variables with REAL values for this conversation
+  const { data: templateVariablesData } = useQuery<{ success: boolean; variables: Array<{ variable: string; description: string; value: string }> }>({
+    queryKey: [`/api/conversations/${conversationId}/template-variables`],
+    enabled: !!conversationId,
   });
 
   const templateVariables = templateVariablesData?.variables || [];
@@ -1379,33 +1380,6 @@ export default function ThreadView({
                   </div>
                 </Button>
                 
-                {/* Emoji Picker Button */}
-                <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="h-16 w-12 rounded-lg border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
-                      data-testid="button-emoji-picker"
-                      title="Add emoji"
-                    >
-                      <div className="flex flex-col items-center gap-0.5">
-                        <Smile className="h-4 w-4 text-primary" />
-                        <span className="text-[9px] font-medium">Emoji</span>
-                      </div>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 border-0 shadow-xl" align="end" side="top">
-                    <EmojiPicker
-                      onEmojiClick={handleEmojiClick}
-                      searchDisabled={false}
-                      skinTonesDisabled={false}
-                      height={400}
-                      width={350}
-                      previewConfig={{ showPreview: false }}
-                    />
-                  </PopoverContent>
-                </Popover>
-                
                 <div className="flex-1 relative min-w-0">
                   <Textarea
                     ref={textareaRef}
@@ -1468,18 +1442,23 @@ export default function ThreadView({
                             className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                             data-testid={`template-var-${template.variable}`}
                           >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-mono text-xs font-semibold text-primary truncate">
-                                  {template.variable}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {template.description}
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-mono text-xs font-semibold text-primary truncate">
+                                    {template.variable}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {template.description}
+                                  </div>
                                 </div>
                               </div>
-                              <Badge variant="secondary" className="text-[10px] shrink-0">
-                                {template.example}
-                              </Badge>
+                              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded px-2 py-1.5 mt-1">
+                                <div className="text-[10px] text-muted-foreground mb-0.5">Preview:</div>
+                                <div className="text-xs font-medium text-blue-900 dark:text-blue-100 truncate">
+                                  {template.value}
+                                </div>
+                              </div>
                             </div>
                           </button>
                         ))}
