@@ -20,9 +20,19 @@ The system supports production-ready message attachments with Google Drive, TCPA
 1.  **Main Business Line: 918-856-5304** - Ported Google Voice number for all customer communications (primary).
 2.  **Jody's Business Line: 918-856-5711** - Twilio number for direct business calls.
 3.  **Emergency Alert Number: 918-282-0103** - For critical system alerts (personal number).
+
 **Call Flow Architecture:** Customer calls Main Line → IVR Menu (booking SMS or speak with someone) → Call forwards to Owner Cell → Caller ID shows customer's actual number.
+
 **Caller ID Configuration:** Twilio TwiML configured with `callerId="${callerNumber}"` ensures owner sees customer's real phone number.
+
+**SIP Routing (Custom Ringtones):** Optional Twilio SIP integration enables custom business call ringtones on Samsung phones. When enabled, calls route through SIP endpoint (e.g., jody@sip.cleanmachinetulsa.com) showing real customer caller ID + custom line label + unique ringtone. Sequential fallback supported: tries SIP first, then regular phone number. Configured per phone line in Phone Settings dashboard. See `/sip-setup-guide` for Twilio SIP Domain setup instructions.
+
+**After-Hours Voicemail:** Separate greeting system that activates 30 minutes after last schedule ends. Skips IVR menu and call forwarding, goes directly to voicemail with custom after-hours greeting. Supports both text-to-speech and audio file uploads.
+
+**Ring Duration:** Configurable 10-60 seconds (default 10s). Applies to both PSTN forwarding and SIP calls before going to voicemail.
+
 **Notification System:** Configurable preferences via Dashboard → Settings → Notifications for Voicemail, Cash Payments, System Errors, Appointment Reminders, and Missed Calls.
+
 **Communication Hub Integration:** Recent Callers widget, click-to-SMS, one-click callback, and automatic customer record creation.
 
 ### Feature Specifications
