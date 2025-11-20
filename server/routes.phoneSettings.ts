@@ -61,6 +61,43 @@ router.patch('/lines/:id', async (req: Request, res: Response) => {
       });
     }
     
+    // SIP Validation
+    if (updates.sipEnabled) {
+      // If SIP is enabled, sipEndpoint is required
+      if (!updates.sipEndpoint) {
+        return res.status(400).json({ 
+          error: 'SIP endpoint is required when SIP routing is enabled' 
+        });
+      }
+      
+      // Validate SIP endpoint format: username@domain
+      const sipEndpointRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!sipEndpointRegex.test(updates.sipEndpoint)) {
+        return res.status(400).json({ 
+          error: 'Invalid SIP endpoint format. Must be username@domain (e.g., jody@sip.cleanmachinetulsa.com)' 
+        });
+      }
+    }
+    
+    // Validate SIP credential SID format if provided
+    if (updates.sipCredentialSid) {
+      if (!updates.sipCredentialSid.startsWith('CL')) {
+        return res.status(400).json({ 
+          error: 'Invalid credential SID format. Must start with "CL" (Twilio format)' 
+        });
+      }
+    }
+    
+    // Validate SIP fallback number format if provided
+    if (updates.sipFallbackNumber) {
+      const e164Regex = /^\+[1-9]\d{10,14}$/;
+      if (!e164Regex.test(updates.sipFallbackNumber)) {
+        return res.status(400).json({ 
+          error: 'Invalid SIP fallback number. Must be in E.164 format (e.g., +19188565711)' 
+        });
+      }
+    }
+    
     const [updated] = await db
       .update(phoneLines)
       .set({ ...updates, updatedAt: new Date() })
@@ -202,6 +239,10 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
   isAfterHours: boolean;
   afterHoursVoicemailGreeting: string | null;
   afterHoursVoicemailGreetingUrl: string | null;
+  // SIP routing fields
+  sipEnabled: boolean;
+  sipEndpoint: string | null;
+  sipFallbackNumber: string | null;
 }> {
   try {
     // Get phone line config
@@ -221,6 +262,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
         isAfterHours: false,
         afterHoursVoicemailGreeting: null,
         afterHoursVoicemailGreetingUrl: null,
+        sipEnabled: false,
+        sipEndpoint: null,
+        sipFallbackNumber: null,
       };
     }
 
@@ -234,6 +278,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
         isAfterHours: false,
         afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting,
         afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl,
+        sipEnabled: line.sipEnabled || false,
+        sipEndpoint: line.sipEndpoint || null,
+        sipFallbackNumber: line.sipFallbackNumber || null,
       };
     }
 
@@ -299,6 +346,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
           isAfterHours: true,
           afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting,
           afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl,
+          sipEnabled: line.sipEnabled || false,
+          sipEndpoint: line.sipEndpoint || null,
+          sipFallbackNumber: line.sipFallbackNumber || null,
         };
       }
     }
@@ -320,6 +370,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       isAfterHours: false,
       afterHoursVoicemailGreeting: line.afterHoursVoicemailGreeting,
       afterHoursVoicemailGreetingUrl: line.afterHoursVoicemailGreetingUrl,
+      sipEnabled: line.sipEnabled || false,
+      sipEndpoint: line.sipEndpoint || null,
+      sipFallbackNumber: line.sipFallbackNumber || null,
     };
   } catch (error) {
     console.error('[PHONE ROUTING] Error determining routing:', error);
@@ -332,6 +385,9 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       isAfterHours: false,
       afterHoursVoicemailGreeting: null,
       afterHoursVoicemailGreetingUrl: null,
+      sipEnabled: false,
+      sipEndpoint: null,
+      sipFallbackNumber: null,
     };
   }
 }

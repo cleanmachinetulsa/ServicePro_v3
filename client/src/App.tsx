@@ -64,6 +64,7 @@ import SecuritySettingsPage from './pages/security-settings';
 import TechnicianPage from './pages/technician';
 import ReferralPage from './pages/ReferralPage';
 import PhoneSettingsPage from './pages/phone-settings';
+import SipSetupGuide from './pages/sip-setup-guide';
 import Billing from './pages/billing';
 import EscalationsPage from './pages/escalations';
 import ReminderDashboard from './pages/ReminderDashboard';
@@ -135,6 +136,9 @@ function Router() {
       </Route>
       <Route path="/phone-settings">
         <AuthGuard><PhoneSettingsPage /></AuthGuard>
+      </Route>
+      <Route path="/sip-setup-guide">
+        <AuthGuard><SipSetupGuide /></AuthGuard>
       </Route>
       <Route path="/live-conversations">
         <AuthGuard><LiveConversationsPage /></AuthGuard>

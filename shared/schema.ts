@@ -654,6 +654,13 @@ export const phoneLines = pgTable("phone_lines", {
   voicemailGreetingUrl: text("voicemail_greeting_url"), // Custom voicemail greeting audio recording URL (Google Drive)
   afterHoursVoicemailGreeting: text("after_hours_voicemail_greeting"), // After-hours voicemail greeting (30min buffer after last schedule)
   afterHoursVoicemailGreetingUrl: text("after_hours_voicemail_greeting_url"), // After-hours voicemail greeting audio URL
+  
+  // SIP Integration for custom ringtones (Samsung phones)
+  sipEnabled: boolean("sip_enabled").default(false), // Toggle SIP routing on/off
+  sipEndpoint: text("sip_endpoint"), // SIP URI like "jody@sip.cleanmachinetulsa.com"
+  sipCredentialSid: text("sip_credential_sid"), // Twilio credential list SID (CLxxx...) - never store actual password
+  sipFallbackNumber: varchar("sip_fallback_number", { length: 20 }), // Fallback if SIP fails (E.164 format)
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({

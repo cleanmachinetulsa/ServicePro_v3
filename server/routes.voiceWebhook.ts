@@ -196,16 +196,39 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
           language: 'en-US'
         }, "We didn't get your message. Please try again later.");
       } else if (routing.shouldForward && routing.forwardingNumber) {
-        // BUSINESS HOURS: Forward call to owner's phone with caller ID passthrough
-        console.log(`[VOICE] Forwarding ${callerPhone} to ${routing.forwardingNumber} for ${routing.ringDuration}s`);
+        // BUSINESS HOURS: Forward call to owner's phone
         
-        const dial = twiml.dial({
-          callerId: callerPhone, // 🔑 CALLER ID PASSTHROUGH - shows customer's real number on Samsung
-          timeout: routing.ringDuration, // 🔑 RING DURATION - configured in Phone Settings
-          action: '/api/voice/voice-dial-status',
-          method: 'POST',
-        });
-        dial.number(routing.forwardingNumber);
+        // SIP ROUTING: Check if SIP is enabled for custom ringtones
+        if (routing.sipEnabled && routing.sipEndpoint) {
+          console.log(`[VOICE] Dialing SIP: ${routing.sipEndpoint} with ${routing.ringDuration}s timeout`);
+          
+          const dial = twiml.dial({
+            callerId: callerPhone, // 🔑 CALLER ID PASSTHROUGH - shows customer's real number
+            timeout: routing.ringDuration, // 🔑 RING DURATION - configured in Phone Settings
+            action: '/api/voice/voice-dial-status',
+            method: 'POST',
+          });
+          
+          // Primary SIP endpoint (enables custom ringtone on Samsung phone)
+          dial.sip(routing.sipEndpoint);
+          
+          // Optional fallback: Try regular phone if SIP fails
+          if (routing.sipFallbackNumber) {
+            console.log(`[VOICE] SIP fallback number configured: ${routing.sipFallbackNumber}`);
+            dial.number(routing.sipFallbackNumber);
+          }
+        } else {
+          // REGULAR FORWARDING: Standard phone number forwarding
+          console.log(`[VOICE] Forwarding ${callerPhone} to ${routing.forwardingNumber} for ${routing.ringDuration}s`);
+          
+          const dial = twiml.dial({
+            callerId: callerPhone, // 🔑 CALLER ID PASSTHROUGH - shows customer's real number
+            timeout: routing.ringDuration, // 🔑 RING DURATION - configured in Phone Settings
+            action: '/api/voice/voice-dial-status',
+            method: 'POST',
+          });
+          dial.number(routing.forwardingNumber);
+        }
 
         // If no answer, fall through to voicemail in dial-status callback
       } else {
