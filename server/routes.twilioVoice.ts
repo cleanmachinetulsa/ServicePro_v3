@@ -1,27 +1,61 @@
 import express, { Request, Response } from 'express';
 import twilio from 'twilio';
+import { db } from './db';
+import { phoneLines } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 const router = express.Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 /**
- * Twilio Incoming Voice Call Handler
- * POST /twilio/voice/incoming
- * 
- * When a customer calls the Clean Machine business number, Twilio sends the call here.
- * This handler:
- * 1. Extracts the original caller's phone number
- * 2. Generates TwiML that dials the SIP endpoint registered in Groundwire
- * 3. Preserves the original caller ID so you see who's calling
+ * Helper: Check if current time is within business hours for a phone line
+ * Returns true if during business hours, false if after hours
  */
+async function isBusinessHours(phoneLineId: number): Promise<boolean> {
+  try {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+    const currentTime = now.toTimeString().slice(0, 5); // "HH:MM" format
+
+    const line = await db.query.phoneLines.findFirst({
+      where: eq(phoneLines.id, phoneLineId),
+      with: { 
+        schedules: true 
+      }
+    });
+
+    if (!line?.schedules || line.schedules.length === 0) {
+      return true; // No schedule = always open
+    }
+
+    // Find a matching schedule for today
+    const todaySchedule = line.schedules.find(s => 
+      s.dayOfWeek === dayOfWeek && 
+      s.action === 'forward' && 
+      currentTime >= s.startTime && 
+      currentTime <= s.endTime
+    );
+
+    return !!todaySchedule; // true if found matching forward schedule
+  } catch (error) {
+    console.error('[TWILIO VOICE] Error checking business hours:', error);
+    return true; // Default to open if error
+  }
+}
+
 /**
- * Main IVR Menu Handler
- * Presents options: Press 3 to reach Jody live or leave voicemail
+ * Main IVR Menu Handler - Detects business hours and presents appropriate greeting
  */
 router.post('/voice/incoming', async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
+    // Get phone line from database to check business hours
+    const toNumber = (req.body.To as string) || '';
+    const phoneLineId = 1; // Main line ID - you can make this dynamic if needed
+    
+    const businessHours = await isBusinessHours(phoneLineId);
+
     // Gather user input for IVR menu
     const gather = response.gather({
       numDigits: 1,
@@ -30,19 +64,28 @@ router.post('/voice/incoming', async (req: Request, res: Response) => {
       method: 'POST',
     });
 
-    // IVR greeting - tells caller they can reach Jody live or leave voicemail
-    gather.say(
-      { voice: 'alice', language: 'en-US' },
-      'Thank you for calling Clean Machine Auto Detail. ' +
-        'Press 3 to speak with Jody, or stay on the line to leave a voicemail message.'
-    );
+    // Different greeting based on business hours
+    if (businessHours) {
+      // During business hours - offer live option
+      gather.say(
+        { voice: 'alice', language: 'en-US' },
+        'Thank you for calling Clean Machine Auto Detail. Press 3 to speak with the owner Jody, ' +
+          'or leave a voicemail to get back with you between jobs.'
+      );
+    } else {
+      // After hours - direct to voicemail only
+      gather.say(
+        { voice: 'alice', language: 'en-US' },
+        'Thank you for calling Clean Machine Auto Detail. Press 3 to leave a voicemail and we will reach out ASAP.'
+      );
+    }
 
     // If no input after timeout, go to voicemail
     response.redirect({
       method: 'POST',
     }, '/twilio/voice/voicemail');
 
-    console.log('[TWILIO VOICE] IVR menu presented to caller from', req.body.From);
+    console.log('[TWILIO VOICE] IVR menu presented to caller from', req.body.From, '- Business Hours:', businessHours);
   } catch (error) {
     console.error('[TWILIO VOICE] Error presenting IVR menu:', error);
     response.say({ voice: 'alice' }, 'We encountered an error. Please try again later.');
@@ -56,7 +99,7 @@ router.post('/voice/incoming', async (req: Request, res: Response) => {
 /**
  * IVR Menu Handler
  * Routes based on user input:
- * - Press 3 = dial SIP endpoint to reach Jody
+ * - Press 3 = dial SIP endpoint to reach Jody (if business hours) or voicemail (if after hours)
  * - Anything else = voicemail
  */
 router.post('/voice/menu-handler', async (req: Request, res: Response) => {
@@ -65,26 +108,44 @@ router.post('/voice/menu-handler', async (req: Request, res: Response) => {
 
   try {
     if (digits === '3') {
-      // User pressed 3 - attempt to reach Jody via SIP
+      // User pressed 3
       const fromNumber = (req.body.From as string) || '';
-      const sipUser = process.env.SIP_USER || 'jody';
-      const sipDomain = process.env.SIP_DOMAIN || 'cleanmachinetulsa.sip.twilio.com';
+      const phoneLineId = 1; // Main line ID
+      const businessHours = await isBusinessHours(phoneLineId);
 
-      console.log(`[TWILIO VOICE] User pressed 3, dialing SIP: ${sipUser}@${sipDomain}`);
+      if (businessHours) {
+        // During business hours - attempt to reach Jody via SIP
+        const sipUser = process.env.SIP_USER || 'jody';
+        const sipDomain = process.env.SIP_DOMAIN || 'cleanmachinetulsa.sip.twilio.com';
 
-      // Dial with timeout - if no answer, falls back to voicemail
-      const dial = response.dial({
-        callerId: fromNumber || undefined,
-        answerOnBridge: true,
-        timeout: 20, // Ring for 20 seconds
-      });
+        // Get ring duration from database (default 10 seconds)
+        const line = await db.query.phoneLines.findFirst({
+          where: eq(phoneLines.id, phoneLineId),
+        });
+        const ringDuration = line?.ringDuration || 10;
 
-      dial.sip(`sip:${sipUser}@${sipDomain}`);
+        console.log(`[TWILIO VOICE] User pressed 3 during business hours, dialing SIP for ${ringDuration}s`);
 
-      // If dial times out or is rejected, this redirect happens
-      response.redirect({
-        method: 'POST',
-      }, '/twilio/voice/voicemail');
+        // Dial with configurable timeout
+        const dial = response.dial({
+          callerId: fromNumber || undefined,
+          answerOnBridge: true,
+          timeout: ringDuration,
+        });
+
+        dial.sip(`sip:${sipUser}@${sipDomain}`);
+
+        // If dial times out or is rejected, go to voicemail
+        response.redirect({
+          method: 'POST',
+        }, '/twilio/voice/voicemail');
+      } else {
+        // After hours - go directly to voicemail
+        console.log('[TWILIO VOICE] User pressed 3 after hours, going to voicemail');
+        response.redirect({
+          method: 'POST',
+        }, '/twilio/voice/voicemail');
+      }
     } else {
       // Invalid input or no input - go to voicemail
       response.redirect({

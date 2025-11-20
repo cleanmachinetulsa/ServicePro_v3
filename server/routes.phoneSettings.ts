@@ -60,6 +60,15 @@ router.patch('/lines/:id', async (req: Request, res: Response) => {
         error: 'Voicemail greeting too long. Maximum 500 characters.' 
       });
     }
+
+    // Validate ring duration if provided
+    if (updates.ringDuration !== undefined) {
+      if (!Number.isInteger(updates.ringDuration) || updates.ringDuration < 10 || updates.ringDuration > 60) {
+        return res.status(400).json({ 
+          error: 'Ring duration must be between 10 and 60 seconds' 
+        });
+      }
+    }
     
     // SIP Validation
     if (updates.sipEnabled) {
