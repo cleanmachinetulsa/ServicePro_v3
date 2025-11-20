@@ -150,6 +150,12 @@ function PhoneLineSettings({
     if (localLine.ringDuration !== line.ringDuration) {
       updates.ringDuration = localLine.ringDuration;
     }
+    if (localLine.sipEndpoint !== line.sipEndpoint) {
+      updates.sipEndpoint = localLine.sipEndpoint;
+    }
+    if (localLine.voicemailGreetingUrl !== line.voicemailGreetingUrl) {
+      updates.voicemailGreetingUrl = localLine.voicemailGreetingUrl;
+    }
 
     if (Object.keys(updates).length > 0) {
       onUpdate(updates);
@@ -256,8 +262,40 @@ function PhoneLineSettings({
         </p>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={`sip-endpoint-${line.id}`}>SIP Endpoint (Groundwire)</Label>
+          <Input
+            id={`sip-endpoint-${line.id}`}
+            type="text"
+            placeholder="jody@sip.cleanmachinetulsa.com"
+            value={localLine.sipEndpoint || ''}
+            onChange={(e) => handleChange('sipEndpoint', e.target.value)}
+            data-testid={`input-sip-endpoint-${line.phoneNumber}`}
+          />
+          <p className="text-xs text-muted-foreground">
+            Your SIP address for custom ringtones on Samsung phones with Groundwire
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor={`greeting-url-${line.id}`}>Voicemail Greeting Audio URL</Label>
+          <Input
+            id={`greeting-url-${line.id}`}
+            type="text"
+            placeholder="/assets/voicemail-greeting.mp3"
+            value={localLine.voicemailGreetingUrl || ''}
+            onChange={(e) => handleChange('voicemailGreetingUrl', e.target.value)}
+            data-testid={`input-greeting-url-${line.phoneNumber}`}
+          />
+          <p className="text-xs text-muted-foreground">
+            URL to MP3 file played when customer leaves voicemail (e.g., /assets/voicemail-greeting.mp3)
+          </p>
+        </div>
+      </div>
+
       <div className="space-y-2">
-        <Label htmlFor={`greeting-${line.id}`}>Voicemail / IVR Greeting</Label>
+        <Label htmlFor={`greeting-${line.id}`}>Voicemail / IVR Greeting (Text)</Label>
         <Textarea
           id={`greeting-${line.id}`}
           placeholder="Thank you for calling Clean Machine Auto Detail..."
@@ -267,7 +305,7 @@ function PhoneLineSettings({
           data-testid={`textarea-voicemail-greeting-${line.phoneNumber}`}
         />
         <p className="text-xs text-muted-foreground">
-          Message played to callers after hours or when forwarding is disabled
+          Message played to callers after hours or when forwarding is disabled (used if no audio URL is set)
         </p>
       </div>
 
