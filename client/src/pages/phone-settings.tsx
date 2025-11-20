@@ -177,7 +177,7 @@ export default function PhoneSettings() {
     setLineConfig({
       forwardingEnabled: line.forwardingEnabled,
       forwardingNumber: line.forwardingNumber || '',
-      ringDuration: line.ringDuration || 30,
+      ringDuration: line.ringDuration || 10,
       voicemailGreeting: line.voicemailGreeting || '',
       voicemailGreetingUrl: line.voicemailGreetingUrl || null,
     });

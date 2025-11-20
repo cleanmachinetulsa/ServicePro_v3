@@ -209,14 +209,14 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       .limit(1);
 
     if (!line) {
-      return { shouldForward: false, forwardingNumber: null, ringDuration: 30, voicemailGreeting: null, voicemailGreetingUrl: null };
+      return { shouldForward: false, forwardingNumber: null, ringDuration: 10, voicemailGreeting: null, voicemailGreetingUrl: null };
     }
 
     if (!line.forwardingEnabled || !line.forwardingNumber) {
       return { 
         shouldForward: false, 
         forwardingNumber: null,
-        ringDuration: line.ringDuration || 30,
+        ringDuration: line.ringDuration || 10,
         voicemailGreeting: line.voicemailGreeting,
         voicemailGreetingUrl: line.voicemailGreetingUrl,
       };
@@ -263,13 +263,13 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
     return {
       shouldForward: !!activeSchedule,
       forwardingNumber: activeSchedule ? line.forwardingNumber : null,
-      ringDuration: line.ringDuration || 30,
+      ringDuration: line.ringDuration || 10,
       voicemailGreeting: line.voicemailGreeting,
       voicemailGreetingUrl: line.voicemailGreetingUrl,
     };
   } catch (error) {
     console.error('[PHONE ROUTING] Error determining routing:', error);
-    return { shouldForward: false, forwardingNumber: null, ringDuration: 30, voicemailGreeting: null, voicemailGreetingUrl: null };
+    return { shouldForward: false, forwardingNumber: null, ringDuration: 10, voicemailGreeting: null, voicemailGreetingUrl: null };
   }
 }
 
