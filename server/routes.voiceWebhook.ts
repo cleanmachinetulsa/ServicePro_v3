@@ -127,7 +127,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
   const isRedirect = req.query.redirect === 'true';
   const isInitialCall = typeof req.body.Digits === 'undefined' && !isRedirect;
   
-  console.log(`[VOICE] Incoming call from ${callerPhone} to ${twilioPhone}, CallSid: ${callSid}, Digits: ${digits}, isInitialCall: ${isInitialCall}`);
+  console.log(`[VOICE] Incoming call from ${callerPhone} to ${twilioPhone}, CallSid: ${callSid}, Digits: "${digits}", isRedirect: ${isRedirect}, isInitialCall: ${isInitialCall}`);
 
   // Log the incoming call ONLY on first entry, not on redirects/menu loops
   if (isInitialCall) {
@@ -226,9 +226,10 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
       twiml.redirect('/api/voice/voice?redirect=true');
     }
   } else {
-    // Check if this is a redirect with no digits (e.g., from "Press 5 to repeat menu")
-    if (isRedirect && !digits) {
-      console.log(`[VOICE] Redirect with no digits - showing IVR menu to ${callerPhone}`);
+    // ALWAYS show IVR menu if we have a redirect with no digits
+    // This handles: Press 5 from main menu, Press 5 from joke menu, timeout redirects
+    if (!digits || digits === '') {
+      console.log(`[VOICE] Redirect or no input - showing IVR menu to ${callerPhone} (isRedirect: ${isRedirect}, digits: "${digits}")`);
       
       const gather = twiml.gather({
         input: ['dtmf'] as any,
