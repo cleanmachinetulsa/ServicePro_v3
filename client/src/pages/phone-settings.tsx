@@ -24,6 +24,7 @@ interface PhoneLine {
   forwardingEnabled: boolean;
   forwardingNumber: string | null;
   voicemailGreeting: string | null;
+  voicemailGreetingUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
   schedules: PhoneSchedule[];
@@ -64,7 +65,12 @@ export default function PhoneSettings() {
     forwardingEnabled: false,
     forwardingNumber: '',
     voicemailGreeting: '',
+    voicemailGreetingUrl: null as string | null,
   });
+
+  // Audio file upload state
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
 
   // Schedule form state
   const [scheduleForm, setScheduleForm] = useState({
@@ -180,7 +186,9 @@ export default function PhoneSettings() {
       forwardingEnabled: line.forwardingEnabled,
       forwardingNumber: line.forwardingNumber || '',
       voicemailGreeting: line.voicemailGreeting || '',
+      voicemailGreetingUrl: line.voicemailGreetingUrl || null,
     });
+    setAudioFile(null);
     setShowLineConfigModal(true);
   };
 
@@ -277,6 +285,108 @@ export default function PhoneSettings() {
   const handleDeleteSchedule = (scheduleId: number) => {
     if (confirm('Are you sure you want to delete this schedule?')) {
       deleteScheduleMutation.mutate(scheduleId);
+    }
+  };
+
+  // Handle audio file upload
+  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedLine) return;
+
+    // Validate file type
+    const allowedTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/m4a', 'audio/ogg'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Invalid File Type',
+        description: 'Please upload an MP3, WAV, M4A, or OGG audio file.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'File Too Large',
+        description: 'Audio file must be 5MB or less.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setAudioFile(file);
+    setIsUploadingAudio(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      formData.append('phoneLineId', selectedLine.id.toString());
+
+      const response = await fetch('/api/phone-settings/upload-voicemail-greeting', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+
+      setLineConfig({
+        ...lineConfig,
+        voicemailGreetingUrl: data.greetingUrl,
+      });
+
+      toast({
+        title: 'Upload Successful',
+        description: 'Voicemail greeting audio uploaded successfully.',
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
+    } catch (error: any) {
+      toast({
+        title: 'Upload Failed',
+        description: error.message || 'Failed to upload audio file.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingAudio(false);
+    }
+  };
+
+  // Handle delete audio greeting
+  const handleDeleteAudio = async () => {
+    if (!selectedLine) return;
+
+    try {
+      const response = await fetch(`/api/phone-settings/delete-voicemail-greeting/${selectedLine.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Delete failed');
+      }
+
+      setLineConfig({
+        ...lineConfig,
+        voicemailGreetingUrl: null,
+      });
+
+      setAudioFile(null);
+
+      toast({
+        title: 'Audio Deleted',
+        description: 'Voicemail greeting audio has been removed.',
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['/api/phone-settings/lines'] });
+    } catch (error: any) {
+      toast({
+        title: 'Delete Failed',
+        description: error.message || 'Failed to delete audio file.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -561,7 +671,7 @@ export default function PhoneSettings() {
 
             <div className="space-y-2">
               <Label htmlFor="voicemail-greeting">
-                Voicemail Greeting
+                Voicemail Greeting (Text-to-Speech)
                 <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
                   ({lineConfig.voicemailGreeting.length}/500 characters)
                 </span>
@@ -577,6 +687,61 @@ export default function PhoneSettings() {
                 rows={4}
                 data-testid="textarea-voicemail-greeting"
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                This text will be converted to speech if no audio recording is uploaded.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Voicemail className="h-4 w-4" />
+                Audio Recording (Optional)
+              </Label>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Upload a custom voicemail greeting audio file. This takes priority over text-to-speech.
+              </p>
+
+              {lineConfig.voicemailGreetingUrl ? (
+                <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                      Audio greeting uploaded
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                      Custom audio will be played for incoming calls
+                    </p>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeleteAudio}
+                    data-testid="button-delete-audio"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    type="file"
+                    accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a,audio/ogg"
+                    onChange={handleAudioUpload}
+                    disabled={isUploadingAudio}
+                    data-testid="input-audio-file"
+                  />
+                  {isUploadingAudio && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Uploading audio...
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Supported formats: MP3, WAV, M4A, OGG (max 5MB)
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
