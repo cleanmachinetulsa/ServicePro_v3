@@ -156,6 +156,9 @@ function PhoneLineSettings({
     if (localLine.voicemailGreetingUrl !== line.voicemailGreetingUrl) {
       updates.voicemailGreetingUrl = localLine.voicemailGreetingUrl;
     }
+    if (localLine.sipEnabled !== line.sipEnabled) {
+      updates.sipEnabled = localLine.sipEnabled;
+    }
 
     if (Object.keys(updates).length > 0) {
       onUpdate(updates);
@@ -262,6 +265,19 @@ function PhoneLineSettings({
         </p>
       </div>
 
+      <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg mb-2">
+        <Switch
+          id={`sip-enabled-${line.id}`}
+          checked={localLine.sipEnabled || false}
+          onCheckedChange={(checked) => handleChange('sipEnabled', checked)}
+          data-testid={`switch-sip-enabled-${line.phoneNumber}`}
+        />
+        <Label htmlFor={`sip-enabled-${line.id}`} className="cursor-pointer flex-1">
+          <span className="font-semibold">Enable SIP Routing</span>
+          <p className="text-xs text-muted-foreground mt-1">Route calls through SIP for custom ringtones on your Samsung phone with Groundwire</p>
+        </Label>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor={`sip-endpoint-${line.id}`}>SIP Endpoint (Groundwire)</Label>
@@ -271,6 +287,7 @@ function PhoneLineSettings({
             placeholder="jody@cleanmachinetulsa.sip.twilio.com"
             value={localLine.sipEndpoint || ''}
             onChange={(e) => handleChange('sipEndpoint', e.target.value)}
+            disabled={!localLine.sipEnabled}
             data-testid={`input-sip-endpoint-${line.phoneNumber}`}
           />
           <p className="text-xs text-muted-foreground">
