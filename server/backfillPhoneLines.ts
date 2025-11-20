@@ -18,11 +18,11 @@ export async function backfillPhoneLineIds() {
     const [mainLine] = await db
       .select()
       .from(phoneLines)
-      .where(eq(phoneLines.label, 'Main Line'))
+      .where(eq(phoneLines.label, 'Main Business Line'))
       .limit(1);
 
     if (!mainLine) {
-      console.error('[BACKFILL] Main Line not found in database! Please ensure a phone line with label "Main Line" exists.');
+      console.error('[BACKFILL] Main Business Line not found in database! Please ensure a phone line with label "Main Business Line" exists.');
       return;
     }
 

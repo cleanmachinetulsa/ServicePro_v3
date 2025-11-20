@@ -196,7 +196,9 @@ router.delete('/schedules/:id', async (req: Request, res: Response) => {
 export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<{
   shouldForward: boolean;
   forwardingNumber: string | null;
+  ringDuration: number;
   voicemailGreeting: string | null;
+  voicemailGreetingUrl: string | null;
 }> {
   try {
     // Get phone line config
@@ -207,14 +209,16 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
       .limit(1);
 
     if (!line) {
-      return { shouldForward: false, forwardingNumber: null, voicemailGreeting: null };
+      return { shouldForward: false, forwardingNumber: null, ringDuration: 30, voicemailGreeting: null, voicemailGreetingUrl: null };
     }
 
     if (!line.forwardingEnabled || !line.forwardingNumber) {
       return { 
         shouldForward: false, 
         forwardingNumber: null,
+        ringDuration: line.ringDuration || 30,
         voicemailGreeting: line.voicemailGreeting,
+        voicemailGreetingUrl: line.voicemailGreetingUrl,
       };
     }
 
@@ -259,11 +263,13 @@ export async function getPhoneLineRoutingDecision(phoneNumber: string): Promise<
     return {
       shouldForward: !!activeSchedule,
       forwardingNumber: activeSchedule ? line.forwardingNumber : null,
+      ringDuration: line.ringDuration || 30,
       voicemailGreeting: line.voicemailGreeting,
+      voicemailGreetingUrl: line.voicemailGreetingUrl,
     };
   } catch (error) {
     console.error('[PHONE ROUTING] Error determining routing:', error);
-    return { shouldForward: false, forwardingNumber: null, voicemailGreeting: null };
+    return { shouldForward: false, forwardingNumber: null, ringDuration: 30, voicemailGreeting: null, voicemailGreetingUrl: null };
   }
 }
 

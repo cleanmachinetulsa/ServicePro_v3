@@ -649,6 +649,7 @@ export const phoneLines = pgTable("phone_lines", {
   label: varchar("label", { length: 100 }).notNull(), // "Main Line", "VIP Line"
   forwardingEnabled: boolean("forwarding_enabled").default(true), // Enable/disable call forwarding
   forwardingNumber: varchar("forwarding_number", { length: 20 }), // Business owner's personal cell to forward to
+  ringDuration: integer("ring_duration").default(30), // How long to ring forwarding number before voicemail (seconds, 15-60)
   voicemailGreeting: text("voicemail_greeting"), // Custom voicemail greeting message (text-to-speech)
   voicemailGreetingUrl: text("voicemail_greeting_url"), // Custom voicemail greeting audio recording URL (Google Drive)
   createdAt: timestamp("created_at").defaultNow(),
