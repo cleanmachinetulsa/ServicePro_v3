@@ -226,8 +226,39 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
       twiml.redirect('/api/voice/voice?redirect=true');
     }
   } else {
-    // We have a digit - route based on choice
-    console.log(`[VOICE] Processing menu choice: ${digits} from ${callerPhone}`);
+    // Check if this is a redirect with no digits (e.g., from "Press 5 to repeat menu")
+    if (isRedirect && !digits) {
+      console.log(`[VOICE] Redirect with no digits - showing IVR menu to ${callerPhone}`);
+      
+      const gather = twiml.gather({
+        input: ['dtmf'] as any,
+        numDigits: 1,
+        action: '/api/voice/voice?redirect=true',
+        method: 'POST',
+        timeout: 8,
+      });
+
+      gather.say({
+        voice: 'Polly.Matthew',
+        language: 'en-US'
+      }, 
+        "Hi, this is Jody with Clean Machine Auto Detail here in Tulsa, thanks for calling. " +
+        "If you'd like the fastest service, you can text this number any time and we'll send you a quick link " +
+        "with current pricing, packages, and a way to check availability and book your detail. " +
+        "Otherwise, please choose from the following options. " +
+        "Press 1 to have that link sent to your phone right now. " +
+        "Press 3 to leave a message for me, Jody, and I'll call you back personally between jobs. " +
+        "Press 5 to hear these options again."
+      );
+
+      twiml.say({
+        voice: 'Polly.Matthew',
+        language: 'en-US'
+      }, "I didn't catch that, let's try again.");
+      twiml.redirect('/api/voice/voice?redirect=true');
+    } else {
+      // We have a digit - route based on choice
+      console.log(`[VOICE] Processing menu choice: ${digits} from ${callerPhone}`);
 
       switch (digits) {
         case '1':
@@ -329,6 +360,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
         }, "Sorry, I didn't recognize that choice.");
         twiml.redirect('/api/voice/voice?redirect=true');
         break;
+      }
     }
   }
 
