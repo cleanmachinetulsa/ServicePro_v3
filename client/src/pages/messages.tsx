@@ -275,7 +275,10 @@ function MessagesPageContent() {
         {/* Main Thread View - Polished Center */}
         <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30 transition-all duration-300`}>
           {selectedConversation ? (
-            <ThreadView conversationId={selectedConversation} />
+            <ThreadView 
+              conversationId={selectedConversation}
+              onBack={() => setSelectedConversation(null)}
+            />
           ) : (
             <div className="flex flex-col h-full overflow-auto">
               <div className="flex-1 flex items-center justify-center p-8">
