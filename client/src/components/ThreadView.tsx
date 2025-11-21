@@ -113,7 +113,7 @@ export default function ThreadView({
   sidePanelSlot,
   scheduledBannerSlot,
 }: ThreadViewProps) {
-  const { selectedPhoneLineId } = usePhoneLine();
+  const { activeSendLineId } = usePhoneLine();
   const [messageInput, setMessageInput] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [showLoadMore, setShowLoadMore] = useState(true);
@@ -236,7 +236,7 @@ export default function ThreadView({
         content: payload.content,
         channel: conversation?.platform || 'web',
         attachments: payload.attachments || [],
-        phoneLineId: conversation?.platform === 'sms' ? (selectedPhoneLineId || conversation?.phoneLineId || undefined) : undefined
+        phoneLineId: conversation?.platform === 'sms' ? activeSendLineId : undefined
       });
       return response.json();
     },

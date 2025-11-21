@@ -58,7 +58,7 @@ interface Conversation {
 }
 
 function MessagesPageContent() {
-  const { selectedPhoneLineId } = usePhoneLine();
+  const { conversationFilter } = usePhoneLine();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
@@ -79,11 +79,11 @@ function MessagesPageContent() {
 
   // Fetch conversations
   const { data: conversationsData, isLoading } = useQuery<{ success: boolean; data: Conversation[] }>({
-    queryKey: ['/api/conversations', filter, selectedPhoneLineId],
+    queryKey: ['/api/conversations', filter, conversationFilter],
     queryFn: async () => {
       const params = new URLSearchParams({ status: filter });
-      if (selectedPhoneLineId !== null) {
-        params.append('phoneLineId', selectedPhoneLineId.toString());
+      if (conversationFilter !== null) {
+        params.append('phoneLineId', conversationFilter.toString());
       }
       const response = await fetch(`/api/conversations?${params.toString()}`, {
         credentials: 'include',
