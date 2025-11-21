@@ -54,7 +54,7 @@ export default function LiveConversationsPage() {
   const [showSmartSuggestions, setShowSmartSuggestions] = useState<boolean>(false);
   const [messageInput, setMessageInput] = useState<string>('');
   const { toast } = useToast();
-  const [activeRefreshInterval, setActiveRefreshInterval] = useState<number | null>(null);
+  const activeRefreshInterval = useRef<number | null>(null);
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -262,11 +262,11 @@ export default function LiveConversationsPage() {
       fetchConversations();
     }, 10000);
     
-    setActiveRefreshInterval(intervalId);
+    activeRefreshInterval.current = intervalId;
     
     return () => {
-      if (activeRefreshInterval !== null) {
-        clearInterval(activeRefreshInterval);
+      if (activeRefreshInterval.current !== null) {
+        clearInterval(activeRefreshInterval.current);
       }
     };
   }, []);
@@ -449,7 +449,7 @@ export default function LiveConversationsPage() {
       <div className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Conversations List - hide on mobile when conversation selected */}
-        <div className={`md:col-span-1 border rounded-lg overflow-hidden ${selectedConversation ? 'hidden md:block' : ''}`}>
+        <div className={`md:col-span-1 border rounded-lg overflow-hidden ${selectedConversation ? 'hidden' : ''} md:block`}>
           <div className="bg-blue-50 p-4 border-b">
             <div className="flex justify-between items-center mb-3">
               <h2 className="font-medium text-blue-800">Active Conversations ({conversations.length})</h2>
@@ -458,8 +458,8 @@ export default function LiveConversationsPage() {
                 size="sm"
                 onClick={() => {
                   // Refresh conversations
-                  if (activeRefreshInterval !== null) {
-                    clearInterval(activeRefreshInterval);
+                  if (activeRefreshInterval.current !== null) {
+                    clearInterval(activeRefreshInterval.current);
                   }
                   setIsLoading(true);
                   // Simulate API call
@@ -608,7 +608,7 @@ export default function LiveConversationsPage() {
         </div>
         
         {/* Conversation Detail - hide on mobile when no conversation selected */}
-        <div className={`md:col-span-2 flex flex-col border rounded-lg overflow-hidden h-[calc(100vh-12rem)] conversation-detail ${!selectedConversation ? 'hidden md:flex' : ''}`}>
+        <div className={`md:col-span-2 border rounded-lg overflow-hidden h-[calc(100vh-12rem)] conversation-detail ${selectedConversation ? 'flex flex-col' : 'hidden'} md:flex md:flex-col`}>
           {selectedConversation ? (
             <>
               {/* Conversation Header */}
