@@ -30,7 +30,12 @@ import {
   Sparkles,
   Target,
   Activity,
-  Award
+  Award,
+  PhoneCall,
+  QrCode,
+  Wallet,
+  Gift,
+  Headphones
 } from 'lucide-react';
 import CleanMachineLogo from '../components/CleanMachineLogo';
 
@@ -136,6 +141,102 @@ export default function CleanMachineShowcase() {
       ],
       stat: "40% repeat customers",
       color: "from-yellow-500 to-orange-500"
+    },
+    {
+      icon: PhoneCall,
+      title: "Dual Phone Line System",
+      description: "Google Voice-style multi-line management",
+      details: [
+        "Main business line (918-856-5304) + Jody's line (918-856-5711)",
+        "Google Voice-style UI with seamless line switching",
+        "Independent voicemail boxes per line",
+        "Twilio routing with caller ID passthrough",
+        "Configurable ring duration (10-60 seconds before voicemail)",
+        "Recent Callers widget with click-to-call functionality",
+        "Line-specific notification preferences"
+      ],
+      stat: "2 lines, 1 interface",
+      color: "from-cyan-500 to-blue-500"
+    },
+    {
+      icon: QrCode,
+      title: "QR Code Security System",
+      description: "HMAC-SHA256 secure customer identification",
+      details: [
+        "Cryptographically signed QR codes with HMAC-SHA256",
+        "Tamper-proof customer verification tokens",
+        "One-scan access to complete service history",
+        "No passwords or login credentials required",
+        "Time-limited tokens prevent replay attacks",
+        "Perfect for on-site customer verification by technicians",
+        "Secure URL generation with expiration tracking"
+      ],
+      stat: "Zero password friction",
+      color: "from-purple-500 to-pink-500"
+    },
+    {
+      icon: Brain,
+      title: "Customer Intelligence Engine",
+      description: "GPT-powered personalization and tracking",
+      details: [
+        "Automatic returning customer detection and flagging",
+        "GPT personalization service analyzes full customer history",
+        "Context-aware service recommendations based on past bookings",
+        "Intelligent messaging references previous services",
+        "Vehicle-specific maintenance reminders and scheduling",
+        "Predictive upselling based on customer preferences",
+        "Service frequency analysis with insights dashboard"
+      ],
+      stat: "Personalized experiences",
+      color: "from-indigo-500 to-purple-500"
+    },
+    {
+      icon: Wallet,
+      title: "Cash Payment Tracking",
+      description: "Manual entry with daily deposit management",
+      details: [
+        "Quick manual cash payment entry for on-site collections",
+        "Daily deposit summary widget for technicians",
+        "Cash collections widget tracks amounts by technician",
+        "Deposit history with date and amount tracking",
+        "Integrated with job completion workflow",
+        "Admin oversight dashboard for all cash transactions",
+        "Reconciliation tools for end-of-day cash management"
+      ],
+      stat: "Full cash visibility",
+      color: "from-green-500 to-emerald-500"
+    },
+    {
+      icon: Gift,
+      title: "Comprehensive Referral System",
+      description: "9 reward types with advanced tracking",
+      details: [
+        "9 reward types: percentage off, fixed amount, free service, BOGO, upgrade",
+        "Points bonus, gift card, early access, VIP tier promotions",
+        "Admin code generation with custom reward configuration",
+        "Automatic referrer credit tracking upon invoice payment",
+        "Referral code input integrated into booking flow",
+        "Usage analytics and redemption tracking dashboard",
+        "Performance metrics with conversion rate analysis"
+      ],
+      stat: "9 reward types",
+      color: "from-yellow-500 to-orange-500"
+    },
+    {
+      icon: Headphones,
+      title: "SIP Routing & Custom Ringtones",
+      description: "Groundwire app integration for personalized call handling",
+      details: [
+        "Twilio SIP integration with custom endpoint configuration",
+        "Groundwire app support for Android with custom ringtones",
+        "Different ringtones per phone line for instant recognition",
+        "SIP credentials auto-generated and securely stored",
+        "After-hours voicemail with separate greeting message",
+        "Voicemail activates 30 minutes after last scheduled shift",
+        "Professional call routing with IVR menu system"
+      ],
+      stat: "Professional phone system",
+      color: "from-teal-500 to-cyan-500"
     }
   ];
 
@@ -147,8 +248,10 @@ export default function CleanMachineShowcase() {
         "Stripe integration with payment intents",
         "Branded invoice emails with HTML templates",
         "Multi-payment options (Stripe, PayPal, Venmo, CashApp)",
+        "Cash payment tracking with daily deposit widgets",
         "HMAC-signed payment links with 7-day TTL",
         "Auto-generated invoice numbers (INV-2025-001)",
+        "Referral credit application on invoice payment",
         "DoS protection with rate limiting"
       ]
     },
@@ -156,12 +259,14 @@ export default function CleanMachineShowcase() {
       category: "Security & Compliance",
       icon: Shield,
       features: [
+        "HMAC-SHA256 signed QR codes for customer verification",
         "TCPA/CTIA SMS consent with double opt-in",
         "Twilio webhook signature verification",
         "E.164 phone number normalization",
         "Session-based authentication with 2FA support",
         "Google OAuth integration",
-        "WebAuthn biometric login support"
+        "WebAuthn biometric login support",
+        "Time-limited security tokens prevent replay attacks"
       ]
     },
     {
@@ -173,7 +278,23 @@ export default function CleanMachineShowcase() {
         "SMS delivery monitoring",
         "Conversation sentiment analysis",
         "Revenue tracking and forecasting",
-        "Customer lifetime value calculation"
+        "Customer lifetime value calculation",
+        "Returning customer detection and insights",
+        "Referral performance and conversion metrics"
+      ]
+    },
+    {
+      category: "Phone System",
+      icon: PhoneCall,
+      features: [
+        "Dual phone lines with independent routing",
+        "Caller ID passthrough preserves original number",
+        "Configurable ring duration (10-60 seconds)",
+        "After-hours voicemail (activates 30min after schedule)",
+        "Recent Callers widget with click-to-call",
+        "SIP integration with Groundwire for custom ringtones",
+        "Configurable notification preferences per line",
+        "IVR menu with intelligent call routing"
       ]
     },
     {
@@ -185,7 +306,9 @@ export default function CleanMachineShowcase() {
         "Dynamic banner management for announcements",
         "Technician job routing and dispatch",
         "Photo gallery with Google Drive integration",
-        "Recurring service subscriptions"
+        "Recurring service subscriptions",
+        "Interactive address validation with Google Maps",
+        "Smart scheduling with location clustering"
       ]
     }
   ];
@@ -217,6 +340,34 @@ export default function CleanMachineShowcase() {
       highlight: "Zero human interaction required"
     },
     {
+      scenario: "Dual Phone Line Intelligence",
+      flow: [
+        "Main line (918-856-5304) receives customer booking call",
+        "Jody's line (918-856-5711) receives supplier call simultaneously",
+        "Custom ringtones via Groundwire identify which line is ringing",
+        "Both lines show caller ID passthrough with original numbers",
+        "Main line: Customer schedules appointment → auto-added to calendar",
+        "Jody's line: Supplier voicemail → transcribed and texted within 10 seconds",
+        "Recent Callers widget shows both conversations separately",
+        "Line-specific notifications ensure proper routing"
+      ],
+      highlight: "Professional multi-line management"
+    },
+    {
+      scenario: "Returning Customer Recognition",
+      flow: [
+        "Customer texts: 'Hey, can I get another detail?'",
+        "GPT Intelligence Service detects returning customer",
+        "Analyzes history: Last service was Full Detail 3 months ago",
+        "AI responds: 'Welcome back! Last time we did your Tesla Model 3. Ready for another Full Detail, or interested in our new Ceramic Coating?'",
+        "Customer asks about ceramic coating pricing",
+        "AI provides personalized quote based on previous vehicle",
+        "Suggests scheduling 2 weeks out based on optimal service interval",
+        "Applies loyalty discount automatically"
+      ],
+      highlight: "GPT-powered personalization"
+    },
+    {
       scenario: "Customer Texts About Damage",
       flow: [
         "Customer: 'I have some scratches on my door, can you fix them?'",
@@ -228,6 +379,20 @@ export default function CleanMachineShowcase() {
         "Custom quote generated with photo evidence attached"
       ],
       highlight: "AI-powered damage assessment workflow"
+    },
+    {
+      scenario: "Referral System in Action",
+      flow: [
+        "Existing customer shares referral code CLEAN25 (25% off first service)",
+        "New customer books via website, enters code CLEAN25",
+        "System validates code and applies 25% discount to invoice",
+        "New customer completes service and pays $112.50 (originally $150)",
+        "Upon payment confirmation, $20 referral credit auto-applied to referrer's account",
+        "Referrer receives SMS: 'Thanks for the referral! $20 credit added to your account'",
+        "Admin dashboard shows conversion: 1 use, $150 revenue, $20 credit issued",
+        "Referral analytics track code performance across all 9 reward types"
+      ],
+      highlight: "Automated referral tracking"
     },
     {
       scenario: "Multi-Channel Conversation",
@@ -293,12 +458,16 @@ export default function CleanMachineShowcase() {
               87% Automation Rate
             </Badge>
             <Badge className="px-6 py-2 text-lg bg-gradient-to-r from-blue-500 to-cyan-500">
-              <Phone className="w-5 h-5 mr-2" />
-              Voicemail Intelligence
+              <PhoneCall className="w-5 h-5 mr-2" />
+              Dual Phone Lines
             </Badge>
             <Badge className="px-6 py-2 text-lg bg-gradient-to-r from-purple-500 to-pink-500">
-              <MessageSquare className="w-5 h-5 mr-2" />
-              4 Messaging Channels
+              <Brain className="w-5 h-5 mr-2" />
+              AI Customer Intelligence
+            </Badge>
+            <Badge className="px-6 py-2 text-lg bg-gradient-to-r from-yellow-500 to-orange-500">
+              <Gift className="w-5 h-5 mr-2" />
+              9 Referral Reward Types
             </Badge>
           </div>
         </motion.div>

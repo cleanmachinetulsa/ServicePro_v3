@@ -1,11 +1,25 @@
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Play, Sparkles } from 'lucide-react';
+import { ArrowRight, Play, Sparkles, Rocket, CheckCircle, AlertTriangle, MessageSquare, Calendar, DollarSign, BarChart3 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle 
+} from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { useLocation } from 'wouter';
 
 export function HeroSection() {
   const [mockStep, setMockStep] = useState(0);
   const [scrollY, setScrollY] = useState(0);
+  const [showDemoModal, setShowDemoModal] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   useEffect(() => {
     const timer = setInterval(() => {
@@ -25,6 +39,69 @@ export function HeroSection() {
     { text: 'Auto-reply: "Thanks for reaching out! What are we working on today?"', type: 'outgoing' },
     { text: 'Appointment scheduled for Tuesday 2-4PM', type: 'success' }
   ];
+
+  const handleLaunchDemo = async () => {
+    setIsLaunching(true);
+    
+    try {
+      // Check if demo mode is enabled
+      const settingsRes = await fetch('/api/admin/demo-settings', {
+        credentials: 'include'
+      });
+      
+      if (settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        
+        if (!settingsData.demoModeEnabled) {
+          toast({
+            title: "Demo Unavailable",
+            description: "The demo mode is currently disabled. Please contact the administrator.",
+            variant: "destructive",
+          });
+          setIsLaunching(false);
+          return;
+        }
+      }
+      
+      // Start demo session
+      const startRes = await fetch('/api/demo/start', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!startRes.ok) {
+        const errorData = await startRes.json();
+        throw new Error(errorData.message || 'Failed to start demo');
+      }
+      
+      const data = await startRes.json();
+      
+      if (data.success) {
+        toast({
+          title: "Demo Launched!",
+          description: "Redirecting to demo environment...",
+        });
+        
+        // Redirect to demo page after a brief delay
+        setTimeout(() => {
+          setLocation('/demo');
+        }, 500);
+      } else {
+        throw new Error('Failed to initialize demo session');
+      }
+    } catch (error: any) {
+      console.error('Demo launch error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to launch demo. Please try again.",
+        variant: "destructive",
+      });
+      setIsLaunching(false);
+    }
+  };
 
   return (
     <section id="hero" className="relative min-h-screen flex items-center justify-center overflow-hidden">
@@ -87,12 +164,12 @@ export function HeroSection() {
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.98 }}>
             <Button 
               size="lg"
-              onClick={() => document.getElementById('sandbox')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => setShowDemoModal(true)}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-6 text-lg rounded-full shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 relative overflow-hidden group"
-              data-testid="button-explore-app"
+              data-testid="button-launch-demo"
             >
               <span className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
-              <Play className="w-5 h-5 mr-2 relative z-10" />
+              <Rocket className="w-5 h-5 mr-2 relative z-10" />
               <span className="relative z-10">Try Interactive Demo</span>
             </Button>
           </motion.div>
@@ -109,6 +186,99 @@ export function HeroSection() {
             </Button>
           </motion.div>
         </motion.div>
+
+        {/* Demo Launch Modal */}
+        <Dialog open={showDemoModal} onOpenChange={setShowDemoModal}>
+          <DialogContent className="sm:max-w-[600px] bg-gradient-to-br from-slate-900/95 via-blue-950/95 to-indigo-950/95 backdrop-blur-xl border-2 border-blue-400/30 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-2">
+                <Rocket className="w-6 h-6 text-blue-400" />
+                Experience Acme Detailing Demo
+              </DialogTitle>
+              <DialogDescription className="text-blue-100/80 text-base mt-3">
+                Explore a fully functional demo of our white-label auto detailing business management system. 
+                This demo uses mock data and showcases all features without affecting real operations.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 my-6">
+              {/* Features List */}
+              <div className="bg-white/5 backdrop-blur-sm rounded-xl p-5 border border-blue-400/20">
+                <h4 className="text-sm font-semibold text-blue-300 mb-4 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Featured Capabilities
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-blue-100">Multi-channel messaging</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-blue-100">AI chatbot assistant</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-blue-100">Smart scheduling</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-blue-100">Payment processing</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-blue-100">Analytics dashboard</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-blue-100">Customer management</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-200">Demo Mode Active</p>
+                  <p className="text-xs text-amber-100/70 mt-1">
+                    All changes are simulated and will not be saved. No real messages will be sent.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex flex-col-reverse sm:flex-row gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowDemoModal(false)}
+                disabled={isLaunching}
+                className="border-blue-400/30 bg-white/5 hover:bg-white/10 text-white"
+                data-testid="button-cancel-demo"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleLaunchDemo}
+                disabled={isLaunching}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
+                data-testid="button-confirm-launch-demo"
+              >
+                {isLaunching ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                    Launching...
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="w-4 h-4 mr-2" />
+                    Launch Demo
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Animated Device Mock */}
         <motion.div

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import Bottleneck from "bottleneck";
 import { generatePrompt, extractKnowledgeBase } from "./knowledge";
 import { shouldOfferMaintenanceDetail, getMaintenanceDetailRecommendation, mightNeedDeeperCleaning } from "./maintenanceDetail";
 import { customerMemory } from "./customerMemory";
@@ -16,6 +17,29 @@ import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPerson
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+/**
+ * Demo Mode AI Rate Limiter
+ * Limits demo users to 20 requests/hour and 1 request/second
+ * to prevent abuse and control costs
+ */
+const demoAILimiter = new Bottleneck({
+  reservoir: 20, // 20 requests
+  reservoirRefreshAmount: 20,
+  reservoirRefreshInterval: 60 * 60 * 1000, // per hour
+  minTime: 1000, // 1 second between requests
+});
+
+// Track demo AI usage for monitoring
+let demoAIUsageCount = 0;
+export function getDemoAIUsageStats() {
+  return {
+    totalRequests: demoAIUsageCount,
+    limiterStatus: {
+      reservoir: demoAILimiter.counts().RECEIVED,
+    },
+  };
+}
 
 /**
  * OpenAI Function Schemas for Scheduling Tools
@@ -407,7 +431,8 @@ export async function generateAIResponse(
     responseLength?: number;
     proactivity?: number;
   },
-  conversationHistory?: Array<{ content: string; role: string; sender: string }>
+  conversationHistory?: Array<{ content: string; role: string; sender: string }>,
+  isDemoMode: boolean = false
 ) {
   try {
     const prompt = generatePrompt(userMessage);
@@ -630,10 +655,21 @@ export async function generateAIResponse(
     const personalizedSystemPrompt = buildPersonalizedSystemPrompt(baseSystemPrompt, customerContext);
     
     // Build conversation messages with history
+    let systemPromptWithDemoMode = personalizedSystemPrompt;
+    
+    // Add demo mode constraints to system prompt
+    if (isDemoMode) {
+      systemPromptWithDemoMode += `\n\nDEMO MODE ACTIVE:
+      - You are assisting with auto detailing services demonstration
+      - Keep responses focused on car detailing topics only
+      - Do not schedule real appointments or access real customer data
+      - All operations are simulated for demonstration purposes`;
+    }
+    
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
         role: "system",
-        content: personalizedSystemPrompt
+        content: systemPromptWithDemoMode
       }
     ];
 
@@ -659,13 +695,26 @@ export async function generateAIResponse(
     while (iterations < MAX_ITERATIONS) {
       iterations++;
       
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: currentMessages,
-        tools: SCHEDULING_FUNCTIONS,
-        tool_choice: "auto",
-        max_tokens: 500,
-      });
+      // Use demo rate limiter if in demo mode
+      const makeOpenAICall = async () => {
+        return await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: currentMessages,
+          tools: SCHEDULING_FUNCTIONS,
+          tool_choice: "auto",
+          max_tokens: 500,
+        });
+      };
+      
+      const completion = isDemoMode 
+        ? await demoAILimiter.schedule(() => makeOpenAICall())
+        : await makeOpenAICall();
+      
+      // Log demo AI usage
+      if (isDemoMode) {
+        demoAIUsageCount++;
+        console.log(`[DEMO AI] Request #${demoAIUsageCount} | Phone: ${phoneNumber} | Platform: ${platform}`);
+      }
       
       // Log usage for tracking dashboard
       try {

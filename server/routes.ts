@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
 import { eq, and, or, desc, asc, isNull, gte, sql } from 'drizzle-orm';
-import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema, publicSheetServiceSchema, publicSheetAddonSchema } from '@shared/schema';
+import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema, publicSheetServiceSchema, publicSheetAddonSchema, platformSettings, updatePlatformSettingsSchema } from '@shared/schema';
 import { requireRole } from './rbacMiddleware';
 import { criticalMonitor } from './criticalMonitoring';
 import { registerLoyaltyRoutes } from './routes.loyalty';
@@ -110,6 +110,7 @@ import { registerTechDepositRoutes } from './routes.techDeposits';
 import { registerCallEventsRoutes } from './routes.callEvents';
 import { registerCustomerIntelligenceRoutes } from './routes.customerIntelligence';
 import { registerEscalationRoutes } from './routes.escalations';
+import { blockDemoSMS, blockDemoEmail, blockDemoPayments, blockDemoVoice, blockDemoGoogleAPI, blockDemoFileUpload, isDemoSession, logDemoActivity } from './demoGuard';
 
 // QR Code Signing Utilities
 const QR_SECRET = process.env.QR_SECRET || 'your-secret-key-change-in-production';
@@ -796,7 +797,7 @@ export async function registerRoutes(app: Express) {
   });
 
   // POST /api/upload-logo - Upload logo file
-  app.post('/api/upload-logo', requireAuth, logoUpload.single('logo'), async (req: Request, res: Response) => {
+  app.post('/api/upload-logo', requireAuth, blockDemoFileUpload, logoUpload.single('logo'), async (req: Request, res: Response) => {
     if (req.user.role !== 'owner' && req.user.role !== 'manager') {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
@@ -947,6 +948,112 @@ export async function registerRoutes(app: Express) {
       return res.json({ success: true, application: updated });
     } catch (error) {
       console.error('[UPDATE APPLICATION] Error:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // Demo Mode Settings endpoints (owner-only)
+  app.get('/api/admin/demo-settings', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      let [settings] = await db.select().from(platformSettings).limit(1);
+      
+      // If no settings exist, create default settings
+      if (!settings) {
+        [settings] = await db.insert(platformSettings).values({
+          demoModeEnabled: false,
+        }).returning();
+      }
+      
+      return res.json({ 
+        success: true, 
+        demoModeEnabled: settings.demoModeEnabled 
+      });
+    } catch (error) {
+      console.error('[DEMO SETTINGS] Error fetching settings:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  app.put('/api/admin/demo-settings', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const parsed = updatePlatformSettingsSchema.safeParse(req.body);
+      
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Invalid input', 
+          errors: parsed.error.issues 
+        });
+      }
+      
+      // Get existing settings or create new
+      let [settings] = await db.select().from(platformSettings).limit(1);
+      
+      if (settings) {
+        // Update existing
+        [settings] = await db.update(platformSettings)
+          .set({
+            demoModeEnabled: parsed.data.demoModeEnabled,
+            updatedAt: new Date(),
+          })
+          .where(eq(platformSettings.id, settings.id))
+          .returning();
+      } else {
+        // Create new
+        [settings] = await db.insert(platformSettings)
+          .values({
+            demoModeEnabled: parsed.data.demoModeEnabled,
+          })
+          .returning();
+      }
+      
+      console.log(`[DEMO SETTINGS] Demo mode ${parsed.data.demoModeEnabled ? 'enabled' : 'disabled'} by user ${req.user.id}`);
+      
+      return res.json({ 
+        success: true, 
+        demoModeEnabled: settings.demoModeEnabled 
+      });
+    } catch (error) {
+      console.error('[DEMO SETTINGS] Error updating settings:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // Demo Mode Authentication endpoint (public - no auth required)
+  app.post('/api/demo/start', async (req: Request, res: Response) => {
+    try {
+      // Check if demo mode is enabled
+      const [settings] = await db.select().from(platformSettings).limit(1);
+      
+      if (!settings || !settings.demoModeEnabled) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Demo mode is currently disabled. Please contact the administrator.' 
+        });
+      }
+      
+      // Create demo session
+      req.session.isDemo = true;
+      req.session.demoStartedAt = Date.now();
+      
+      // Save session before returning
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      
+      console.log('[DEMO MODE] Demo session started');
+      
+      return res.json({ 
+        success: true, 
+        message: 'Demo session created',
+        redirectUrl: '/dashboard',
+        expiresIn: 7200000, // 2 hours in milliseconds
+      });
+    } catch (error) {
+      console.error('[DEMO MODE] Error starting demo session:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }
   });
