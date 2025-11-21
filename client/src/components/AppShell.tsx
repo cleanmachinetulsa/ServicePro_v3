@@ -137,12 +137,12 @@ export function AppShell({
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
         <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
-          <div className="flex items-center gap-2 sm:gap-3 p-4 overflow-hidden">
-            {/* Hamburger (mobile only) - ALWAYS VISIBLE */}
+          <div className="flex items-center gap-1 sm:gap-3 p-2 sm:p-4 min-h-14">
+            {/* Hamburger (mobile only) - ALWAYS VISIBLE AND NEVER SHRINKS */}
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden flex-shrink-0"
+              className="lg:hidden flex-shrink-0 h-10 w-10"
               onClick={() => setDrawerOpen(true)}
               data-testid="button-hamburger-menu"
             >
@@ -151,31 +151,34 @@ export function AppShell({
 
             {/* Page Title */}
             {title && (
-              <h1 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white truncate">
+              <h1 className="text-base sm:text-xl font-semibold text-gray-900 dark:text-white truncate flex-shrink">
                 {title}
               </h1>
             )}
 
-            {/* Search - hidden on mobile */}
+            {/* Search */}
             {showSearch && (
-              <div className="hidden sm:block flex-1 max-w-md">
+              <div className="flex-1 max-w-md hidden sm:block">
                 <AiHelpSearch />
               </div>
             )}
 
-            {/* Page Actions - hidden on mobile, only show on sm+ */}
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Page Actions - Always visible, compact on mobile */}
             {pageActions && (
-              <div className="hidden sm:ml-auto sm:flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 {pageActions}
               </div>
             )}
 
-            {/* Dark Mode Toggle - ml-auto on mobile if no pageActions */}
+            {/* Dark Mode Toggle */}
             <Button
               variant="ghost"
               size="icon"
               onClick={toggleTheme}
-              className={`${!pageActions ? 'sm:ml-auto' : 'hidden sm:flex'} text-gray-700 dark:text-gray-300 flex-shrink-0`}
+              className="text-gray-700 dark:text-gray-300 flex-shrink-0 h-10 w-10"
               data-testid="button-theme-toggle"
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
