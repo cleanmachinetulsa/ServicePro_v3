@@ -1441,13 +1441,13 @@ export default function ThreadView({
                     value={messageInput}
                     onChange={(e) => handleInputChange(e.target.value)}
                     placeholder="Type your message here..."
-                    className="w-full min-h-[64px] max-h-[240px] resize-none text-base leading-relaxed bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 focus:border-primary rounded-xl pr-20 pb-8 font-sans"
+                    className="w-full min-h-[64px] max-h-[240px] resize-none text-base leading-relaxed bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 focus:border-primary rounded-xl px-4 py-3 font-sans"
                     disabled={sendMessageMutation.isPending}
                     data-testid="input-message"
                     rows={2}
                   />
                   {messageInput.length > 0 && (
-                    <div className="absolute bottom-2 right-3 text-xs text-muted-foreground pointer-events-none">
+                    <div className="absolute bottom-3 right-4 text-xs text-muted-foreground pointer-events-none bg-white dark:bg-gray-800 px-2 py-1 rounded">
                       <span className={`font-medium ${
                         messageInput.length >= 1600 
                           ? 'text-red-600 dark:text-red-400' 
@@ -1455,9 +1455,7 @@ export default function ThreadView({
                             ? 'text-amber-600 dark:text-amber-400' 
                             : ''
                       }`}>
-                        {messageInput.length} chars
-                        {messageInput.length >= 1600 && ' (limit reached)'}
-                        {messageInput.length >= 1000 && messageInput.length < 1600 && ' (approaching SMS limit)'}
+                        {messageInput.length}
                       </span>
                     </div>
                   )}
