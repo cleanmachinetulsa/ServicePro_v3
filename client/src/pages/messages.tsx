@@ -273,24 +273,30 @@ function MessagesPageContent() {
         </div>
 
         {/* Main Thread View - Polished Center */}
-        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 items-center justify-center bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30 transition-all duration-300`}>
+        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30 transition-all duration-300`}>
           {selectedConversation ? (
             <ThreadView conversationId={selectedConversation} />
           ) : (
-            <div className="w-full max-w-2xl px-4 py-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="text-center glass-card p-10 rounded-3xl">
-                <div className="bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
-                  <MessageCircle className="h-12 w-12 text-primary" />
+            <div className="flex flex-col h-full overflow-auto">
+              <div className="flex-1 flex items-center justify-center p-8">
+                <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="text-center glass-card p-10 rounded-3xl">
+                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
+                      <MessageCircle className="h-12 w-12 text-primary" />
+                    </div>
+                    <h2 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                      Select a conversation
+                    </h2>
+                    <p className="text-base text-muted-foreground/80 leading-relaxed">
+                      Choose a conversation from the list to view messages and reply
+                    </p>
+                  </div>
                 </div>
-                <h2 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                  Select a conversation
-                </h2>
-                <p className="text-base text-muted-foreground/80 leading-relaxed">
-                  Choose a conversation from the list to view messages and reply
-                </p>
               </div>
               
-              <RecentCallersWidget />
+              <div className="p-6 border-t border-gray-200/60 dark:border-gray-800/60 bg-white/50 dark:bg-gray-900/50">
+                <RecentCallersWidget />
+              </div>
             </div>
           )}
         </div>
