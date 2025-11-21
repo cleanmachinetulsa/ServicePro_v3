@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SectionHeader } from '../shared/SectionHeader';
 import { PillTabs } from '../shared/PillTabs';
 import { GlassCard } from '../shared/GlassCard';
-import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase, Phone, Map, QrCode, Smartphone, User, Star, Clock, FileText } from 'lucide-react';
+import { Calendar, MessageSquare, Users, Truck, Settings, Check, Sparkles, TrendingUp, Zap, Edit, DollarSign, Briefcase, Phone, Map, QrCode, Smartphone, User, Star, Clock, FileText, Brain, Wallet, Gift, PhoneCall, Headphones } from 'lucide-react';
 
 const mockupDetails: Record<string, { icon: any; text: string }[]> = {
   'Profile View': [
@@ -85,20 +85,23 @@ const features = [
     id: 'phone-voice',
     label: 'Phone & Voice',
     icon: Phone,
-    badge: { text: 'New', color: 'from-green-500 to-emerald-500' },
-    title: 'Twilio Voice Integration',
-    description: 'Professional phone system with voicemail transcription and intelligent routing',
+    badge: { text: 'Enhanced', color: 'from-green-500 to-emerald-500' },
+    title: 'Advanced Twilio Voice System',
+    description: 'Dual-line phone system with SIP integration and intelligent voicemail handling',
     bullets: [
-      'IVR menu for booking or speaking with owner',
-      'Call forwarding with caller ID passthrough',
-      'Voicemail recording and transcription',
-      'SMS alerts for missed calls and voicemails',
-      'Recent callers widget with click-to-call',
-      'Dual phone line support with routing'
+      'Dual phone lines: Main (918-856-5304) + Jody\'s line (918-856-5711)',
+      'Google Voice-style UI with line switching',
+      'SIP routing with custom ringtones via Groundwire app',
+      'Configurable ring duration (10-60 seconds before voicemail)',
+      'After-hours voicemail with separate greeting (activates 30min after schedule)',
+      'Caller ID passthrough preserves original caller number',
+      'Recent Callers widget with click-to-call',
+      'Voicemail transcription with AI-powered SMS responses',
+      'Configurable notification preferences per line'
     ],
     mockups: [
-      { title: 'Call Dashboard', desc: 'Recent calls & voicemail', color: 'from-green-500/20 to-emerald-500/20' },
-      { title: 'IVR Menu', desc: 'Smart call routing', color: 'from-teal-500/20 to-cyan-500/20' }
+      { title: 'Dual Lines', desc: 'Switch between lines', color: 'from-green-500/20 to-emerald-500/20' },
+      { title: 'SIP Setup', desc: 'Groundwire integration', color: 'from-teal-500/20 to-cyan-500/20' }
     ]
   },
   {
@@ -260,6 +263,69 @@ const features = [
       { title: 'Job Listings', desc: 'Public careers page', color: 'from-orange-500/20 to-red-500/20' },
       { title: 'Applications', desc: 'Admin review dashboard', color: 'from-red-500/20 to-pink-500/20' }
     ]
+  },
+  {
+    id: 'customer-intelligence',
+    label: 'Customer Intelligence',
+    icon: Brain,
+    badge: { text: 'AI-Powered', color: 'from-purple-500 to-pink-500' },
+    title: 'GPT-Powered Customer Intelligence',
+    description: 'Returning customer tracking with personalized AI service recommendations',
+    bullets: [
+      'Automatic returning customer detection and tracking',
+      'GPT personalization service analyzes customer history',
+      'Personalized service recommendations based on past bookings',
+      'Context-aware messaging references previous services',
+      'Vehicle-specific maintenance reminders',
+      'Intelligent upselling based on customer preferences',
+      'Service frequency analysis and insights'
+    ],
+    mockups: [
+      { title: 'Customer Insights', desc: 'AI-powered analysis', color: 'from-purple-500/20 to-pink-500/20' },
+      { title: 'Smart Suggestions', desc: 'Personalized offers', color: 'from-pink-500/20 to-red-500/20' }
+    ]
+  },
+  {
+    id: 'cash-payments',
+    label: 'Cash Tracking',
+    icon: Wallet,
+    badge: { text: 'New', color: 'from-green-500 to-emerald-500' },
+    title: 'Cash Payment & Deposit Management',
+    description: 'Manual cash entry with daily deposit tracking for technicians',
+    bullets: [
+      'Manual cash payment entry for on-site collections',
+      'Daily deposit summary widget for technicians',
+      'Cash collections widget tracks amounts by technician',
+      'Deposit history with date and amount tracking',
+      'Integration with job completion workflow',
+      'Admin oversight of all cash transactions',
+      'Reconciliation tools for daily cash management'
+    ],
+    mockups: [
+      { title: 'Cash Entry', desc: 'Quick payment logging', color: 'from-green-500/20 to-emerald-500/20' },
+      { title: 'Daily Deposits', desc: 'Technician tracking', color: 'from-emerald-500/20 to-teal-500/20' }
+    ]
+  },
+  {
+    id: 'referral-system',
+    label: 'Referral Program',
+    icon: Gift,
+    badge: { text: 'Comprehensive', color: 'from-yellow-500 to-orange-500' },
+    title: 'Complete Referral Rewards System',
+    description: '9 reward types with admin code generation and comprehensive tracking',
+    bullets: [
+      '9 reward types: percentage off, fixed amount, free service, BOGO, upgrade, points bonus, gift card, early access, VIP tier',
+      'Admin tools for referral code generation and management',
+      'Automatic referrer credit tracking on invoice payment',
+      'Referral code input during booking flow',
+      'Usage tracking and redemption analytics',
+      'Configurable reward values and expiration dates',
+      'Referral performance dashboard with conversion metrics'
+    ],
+    mockups: [
+      { title: 'Code Generator', desc: '9 reward types', color: 'from-yellow-500/20 to-orange-500/20' },
+      { title: 'Tracking Dashboard', desc: 'Analytics & credits', color: 'from-orange-500/20 to-red-500/20' }
+    ]
   }
 ];
 
@@ -292,7 +358,7 @@ export function FeatureMapSection() {
         <SectionHeader
           badge="Core Capabilities"
           title="Feature Map"
-          subtitle="Twelve integrated systems working together to run your entire operation"
+          subtitle="Fifteen integrated systems working together to run your entire operation"
         />
 
         <div className="relative">

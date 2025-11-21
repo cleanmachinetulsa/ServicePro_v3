@@ -172,6 +172,13 @@ export const errorLogs = pgTable("error_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Platform settings for demo mode and global configurations
+export const platformSettings = pgTable("platform_settings", {
+  id: serial("id").primaryKey(),
+  demoModeEnabled: boolean("demo_mode_enabled").default(false).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Loyalty tier enum for customer tier upgrades
 export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold', 'platinum']);
 
@@ -2824,3 +2831,15 @@ export type PublicSheetServicesResponse = z.infer<typeof publicSheetServicesResp
 export type PublicSheetAddonsResponse = z.infer<typeof publicSheetAddonsResponseSchema>;
 export type UsageSummary = typeof usageSummary.$inferSelect;
 export type InsertUsageSummary = z.infer<typeof insertUsageSummarySchema>;
+
+// ============================================================
+// PLATFORM SETTINGS SCHEMAS
+// ============================================================
+export const insertPlatformSettingsSchema = createInsertSchema(platformSettings).omit({ id: true, updatedAt: true });
+export const updatePlatformSettingsSchema = z.object({
+  demoModeEnabled: z.boolean(),
+});
+
+export type PlatformSettings = typeof platformSettings.$inferSelect;
+export type InsertPlatformSettings = z.infer<typeof insertPlatformSettingsSchema>;
+export type UpdatePlatformSettings = z.infer<typeof updatePlatformSettingsSchema>;

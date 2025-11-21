@@ -3,7 +3,8 @@ import {
   Users, 
   MessageSquare, 
   Building,
-  Palette
+  Palette,
+  Shield
 } from "lucide-react";
 import AgentSettings from "../components/AgentSettings";
 import BusinessSettings from "../pages/business-settings";
@@ -21,6 +22,7 @@ import { CustomerManagement } from "../components/CustomerManagement";
 import { LoyaltyPointsSystem } from "../components/LoyaltyPointsSystem";
 import AdminReferralStats from "../components/AdminReferralStats";
 import HomepageEditor from "../pages/HomepageEditor";
+import DemoModeSettings from "../components/settings/DemoModeSettings";
 
 export interface SettingsItem {
   id: string;
@@ -86,6 +88,14 @@ export const settingsSections: SettingsSection[] = [
     icon: <Palette className="h-4 w-4" />,
     items: [
       { id: 'homepage-editor', label: 'Homepage Editor', component: HomepageEditor },
+    ]
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    icon: <Shield className="h-4 w-4" />,
+    items: [
+      { id: 'demo-mode', label: 'Demo Mode', component: DemoModeSettings },
     ]
   },
 ];
