@@ -36,6 +36,7 @@ import quickReplyRoutes from './routes.quickReplies';
 import appointmentRoutes from './routes.appointments';
 import smsFallbackRoutes from './routes.smsFallback';
 import voiceWebhookRoutes from './routes.voiceWebhook';
+import twilioVoiceRoutes from './routes.twilioVoice';
 import twilmlRoutes from './routes.twiml';
 import techJobRoutes from './routes.techJobs';
 import notificationRoutes from './routes.notifications';
@@ -3194,7 +3195,10 @@ Follow up with this lead to set up their 14-day trial!
   // Register SMS fallback routes
   app.use(smsFallbackRoutes);
   
-  // Register Twilio Voice webhook routes for missed call auto-response
+  // Register NEW Twilio Voice IVR system with business hours detection
+  app.use('/twilio/voice', twilioVoiceRoutes);
+  
+  // Register OLD Twilio Voice webhook routes (legacy - for click-to-call and admin features)
   app.use('/api/voice', voiceWebhookRoutes);
   app.use('/api/twilio', twilioStatusCallbackRoutes);
   

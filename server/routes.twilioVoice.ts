@@ -4,6 +4,7 @@ import { db } from './db';
 import { phoneLines, customers, conversations, messages } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { OpenAI } from 'openai';
+import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 
 const router = express.Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -47,8 +48,9 @@ async function isBusinessHours(phoneLineId: number): Promise<boolean> {
 /**
  * Main IVR Menu Handler - Detects business hours and presents appropriate greeting
  * Dynamically detects which phone line was called
+ * SECURITY: Twilio signature verification enabled
  */
-router.post('/voice/incoming', async (req: Request, res: Response) => {
+router.post('/voice/incoming', verifyTwilioSignature, async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
@@ -120,8 +122,9 @@ router.post('/voice/incoming', async (req: Request, res: Response) => {
  * Routes based on user input:
  * - Press 3 = dial SIP endpoint to reach Jody (if business hours) or voicemail (if after hours)
  * - Anything else = voicemail
+ * SECURITY: Twilio signature verification enabled
  */
-router.post('/voice/menu-handler', async (req: Request, res: Response) => {
+router.post('/voice/menu-handler', verifyTwilioSignature, async (req: Request, res: Response) => {
   const response = new VoiceResponse();
   const digits = (req.body.Digits as string) || '';
 
@@ -205,8 +208,9 @@ router.post('/voice/menu-handler', async (req: Request, res: Response) => {
  * Voicemail Handler
  * Records customer voicemail message
  * Uses custom greeting from phone line configuration
+ * SECURITY: Twilio signature verification enabled
  */
-router.post('/voice/voicemail', async (req: Request, res: Response) => {
+router.post('/voice/voicemail', verifyTwilioSignature, async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
@@ -262,8 +266,9 @@ router.post('/voice/voicemail', async (req: Request, res: Response) => {
 /**
  * Voicemail Saved Handler
  * Triggered after voicemail is recorded and stored
+ * SECURITY: Twilio signature verification enabled
  */
-router.post('/voice/voicemail-saved', async (req: Request, res: Response) => {
+router.post('/voice/voicemail-saved', verifyTwilioSignature, async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
@@ -300,8 +305,9 @@ router.post('/voice/voicemail-saved', async (req: Request, res: Response) => {
  * Voicemail Transcription Callback
  * Twilio calls this when voicemail transcription is complete
  * Analyzes transcription with OpenAI and sends SMS response
+ * SECURITY: Twilio signature verification enabled
  */
-router.post('/voice/voicemail-transcribed', async (req: Request, res: Response) => {
+router.post('/voice/voicemail-transcribed', verifyTwilioSignature, async (req: Request, res: Response) => {
   try {
     const transcriptionText = req.body.TranscriptionText as string;
     const callSid = req.body.CallSid as string;
@@ -436,8 +442,9 @@ Respond ONLY with the SMS message text, nothing else.`;
 /**
  * Recording Status Callback
  * Twilio notifies us when recording is complete
+ * SECURITY: Twilio signature verification enabled
  */
-router.post('/voice/recording-status', async (req: Request, res: Response) => {
+router.post('/voice/recording-status', verifyTwilioSignature, async (req: Request, res: Response) => {
   try {
     console.log('[TWILIO VOICE] Recording status:', {
       recordingStatus: req.body.RecordingStatus,
