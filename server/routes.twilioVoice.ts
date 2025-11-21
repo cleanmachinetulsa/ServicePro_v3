@@ -5,6 +5,8 @@ import { phoneLines, customers, conversations, messages } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { OpenAI } from 'openai';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
+import { logCallEvent, updateCallEvent } from './callLoggingService';
+import { getWebSocketServer } from './websocketService';
 
 const router = express.Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -56,7 +58,9 @@ router.post('/voice/incoming', verifyTwilioSignature, async (req: Request, res: 
   try {
     // Get phone line from database based on the number that was called
     const toNumber = (req.body.To as string) || '';
-    console.log('[TWILIO VOICE] Incoming call to:', toNumber);
+    const fromNumber = (req.body.From as string) || '';
+    const callSid = (req.body.CallSid as string) || '';
+    console.log('[TWILIO VOICE] Incoming call to:', toNumber, 'from:', fromNumber);
     
     // Find the phone line in database by the To number
     const line = await db.query.phoneLines.findFirst({
@@ -74,6 +78,32 @@ router.post('/voice/incoming', verifyTwilioSignature, async (req: Request, res: 
     
     const phoneLineId = line.id;
     console.log('[TWILIO VOICE] Matched phone line:', line.label, 'ID:', phoneLineId);
+    
+    // Log the incoming call
+    try {
+      await logCallEvent({
+        callSid,
+        direction: 'inbound',
+        from: fromNumber,
+        to: toNumber,
+        status: 'ringing',
+        startedAt: new Date(),
+      });
+      console.log('[TWILIO VOICE] Call logged:', callSid);
+      
+      // Broadcast to WebSocket for real-time monitoring
+      const io = getWebSocketServer();
+      if (io) {
+        io.to('monitoring').emit('call_incoming', {
+          callSid,
+          from: fromNumber,
+          to: toNumber,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error('[TWILIO VOICE] Failed to log call:', error);
+    }
     
     const businessHours = await isBusinessHours(phoneLineId);
 
