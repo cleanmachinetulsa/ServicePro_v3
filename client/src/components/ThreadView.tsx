@@ -1409,7 +1409,7 @@ export default function ThreadView({
                 </div>
               )}
               
-              <div className="flex gap-3 max-w-4xl mx-auto items-end">
+              <div className="flex gap-2.5 max-w-4xl mx-auto items-end">
                 {/* Hidden file input */}
                 <input
                   ref={fileInputRef}
@@ -1420,19 +1420,16 @@ export default function ThreadView({
                   data-testid="input-file-attachment"
                 />
                 
-                {/* Attachment Button */}
+                {/* Attachment Button - iMessage Style */}
                 <Button
-                  variant="outline"
-                  className="h-16 w-12 rounded-lg border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
+                  variant="ghost"
+                  className="h-11 w-11 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors p-0 flex items-center justify-center"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingAttachments || selectedFiles.length > 0}
                   data-testid="button-attach-file"
                   title="Attach file"
                 >
-                  <div className="flex flex-col items-center gap-0.5">
-                    <Paperclip className="h-4 w-4 text-primary" />
-                    <span className="text-[9px] font-medium">File</span>
-                  </div>
+                  <Paperclip className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                 </Button>
                 
                 <div className="flex-1 relative min-w-0">
@@ -1440,19 +1437,27 @@ export default function ThreadView({
                     ref={textareaRef}
                     value={messageInput}
                     onChange={(e) => handleInputChange(e.target.value)}
-                    placeholder="Type your message here..."
-                    className="w-full min-h-[64px] max-h-[240px] resize-none text-base leading-relaxed bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-primary/30 focus:border-primary rounded-xl px-4 py-3 font-sans"
+                    placeholder="Message"
+                    className="w-full min-h-[44px] max-h-[200px] resize-none text-[15px] leading-[1.4] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 rounded-[22px] px-4 py-[11px] placeholder:text-gray-400 dark:placeholder:text-gray-500 transition-all duration-200 shadow-sm hover:border-gray-400 dark:hover:border-gray-600"
                     disabled={sendMessageMutation.isPending}
                     data-testid="input-message"
-                    rows={2}
+                    rows={1}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (messageInput.trim()) {
+                          handleSendMessage();
+                        }
+                      }
+                    }}
                   />
                   {messageInput.length > 0 && (
-                    <div className="absolute bottom-3 right-4 text-xs text-muted-foreground pointer-events-none bg-white dark:bg-gray-800 px-2 py-1 rounded">
-                      <span className={`font-medium ${
+                    <div className="absolute bottom-2.5 right-3.5 text-[11px] text-gray-400 dark:text-gray-500 pointer-events-none select-none">
+                      <span className={`font-medium transition-colors ${
                         messageInput.length >= 1600 
-                          ? 'text-red-600 dark:text-red-400' 
+                          ? 'text-red-500 dark:text-red-400' 
                           : messageInput.length >= 1000 
-                            ? 'text-amber-600 dark:text-amber-400' 
+                            ? 'text-amber-500 dark:text-amber-400' 
                             : ''
                       }`}>
                         {messageInput.length}
@@ -1461,19 +1466,16 @@ export default function ThreadView({
                   )}
                 </div>
                 
-                {/* Template Variables Button */}
+                {/* Template Variables Button - iMessage Style */}
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
-                      variant="outline"
-                      className="h-16 w-12 rounded-lg border-2 border-gray-300 dark:border-gray-700 hover:border-primary dark:hover:border-primary transition-all"
+                      variant="ghost"
+                      className="h-11 w-11 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors p-0 flex items-center justify-center"
                       data-testid="button-template-variables"
                       title="Insert template variable"
                     >
-                      <div className="flex flex-col items-center gap-0.5">
-                        <Code2 className="h-4 w-4 text-primary" />
-                        <span className="text-[9px] font-medium">Vars</span>
-                      </div>
+                      <Code2 className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-80 p-0" align="end">
@@ -1523,16 +1525,13 @@ export default function ThreadView({
                 <Button
                   onClick={handleSendMessage}
                   disabled={!messageInput.trim() || sendMessageMutation.isPending}
-                  className="h-16 w-16 bg-primary hover:bg-primary/90 text-white rounded-lg shadow-lg hover:shadow-xl transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-11 w-11 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed p-0 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-700"
                   data-testid="button-send"
                 >
                   {sendMessageMutation.isPending ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <div className="flex flex-col items-center gap-0.5">
-                      <Send className="h-5 w-5" />
-                      <span className="text-[9px] font-medium">Send</span>
-                    </div>
+                    <Send className="h-5 w-5 translate-x-[1px]" />
                   )}
                 </Button>
               </div>
