@@ -73,10 +73,14 @@ import ShiftTrades from './pages/ShiftTrades';
 import HomepageEditor from './pages/HomepageEditor';
 import UsageDashboard from './pages/UsageDashboard';
 import GalleryManagementPage from './pages/gallery-management';
+import DownloadExportPage from './pages/download-export';
 
 function Router() {
   return (
     <Switch>
+      {/* Public download page */}
+      <Route path="/export-download" component={DownloadExportPage} />
+      
       {/* Public maintenance page */}
       <Route path="/maintenance" component={Maintenance} />
       
