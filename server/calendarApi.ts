@@ -8,6 +8,7 @@ import {
 } from "./notifications";
 import { trackReferralSignup } from "./referralService";
 import { recordAppointmentCreated } from "./customerBookingStats";
+import { invalidateAppointmentCaches } from "./cacheService";
 
 // COMMIT
 // Configuration for booking appointments
@@ -672,6 +673,9 @@ export async function handleBook(req: any, res: any) {
           console.error('[DB] Error saving appointment to database:', dbError);
           // Continue even if DB save fails - calendar event was created
         }
+
+        // Invalidate dashboard caches since a new appointment was created
+        invalidateAppointmentCaches();
 
         // Return successful response with event details
         return res.json({
