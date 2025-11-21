@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { useSession } from '@/hooks/useSession';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -7,37 +8,25 @@ interface AuthGuardProps {
 
 export default function AuthGuard({ children }: AuthGuardProps) {
   const [, setLocation] = useLocation();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const { isAuthenticated, isLoading, isError } = useSession();
 
+  // Redirect to login on auth failure
   useEffect(() => {
-    const verifySession = async () => {
-      try {
-        // Session cookie is sent automatically with credentials: 'include'
-        const response = await fetch('/api/auth/verify', {
-          credentials: 'include',
-        });
+    if (isError) {
+      setLocation('/login');
+    }
+  }, [isError, setLocation]);
 
-        if (response.ok) {
-          setIsAuthenticated(true);
-        } else {
-          setIsAuthenticated(false);
-          setLocation('/login');
-        }
-      } catch (error) {
-        console.error('Auth verification error:', error);
-        setIsAuthenticated(false);
-        setLocation('/login');
-      }
-    };
-
-    verifySession();
-  }, [setLocation]);
-
-  // Show loading state while checking authentication
-  if (isAuthenticated === null) {
+  // CRITICAL UX FIX: Only show full-screen spinner on first load (no cached data)
+  // On subsequent loads, React Query keeps previous data mounted during revalidation
+  // This prevents double-flash by avoiding unmount/remount cycle
+  if (isLoading && !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-sm text-muted-foreground">Verifying session...</p>
+        </div>
       </div>
     );
   }
