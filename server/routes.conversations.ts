@@ -48,7 +48,7 @@ export function registerConversationRoutes(app: Express) {
 
       if (platform === 'sms') {
         // Phone is already validated and normalized to E.164 by middleware
-        const conversation = await getOrCreateConversation(
+        const { conversation, isNew } = await getOrCreateConversation(
           phone,
           name || null,
           'sms',
@@ -63,7 +63,8 @@ export function registerConversationRoutes(app: Express) {
         res.json({
           success: true,
           conversation,
-          message: 'SMS conversation created successfully',
+          isNewConversation: isNew,
+          message: isNew ? 'SMS conversation created successfully' : 'Existing conversation found',
         });
       } else if (platform === 'email') {
         if (!email) {
@@ -73,7 +74,7 @@ export function registerConversationRoutes(app: Express) {
           });
         }
 
-        const conversation = await getOrCreateConversation(
+        const { conversation, isNew } = await getOrCreateConversation(
           email,
           name || null,
           'email'
@@ -82,7 +83,8 @@ export function registerConversationRoutes(app: Express) {
         res.json({
           success: true,
           conversation,
-          message: 'Email conversation created successfully',
+          isNewConversation: isNew,
+          message: isNew ? 'Email conversation created successfully' : 'Existing conversation found',
         });
       } else if (platform === 'facebook' || platform === 'instagram') {
         if (!socialId) {
@@ -92,7 +94,7 @@ export function registerConversationRoutes(app: Express) {
           });
         }
 
-        const conversation = await getOrCreateConversation(
+        const { conversation, isNew } = await getOrCreateConversation(
           socialId,
           name || null,
           platform
@@ -101,12 +103,13 @@ export function registerConversationRoutes(app: Express) {
         res.json({
           success: true,
           conversation,
-          message: `${platform} conversation created successfully`,
+          isNewConversation: isNew,
+          message: isNew ? `${platform} conversation created successfully` : 'Existing conversation found',
         });
       } else if (platform === 'web') {
         const identifier = phone || email || `web-${Date.now()}`;
         
-        const conversation = await getOrCreateConversation(
+        const { conversation, isNew } = await getOrCreateConversation(
           identifier,
           name || null,
           'web'
@@ -115,7 +118,8 @@ export function registerConversationRoutes(app: Express) {
         res.json({
           success: true,
           conversation,
-          message: 'Web conversation created successfully',
+          isNewConversation: isNew,
+          message: isNew ? 'Web conversation created successfully' : 'Existing conversation found',
         });
       } else {
         return res.status(400).json({

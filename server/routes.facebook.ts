@@ -229,7 +229,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
             }
 
             // Create or get conversation
-            const conversation = await getOrCreateConversation(
+            const { conversation } = await getOrCreateConversation(
               '', // No phone number for Facebook
               senderName,
               platform as 'facebook' | 'instagram',

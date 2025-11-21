@@ -228,7 +228,7 @@ export async function getOrCreateConversation(
     }
 
     if (existingConversation && existingConversation.length > 0) {
-      return existingConversation[0];
+      return { conversation: existingConversation[0], isNew: false };
     }
 
     // Try to find customer ID by phone or email (if available)
@@ -299,7 +299,7 @@ export async function getOrCreateConversation(
     // Broadcast new conversation to monitoring dashboard
     broadcastNewConversation(newConversation[0]);
 
-    return newConversation[0];
+    return { conversation: newConversation[0], isNew: true };
   } catch (error) {
     console.error('Error getting or creating conversation:', error);
     throw error;

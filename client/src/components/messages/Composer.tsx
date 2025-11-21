@@ -54,10 +54,15 @@ export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerPr
     },
     onSuccess: async (response) => {
       const data = await response.json();
-      toast({ 
-        title: 'Conversation started', 
-        description: `Started conversation with ${name || phone}` 
-      });
+      
+      // Only show "Conversation started" toast for NEW conversations
+      if (data.isNewConversation) {
+        toast({ 
+          title: 'Conversation started', 
+          description: `Started conversation with ${name || phone}` 
+        });
+      }
+      
       onOpenChange(false);
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
       

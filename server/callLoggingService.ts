@@ -47,7 +47,7 @@ export async function logCallEvent(callData: CallEventData): Promise<number> {
     } else {
       // Create new conversation for this phone number
       const { getOrCreateConversation } = await import('./conversationService');
-      const newConv = await getOrCreateConversation(customerPhone, null, 'sms');
+      const { conversation: newConv } = await getOrCreateConversation(customerPhone, null, 'sms');
       conversationId = newConv.id;
     }
     
