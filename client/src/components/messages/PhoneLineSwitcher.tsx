@@ -11,26 +11,19 @@ interface PhoneLine {
 }
 
 export default function PhoneLineSwitcher() {
-  const { selectedPhoneLineId, setSelectedPhoneLineId } = usePhoneLine();
+  const { conversationFilter, setConversationFilter, activeSendLineId, setActiveSendLineId } = usePhoneLine();
 
-  const { data: phoneLinesData, isLoading, error } = useQuery<{ success: boolean; lines: PhoneLine[] }>({
+  const { data: phoneLinesData, isLoading } = useQuery<{ success: boolean; lines: PhoneLine[] }>({
     queryKey: ['/api/phone-settings/lines'],
   });
 
   const phoneLines = phoneLinesData?.lines || [];
 
-  console.log('[PhoneLineSwitcher] Debug:', { 
-    isLoading, 
-    error, 
-    phoneLinesData, 
-    phoneLines: phoneLines.length 
-  });
-
   if (isLoading) {
     return (
-      <div className="flex items-center gap-1 bg-muted/40 dark:bg-muted/20 rounded-lg p-1">
-        <Skeleton className="h-8 w-24" />
-        <Skeleton className="h-8 w-24" />
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
       </div>
     );
   }
@@ -39,54 +32,93 @@ export default function PhoneLineSwitcher() {
     return null;
   }
 
+  const activeLine = phoneLines.find(line => line.id === activeSendLineId);
+
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium shrink-0">
-        <Smartphone className="h-4 w-4" />
-        <span>Active Line:</span>
-      </div>
-      
-      <div 
-        className="flex flex-wrap items-center gap-1.5 bg-gradient-to-r from-muted/50 to-muted/30 dark:from-muted/20 dark:to-muted/10 rounded-xl p-1.5 shadow-sm border border-border/50"
-        role="group"
-        data-testid="phone-line-switcher"
-      >
-        {/* All Lines option */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setSelectedPhoneLineId(null)}
-          className={`
-            h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm font-medium transition-all rounded-lg whitespace-nowrap
-            ${selectedPhoneLineId === null 
-              ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-            }
-          `}
-          data-testid="phone-line-all"
+    <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+      {/* FILTER: Which conversations to display */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+          <span>Viewing:</span>
+        </div>
+        <div 
+          className="flex flex-wrap items-center gap-1.5 bg-gradient-to-r from-muted/50 to-muted/30 dark:from-muted/20 dark:to-muted/10 rounded-xl p-1.5 shadow-sm border border-border/50"
+          role="group"
+          data-testid="conversation-filter"
         >
-          All Lines
-        </Button>
-        
-        {/* Individual phone lines */}
-        {phoneLines.map((line) => (
           <Button
-            key={line.id}
             variant="ghost"
             size="sm"
-            onClick={() => setSelectedPhoneLineId(line.id)}
+            onClick={() => setConversationFilter(null)}
             className={`
-              h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm font-medium transition-all rounded-lg whitespace-nowrap
-              ${selectedPhoneLineId === line.id 
+              h-8 px-3 text-xs font-medium transition-all rounded-lg whitespace-nowrap
+              ${conversationFilter === null 
                 ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }
             `}
-            data-testid={`phone-line-${line.id}`}
+            data-testid="filter-all-lines"
           >
-            {line.label}
+            All Lines
           </Button>
-        ))}
+          
+          {phoneLines.map((line) => (
+            <Button
+              key={line.id}
+              variant="ghost"
+              size="sm"
+              onClick={() => setConversationFilter(line.id)}
+              className={`
+                h-8 px-3 text-xs font-medium transition-all rounded-lg whitespace-nowrap
+                ${conversationFilter === line.id 
+                  ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }
+              `}
+              data-testid={`filter-line-${line.id}`}
+            >
+              {line.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* SENDER: Which line messages are sent from */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+          <Smartphone className="h-3.5 w-3.5" />
+          <span>Sending from:</span>
+        </div>
+        <div 
+          className="flex flex-wrap items-center gap-1.5 bg-gradient-to-r from-blue-50/50 to-blue-100/30 dark:from-blue-950/20 dark:to-blue-900/10 rounded-xl p-1.5 shadow-sm border border-blue-200/50 dark:border-blue-800/50"
+          role="group"
+          data-testid="active-send-line"
+        >
+          {phoneLines.map((line) => (
+            <Button
+              key={line.id}
+              variant="ghost"
+              size="sm"
+              onClick={() => setActiveSendLineId(line.id)}
+              className={`
+                h-8 px-3 text-xs font-medium transition-all rounded-lg whitespace-nowrap
+                ${activeSendLineId === line.id 
+                  ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700' 
+                  : 'text-muted-foreground hover:text-foreground hover:bg-blue-100/50 dark:hover:bg-blue-900/30'
+                }
+              `}
+              data-testid={`send-line-${line.id}`}
+            >
+              {line.label}
+              {line.id === 1 && <span className="ml-1 text-[10px] opacity-70">(offline)</span>}
+            </Button>
+          ))}
+        </div>
+        {activeLine && (
+          <div className="text-[11px] text-blue-600 dark:text-blue-400 font-medium px-1">
+            Messages will be sent from {activeLine.phoneNumber}
+          </div>
+        )}
       </div>
     </div>
   );
