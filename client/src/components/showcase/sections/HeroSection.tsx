@@ -193,7 +193,7 @@ export function HeroSection() {
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent flex items-center gap-2">
                 <Rocket className="w-6 h-6 text-blue-400" />
-                Experience Acme Detailing Demo
+                Experience the FULL White-Label Demo
               </DialogTitle>
               <DialogDescription className="text-blue-100/80 text-base mt-3">
                 Explore a fully functional demo of our white-label auto detailing business management system. 
