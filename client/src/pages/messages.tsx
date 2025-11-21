@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
 import PhoneLineSwitcher from '@/components/messages/PhoneLineSwitcher';
 import { useLocation, useSearch } from 'wouter';
@@ -225,25 +226,47 @@ function MessagesPageContent() {
 
   return (
     <AppShell title="Messages" showSearch={false} pageActions={pageActions}>
-      <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30" data-page-wrapper>
-        {/* Conversation List Sidebar - Google Voice Polished */}
-        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-col bg-white/98 dark:bg-gray-900/98 backdrop-blur-md border-r border-gray-200/60 dark:border-gray-800/60 shadow-xl transition-all duration-300`}>
-          <div className="border-b border-gray-200/70 dark:border-gray-800/70 px-4 py-3 bg-gradient-to-b from-white/60 to-transparent dark:from-gray-900/60">
-            <PhoneLineSwitcher />
+      {isLoading && conversations.length === 0 ? (
+        <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30">
+          {/* Conversation List Skeleton */}
+          <div className="w-full md:w-80 lg:w-96 bg-white/98 dark:bg-gray-900/98 border-r border-gray-200/60 dark:border-gray-800/60 p-4 space-y-3">
+            <Skeleton className="h-10 w-full bg-gray-200/60 dark:bg-gray-800/60" />
+            <Skeleton className="h-12 w-full bg-gray-200/60 dark:bg-gray-800/60" />
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-16 w-full bg-gray-200/60 dark:bg-gray-800/60" />
+              </div>
+            ))}
           </div>
-          <ConversationFilters
-            activeFilter={filter}
-            onFilterChange={setFilter}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-          />
-          <ConversationList
-            conversations={sortedConversations}
-            selectedId={selectedConversation}
-            onSelect={setSelectedConversation}
-            isLoading={isLoading}
-          />
+          {/* Thread View Skeleton */}
+          <div className="hidden md:flex flex-1 items-center justify-center bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30">
+            <div className="text-center space-y-3">
+              <Skeleton className="h-20 w-20 rounded-full mx-auto bg-gray-200/60 dark:bg-gray-800/60" />
+              <Skeleton className="h-6 w-48 mx-auto bg-gray-200/60 dark:bg-gray-800/60" />
+              <Skeleton className="h-4 w-64 mx-auto bg-gray-200/60 dark:bg-gray-800/60" />
+            </div>
+          </div>
         </div>
+      ) : (
+        <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30" data-page-wrapper>
+          {/* Conversation List Sidebar - Google Voice Polished */}
+          <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-col bg-white/98 dark:bg-gray-900/98 backdrop-blur-md border-r border-gray-200/60 dark:border-gray-800/60 shadow-xl transition-all duration-300`}>
+            <div className="border-b border-gray-200/70 dark:border-gray-800/70 px-4 py-3 bg-gradient-to-b from-white/60 to-transparent dark:from-gray-900/60">
+              <PhoneLineSwitcher />
+            </div>
+            <ConversationFilters
+              activeFilter={filter}
+              onFilterChange={setFilter}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
+            <ConversationList
+              conversations={sortedConversations}
+              selectedId={selectedConversation}
+              onSelect={setSelectedConversation}
+              isLoading={isLoading}
+            />
+          </div>
 
         {/* Main Thread View - Polished Center */}
         <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30 transition-all duration-300`}>
@@ -283,7 +306,8 @@ function MessagesPageContent() {
             <CustomerProfilePanel conversationId={selectedConversation} />
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       <Composer
         isOpen={showComposeDialog}

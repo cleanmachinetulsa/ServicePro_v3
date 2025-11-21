@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { DashboardOverview } from "@/components/DashboardOverview";
@@ -70,7 +71,7 @@ export default function Dashboard() {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   
   // Parallel data fetching with React Query
-  const { data: appointmentsData } = useQuery<{ success: boolean; appointments: Appointment[] }>({
+  const { data: appointmentsData, isLoading: isLoadingAppointments } = useQuery<{ success: boolean; appointments: Appointment[] }>({
     queryKey: ['/api/dashboard/today', todayDate.toISOString()],
     queryFn: async () => {
       const response = await fetch(`/api/dashboard/today?date=${todayDate.toISOString()}`);
@@ -78,7 +79,7 @@ export default function Dashboard() {
     },
   });
   
-  const { data: appointmentCountsData } = useQuery<{ success: boolean; counts: Record<string, number> }>({
+  const { data: appointmentCountsData, isLoading: isLoadingCounts } = useQuery<{ success: boolean; counts: Record<string, number> }>({
     queryKey: ['/api/dashboard/appointment-counts', currentMonth.getFullYear(), currentMonth.getMonth() + 1],
     queryFn: async () => {
       const year = currentMonth.getFullYear();
@@ -88,13 +89,15 @@ export default function Dashboard() {
     },
   });
   
-  const { data: weatherDataResponse } = useQuery<{ success: boolean; weather: Record<string, any> }>({
+  const { data: weatherDataResponse, isLoading: isLoadingWeather } = useQuery<{ success: boolean; weather: Record<string, any> }>({
     queryKey: ['/api/dashboard/weather'],
     queryFn: async () => {
       const response = await fetch('/api/dashboard/weather?days=14');
       return await response.json();
     },
   });
+  
+  const isLoadingData = isLoadingAppointments || isLoadingCounts || isLoadingWeather;
   
   // Extract data from queries with fallbacks
   const appointments = appointmentsData?.appointments || [];
@@ -339,29 +342,61 @@ export default function Dashboard() {
       <OfflineIndicator />
       <InstallPromptBanner />
       <AppShell title="Dashboard" pageActions={pageActions}>
-        <DashboardOverview
-          appointments={appointments}
-          appointmentCounts={appointmentCounts}
-          weatherData={weatherData}
-          todayDate={todayDate}
-          currentMonth={currentMonth}
-          onDateChange={handleDateChange}
-          onMonthChange={setCurrentMonth}
-          onCall={handleCall}
-          onChat={handleChat}
-          onNavigate={goToDirections}
-          onViewHistory={viewServiceHistory}
-          onSendInvoice={openInvoiceModal}
-        />
+        {isLoadingData ? (
+          <div className="space-y-4 p-6">
+            {/* Statistics Bar Skeleton */}
+            <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
+              <div className="py-4 px-6">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="text-center space-y-2">
+                      <Skeleton className="h-8 w-16 mx-auto bg-white/20" />
+                      <Skeleton className="h-3 w-20 mx-auto bg-white/20" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
 
-        {/* Cash Deposit Tracking Widgets - Owner/Manager Only */}
-        {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
-          <div className="space-y-4 p-6 pt-0">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <CashCollectionsWidget />
-              <DepositHistoryWidget />
+            {/* Calendar and Schedule Skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-4">
+                <Skeleton className="h-[500px] rounded-xl bg-white/10" />
+                <Skeleton className="h-[300px] rounded-xl bg-white/10" />
+              </div>
+              <div className="space-y-4">
+                <Skeleton className="h-[250px] rounded-xl bg-white/10" />
+                <Skeleton className="h-[250px] rounded-xl bg-white/10" />
+              </div>
             </div>
           </div>
+        ) : (
+          <>
+            <DashboardOverview
+              appointments={appointments}
+              appointmentCounts={appointmentCounts}
+              weatherData={weatherData}
+              todayDate={todayDate}
+              currentMonth={currentMonth}
+              onDateChange={handleDateChange}
+              onMonthChange={setCurrentMonth}
+              onCall={handleCall}
+              onChat={handleChat}
+              onNavigate={goToDirections}
+              onViewHistory={viewServiceHistory}
+              onSendInvoice={openInvoiceModal}
+            />
+
+            {/* Cash Deposit Tracking Widgets - Owner/Manager Only */}
+            {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
+              <div className="space-y-4 p-6 pt-0">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <CashCollectionsWidget />
+                  <DepositHistoryWidget />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </AppShell>
 
