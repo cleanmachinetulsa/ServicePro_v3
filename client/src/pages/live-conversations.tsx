@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useRoute } from 'wouter';
 import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,8 @@ import {
   CornerDownRight,
   BarChart2 as BarChart,
   Filter,
-  Tag
+  Tag,
+  ArrowLeft
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -45,6 +46,7 @@ interface Conversation {
 
 export default function LiveConversationsPage() {
   const [location, setLocation] = useLocation();
+  const [match, params] = useRoute('/live-conversations/:conversationId');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -274,20 +276,36 @@ export default function LiveConversationsPage() {
     scrollToBottom();
   }, [selectedConversation]);
   
-  // Handle conversation selection
-  const handleSelectConversation = (conversation: Conversation) => {
-    setSelectedConversation(conversation);
-    
-    // If conversation needs attention, mark it as no longer needing attention
-    if (conversation.needsAttention) {
-      const updatedConversations = conversations.map(c => 
-        c.id === conversation.id ? { ...c, needsAttention: false } : c
-      );
-      setConversations(updatedConversations);
+  // Drive selectedConversation from URL params
+  useEffect(() => {
+    if (params?.conversationId && conversations.length > 0) {
+      const conversation = conversations.find(c => c.id === params.conversationId);
+      if (conversation) {
+        setSelectedConversation(conversation);
+        setShowSmartSuggestions(conversation.active);
+        
+        // Mark as no longer needing attention
+        if (conversation.needsAttention) {
+          const updatedConversations = conversations.map(c => 
+            c.id === conversation.id ? { ...c, needsAttention: false } : c
+          );
+          setConversations(updatedConversations);
+        }
+      }
+    } else {
+      // Clear selection when no conversationId in URL
+      setSelectedConversation(null);
     }
-    
-    // Show smart suggestions for active conversations
-    setShowSmartSuggestions(conversation.active);
+  }, [params?.conversationId, conversations]);
+
+  // Handle conversation selection - navigate to URL
+  const handleSelectConversation = (conversation: Conversation) => {
+    setLocation(`/live-conversations/${conversation.id}`);
+  };
+  
+  // Handle back navigation - return to list
+  const handleBackToList = () => {
+    setLocation('/live-conversations');
   };
   
   // Handle message send
@@ -430,8 +448,8 @@ export default function LiveConversationsPage() {
     <AppShell title="Live Conversations" pageActions={pageActions}>
       <div className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Conversations List */}
-        <div className="md:col-span-1 border rounded-lg overflow-hidden">
+        {/* Conversations List - hide on mobile when conversation selected */}
+        <div className={`md:col-span-1 border rounded-lg overflow-hidden ${selectedConversation ? 'hidden md:block' : ''}`}>
           <div className="bg-blue-50 p-4 border-b">
             <div className="flex justify-between items-center mb-3">
               <h2 className="font-medium text-blue-800">Active Conversations ({conversations.length})</h2>
@@ -589,13 +607,24 @@ export default function LiveConversationsPage() {
           </div>
         </div>
         
-        {/* Conversation Detail */}
-        <div className="md:col-span-2 flex flex-col border rounded-lg overflow-hidden h-[calc(100vh-12rem)] conversation-detail">
+        {/* Conversation Detail - hide on mobile when no conversation selected */}
+        <div className={`md:col-span-2 flex flex-col border rounded-lg overflow-hidden h-[calc(100vh-12rem)] conversation-detail ${!selectedConversation ? 'hidden md:flex' : ''}`}>
           {selectedConversation ? (
             <>
               {/* Conversation Header */}
               <div className="bg-blue-50 p-4 border-b flex justify-between items-center conversation-header">
                 <div className="flex items-center">
+                  {/* Mobile back button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBackToList}
+                    className="md:hidden mr-2 p-2"
+                    data-testid="button-back-to-list"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                  
                   <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
                     <User className="h-5 w-5 text-blue-600" />
                   </div>
