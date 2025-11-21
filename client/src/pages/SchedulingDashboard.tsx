@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { format, addDays, startOfWeek, endOfWeek, isSameDay } from 'date-fns';
+import { format, addDays, startOfWeek, endOfWeek, isSameDay, addWeeks } from 'date-fns';
 import { Calendar as CalendarIcon, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 
@@ -21,6 +21,17 @@ export default function SchedulingDashboard() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const { toast } = useToast();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const weekParam = params.get('week');
+    
+    if (weekParam === 'next') {
+      setSelectedWeek(addWeeks(new Date(), 1));
+    } else if (weekParam === 'after-next') {
+      setSelectedWeek(addWeeks(new Date(), 2));
+    }
+  }, []);
 
   const weekStart = startOfWeek(selectedWeek, { weekStartsOn: 1 }); // Monday
   const weekEnd = endOfWeek(selectedWeek, { weekStartsOn: 1 }); // Sunday

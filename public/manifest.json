@@ -48,30 +48,30 @@
   ],
   "shortcuts": [
     {
-      "name": "Today's Schedule",
-      "short_name": "Schedule",
-      "description": "View today's appointments and schedule",
-      "url": "/dashboard",
+      "name": "This Week's Openings",
+      "short_name": "This Week",
+      "description": "View availability for current week",
+      "url": "/scheduling-dashboard?week=current",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Send Invoice",
-      "short_name": "Invoice",
-      "description": "Create and send a new invoice",
-      "url": "/dashboard",
+      "name": "Next Week's Openings",
+      "short_name": "Next Week",
+      "description": "Check availability for next week",
+      "url": "/scheduling-dashboard?week=next",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "New Message",
-      "short_name": "Message",
-      "description": "Send a new message to a customer",
-      "url": "/messages",
+      "name": "Week After Next",
+      "short_name": "2 Weeks Out",
+      "description": "View openings 2 weeks ahead",
+      "url": "/scheduling-dashboard?week=after-next",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Quick Booking",
-      "short_name": "Book",
-      "description": "Schedule a new appointment",
+      "short_name": "Book Now",
+      "description": "Schedule a new appointment fast",
       "url": "/quick-booking",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
