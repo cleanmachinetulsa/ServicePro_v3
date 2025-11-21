@@ -318,8 +318,12 @@ export async function registerRoutes(app: Express) {
       '/api/sms-consent',       // Public SMS consent page
       '/api/book',              // Public booking endpoints
       '/api/book-appointment',  // Public booking endpoints
+      '/api/quick-booking',     // Public quick booking for returning customers
       '/api/get-available',     // Public availability check
       '/api/available-slots',   // Public availability check
+      '/api/geocode',           // Public address geocoding for booking flow
+      '/api/distance-check',    // Public distance/service area validation for booking
+      '/api/appointment-weather', // Public weather check for appointment dates
       '/api/services',          // Public service listing (needed for booking)
       '/api/addon-services',    // Public addon services
       '/api/homepage-content',  // Public homepage CMS content
