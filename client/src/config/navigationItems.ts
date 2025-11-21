@@ -12,7 +12,6 @@ import {
   DollarSign,
   AlertCircle,
   Palette,
-  Monitor,
   BarChart3,
   UserCog,
   Building2,
@@ -89,12 +88,6 @@ export const navigationItems: NavigationItem[] = [
     label: 'Phone',
     icon: Phone,
     path: '/phone',
-  },
-  {
-    id: 'live-conversations',
-    label: 'Live Conversations',
-    icon: Activity,
-    path: '/live-conversations',
   },
 
   // CUSTOMER MANAGEMENT
@@ -204,28 +197,10 @@ export const navigationItems: NavigationItem[] = [
     path: '/analytics',
   },
   {
-    id: 'monitor',
-    label: 'Monitor Dashboard',
-    icon: Monitor,
-    path: '/monitor',
-  },
-  {
     id: 'call-metrics',
     label: 'Call Metrics',
     icon: BarChart3,
     path: '/call-metrics',
-  },
-  {
-    id: 'sms-monitoring',
-    label: 'SMS Monitoring',
-    icon: MessagesSquare,
-    path: '/sms-monitoring',
-  },
-  {
-    id: 'conversation-insights',
-    label: 'Conversation Insights',
-    icon: FileText,
-    path: '/conversation-insights',
   },
 
   // FINANCE

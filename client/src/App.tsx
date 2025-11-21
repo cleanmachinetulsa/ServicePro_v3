@@ -5,13 +5,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { useKeyboardDismiss } from "@/hooks/useKeyboardDismiss";
 import { PwaProvider } from "@/contexts/PwaContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import NotFound from "@/pages/not-found";
 import ChatPage from "@/pages/chat";
 import DirectionsPage from "@/pages/directions";
 import ServiceHistoryPage from "@/pages/service-history";
 import Dashboard from "@/pages/dashboard";
-import LiveConversationsPage from "@/pages/live-conversations";
-import ConversationInsightsPage from "@/pages/conversation-insights";
 import CustomerDatabasePage from "@/pages/customer-database";
 import BusinessSettingsPage from "@/pages/business-settings";
 import BannerManagement from "@/pages/banner-management";
@@ -25,12 +24,10 @@ import LoyaltyPointsPage from "@/pages/rewards";
 import DashboardNavButton from "@/components/DashboardNavButton";
 import GalleryPage from './pages/gallery';
 import ReviewsPage from './pages/reviews';
-import MonitorDashboard from './pages/monitor';
 import MessagesPage from './pages/messages';
 import PhonePage from './pages/phone';
 import SettingsPage from './pages/settings';
 import SettingsAdmin from './pages/settings-admin';
-import SmsMonitoringPage from './pages/sms-monitoring';
 import FacebookSettingsPage from './pages/facebook-settings';
 import LoginPage from './pages/login';
 import ForgotPasswordPage from './pages/forgot-password';
@@ -107,9 +104,6 @@ function Router() {
       <Route path="/dashboard">
         <AuthGuard><Dashboard /></AuthGuard>
       </Route>
-      <Route path="/monitor">
-        <AuthGuard><MonitorDashboard /></AuthGuard>
-      </Route>
       <Route path="/messages">
         <AuthGuard><MessagesPage /></AuthGuard>
       </Route>
@@ -118,9 +112,6 @@ function Router() {
       </Route>
       <Route path="/call-metrics">
         <AuthGuard><CallMetricsPage /></AuthGuard>
-      </Route>
-      <Route path="/sms-monitoring">
-        <AuthGuard><SmsMonitoringPage /></AuthGuard>
       </Route>
       <Route path="/facebook-settings">
         <AuthGuard><FacebookSettingsPage /></AuthGuard>
@@ -139,15 +130,6 @@ function Router() {
       </Route>
       <Route path="/sip-setup-guide">
         <AuthGuard><SipSetupGuide /></AuthGuard>
-      </Route>
-      <Route path="/live-conversations">
-        <AuthGuard><LiveConversationsPage /></AuthGuard>
-      </Route>
-      <Route path="/live-conversations/:conversationId">
-        <AuthGuard><LiveConversationsPage /></AuthGuard>
-      </Route>
-      <Route path="/conversation-insights">
-        <AuthGuard><ConversationInsightsPage /></AuthGuard>
       </Route>
       <Route path="/customer-database">
         <AuthGuard><CustomerDatabasePage /></AuthGuard>
@@ -298,15 +280,11 @@ function App() {
   const isCustomerFacingPage = () => {
     const adminPages = [
       '/dashboard', 
-      '/live-conversations', 
-      '/conversation-insights',
       '/customer-database',
       '/business-settings',
       '/damage-assessment',
       '/formatter-test',
-      '/monitor',
       '/messages',
-      '/sms-monitoring',
       '/facebook-settings',
       '/settings',
       '/admin/employees',
@@ -318,14 +296,16 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <PwaProvider>
-        <Toaster />
-        <PasswordChangeModal />
-        <BannerDisplay />
-        <Router />
-        {/* Only show dashboard button on admin pages (except dashboard, messages, phone which have own nav) */}
-        {!isCustomerFacingPage() && !location.startsWith('/dashboard') && !location.startsWith('/messages') && !location.startsWith('/phone') && !location.startsWith('/notifications-settings') && <DashboardNavButton />}
-      </PwaProvider>
+      <ThemeProvider>
+        <PwaProvider>
+          <Toaster />
+          <PasswordChangeModal />
+          <BannerDisplay />
+          <Router />
+          {/* Only show dashboard button on admin pages (except dashboard, messages, phone which have own nav) */}
+          {!isCustomerFacingPage() && !location.startsWith('/dashboard') && !location.startsWith('/messages') && !location.startsWith('/phone') && !location.startsWith('/notifications-settings') && <DashboardNavButton />}
+        </PwaProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

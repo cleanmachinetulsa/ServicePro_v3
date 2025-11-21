@@ -989,10 +989,14 @@ export default function QuickBookingPage() {
                           </Card>
                         )}
 
-                        {/* SMS Consent */}
+                        {/* Privacy Statement & SMS Consent */}
                         {selectedTime && (
                           <Card className="bg-gray-800/50 border-blue-500/30">
-                            <CardContent className="p-4">
+                            <CardContent className="p-4 space-y-3">
+                              <p className="text-blue-300 text-sm">
+                                We will never share your information with anyone for any reason.
+                              </p>
+
                               <SMSConsentCheckbox
                                 checked={smsConsent}
                                 onCheckedChange={setSmsConsent}
