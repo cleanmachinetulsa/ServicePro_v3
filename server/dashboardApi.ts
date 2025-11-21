@@ -834,10 +834,18 @@ export async function navigateAndSendETA(req: Request, res: Response) {
     // Calculate ETA and generate navigation link
     const etaResult = await calculateETAAndGenerateNavLink(address);
     
-    if (!etaResult.success || !etaResult.eta || !etaResult.navigation) {
+    if (!etaResult.success) {
       return res.status(500).json({
         success: false,
         error: 'error' in etaResult ? etaResult.error : 'Failed to calculate ETA'
+      });
+    }
+    
+    // TypeScript narrowing - after success check, we know eta and navigation exist
+    if (!('eta' in etaResult) || !('navigation' in etaResult)) {
+      return res.status(500).json({
+        success: false,
+        error: 'Invalid ETA result structure'
       });
     }
     
