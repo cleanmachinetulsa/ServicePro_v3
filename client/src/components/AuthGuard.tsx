@@ -10,12 +10,12 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading, isError } = useSession();
 
-  // Redirect to login on auth failure
+  // Redirect to login when not authenticated
   useEffect(() => {
-    if (isError) {
+    if (!isLoading && !isAuthenticated) {
       setLocation('/login');
     }
-  }, [isError, setLocation]);
+  }, [isLoading, isAuthenticated, setLocation]);
 
   // CRITICAL UX FIX: Only show full-screen spinner on first load (no cached data)
   // On subsequent loads, React Query keeps previous data mounted during revalidation
@@ -31,5 +31,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  return isAuthenticated ? <>{children}</> : null;
+  // Don't render anything while redirecting
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return <>{children}</>;
 }
