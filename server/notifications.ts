@@ -7,6 +7,9 @@ import { smsDeliveryStatus } from '@shared/schema';
 // Set to true if you want to enable demo mode restrictions
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
 
+// Emergency alert number (0103 line)
+const EMERGENCY_ALERT_PHONE = '+19182820103';
+
 /**
  * Notification Service for Clean Machine Auto Detail
  * Handles SMS and email notifications for appointments and reminders
@@ -198,6 +201,66 @@ export async function sendSMS(
   } catch (error) {
     console.error('Error sending SMS:', error);
     return { success: false, error };
+  }
+}
+
+/**
+ * Smart notification system with intelligent fallback
+ * Tries SMS first, falls back to email if SMS fails, alerts to emergency number if both fail
+ * Works for both 5304 and 5711 phone lines
+ */
+export async function smartSendNotification(
+  customerPhone: string,
+  customerEmail: string | undefined,
+  message: string,
+  emailSubject: string,
+  conversationId?: number,
+  messageId?: number,
+  phoneLineId?: number
+): Promise<{ success: boolean; method: 'sms' | 'email' | 'emergency'; error?: any }> {
+  // Step 1: Try SMS first
+  console.log(`[SMART NOTIFY] Attempting SMS to ${customerPhone}`);
+  const smsResult = await sendSMS(customerPhone, message, conversationId, messageId, phoneLineId);
+  
+  if (smsResult.success) {
+    console.log(`[SMART NOTIFY] ✅ SMS sent successfully via line ${phoneLineId || 'default'}`);
+    return { success: true, method: 'sms' };
+  }
+  
+  // Step 2: SMS failed - try email as fallback
+  console.log(`[SMART NOTIFY] ⚠️ SMS failed (${smsResult.error}) - attempting email fallback to ${customerEmail}`);
+  
+  if (customerEmail && customerEmail.trim()) {
+    try {
+      const emailResult = await sendBusinessEmail(customerEmail, emailSubject, message);
+      if (emailResult.success) {
+        console.log(`[SMART NOTIFY] ✅ Email sent as fallback to ${customerEmail}`);
+        return { success: true, method: 'email' };
+      }
+    } catch (emailError) {
+      console.error(`[SMART NOTIFY] Email fallback also failed:`, emailError);
+    }
+  } else {
+    console.warn(`[SMART NOTIFY] No email provided - cannot use email fallback`);
+  }
+  
+  // Step 3: Both SMS and email failed - alert emergency number (0103)
+  console.error(`[SMART NOTIFY] 🚨 CRITICAL: Both SMS and email failed! Alerting to emergency line: ${EMERGENCY_ALERT_PHONE}`);
+  
+  try {
+    const emergencyMessage = `🚨 NOTIFICATION DELIVERY FAILURE\n\nFailed to send message to:\nPhone: ${customerPhone}\nEmail: ${customerEmail || 'not provided'}\n\nOriginal message:\n${message.substring(0, 200)}${message.length > 200 ? '...' : ''}`;
+    
+    await twilio.messages.create({
+      body: emergencyMessage,
+      from: twilioPhoneNumber,
+      to: EMERGENCY_ALERT_PHONE,
+    });
+    
+    console.log(`[SMART NOTIFY] 📱 Emergency alert sent to ${EMERGENCY_ALERT_PHONE}`);
+    return { success: false, method: 'emergency', error: 'SMS and email both failed - alert sent to emergency line' };
+  } catch (emergencyError) {
+    console.error(`[SMART NOTIFY] 🔴 CRITICAL: Emergency alert also failed!`, emergencyError);
+    return { success: false, method: 'emergency', error: 'All notification methods failed' };
   }
 }
 
