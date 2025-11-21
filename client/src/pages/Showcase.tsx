@@ -14,9 +14,20 @@ export default function Showcase() {
   useEffect(() => {
     document.title = 'Clean Machine Showcase - The Brain of Your Detailing Business';
     
-    requestAnimationFrame(() => {
+    // Force scroll to top immediately, then again after render
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    
+    // Also clear any hash in URL that might cause auto-scroll
+    if (window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    
+    // Final scroll after all components render
+    const timer = setTimeout(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    });
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   return (

@@ -3,10 +3,11 @@
   "short_name": "Comm Hub",
   "description": "AI-powered communications platform for Clean Machine Auto Detail",
   "start_url": "/messages",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1e40af",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -76,6 +77,5 @@
     }
   ],
   "categories": ["business", "productivity"],
-  "scope": "/",
   "screenshots": []
 }
