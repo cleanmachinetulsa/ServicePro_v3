@@ -78,7 +78,7 @@ export default function LoginPage() {
         }
         
         setTimeout(() => {
-          setLocation('/messages');
+          setLocation('/launch');
         }, 100);
       } else if (data.requires2FA) {
         // Password verified, now need 2FA code
@@ -145,7 +145,7 @@ export default function LoginPage() {
         }
         
         setTimeout(() => {
-          setLocation('/messages');
+          setLocation('/launch');
         }, 100);
       } else {
         toast({ 
@@ -277,7 +277,7 @@ export default function LoginPage() {
         }
         
         setTimeout(() => {
-          setLocation('/messages');
+          setLocation('/launch');
         }, 100);
       } else {
         toast({ 
