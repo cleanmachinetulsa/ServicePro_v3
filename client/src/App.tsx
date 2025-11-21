@@ -74,10 +74,16 @@ import HomepageEditor from './pages/HomepageEditor';
 import UsageDashboard from './pages/UsageDashboard';
 import GalleryManagementPage from './pages/gallery-management';
 import DownloadExportPage from './pages/download-export';
+import LaunchPage from './pages/launch';
 
 function Router() {
   return (
     <Switch>
+      {/* Smart PWA launch router - device-aware routing */}
+      <Route path="/launch">
+        <AuthGuard><LaunchPage /></AuthGuard>
+      </Route>
+      
       {/* Public download page */}
       <Route path="/export-download" component={DownloadExportPage} />
       

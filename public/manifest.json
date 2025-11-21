@@ -2,7 +2,7 @@
   "name": "Clean Machine Communications Hub",
   "short_name": "Comm Hub",
   "description": "AI-powered communications platform for Clean Machine Auto Detail",
-  "start_url": "/dashboard",
+  "start_url": "/launch",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
