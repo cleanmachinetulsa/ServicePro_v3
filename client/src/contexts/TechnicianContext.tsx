@@ -101,7 +101,7 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
   useEffect(() => {
     const initDevice = async () => {
       try {
-        const { token } = await apiRequest('POST', '/api/voice/token', {});
+        const { token } = await apiRequest('POST', '/twilio/voice/token', {});
         const newDevice = new Device(token, {
           codecPreferences: ['opus', 'pcmu'],
           edge: 'roaming',

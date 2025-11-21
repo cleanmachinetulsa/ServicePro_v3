@@ -130,7 +130,7 @@ export default function CustomerProfilePanel({ conversationId }: Props) {
   // Click-to-Call mutation
   const clickToCallMutation = useMutation({
     mutationFn: async (customerPhone: string) => {
-      return await apiRequest('POST', '/api/voice/click-to-call', { customerPhone });
+      return await apiRequest('POST', '/twilio/voice/click-to-call', { customerPhone });
     },
   });
 
