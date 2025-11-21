@@ -66,11 +66,41 @@ export default function Dashboard() {
     queryKey: ['/api/users/me'],
   });
   const currentUser = currentUserData?.user;
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [todayDate, setTodayDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
-  const [appointmentCounts, setAppointmentCounts] = useState<Record<string, number>>({});
-  const [weatherData, setWeatherData] = useState<Record<string, any>>({});
+  
+  // Parallel data fetching with React Query
+  const { data: appointmentsData } = useQuery<{ success: boolean; appointments: Appointment[] }>({
+    queryKey: ['/api/dashboard/today', todayDate.toISOString()],
+    queryFn: async () => {
+      const response = await fetch(`/api/dashboard/today?date=${todayDate.toISOString()}`);
+      return await response.json();
+    },
+  });
+  
+  const { data: appointmentCountsData } = useQuery<{ success: boolean; counts: Record<string, number> }>({
+    queryKey: ['/api/dashboard/appointment-counts', currentMonth.getFullYear(), currentMonth.getMonth() + 1],
+    queryFn: async () => {
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth() + 1;
+      const response = await fetch(`/api/dashboard/appointment-counts?year=${year}&month=${month}`);
+      return await response.json();
+    },
+  });
+  
+  const { data: weatherDataResponse } = useQuery<{ success: boolean; weather: Record<string, any> }>({
+    queryKey: ['/api/dashboard/weather'],
+    queryFn: async () => {
+      const response = await fetch('/api/dashboard/weather?days=14');
+      return await response.json();
+    },
+  });
+  
+  // Extract data from queries with fallbacks
+  const appointments = appointmentsData?.appointments || [];
+  const appointmentCounts = appointmentCountsData?.counts || {};
+  const weatherData = weatherDataResponse?.weather || {};
+  
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceDetails, setInvoiceDetails] = useState<InvoiceDetails | null>(null);
   const [isManualInvoice, setIsManualInvoice] = useState(false);
@@ -132,64 +162,6 @@ export default function Dashboard() {
     }
   }, [darkMode]);
 
-  // Fetch appointments for a specific date
-  const fetchAppointmentsForDate = async (date: Date) => {
-    try {
-      const formattedDate = date.toISOString();
-      const response = await fetch(`/api/dashboard/today?date=${formattedDate}`);
-      const data = await response.json();
-
-      if (data.success && data.appointments) {
-        setAppointments(data.appointments);
-      } else {
-        setAppointments([]);
-        console.error('Failed to fetch appointments:', data.error);
-      }
-    } catch (error) {
-      console.error('Error fetching appointments:', error);
-      setAppointments([]);
-    }
-  };
-
-  // Fetch appointments when component mounts or when selected date changes
-  useEffect(() => {
-    fetchAppointmentsForDate(todayDate);
-  }, [todayDate]);
-
-  // Fetch appointment counts when current month changes
-  useEffect(() => {
-    const fetchAppointmentCounts = async () => {
-      try {
-        const year = currentMonth.getFullYear();
-        const month = currentMonth.getMonth() + 1;
-        const response = await fetch(`/api/dashboard/appointment-counts?year=${year}&month=${month}`);
-        const data = await response.json();
-
-        if (data.success && data.counts) {
-          setAppointmentCounts(data.counts);
-        }
-      } catch (error) {
-        console.error('Error fetching appointment counts:', error);
-      }
-    };
-
-    fetchAppointmentCounts();
-    
-    const fetchWeatherData = async () => {
-      try {
-        const response = await fetch('/api/dashboard/weather?days=14');
-        const data = await response.json();
-        
-        if (data.success && data.weather) {
-          setWeatherData(data.weather);
-        }
-      } catch (error) {
-        console.error('Error fetching weather data:', error);
-      }
-    };
-    
-    fetchWeatherData();
-  }, [currentMonth]);
 
   // Navigate to directions page
   const goToDirections = (address: string, phone: string) => {
