@@ -324,7 +324,6 @@ export default function Dashboard() {
   // Handle date change
   const handleDateChange = (date: Date) => {
     setTodayDate(date);
-    fetchAppointmentsForDate(date);
   };
 
   // Page-specific actions

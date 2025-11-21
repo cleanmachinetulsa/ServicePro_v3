@@ -46,14 +46,32 @@ async function isBusinessHours(phoneLineId: number): Promise<boolean> {
 
 /**
  * Main IVR Menu Handler - Detects business hours and presents appropriate greeting
+ * Dynamically detects which phone line was called
  */
 router.post('/voice/incoming', async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
-    // Get phone line from database to check business hours
+    // Get phone line from database based on the number that was called
     const toNumber = (req.body.To as string) || '';
-    const phoneLineId = 1; // Main line ID - you can make this dynamic if needed
+    console.log('[TWILIO VOICE] Incoming call to:', toNumber);
+    
+    // Find the phone line in database by the To number
+    const line = await db.query.phoneLines.findFirst({
+      where: eq(phoneLines.phoneNumber, toNumber),
+    });
+    
+    if (!line) {
+      console.error('[TWILIO VOICE] No phone line found for number:', toNumber);
+      response.say({ voice: 'alice' }, 'This number is not configured. Please call back later.');
+      response.hangup();
+      res.type('text/xml');
+      res.send(response.toString());
+      return;
+    }
+    
+    const phoneLineId = line.id;
+    console.log('[TWILIO VOICE] Matched phone line:', line.label, 'ID:', phoneLineId);
     
     const businessHours = await isBusinessHours(phoneLineId);
 
@@ -111,18 +129,29 @@ router.post('/voice/menu-handler', async (req: Request, res: Response) => {
     if (digits === '3') {
       // User pressed 3
       const fromNumber = (req.body.From as string) || '';
-      const phoneLineId = 1; // Main line ID
+      const toNumber = (req.body.To as string) || '';
+      
+      // Find phone line based on the number that was called
+      const line = await db.query.phoneLines.findFirst({
+        where: eq(phoneLines.phoneNumber, toNumber),
+      });
+      
+      if (!line) {
+        console.error('[TWILIO VOICE] No phone line found for:', toNumber);
+        response.say({ voice: 'alice' }, 'Configuration error.');
+        response.hangup();
+        res.type('text/xml');
+        res.send(response.toString());
+        return;
+      }
+      
+      const phoneLineId = line.id;
       const businessHours = await isBusinessHours(phoneLineId);
 
       if (businessHours) {
-        // During business hours - attempt to reach Jody via SIP
-        // Get all settings from database (nothing hardcoded)
-        const line = await db.query.phoneLines.findFirst({
-          where: eq(phoneLines.id, phoneLineId),
-        });
-        
-        const sipEndpoint = line?.sipEndpoint;
-        const ringDuration = line?.ringDuration || 10;
+        // During business hours - attempt to reach via SIP
+        const sipEndpoint = line.sipEndpoint;
+        const ringDuration = line.ringDuration || 10;
 
         if (!sipEndpoint) {
           console.log('[TWILIO VOICE] SIP endpoint not configured, going to voicemail');
@@ -181,10 +210,12 @@ router.post('/voice/voicemail', async (req: Request, res: Response) => {
   const response = new VoiceResponse();
 
   try {
-    // Get voicemail greeting from database for main phone line
-    const phoneLineId = 1;
+    // Get voicemail greeting from database based on the number called
+    const toNumber = (req.body.To as string) || '';
+    console.log('[TWILIO VOICE] Voicemail handler for incoming call to:', toNumber);
+    
     const line = await db.query.phoneLines.findFirst({
-      where: eq(phoneLines.id, phoneLineId),
+      where: eq(phoneLines.phoneNumber, toNumber),
     });
 
     // Play custom voicemail greeting URL if available
