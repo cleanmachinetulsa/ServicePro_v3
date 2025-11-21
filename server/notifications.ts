@@ -173,31 +173,60 @@ export async function sendSMS(
       }
     }
 
-    // Send SMS via Twilio with status callback
-    const response = await twilio.messages.create(smsParams);
-
-    console.log(`SMS sent to ${phoneNumber}, SID: ${response.sid}`);
+    // EMERGENCY FIX: Use failover service for Error 30024 (ported number not provisioned)
+    // Import failover service
+    const { sendSMSWithFailover } = await import('./smsFailoverService');
+    
+    // Determine which number to use for sending
+    let actualFromNumber = fromPhoneNumber;
+    
+    // If using Messaging Service, we need a fallback number for the failover logic
+    if (smsParams.messagingServiceSid && !smsParams.from) {
+      actualFromNumber = twilioPhoneNumber || '';
+    } else if (smsParams.from) {
+      actualFromNumber = smsParams.from;
+    }
+    
+    // Send SMS with automatic failover (retry with backup line if Error 30024)
+    const failoverResult = await sendSMSWithFailover(
+      formattedPhone,
+      message,
+      actualFromNumber,
+      phoneLineId,
+      statusCallbackUrl
+    );
+    
+    if (!failoverResult.success) {
+      console.error('[SMS] Failover also failed:', failoverResult.error);
+      return { success: false, error: failoverResult.error };
+    }
+    
+    const messageSid = failoverResult.messageSid!;
+    console.log(`SMS sent to ${phoneNumber}, SID: ${messageSid}${failoverResult.usedBackup ? ' (via BACKUP line)' : ''}`);
+    
+    // Determine actual sender (might be backup line if failover occurred)
+    const actualSender = failoverResult.usedBackup ? '+19188565711' : actualFromNumber;
 
     // Log to delivery tracking database
     try {
       await db.insert(smsDeliveryStatus).values({
-        messageSid: response.sid,
+        messageSid: messageSid,
         conversationId: conversationId || null,
         messageId: messageId || null,
         to: formattedPhone,
-        from: response.from || twilioPhoneNumber || '', // Use actual sender from response
+        from: actualSender,
         body: message,
         status: 'queued', // Initial status
         direction: 'outbound-api',
-        numSegments: response.numSegments ? parseInt(response.numSegments) : null,
+        numSegments: null, // We don't have this from failover service
       });
-      console.log(`[SMS TRACKING] Logged message to database: ${response.sid} from ${response.from}`);
+      console.log(`[SMS TRACKING] Logged message to database: ${messageSid} from ${actualSender}${failoverResult.usedBackup ? ' (FAILOVER)' : ''}`);
     } catch (dbError) {
       console.error('[SMS TRACKING] Failed to log to database:', dbError);
       // Don't fail the SMS send if database logging fails
     }
 
-    return { success: true, messageSid: response.sid };
+    return { success: true, messageSid: messageSid };
   } catch (error) {
     console.error('Error sending SMS:', error);
     return { success: false, error };
