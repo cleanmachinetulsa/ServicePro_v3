@@ -36,7 +36,8 @@ import {
   Smile,
   Search,
   XCircle,
-  ArrowLeft
+  ArrowLeft,
+  Smartphone
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { format, formatDistanceToNow, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -143,6 +144,13 @@ export default function ThreadView({
     queryKey: ['/api/users/me'],
   });
   const currentUser = currentUserData?.user;
+
+  // Fetch phone lines for active send line indicator
+  const { data: phoneLinesData } = useQuery<{ success: boolean; lines: { id: number; label: string; phoneNumber: string; isActive: boolean }[] }>({
+    queryKey: ['/api/phone-settings/lines'],
+  });
+  const phoneLines = phoneLinesData?.lines || [];
+  const activeLine = phoneLines.find(line => line.id === activeSendLineId);
 
   // Fetch conversation details with messages
   const { data: conversationData, isLoading: conversationLoading} = useQuery<{ success: boolean; data: Conversation & { messages: Message[] } }>({
@@ -1293,6 +1301,37 @@ export default function ThreadView({
 
           {/* Message Input - Always Visible */}
           <div className="border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 shadow-lg">
+              {/* Active Phone Line Indicator - Only for SMS conversations */}
+              {conversation?.platform === 'sms' && activeLine && (
+                <div className="mb-3 max-w-4xl mx-auto">
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                    conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId
+                      ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+                      : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'
+                  }`}>
+                    <Smartphone className={`h-3.5 w-3.5 flex-shrink-0 ${
+                      conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-blue-600 dark:text-blue-400'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <span className={`font-medium ${
+                        conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId
+                          ? 'text-amber-900 dark:text-amber-100'
+                          : 'text-blue-900 dark:text-blue-100'
+                      }`}>
+                        Sending from: {activeLine.label} ({activeLine.phoneNumber})
+                      </span>
+                      {conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId && (
+                        <span className="text-amber-700 dark:text-amber-300 ml-1">
+                          • Different from conversation's original line
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {/* File Attachment Preview */}
               {selectedFiles.length > 0 && (
                 <div className="mb-3 max-w-4xl mx-auto">

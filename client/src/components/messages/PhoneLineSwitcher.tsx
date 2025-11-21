@@ -3,11 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Smartphone } from 'lucide-react';
 import { usePhoneLine } from '@/contexts/PhoneLineContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useEffect } from 'react';
 
 interface PhoneLine {
   id: number;
   label: string;
   phoneNumber: string;
+  isActive: boolean;
 }
 
 export default function PhoneLineSwitcher() {
@@ -18,6 +20,21 @@ export default function PhoneLineSwitcher() {
   });
 
   const phoneLines = phoneLinesData?.lines || [];
+  const activeLine = phoneLines.find(line => line.id === activeSendLineId);
+
+  // CRITICAL: Validate activeSendLineId exists in phone lines list using useEffect
+  // If invalid, auto-select first available working line
+  useEffect(() => {
+    if (phoneLines.length > 0 && !activeLine && !isLoading) {
+      // Find first working line (prefer line 2 if available, otherwise first active line)
+      const preferredLine = phoneLines.find(line => line.id === 2 && line.isActive);
+      const fallbackLine = phoneLines.find(line => line.isActive) || phoneLines[0];
+      const validLine = preferredLine || fallbackLine;
+      
+      console.warn(`[PhoneLineSwitcher] activeSendLineId ${activeSendLineId} not found in phone lines. Auto-selecting line ${validLine.id}`);
+      setActiveSendLineId(validLine.id);
+    }
+  }, [phoneLines, activeLine, isLoading, activeSendLineId, setActiveSendLineId]);
 
   if (isLoading) {
     return (
@@ -31,8 +48,6 @@ export default function PhoneLineSwitcher() {
   if (phoneLines.length === 0) {
     return null;
   }
-
-  const activeLine = phoneLines.find(line => line.id === activeSendLineId);
 
   return (
     <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
