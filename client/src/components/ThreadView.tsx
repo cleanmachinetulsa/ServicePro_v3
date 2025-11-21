@@ -35,7 +35,8 @@ import {
   Image as ImageIcon,
   Smile,
   Search,
-  XCircle
+  XCircle,
+  ArrowLeft
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { format, formatDistanceToNow, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -60,6 +61,7 @@ interface CategoryWithTemplates extends QuickReplyCategory {
 
 interface ThreadViewProps {
   conversationId: number;
+  onBack?: () => void;
   
   messageReactionSlot?: (message: Message) => React.ReactNode;
   scheduledMetaSlot?: (message: Message) => React.ReactNode;
@@ -102,6 +104,7 @@ function groupMessagesByDate(messages: Message[]): Array<{ date: Date; messages:
 
 export default function ThreadView({ 
   conversationId,
+  onBack,
   messageReactionSlot,
   scheduledMetaSlot,
   deliveryIndicatorSlot,
@@ -858,6 +861,19 @@ export default function ThreadView({
       <div className="border-b dark:border-gray-800 bg-white dark:bg-gray-900 px-6 py-4 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
+            {/* MOBILE BACK BUTTON - ALWAYS VISIBLE ON MOBILE */}
+            {onBack && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBack}
+                className="md:hidden flex items-center gap-2 -ml-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                data-testid="button-back-mobile"
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span className="font-medium">Back</span>
+              </Button>
+            )}
             <div className="flex items-center gap-2">
               <Phone className="h-5 w-5 text-primary" />
               <div>
