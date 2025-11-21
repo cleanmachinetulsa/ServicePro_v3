@@ -11,6 +11,7 @@ import { sendSMS } from './notifications';
 import { renderInvoiceEmail, renderInvoiceEmailPlainText, type InvoiceEmailData } from './emailTemplates/invoice';
 import { signPayToken } from './security/paylink';
 import { z } from 'zod';
+import { cacheService, CacheKeys, CacheTTL } from './cacheService';
 
 // Validation schema for service updates
 const updateServiceSchema = z.object({
@@ -161,6 +162,22 @@ export async function getUpcomingAppointments(req: Request, res: Response) {
  */
 export async function getTodaysAppointments(req: Request, res: Response) {
   try {
+    // Check if a specific date was requested
+    const dateParam = req.query.date as string;
+    const targetDate = dateParam ? new Date(dateParam) : new Date();
+    
+    const startOfDay = new Date(new Date(targetDate).setHours(0, 0, 0, 0)).toISOString();
+    const cacheKey = CacheKeys.dashboardToday(startOfDay);
+    
+    // Try cache first
+    const cachedData = cacheService.get<any>(cacheKey);
+    if (cachedData) {
+      console.log(`[CACHE HIT] Today's appointments for ${targetDate.toDateString()}`);
+      return res.json(cachedData);
+    }
+    
+    console.log(`[CACHE MISS] Fetching today's appointments for ${targetDate.toDateString()}`);
+    
     const calendarService = await getCalendarService();
     
     if (!calendarService) {
@@ -170,11 +187,6 @@ export async function getTodaysAppointments(req: Request, res: Response) {
       });
     }
     
-    // Check if a specific date was requested
-    const dateParam = req.query.date as string;
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
-    
-    const startOfDay = new Date(new Date(targetDate).setHours(0, 0, 0, 0)).toISOString();
     const endOfDay = new Date(new Date(targetDate).setHours(23, 59, 59, 999)).toISOString();
     
     const response = await calendarService.events.list({
@@ -190,10 +202,12 @@ export async function getTodaysAppointments(req: Request, res: Response) {
     
     if (events.length === 0) {
       console.log(`No appointments found for ${targetDate.toDateString()}`);
-      return res.json({
+      const result = {
         success: true,
         appointments: []
-      });
+      };
+      cacheService.set(cacheKey, result, CacheTTL.MEDIUM);
+      return res.json(result);
     }
     
     const appointments = events.map((event: any) => {
@@ -217,10 +231,15 @@ export async function getTodaysAppointments(req: Request, res: Response) {
       };
     });
     
-    return res.json({
+    const result = {
       success: true,
       appointments
-    });
+    };
+    
+    // Cache for 5 minutes
+    cacheService.set(cacheKey, result, CacheTTL.MEDIUM);
+    
+    return res.json(result);
   } catch (error) {
     console.error('Error fetching today\'s appointments:', error);
     return res.status(500).json({
@@ -591,6 +610,21 @@ export async function getMonthlyStatistics(req: Request, res: Response) {
  */
 export async function getMonthlyAppointmentCounts(req: Request, res: Response) {
   try {
+    // Get the start and end of the month from query params or use current month
+    const year = parseInt(req.query.year as string) || new Date().getFullYear();
+    const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+    
+    const cacheKey = CacheKeys.dashboardAppointmentCounts(year, month);
+    
+    // Try cache first
+    const cachedData = cacheService.get<any>(cacheKey);
+    if (cachedData) {
+      console.log(`[CACHE HIT] Appointment counts for ${year}-${month}`);
+      return res.json(cachedData);
+    }
+    
+    console.log(`[CACHE MISS] Fetching appointment counts for ${year}-${month}`);
+    
     const calendarService = await getCalendarService();
     
     if (!calendarService) {
@@ -599,10 +633,6 @@ export async function getMonthlyAppointmentCounts(req: Request, res: Response) {
         error: 'Calendar service not available'
       });
     }
-    
-    // Get the start and end of the month from query params or use current month
-    const year = parseInt(req.query.year as string) || new Date().getFullYear();
-    const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
     
     const startOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0).toISOString();
     const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
@@ -624,10 +654,15 @@ export async function getMonthlyAppointmentCounts(req: Request, res: Response) {
       countsByDate[dateKey] = (countsByDate[dateKey] || 0) + 1;
     });
     
-    return res.json({
+    const result = {
       success: true,
       counts: countsByDate
-    });
+    };
+    
+    // Cache for 5 minutes
+    cacheService.set(cacheKey, result, CacheTTL.MEDIUM);
+    
+    return res.json(result);
   } catch (error) {
     console.error('Error fetching appointment counts:', error);
     return res.status(500).json({
@@ -693,6 +728,16 @@ export async function getCalendarWeather(req: Request, res: Response) {
     const tulsaLng = -95.975;
     
     const days = parseInt(req.query.days as string) || 14;
+    const cacheKey = CacheKeys.dashboardWeather(days);
+    
+    // Try cache first
+    const cachedData = cacheService.get<any>(cacheKey);
+    if (cachedData) {
+      console.log(`[CACHE HIT] Weather forecast (${days} days)`);
+      return res.json(cachedData);
+    }
+    
+    console.log(`[CACHE MISS] Fetching weather forecast (${days} days)`);
     
     const forecasts = await getDailyWeatherSummary(tulsaLat, tulsaLng, days);
     
@@ -708,11 +753,16 @@ export async function getCalendarWeather(req: Request, res: Response) {
       };
     });
     
-    return res.json({
+    const result = {
       success: true,
       weather: weatherByDate,
       forecasts // Also include the array format
-    });
+    };
+    
+    // Cache for 1 hour - weather doesn't change that often
+    cacheService.set(cacheKey, result, CacheTTL.WEATHER);
+    
+    return res.json(result);
   } catch (error) {
     console.error('Error fetching calendar weather:', error);
     return res.status(500).json({
