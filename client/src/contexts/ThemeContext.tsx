@@ -10,6 +10,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDark, setIsDark] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
+    }
     const stored = localStorage.getItem('theme');
     if (stored) {
       return stored === 'dark';
@@ -18,6 +21,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const root = document.documentElement;
     if (isDark) {
       root.classList.add('dark');
