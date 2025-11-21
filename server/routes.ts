@@ -331,6 +331,8 @@ export async function registerRoutes(app: Express) {
       '/api/qr/scan',           // Allow anonymous QR code scans (tracking endpoint)
       '/api/customers/check-phone', // Public customer lookup for smart booking (Phase 3)
       '/api/leads',             // Public lead capture for trial requests
+      '/api/admin/demo-settings', // Public demo mode status check (GET only - PUT remains owner-protected)
+      '/api/demo',              // Public demo session management
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)
@@ -952,8 +954,10 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // Demo Mode Settings endpoints (owner-only)
-  app.get('/api/admin/demo-settings', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+  // Demo Mode Settings endpoints
+  // GET is public (allows showcase to check if demo is available)
+  // PUT is owner-only (admin toggle in dashboard)
+  app.get('/api/admin/demo-settings', async (req: Request, res: Response) => {
     try {
       let [settings] = await db.select().from(platformSettings).limit(1);
       
