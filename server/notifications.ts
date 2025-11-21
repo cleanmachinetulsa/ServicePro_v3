@@ -219,6 +219,7 @@ export async function sendSMS(
         status: 'queued', // Initial status
         direction: 'outbound-api',
         numSegments: null, // We don't have this from failover service
+        tenantId: 'root', // Required field for multi-tenancy support
       });
       console.log(`[SMS TRACKING] Logged message to database: ${messageSid} from ${actualSender}${failoverResult.usedBackup ? ' (FAILOVER)' : ''}`);
     } catch (dbError) {
