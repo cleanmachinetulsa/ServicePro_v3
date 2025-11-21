@@ -639,9 +639,22 @@ View photo: ${result}`;
       
       // Upload to Google Drive
       try {
-        const drive = getDriveClient();
+        let drive = getDriveClient();
+        
+        // If Drive client isn't initialized, try to initialize it now
         if (!drive) {
-          throw new Error('Google Drive API not initialized');
+          console.log('[VOICEMAIL GREETING] Drive client not initialized, attempting to initialize Google APIs...');
+          const { initializeGoogleAPIs } = await import('./googleIntegration');
+          const initialized = await initializeGoogleAPIs();
+          
+          if (initialized) {
+            drive = getDriveClient();
+            console.log('[VOICEMAIL GREETING] Google APIs initialized successfully');
+          }
+          
+          if (!drive) {
+            throw new Error('Google Drive API could not be initialized. Please check your Google API credentials.');
+          }
         }
         
         // Create folder name for voicemail greetings

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useLocation, Link } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer, Settings } from 'lucide-react';
+import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer, Settings, Upload } from 'lucide-react';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import CommunicationsNav from '@/components/CommunicationsNav';
 import { CustomRingtoneInstructions } from '@/components/phone/CustomRingtoneInstructions';
@@ -90,6 +90,10 @@ export default function PhoneSettings() {
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [afterHoursAudioFile, setAfterHoursAudioFile] = useState<File | null>(null);
   const [isUploadingAfterHoursAudio, setIsUploadingAfterHoursAudio] = useState(false);
+  
+  // File input refs for styled upload buttons
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const afterHoursAudioFileInputRef = useRef<HTMLInputElement>(null);
 
   // Schedule form state
   const [scheduleForm, setScheduleForm] = useState({
@@ -926,20 +930,36 @@ export default function PhoneSettings() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Input
+                  <input
+                    ref={audioFileInputRef}
                     type="file"
                     accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a,audio/ogg"
                     onChange={handleAudioUpload}
                     disabled={isUploadingAudio}
+                    className="hidden"
                     data-testid="input-audio-file"
                   />
-                  {isUploadingAudio && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading audio...
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => audioFileInputRef.current?.click()}
+                    disabled={isUploadingAudio}
+                    className="w-full border-dashed border-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    data-testid="button-upload-audio"
+                  >
+                    {isUploadingAudio ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Uploading audio...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Choose Audio File
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
                     Supported formats: MP3, WAV, M4A, OGG (max 5MB)
                   </p>
                 </div>
@@ -1013,20 +1033,36 @@ export default function PhoneSettings() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <Input
+                    <input
+                      ref={afterHoursAudioFileInputRef}
                       type="file"
                       accept="audio/mp3,audio/mpeg,audio/wav,audio/m4a,audio/ogg"
                       onChange={handleAfterHoursAudioUpload}
                       disabled={isUploadingAfterHoursAudio}
+                      className="hidden"
                       data-testid="input-after-hours-audio-file"
                     />
-                    {isUploadingAfterHoursAudio && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Uploading after-hours audio...
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => afterHoursAudioFileInputRef.current?.click()}
+                      disabled={isUploadingAfterHoursAudio}
+                      className="w-full border-dashed border-2 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      data-testid="button-upload-after-hours-audio"
+                    >
+                      {isUploadingAfterHoursAudio ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Uploading after-hours audio...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Choose After-Hours Audio File
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
                       Supported formats: MP3, WAV, M4A, OGG (max 5MB)
                     </p>
                   </div>

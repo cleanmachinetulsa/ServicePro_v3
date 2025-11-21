@@ -154,9 +154,9 @@ export function AppShell({
               </h1>
             )}
 
-            {/* Search */}
+            {/* Search (hidden on mobile to save space) */}
             {showSearch && (
-              <div className="flex-1 max-w-md">
+              <div className="hidden md:flex flex-1 max-w-md">
                 <AiHelpSearch />
               </div>
             )}
