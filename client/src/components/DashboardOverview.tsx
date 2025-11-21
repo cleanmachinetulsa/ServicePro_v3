@@ -220,12 +220,12 @@ export function DashboardOverview({
                     </Button>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1 sm:gap-2">
                   <TooltipProvider>
                     <Tooltip delayDuration={200}>
                       <TooltipTrigger asChild>
                         <button 
-                          className="p-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-all"
+                          className="hidden sm:flex p-2 rounded-lg bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-all"
                           data-testid="button-calendar-legend"
                         >
                           <HelpCircle className="h-4 w-4 text-white" />
@@ -264,17 +264,17 @@ export function DashboardOverview({
                   <Button
                     size="sm"
                     variant="secondary"
-                    className="bg-white/20 hover:bg-white/30 text-white border-white/20 backdrop-blur-sm transition-all"
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/20 backdrop-blur-sm transition-all h-9 px-2 sm:px-3"
                     onClick={() => onDateChange(new Date())}
                     data-testid="button-today"
                   >
-                    <Clock className="h-4 w-4 mr-2" />
-                    Today
+                    <Clock className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Today</span>
                   </Button>
                   <Button
                     size="sm"
                     variant="secondary"
-                    className="bg-white/20 hover:bg-white/30 text-white border-white/20 backdrop-blur-sm transition-all"
+                    className="bg-white/20 hover:bg-white/30 text-white border-white/20 backdrop-blur-sm transition-all h-9 w-9 p-0"
                     onClick={async () => {
                       toast({
                         title: "Checking Weather",
