@@ -143,6 +143,9 @@ function Router() {
       <Route path="/live-conversations">
         <AuthGuard><LiveConversationsPage /></AuthGuard>
       </Route>
+      <Route path="/live-conversations/:conversationId">
+        <AuthGuard><LiveConversationsPage /></AuthGuard>
+      </Route>
       <Route path="/conversation-insights">
         <AuthGuard><ConversationInsightsPage /></AuthGuard>
       </Route>
