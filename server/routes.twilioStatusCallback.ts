@@ -98,6 +98,7 @@ router.post('/status-callback', verifyTwilioSignature, async (req: Request, res:
         sentAt: MessageStatus === 'sent' ? new Date() : null,
         deliveredAt: MessageStatus === 'delivered' ? new Date() : null,
         failedAt: (MessageStatus === 'failed' || MessageStatus === 'undelivered') ? new Date() : null,
+        tenantId: 'root', // Required field for multi-tenancy support
       });
 
       console.log('[TWILIO STATUS] Created new record for:', MessageSid);
