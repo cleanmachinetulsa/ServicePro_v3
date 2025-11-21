@@ -50,10 +50,10 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
   }, [content]);
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
+    <div className="min-h-screen bg-white dark:bg-black text-gray-900 dark:text-white overflow-hidden">
       {/* Kinetic animated background */}
       <div className="fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900 to-black"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-white via-gray-100 to-gray-50 dark:from-black dark:via-gray-900 dark:to-black"></div>
         <motion.div 
           animate={{ 
             scale: [1, 1.2, 1],
@@ -75,20 +75,20 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
       </div>
 
       {/* Bold header with orange accent */}
-      <header className="relative z-20 bg-gradient-to-r from-black/90 to-gray-900/90 backdrop-blur-sm border-b border-orange-500/20">
+      <header className="relative z-20 bg-gradient-to-r from-white/90 to-gray-50/90 dark:from-black/90 dark:to-gray-900/90 backdrop-blur-sm border-b border-orange-500/30 dark:border-orange-500/20">
         <nav className="flex justify-between items-center max-w-7xl mx-auto px-4 md:px-8 py-4">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
               <Zap className="h-6 w-6 text-white" />
             </div>
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-red-500">
+            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-red-600 dark:from-orange-400 dark:to-red-500">
               CLEAN MACHINE
             </span>
           </div>
           <Button 
             variant="ghost" 
             size="sm"
-            className="text-white hover:bg-orange-500/20 hover:text-orange-400 transition-all"
+            className="text-gray-900 dark:text-white hover:bg-orange-500/20 hover:text-orange-600 dark:hover:text-orange-400 transition-all"
             asChild
           >
             <Link href="/login" data-testid="button-login">
@@ -116,21 +116,21 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                   transition={{ duration: 0.6, delay: 0.2 }}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/20 to-red-600/20 border border-orange-500/30 mb-6"
                 >
-                  <TrendingUp className="h-4 w-4 text-orange-400" />
-                  <span className="text-sm text-orange-300 font-medium">Premium Mobile Detailing</span>
+                  <TrendingUp className="h-4 w-4 text-orange-500 dark:text-orange-400" />
+                  <span className="text-sm text-orange-700 dark:text-orange-300 font-medium">Premium Mobile Detailing</span>
                 </motion.div>
                 
                 <h1 className="text-6xl md:text-7xl font-black mb-6 leading-tight">
-                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-300">
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300">
                     Detailing
                   </span>
                   <br/>
-                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-orange-400 via-red-500 to-orange-600">
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-orange-600 via-red-600 to-orange-700 dark:from-orange-400 dark:via-red-500 dark:to-orange-600">
                     Redefined
                   </span>
                 </h1>
                 
-                <p className="text-lg md:text-xl text-gray-400 mb-8 max-w-xl leading-relaxed">
+                <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 mb-8 max-w-xl leading-relaxed">
                   {content?.aboutText || 'Experience the future of auto detailing. AI-powered scheduling, real-time tracking, and concierge-level service at your location.'}
                 </p>
 
@@ -192,16 +192,16 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                 {/* Trust badges */}
                 <div className="flex flex-wrap gap-6">
                   <div className="flex items-center gap-2">
-                    <Award className="h-5 w-5 text-orange-400" />
-                    <span className="text-sm text-gray-400">5-Star Rated</span>
+                    <Award className="h-5 w-5 text-orange-500 dark:text-orange-400" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">5-Star Rated</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-orange-400" />
-                    <span className="text-sm text-gray-400">Same Day Available</span>
+                    <Zap className="h-5 w-5 text-orange-500 dark:text-orange-400" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Same Day Available</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-orange-400" />
-                    <span className="text-sm text-gray-400">AI-Powered</span>
+                    <TrendingUp className="h-5 w-5 text-orange-500 dark:text-orange-400" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">AI-Powered</span>
                   </div>
                 </div>
               </motion.div>
@@ -213,7 +213,7 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                 transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
                 className="relative h-[500px] lg:h-[600px]"
               >
-                <div className="absolute inset-0 rounded-2xl overflow-hidden border-2 border-orange-500/30 shadow-2xl shadow-orange-500/20">
+                <div className="absolute inset-0 rounded-2xl overflow-hidden border-2 border-orange-500/30 shadow-2xl shadow-orange-500/20 bg-gradient-to-br from-orange-50 to-red-50 dark:bg-gradient-to-br dark:from-gray-900 dark:to-black">
                   {/* Animated gradient placeholder for video */}
                   <motion.div 
                     animate={{ 
@@ -237,10 +237,10 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                       transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                       className="text-center"
                     >
-                      <div className="text-8xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-red-500 mb-4">
+                      <div className="text-8xl font-black bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-red-600 dark:from-orange-400 dark:to-red-500 mb-4">
                         Premium
                       </div>
-                      <div className="text-2xl text-gray-300 font-semibold">
+                      <div className="text-2xl text-gray-700 dark:text-gray-300 font-semibold">
                         Auto Detailing
                       </div>
                     </motion.div>
@@ -271,7 +271,7 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
 
         {/* Services Carousel */}
         {services.length > 0 && (
-          <section className="py-20 bg-gradient-to-b from-black to-gray-900">
+          <section className="py-20 bg-gradient-to-b from-gray-50 to-white dark:from-black dark:to-gray-900">
             <div className="max-w-7xl mx-auto px-4 md:px-8">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -281,14 +281,14 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                 className="text-center mb-12"
               >
                 <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/20 to-red-600/20 border border-orange-500/30 mb-4">
-                  <span className="text-sm text-orange-400 font-semibold">Our Services</span>
+                  <span className="text-sm text-orange-600 dark:text-orange-400 font-semibold">Our Services</span>
                 </div>
                 <h2 className="text-5xl md:text-6xl font-black mb-4">
-                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                  <span className="bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400">
                     Premium Packages
                   </span>
                 </h2>
-                <p className="text-gray-500 text-lg">Tailored detailing solutions for every vehicle</p>
+                <p className="text-gray-600 dark:text-gray-500 text-lg">Tailored detailing solutions for every vehicle</p>
               </motion.div>
 
               {/* Kinetic carousel effect with horizontal scroll */}
@@ -309,15 +309,15 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                       whileHover={{ scale: 1.05, y: -10 }}
                       className="min-w-[300px] md:min-w-[350px]"
                     >
-                      <Card className="p-6 bg-gradient-to-br from-gray-900 to-black border-2 border-orange-500/30 hover:border-orange-500 transition-all duration-300 h-full shadow-lg shadow-orange-500/10">
+                      <Card className="p-6 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-black border-2 border-orange-500/30 hover:border-orange-500 transition-all duration-300 h-full shadow-lg shadow-orange-500/10">
                         <div className="mb-4">
                           <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mb-4">
                             <Zap className="h-6 w-6 text-white" />
                           </div>
-                          <h3 className="text-2xl font-bold text-white mb-2">{service.name}</h3>
-                          <p className="text-orange-400 font-bold text-xl mb-3">{service.priceRange}</p>
+                          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{service.name}</h3>
+                          <p className="text-orange-600 dark:text-orange-400 font-bold text-xl mb-3">{service.priceRange}</p>
                         </div>
-                        <p className="text-gray-400 line-clamp-3">{service.overview}</p>
+                        <p className="text-gray-600 dark:text-gray-400 line-clamp-3">{service.overview}</p>
                       </Card>
                     </motion.div>
                   ))}
@@ -340,7 +340,7 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
         )}
 
         {/* Reviews Section */}
-        <section className="py-20 bg-black">
+        <section className="py-20 bg-white dark:bg-black">
           <div className="max-w-7xl mx-auto px-4 md:px-8">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -355,7 +355,7 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
       </main>
 
       {/* Bold Footer */}
-      <footer className="relative z-10 border-t-2 border-orange-500/30 bg-gradient-to-b from-gray-900 to-black">
+      <footer className="relative z-10 border-t-2 border-orange-500/30 bg-gradient-to-b from-gray-100 to-white dark:from-gray-900 dark:to-black">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-16">
           <div className="grid md:grid-cols-3 gap-12 mb-12">
             <div>
@@ -363,40 +363,40 @@ export default function DynamicSpotlight({ content: propsContent }: DynamicSpotl
                 <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
                   <Zap className="h-6 w-6 text-white" />
                 </div>
-                <h3 className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-orange-400 to-red-500">
+                <h3 className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-red-600 dark:from-orange-400 dark:to-red-500">
                   Clean Machine
                 </h3>
               </div>
-              <p className="text-gray-400">
+              <p className="text-gray-600 dark:text-gray-400">
                 Premium mobile auto detailing powered by AI technology
               </p>
             </div>
             <div>
-              <h3 className="font-bold text-lg text-orange-400 mb-4">Quick Links</h3>
+              <h3 className="font-bold text-lg text-orange-600 dark:text-orange-400 mb-4">Quick Links</h3>
               <div className="flex flex-col gap-3">
-                <Link href="/schedule" className="text-gray-400 hover:text-orange-400 transition-colors">
+                <Link href="/schedule" className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
                   Book Appointment
                 </Link>
-                <Link href="/careers" className="text-gray-400 hover:text-orange-400 transition-colors">
+                <Link href="/careers" className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
                   Careers
                 </Link>
-                <Link href="/showcase" className="text-gray-400 hover:text-orange-400 transition-colors">
+                <Link href="/showcase" className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
                   Investor Showcase
                 </Link>
               </div>
             </div>
             <div>
-              <h3 className="font-bold text-lg text-orange-400 mb-4">Contact</h3>
-              <p className="text-gray-400 mb-2 font-semibold">
+              <h3 className="font-bold text-lg text-orange-600 dark:text-orange-400 mb-4">Contact</h3>
+              <p className="text-gray-700 dark:text-gray-400 mb-2 font-semibold">
                 {content?.phoneNumber || '918-856-5304'}
               </p>
-              <p className="text-gray-400">
+              <p className="text-gray-600 dark:text-gray-400">
                 Tulsa, Oklahoma
               </p>
             </div>
           </div>
           <div className="text-center pt-8 border-t border-orange-500/20">
-            <p className="text-gray-500">
+            <p className="text-gray-600 dark:text-gray-500">
               © 2025 Clean Machine Auto Detail. All rights reserved.
             </p>
           </div>
