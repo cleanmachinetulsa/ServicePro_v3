@@ -12,6 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { motion } from "framer-motion";
 import { 
   Car, 
   CalendarClock, 
@@ -89,32 +90,62 @@ export function DashboardOverview({
       {/* Monthly Statistics Bar */}
       <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 text-white shadow-xl">
         <CardContent className="py-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
-            <div className="text-center px-1">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="text-center px-1"
+            >
               <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
                 {Object.values(appointmentCounts).reduce((sum, count) => sum + count, 0)}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Total This Month</div>
-            </div>
-            <div className="text-center px-1">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              className="text-center px-1"
+            >
               <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-300">
                 {Object.keys(appointmentCounts).length}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Busy Days</div>
-            </div>
-            <div className="text-center px-1">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="text-center px-1"
+            >
               <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-300">
                 {Math.max(...Object.values(appointmentCounts), 0)}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Peak Daily</div>
-            </div>
-            <div className="text-center px-1">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.25 }}
+              className="text-center px-1"
+            >
               <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-300">
                 {appointments.length}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Today</div>
-            </div>
-            <div className="text-center px-1">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="text-center px-1"
+            >
               <div className="text-2xl sm:text-3xl font-bold truncate bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-300">
                 ${appointments.reduce((sum, apt) => {
                   const price = apt.price ? parseInt(apt.price.replace(/\D/g, '')) || 150 : 150;
@@ -122,23 +153,32 @@ export function DashboardOverview({
                 }, 0).toLocaleString()}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Today's Revenue</div>
-            </div>
-            <div className="text-center px-1">
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.35 }}
+              className="text-center px-1"
+            >
               <div className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-rose-300">
                 {appointments.filter(apt => 
                   apt.status !== 'completed' && apt.status !== 'cancelled'
                 ).length}
               </div>
               <div className="text-xs text-blue-100 line-clamp-2">Uncompleted</div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Large Central Calendar */}
         <div className="lg:col-span-2 space-y-4">
-          <div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+          >
             <Card className="rounded-xl backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl overflow-hidden" data-testid="calendar-card">
               <CardHeader className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-md text-white pb-6 border-b border-white/20">
                 <CardTitle className="flex items-center justify-between text-2xl">
@@ -529,10 +569,14 @@ export function DashboardOverview({
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
 
           {/* Selected Day Appointments */}
-          <div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
             <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 text-gray-800 dark:text-gray-100 shadow-xl">
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -559,7 +603,12 @@ export function DashboardOverview({
                       const gradientClass = accentColors[index % accentColors.length];
                       
                       return (
-                      <div key={appointment.id}>
+                      <motion.div
+                        key={appointment.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.4, delay: index * 0.1 }}
+                      >
                         <Card className={`backdrop-blur-xl bg-white/5 border border-white/20 hover:bg-white/10 transition-all duration-300 relative overflow-hidden group`}>
                           <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${gradientClass}`}></div>
                           <CardHeader className="pb-2">
@@ -636,7 +685,7 @@ export function DashboardOverview({
                             </div>
                           </CardFooter>
                         </Card>
-                      </div>
+                      </motion.div>
                       )
                     })}
                   </div>
@@ -649,13 +698,17 @@ export function DashboardOverview({
                 )}
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         </div>
 
         {/* Right Side Panel - Quick Actions and Insights */}
         <div className="space-y-4">
           {/* Daily Insights Card */}
-          <div>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
             <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -668,11 +721,21 @@ export function DashboardOverview({
               <CardContent className="space-y-3">
                 {appointments.length > 0 ? (
                   <>
-                    <div className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg">
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.5 }}
+                      className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg"
+                    >
                       <span className="text-sm text-gray-300">Appointments:</span>
                       <Badge className="backdrop-blur-md bg-gradient-to-r from-purple-500 to-pink-500 border-0">{appointments.length}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg">
+                    </motion.div>
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.6 }}
+                      className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg"
+                    >
                       <span className="text-sm text-gray-300">Popular Service:</span>
                       <Badge variant="outline" className="border-purple-400/50 text-purple-300 backdrop-blur-md bg-white/5">
                         {(() => {
@@ -684,8 +747,13 @@ export function DashboardOverview({
                           return mostPopular ? mostPopular[0] : 'N/A';
                         })()}
                       </Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg">
+                    </motion.div>
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.7 }}
+                      className="flex items-center justify-between p-3 backdrop-blur-md bg-white/5 border border-white/20 rounded-lg"
+                    >
                       <span className="text-sm text-gray-300">Revenue:</span>
                       <span className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-300">
                         ${(() => {
@@ -696,7 +764,7 @@ export function DashboardOverview({
                           return total.toLocaleString();
                         })()}
                       </span>
-                    </div>
+                    </motion.div>
                   </>
                 ) : (
                   <div className="text-center py-4 text-gray-300">
@@ -707,9 +775,13 @@ export function DashboardOverview({
                 )}
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
 
-          <div>
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
+          >
             <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -737,7 +809,7 @@ export function DashboardOverview({
                 </Button>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         </div>
       </div>
     </div>
