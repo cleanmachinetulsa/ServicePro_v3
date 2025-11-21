@@ -40,14 +40,14 @@ export default function PhoneLineSwitcher() {
   }
 
   return (
-    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium shrink-0">
         <Smartphone className="h-4 w-4" />
         <span>Active Line:</span>
       </div>
       
       <div 
-        className="inline-flex items-center gap-1.5 bg-gradient-to-r from-muted/50 to-muted/30 dark:from-muted/20 dark:to-muted/10 rounded-xl p-1.5 shadow-sm border border-border/50"
+        className="flex flex-wrap items-center gap-1.5 bg-gradient-to-r from-muted/50 to-muted/30 dark:from-muted/20 dark:to-muted/10 rounded-xl p-1.5 shadow-sm border border-border/50"
         role="group"
         data-testid="phone-line-switcher"
       >
@@ -57,7 +57,7 @@ export default function PhoneLineSwitcher() {
           size="sm"
           onClick={() => setSelectedPhoneLineId(null)}
           className={`
-            h-9 px-4 text-sm font-medium transition-all rounded-lg
+            h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm font-medium transition-all rounded-lg whitespace-nowrap
             ${selectedPhoneLineId === null 
               ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
               : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -76,7 +76,7 @@ export default function PhoneLineSwitcher() {
             size="sm"
             onClick={() => setSelectedPhoneLineId(line.id)}
             className={`
-              h-9 px-4 text-sm font-medium transition-all rounded-lg
+              h-8 sm:h-9 px-2.5 sm:px-4 text-xs sm:text-sm font-medium transition-all rounded-lg whitespace-nowrap
               ${selectedPhoneLineId === line.id 
                 ? 'bg-primary text-primary-foreground shadow-md hover:bg-primary/90' 
                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
