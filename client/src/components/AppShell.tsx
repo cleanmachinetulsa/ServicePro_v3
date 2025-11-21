@@ -117,9 +117,6 @@ export function AppShell({
             <SheetTitle className="text-gray-900 dark:text-white">
               Clean Machine
             </SheetTitle>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              ServicePro Dashboard
-            </p>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto py-4 px-2">
