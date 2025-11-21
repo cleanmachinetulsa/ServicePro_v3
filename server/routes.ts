@@ -1847,7 +1847,7 @@ export async function registerRoutes(app: Express) {
       const { getOrCreateConversation, addMessage } = await import('./conversationService');
       const { processConversation } = await import('./conversationHandler');
       
-      const conversation = await getOrCreateConversation(
+      const { conversation } = await getOrCreateConversation(
         webIdentifier, // Use session-based ID, not client-supplied phone
         null, // customerName
         'web', // platform
@@ -1984,7 +1984,7 @@ export async function registerRoutes(app: Express) {
 
       // Get or create conversation first (needed for consent keyword processing)
       const { getOrCreateConversation, addMessage } = await import('./conversationService');
-      let conversation = await getOrCreateConversation(
+      let { conversation } = await getOrCreateConversation(
         phone,
         customerName || null,
         platform,
@@ -2237,7 +2237,7 @@ export async function registerRoutes(app: Express) {
 
       // Get or create conversation
       const { getOrCreateConversation, addMessage } = await import('./conversationService');
-      let conversation = await getOrCreateConversation(phone, customerName || null, platform);
+      let { conversation } = await getOrCreateConversation(phone, customerName || null, platform);
 
       console.log(`[API/CHAT] Conversation ${conversation.id}, controlMode: ${conversation.controlMode}`);
 
