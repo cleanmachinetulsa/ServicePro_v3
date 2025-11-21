@@ -143,7 +143,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
     }
   }, [content]);
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-blue-950/10 to-black text-white overflow-hidden relative">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 via-blue-50/10 to-white dark:from-gray-900 dark:via-blue-950/10 dark:to-black text-gray-900 dark:text-white overflow-hidden relative">
       {/* Animated gradient background with soft pulse - Hardware accelerated */}
       <motion.div 
         className="absolute inset-0 z-0"
@@ -152,7 +152,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
         variants={getVariants(backgroundVariants)}
         style={{ willChange: 'opacity' }}
       >
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-blue-900/30 to-indigo-950/20 animate-gradient-slow"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-100/20 via-blue-100/30 to-indigo-50/20 dark:from-purple-900/20 dark:via-blue-900/30 dark:to-indigo-950/20 animate-gradient-slow"></div>
       </motion.div>
       
       {/* Premium background elements - Animated orbs */}
@@ -163,7 +163,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
         transition={{ duration: 1.5, delay: 0.3 }}
       >
         <motion.div 
-          className="absolute top-[20%] left-[10%] w-96 h-96 bg-blue-500/5 rounded-full filter blur-3xl"
+          className="absolute top-[20%] left-[10%] w-96 h-96 bg-blue-500/10 dark:bg-blue-500/5 rounded-full filter blur-3xl"
           animate={{ 
             scale: [1, 1.1, 1],
             opacity: [0.5, 0.7, 0.5]
@@ -176,7 +176,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
           style={{ willChange: 'transform, opacity' }}
         />
         <motion.div 
-          className="absolute bottom-[10%] right-[20%] w-64 h-64 bg-blue-600/5 rounded-full filter blur-3xl"
+          className="absolute bottom-[10%] right-[20%] w-64 h-64 bg-blue-600/10 dark:bg-blue-600/5 rounded-full filter blur-3xl"
           animate={{ 
             scale: [1, 1.15, 1],
             opacity: [0.4, 0.6, 0.4]
@@ -202,7 +202,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
           <Button 
             variant="ghost" 
             size="sm"
-            className="text-blue-100 hover:bg-blue-500/20 hover:text-white transition-colors"
+            className="text-gray-700 dark:text-blue-100 hover:bg-gray-200 dark:hover:bg-blue-500/20 hover:text-gray-900 dark:hover:text-white transition-colors"
             asChild
           >
             <Link href="/login" data-testid="button-login">
@@ -233,7 +233,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
           <motion.div className="py-6">
             <motion.p 
               variants={getVariants(fadeInUp)}
-              className="text-base md:text-lg text-blue-100/70 mb-8 max-w-3xl mx-auto leading-relaxed font-light"
+              className="text-base md:text-lg text-gray-700 dark:text-blue-100/70 mb-8 max-w-3xl mx-auto leading-relaxed font-light"
               style={{ willChange: 'transform, opacity' }}
             >
               {content?.aboutText || 'Clean Machine Auto Detail offers extensive detailing services ranging from Upholstery shampoo & Headlight restoration to Paint Correction & Ceramic Coatings, right in your driveway!'}
@@ -242,7 +242,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             {/* Tagline - Fade In Up (staggered) */}
             <motion.p 
               variants={getVariants(fadeInUp)}
-              className="text-blue-200/90 mb-3 italic"
+              className="text-gray-600 dark:text-blue-200/90 mb-3 italic"
               style={{ willChange: 'transform, opacity' }}
             >
               book anytime. chat with our floating assistant.
@@ -262,7 +262,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
                   <Button 
                     size="lg" 
                     variant="outline"
-                    className="transform hover:scale-105 transition-all duration-300 shadow-lg font-semibold relative overflow-hidden group px-8 py-6 rounded-md text-white"
+                    className="transform hover:scale-105 transition-all duration-300 shadow-lg font-semibold relative overflow-hidden group px-8 py-6 rounded-md !text-gray-900 dark:!text-white"
                     style={{
                       borderColor: content?.accentColor ? `hsl(${content.accentColor})` : 'hsl(340, 80%, 55%)',
                       backgroundColor: content?.accentColor ? `hsl(${content.accentColor} / 0.1)` : 'hsl(220, 90%, 56% / 0.1)',
@@ -317,7 +317,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
           className="py-20 relative"
         >
           <motion.div 
-            className="absolute inset-0 bg-gray-900 rounded-3xl mx-4 transform -skew-y-1"
+            className="absolute inset-0 bg-gray-100 dark:bg-gray-900 rounded-3xl mx-4 transform -skew-y-1"
             initial={{ opacity: 0, scale: 0.95 }}
             whileInView={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -331,7 +331,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             className="relative z-10 px-4 py-2"
           >
             <motion.h2 
-              className="text-2xl md:text-3xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200"
+              className="text-2xl md:text-3xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-blue-800 via-blue-600 to-blue-800 dark:from-blue-200 dark:via-blue-400 dark:to-blue-200"
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
@@ -341,7 +341,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             </motion.h2>
             {content?.servicesSubheading && (
               <motion.p 
-                className="text-center text-blue-200/70 mb-8 -mt-8"
+                className="text-center text-gray-600 dark:text-blue-200/70 mb-8 -mt-8"
                 initial={{ opacity: 0 }}
                 whileInView={{ opacity: 1 }}
                 transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
@@ -370,7 +370,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
           viewport={{ once: true, margin: "-80px" }}
         >
           <motion.div 
-            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-500/50 to-transparent"
+            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-blue-500/50 to-transparent"
             initial={{ scaleX: 0 }}
             whileInView={{ scaleX: 1 }}
             transition={{ duration: 1, ease: "easeOut" }}
@@ -384,7 +384,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             className="text-center mb-12"
           >
             <motion.h2 
-              className="text-2xl md:text-3xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-200 via-blue-400 to-blue-200"
+              className="text-2xl md:text-3xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-800 via-blue-600 to-blue-800 dark:from-blue-200 dark:via-blue-400 dark:to-blue-200"
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
@@ -393,7 +393,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
               What Our Customers Say
             </motion.h2>
             <motion.p 
-              className="text-blue-200/60 max-w-2xl mx-auto"
+              className="text-gray-600 dark:text-blue-200/60 max-w-2xl mx-auto"
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
@@ -415,7 +415,7 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
         
         {/* FOOTER SECTION - Subtle Fade In with Slide Animations */}
         <motion.section 
-          className="py-10 border-t border-blue-900/30 mt-16"
+          className="py-10 border-t border-gray-300 dark:border-blue-900/30 mt-16"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
@@ -444,16 +444,16 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
                 />
               )}
               <div>
-                <p className="text-white font-medium">Clean Machine Auto Detail</p>
-                <p className="text-sm text-gray-400">Premium detailing services in Tulsa</p>
+                <p className="text-gray-900 dark:text-white font-medium">Clean Machine Auto Detail</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Premium detailing services in Tulsa</p>
                 <div className="flex flex-col mt-2">
-                  <a href="tel:9188565304" className="text-blue-300 hover:text-blue-100 transition-all duration-300 text-sm flex items-center gap-1 hover:translate-x-1 hover:shadow-sm hover:shadow-blue-500/20">
+                  <a href="tel:9188565304" className="text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-100 transition-all duration-300 text-sm flex items-center gap-1 hover:translate-x-1 hover:shadow-sm hover:shadow-blue-500/20">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
                     </svg>
                     (918) 856-5304
                   </a>
-                  <a href="mailto:cleanmachinetulsa@gmail.com" className="text-blue-300 hover:text-blue-100 transition-all duration-300 text-sm flex items-center gap-1 hover:translate-x-1 hover:shadow-sm hover:shadow-blue-500/20">
+                  <a href="mailto:cleanmachinetulsa@gmail.com" className="text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-100 transition-all duration-300 text-sm flex items-center gap-1 hover:translate-x-1 hover:shadow-sm hover:shadow-blue-500/20">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                       <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
                       <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
@@ -473,18 +473,18 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
               viewport={{ once: true, margin: "-50px" }}
             >
               <div className="flex gap-4 justify-center md:justify-end mb-2">
-                <Link href="/my-services" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
+                <Link href="/my-services" className="text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
                   My Services
                 </Link>
-                <Link href="/careers" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
+                <Link href="/careers" className="text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
                   Careers
                 </Link>
-                <Link href="/showcase" className="text-blue-300 hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
+                <Link href="/showcase" className="text-blue-600 dark:text-blue-300 hover:text-blue-700 dark:hover:text-blue-100 text-sm transition-all duration-300 hover:translate-x-1">
                   Showcase
                 </Link>
               </div>
-              <p className="text-gray-400 text-sm">© {new Date().getFullYear()} Clean Machine Auto Detail. All rights reserved.</p>
-              <p className="text-gray-500 text-xs mt-1">Serving Tulsa and surrounding areas</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">© {new Date().getFullYear()} Clean Machine Auto Detail. All rights reserved.</p>
+              <p className="text-gray-500 dark:text-gray-500 text-xs mt-1">Serving Tulsa and surrounding areas</p>
             </motion.div>
           </div>
         </motion.section>

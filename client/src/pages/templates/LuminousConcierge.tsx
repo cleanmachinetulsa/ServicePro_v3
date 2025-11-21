@@ -50,10 +50,10 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
   }, [content]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-blue-900/20 to-slate-950 text-white overflow-hidden relative">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 via-blue-50/20 to-white dark:from-slate-900 dark:via-blue-900/20 dark:to-slate-950 text-gray-900 dark:text-white overflow-hidden relative">
       {/* Premium animated background */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-600/20 via-transparent to-transparent"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-400/20 via-transparent to-transparent dark:from-blue-600/20"></div>
         <motion.div 
           style={{ y }}
           className="absolute top-[10%] left-[5%] w-[600px] h-[600px] bg-blue-500/10 rounded-full filter blur-3xl"
@@ -65,18 +65,18 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
       </div>
 
       {/* Glass morphism header */}
-      <header className="relative z-20 backdrop-blur-md bg-white/5 border-b border-white/10">
+      <header className="relative z-20 backdrop-blur-md bg-white/80 dark:bg-white/5 border-b border-gray-200 dark:border-white/10">
         <nav className="flex justify-between items-center max-w-7xl mx-auto px-4 md:px-8 py-4">
           <div className="flex items-center gap-2">
-            <Shield className="h-8 w-8 text-cyan-400" />
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+            <Shield className="h-8 w-8 text-cyan-600 dark:text-cyan-400" />
+            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500 dark:from-blue-400 dark:to-cyan-300">
               CLEAN MACHINE
             </span>
           </div>
           <Button 
             variant="ghost" 
             size="sm"
-            className="text-white hover:bg-white/10 transition-all backdrop-blur-sm"
+            className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-white/10 transition-all backdrop-blur-sm"
             asChild
           >
             <Link href="/login" data-testid="button-login">
@@ -95,16 +95,16 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
             transition={{ duration: 0.8, ease: "easeOut" }}
             className="mb-8"
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-6">
-              <Sparkles className="h-4 w-4 text-cyan-400" />
-              <span className="text-sm text-cyan-100">AI-Powered Auto Detailing</span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-100/50 dark:bg-white/10 backdrop-blur-md border border-blue-300 dark:border-white/20 mb-6">
+              <Sparkles className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+              <span className="text-sm text-blue-800 dark:text-cyan-100">AI-Powered Auto Detailing</span>
             </div>
             
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-cyan-200">
+            <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-blue-800 to-cyan-700 dark:from-white dark:via-blue-100 dark:to-cyan-200">
               Premium Detail<br/>At Your Door
             </h1>
             
-            <p className="text-lg md:text-xl text-blue-100/80 mb-12 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-lg md:text-xl text-gray-700 dark:text-blue-100/80 mb-12 max-w-3xl mx-auto leading-relaxed">
               {content?.aboutText || 'Experience luxury auto detailing with AI-powered booking, real-time updates, and concierge-level service.'}
             </p>
           </motion.div>
@@ -116,15 +116,15 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
             >
-              <Card className="p-6 bg-white/5 backdrop-blur-xl border-white/20 hover:bg-white/10 transition-all duration-300 cursor-pointer group">
+              <Card className="p-6 bg-white/80 dark:bg-white/5 backdrop-blur-xl border-gray-200 dark:border-white/20 hover:bg-gray-50 dark:hover:bg-white/10 transition-all duration-300 cursor-pointer group">
                 <Link href={content?.heroCtaLink || '/chat'}>
                   <div className="flex flex-col items-center gap-4">
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-400/30 group-hover:scale-110 transition-transform">
-                      <MessageSquare className="h-8 w-8 text-cyan-400" />
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-500/20 dark:to-cyan-500/20 border border-blue-300 dark:border-blue-400/30 group-hover:scale-110 transition-transform">
+                      <MessageSquare className="h-8 w-8 text-cyan-600 dark:text-cyan-400" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-2">AI Assistant</h3>
-                      <p className="text-sm text-blue-200/70">Ask anything, get instant answers</p>
+                      <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">AI Assistant</h3>
+                      <p className="text-sm text-gray-600 dark:text-blue-200/70">Ask anything, get instant answers</p>
                     </div>
                   </div>
                 </Link>
@@ -136,15 +136,15 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              <Card className="p-6 bg-white/5 backdrop-blur-xl border-white/20 hover:bg-white/10 transition-all duration-300 cursor-pointer group">
+              <Card className="p-6 bg-white/80 dark:bg-white/5 backdrop-blur-xl border-gray-200 dark:border-white/20 hover:bg-gray-50 dark:hover:bg-white/10 transition-all duration-300 cursor-pointer group">
                 <Link href="/schedule">
                   <div className="flex flex-col items-center gap-4">
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-400/30 group-hover:scale-110 transition-transform">
-                      <CalendarClock className="h-8 w-8 text-purple-400" />
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-500/20 dark:to-pink-500/20 border border-purple-300 dark:border-purple-400/30 group-hover:scale-110 transition-transform">
+                      <CalendarClock className="h-8 w-8 text-purple-600 dark:text-purple-400" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-2">Visual Scheduler</h3>
-                      <p className="text-sm text-blue-200/70">Book in seconds with live availability</p>
+                      <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">Visual Scheduler</h3>
+                      <p className="text-sm text-gray-600 dark:text-blue-200/70">Book in seconds with live availability</p>
                     </div>
                   </div>
                 </Link>
@@ -156,15 +156,15 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
             >
-              <Card className="p-6 bg-white/5 backdrop-blur-xl border-white/20 hover:bg-white/10 transition-all duration-300 cursor-pointer group">
+              <Card className="p-6 bg-white/80 dark:bg-white/5 backdrop-blur-xl border-gray-200 dark:border-white/20 hover:bg-gray-50 dark:hover:bg-white/10 transition-all duration-300 cursor-pointer group">
                 <a href={`tel:${content?.phoneNumber || '918-856-5304'}`}>
                   <div className="flex flex-col items-center gap-4">
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-400/30 group-hover:scale-110 transition-transform">
-                      <Phone className="h-8 w-8 text-green-400" />
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-500/20 dark:to-emerald-500/20 border border-green-300 dark:border-green-400/30 group-hover:scale-110 transition-transform">
+                      <Phone className="h-8 w-8 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-semibold mb-2">Call Now</h3>
-                      <p className="text-sm text-blue-200/70">{content?.phoneNumber || '918-856-5304'}</p>
+                      <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">Call Now</h3>
+                      <p className="text-sm text-gray-600 dark:text-blue-200/70">{content?.phoneNumber || '918-856-5304'}</p>
                     </div>
                   </div>
                 </a>
@@ -177,19 +177,19 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.8, delay: 0.5 }}
-            className="flex flex-wrap justify-center gap-8 py-8 border-y border-white/10"
+            className="flex flex-wrap justify-center gap-8 py-8 border-y border-gray-200 dark:border-white/10"
           >
             <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-cyan-400" />
-              <span className="text-sm text-blue-200/80">Fully Insured</span>
+              <Shield className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              <span className="text-sm text-gray-700 dark:text-blue-200/80">Fully Insured</span>
             </div>
             <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-cyan-400" />
-              <span className="text-sm text-blue-200/80">Same-Day Available</span>
+              <Clock className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              <span className="text-sm text-gray-700 dark:text-blue-200/80">Same-Day Available</span>
             </div>
             <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-cyan-400" />
-              <span className="text-sm text-blue-200/80">AI-Powered Service</span>
+              <Sparkles className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+              <span className="text-sm text-gray-700 dark:text-blue-200/80">AI-Powered Service</span>
             </div>
           </motion.div>
         </section>
@@ -204,10 +204,10 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
               transition={{ duration: 0.6 }}
               className="text-center mb-12"
             >
-              <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-200">
+              <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-blue-700 dark:from-white dark:to-blue-200">
                 Our Services
               </h2>
-              <p className="text-blue-200/70">Premium detailing packages for every need</p>
+              <p className="text-gray-600 dark:text-blue-200/70">Premium detailing packages for every need</p>
             </motion.div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -219,10 +219,10 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
                   viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                 >
-                  <Card className="p-6 bg-white/5 backdrop-blur-xl border-white/20 hover:bg-white/10 hover:border-cyan-400/40 transition-all duration-300 h-full">
-                    <h3 className="text-xl font-semibold mb-2">{service.name}</h3>
-                    <p className="text-cyan-400 font-bold mb-3">{service.priceRange}</p>
-                    <p className="text-sm text-blue-200/70 line-clamp-3">{service.overview}</p>
+                  <Card className="p-6 bg-white/80 dark:bg-white/5 backdrop-blur-xl border-gray-200 dark:border-white/20 hover:bg-gray-50 dark:hover:bg-white/10 hover:border-cyan-500 dark:hover:border-cyan-400/40 transition-all duration-300 h-full">
+                    <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{service.name}</h3>
+                    <p className="text-cyan-600 dark:text-cyan-400 font-bold mb-3">{service.priceRange}</p>
+                    <p className="text-sm text-gray-600 dark:text-blue-200/70 line-clamp-3">{service.overview}</p>
                   </Card>
                 </motion.div>
               ))}
@@ -232,7 +232,7 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
               <Button 
                 size="lg"
                 variant="outline"
-                className="border-cyan-400/50 text-cyan-400 hover:bg-cyan-400/10"
+                className="border-cyan-500 dark:border-cyan-400/50 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-400/10"
                 asChild
               >
                 <Link href="/schedule">
@@ -257,41 +257,41 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
       </main>
 
       {/* Glass Footer */}
-      <footer className="relative z-10 mt-20 border-t border-white/10 backdrop-blur-md bg-white/5">
+      <footer className="relative z-10 mt-20 border-t border-gray-200 dark:border-white/10 backdrop-blur-md bg-white/80 dark:bg-white/5">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-12">
           <div className="grid md:grid-cols-3 gap-8 mb-8">
             <div>
-              <h3 className="font-bold text-lg mb-4 text-cyan-400">Clean Machine</h3>
-              <p className="text-sm text-blue-200/70">
+              <h3 className="font-bold text-lg mb-4 text-cyan-600 dark:text-cyan-400">Clean Machine</h3>
+              <p className="text-sm text-gray-600 dark:text-blue-200/70">
                 Premium mobile auto detailing powered by AI
               </p>
             </div>
             <div>
-              <h3 className="font-bold text-lg mb-4">Quick Links</h3>
+              <h3 className="font-bold text-lg mb-4 text-gray-900 dark:text-white">Quick Links</h3>
               <div className="flex flex-col gap-2">
-                <Link href="/schedule" className="text-sm text-blue-200/70 hover:text-cyan-400 transition-colors">
+                <Link href="/schedule" className="text-sm text-gray-600 dark:text-blue-200/70 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
                   Book Appointment
                 </Link>
-                <Link href="/careers" className="text-sm text-blue-200/70 hover:text-cyan-400 transition-colors">
+                <Link href="/careers" className="text-sm text-gray-600 dark:text-blue-200/70 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
                   Careers
                 </Link>
-                <Link href="/showcase" className="text-sm text-blue-200/70 hover:text-cyan-400 transition-colors">
+                <Link href="/showcase" className="text-sm text-gray-600 dark:text-blue-200/70 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
                   Investor Showcase
                 </Link>
               </div>
             </div>
             <div>
-              <h3 className="font-bold text-lg mb-4">Contact</h3>
-              <p className="text-sm text-blue-200/70 mb-2">
+              <h3 className="font-bold text-lg mb-4 text-gray-900 dark:text-white">Contact</h3>
+              <p className="text-sm text-gray-700 dark:text-blue-200/70 mb-2">
                 {content?.phoneNumber || '918-856-5304'}
               </p>
-              <p className="text-sm text-blue-200/70">
+              <p className="text-sm text-gray-600 dark:text-blue-200/70">
                 Tulsa, Oklahoma
               </p>
             </div>
           </div>
-          <div className="text-center pt-8 border-t border-white/10">
-            <p className="text-sm text-blue-200/50">
+          <div className="text-center pt-8 border-t border-gray-200 dark:border-white/10">
+            <p className="text-sm text-gray-600 dark:text-blue-200/50">
               © 2025 Clean Machine Auto Detail. All rights reserved.
             </p>
           </div>

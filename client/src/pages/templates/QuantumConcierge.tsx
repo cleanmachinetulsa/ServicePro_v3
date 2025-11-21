@@ -54,11 +54,11 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
   }, [content]);
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
+    <div className="min-h-screen bg-white dark:bg-black text-gray-900 dark:text-white overflow-hidden">
       {/* Premium GPU-accelerated background */}
       <div className="fixed inset-0 z-0">
         {/* Base gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-950 via-blue-950/20 to-purple-950/20" />
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-50 via-blue-50/20 to-purple-50/20 dark:from-gray-950 dark:via-blue-950/20 dark:to-purple-950/20" />
         
         {/* Animated gradient orbs - GPU optimized */}
         <motion.div 
@@ -111,7 +111,7 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
-            className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent"
+            className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent"
           >
             CLEAN MACHINE
           </motion.div>
@@ -124,7 +124,7 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
             <Button 
               variant="ghost" 
               size="sm"
-              className="text-blue-100 hover:bg-white/10 backdrop-blur-sm transition-all duration-300"
+              className="text-blue-700 dark:text-blue-100 hover:bg-blue-100 dark:hover:bg-white/10 backdrop-blur-sm transition-all duration-300"
               asChild
             >
               <Link href="/login" data-testid="button-login">
@@ -152,22 +152,22 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
               >
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-400/20 backdrop-blur-sm mb-6">
-                  <Sparkles className="w-4 h-4 text-blue-400" />
-                  <span className="text-sm text-blue-300">AI-Powered Auto Detailing</span>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-400/30 dark:border-blue-400/20 backdrop-blur-sm mb-6">
+                  <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm text-blue-800 dark:text-blue-300">AI-Powered Auto Detailing</span>
                 </div>
                 
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-black leading-tight">
-                  <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 dark:from-white dark:via-blue-100 dark:to-white bg-clip-text text-transparent">
                     Premium Detail,
                   </span>
                   <br />
-                  <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-blue-400 bg-clip-text text-transparent animate-gradient-x">
+                  <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 dark:from-blue-400 dark:via-purple-400 dark:to-blue-400 bg-clip-text text-transparent animate-gradient-x">
                     Zero Hassle
                   </span>
                 </h1>
                 
-                <p className="text-lg sm:text-xl text-gray-300 leading-relaxed max-w-xl">
+                <p className="text-lg sm:text-xl text-gray-700 dark:text-gray-300 leading-relaxed max-w-xl">
                   {content?.aboutText || 'Book instantly with AI, schedule visually, or call anytime. Professional auto detailing right in your driveway.'}
                 </p>
               </motion.div>
@@ -209,11 +209,11 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
                   variant="outline"
                   className="
                     group
-                    border-2 border-blue-400/50 
-                    hover:border-blue-400
-                    bg-white/5 hover:bg-white/10
+                    border-2 border-blue-500 dark:border-blue-400/50 
+                    hover:border-blue-600 dark:hover:border-blue-400
+                    bg-blue-50 dark:bg-white/5 hover:bg-blue-100 dark:hover:bg-white/10
                     backdrop-blur-sm
-                    text-white font-semibold
+                    text-gray-900 dark:text-white font-semibold
                     px-8 py-6 text-lg
                     transition-all duration-300
                   "
@@ -238,16 +238,16 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
                 <div className="flex items-center gap-2">
                   <div className="flex -space-x-2">
                     {[1,2,3,4].map((i) => (
-                      <div key={i} className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 border-2 border-black" />
+                      <div key={i} className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 border-2 border-white dark:border-black" />
                     ))}
                   </div>
-                  <span className="text-sm text-gray-400">1,200+ Happy Customers</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">1,200+ Happy Customers</span>
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-                  <span className="text-sm font-semibold">4.9/5.0</span>
-                  <span className="text-sm text-gray-400">on Google</span>
+                  <Star className="w-5 h-5 text-yellow-500 dark:text-yellow-400 fill-yellow-500 dark:fill-yellow-400" />
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">4.9/5.0</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">on Google</span>
                 </div>
               </motion.div>
             </div>
@@ -277,17 +277,17 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
                   }}
                   className="
                     group p-6 rounded-2xl
-                    bg-gradient-to-br from-white/[0.07] to-white/[0.03]
-                    border border-white/10
-                    hover:border-blue-400/50
+                    bg-gradient-to-br from-blue-50 to-purple-50 dark:from-white/[0.07] dark:to-white/[0.03]
+                    border border-blue-200 dark:border-white/10
+                    hover:border-blue-500 dark:hover:border-blue-400/50
                     backdrop-blur-xl
                     cursor-pointer
                     transition-all duration-300
                   "
                 >
-                  <feature.icon className="w-8 h-8 text-blue-400 mb-3 group-hover:scale-110 transition-transform" />
-                  <h3 className="font-bold text-white mb-1">{feature.label}</h3>
-                  <p className="text-sm text-gray-400">{feature.desc}</p>
+                  <feature.icon className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3 group-hover:scale-110 transition-transform" />
+                  <h3 className="font-bold text-gray-900 dark:text-white mb-1">{feature.label}</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">{feature.desc}</p>
                 </motion.div>
               ))}
             </motion.div>
@@ -304,9 +304,9 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
           <motion.div
             animate={{ y: [0, 10, 0] }}
             transition={{ duration: 2, repeat: Infinity }}
-            className="w-6 h-10 rounded-full border-2 border-white/20 flex items-start justify-center p-2"
+            className="w-6 h-10 rounded-full border-2 border-gray-400 dark:border-white/20 flex items-start justify-center p-2"
           >
-            <div className="w-1 h-2 bg-white/50 rounded-full" />
+            <div className="w-1 h-2 bg-gray-500 dark:bg-white/50 rounded-full" />
           </motion.div>
         </motion.div>
       </section>
@@ -321,19 +321,19 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
             transition={{ duration: 0.8 }}
             className="text-center mb-16"
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-400/20 backdrop-blur-sm mb-6">
-              <Sparkles className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-blue-300">Our Services</span>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-400/30 dark:border-blue-400/20 backdrop-blur-sm mb-6">
+              <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-blue-800 dark:text-blue-300">Our Services</span>
             </div>
             
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4">
-              <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 dark:from-white dark:via-blue-100 dark:to-white bg-clip-text text-transparent">
                 {content?.servicesHeading || 'Choose Your Detail'}
               </span>
             </h2>
             
             {content?.servicesSubheading && (
-              <p className="text-lg text-gray-400 max-w-2xl mx-auto">
+              <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
                 {content.servicesSubheading}
               </p>
             )}
@@ -361,7 +361,7 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
             className="text-center mb-16"
           >
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4">
-              <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 dark:from-white dark:via-blue-100 dark:to-white bg-clip-text text-transparent">
                 What Customers Say
               </span>
             </h2>
@@ -381,18 +381,18 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
             transition={{ duration: 0.6 }}
             className="
               p-8 sm:p-12 rounded-3xl
-              bg-gradient-to-br from-blue-500/10 to-purple-500/10
-              border border-blue-400/20
+              bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-500/10 dark:to-purple-500/10
+              border border-blue-300 dark:border-blue-400/20
               backdrop-blur-xl
               text-center
             "
           >
             <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-              <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
                 Ready to Transform Your Ride?
               </span>
             </h3>
-            <p className="text-gray-300 mb-8 max-w-xl mx-auto">
+            <p className="text-gray-700 dark:text-gray-300 mb-8 max-w-xl mx-auto">
               Book in 60 seconds with our AI assistant, or call us directly for personalized service.
             </p>
             
@@ -439,14 +439,14 @@ export default function QuantumConcierge({ content }: QuantumConciergeProps) {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-white/10 py-12 px-4 mt-20">
-        <div className="max-w-7xl mx-auto text-center text-gray-400 text-sm">
+      <footer className="relative z-10 border-t border-gray-200 dark:border-white/10 py-12 px-4 mt-20">
+        <div className="max-w-7xl mx-auto text-center text-gray-600 dark:text-gray-400 text-sm">
           <p>© 2024 Clean Machine Auto Detail. All rights reserved.</p>
           <div className="flex gap-6 justify-center mt-4">
-            <Link href="/privacy-policy" className="hover:text-white transition-colors">
+            <Link href="/privacy-policy" className="hover:text-gray-900 dark:hover:text-white transition-colors">
               Privacy Policy
             </Link>
-            <Link href="/careers" className="hover:text-white transition-colors">
+            <Link href="/careers" className="hover:text-gray-900 dark:hover:text-white transition-colors">
               Careers
             </Link>
           </div>
