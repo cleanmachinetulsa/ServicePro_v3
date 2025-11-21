@@ -18,8 +18,10 @@ import {
   BarChart2 as BarChart,
   Filter,
   Tag,
-  ArrowLeft
+  ArrowLeft,
+  CalendarDays
 } from 'lucide-react';
+import { ShareAvailabilityModal } from '@/components/ShareAvailabilityModal';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,6 +37,7 @@ interface Conversation {
   id: string;
   customerName?: string;
   customerPhone: string;
+  platform: 'sms' | 'email' | 'facebook' | 'instagram'; // Communication platform
   messages: Message[];
   startTime: Date;
   active: boolean;
@@ -58,6 +61,7 @@ export default function LiveConversationsPage() {
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState<boolean>(false);
   
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -150,6 +154,7 @@ export default function LiveConversationsPage() {
             id: '1',
             customerName: 'Sarah Johnson',
             customerPhone: '9185551234',
+            platform: 'sms', // SMS conversation
             messages: [
               {
                 id: '1-1',
@@ -202,6 +207,7 @@ export default function LiveConversationsPage() {
             id: '2',
             customerName: 'Michael Roberts',
             customerPhone: '9185552345',
+            platform: 'email', // Email conversation
             messages: [
               {
                 id: '2-1',
@@ -717,6 +723,19 @@ export default function LiveConversationsPage() {
                 
                 {/* Message Input */}
                 <div className="p-3 border-t bg-white">
+                  <div className="flex gap-2 mb-2">
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowShareAvailabilityModal(true)}
+                      data-testid="button-share-availability"
+                      className="shrink-0"
+                      title="Share calendar availability with customer"
+                    >
+                      <CalendarDays className="h-4 w-4 mr-2" />
+                      Share Availability
+                    </Button>
+                  </div>
                   <div className="flex gap-2">
                     <textarea
                       className="flex-grow rounded-md border p-2 text-sm"
@@ -730,11 +749,13 @@ export default function LiveConversationsPage() {
                           handleSendMessage();
                         }
                       }}
+                      data-testid="input-message"
                     ></textarea>
                     <Button 
                       className="self-end"
                       onClick={handleSendMessage}
                       disabled={!messageInput.trim()}
+                      data-testid="button-send"
                     >
                       <CornerDownRight className="h-4 w-4 mr-2" />
                       Send
@@ -758,6 +779,24 @@ export default function LiveConversationsPage() {
         </div>
         </div>
       </div>
+
+      {selectedConversation && (
+        <ShareAvailabilityModal
+          open={showShareAvailabilityModal}
+          onClose={() => setShowShareAvailabilityModal(false)}
+          contactName={selectedConversation.customerName || undefined}
+          contactFirstName={selectedConversation.customerName?.split(' ')[0] || undefined}
+          channelType={selectedConversation.platform}
+          onMessageGenerated={(messageText) => {
+            setMessageInput(messageText);
+            toast({
+              title: 'Availability added',
+              description: 'Message added to composer - ready to send!',
+            });
+            setShowShareAvailabilityModal(false);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
