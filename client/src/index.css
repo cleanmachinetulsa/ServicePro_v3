@@ -420,6 +420,24 @@ main {
   .conversation-detail .conversation-header {
     flex-shrink: 0;
   }
+  
+  .conversation-detail .message-area {
+    flex-grow: 1;
+    overflow-y: auto;
+    /* Give 250px of space at the bottom for input + suggestions */
+    margin-bottom: 250px !important;
+    padding-bottom: 0 !important;
+  }
+  
+  .conversation-detail .input-suggestion-area {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background-color: white;
+  }
+}
 
 /* Premium UI animations and effects */
 .hover-glow {
@@ -451,25 +469,6 @@ main {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
-}
-
-  
-  .conversation-detail .message-area {
-    flex-grow: 1;
-    overflow-y: auto;
-    /* Give 250px of space at the bottom for input + suggestions */
-    margin-bottom: 250px !important;
-    padding-bottom: 0 !important;
-  }
-  
-  .conversation-detail .input-suggestion-area {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-    background-color: white;
-  }
 }
 
 /* Brand styles */
