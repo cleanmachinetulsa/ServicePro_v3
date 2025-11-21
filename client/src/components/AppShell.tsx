@@ -93,7 +93,7 @@ export function AppShell({
             Clean Machine
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            ServicePro Dashboard
+            Business Dashboard
           </p>
         </div>
 
