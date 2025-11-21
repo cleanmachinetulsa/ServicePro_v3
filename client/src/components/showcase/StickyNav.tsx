@@ -8,12 +8,11 @@ import { useShowcase } from '@/contexts/ShowcaseContext';
 const navItems = [
   { id: 'hero', label: 'Home' },
   { id: 'feature-map', label: 'Features' },
-  { id: 'flows', label: 'Flow' },
+  { id: 'flows', label: 'Flows' },
   { id: 'automation-logic', label: 'Logic' },
-  { id: 'experience', label: 'Experience' },
-  { id: 'metrics', label: 'Impact' },
+  { id: 'whitelabel', label: 'White Label' },
   { id: 'faq', label: 'FAQ' },
-  { id: 'sandbox', label: 'Sandbox' }
+  { id: 'sandbox', label: 'Demo' }
 ];
 
 export function StickyNav() {
