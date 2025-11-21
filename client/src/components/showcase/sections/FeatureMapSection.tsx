@@ -25,7 +25,7 @@ const features = [
     id: 'scheduling',
     label: 'Scheduling & Routing',
     icon: Calendar,
-    badge: { text: 'Popular', color: 'from-green-500 to-emerald-500' },
+    accentColor: 'from-green-500 to-emerald-500',
     title: 'Smart Scheduling & Route Optimization',
     description: 'Calendar integration meets intelligent location clustering',
     bullets: [
@@ -45,7 +45,7 @@ const features = [
     id: 'address-mapping',
     label: 'Address Verification',
     icon: Map,
-    badge: { text: 'New', color: 'from-cyan-500 to-blue-500' },
+    accentColor: 'from-cyan-500 to-blue-500',
     title: 'Interactive Address Confirmation',
     description: 'Google Maps integration ensures accurate service locations',
     bullets: [
@@ -65,7 +65,7 @@ const features = [
     id: 'qr-security',
     label: 'QR Security',
     icon: QrCode,
-    badge: { text: 'New', color: 'from-purple-500 to-pink-500' },
+    accentColor: 'from-purple-500 to-pink-500',
     title: 'HMAC-Signed QR Codes',
     description: 'Secure customer identification without passwords',
     bullets: [
@@ -85,7 +85,7 @@ const features = [
     id: 'phone-voice',
     label: 'Phone & Voice',
     icon: Phone,
-    badge: { text: 'Enhanced', color: 'from-green-500 to-emerald-500' },
+    accentColor: 'from-teal-500 to-cyan-500',
     title: 'Advanced Twilio Voice System',
     description: 'Dual-line phone system with SIP integration and intelligent voicemail handling',
     bullets: [
@@ -108,7 +108,7 @@ const features = [
     id: 'sms-email',
     label: 'Smart SMS & Email',
     icon: MessageSquare,
-    badge: { text: 'AI-Powered', color: 'from-purple-500 to-pink-500' },
+    accentColor: 'from-purple-500 to-pink-500',
     title: 'Automated Communication Suite',
     description: 'TCPA-compliant messaging with intelligent personalization',
     bullets: [
@@ -128,7 +128,7 @@ const features = [
     id: 'customer-profiles',
     label: 'Customer Profiles',
     icon: Users,
-    badge: { text: 'Popular', color: 'from-blue-500 to-cyan-500' },
+    accentColor: 'from-blue-500 to-cyan-500',
     title: 'Complete Customer Intelligence',
     description: 'Every vehicle, every service, every interaction tracked',
     bullets: [
@@ -148,7 +148,7 @@ const features = [
     id: 'technician-mode',
     label: 'Technician iPad App',
     icon: Smartphone,
-    badge: { text: 'PWA', color: 'from-blue-500 to-cyan-500' },
+    accentColor: 'from-indigo-500 to-blue-500',
     title: 'App-Like PWA Experience',
     description: 'Install as an app on any device - no app store required',
     bullets: [
@@ -187,7 +187,7 @@ const features = [
     id: 'employee-scheduling',
     label: 'Employee Scheduling',
     icon: Calendar,
-    badge: { text: 'New', color: 'from-purple-500 to-pink-500' },
+    accentColor: 'from-fuchsia-500 to-purple-500',
     title: 'Employee Scheduling System',
     description: 'Complete shift management with automated conflict detection',
     bullets: [
@@ -208,7 +208,7 @@ const features = [
     id: 'homepage-cms',
     label: 'Homepage CMS',
     icon: Edit,
-    badge: { text: 'New', color: 'from-cyan-500 to-blue-500' },
+    accentColor: 'from-sky-500 to-cyan-500',
     title: 'Homepage CMS Editor',
     description: 'Visual content management with real-time preview',
     bullets: [
@@ -228,7 +228,7 @@ const features = [
     id: 'usage-dashboard',
     label: 'API Usage & Costs',
     icon: DollarSign,
-    badge: { text: 'New', color: 'from-green-500 to-emerald-500' },
+    accentColor: 'from-emerald-500 to-green-500',
     title: 'API Usage & Cost Tracking',
     description: 'Real-time monitoring of all external service costs',
     bullets: [
@@ -248,7 +248,7 @@ const features = [
     id: 'careers-portal',
     label: 'Careers Portal',
     icon: Briefcase,
-    badge: { text: 'New', color: 'from-orange-500 to-red-500' },
+    accentColor: 'from-orange-500 to-red-500',
     title: 'Careers & Employment Portal',
     description: 'Attract and manage job applicants with ease',
     bullets: [
@@ -268,7 +268,7 @@ const features = [
     id: 'customer-intelligence',
     label: 'Customer Intelligence',
     icon: Brain,
-    badge: { text: 'AI-Powered', color: 'from-purple-500 to-pink-500' },
+    accentColor: 'from-violet-500 to-purple-500',
     title: 'GPT-Powered Customer Intelligence',
     description: 'Returning customer tracking with personalized AI service recommendations',
     bullets: [
@@ -289,7 +289,7 @@ const features = [
     id: 'cash-payments',
     label: 'Cash Tracking',
     icon: Wallet,
-    badge: { text: 'New', color: 'from-green-500 to-emerald-500' },
+    accentColor: 'from-lime-500 to-green-500',
     title: 'Cash Payment & Deposit Management',
     description: 'Manual cash entry with daily deposit tracking for technicians',
     bullets: [
@@ -310,7 +310,7 @@ const features = [
     id: 'referral-system',
     label: 'Referral Program',
     icon: Gift,
-    badge: { text: 'Comprehensive', color: 'from-yellow-500 to-orange-500' },
+    accentColor: 'from-amber-500 to-orange-500',
     title: 'Complete Referral Rewards System',
     description: '9 reward types with admin code generation and comprehensive tracking',
     bullets: [
@@ -353,8 +353,8 @@ export function FeatureMapSection() {
   }, [activeFeature]);
 
   return (
-    <section id="feature-map" className="py-24 relative">
-      <div className="container mx-auto px-4">
+    <section id="feature-map" className="py-12 md:py-20 lg:py-24 relative">
+      <div className="container mx-auto px-4 md:px-6 lg:px-8">
         <SectionHeader
           badge="Core Capabilities"
           title="Feature Map"
@@ -366,13 +366,13 @@ export function FeatureMapSection() {
             tabs={features.map(f => ({ 
               id: f.id, 
               label: f.label,
-              badge: f.badge
+              accentColor: f.accentColor
             }))}
             activeTab={activeFeature}
             onChange={setActiveFeature}
-            className="mb-16"
+            className="mb-8 md:mb-12 lg:mb-16"
           />
-          <p className="text-center text-xs text-blue-200/60 mt-2">
+          <p className="text-center text-xs text-blue-200/60 mt-2 hidden sm:block">
             Use arrow keys ← → to navigate
           </p>
         </div>
@@ -384,38 +384,38 @@ export function FeatureMapSection() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="grid md:grid-cols-2 gap-8 items-start"
+            className="grid lg:grid-cols-2 gap-6 md:gap-6 lg:gap-8 items-start"
           >
             {/* Left: Description */}
-            <div className="space-y-6">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-4 bg-gradient-to-br from-blue-600/20 to-purple-600/20 rounded-2xl border border-blue-500/30">
-                  <Icon className="w-8 h-8 text-blue-400" />
+            <div className="space-y-4 md:space-y-4 lg:space-y-6">
+              <div className="flex items-start gap-3 md:gap-3 lg:gap-4 mb-4 md:mb-5 lg:mb-6">
+                <div className="p-3 md:p-4 bg-gradient-to-br from-blue-600/20 to-purple-600/20 rounded-xl md:rounded-2xl border border-blue-500/30 flex-shrink-0">
+                  <Icon className="w-6 h-6 md:w-8 md:h-8 text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="text-3xl font-bold text-white">{active.title}</h3>
-                  <p className="text-blue-200 mt-1">{active.description}</p>
+                  <h3 className="text-xl md:text-2xl lg:text-3xl font-bold text-white leading-tight">{active.title}</h3>
+                  <p className="text-sm md:text-base text-blue-200 mt-1">{active.description}</p>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2 md:space-y-3">
                 {active.bullets.map((bullet, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.1 }}
-                    className="flex items-start gap-3"
+                    className="flex items-start gap-2 md:gap-3"
                   >
-                    <Check className="w-5 h-5 text-green-400 mt-1 flex-shrink-0" />
-                    <p className="text-blue-100">{bullet}</p>
+                    <Check className="w-4 h-4 md:w-5 md:h-5 text-green-400 mt-0.5 md:mt-1 flex-shrink-0" />
+                    <p className="text-sm md:text-base text-blue-100 leading-relaxed">{bullet}</p>
                   </motion.div>
                 ))}
               </div>
             </div>
 
             {/* Right: UI Mockups */}
-            <div className="space-y-4">
+            <div className="space-y-3 md:space-y-3 lg:space-y-4">
               {active.mockups.map((mockup, i) => {
                 const details = mockupDetails[mockup.title];
                 
@@ -426,17 +426,17 @@ export function FeatureMapSection() {
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.2 + i * 0.1 }}
                     whileHover={{ scale: 1.02, y: -5 }}
-                    className={`bg-gradient-to-br ${mockup.color} backdrop-blur-xl border border-white/20 rounded-2xl p-8 cursor-pointer group relative overflow-hidden`}
+                    className={`bg-gradient-to-br ${mockup.color} backdrop-blur-xl border border-white/20 rounded-xl md:rounded-2xl p-5 md:p-4 lg:p-8 cursor-pointer group relative overflow-hidden`}
                   >
                     {/* Glow effect on hover */}
                     <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                     
                     <div className="relative z-10">
-                      <h4 className="text-xl font-semibold text-white mb-2">{mockup.title}</h4>
-                      <p className="text-blue-200">{mockup.desc}</p>
+                      <h4 className="text-lg md:text-xl font-semibold text-white mb-1 md:mb-2">{mockup.title}</h4>
+                      <p className="text-sm md:text-base text-blue-200">{mockup.desc}</p>
                       
                       {details ? (
-                        <div className="mt-6 space-y-3">
+                        <div className="mt-4 md:mt-4 lg:mt-6 space-y-2 md:space-y-2 lg:space-y-3">
                           {details.map((feature, featureIndex) => {
                             const FeatureIcon = feature.icon;
                             return (
@@ -446,21 +446,21 @@ export function FeatureMapSection() {
                                 whileInView={{ opacity: 1, x: 0 }}
                                 viewport={{ once: true }}
                                 transition={{ delay: featureIndex * 0.1 }}
-                                className="flex items-start gap-3"
+                                className="flex items-start gap-2 md:gap-3"
                               >
-                                <div className="p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg">
-                                  <FeatureIcon className="w-4 h-4 text-blue-300" />
+                                <div className="p-1.5 md:p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-lg flex-shrink-0">
+                                  <FeatureIcon className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-300" />
                                 </div>
-                                <span className="text-sm text-blue-100/80">{feature.text}</span>
+                                <span className="text-xs md:text-sm text-blue-100/80 leading-relaxed">{feature.text}</span>
                               </motion.div>
                             );
                           })}
                         </div>
                       ) : (
-                        <div className="mt-6 space-y-2">
-                          <div className="h-3 bg-white/10 rounded-full w-3/4" />
-                          <div className="h-3 bg-white/10 rounded-full w-full" />
-                          <div className="h-3 bg-white/10 rounded-full w-1/2" />
+                        <div className="mt-4 md:mt-4 lg:mt-6 space-y-2">
+                          <div className="h-2.5 md:h-3 bg-white/10 rounded-full w-3/4" />
+                          <div className="h-2.5 md:h-3 bg-white/10 rounded-full w-full" />
+                          <div className="h-2.5 md:h-3 bg-white/10 rounded-full w-1/2" />
                         </div>
                       )}
                     </div>
