@@ -46,7 +46,6 @@ interface Appointment {
 }
 
 interface DashboardOverviewProps {
-  darkMode: boolean;
   appointments: Appointment[];
   appointmentCounts: Record<string, number>;
   weatherData: Record<string, any>;
@@ -62,7 +61,6 @@ interface DashboardOverviewProps {
 }
 
 export function DashboardOverview({
-  darkMode,
   appointments,
   appointmentCounts,
   weatherData,

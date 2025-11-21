@@ -14,8 +14,6 @@ import {
 import { 
   MessageCircle, 
   PlusCircle, 
-  Moon, 
-  Sun, 
   PanelRight, 
   PanelRightClose,
   Phone,
@@ -66,12 +64,6 @@ function MessagesPageContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showProfilePanel, setShowProfilePanel] = useState(false);
   const [showMobileProfileSheet, setShowMobileProfileSheet] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('darkMode') === 'true';
-    }
-    return false;
-  });
   const [showComposeDialog, setShowComposeDialog] = useState(false);
   const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
   const queryClient = useQueryClient();
@@ -112,16 +104,6 @@ function MessagesPageContent() {
       }
     }
   }, [search, conversations, setLocation]);
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('darkMode', 'true');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('darkMode', 'false');
-    }
-  }, [darkMode]);
 
   const filteredConversations = conversations.filter((conv) => {
     let categoryMatch = false;
@@ -238,15 +220,6 @@ function MessagesPageContent() {
           {showProfilePanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
         </Button>
       )}
-      <Button 
-        variant="outline" 
-        size="sm" 
-        onClick={() => setDarkMode(!darkMode)}
-        data-testid="button-dark-mode"
-        className="transition-all duration-200 hover:scale-105"
-      >
-        {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
     </>
   );
 

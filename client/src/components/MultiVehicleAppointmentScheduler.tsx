@@ -1999,12 +1999,18 @@ export default function MultiVehicleAppointmentScheduler({
               )}
             </div>
 
-            <SMSConsentCheckbox
-              checked={smsConsent}
-              onCheckedChange={setSmsConsent}
-              required={true}
-              id="sms-consent-booking"
-            />
+            <div className="space-y-3">
+              <p className="text-blue-300 text-sm">
+                We will never share your information with anyone for any reason.
+              </p>
+
+              <SMSConsentCheckbox
+                checked={smsConsent}
+                onCheckedChange={setSmsConsent}
+                required={true}
+                id="sms-consent-booking"
+              />
+            </div>
 
             <div>
               <Label htmlFor="notes" className="text-blue-100">Additional Notes</Label>

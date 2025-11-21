@@ -18,7 +18,7 @@ import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { DashboardOverview } from "@/components/DashboardOverview";
 import BusinessChatInterface from "@/components/BusinessChatInterface";
-import { Home, Moon, Sun, Mail, Plus } from "lucide-react";
+import { Home, Mail, Plus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
 import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
@@ -106,12 +106,6 @@ export default function Dashboard() {
   const [isManualInvoice, setIsManualInvoice] = useState(false);
   const [showBusinessChat, setShowBusinessChat] = useState(false);
   const [chatCustomer, setChatCustomer] = useState<{ phone: string; name: string } | null>(null);
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('darkMode') === 'true';
-    }
-    return false;
-  });
   const [invoiceSettings] = useState({
     taxRate: 0.0,
     taxEnabled: false,
@@ -150,18 +144,6 @@ export default function Dashboard() {
       }
     }
   }, [location]);
-
-  // Toggle dark mode
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('darkMode', 'true');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('darkMode', 'false');
-    }
-  }, [darkMode]);
-
 
   // Navigate to directions page
   const goToDirections = (address: string, phone: string) => {
@@ -343,14 +325,6 @@ export default function Dashboard() {
       <Button
         size="sm"
         variant="ghost"
-        onClick={() => setDarkMode(!darkMode)}
-        data-testid="button-dark-mode"
-      >
-        {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
         onClick={() => navigate('/')}
         data-testid="button-home"
       >
@@ -366,7 +340,6 @@ export default function Dashboard() {
       <InstallPromptBanner />
       <AppShell title="Dashboard" pageActions={pageActions}>
         <DashboardOverview
-          darkMode={darkMode}
           appointments={appointments}
           appointmentCounts={appointmentCounts}
           weatherData={weatherData}

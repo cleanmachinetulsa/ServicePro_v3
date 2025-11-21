@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { navigationItems } from '@/config/navigationItems';
-import { Menu } from 'lucide-react';
+import { Menu, Moon, Sun } from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -23,6 +24,7 @@ export function AppShell({
 }: AppShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [location, navigate] = useLocation();
+  const { isDark, toggleTheme } = useTheme();
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -167,6 +169,17 @@ export function AppShell({
                 {pageActions}
               </div>
             )}
+
+            {/* Dark Mode Toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className={`${!pageActions ? 'ml-auto' : ''} text-gray-700 dark:text-gray-300`}
+              data-testid="button-theme-toggle"
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
           </div>
         </header>
 
