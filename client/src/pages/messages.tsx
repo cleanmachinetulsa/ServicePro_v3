@@ -18,7 +18,8 @@ import {
   Sun, 
   PanelRight, 
   PanelRightClose,
-  Phone
+  Phone,
+  CalendarDays
 } from 'lucide-react';
 import io from 'socket.io-client';
 import ThreadView from '@/components/ThreadView';
@@ -29,6 +30,7 @@ import Composer from '@/components/messages/Composer';
 import { AppShell } from '@/components/AppShell';
 import { useToast } from '@/hooks/use-toast';
 import { RecentCallersWidget } from '@/components/messages/RecentCallersWidget';
+import { ShareAvailabilityModal } from '@/components/ShareAvailabilityModal';
 
 interface Conversation {
   id: number;
@@ -71,6 +73,7 @@ function MessagesPageContent() {
     return false;
   });
   const [showComposeDialog, setShowComposeDialog] = useState(false);
+  const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -183,6 +186,9 @@ function MessagesPageContent() {
     };
   }, [queryClient]);
 
+  // Get selected conversation details for Share Availability
+  const selectedConv = conversations.find(c => c.id === selectedConversation);
+
   // Page-specific actions for AppShell
   const pageActions = (
     <>
@@ -196,6 +202,19 @@ function MessagesPageContent() {
         <PlusCircle className="h-4 w-4 mr-2" />
         <span className="hidden sm:inline">New Message</span>
       </Button>
+      {selectedConversation && (
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setShowShareAvailabilityModal(true)}
+          data-testid="button-share-availability"
+          className="transition-all duration-200 hover:scale-105"
+          title="Share calendar availability with customer"
+        >
+          <CalendarDays className="h-4 w-4 mr-2" />
+          <span className="hidden sm:inline">Share Availability</span>
+        </Button>
+      )}
       <Button 
         variant="outline" 
         size="sm" 
@@ -307,6 +326,25 @@ function MessagesPageContent() {
           )}
         </SheetContent>
       </Sheet>
+
+      {selectedConv && (
+        <ShareAvailabilityModal
+          open={showShareAvailabilityModal}
+          onClose={() => setShowShareAvailabilityModal(false)}
+          contactName={selectedConv.customerName || undefined}
+          contactFirstName={selectedConv.customerName?.split(' ')[0] || undefined}
+          channelType={selectedConv.platform as 'sms' | 'email' | 'facebook' | 'instagram'}
+          onMessageGenerated={(messageText) => {
+            // Copy to clipboard and show success toast
+            navigator.clipboard.writeText(messageText);
+            toast({
+              title: 'Availability copied',
+              description: 'Message copied to clipboard - paste it in the message field',
+            });
+            setShowShareAvailabilityModal(false);
+          }}
+        />
+      )}
 
       {!selectedConversation && (
         <Button

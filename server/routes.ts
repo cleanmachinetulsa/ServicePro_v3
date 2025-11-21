@@ -103,6 +103,8 @@ import { registerContactsRoutes } from './routes.contacts';
 import quoteRequestsRoutes from './routes.quoteRequests';
 import quoteApprovalRoutes from './routes.quoteApproval';
 import calendarAvailabilityRoutes from './routes.calendarAvailability';
+import calendarAvailabilityShareRoutes from './routes.calendarAvailabilityShare';
+import availabilityTemplatesRoutes from './routes.availabilityTemplates';
 import { registerHealthRoutes } from './healthCheck';
 import phoneSettingsRoutes from './routes.phoneSettings';
 import { registerCallRoutes } from './routes.calls';
@@ -4389,6 +4391,10 @@ Follow up with this lead to set up their 14-day trial!
   
   // Register calendar availability routes
   app.use('/api/calendar', calendarAvailabilityRoutes);
+  app.use('/api/calendar', calendarAvailabilityShareRoutes);
+  
+  // Register availability templates routes (admin CRUD for templates)
+  app.use('/api/availability-templates', availabilityTemplatesRoutes);
   
   // Register quote requests routes
   app.use('/api/quote-requests', quoteRequestsRoutes);
