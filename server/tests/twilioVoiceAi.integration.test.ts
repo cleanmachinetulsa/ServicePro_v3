@@ -3,7 +3,7 @@ import request from 'supertest';
 import express from 'express';
 import { nanoid } from 'nanoid';
 import { db } from '../db';
-import { tenants, tenantPhoneConfig } from '@shared/schema';
+import { tenants, tenantPhoneConfig, tenantConfig } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { registerTwilioVoiceAiRoutes } from '../routes.twilioVoiceAi';
 
@@ -36,6 +36,14 @@ describe('AI Voice Route - Integration Tests (Phase 4)', () => {
       isRoot: false,
     });
 
+    await db.insert(tenantConfig).values({
+      tenantId: testTenantId,
+      businessName: 'AI Voice Test Business',
+      tier: 'pro',
+      logoUrl: null,
+      primaryColor: null,
+    });
+
     await db.insert(tenantPhoneConfig).values({
       id: testPhoneConfigId,
       tenantId: testTenantId,
@@ -53,6 +61,7 @@ describe('AI Voice Route - Integration Tests (Phase 4)', () => {
   afterAll(async () => {
     // Cleanup test data
     await db.delete(tenantPhoneConfig).where(eq(tenantPhoneConfig.id, testPhoneConfigId));
+    await db.delete(tenantConfig).where(eq(tenantConfig.tenantId, testTenantId));
     await db.delete(tenants).where(eq(tenants.id, testTenantId));
   });
 
