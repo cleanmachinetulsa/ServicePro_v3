@@ -1,0 +1,404 @@
+1. Phase list snippet (replace your current roadmap list)
+
+Replace your “PHASE ROADMAP” bullet list with this:
+
+## 2. PHASE ROADMAP (v3.3 OVERVIEW)
+
+**Legend:**  
+✅ = complete (in repo)  
+🟡 = in progress / next  
+📝 = designed / future  
+
+1. **Phase 0 – Canonicalization & Master Docs** ✅  
+2. **Phase 1 – Tenant Isolation & Multi-Tenant Core** ✅  
+3. **Phase 2 – Telephony Spine (SMS, Voice, SIP, IVR)** ✅  
+4. **Phase 3 – Tenant Communication Router (SMS + Voice)** ✅  
+5. **Phase 4 – AI Voice Concierge Entry Point** ✅  
+6. **Phase 5 – Concierge Setup Dashboard (Owner-only)** ✅  
+7. **Phase 6 – Impersonate Tenant (“Login as…”)** ✅  
+8. **Phase 7 – Tiers, Billing, & Internal Family Tier** 🟡 (next)  
+9. **Phase 8 – Industry Packs & Auto-Setup** 📝  
+10. **Phase 9 – Website Generator (Templates + White-Label)** 📝  
+11. **Phase 10A – ServicePro Support Agent (Platform Copilot)** 📝  
+12. **Phase 10B – Tenant Concierge Agent (Setup & Adjustments)** 📝  
+13. **Phase 11 – Data Export & Retention** 📝  
+14. **Phase 12 – Integrations & Keys Checklist** 📝  
+15. **Phase 13 – Future Enhancements / Idea Parking Lot** 📝  
+
+2. Phase 6 section (paste somewhere under its heading)
+
+Add/replace your Phase 6 section with this summary (based on Replit’s report):
+
+## 7. PHASE 6 – IMPERSONATE TENANT (“LOGIN AS…”) ✅
+
+> Completed: November 22, 2025
+
+### 7.1 Overview
+
+Implements a full tenant impersonation system so **owner-level users** can view and use the app “as” any tenant for support, QA, and debugging, while **preserving their true identity** for logging and security.
+
+### 7.2 Core Features
+
+1. **Session-Based Impersonation Context**
+   - Session storage extended with:
+     - `impersonatingTenantId`
+     - `impersonationStartedAt`
+   - Clean separation between:
+     - Real user identity (owner)
+     - Effective tenant context (impersonated tenant)
+
+2. **Backend API Endpoints**
+   - `POST /api/admin/impersonate/start`
+     - Owner-only.
+     - Validates tenant exists.
+     - Blocks impersonation of `tenant_id = 'root'` to avoid weird loops.
+     - Records impersonation state in session.
+   - `POST /api/admin/impersonate/stop`
+     - Clears impersonation state and exits “login as” mode.
+   - `GET /api/auth/context`
+     - Exposes current user info and impersonation state.
+     - Returns:
+       - `tenantId`
+       - `tenantName`
+       - `impersonationStartedAt` when active.
+     - Uses root DB for cross-tenant name lookups.
+
+3. **Frontend Integration**
+   - Entry points:
+     - **Admin Tenants** list: “Login as Tenant” button on each tenant card (owner-only).
+     - **Concierge Setup** success screen: “Login as this Tenant” button after creating a new tenant.
+   - Global **ImpersonationBanner**:
+     - Integrated into AppShell layout.
+     - Gradient amber/orange styling for high visibility.
+     - Shows “Viewing as [Tenant Name]”.
+     - “Exit Impersonation” button → calls `/api/admin/impersonate/stop`.
+
+4. **Helper Utilities**
+   - `authHelpers.ts` includes:
+     - `isImpersonating()`
+     - `getEffectiveTenantId()`
+     - `getImpersonationContext()`
+   - `getEffectiveTenantId()` returns the impersonated tenant ID when present, otherwise falls back to default (root/normal behavior).
+
+5. **Security & Audit**
+   - Owner-only access enforcement for `impersonate/start`.
+   - Root tenant impersonation explicitly blocked.
+   - Audit logging via `securityService` for:
+     - `impersonation_start`
+     - `impersonation_stop`
+   - Logs include `userId` and `tenantId` for compliance and debugging.
+
+6. **Test Coverage**
+   - Smoke tests for start/stop endpoints.
+   - Validates:
+     - Owner-only access.
+     - Tenant existence validation.
+     - Root tenant blocking.
+
+### 7.3 Use Cases
+
+- **Customer Support:** View exactly what a tenant sees without asking for their login.
+- **Testing:** QA can quickly hop between tenants and verify branding/config differences.
+- **Debugging:** Engineers can reproduce tenant-specific issues in the real environment.
+
+> Impersonation is **web-app only**; Twilio webhook routing still uses phone/messaging service logic from earlier phases.
+
+2️⃣ Phase 7 Drop-In – Plan Tiers & Internal Family Tier (No Stripe Headaches Yet)
+
+You said you don’t want to waste time on unnecessary file spelunking, and we also want that family “at-cost” tier. So this Phase 7 drop-in is:
+
+Tiers + status fields
+
+Internal plan type
+
+Feature gating (TIER_FEATURES + hasFeature)
+
+Basic Admin UI to view/edit tier + status
+
+We will not do full Stripe subscription flows in this phase. That can be a Phase 7B when you’re ready.
+
+Here’s the Replit prompt:
+
+# PHASE 7 — PLAN TIERS, STATUS & INTERNAL FAMILY TIER (FEATURE GATING ONLY)
+
+Goal:
+Introduce a proper plan model for tenants, including:
+- planTier: 'starter' | 'pro' | 'elite' | 'internal'
+- status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled'
+
+AND a shared feature map + helper:
+- TIER_FEATURES
+- hasFeature(tenant, featureKey)
+
+We are **not** implementing full Stripe subscription flows in this phase.
+This phase only wires:
+- DB fields
+- Feature gating
+- Basic admin UI to view/edit tier + status
+- An INTERNAL plan that gives all features at-cost (no extra SaaS fees).
+
+------------------------------------------------
+1) Schema Changes — Tenants & Tier Features
+------------------------------------------------
+
+1.1 Update tenants table (shared/schema.ts)
+
+Add the following columns to the tenants table:
+
+- planTier: varchar with enum-like semantics:
+  - 'starter' | 'pro' | 'elite' | 'internal'
+  - default: 'starter'
+- status: varchar:
+  - 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled'
+  - default: 'trialing'
+
+Example (TypeScript / Drizzle):
+
+  export const tenants = pgTable('tenants', {
+    id: varchar('id').primaryKey(),
+    name: varchar('name').notNull(),
+    // ...existing fields...
+    planTier: varchar('plan_tier').notNull().default('starter'),
+    status: varchar('status').notNull().default('trialing'),
+    // createdAt, etc.
+  });
+
+Run a migration to:
+- Add the new columns with defaults.
+- Backfill existing tenants:
+  - root tenant → planTier = 'elite', status = 'active'.
+
+1.2 Create Feature Map (new shared file)
+
+Create a new file:
+
+  shared/features.ts
+
+Define the following:
+
+- A typed set of feature keys:
+
+  export const FEATURE_KEYS = [
+    'aiSmsAgent',
+    'aiVoiceAgent',
+    'dedicatedNumber',
+    'campaigns',
+    'dataExport',
+    'websiteGenerator',
+  ] as const;
+
+  export type FeatureKey = (typeof FEATURE_KEYS)[number];
+
+- A TIER_FEATURES map:
+
+  export const TIER_FEATURES: Record<string, Record<FeatureKey, boolean>> = {
+    starter: {
+      aiSmsAgent: false,
+      aiVoiceAgent: false,
+      dedicatedNumber: false,
+      campaigns: false,
+      dataExport: true,
+      websiteGenerator: true,
+    },
+    pro: {
+      aiSmsAgent: true,
+      aiVoiceAgent: false,
+      dedicatedNumber: true,
+      campaigns: true,
+      dataExport: true,
+      websiteGenerator: true,
+    },
+    elite: {
+      aiSmsAgent: true,
+      aiVoiceAgent: true,
+      dedicatedNumber: true,
+      campaigns: true,
+      dataExport: true,
+      websiteGenerator: true,
+    },
+    internal: {
+      // Internal = "family / friends at-cost" → all features ON, no SaaS markup
+      aiSmsAgent: true,
+      aiVoiceAgent: true,
+      dedicatedNumber: true,
+      campaigns: true,
+      dataExport: true,
+      websiteGenerator: true,
+    },
+  };
+
+- A helper:
+
+  export function hasFeature(tenant: { planTier: string }, key: FeatureKey): boolean {
+    const tierConfig = TIER_FEATURES[tenant.planTier] ?? TIER_FEATURES.starter;
+    return !!tierConfig[key];
+  }
+
+This helper will be used in both backend and frontend code.
+
+------------------------------------------------
+2) Backend — Feature Gating Usage (Minimal Integration)
+------------------------------------------------
+
+For this phase, wire hasFeature into a **small number** of key areas to prove the pattern works without refactoring everything.
+
+Places to update (example targets):
+
+1. AI SMS agent endpoint / route
+   - Before doing any AI SMS work for a given tenant:
+     - If !hasFeature(tenant, 'aiSmsAgent') → return 403 with a helpful message.
+
+2. AI Voice / ivrMode = 'ai-voice'
+   - When a tenant tries to use 'ai-voice' ivrMode or hit the /twilio/voice/ai handler:
+     - If !hasFeature(tenant, 'aiVoiceAgent'):
+       - Either:
+         - Block it outright with 403/feature error, OR
+         - Serve a “feature locked” TwiML that says AI Voice is not available on their plan.
+
+3. Campaigns route(s)
+   - Protect at least one campaigns-related endpoint with:
+     - if !hasFeature(tenant, 'campaigns') → 403 or no-op.
+
+We are not trying to gate every single feature in this phase.
+We are proving the pattern and wiring the core ones.
+
+Add simple tests for:
+- A mock tenant with planTier 'starter' vs 'pro' vs 'elite' vs 'internal'.
+- hasFeature behavior for a few keys.
+- At least one route that returns 403 for a plan missing a feature.
+
+------------------------------------------------
+3) Admin UI — Show and Edit Plan & Status
+------------------------------------------------
+
+Update the AdminTenants UI (client/src/pages/AdminTenants.tsx or equivalent):
+
+3.1 Display Tier & Status
+
+- For each tenant card/row:
+  - Show a small badge (or label) for:
+    - Plan Tier: Starter / Pro / Elite / Internal
+    - Status: Trialing / Active / Past Due / Suspended / Cancelled
+  - Style:
+    - Elite / Internal can have slightly more “premium” badges (color-coded).
+    - Internal should have a clear badge like “INTERNAL (at-cost)”.
+
+3.2 Edit Plan & Status (Owner-Only)
+
+- Add a simple edit control (could be:
+  - An inline dropdown, OR
+  - A “Edit plan + status” dialog.)
+
+- Owner-only:
+  - Use the same owner guard logic you already use for Admin routes.
+
+Behavior:
+
+- On open:
+  - Show:
+    - planTier (select: starter, pro, elite, internal)
+    - status (select: trialing, active, past_due, suspended, cancelled)
+- On save:
+  - Call a new endpoint:
+
+    PATCH /api/admin/tenants/:id/plan
+
+  Payload (Zod schema):
+
+    {
+      planTier?: 'starter' | 'pro' | 'elite' | 'internal';
+      status?: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+    }
+
+Backend for /api/admin/tenants/:id/plan:
+
+- Owner-only.
+- Partial updates only.
+- Validates:
+  - planTier is one of allowed values.
+  - status is one of allowed values.
+- Writes to tenants table.
+
+3.3 Internal Tier Use Case
+
+- Using this UI, you can set planTier = 'internal' for:
+  - Family
+  - Friends
+  - Demo tenants
+- There is **no Stripe subscription logic** in this phase:
+  - They simply have:
+    - All features on (via TIER_FEATURES.internal).
+    - No plan upgrade/paywall screens.
+
+------------------------------------------------
+4) (Optional) Tenant Config – Internal Notes
+------------------------------------------------
+
+If not already present, consider:
+
+- In tenant_config (or equivalent), ensure there is:
+  - internalNotes: text field
+
+Admin Tenants / Concierge Setup:
+
+- When planTier = 'internal':
+  - Show internalNotes prominently so you remember:
+    - "Jody's family account"
+    - "Demo tenant for investors"
+- This is optional in this phase; only implement if it’s quick.
+
+------------------------------------------------
+5) Tests
+------------------------------------------------
+
+Backend:
+
+- Unit tests for TIER_FEATURES + hasFeature:
+  - Different planTier values return correct feature flags.
+- At least one route test where:
+  - Tenant with planTier 'starter' is blocked from:
+    - AI Voice or campaigns.
+  - Tenant with planTier 'pro' or 'elite' or 'internal' is allowed.
+
+Frontend:
+
+- AdminTenants:
+  - Tier and status badges render for tenants.
+  - Owner users see the edit control for plan/status.
+- Optional:
+  - Cypress or equivalent for very basic "edit tier" happy path.
+
+------------------------------------------------
+6) Docs — replit.md & MASTER_PLAN
+------------------------------------------------
+
+Update replit.md:
+
+- Add "Phase 7 — Plan Tiers & Feature Gating" section describing:
+  - New tenants.planTier + tenants.status fields.
+  - TIER_FEATURES map and hasFeature helper.
+  - Admin UI for editing plan & status.
+  - Meaning of INTERNAL tier (full features at-cost, no SaaS markup).
+
+Update MASTER_PLAN:
+- Mark Phase 7 as "in progress" or "complete" when Replit finishes this phase.
+- In the Phase 7 section, explicitly note:
+  - INTERNAL plan = family/friends at-cost tier with all features enabled.
+  - Full Stripe subscription flows will be part of a later “Phase 7B – Billing & Stripe wiring”.
+------------------------------------------------
+Completion Checklist:
+
+- [ ] tenants table updated with planTier + status columns.
+- [ ] TIER_FEATURES + FeatureKey + hasFeature implemented in shared/features.ts.
+- [ ] hasFeature applied to at least:
+      - AI SMS or AI Voice endpoint
+      - At least one campaigns-related route
+- [ ] AdminTenants UI shows plan + status badges.
+- [ ] Owner-only control allows editing planTier + status.
+- [ ] INTERNAL tier behaves as "all features on, at-cost" in code.
+- [ ] Docs updated and all tests passing.
+
+
+Once Replit finishes Phase 7 and spits out the completion summary, paste it in here and we’ll:
+
+Snap Phase 7 into the master plan cleanly
