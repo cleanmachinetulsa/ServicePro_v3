@@ -35,8 +35,6 @@ export function stopTimeoutMonitoring() {
 }
 
 async function checkTimeouts() {
-  const tenantDb = wrapTenantDb(db, 'root');
-  
   try {
     console.log('[TIMEOUT MONITOR] Checking for timed-out conversations...');
 
@@ -44,7 +42,7 @@ async function checkTimeouts() {
     timeoutThreshold.setHours(timeoutThreshold.getHours() - TIMEOUT_HOURS);
 
     // Find conversations in manual mode that haven't had activity in TIMEOUT_HOURS
-    const timedOutConversations = await tenantDb
+    const timedOutConversations = await db
       .select()
       .from(conversations)
       .where(

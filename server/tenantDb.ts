@@ -1,5 +1,6 @@
 import { db } from './db';
 import { eq, and, SQL } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
 import type { TenantInfo } from './tenantMiddleware';
 import { 
   customers, appointments, services, conversations, messages, invoices,
@@ -124,136 +125,174 @@ const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
 export interface TenantDb {
   raw: typeof db;
   tenant: TenantInfo;
-  query: typeof db.query;
-  insert: <T extends any>(table: T) => ReturnType<typeof db.insert>;
+  tenantId: string;
   select: typeof db.select;
+  insert: <T extends any>(table: T) => ReturnType<typeof db.insert>;
   update: <T extends any>(table: T) => ReturnType<typeof db.update>;
   delete: <T extends any>(table: T) => ReturnType<typeof db.delete>;
-  withTenantFilter: <T extends any>(table: T, additionalConditions?: SQL | undefined) => SQL | undefined;
+  query: typeof db.query;
+  transaction: typeof db.transaction;
+  withTenantFilter<TTable extends PgTable>(
+    table: TTable,
+    condition?: SQL<unknown>
+  ): SQL<unknown>;
   execute: typeof db.execute;
+}
+
+// Core helper used by the instance method
+function buildTenantFilter<TTable extends PgTable>(
+  tenantId: string,
+  table: TTable,
+  condition?: SQL<unknown>
+): SQL<unknown> {
+  const tenantColumn = (table as any).tenantId;
+
+  if (!tenantColumn) {
+    const tableName = (table as any).name ?? 'unknown_table';
+
+    throw new Error(
+      `withTenantFilter used on table "${tableName}" which has no tenantId column. ` +
+        `Either add tenantId to the schema or stop using withTenantFilter on this table.`
+    );
+  }
+
+  const base = eq(tenantColumn, tenantId);
+  return condition ? and(base, condition) : base;
 }
 
 export function createTenantDb(tenant: TenantInfo): TenantDb {
   const tenantId = tenant.id;
   
-  return {
+  // Keep auto-injection for INSERT
+  const wrappedInsert = <T extends any>(table: T) => {
+    const metadata = TABLE_METADATA.get(table);
+    const originalInsert = db.insert(table);
+    const wrappedInsert = {
+      ...originalInsert,
+      values: (values: any) => {
+        if (metadata) {
+          if (Array.isArray(values)) {
+            values = values.map(v => ({ ...v, tenantId }));
+          } else {
+            values = { ...values, tenantId };
+          }
+        }
+        return originalInsert.values(values);
+      }
+    };
+    return wrappedInsert as any;
+  };
+
+  // Keep auto-filtering for UPDATE
+  const wrappedUpdate = <T extends any>(table: T) => {
+    const metadata = TABLE_METADATA.get(table);
+    const originalUpdate = db.update(table);
+    
+    if (metadata) {
+      let whereWasCalled = false;
+      
+      return {
+        ...originalUpdate,
+        set: (values: any) => {
+          const originalSet = originalUpdate.set(values);
+          
+          return {
+            ...originalSet,
+            where: (condition?: SQL | undefined) => {
+              whereWasCalled = true;
+              const tenantCondition = buildTenantFilter(tenantId, table as any, condition);
+              return originalSet.where(tenantCondition);
+            },
+            execute: async function() {
+              if (!whereWasCalled) {
+                const tenantCondition = buildTenantFilter(tenantId, table as any, undefined);
+                return originalSet.where(tenantCondition).execute();
+              }
+              return originalSet.execute();
+            },
+            returning: function(fields?: any) {
+              if (!whereWasCalled) {
+                const tenantCondition = buildTenantFilter(tenantId, table as any, undefined);
+                return originalSet.where(tenantCondition).returning(fields);
+              }
+              return originalSet.returning(fields);
+            }
+          };
+        }
+      } as any;
+    }
+    
+    return originalUpdate;
+  };
+
+  // Keep auto-filtering for DELETE
+  const wrappedDelete = <T extends any>(table: T) => {
+    const metadata = TABLE_METADATA.get(table);
+    const originalDelete = db.delete(table);
+    
+    if (metadata) {
+      let whereWasCalled = false;
+      
+      return {
+        ...originalDelete,
+        where: (condition?: SQL | undefined) => {
+          whereWasCalled = true;
+          const tenantCondition = buildTenantFilter(tenantId, table as any, condition);
+          return originalDelete.where(tenantCondition);
+        },
+        execute: async function() {
+          if (!whereWasCalled) {
+            const tenantCondition = buildTenantFilter(tenantId, table as any, undefined);
+            return originalDelete.where(tenantCondition).execute();
+          }
+          return originalDelete.execute();
+        },
+        returning: function(fields?: any) {
+          if (!whereWasCalled) {
+            const tenantCondition = buildTenantFilter(tenantId, table as any, undefined);
+            return originalDelete.where(tenantCondition).returning(fields);
+          }
+          return originalDelete.returning(fields);
+        }
+      } as any;
+    }
+    
+    return originalDelete;
+  };
+  
+  const tenantDb: TenantDb = {
     raw: db,
     tenant,
-    query: db.query,
-    
+    tenantId,
+
+    // Simple pass-throughs - no magic for SELECT
     select: db.select.bind(db),
-    
-    insert: <T extends any>(table: T) => {
-      const metadata = TABLE_METADATA.get(table);
-      const originalInsert = db.insert(table);
-      const wrappedInsert = {
-        ...originalInsert,
-        values: (values: any) => {
-          if (metadata) {
-            if (Array.isArray(values)) {
-              values = values.map(v => ({ ...v, tenantId }));
-            } else {
-              values = { ...values, tenantId };
-            }
-          }
-          return originalInsert.values(values);
-        }
-      };
-      return wrappedInsert as any;
+    insert: wrappedInsert,
+    update: wrappedUpdate,
+    delete: wrappedDelete,
+    query: db.query,
+    transaction: db.transaction.bind(db),
+
+    // Tenant WHERE helper for SELECTs
+    withTenantFilter<TTable extends PgTable>(
+      table: TTable,
+      condition?: SQL<unknown>
+    ) {
+      return buildTenantFilter(tenantId, table, condition);
     },
-    
-    update: <T extends any>(table: T) => {
-      const metadata = TABLE_METADATA.get(table);
-      const originalUpdate = db.update(table);
-      
-      if (metadata) {
-        let whereWasCalled = false;
-        
-        return {
-          ...originalUpdate,
-          set: (values: any) => {
-            const originalSet = originalUpdate.set(values);
-            
-            return {
-              ...originalSet,
-              where: (condition?: SQL | undefined) => {
-                whereWasCalled = true;
-                const tenantCondition = withTenantFilter(table, tenantId, condition);
-                return originalSet.where(tenantCondition);
-              },
-              execute: async function() {
-                if (!whereWasCalled) {
-                  const tenantCondition = withTenantFilter(table, tenantId, undefined);
-                  return originalSet.where(tenantCondition).execute();
-                }
-                return originalSet.execute();
-              },
-              returning: function(fields?: any) {
-                if (!whereWasCalled) {
-                  const tenantCondition = withTenantFilter(table, tenantId, undefined);
-                  return originalSet.where(tenantCondition).returning(fields);
-                }
-                return originalSet.returning(fields);
-              }
-            };
-          }
-        } as any;
-      }
-      
-      return originalUpdate;
-    },
-    
-    delete: <T extends any>(table: T) => {
-      const metadata = TABLE_METADATA.get(table);
-      const originalDelete = db.delete(table);
-      
-      if (metadata) {
-        let whereWasCalled = false;
-        
-        return {
-          ...originalDelete,
-          where: (condition?: SQL | undefined) => {
-            whereWasCalled = true;
-            const tenantCondition = withTenantFilter(table, tenantId, condition);
-            return originalDelete.where(tenantCondition);
-          },
-          execute: async function() {
-            if (!whereWasCalled) {
-              const tenantCondition = withTenantFilter(table, tenantId, undefined);
-              return originalDelete.where(tenantCondition).execute();
-            }
-            return originalDelete.execute();
-          },
-          returning: function(fields?: any) {
-            if (!whereWasCalled) {
-              const tenantCondition = withTenantFilter(table, tenantId, undefined);
-              return originalDelete.where(tenantCondition).returning(fields);
-            }
-            return originalDelete.returning(fields);
-          }
-        } as any;
-      }
-      
-      return originalDelete;
-    },
-    
-    withTenantFilter: <T extends any>(table: T, additionalConditions?: SQL | undefined) =>
-      withTenantFilter(table, tenantId, additionalConditions),
-    
+
     execute: db.execute.bind(db),
   };
+
+  return tenantDb;
 }
 
 export function wrapTenantDb(database: typeof db, tenantId: string): TenantDb {
   const tenantInfo: TenantInfo = { id: tenantId, name: tenantId };
-  const tenantDb = createTenantDb(tenantInfo);
-  
-  return {
-    ...tenantDb,
-    execute: (...args: any[]) => (database as any).execute(...args),
-  };
+  return createTenantDb(tenantInfo);
 }
 
+// Legacy standalone helper (kept for compatibility)
 export function withTenantFilter<T extends any>(
   table: T,
   tenantId: string,

@@ -471,6 +471,7 @@ export const technicianDeposits = pgTable("technician_deposits", {
 
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 255 }).notNull().default('root'),
   customerId: integer("customer_id").references(() => customers.id),
   customerPhone: text("customer_phone"),
   customerName: text("customer_name"),
@@ -1112,6 +1113,7 @@ export const notificationSettings = pgTable("notification_settings", {
 // SMS Templates - Centralized template management with versioning
 export const smsTemplates = pgTable("sms_templates", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 255 }).notNull().default('root'),
   templateKey: varchar("template_key", { length: 100 }).notNull().unique(), // e.g., 'on_site_arrival', 'booking_confirmation'
   category: varchar("category", { length: 50 }).notNull(), // 'booking', 'technician', 'referrals', 'payment', etc.
   channel: varchar("channel", { length: 20 }).notNull().default("sms"), // Future: 'sms', 'email', 'push'
@@ -1336,6 +1338,7 @@ export const serviceLimits = pgTable("service_limits", {
 // Site-wide Banners - Scheduled announcements with multiple display modes
 export const banners = pgTable("banners", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 255 }).notNull().default('root'),
   title: text("title").notNull(),
   bodyText: text("body_text").notNull(), // Plain text or markdown, NO raw HTML (sanitized on render)
   displayMode: varchar("display_mode", { length: 20 }).notNull().default("top_bar"), // top_bar, modal, floating
