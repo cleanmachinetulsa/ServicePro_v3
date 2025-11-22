@@ -1,7 +1,7 @@
-# Phase 2.1: Canonical Voice Entry-Point
+# Phase 2.2: Canonical Voice Entry-Point with Dynamic Tenant Lookup ✅ COMPLETE
 
 ## Overview
-This phase implements a standardized voice webhook endpoint for multi-tenant telephony in ServicePro. The endpoint provides a clean separation from legacy IVR logic and establishes the foundation for per-tenant phone configuration.
+This phase implements dynamic multi-tenant telephony routing via the `tenantPhoneConfig` table. The canonical voice endpoint now looks up tenants by phone number and uses per-tenant SIP configuration from the database.
 
 ## Endpoint Details
 
@@ -11,13 +11,14 @@ POST /twilio/voice/incoming
 ```
 
 ### Purpose
-This is the canonical entry-point for all inbound voice calls in the ServicePro multi-tenant platform.
+This is the canonical entry-point for all inbound voice calls in the ServicePro multi-tenant platform with full multi-tenant support.
 
-### Current Behavior (Phase 2.1)
-- **Tenant Resolution**: Hardcoded to 'root' tenant (Clean Machine)
-- **Call Routing**: Direct SIP forwarding to `jody@cleanmachinetulsa.sip.twilio.com`
-- **Caller ID**: Passthrough enabled - owner sees customer's actual phone number
-- **Security**: Twilio signature verification via `verifyTwilioSignature` middleware
+### Current Behavior (Phase 2.2) ✅
+- **Tenant Resolution**: ✅ Dynamic lookup via `tenantPhoneConfig` table by Twilio 'To' number
+- **Call Routing**: ✅ Per-tenant SIP configuration from database
+- **Fallback**: ✅ Falls back to 'root' tenant for unconfigured numbers
+- **Caller ID**: ✅ Passthrough enabled - owner sees customer's actual phone number
+- **Security**: ✅ Twilio signature verification via `verifyTwilioSignature` middleware
 
 ### Twilio Configuration
 
@@ -41,28 +42,49 @@ Run the test suite to verify functionality:
 npx vitest run server/tests/twilioVoiceCanonical.test.ts
 ```
 
-**Test Coverage:**
+**Test Coverage (Phase 2.2):**
 - ✅ Returns 200 and valid TwiML XML
 - ✅ Returns TwiML with `<Dial>` element
-- ✅ Dials the Clean Machine SIP endpoint for root tenant
+- ✅ Uses database SIP config for configured phone numbers
 - ✅ Passes through caller ID in the Dial element
-- ✅ Handles missing From/To/CallSid gracefully
-- ✅ Resolves to root tenant for any incoming number (Phase 2.1)
+- ✅ Handles missing From/To/CallSid gracefully and falls back to root
+- ✅ Falls back to root tenant for unconfigured phone numbers
+- ✅ Dynamic tenant lookup by phone number works correctly
+
+**All 7 tests passing!**
 
 ### Implementation Files
 
 1. **`server/routes.twilioVoiceCanonical.ts`**
-   - Canonical voice router with tenant resolver middleware
-   - Simple SIP forwarding logic
-   - Comprehensive logging for debugging
+   - Canonical voice router with dynamic tenant resolver middleware
+   - Database-driven SIP forwarding logic
+   - Comprehensive logging for debugging (shows "Using database SIP config" vs "Using hardcoded root fallback")
 
 2. **`server/tests/twilioVoiceCanonical.test.ts`**
-   - 6 tests covering all core functionality
-   - Validates TwiML structure and SIP routing
+   - 7 tests covering all core functionality including dynamic tenant lookup
+   - Validates TwiML structure and SIP routing from database
+   - Tests fallback behavior for unconfigured numbers
 
 3. **`server/routes.ts`** (line 3339)
    - Canonical voice routes registered ahead of legacy IVR routes
    - Ensures new endpoint takes precedence
+
+4. **`shared/schema.ts`** (line 210)
+   - `tenantPhoneConfig` table definition with phone number, SIP settings, IVR mode
+   - Unique index on phone_number for fast lookups
+
+5. **`server/services/tenantPhone.ts`**
+   - `getTenantByPhoneNumber()` - Reverse lookup tenant by phone number
+   - `getTenantPhoneConfig()` - Get phone config by tenant ID
+   - `getAllTenantPhoneConfigs()` - Admin dashboard support
+
+6. **`server/seed/seedTenantPhone.ts`**
+   - Seeds root tenant phone configuration on startup
+   - Idempotent - safe to run multiple times
+
+7. **`server/migrations/20251122_add_tenant_phone_config.sql`**
+   - Database migration for tenant_phone_config table
+   - Creates indexes for efficient lookups
 
 ## Future Phases
 
@@ -131,9 +153,10 @@ grep "[CANONICAL VOICE]" /tmp/logs/start_application_*.log
 
 ## Status
 
-**Phase 2.1**: ✅ Complete
+**Phase 2.2**: ✅ Complete
 - Endpoint: `/twilio/voice/incoming`
-- Tenant: Hardcoded to 'root'
-- Routing: SIP forwarding to Clean Machine
-- Tests: 6/6 passing
-- Production-ready: Yes (for root tenant only)
+- Tenant: ✅ Dynamic lookup via `tenantPhoneConfig` table
+- Routing: ✅ Per-tenant SIP configuration from database
+- Database: ✅ `tenant_phone_config` table created and seeded
+- Tests: ✅ 7/7 passing
+- Production-ready: ✅ Yes (full multi-tenant support)
