@@ -179,12 +179,26 @@ export const platformSettings = pgTable("platform_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Tenant tier enum for subscription levels
+export const tenantTierEnum = pgEnum('tenant_tier', ['starter', 'pro', 'elite']);
+
 // Tenants table for multi-tenant support
 export const tenants = pgTable("tenants", {
   id: varchar("id", { length: 50 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   subdomain: varchar("subdomain", { length: 100 }),
   isRoot: boolean("is_root").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Tenant configuration - business-specific settings per tenant
+export const tenantConfig = pgTable("tenant_config", {
+  tenantId: varchar("tenant_id", { length: 50 }).primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
+  businessName: varchar("business_name", { length: 255 }).notNull(),
+  logoUrl: text("logo_url"),
+  primaryColor: varchar("primary_color", { length: 20 }).default("#3b82f6"),
+  tier: tenantTierEnum("tier").default("starter").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2863,3 +2877,14 @@ export const updatePlatformSettingsSchema = z.object({
 export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type InsertPlatformSettings = z.infer<typeof insertPlatformSettingsSchema>;
 export type UpdatePlatformSettings = z.infer<typeof updatePlatformSettingsSchema>;
+
+// ============================================================
+// TENANT SCHEMAS
+// ============================================================
+export const insertTenantSchema = createInsertSchema(tenants).omit({ createdAt: true, updatedAt: true });
+export const insertTenantConfigSchema = createInsertSchema(tenantConfig).omit({ createdAt: true, updatedAt: true });
+
+export type Tenant = typeof tenants.$inferSelect;
+export type InsertTenant = z.infer<typeof insertTenantSchema>;
+export type TenantConfig = typeof tenantConfig.$inferSelect;
+export type InsertTenantConfig = z.infer<typeof insertTenantConfigSchema>;
