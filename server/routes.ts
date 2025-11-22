@@ -22,6 +22,7 @@ import { registerSmsReferralRoutes } from './routes.smsReferral';
 import { registerAdminReferralStatsRoutes } from './routes.adminReferralStats';
 import { registerPublicCustomerLookupRoutes } from './routes.publicCustomerLookup';
 import { registerAdminTenantRoutes } from './routes.adminTenants';
+import { registerAdminPhoneConfigRoutes } from './routes.adminPhoneConfig';
 import { registerUpsellRoutes } from './routes.upsell';
 import { registerInvoiceRoutes } from './routes.invoices';
 import { registerEnhancedCustomerRoutes } from './enhancedCustomerRoutes';
@@ -2882,6 +2883,7 @@ Follow up with this lead to set up their 14-day trial!
   registerSmsReferralRoutes(app);
   registerAdminReferralStatsRoutes(app);
   registerAdminTenantRoutes(app);
+  registerAdminPhoneConfigRoutes(app);
   registerCustomerIntelligenceRoutes(app);
   registerPublicCustomerLookupRoutes(app);
   registerUpsellRoutes(app);
