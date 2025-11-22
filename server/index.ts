@@ -295,7 +295,7 @@ app.use((req, res, next) => {
   await seedPhoneLines();
   
   // Backfill phone line IDs for existing conversations (idempotent - safe to run multiple times)
-  // TODO: Fix tenant filtering issue causing SQL syntax error
+  // TODO Phase 1I: Fix tenant filtering in backfillPhoneLineIds - currently causes SQL syntax error
   // const { backfillPhoneLineIds } = await import('./backfillPhoneLines');
   // await backfillPhoneLineIds();
   

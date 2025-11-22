@@ -13,14 +13,21 @@ import { wrapTenantDb } from './tenantDb';
  */
 export async function backfillPhoneLineIds() {
   const tenantDb = wrapTenantDb(db, 'root');
+  const TENANT_ID = 'root';
+  
   try {
     console.log('[BACKFILL] Starting phone line ID backfill...');
 
     // Get the Main Line ID by label (flexible - works regardless of phone number)
-    const [mainLine] = await tenantDb
+    const [mainLine] = await db
       .select()
       .from(phoneLines)
-      .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.label, 'Main Business Line')))
+      .where(
+        and(
+          eq(phoneLines.tenantId, TENANT_ID),
+          eq(phoneLines.label, 'Main Business Line')
+        )
+      )
       .limit(1);
 
     if (!mainLine) {
@@ -31,15 +38,14 @@ export async function backfillPhoneLineIds() {
     console.log(`[BACKFILL] Main Line ID: ${mainLine.id}`);
 
     // Update all SMS conversations without a phoneLineId
+    // Note: tenantDb.update() AUTOMATICALLY injects tenant filtering
     const smsConversationsResult = await tenantDb
       .update(conversations)
       .set({ phoneLineId: mainLine.id })
       .where(
-        tenantDb.withTenantFilter(conversations,
-          and(
-            eq(conversations.platform, 'sms'),
-            isNull(conversations.phoneLineId)
-          )
+        and(
+          eq(conversations.platform, 'sms'),
+          isNull(conversations.phoneLineId)
         )
       )
       .returning({ id: conversations.id });
@@ -47,15 +53,14 @@ export async function backfillPhoneLineIds() {
     console.log(`[BACKFILL] Updated ${smsConversationsResult.length} SMS conversations to Main Line`);
 
     // Update all SMS messages without a phoneLineId
+    // Note: tenantDb.update() AUTOMATICALLY injects tenant filtering
     const smsMessagesResult = await tenantDb
       .update(messages)
       .set({ phoneLineId: mainLine.id })
       .where(
-        tenantDb.withTenantFilter(messages,
-          and(
-            eq(messages.channel, 'sms'),
-            isNull(messages.phoneLineId)
-          )
+        and(
+          eq(messages.channel, 'sms'),
+          isNull(messages.phoneLineId)
         )
       )
       .returning({ id: messages.id });
