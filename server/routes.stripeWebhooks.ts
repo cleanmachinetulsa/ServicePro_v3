@@ -18,9 +18,14 @@ import { markDepositPaid } from './depositManager';
 
 const router = Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
+const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-04-30.basil',
-});
+}) : null;
+
+if (!STRIPE_ENABLED) {
+  console.warn('[STRIPE WEBHOOKS] STRIPE_SECRET_KEY not configured - Stripe webhooks will be disabled');
+}
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
@@ -32,6 +37,10 @@ const processedEvents = new Set<string>();
  * Handle Stripe webhook events
  */
 router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
+  if (!stripe) {
+    return res.status(503).send('Stripe webhooks not configured');
+  }
+
   const sig = req.headers['stripe-signature'];
 
   if (!sig) {

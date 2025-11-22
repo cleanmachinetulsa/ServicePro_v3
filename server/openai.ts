@@ -16,7 +16,13 @@ import { requestDamagePhotos } from "./damageAssessment";
 import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPersonalizationService";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[OPENAI] OPENAI_API_KEY not found in openai.ts, AI scheduling features will be disabled');
+}
+
+const openai = OPENAI_ENABLED ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }) : null;
 
 /**
  * Demo Mode AI Rate Limiter

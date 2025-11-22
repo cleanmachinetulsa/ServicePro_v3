@@ -4,7 +4,13 @@ import { eq, desc } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { format, differenceInMonths } from 'date-fns';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[OPENAI] OPENAI_API_KEY not found in gptPersonalizationService, AI personalization will be disabled');
+}
+
+const openai = OPENAI_ENABLED ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }) : null;
 
 interface CustomerContext {
   isReturning: boolean;

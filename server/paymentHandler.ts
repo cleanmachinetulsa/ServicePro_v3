@@ -6,19 +6,25 @@ import { eq } from 'drizzle-orm';
 import { sendInvoiceNotification, sendReviewRequest } from './invoiceService';
 import { checkAndRewardReferral } from './referralService';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
+
+if (!STRIPE_ENABLED) {
+  console.warn('[STRIPE] STRIPE_SECRET_KEY not found in paymentHandler, payment webhooks will be disabled');
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
-});
+}) : null;
 
 /**
  * Create a Stripe payment intent for an invoice
  */
 export async function createStripePaymentIntent(req: Request, res: Response) {
   try {
+    if (!STRIPE_ENABLED || !stripe) {
+      return res.status(503).json({ error: 'Payment processing is not available. Please configure STRIPE_SECRET_KEY.' });
+    }
+
     const { invoiceId } = req.params;
     
     // Fetch the invoice details
@@ -74,6 +80,10 @@ export async function createStripePaymentIntent(req: Request, res: Response) {
  * Handle Stripe webhook events
  */
 export async function handleStripeWebhook(req: Request, res: Response) {
+  if (!STRIPE_ENABLED || !stripe) {
+    return res.status(503).json({ error: 'Payment webhooks are not available. Please configure STRIPE_SECRET_KEY.' });
+  }
+
   const sig = req.headers['stripe-signature'] as string;
   
   if (!process.env.STRIPE_WEBHOOK_SECRET) {

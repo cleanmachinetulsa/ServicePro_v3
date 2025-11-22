@@ -9,13 +9,16 @@ import { addDays } from 'date-fns';
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_MESSAGING_SERVICE_SID = process.env.TWILIO_MESSAGING_SERVICE_SID;
+const TWILIO_ENABLED = !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN);
 
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-  throw new Error('[SMS CAMPAIGN] TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required');
+if (!TWILIO_ENABLED) {
+  console.warn('[SMS CAMPAIGN] TWILIO credentials not configured, SMS campaign features will be disabled');
 }
 
-const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-console.log('[SMS CAMPAIGN] Twilio client initialized for campaigns');
+const twilioClient = TWILIO_ENABLED ? twilio(TWILIO_ACCOUNT_SID!, TWILIO_AUTH_TOKEN!) : null;
+if (TWILIO_ENABLED) {
+  console.log('[SMS CAMPAIGN] Twilio client initialized for campaigns');
+}
 
 const smsCampaigns = {
   id: 'id',

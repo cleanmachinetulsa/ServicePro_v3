@@ -4,9 +4,14 @@ import { eq } from 'drizzle-orm';
 import { broadcastControlModeChange } from './websocketService';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-});
+}) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[HANDOFF DETECTION] OpenAI API key not configured - will use fallback keyword detection');
+}
 
 interface HandoffDetectionResult {
   shouldHandoff: boolean;
@@ -33,6 +38,34 @@ export async function detectHandoffNeed(
   messageHistory?: any[]
 ): Promise<HandoffDetectionResult> {
   try {
+    // If OpenAI is not available, use fallback keyword detection
+    if (!openai) {
+      console.log('[HANDOFF DETECTION] OpenAI not available, using keyword-based detection');
+      const lowerMessage = message.toLowerCase();
+      const hasExplicitRequest = 
+        lowerMessage.includes('talk to owner') ||
+        lowerMessage.includes('speak to owner') ||
+        lowerMessage.includes('talk to a person') ||
+        lowerMessage.includes('speak to a person') ||
+        lowerMessage.includes('get me the owner') ||
+        lowerMessage.includes('speak to manager') ||
+        lowerMessage.includes('talk to manager');
+      
+      if (hasExplicitRequest) {
+        return {
+          shouldHandoff: true,
+          reason: 'Explicit escalation request detected via keyword matching',
+          confidence: 'medium'
+        };
+      }
+      
+      return {
+        shouldHandoff: false,
+        reason: 'No escalation keywords detected',
+        confidence: 'low'
+      };
+    }
+
     // Build conversation context for better classification
     let conversationContext = '';
     if (messageHistory && messageHistory.length > 0) {

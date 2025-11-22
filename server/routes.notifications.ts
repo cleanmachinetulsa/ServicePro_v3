@@ -7,9 +7,14 @@ import OpenAI from 'openai';
 
 const router = Router();
 
-const openai = new OpenAI({
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[NOTIFICATIONS] OpenAI API key not configured - AI rephrasing will be disabled');
+}
 
 /**
  * Get notification settings by key
@@ -211,6 +216,13 @@ May I answer any questions or get your vehicle scheduled?`,
  */
 router.post('/rephrase', requireAuth, async (req: Request, res: Response) => {
   try {
+    if (!openai) {
+      return res.status(503).json({
+        success: false,
+        error: 'AI rephrasing is not available - OpenAI API key not configured'
+      });
+    }
+
     const { text, creativity, tone, length } = req.body;
 
     if (!text) {

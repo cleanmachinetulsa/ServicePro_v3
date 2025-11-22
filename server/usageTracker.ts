@@ -14,7 +14,12 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-04-30.basil',
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[USAGE TRACKER] OpenAI API key not configured - OpenAI usage tracking will be skipped');
+}
 
 const sendgridApiKey = process.env.SENDGRID_API_KEY;
 

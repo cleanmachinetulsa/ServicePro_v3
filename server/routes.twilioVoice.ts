@@ -574,9 +574,13 @@ router.post('/voice/voicemail-transcribed', verifyTwilioSignature, async (req: R
       customer = created;
     }
 
-    // Analyze voicemail with OpenAI
-    const openai = new OpenAI();
-    const analysisPrompt = `You are an auto-detail business assistant. A customer left this voicemail:
+    // Analyze voicemail with OpenAI (if available)
+    let smsResponse = 'Thanks for calling! We will get back to you shortly.';
+    
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const analysisPrompt = `You are an auto-detail business assistant. A customer left this voicemail:
 
 "${transcriptionText}"
 
@@ -586,19 +590,26 @@ Provide a BRIEF (1-2 sentences max) acknowledgment and next step for the custome
 
 Respond ONLY with the SMS message text, nothing else.`;
 
-    const aiResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: analysisPrompt,
-        },
-      ],
-      max_tokens: 150,
-    });
+        const aiResponse = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'user',
+              content: analysisPrompt,
+            },
+          ],
+          max_tokens: 150,
+        });
 
-    const smsResponse =
-      aiResponse.choices[0]?.message?.content || 'Thanks for calling! We will get back to you shortly.';
+        smsResponse =
+          aiResponse.choices[0]?.message?.content || 'Thanks for calling! We will get back to you shortly.';
+      } catch (error) {
+        console.error('[TWILIO VOICE] Error analyzing voicemail with AI:', error);
+        // smsResponse already set to default fallback above
+      }
+    } else {
+      console.log('[TWILIO VOICE] OpenAI not configured, using default voicemail response');
+    }
 
     // Send SMS response
     const twilio = require('twilio');

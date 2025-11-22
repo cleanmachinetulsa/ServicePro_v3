@@ -3,9 +3,14 @@ import { extractKnowledgeBase } from './knowledge';
 import { customerMemory } from './customerMemory';
 import { conversationState } from './conversationState';
 
-const openai = new OpenAI({
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[AI SUGGESTIONS] OpenAI API key not configured - reply suggestions will use default templates');
+}
 
 export interface ReplySuggestion {
   id: string;
@@ -21,6 +26,12 @@ export async function generateReplySuggestions(
   platform: 'sms' | 'web' = 'web'
 ): Promise<ReplySuggestion[]> {
   try {
+    // If OpenAI is not available, return default suggestions
+    if (!openai) {
+      console.log('[AI SUGGESTIONS] OpenAI not available, using default suggestions');
+      return getDefaultSuggestions(platform);
+    }
+
     // Get knowledge base
     const knowledgeBase = extractKnowledgeBase();
     

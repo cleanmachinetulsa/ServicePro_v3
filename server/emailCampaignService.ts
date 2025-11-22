@@ -21,7 +21,13 @@ mailService.setApiKey(process.env.SENDGRID_API_KEY || '');
 
 // Initialize OpenAI for content generation
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[OPENAI] OPENAI_API_KEY not found in emailCampaignService, AI content generation will be disabled');
+}
+
+const openai = OPENAI_ENABLED ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY! }) : null;
 
 // Rate limiter: Respects both SendGrid API limits (600 req/min) and tier limits (50-100/day)
 // Dynamic configuration based on remaining daily capacity

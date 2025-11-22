@@ -9,10 +9,15 @@ import { requireRole } from './rbacMiddleware';
 const router = Router();
 
 // Initialize OpenAI client with Replit AI Integrations
-const openai = new OpenAI({
+const OPENAI_ENABLED = !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+}) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[AI BIO COACH] OpenAI API key not configured - AI bio suggestions will be disabled');
+}
 
 // System prompt for Bio Coach
 const BIO_COACH_SYSTEM_PROMPT = `You are the Bio Coach for a mobile auto detailing service. Your goal is to help technicians create brief, trust-building bios that will be sent via SMS to customers.
@@ -136,6 +141,10 @@ function safeParseJson(text: string): any {
 // AI Bio Suggest endpoint (All authenticated users)
 router.post('/api/ai/bio/suggest', requireRole('employee', 'manager', 'owner'), aiRateLimiter, async (req: Request, res: Response) => {
   try {
+    if (!openai) {
+      return res.status(503).json({ error: 'AI Bio Coach is not available - OpenAI API key not configured' });
+    }
+
     const user = (req as any).user;
     if (!user) {
       return res.status(401).json({ error: 'Not authenticated' });
