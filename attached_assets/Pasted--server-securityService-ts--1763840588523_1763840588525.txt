@@ -1,0 +1,128 @@
+// server/securityService.ts
+// ======================================================================
+// SAFE SECURITY SERVICE STUB
+// ----------------------------------------------------------------------
+// This file provides stable, no-op implementations of the security
+// helpers so the server can boot cleanly. It intentionally does NOT
+// depend on tenantDb or db, and exports all the functions other modules
+// expect (including checkLoginAttempts).
+// ======================================================================
+
+import { Request } from "express";
+
+export interface SecurityLogEntry {
+  timestamp: string;
+  type: string;
+  message: string;
+  tenantId?: string;
+  meta?: Record<string, any>;
+}
+
+// Simple in-memory log to satisfy any read calls
+const securityLog: SecurityLogEntry[] = [];
+
+// ----------------------------------------------------------------------
+// Login attempt checker (critical: named export must exist)
+// ----------------------------------------------------------------------
+
+// We accept any args and always return "allowed: true" so we NEVER
+// block logins during this stub phase. This is safe and avoids crashes.
+export async function checkLoginAttempts(
+  ..._args: any[]
+): Promise<{ allowed: boolean; lockoutSeconds: number }> {
+  return {
+    allowed: true,
+    lockoutSeconds: 0,
+  };
+}
+
+// ----------------------------------------------------------------------
+// Core logging helpers (no-op but harmless and consistent)
+// ----------------------------------------------------------------------
+
+export function logSecurityEvent(
+  type: string,
+  message: string,
+  tenantId?: string,
+  meta: Record<string, any> = {}
+): void {
+  securityLog.push({
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    tenantId,
+    meta,
+  });
+}
+
+export function logSuspiciousActivity(
+  req: Request,
+  reason: string,
+  meta: Record<string, any> = {}
+): void {
+  securityLog.push({
+    timestamp: new Date().toISOString(),
+    type: "suspicious",
+    message: reason,
+    tenantId: (req as any)?.tenantId ?? "unknown",
+    meta: {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      ...meta,
+    },
+  });
+}
+
+export function logRateLimit(
+  req: Request,
+  ruleId: string,
+  meta: Record<string, any> = {}
+): void {
+  securityLog.push({
+    timestamp: new Date().toISOString(),
+    type: "rate-limit",
+    message: `Rate limit triggered: ${ruleId}`,
+    tenantId: (req as any)?.tenantId ?? "unknown",
+    meta: {
+      ip: req.ip,
+      ...meta,
+    },
+  });
+}
+
+export function logAuthWarning(
+  req: Request,
+  warning: string,
+  meta: Record<string, any> = {}
+): void {
+  securityLog.push({
+    timestamp: new Date().toISOString(),
+    type: "auth-warning",
+    message: warning,
+    tenantId: (req as any)?.tenantId ?? "unknown",
+    meta,
+  });
+}
+
+// ----------------------------------------------------------------------
+// Simple accessors (if anything tries to read/clear logs)
+// ----------------------------------------------------------------------
+
+export function getSecurityLog(): SecurityLogEntry[] {
+  return securityLog;
+}
+
+export function clearSecurityLog(): void {
+  securityLog.length = 0;
+}
+
+// Default export to match older import styles if any exist
+export default {
+  checkLoginAttempts,
+  logSecurityEvent,
+  logSuspiciousActivity,
+  logRateLimit,
+  logAuthWarning,
+  getSecurityLog,
+  clearSecurityLog,
+};
