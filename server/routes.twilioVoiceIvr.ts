@@ -17,7 +17,7 @@ import {
   buildInvalidSelectionTwiml,
   getIvrConfigForTenant,
 } from './services/ivrHelper';
-import { verifyTwilioSignature } from './twilioSecurity';
+import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 
 export function registerIvrRoutes(app: Express) {
   app.post('/twilio/voice/ivr-selection', verifyTwilioSignature, handleIvrSelection);
@@ -133,22 +133,42 @@ async function handleRecordingStatus(req: Request, res: Response) {
 
 async function sendBookingInfoSms(toNumber: string, ivrConfig: { businessName: string; bookingUrl: string }) {
   try {
-    // Use existing SMS infrastructure
-    const { sendSms } = await import('./smsService');
+    // Use existing Twilio SMS infrastructure
+    const twilioClient = await getTwilioClient();
+    
+    if (!twilioClient) {
+      console.warn('[IVR SMS] Twilio client not configured, skipping SMS');
+      return;
+    }
     
     const message = `Thanks for calling ${ivrConfig.businessName}! Here's our info & booking link: ${ivrConfig.bookingUrl}`;
     
-    await sendSms({
+    // TODO: Phase 3 - Get correct 'from' number from tenant phone config
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+19188565304';
+    
+    await twilioClient.messages.create({
       to: toNumber,
-      message,
-      tenantId: 'root', // TODO: Use actual tenantId from ivrConfig
+      from: fromNumber,
+      body: message,
     });
     
     console.log(`[IVR SMS] Sent booking info to ${toNumber}`);
   } catch (error) {
     console.error('[IVR SMS] Error sending booking info:', error);
-    throw error;
+    // Don't throw - SMS is non-critical for call flow
   }
+}
+
+async function getTwilioClient() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  
+  if (!accountSid || !authToken) {
+    return null;
+  }
+  
+  const twilio = await import('twilio');
+  return twilio.default(accountSid, authToken);
 }
 
 async function notifyVoicemail(
@@ -158,23 +178,29 @@ async function notifyVoicemail(
   recordingSid: string
 ) {
   try {
-    // Use existing SMS infrastructure to notify business owner
-    const { sendSms } = await import('./smsService');
+    // Use Twilio SMS to notify business owner
+    const twilioClient = await getTwilioClient();
+    
+    if (!twilioClient) {
+      console.warn('[IVR VOICEMAIL] Twilio client not configured, skipping notification');
+      return;
+    }
     
     // TODO: Phase 3 - Get owner phone from tenant config
     const ownerPhone = '+19185551234'; // Placeholder - will be loaded from tenant settings
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+19188565304';
     
     const message = `🎙️ New voicemail from ${callerNumber}. Recording: ${recordingUrl}`;
     
-    await sendSms({
+    await twilioClient.messages.create({
       to: ownerPhone,
-      message,
-      tenantId,
+      from: fromNumber,
+      body: message,
     });
     
     console.log(`[IVR VOICEMAIL] Notified ${ownerPhone} about voicemail from ${callerNumber}`);
   } catch (error) {
     console.error('[IVR VOICEMAIL] Error notifying voicemail:', error);
-    throw error;
+    // Don't throw - notification is non-critical
   }
 }
