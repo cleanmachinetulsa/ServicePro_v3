@@ -40,7 +40,9 @@ function formatTime(hour: number, minute: number): string {
  * Get business hours from settings
  */
 async function getBusinessHours(tenantDb: TenantDb) {
-  const [settings] = await tenantDb.select().from(businessSettings).where(tenantDb.withTenantFilter(businessSettings)).limit(1);
+  const settings = await tenantDb.query.businessSettings.findFirst({
+    where: tenantDb.withTenantFilter(businessSettings)
+  });
   
   if (!settings) {
     // Default business hours (matching schema defaults)

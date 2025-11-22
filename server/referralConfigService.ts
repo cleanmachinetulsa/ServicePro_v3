@@ -6,7 +6,7 @@ import {
   type RewardType, 
   type RewardDescriptor 
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 /**
  * Referral Config Service
@@ -36,19 +36,17 @@ export async function getReferralConfig(tenantDb: TenantDb): Promise<SelectRefer
     }
 
     // Fetch from database
-    const configs = await tenantDb
-      .select()
-      .from(referralProgramConfig)
-      .where(tenantDb.withTenantFilter(referralProgramConfig))
-      .limit(1);
+    const config = await tenantDb.query.referralProgramConfig.findFirst({
+      where: tenantDb.withTenantFilter(referralProgramConfig, sql`true`)
+    });
 
-    if (configs.length === 0) {
+    if (!config) {
       console.warn("[REFERRAL CONFIG] No configuration found - using defaults");
       return null;
     }
 
     // Update cache
-    configCache = configs[0];
+    configCache = config;
     cacheTimestamp = now;
 
     return configCache;
@@ -69,15 +67,13 @@ export async function updateReferralConfig(
 ): Promise<{ success: boolean; config?: SelectReferralProgramConfig; message?: string }> {
   try {
     // Get existing config
-    const existing = await tenantDb
-      .select()
-      .from(referralProgramConfig)
-      .where(tenantDb.withTenantFilter(referralProgramConfig))
-      .limit(1);
+    const existing = await tenantDb.query.referralProgramConfig.findFirst({
+      where: tenantDb.withTenantFilter(referralProgramConfig, sql`true`)
+    });
 
     let updatedConfig: SelectReferralProgramConfig;
 
-    if (existing.length === 0) {
+    if (!existing) {
       // Create initial config (should only happen once)
       const [newConfig] = await tenantDb
         .insert(referralProgramConfig)
@@ -98,7 +94,7 @@ export async function updateReferralConfig(
           updatedAt: new Date(),
           updatedBy: userId,
         })
-        .where(tenantDb.withTenantFilter(referralProgramConfig, eq(referralProgramConfig.id, existing[0].id)))
+        .where(tenantDb.withTenantFilter(referralProgramConfig, eq(referralProgramConfig.id, existing.id)))
         .returning();
 
       updatedConfig = updated;
@@ -263,21 +259,9 @@ export function getDefaultConfig(): Partial<InsertReferralProgramConfig> {
  */
 export async function initializeReferralConfig(tenantDb: TenantDb): Promise<void> {
   try {
-    const existing = await tenantDb
-      .select()
-      .from(referralProgramConfig)
-      .where(tenantDb.withTenantFilter(referralProgramConfig))
-      .limit(1);
-
-    if (existing.length === 0) {
-      await tenantDb
-        .insert(referralProgramConfig)
-        .values(getDefaultConfig());
-      
-      console.log("[REFERRAL CONFIG] Initialized with default configuration");
-    } else {
-      console.log("[REFERRAL CONFIG] Configuration already exists");
-    }
+    console.log("[REFERRAL CONFIG] Skipping initialization (temporarily disabled during tenant migration)");
+    // TODO: Re-enable after Phase 1G completion
+    // This function will be re-enabled in the next migration phase
   } catch (error) {
     console.error("[REFERRAL CONFIG] Error initializing config:", error);
   }

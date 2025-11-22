@@ -160,12 +160,7 @@ export function createTenantDb(tenant: TenantInfo): TenantDb {
       return wrappedInsert as any;
     },
     
-    select: (...args: any[]) => {
-      console.log('[TENANTDB] Calling select with args:', args);
-      const result = (db as any).select(...args);
-      console.log('[TENANTDB] Select returned:', typeof result, result.constructor?.name);
-      return result;
-    },
+    select: (...args: any[]) => (db as any).select(...args),
     
     update: <T extends any>(table: T) => {
       const metadata = TABLE_METADATA.get(table);

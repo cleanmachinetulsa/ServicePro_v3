@@ -62,7 +62,9 @@ export async function getAllServices(tenantDb: TenantDb): Promise<ServiceInfo[]>
 
     // Fetch service images from database and merge
     try {
-      const dbServices = await tenantDb.select().from(servicesTable).where(tenantDb.withTenantFilter(servicesTable));
+      const dbServices = await tenantDb.query.services.findMany({
+        where: tenantDb.withTenantFilter(servicesTable)
+      });
       const serviceImageMap = new Map<string, string | null>(
         dbServices.map(s => [s.name, s.imageUrl])
       );
@@ -89,12 +91,11 @@ export async function saveServiceImage(tenantDb: TenantDb, serviceName: string, 
     const normalizedName = serviceName.trim();
     
     // First, check if service exists with this name
-    const existingService = await tenantDb.select()
-      .from(servicesTable)
-      .where(tenantDb.withTenantFilter(servicesTable, eq(servicesTable.name, normalizedName)))
-      .limit(1);
+    const existingService = await tenantDb.query.services.findFirst({
+      where: tenantDb.withTenantFilter(servicesTable, eq(servicesTable.name, normalizedName))
+    });
     
-    if (existingService.length > 0) {
+    if (existingService) {
       // Update existing service's image URL
       await tenantDb.update(servicesTable)
         .set({ imageUrl: imageUrl })
@@ -228,7 +229,9 @@ export async function getAddonServices(tenantDb: TenantDb): Promise<ServiceInfo[
 
     // Fetch service images from database and merge (same as getAllServices)
     try {
-      const dbServices = await tenantDb.select().from(servicesTable).where(tenantDb.withTenantFilter(servicesTable));
+      const dbServices = await tenantDb.query.services.findMany({
+        where: tenantDb.withTenantFilter(servicesTable)
+      });
       const serviceImageMap = new Map<string, string | null>(
         dbServices.map(s => [s.name, s.imageUrl])
       );

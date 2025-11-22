@@ -45,7 +45,10 @@ export async function updateUpsellOffer(tenantDb: TenantDb, id: number, offerDat
  */
 export async function getAllUpsellOffers(tenantDb: TenantDb): Promise<UpsellOffer[]> {
   try {
-    return await tenantDb.select().from(upsellOffers).where(tenantDb.withTenantFilter(upsellOffers)).orderBy(desc(upsellOffers.displayOrder));
+    return await tenantDb.query.upsellOffers.findMany({
+      where: tenantDb.withTenantFilter(upsellOffers),
+      orderBy: desc(upsellOffers.displayOrder)
+    });
   } catch (error) {
     console.error('Error getting upsell offers:', error);
     throw new Error('Failed to get upsell offers');
@@ -57,10 +60,10 @@ export async function getAllUpsellOffers(tenantDb: TenantDb): Promise<UpsellOffe
  */
 export async function getActiveUpsellOffers(tenantDb: TenantDb): Promise<UpsellOffer[]> {
   try {
-    return await tenantDb.select()
-      .from(upsellOffers)
-      .where(tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.active, true)))
-      .orderBy(desc(upsellOffers.displayOrder));
+    return await tenantDb.query.upsellOffers.findMany({
+      where: tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.active, true)),
+      orderBy: desc(upsellOffers.displayOrder)
+    });
   } catch (error) {
     console.error('Error getting active upsell offers:', error);
     throw new Error('Failed to get active upsell offers');
@@ -72,12 +75,11 @@ export async function getActiveUpsellOffers(tenantDb: TenantDb): Promise<UpsellO
  */
 export async function getUpsellOfferById(tenantDb: TenantDb, id: number): Promise<UpsellOffer | null> {
   try {
-    const result = await tenantDb.select()
-      .from(upsellOffers)
-      .where(tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.id, id)))
-      .limit(1);
+    const result = await tenantDb.query.upsellOffers.findFirst({
+      where: tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.id, id))
+    });
     
-    return result.length > 0 ? result[0] : null;
+    return result || null;
   } catch (error) {
     console.error('Error getting upsell offer by ID:', error);
     throw new Error('Failed to get upsell offer');
@@ -135,28 +137,22 @@ export async function createAppointmentUpsell(tenantDb: TenantDb, appointmentId:
 export async function getApplicableUpsellsForAppointment(tenantDb: TenantDb, appointmentId: number): Promise<UpsellOffer[]> {
   try {
     // Get the appointment details
-    const appointmentResult = await tenantDb.select()
-      .from(appointments)
-      .where(tenantDb.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
-      .limit(1);
+    const appointment = await tenantDb.query.appointments.findFirst({
+      where: tenantDb.withTenantFilter(appointments, eq(appointments.id, appointmentId))
+    });
     
-    if (appointmentResult.length === 0) {
+    if (!appointment) {
       throw new Error('Appointment not found');
     }
     
-    const appointment = appointmentResult[0];
-    
     // Get the service details
-    const serviceResult = await tenantDb.select()
-      .from(services)
-      .where(tenantDb.withTenantFilter(services, eq(services.id, appointment.serviceId)))
-      .limit(1);
+    const service = await tenantDb.query.services.findFirst({
+      where: tenantDb.withTenantFilter(services, eq(services.id, appointment.serviceId))
+    });
     
-    if (serviceResult.length === 0) {
+    if (!service) {
       throw new Error('Service not found');
     }
-    
-    const service = serviceResult[0];
     
     // Get active upsell offers
     const allOffers = await getActiveUpsellOffers(tenantDb);
@@ -216,17 +212,15 @@ export async function getActiveAppointmentUpsells(tenantDb: TenantDb, appointmen
   try {
     const now = new Date();
     
-    return await tenantDb.select()
-      .from(appointmentUpsells)
-      .where(
-        tenantDb.withTenantFilter(appointmentUpsells,
-          and(
-            eq(appointmentUpsells.appointmentId, appointmentId),
-            eq(appointmentUpsells.status, 'offered'),
-            gte(appointmentUpsells.expiryDate, now)
-          )
+    return await tenantDb.query.appointmentUpsells.findMany({
+      where: tenantDb.withTenantFilter(appointmentUpsells,
+        and(
+          eq(appointmentUpsells.appointmentId, appointmentId),
+          eq(appointmentUpsells.status, 'offered'),
+          gte(appointmentUpsells.expiryDate, now)
         )
-      );
+      )
+    });
   } catch (error) {
     console.error('Error getting active appointment upsells:', error);
     throw new Error('Failed to get active appointment upsells');
@@ -240,9 +234,9 @@ export async function getActiveAppointmentUpsells(tenantDb: TenantDb, appointmen
 export async function getAppointmentUpsellsWithDetails(tenantDb: TenantDb, appointmentId: number): Promise<any[]> {
   try {
     // Get all appointment upsells for this appointment
-    const appointmentUpsellsList = await tenantDb.select()
-      .from(appointmentUpsells)
-      .where(tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.appointmentId, appointmentId)));
+    const appointmentUpsellsList = await tenantDb.query.appointmentUpsells.findMany({
+      where: tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.appointmentId, appointmentId))
+    });
     
     // Get the upsell offer details for each one
     const result = await Promise.all(
@@ -272,19 +266,16 @@ export async function applyUpsellOffer(
 ): Promise<{success: boolean, appointmentId?: number, message: string}> {
   try {
     // Get the appointment upsell details
-    const appointmentUpsellResult = await tenantDb.select()
-      .from(appointmentUpsells)
-      .where(tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.id, appointmentUpsellId)))
-      .limit(1);
+    const appointmentUpsell = await tenantDb.query.appointmentUpsells.findFirst({
+      where: tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.id, appointmentUpsellId))
+    });
     
-    if (appointmentUpsellResult.length === 0) {
+    if (!appointmentUpsell) {
       return {
         success: false,
         message: 'Appointment upsell not found'
       };
     }
-    
-    const appointmentUpsell = appointmentUpsellResult[0];
     
     // Check if the upsell is still valid
     const now = new Date();

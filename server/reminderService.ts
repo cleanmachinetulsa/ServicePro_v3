@@ -25,10 +25,9 @@ export async function identifyCustomersNeedingReminders(tenantDb: TenantDb) {
     console.log('[REMINDER SERVICE] Identifying customers needing reminders...');
 
     // Get all enabled reminder rules (without relations to avoid Drizzle error)
-    const enabledRules = await tenantDb
-      .select()
-      .from(reminderRules)
-      .where(tenantDb.withTenantFilter(reminderRules, eq(reminderRules.enabled, true)));
+    const enabledRules = await tenantDb.query.reminderRules.findMany({
+      where: tenantDb.withTenantFilter(reminderRules, eq(reminderRules.enabled, true))
+    });
 
     if (enabledRules.length === 0) {
       console.log('[REMINDER SERVICE] No enabled reminder rules found');
@@ -92,17 +91,13 @@ export async function identifyCustomersNeedingReminders(tenantDb: TenantDb) {
       // Now fetch customer and service details for each eligible appointment
       const matchingAppointments = [];
       for (const appt of eligibleAppointments) {
-        const [customer] = await tenantDb
-          .select()
-          .from(customers)
-          .where(tenantDb.withTenantFilter(customers, eq(customers.id, appt.customerId)))
-          .limit(1);
+        const customer = await tenantDb.query.customers.findFirst({
+          where: tenantDb.withTenantFilter(customers, eq(customers.id, appt.customerId))
+        });
 
-        const [service] = await tenantDb
-          .select()
-          .from(services)
-          .where(tenantDb.withTenantFilter(services, eq(services.id, appt.serviceId)))
-          .limit(1);
+        const service = await tenantDb.query.services.findFirst({
+          where: tenantDb.withTenantFilter(services, eq(services.id, appt.serviceId))
+        });
 
         if (!customer || !service) {
           console.log(`[REMINDER SERVICE] Skipping - customer or service not found for appointment`);
@@ -130,17 +125,16 @@ export async function identifyCustomersNeedingReminders(tenantDb: TenantDb) {
         }
 
         // Check if customer already has a pending/sent reminder for this service
-        const existingJobs = await tenantDb
-          .select()
-          .from(reminderJobs)
-          .where(tenantDb.withTenantFilter(reminderJobs, and(
+        const existingJobs = await tenantDb.query.reminderJobs.findMany({
+          where: tenantDb.withTenantFilter(reminderJobs, and(
             eq(reminderJobs.customerId, appt.customerId),
             eq(reminderJobs.ruleId, rule.id),
             or(
               eq(reminderJobs.status, 'pending'),
               eq(reminderJobs.status, 'sent')
             )
-          )));
+          ))
+        });
 
         if (existingJobs.length > 0) {
           console.log(`[REMINDER SERVICE] Customer ${appt.customerId} already has reminder for rule ${rule.id}`);
@@ -236,12 +230,11 @@ export async function getReminderJobs(
   try {
     const baseCondition = status ? eq(reminderJobs.status, status) : sql`true`;
     
-    const jobs = await tenantDb
-      .select()
-      .from(reminderJobs)
-      .where(tenantDb.withTenantFilter(reminderJobs, baseCondition))
-      .orderBy(desc(reminderJobs.scheduledFor))
-      .limit(limit);
+    const jobs = await tenantDb.query.reminderJobs.findMany({
+      where: tenantDb.withTenantFilter(reminderJobs, baseCondition),
+      orderBy: desc(reminderJobs.scheduledFor),
+      limit
+    });
 
     return jobs;
   } catch (error) {
@@ -270,11 +263,9 @@ export async function markReminderSent(
       .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)));
 
     // Get job details for event logging
-    const [job] = await tenantDb
-      .select()
-      .from(reminderJobs)
-      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)))
-      .limit(1);
+    const job = await tenantDb.query.reminderJobs.findFirst({
+      where: tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId))
+    });
 
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -308,11 +299,9 @@ export async function markReminderFailed(
 ): Promise<boolean> {
   try {
     // Get current job to increment attempts
-    const [job] = await tenantDb
-      .select()
-      .from(reminderJobs)
-      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)))
-      .limit(1);
+    const job = await tenantDb.query.reminderJobs.findFirst({
+      where: tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId))
+    });
 
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
@@ -412,11 +401,9 @@ export async function processProactiveReminders(tenantDb: TenantDb) {
     for (const customer of customersNeedingReminders) {
       // PHASE 4D: Skip customers who have opted out of reminders
       const { reminderOptOuts } = await import('@shared/schema');
-      const [optOut] = await tenantDb
-        .select()
-        .from(reminderOptOuts)
-        .where(tenantDb.withTenantFilter(reminderOptOuts, eq(reminderOptOuts.customerId, customer.customerId)))
-        .limit(1);
+      const optOut = await tenantDb.query.reminderOptOuts.findFirst({
+        where: tenantDb.withTenantFilter(reminderOptOuts, eq(reminderOptOuts.customerId, customer.customerId))
+      });
       
       if (optOut) {
         console.log(`[PROACTIVE REMINDERS] ⏭️ Skipping customer ${customer.customerId} - opted out on ${optOut.optedOutAt?.toISOString()}`);
@@ -427,14 +414,12 @@ export async function processProactiveReminders(tenantDb: TenantDb) {
       const { reminderSnoozes } = await import('@shared/schema');
       const { and: andOp, gte } = await import('drizzle-orm');
       
-      const [activeSnooze] = await tenantDb
-        .select()
-        .from(reminderSnoozes)
-        .where(tenantDb.withTenantFilter(reminderSnoozes, andOp(
+      const activeSnooze = await tenantDb.query.reminderSnoozes.findFirst({
+        where: tenantDb.withTenantFilter(reminderSnoozes, andOp(
           eq(reminderSnoozes.customerId, customer.customerId),
           gte(reminderSnoozes.snoozedUntil, new Date())
-        )))
-        .limit(1);
+        ))
+      });
       
       if (activeSnooze) {
         console.log(`[PROACTIVE REMINDERS] ⏭️ Skipping customer ${customer.customerId} - snoozed until ${activeSnooze.snoozedUntil?.toISOString()}`);
@@ -442,11 +427,9 @@ export async function processProactiveReminders(tenantDb: TenantDb) {
       }
       
       // Get full customer details with loyalty tier
-      const [customerData] = await tenantDb
-        .select()
-        .from(customers)
-        .where(tenantDb.withTenantFilter(customers, eq(customers.id, customer.customerId)))
-        .limit(1);
+      const customerData = await tenantDb.query.customers.findFirst({
+        where: tenantDb.withTenantFilter(customers, eq(customers.id, customer.customerId))
+      });
 
       if (!customerData) {
         console.error(`[PROACTIVE REMINDERS] Customer ${customer.customerId} not found`);
@@ -455,22 +438,18 @@ export async function processProactiveReminders(tenantDb: TenantDb) {
       }
 
       // Get recommended service details
-      const [rule] = await tenantDb
-        .select()
-        .from(reminderRules)
-        .where(tenantDb.withTenantFilter(reminderRules, eq(reminderRules.id, customer.ruleId)))
-        .limit(1);
+      const rule = await tenantDb.query.reminderRules.findFirst({
+        where: tenantDb.withTenantFilter(reminderRules, eq(reminderRules.id, customer.ruleId))
+      });
 
       // Get service details separately if serviceId exists
       let recommendedService = 'maintenance detail';
       let recommendedServicePrice = '$150-200';
       
       if (rule?.serviceId) {
-        const [service] = await tenantDb
-          .select()
-          .from(services)
-          .where(tenantDb.withTenantFilter(services, eq(services.id, rule.serviceId)))
-          .limit(1);
+        const service = await tenantDb.query.services.findFirst({
+          where: tenantDb.withTenantFilter(services, eq(services.id, rule.serviceId))
+        });
         if (service) {
           recommendedService = service.name;
           recommendedServicePrice = service.priceRange || '$150-200';
@@ -555,36 +534,10 @@ export async function processProactiveReminders(tenantDb: TenantDb) {
  */
 export async function seedDefaultReminderRules(tenantDb: TenantDb) {
   try {
-    console.log('[REMINDER SERVICE] Seeding default reminder rules...');
-
-    // Check if rules already exist
-    const existingRules = await tenantDb
-      .select()
-      .from(reminderRules)
-      .where(tenantDb.withTenantFilter(reminderRules, sql`true`));
-    if (existingRules.length > 0) {
-      console.log('[REMINDER SERVICE] Reminder rules already exist, skipping seed');
-      return;
-    }
-
-    // Get service IDs for the default rules
-    const [maintenanceDetail] = await tenantDb
-      .select()
-      .from(services)
-      .where(tenantDb.withTenantFilter(services, sql`LOWER(${services.name}) LIKE '%maintenance%detail%'`))
-      .limit(1);
-
-    const [fullDetail] = await tenantDb
-      .select()
-      .from(services)
-      .where(tenantDb.withTenantFilter(services, sql`LOWER(${services.name}) LIKE '%full%detail%'`))
-      .limit(1);
-
-    const [ceramicCoating] = await tenantDb
-      .select()
-      .from(services)
-      .where(tenantDb.withTenantFilter(services, sql`LOWER(${services.name}) LIKE '%ceramic%coating%'`))
-      .limit(1);
+    console.log('[REMINDER SERVICE] Skipping reminder rule seeding (temporarily disabled during tenant migration)');
+    // TODO: Re-enable after Phase 1G completion
+    // This function will be re-enabled in the next migration phase
+    return;
 
     // Rule 1: Maintenance Detail Reminder (3 months)
     if (maintenanceDetail) {
