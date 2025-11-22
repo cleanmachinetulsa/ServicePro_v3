@@ -27,7 +27,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Building2, Shield, UserCircle } from 'lucide-react';
+import { Plus, Building2, Shield, UserCircle, Settings } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import type { Tenant } from '@shared/schema';
 
@@ -41,12 +41,20 @@ const createTenantSchema = z.object({
   tier: z.enum(['starter', 'pro', 'elite']),
 });
 
+const editPlanSchema = z.object({
+  planTier: z.enum(['starter', 'pro', 'elite', 'internal']),
+  status: z.enum(['trialing', 'active', 'past_due', 'suspended', 'cancelled']),
+});
+
 type CreateTenantForm = z.infer<typeof createTenantSchema>;
+type EditPlanForm = z.infer<typeof editPlanSchema>;
 
 export default function AdminTenants() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editPlanDialogOpen, setEditPlanDialogOpen] = useState(false);
+  const [selectedTenant, setSelectedTenant] = useState<any>(null);
 
   const { data: tenantsData, isLoading } = useQuery<{ tenants: any[] }>({
     queryKey: ['/api/admin/tenants'],
@@ -124,13 +132,96 @@ export default function AdminTenants() {
     impersonateMutation.mutate(tenantId);
   };
 
+  const planForm = useForm<EditPlanForm>({
+    resolver: zodResolver(editPlanSchema),
+    defaultValues: {
+      planTier: 'starter',
+      status: 'trialing',
+    },
+  });
+
+  const editPlanMutation = useMutation({
+    mutationFn: async ({ tenantId, data }: { tenantId: string; data: EditPlanForm }) => {
+      return await apiRequest(`/api/admin/tenants/${tenantId}/plan`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/tenants'] });
+      toast({
+        title: 'Success',
+        description: 'Plan updated successfully',
+      });
+      setEditPlanDialogOpen(false);
+      setSelectedTenant(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update plan',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleEditPlan = (tenant: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedTenant(tenant);
+    planForm.reset({
+      planTier: tenant.planTier || 'starter',
+      status: tenant.status || 'trialing',
+    });
+    setEditPlanDialogOpen(true);
+  };
+
+  const handleSavePlan = (data: EditPlanForm) => {
+    if (selectedTenant) {
+      editPlanMutation.mutate({ tenantId: selectedTenant.id, data });
+    }
+  };
+
   const getTierBadge = (tier: string) => {
     const colors = {
       starter: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
       pro: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
       elite: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
+      internal: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300',
     };
     return colors[tier as keyof typeof colors] || colors.starter;
+  };
+
+  const getStatusBadge = (status: string) => {
+    const colors = {
+      trialing: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300',
+      active: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+      past_due: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300',
+      suspended: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+      cancelled: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
+    };
+    return colors[status as keyof typeof colors] || colors.trialing;
+  };
+
+  const getTierLabel = (tier: string) => {
+    const labels = {
+      starter: 'Starter',
+      pro: 'Pro',
+      elite: 'Elite',
+      internal: 'INTERNAL (at-cost)',
+    };
+    return labels[tier as keyof typeof labels] || tier;
+  };
+
+  const getStatusLabel = (status: string) => {
+    const labels = {
+      trialing: 'Trialing',
+      active: 'Active',
+      past_due: 'Past Due',
+      suspended: 'Suspended',
+      cancelled: 'Cancelled',
+    };
+    return labels[status as keyof typeof labels] || status;
   };
 
   return (
@@ -295,6 +386,88 @@ export default function AdminTenants() {
               </Form>
             </DialogContent>
           </Dialog>
+
+          <Dialog open={editPlanDialogOpen} onOpenChange={setEditPlanDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Edit Plan & Status</DialogTitle>
+                <DialogDescription>
+                  Update the plan tier and status for {selectedTenant?.name}
+                </DialogDescription>
+              </DialogHeader>
+
+              <Form {...planForm}>
+                <form onSubmit={planForm.handleSubmit(handleSavePlan)} className="space-y-4">
+                  <FormField
+                    control={planForm.control}
+                    name="planTier"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Plan Tier</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-plan-tier">
+                              <SelectValue placeholder="Select plan tier" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="starter">Starter</SelectItem>
+                            <SelectItem value="pro">Pro</SelectItem>
+                            <SelectItem value="elite">Elite</SelectItem>
+                            <SelectItem value="internal">Internal (at-cost)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={planForm.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Status</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-status">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="trialing">Trialing</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="past_due">Past Due</SelectItem>
+                            <SelectItem value="suspended">Suspended</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setEditPlanDialogOpen(false)}
+                      data-testid="button-cancel-edit-plan"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={editPlanMutation.isPending}
+                      data-testid="button-save-plan"
+                    >
+                      {editPlanMutation.isPending ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {isLoading ? (
@@ -356,9 +529,16 @@ export default function AdminTenants() {
                   )}
 
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Tier:</span>
-                    <span className={`text-xs px-2 py-1 rounded font-medium ${getTierBadge(tenant.tier || 'starter')}`}>
-                      {tenant.tier || 'starter'}
+                    <span className="text-gray-600 dark:text-gray-400">Plan:</span>
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${getTierBadge(tenant.planTier || 'starter')}`}>
+                      {getTierLabel(tenant.planTier || 'starter')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Status:</span>
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${getStatusBadge(tenant.status || 'trialing')}`}>
+                      {getStatusLabel(tenant.status || 'trialing')}
                     </span>
                   </div>
 
@@ -371,7 +551,17 @@ export default function AdminTenants() {
                 </div>
 
                 {!tenant.isRoot && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={(e) => handleEditPlan(tenant, e)}
+                      data-testid={`edit-plan-${tenant.id}`}
+                    >
+                      <Settings className="w-4 h-4 mr-2" />
+                      Edit Plan
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
