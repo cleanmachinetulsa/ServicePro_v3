@@ -23,9 +23,9 @@ import { z } from 'zod';
  */
 export function registerEmailRoutes(app: Express) {
   // Get all campaigns
-  app.get('/api/email-campaigns', async (_req: Request, res: Response) => {
+  app.get('/api/email-campaigns', async (req: Request, res: Response) => {
     try {
-      const campaigns = await getAllCampaigns();
+      const campaigns = await getAllCampaigns(req.tenantDb!);
       res.json({ success: true, campaigns });
     } catch (error) {
       console.error('Error getting email campaigns:', error);
@@ -45,7 +45,7 @@ export function registerEmailRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid campaign ID' });
       }
       
-      const campaign = await getCampaignById(id);
+      const campaign = await getCampaignById(req.tenantDb!, id);
       if (!campaign) {
         return res.status(404).json({ success: false, message: 'Campaign not found' });
       }
@@ -73,7 +73,7 @@ export function registerEmailRoutes(app: Express) {
         });
       }
       
-      const newCampaign = await createCampaign(campaignData);
+      const newCampaign = await createCampaign(req.tenantDb!, campaignData);
       res.status(201).json({ success: true, campaign: newCampaign });
     } catch (error) {
       console.error('Error creating email campaign:', error);
@@ -94,7 +94,7 @@ export function registerEmailRoutes(app: Express) {
       }
       
       const campaignData = req.body;
-      const updatedCampaign = await updateCampaign(id, campaignData);
+      const updatedCampaign = await updateCampaign(req.tenantDb!, id, campaignData);
       
       res.json({ success: true, campaign: updatedCampaign });
     } catch (error) {
@@ -115,7 +115,7 @@ export function registerEmailRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid campaign ID' });
       }
       
-      await deleteCampaign(id);
+      await deleteCampaign(req.tenantDb!, id);
       res.json({ success: true, message: 'Campaign deleted successfully' });
     } catch (error) {
       console.error('Error deleting email campaign:', error);
@@ -135,7 +135,7 @@ export function registerEmailRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid campaign ID' });
       }
       
-      const cancelledCampaign = await cancelCampaign(id);
+      const cancelledCampaign = await cancelCampaign(req.tenantDb!, id);
       res.json({ success: true, campaign: cancelledCampaign });
     } catch (error) {
       console.error('Error cancelling email campaign:', error);
@@ -155,7 +155,7 @@ export function registerEmailRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid campaign ID' });
       }
       
-      const sentCampaign = await sendCampaignNow(id);
+      const sentCampaign = await sendCampaignNow(req.tenantDb!, id);
       res.json({ success: true, campaign: sentCampaign });
     } catch (error) {
       console.error('Error sending email campaign:', error);
@@ -168,9 +168,9 @@ export function registerEmailRoutes(app: Express) {
   });
   
   // Get all email templates
-  app.get('/api/email-templates', async (_req: Request, res: Response) => {
+  app.get('/api/email-templates', async (req: Request, res: Response) => {
     try {
-      const templates = await getAllTemplates();
+      const templates = await getAllTemplates(req.tenantDb!);
       res.json({ success: true, templates });
     } catch (error) {
       console.error('Error getting email templates:', error);
@@ -194,7 +194,7 @@ export function registerEmailRoutes(app: Express) {
         });
       }
       
-      const newTemplate = await createTemplate(templateData);
+      const newTemplate = await createTemplate(req.tenantDb!, templateData);
       res.status(201).json({ success: true, template: newTemplate });
     } catch (error) {
       console.error('Error creating email template:', error);
@@ -215,7 +215,7 @@ export function registerEmailRoutes(app: Express) {
       }
       
       const templateData = req.body;
-      const updatedTemplate = await updateTemplate(id, templateData);
+      const updatedTemplate = await updateTemplate(req.tenantDb!, id, templateData);
       
       res.json({ success: true, template: updatedTemplate });
     } catch (error) {
@@ -236,7 +236,7 @@ export function registerEmailRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid template ID' });
       }
       
-      await deleteTemplate(id);
+      await deleteTemplate(req.tenantDb!, id);
       res.json({ success: true, message: 'Template deleted successfully' });
     } catch (error) {
       console.error('Error deleting email template:', error);
@@ -249,9 +249,9 @@ export function registerEmailRoutes(app: Express) {
   });
   
   // Get customers for email targeting
-  app.get('/api/customers-for-email', async (_req: Request, res: Response) => {
+  app.get('/api/customers-for-email', async (req: Request, res: Response) => {
     try {
-      const customers = await getEmailCustomers();
+      const customers = await getEmailCustomers(req.tenantDb!);
       res.json({ success: true, customers });
     } catch (error) {
       console.error('Error getting customers for email:', error);
@@ -275,7 +275,7 @@ export function registerEmailRoutes(app: Express) {
         });
       }
       
-      const generatedContent = await generateEmailContent(prompt, template);
+      const generatedContent = await generateEmailContent(req.tenantDb!, prompt, template);
       res.json({ 
         success: true, 
         data: generatedContent
@@ -302,7 +302,7 @@ export function registerEmailRoutes(app: Express) {
         });
       }
       
-      await updateSubscription(email, subscribed !== false); // Default to subscribe if not specified
+      await updateSubscription(req.tenantDb!, email, subscribed !== false); // Default to subscribe if not specified
       
       res.json({ 
         success: true, 
@@ -332,7 +332,7 @@ export function registerEmailRoutes(app: Express) {
         });
       }
       
-      await updateSubscription(email, false);
+      await updateSubscription(req.tenantDb!, email, false);
       
       // Redirect to a confirmation page or return a success response
       res.json({ 

@@ -51,7 +51,10 @@ const HARDCODED_TEMPLATES = [
   },
 ];
 
+import type { TenantDb } from './tenantDb';
+
 export interface ShareAvailabilityRequest {
+  tenantDb?: TenantDb;
   contactName?: string;
   contactFirstName?: string;
   channelType: 'sms' | 'email' | 'facebook' | 'instagram';
@@ -167,7 +170,9 @@ export async function generateShareAvailabilityMessage(
       serviceDurationMinutes,
     });
 
-    const calendarDays = await getCalendarAvailability({
+    // Note: This service is called from routes with tenantDb passed as first parameter
+    // The function signature should be updated to accept tenantDb
+    const calendarDays = await getCalendarAvailability(request.tenantDb!, {
       startDate,
       endDate,
       serviceDurationMinutes,

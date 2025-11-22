@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import { processEmailCampaigns } from './emailCampaignService';
 import { processSMSCampaigns } from './smsCampaignService';
+import { wrapTenantDb } from './tenantDb';
+import { db } from './db';
 
 /**
  * Initialize campaign cron job processor (email + SMS)
@@ -11,8 +13,9 @@ export function initializeCampaignScheduler() {
   cron.schedule('0 * * * *', async () => {
     console.log('[CAMPAIGN SCHEDULER] Running hourly campaign processing...');
     try {
+      const tenantDb = wrapTenantDb(db, 'root');
       await Promise.all([
-        processEmailCampaigns(),
+        processEmailCampaigns(tenantDb),
         processSMSCampaigns()
       ]);
     } catch (error) {
@@ -31,8 +34,9 @@ export function initializeCampaignScheduler() {
 export async function triggerCampaignProcessing() {
   console.log('[CAMPAIGN SCHEDULER] Manually triggering campaign processing...');
   try {
+    const tenantDb = wrapTenantDb(db, 'root');
     await Promise.all([
-      processEmailCampaigns(),
+      processEmailCampaigns(tenantDb),
       processSMSCampaigns()
     ]);
     return { success: true, message: 'Campaign processing triggered successfully' };

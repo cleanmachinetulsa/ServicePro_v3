@@ -32,7 +32,7 @@ export function registerReferralRoutes(app: Express) {
         });
       }
       
-      const result = await getOrCreateReferralCode(customerId);
+      const result = await getOrCreateReferralCode(req.tenantDb!, customerId);
       
       if (!result.success) {
         return res.status(400).json(result);
@@ -69,7 +69,7 @@ export function registerReferralRoutes(app: Express) {
         });
       }
       
-      const stats = await getReferralStats(customerId);
+      const stats = await getReferralStats(req.tenantDb!, customerId);
       
       if (!stats) {
         return res.status(404).json({ 
@@ -108,7 +108,7 @@ export function registerReferralRoutes(app: Express) {
         });
       }
       
-      const referrals = await getReferralsByReferrer(customerId);
+      const referrals = await getReferralsByReferrer(req.tenantDb!, customerId);
       
       res.json({ 
         success: true, 
@@ -144,11 +144,11 @@ export function registerReferralRoutes(app: Express) {
       // Normalize code to uppercase
       const normalizedCode = code.trim().toUpperCase();
       
-      const result = await validateReferralCode(normalizedCode);
+      const result = await validateReferralCode(req.tenantDb!, normalizedCode);
       
       // If valid, fetch referee reward information from config
       if (result.valid) {
-        const refereeReward = await getRefereeRewardDescriptor();
+        const refereeReward = await getRefereeRewardDescriptor(req.tenantDb!);
         
         if (refereeReward) {
           const rewardDescription = formatRewardDescription(refereeReward);
@@ -212,7 +212,7 @@ export function registerReferralRoutes(app: Express) {
       // Normalize code to uppercase
       const normalizedCode = code.trim().toUpperCase();
       
-      const result = await trackReferralSignup(normalizedCode, {
+      const result = await trackReferralSignup(req.tenantDb!, normalizedCode, {
         phone: phone?.trim(),
         email: email?.trim().toLowerCase(),
         name: name?.trim(),

@@ -20,7 +20,7 @@ router.get('/availability', async (req: Request, res: Response) => {
 
     const params = querySchema.parse(req.query);
 
-    const availability = await getCalendarAvailability({
+    const availability = await getCalendarAvailability(req.tenantDb!, {
       startDate: params.startDate,
       endDate: params.endDate,
       serviceDurationMinutes: params.serviceDurationMinutes,
@@ -58,7 +58,7 @@ router.post('/check-dates', async (req: Request, res: Response) => {
 
     const { dates, serviceDurationMinutes } = bodySchema.parse(req.body);
 
-    const results = await checkDatesAvailable(dates, serviceDurationMinutes);
+    const results = await checkDatesAvailable(req.tenantDb!, dates, serviceDurationMinutes);
 
     res.json({ success: true, data: results });
   } catch (error) {

@@ -29,7 +29,7 @@ export function registerReferralConfigRoutes(app: Express) {
    */
   app.get('/api/referral/config', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
     try {
-      const config = await getReferralConfig();
+      const config = await getReferralConfig(req.tenantDb!);
       
       if (!config) {
         return res.status(404).json({
@@ -75,7 +75,7 @@ export function registerReferralConfigRoutes(app: Express) {
       const userId = (req as any).user?.id;
       
       // Update configuration
-      const result = await updateReferralConfig(validationResult.data, userId);
+      const result = await updateReferralConfig(req.tenantDb!, validationResult.data, userId);
       
       if (!result.success) {
         return res.status(400).json({
@@ -109,8 +109,8 @@ export function registerReferralConfigRoutes(app: Express) {
    */
   app.get('/api/referral/config/rewards-preview', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
     try {
-      const referrerReward = await getReferrerRewardDescriptor();
-      const refereeReward = await getRefereeRewardDescriptor();
+      const referrerReward = await getReferrerRewardDescriptor(req.tenantDb!);
+      const refereeReward = await getRefereeRewardDescriptor(req.tenantDb!);
       
       if (!referrerReward || !refereeReward) {
         return res.status(404).json({

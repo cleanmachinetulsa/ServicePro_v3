@@ -6,6 +6,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { sessionMiddleware } from './sessionMiddleware';
 import { tenantMiddleware } from './tenantMiddleware';
+import { wrapTenantDb } from './tenantDb';
 import { demoProtectionMiddleware } from "./demoProtection";
 import { checkMaintenanceMode } from "./maintenanceMode";
 import loyaltyRouter from "./loyaltyApi";
@@ -303,7 +304,8 @@ app.use((req, res, next) => {
   
   // Initialize referral program configuration (singleton - only runs once)
   const { initializeReferralConfig } = await import('./referralConfigService');
-  await initializeReferralConfig();
+  const tenantDbForStartup = wrapTenantDb(db, 'root');
+  await initializeReferralConfig(tenantDbForStartup);
   
   // Migrate SMS fallback settings - auto-disable if enabled without phone (safety migration)
   async function migrateSmsFallbackSettings() {
@@ -368,7 +370,7 @@ app.use((req, res, next) => {
   
   // Initialize proactive reminder system (Phase 4B)
   const { seedDefaultReminderRules, initializeProactiveReminderScheduler } = await import('./reminderService');
-  await seedDefaultReminderRules();
+  await seedDefaultReminderRules(tenantDbForStartup);
   initializeProactiveReminderScheduler();
   console.log('[SERVER] Proactive reminder system initialized - scheduler running every 6 hours');
   

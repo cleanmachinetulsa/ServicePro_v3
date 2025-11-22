@@ -548,7 +548,7 @@ export async function handleBook(req: any, res: any) {
       if (referralCode && referralCode.trim()) {
         try {
           console.log(`[REFERRAL] Tracking referral signup with code: ${referralCode}`);
-          const referralResult = await trackReferralSignup(referralCode.trim().toUpperCase(), {
+          const referralResult = await trackReferralSignup(req.tenantDb!, referralCode.trim().toUpperCase(), {
             phone,
             email,
             name,

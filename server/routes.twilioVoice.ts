@@ -277,7 +277,7 @@ router.post('/voice/incoming', verifyTwilioSignature, async (req: Request, res: 
     
     // Log the incoming call
     try {
-      await logCallEvent({
+      await logCallEvent(req.tenantDb!, {
         callSid,
         direction: 'inbound',
         from: fromNumber,
@@ -715,7 +715,7 @@ router.post('/voice/call-status', verifyTwilioSignature, async (req: Request, re
 
   // Update call event with final status
   try {
-    await updateCallEvent(callSid, {
+    await updateCallEvent(req.tenantDb!, callSid, {
       status: dialCallStatus,
       duration: callDuration,
       endedAt: new Date(),
@@ -886,7 +886,7 @@ router.post('/voice/click-to-call', async (req: Request, res: Response) => {
 
     // Log the outbound call
     try {
-      await logCallEvent({
+      await logCallEvent(req.tenantDb!, {
         callSid: call.sid,
         direction: 'outbound',
         from: twilioPhone,
@@ -946,7 +946,7 @@ router.post('/voice/click-to-call-status', verifyTwilioSignature, async (req: Re
 
   // Update call event
   try {
-    await updateCallEvent(callSid, {
+    await updateCallEvent(req.tenantDb!, callSid, {
       status: callStatus,
       duration: callDuration ? parseInt(callDuration) : undefined,
       endedAt: callStatus === 'completed' ? new Date() : undefined,
