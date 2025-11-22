@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { db } from "./db";
 import { quoteRequests, customers } from "../shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { getPricingSuggestions } from "./quoteManagement";
@@ -15,13 +14,14 @@ const router = Router();
  */
 router.get("/", async (req, res) => {
   try {
-    const allQuotes = await db
+    const allQuotes = await req.tenantDb!
       .select({
         quoteRequest: quoteRequests,
         customer: customers,
       })
       .from(quoteRequests)
       .leftJoin(customers, eq(quoteRequests.customerId, customers.id))
+      .where(req.tenantDb!.withTenantFilter(quoteRequests))
       .orderBy(desc(quoteRequests.createdAt));
 
     res.json({ success: true, data: allQuotes });
@@ -37,14 +37,14 @@ router.get("/", async (req, res) => {
  */
 router.get("/pending", async (req, res) => {
   try {
-    const pendingQuotes = await db
+    const pendingQuotes = await req.tenantDb!
       .select({
         quoteRequest: quoteRequests,
         customer: customers,
       })
       .from(quoteRequests)
       .leftJoin(customers, eq(quoteRequests.customerId, customers.id))
-      .where(eq(quoteRequests.status, "pending_review"))
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.status, "pending_review")))
       .orderBy(desc(quoteRequests.createdAt));
 
     res.json({ success: true, data: pendingQuotes });
@@ -62,14 +62,14 @@ router.get("/:id", async (req, res) => {
   try {
     const quoteId = parseInt(req.params.id);
 
-    const [quoteData] = await db
+    const [quoteData] = await req.tenantDb!
       .select({
         quoteRequest: quoteRequests,
         customer: customers,
       })
       .from(quoteRequests)
       .leftJoin(customers, eq(quoteRequests.customerId, customers.id))
-      .where(eq(quoteRequests.id, quoteId))
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.id, quoteId)))
       .limit(1);
 
     if (!quoteData) {
@@ -109,7 +109,7 @@ router.post("/:id/quote", async (req, res) => {
     }
 
     // Update quote request with pricing
-    const [updatedQuote] = await db
+    const [updatedQuote] = await req.tenantDb!
       .update(quoteRequests)
       .set({
         customQuoteAmount: customQuoteAmount.toString(),
@@ -119,7 +119,7 @@ router.post("/:id/quote", async (req, res) => {
         quotedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(quoteRequests.id, quoteId))
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.id, quoteId)))
       .returning();
 
     if (!updatedQuote) {
@@ -142,7 +142,7 @@ Reply with questions!`;
     await sendSMS(updatedQuote.phone, customerMessage);
 
     // Send email to customer if we have their email
-    const customer = await db.select().from(customers).where(eq(customers.phone, updatedQuote.phone)).limit(1);
+    const customer = await req.tenantDb!.select().from(customers).where(req.tenantDb!.withTenantFilter(customers, eq(customers.phone, updatedQuote.phone))).limit(1);
     if (customer.length > 0 && customer[0].email) {
       const customerEmailSubject = `Your Custom Quote is Ready`;
       const emailHtml = `
@@ -245,7 +245,7 @@ router.post("/:id/complete", async (req, res) => {
     const quoteId = parseInt(req.params.id);
     const { actualTimeSpent, difficultyRating, lessonLearned } = req.body;
 
-    const [updatedQuote] = await db
+    const [updatedQuote] = await req.tenantDb!
       .update(quoteRequests)
       .set({
         completedAt: new Date(),
@@ -254,7 +254,7 @@ router.post("/:id/complete", async (req, res) => {
         lessonLearned: lessonLearned || null,
         updatedAt: new Date(),
       })
-      .where(eq(quoteRequests.id, quoteId))
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.id, quoteId)))
       .returning();
 
     if (!updatedQuote) {

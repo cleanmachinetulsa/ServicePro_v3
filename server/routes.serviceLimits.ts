@@ -5,7 +5,6 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { db } from "./db";
 import { serviceLimits, services } from "@shared/schema";
 import { eq, and, sql, or, desc } from "drizzle-orm";
 import { requireAuth } from "./authMiddleware";
@@ -34,7 +33,7 @@ export function registerServiceLimitsRoutes(app: Express) {
    */
   app.get("/api/service-limits", requireAuth, async (req: Request, res: Response) => {
     try {
-      const limits = await db
+      const limits = await req.tenantDb!
         .select({
           id: serviceLimits.id,
           serviceId: serviceLimits.serviceId,
@@ -48,6 +47,7 @@ export function registerServiceLimitsRoutes(app: Express) {
         })
         .from(serviceLimits)
         .leftJoin(services, eq(serviceLimits.serviceId, services.id))
+        .where(req.tenantDb!.withTenantFilter(serviceLimits))
         .orderBy(desc(serviceLimits.isActive), desc(serviceLimits.createdAt));
 
       res.json({ success: true, limits });
@@ -69,7 +69,7 @@ export function registerServiceLimitsRoutes(app: Express) {
       const now = new Date();
       const today = now.toISOString().split('T')[0];
 
-      const activeLimits = await db
+      const activeLimits = await req.tenantDb!
         .select({
           id: serviceLimits.id,
           serviceId: serviceLimits.serviceId,
@@ -80,7 +80,7 @@ export function registerServiceLimitsRoutes(app: Express) {
         })
         .from(serviceLimits)
         .leftJoin(services, eq(serviceLimits.serviceId, services.id))
-        .where(
+        .where(req.tenantDb!.withTenantFilter(serviceLimits, 
           and(
             eq(serviceLimits.isActive, true),
             or(
@@ -92,7 +92,7 @@ export function registerServiceLimitsRoutes(app: Express) {
               sql`${serviceLimits.effectiveTo} >= ${today}`
             )
           )
-        );
+        ));
 
       res.json({ success: true, limits: activeLimits });
     } catch (error) {
@@ -113,10 +113,10 @@ export function registerServiceLimitsRoutes(app: Express) {
       const validatedData = createServiceLimitSchema.parse(req.body);
 
       // Check for overlapping date ranges for the same service
-      const overlapping = await db
+      const overlapping = await req.tenantDb!
         .select()
         .from(serviceLimits)
-        .where(
+        .where(req.tenantDb!.withTenantFilter(serviceLimits,
           and(
             eq(serviceLimits.serviceId, validatedData.serviceId),
             eq(serviceLimits.isActive, true),
@@ -157,7 +157,7 @@ export function registerServiceLimitsRoutes(app: Express) {
               )
             )
           )
-        );
+        ));
 
       if (overlapping.length > 0) {
         return res.status(400).json({
@@ -167,7 +167,7 @@ export function registerServiceLimitsRoutes(app: Express) {
       }
 
       const userId = (req as any).session?.userId;
-      const [newLimit] = await db
+      const [newLimit] = await req.tenantDb!
         .insert(serviceLimits)
         .values({
           ...validatedData,
@@ -203,10 +203,10 @@ export function registerServiceLimitsRoutes(app: Express) {
       const userId = (req as any).session?.userId;
 
       // Get the existing limit to check serviceId
-      const [existingLimit] = await db
+      const [existingLimit] = await req.tenantDb!
         .select()
         .from(serviceLimits)
-        .where(eq(serviceLimits.id, limitId));
+        .where(req.tenantDb!.withTenantFilter(serviceLimits, eq(serviceLimits.id, limitId)));
 
       if (!existingLimit) {
         return res.status(404).json({
@@ -226,10 +226,10 @@ export function registerServiceLimitsRoutes(app: Express) {
 
         // Only check for overlaps if the limit is being set to active
         if (isActive) {
-          const overlapping = await db
+          const overlapping = await req.tenantDb!
             .select()
             .from(serviceLimits)
-            .where(
+            .where(req.tenantDb!.withTenantFilter(serviceLimits,
               and(
                 eq(serviceLimits.serviceId, existingLimit.serviceId),
                 eq(serviceLimits.isActive, true),
@@ -271,7 +271,7 @@ export function registerServiceLimitsRoutes(app: Express) {
                   )
                 )
               )
-            );
+            ));
 
           if (overlapping.length > 0) {
             return res.status(400).json({
@@ -282,14 +282,14 @@ export function registerServiceLimitsRoutes(app: Express) {
         }
       }
 
-      const [updatedLimit] = await db
+      const [updatedLimit] = await req.tenantDb!
         .update(serviceLimits)
         .set({
           ...validatedData,
           updatedAt: new Date(),
           updatedBy: userId,
         })
-        .where(eq(serviceLimits.id, limitId))
+        .where(req.tenantDb!.withTenantFilter(serviceLimits, eq(serviceLimits.id, limitId)))
         .returning();
 
       res.json({ success: true, limit: updatedLimit });
@@ -317,10 +317,10 @@ export function registerServiceLimitsRoutes(app: Express) {
     try {
       const limitId = parseInt(req.params.id);
 
-      const [deletedLimit] = await db
+      const [deletedLimit] = await req.tenantDb!
         .update(serviceLimits)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(serviceLimits.id, limitId))
+        .where(req.tenantDb!.withTenantFilter(serviceLimits, eq(serviceLimits.id, limitId)))
         .returning();
 
       if (!deletedLimit) {

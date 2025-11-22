@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { customerTags, conversationTags, conversations, customers, appointments, services } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -12,9 +11,10 @@ router.use(requireAuth);
 // Get all tags
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const tags = await db
+    const tags = await req.tenantDb!
       .select()
       .from(customerTags)
+      .where(req.tenantDb!.withTenantFilter(customerTags))
       .orderBy(customerTags.name);
 
     res.json({ success: true, data: tags });
@@ -33,7 +33,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Tag name is required' });
     }
 
-    const newTag = await db
+    const newTag = await req.tenantDb!
       .insert(customerTags)
       .values({
         name,
@@ -59,10 +59,10 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const tagId = parseInt(req.params.id);
 
     // First delete all conversation_tags references
-    await db.delete(conversationTags).where(eq(conversationTags.tagId, tagId));
+    await req.tenantDb!.delete(conversationTags).where(eq(conversationTags.tagId, tagId));
 
     // Then delete the tag
-    await db.delete(customerTags).where(eq(customerTags.id, tagId));
+    await req.tenantDb!.delete(customerTags).where(eq(customerTags.id, tagId));
 
     res.json({ success: true, message: 'Tag deleted successfully' });
   } catch (error) {
@@ -76,7 +76,7 @@ router.get('/conversation/:id', async (req: Request, res: Response) => {
   try {
     const conversationId = parseInt(req.params.id);
 
-    const tags = await db
+    const tags = await req.tenantDb!
       .select({
         id: customerTags.id,
         name: customerTags.name,
@@ -86,7 +86,7 @@ router.get('/conversation/:id', async (req: Request, res: Response) => {
       })
       .from(conversationTags)
       .innerJoin(customerTags, eq(conversationTags.tagId, customerTags.id))
-      .where(eq(conversationTags.conversationId, conversationId));
+      .where(req.tenantDb!.withTenantFilter(conversationTags, eq(conversationTags.conversationId, conversationId)));
 
     res.json({ success: true, data: tags });
   } catch (error) {
@@ -102,13 +102,16 @@ router.post('/conversation/:id/add/:tagId', async (req: Request, res: Response) 
     const tagId = parseInt(req.params.tagId);
 
     // Check if tag already exists on this conversation
-    const existing = await db
+    const existing = await req.tenantDb!
       .select()
       .from(conversationTags)
       .where(
-        and(
-          eq(conversationTags.conversationId, conversationId),
-          eq(conversationTags.tagId, tagId)
+        req.tenantDb!.withTenantFilter(
+          conversationTags,
+          and(
+            eq(conversationTags.conversationId, conversationId),
+            eq(conversationTags.tagId, tagId)
+          )
         )
       );
 
@@ -116,7 +119,7 @@ router.post('/conversation/:id/add/:tagId', async (req: Request, res: Response) 
       return res.status(400).json({ success: false, message: 'Tag already added to conversation' });
     }
 
-    const newConversationTag = await db
+    const newConversationTag = await req.tenantDb!
       .insert(conversationTags)
       .values({ conversationId, tagId })
       .returning();
@@ -134,7 +137,7 @@ router.delete('/conversation/:id/remove/:tagId', async (req: Request, res: Respo
     const conversationId = parseInt(req.params.id);
     const tagId = parseInt(req.params.tagId);
 
-    await db
+    await req.tenantDb!
       .delete(conversationTags)
       .where(
         and(
@@ -156,10 +159,10 @@ router.get('/customer-profile/:conversationId', async (req: Request, res: Respon
     const conversationId = parseInt(req.params.conversationId);
 
     // Get conversation
-    const conversation = await db
+    const conversation = await req.tenantDb!
       .select()
       .from(conversations)
-      .where(eq(conversations.id, conversationId))
+      .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .limit(1);
 
     if (conversation.length === 0) {
@@ -171,17 +174,17 @@ router.get('/customer-profile/:conversationId', async (req: Request, res: Respon
     // Get customer details if linked
     let customer = null;
     if (conv.customerId) {
-      const customerResult = await db
+      const customerResult = await req.tenantDb!
         .select()
         .from(customers)
-        .where(eq(customers.id, conv.customerId))
+        .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, conv.customerId)))
         .limit(1);
 
       customer = customerResult[0] || null;
     }
 
     // Get appointment history
-    const appointmentHistory = conv.customerId ? await db
+    const appointmentHistory = conv.customerId ? await req.tenantDb!
       .select({
         id: appointments.id,
         scheduledTime: appointments.scheduledTime,
@@ -191,12 +194,12 @@ router.get('/customer-profile/:conversationId', async (req: Request, res: Respon
       })
       .from(appointments)
       .leftJoin(services, eq(appointments.serviceId, services.id))
-      .where(eq(appointments.customerId, conv.customerId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.customerId, conv.customerId)))
       .orderBy(appointments.scheduledTime)
       .limit(10) : [];
 
     // Get tags
-    const tags = await db
+    const tags = await req.tenantDb!
       .select({
         id: customerTags.id,
         name: customerTags.name,
@@ -205,7 +208,7 @@ router.get('/customer-profile/:conversationId', async (req: Request, res: Respon
       })
       .from(conversationTags)
       .innerJoin(customerTags, eq(conversationTags.tagId, customerTags.id))
-      .where(eq(conversationTags.conversationId, conversationId));
+      .where(req.tenantDb!.withTenantFilter(conversationTags, eq(conversationTags.conversationId, conversationId)));
 
     res.json({
       success: true,

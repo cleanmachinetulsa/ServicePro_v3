@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { pushSubscriptions, insertPushSubscriptionSchema } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { getVapidPublicKey, sendPushNotification } from './pushNotificationService';
@@ -31,14 +30,14 @@ router.post('/subscribe', requireAuth, async (req: Request, res: Response) => {
       userId,
     });
 
-    const existingSubscription = await db
+    const existingSubscription = await req.tenantDb!
       .select()
       .from(pushSubscriptions)
-      .where(eq(pushSubscriptions.endpoint, validatedData.endpoint))
+      .where(req.tenantDb!.withTenantFilter(pushSubscriptions, eq(pushSubscriptions.endpoint, validatedData.endpoint)))
       .limit(1);
 
     if (existingSubscription.length > 0) {
-      await db
+      await req.tenantDb!
         .update(pushSubscriptions)
         .set({
           p256dh: validatedData.p256dh,
@@ -46,11 +45,11 @@ router.post('/subscribe', requireAuth, async (req: Request, res: Response) => {
           userAgent: validatedData.userAgent,
           lastUsedAt: new Date(),
         })
-        .where(eq(pushSubscriptions.endpoint, validatedData.endpoint));
+        .where(req.tenantDb!.withTenantFilter(pushSubscriptions, eq(pushSubscriptions.endpoint, validatedData.endpoint)));
 
       console.log(`[PUSH API] Updated existing subscription for user ${userId}`);
     } else {
-      await db.insert(pushSubscriptions).values(validatedData);
+      await req.tenantDb!.insert(pushSubscriptions).values(validatedData);
       console.log(`[PUSH API] Created new subscription for user ${userId}`);
     }
 
@@ -79,7 +78,7 @@ router.delete('/unsubscribe', requireAuth, async (req: Request, res: Response) =
       });
     }
 
-    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+    await req.tenantDb!.delete(pushSubscriptions).where(req.tenantDb!.withTenantFilter(pushSubscriptions, eq(pushSubscriptions.endpoint, endpoint)));
 
     console.log(`[PUSH API] Removed subscription with endpoint: ${endpoint.substring(0, 50)}...`);
 
@@ -101,10 +100,10 @@ router.get('/subscriptions', requireAuth, async (req: Request, res: Response) =>
   try {
     const userId = (req as any).user.id;
 
-    const subs = await db
+    const subs = await req.tenantDb!
       .select()
       .from(pushSubscriptions)
-      .where(eq(pushSubscriptions.userId, userId));
+      .where(req.tenantDb!.withTenantFilter(pushSubscriptions, eq(pushSubscriptions.userId, userId)));
 
     res.json({
       success: true,
