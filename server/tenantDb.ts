@@ -292,6 +292,10 @@ export function wrapTenantDb(database: typeof db, tenantId: string): TenantDb {
   return createTenantDb(tenantInfo);
 }
 
+export function getRootDb() {
+  return db;
+}
+
 // Legacy standalone helper (kept for compatibility)
 export function withTenantFilter<T extends any>(
   table: T,
