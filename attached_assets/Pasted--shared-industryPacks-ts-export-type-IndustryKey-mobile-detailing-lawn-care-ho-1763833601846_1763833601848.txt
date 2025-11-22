@@ -1,0 +1,1917 @@
+// shared/industryPacks.ts
+
+export type IndustryKey =
+  | 'mobile-detailing'
+  | 'lawn-care'
+  | 'house-cleaning'
+  | 'pressure-washing'
+  | 'window-cleaning'
+  | 'hvac-service'
+  | 'handyman'
+  | 'plumbing'
+  | 'electrical'
+  | 'pest-control'
+  | 'pool-service'
+  | 'carpet-cleaning'
+  | 'pet-grooming';
+
+export interface IndustryServiceSeed {
+  key: string;
+  name: string;
+  description: string;
+  basePriceHint: number;
+  durationMinutes: number;
+  category: 'core' | 'addon' | 'premium';
+}
+
+export interface IndustryFaqSeed {
+  question: string;
+  answer: string;
+}
+
+export interface IndustrySmsTemplateSeed {
+  key: string;
+  description: string;
+  body: string;
+}
+
+export interface IndustryIvrConfigSeed {
+  greeting: string;
+  afterHours?: string;
+}
+
+export interface IndustryWebsiteCopySeed {
+  heroTitle: string;
+  heroSubtitle: string;
+  aboutBlurb: string;
+  servicesIntro: string;
+  cityPlaceholder: string; // e.g. "[CITY]"
+}
+
+export interface IndustryAgentPersonaSeed {
+  toneDescription: string;
+  keyPhrases: string[];
+}
+
+export interface IndustryPack {
+  key: IndustryKey;
+  name: string;
+  defaultServices: IndustryServiceSeed[];
+  faqs: IndustryFaqSeed[];
+  smsTemplates: IndustrySmsTemplateSeed[];
+  ivr: IndustryIvrConfigSeed;
+  websiteCopy: IndustryWebsiteCopySeed;
+  agentPersona: IndustryAgentPersonaSeed;
+}
+
+export const INDUSTRY_PACKS: Record<IndustryKey, IndustryPack> = {
+  // 1) MOBILE DETAILING
+  'mobile-detailing': {
+    key: 'mobile-detailing',
+    name: 'Mobile Auto Detailing',
+    defaultServices: [
+      {
+        key: 'full-interior-detail',
+        name: 'Full Interior Detail',
+        description:
+          'Deep interior clean with vacuum, steam where needed, crevice work, stain treatment, and protectant on plastics and leather.',
+        basePriceHint: 220,
+        durationMinutes: 180,
+        category: 'core',
+      },
+      {
+        key: 'exterior-wash-wax',
+        name: 'Exterior Wash & Wax',
+        description:
+          'Hand wash, wheel and tire clean, basic bug removal, and spray or hand-applied wax for gloss and protection.',
+        basePriceHint: 140,
+        durationMinutes: 120,
+        category: 'core',
+      },
+      {
+        key: 'full-detail-in-out',
+        name: 'Full Detail (Inside & Out)',
+        description:
+          'Complete interior detail plus exterior wash, decontamination, and wax. Ideal annual reset service.',
+        basePriceHint: 320,
+        durationMinutes: 270,
+        category: 'premium',
+      },
+      {
+        key: 'pet-hair-addon',
+        name: 'Pet Hair Removal Add-On',
+        description:
+          'Dedicated time and tools to remove embedded pet hair from seats, carpets, and cargo areas.',
+        basePriceHint: 60,
+        durationMinutes: 45,
+        category: 'addon',
+      },
+      {
+        key: 'odor-treatment-addon',
+        name: 'Odor Treatment Add-On',
+        description:
+          'Targeted odor neutralizing treatment after cleaning to help reduce smells from smoke, food, or pets.',
+        basePriceHint: 75,
+        durationMinutes: 45,
+        category: 'addon',
+      },
+      {
+        key: 'paint-correction-single-step',
+        name: 'Single-Step Paint Enhancement',
+        description:
+          'Machine polishing step to improve gloss and reduce light swirls, finished with a sealant or ceramic spray.',
+        basePriceHint: 400,
+        durationMinutes: 300,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you come to my home or work?',
+        answer:
+          'Yes, we are a fully mobile service. We come to your home, work, or agreed location in [CITY] as long as there is a safe place to park and work.',
+      },
+      {
+        question: 'Do you need water or power?',
+        answer:
+          'Most appointments need access to a standard outdoor faucet and electrical outlet. If you do not have either, please let us know so we can plan accordingly.',
+      },
+      {
+        question: 'How long does a full detail take?',
+        answer:
+          'Most full details take between 3–5 hours depending on vehicle size and condition. We will give you a more accurate estimate when you book.',
+      },
+      {
+        question: 'What forms of payment do you accept?',
+        answer:
+          'We accept major debit/credit cards, cash, and some digital wallets. Payment is due at the end of the appointment.',
+      },
+      {
+        question: 'What is your cancellation policy?',
+        answer:
+          'We ask for at least 24 hours notice to reschedule or cancel. Same-day cancellations may be subject to a fee because we reserve your appointment block just for you.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'booking-confirmation',
+        description: 'Booking confirmation with basic prep info.',
+        body:
+          'Hey this is [BUSINESS_NAME]! Your detailing appointment is set for [APPT_DATE] at [APPT_TIME]. We come to you in [CITY]. Please remove personal items and car seats if possible. Reply here with any questions!',
+      },
+      {
+        key: 'day-before-reminder',
+        description: 'Day-before reminder.',
+        body:
+          'Reminder from [BUSINESS_NAME]: we are scheduled to detail your vehicle(s) tomorrow at [APPT_TIME]. Please make sure we can access water/power if available and the vehicle is unlocked or keys are ready. Reply YES to confirm.',
+      },
+      {
+        key: 'running-late-buffer',
+        description: 'Running-late SMS with buffer.',
+        body:
+          'Hi, this is [BUSINESS_NAME]. We are running about [MINUTES_LATE] minutes behind due to a previous job. We still have you locked in for today and will update you as we are on the way. Thanks for your patience!',
+      },
+      {
+        key: 'after-service-review',
+        description: 'Request a review after service.',
+        body:
+          'Thank you for choosing [BUSINESS_NAME] for your detail today! If you have a moment, we would really appreciate a quick review about your experience: [REVIEW_LINK]. It helps small local businesses like us a ton.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'Thanks for calling [BUSINESS_NAME], your mobile auto detailing specialist in [CITY]. Press 1 to receive a text with pricing and booking info, press 2 to speak with a detailer, or press 3 to leave a message and we will text you back.',
+      afterHours:
+        'You have reached [BUSINESS_NAME] after hours. Please leave your name, vehicle type, and what you are looking to have done, and we will text you back first thing next business day.',
+    },
+    websiteCopy: {
+      heroTitle: 'Mobile Auto Detailing That Comes to You in [CITY]',
+      heroSubtitle:
+        'Premium interior and exterior detailing with pro results at your home or office.',
+      aboutBlurb:
+        '[BUSINESS_NAME] is a mobile detailing service in [CITY] focused on honest communication, quality work, and repeatable results. We bring professional tools, products, and systems to your driveway so you can drive a clean car without losing half your day at a shop.',
+      servicesIntro:
+        'Whether you need a quick refresh, a deep interior reset, or a gloss-enhancing exterior service, we build each appointment around your vehicle, your goals, and your schedule.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Friendly, knowledgeable detailer who talks like a real person, not a corporate script. Confident, honest about what is or is not realistic, and focused on setting clear expectations.',
+      keyPhrases: [
+        'We come to you with everything needed to work on-site.',
+        'Most full details take between 3–5 hours depending on condition.',
+        'For heavy pet hair or stains, extra time is usually needed.',
+        'We will text you on the way and when we are done.',
+        'Our goal is to make this the easiest detail you have ever booked.',
+      ],
+    },
+  },
+
+  // 2) LAWN CARE
+  'lawn-care': {
+    key: 'lawn-care',
+    name: 'Lawn Care & Mowing',
+    defaultServices: [
+      {
+        key: 'weekly-mow',
+        name: 'Weekly Mowing Service',
+        description:
+          'Regular weekly mowing, edging, and blowing clippings off hard surfaces for a consistently clean lawn.',
+        basePriceHint: 55,
+        durationMinutes: 40,
+        category: 'core',
+      },
+      {
+        key: 'biweekly-mow',
+        name: 'Bi-Weekly Mowing Service',
+        description:
+          'Mowing every other week for lower-growth lawns or budget-conscious customers.',
+        basePriceHint: 65,
+        durationMinutes: 45,
+        category: 'core',
+      },
+      {
+        key: 'one-time-cleanup',
+        name: 'One-Time Cleanup & Mow',
+        description:
+          'Taller grass, leaf cleanup, and a full mow to reset an overgrown yard.',
+        basePriceHint: 140,
+        durationMinutes: 120,
+        category: 'premium',
+      },
+      {
+        key: 'leaf-cleanup-addon',
+        name: 'Leaf Cleanup Add-On',
+        description:
+          'Bagging and removal of leaves from lawn and beds as part of a scheduled service.',
+        basePriceHint: 80,
+        durationMinutes: 75,
+        category: 'addon',
+      },
+      {
+        key: 'hedge-trim-addon',
+        name: 'Hedge & Shrub Trimming Add-On',
+        description:
+          'Shape and trim accessible shrubs and hedges to keep your landscape tidy.',
+        basePriceHint: 90,
+        durationMinutes: 90,
+        category: 'addon',
+      },
+      {
+        key: 'fertilizer-treatment',
+        name: 'Fertilizer & Weed Treatment',
+        description:
+          'Seasonal fertilizer with basic weed control to encourage healthy turf.',
+        basePriceHint: 110,
+        durationMinutes: 45,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you offer weekly and bi-weekly service?',
+        answer:
+          'Yes, most clients in [CITY] choose weekly or bi-weekly visits during the growing season. We can adjust to your yard and budget.',
+      },
+      {
+        question: 'Do I need to be home during service?',
+        answer:
+          'You do not need to be home as long as we can access the yard and gates are unlocked. We will send you a text when the work is complete.',
+      },
+      {
+        question: 'What happens with rain or weather?',
+        answer:
+          'If weather makes it unsafe or unproductive to mow, we will reschedule to the next available day and keep you updated by text.',
+      },
+      {
+        question: 'Can you bag or mulch clippings?',
+        answer:
+          'Yes, we can mulch clippings back into the lawn or bag and haul them away depending on your preference and the condition of the yard.',
+      },
+      {
+        question: 'How do ongoing contracts work?',
+        answer:
+          'We keep it simple: no long-term contracts required. You can pause or adjust service with notice, though prime schedule spots fill quickly during peak season.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'schedule-intro',
+        description: 'Intro SMS to new lead with basic info.',
+        body:
+          'Hey, this is [BUSINESS_NAME] in [CITY]. Thanks for reaching out about lawn care! We offer weekly and bi-weekly mowing plus cleanups. What is your address and how often are you wanting service?',
+      },
+      {
+        key: 'service-reminder',
+        description: 'Day-before reminder.',
+        body:
+          'Reminder from [BUSINESS_NAME]: your lawn service is scheduled for tomorrow. Please ensure pets are inside and gates are unlocked. Reply with any special notes for this visit.',
+      },
+      {
+        key: 'rain-delay',
+        description: 'Weather delay text.',
+        body:
+          'Hi from [BUSINESS_NAME]. Weather is causing a delay today, but you are still on our schedule. We will move your visit to the next dry window and update you on timing. Thanks for your patience!',
+      },
+      {
+        key: 'review-request',
+        description: 'Review request text.',
+        body:
+          'Thank you for letting [BUSINESS_NAME] take care of your yard! If you are happy with the service, a quick review means the world to us: [REVIEW_LINK].',
+      },
+    ],
+    ivr: {
+      greeting:
+        'Thanks for calling [BUSINESS_NAME], your lawn care service in [CITY]. Press 1 for pricing and mowing options by text, press 2 to talk to someone about your yard, or press 3 to request a one-time cleanup.',
+      afterHours:
+        'You have reached [BUSINESS_NAME] outside of business hours. Leave your name, address, and what kind of lawn service you need, and we will call or text you back.',
+    },
+    websiteCopy: {
+      heroTitle: 'Reliable Lawn Care & Mowing in [CITY]',
+      heroSubtitle:
+        'Weekly, bi-weekly, and one-time services to keep your yard looking sharp without you lifting a finger.',
+      aboutBlurb:
+        '[BUSINESS_NAME] provides straightforward, dependable lawn care for homeowners and small properties in [CITY]. We show up when we say we will, do the job right, and keep communication simple via text.',
+      servicesIntro:
+        'From weekly mowing routes to overgrown cleanups and seasonal treatments, we can build a schedule that fits your yard and your budget.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Down-to-earth, reliable yard person. Uses plain language, is honest about schedule and weather, and focuses on being dependable rather than flashy.',
+      keyPhrases: [
+        'We run regular weekly and bi-weekly routes in your area.',
+        'Weather is a factor, but we keep you updated by text.',
+        'We can do a one-time cleanup and then move you into a regular schedule.',
+        'No long-term contract required; we keep it simple.',
+        'Our goal is for you to never worry about your yard again.',
+      ],
+    },
+  },
+
+  // 3) HOUSE CLEANING
+  'house-cleaning': {
+    key: 'house-cleaning',
+    name: 'House Cleaning',
+    defaultServices: [
+      {
+        key: 'standard-clean',
+        name: 'Standard Maintenance Clean',
+        description:
+          'Recurring light-to-medium clean of kitchens, bathrooms, floors, and common surfaces.',
+        basePriceHint: 150,
+        durationMinutes: 150,
+        category: 'core',
+      },
+      {
+        key: 'deep-clean',
+        name: 'Deep Clean',
+        description:
+          'Top-to-bottom clean including baseboards, door frames, extra detail on bathrooms/kitchen, and heavier scrubbing as needed.',
+        basePriceHint: 260,
+        durationMinutes: 240,
+        category: 'core',
+      },
+      {
+        key: 'move-out-clean',
+        name: 'Move-Out / Move-In Clean',
+        description:
+          'Detailed clean targeting inside cabinets, inside fridge/oven, and all surfaces to prepare a home for move-out inspection or new move-in.',
+        basePriceHint: 340,
+        durationMinutes: 300,
+        category: 'premium',
+      },
+      {
+        key: 'inside-fridge-addon',
+        name: 'Inside Fridge Add-On',
+        description:
+          'Remove items, clean interior walls and shelves, and replace items neatly.',
+        basePriceHint: 40,
+        durationMinutes: 30,
+        category: 'addon',
+      },
+      {
+        key: 'inside-oven-addon',
+        name: 'Inside Oven Add-On',
+        description:
+          'Clean interior of oven door and racks, subject to condition and safety.',
+        basePriceHint: 50,
+        durationMinutes: 40,
+        category: 'addon',
+      },
+      {
+        key: 'windows-interior-addon',
+        name: 'Interior Windows & Sills',
+        description:
+          'Clean interior glass and wipe frames and sills for reachable windows.',
+        basePriceHint: 80,
+        durationMinutes: 60,
+        category: 'addon',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you bring your own supplies and equipment?',
+        answer:
+          'Yes, we bring professional cleaning products and tools to each appointment. If you have sensitivities or special products you prefer, let us know in advance.',
+      },
+      {
+        question: 'Do I need to be home during cleaning?',
+        answer:
+          'You do not have to be home as long as we have a way to enter (key, code, or lockbox) and any alarm instructions. Many recurring clients prefer to give us access and receive a text when we are done.',
+      },
+      {
+        question: 'What is the difference between standard and deep clean?',
+        answer:
+          'Standard cleans focus on maintaining kitchens, bathrooms, floors, and surfaces. Deep cleans go further into baseboards, vents, door frames, and more built-up grime.',
+      },
+      {
+        question: 'Can I customize what you clean?',
+        answer:
+          'Yes, the checklist can be adjusted to prioritize areas that matter most to you. Just let us know your top three priorities when booking.',
+      },
+      {
+        question: 'What happens if I need to reschedule?',
+        answer:
+          'We ask for at least 24 hours notice to reschedule. We are flexible and understand life happens; communication just helps us keep the schedule working smoothly.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'new-enquiry',
+        description: 'Intro text for new cleaning lead.',
+        body:
+          'Hi, this is [BUSINESS_NAME] cleaning in [CITY]. Thanks for reaching out! Is this for a standard clean, deep clean, or move-out? And how many bedrooms and bathrooms?',
+      },
+      {
+        key: 'booking-confirmation',
+        description: 'Cleaning booking confirmation.',
+        body:
+          'Your cleaning with [BUSINESS_NAME] is set for [APPT_DATE] at [APPT_TIME]. Please pick up clutter, toys, and laundry you do not want handled so we can focus on actual cleaning. Reply with access details or questions.',
+      },
+      {
+        key: 'recurring-reminder',
+        description: 'Recurring service reminder.',
+        body:
+          'Reminder from [BUSINESS_NAME]: your scheduled cleaning is tomorrow. If anything changed or you need to adjust time, please text us here as soon as possible.',
+      },
+      {
+        key: 'post-clean-checkin',
+        description: 'Post-clean quality check.',
+        body:
+          'Thank you for choosing [BUSINESS_NAME]! How did everything look after today\'s cleaning? If we missed anything, tell us so we can make it right next time.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'Thanks for calling [BUSINESS_NAME] house cleaning in [CITY]. Press 1 to get a text where you can send your home size for a quote, press 2 to talk about scheduling, or press 3 to leave a message with your address and what you need cleaned.',
+      afterHours:
+        'You have reached [BUSINESS_NAME] after hours. Leave your name, address, home size, and whether you need a standard, deep, or move-out clean. We will text or call you back with options.',
+    },
+    websiteCopy: {
+      heroTitle: 'House Cleaning You Can Actually Relax About in [CITY]',
+      heroSubtitle:
+        'Standard, deep, and move-out cleans with clear communication and consistent results.',
+      aboutBlurb:
+        '[BUSINESS_NAME] is a local cleaning company in [CITY] focused on reliability, clear expectations, and homes that genuinely feel better to live in. We combine professional systems with a personal touch so you are never guessing who is coming or what is included.',
+      servicesIntro:
+        'From recurring upkeep to big reset cleans, we help you stay ahead of dust, bathrooms, and the little things that stack up.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Warm, reassuring, and organized. Explains clearly what is included and makes nervous or first-time clients feel comfortable.',
+      keyPhrases: [
+        'We can tailor the checklist to what matters most to you.',
+        'Deep cleans are great for first-time or seasonal reset.',
+        'Most recurring clients choose every 2 weeks or monthly.',
+        'You do not have to be home as long as we have a way in.',
+        'We want feedback after the first visit so we can dial it in.',
+      ],
+    },
+  },
+
+  // 4) PRESSURE WASHING
+  'pressure-washing': {
+    key: 'pressure-washing',
+    name: 'Pressure Washing',
+    defaultServices: [
+      {
+        key: 'driveway-clean',
+        name: 'Driveway Cleaning',
+        description:
+          'High-pressure cleaning of concrete driveways to remove dirt, mildew, and surface stains.',
+        basePriceHint: 180,
+        durationMinutes: 120,
+        category: 'core',
+      },
+      {
+        key: 'house-wash-soft',
+        name: 'Soft House Wash',
+        description:
+          'Low-pressure soft wash for siding, removing organic buildup without damaging surfaces.',
+        basePriceHint: 280,
+        durationMinutes: 180,
+        category: 'core',
+      },
+      {
+        key: 'patio-deck-clean',
+        name: 'Patio & Deck Cleaning',
+        description:
+          'Clean concrete patios or wooden/composite decks with the appropriate pressure and technique.',
+        basePriceHint: 220,
+        durationMinutes: 150,
+        category: 'core',
+      },
+      {
+        key: 'fence-clean-addon',
+        name: 'Fence Cleaning Add-On',
+        description:
+          'Wash wooden or vinyl fencing to remove algae, mildew, and dirt as an add-on to another service.',
+        basePriceHint: 140,
+        durationMinutes: 120,
+        category: 'addon',
+      },
+      {
+        key: 'roof-soft-wash',
+        name: 'Roof Soft Wash',
+        description:
+          'Gentle chemical soft wash for roofs to remove organic growth. Not available on every roof type.',
+        basePriceHint: 420,
+        durationMinutes: 210,
+        category: 'premium',
+      },
+      {
+        key: 'commercial-entry-clean',
+        name: 'Commercial Entry & Walkway',
+        description:
+          'Clean storefront walkways and entries for small businesses on a one-time or recurring basis.',
+        basePriceHint: 260,
+        durationMinutes: 150,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Will pressure washing damage my siding or deck?',
+        answer:
+          'We use appropriate pressure, tips, and techniques for each surface. For siding and roofs, we favor soft washing to reduce the risk of damage.',
+      },
+      {
+        question: 'Do you use chemicals?',
+        answer:
+          'For organic growth (mildew, algae), we often use detergents and soft wash solutions that are effective yet safe when used properly. We always rinse thoroughly.',
+      },
+      {
+        question: 'Do I need to move furniture or items?',
+        answer:
+          'We ask that you move fragile items, cushions, and small furniture from areas we will be cleaning. Heavier items can sometimes be worked around or moved by us depending on the job.',
+      },
+      {
+        question: 'What about water access?',
+        answer:
+          'We typically hook to your outdoor spigot. If water access is limited, let us know so we can plan in advance.',
+      },
+      {
+        question: 'How long does it take surfaces to dry?',
+        answer:
+          'Most surfaces are safe to walk on within a couple of hours, though some may remain damp longer. We will let you know any special care instructions before we leave.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'estimate-intro',
+        description: 'Intro text for new pressure washing lead.',
+        body:
+          'Hi, this is [BUSINESS_NAME] pressure washing in [CITY]. Thanks for reaching out! What surfaces are you looking to have cleaned (house, driveway, patio, roof, etc.) and what is your address?',
+      },
+      {
+        key: 'on-the-way',
+        description: 'On-the-way notification.',
+        body:
+          'We are on the way from [BUSINESS_NAME]! We\'ll arrive around [ETA] to start your pressure washing service. Please ensure pets are inside and vehicles are moved if needed.',
+      },
+      {
+        key: 'post-service-care',
+        description: 'After-service care and review ask.',
+        body:
+          'Your pressure washing service with [BUSINESS_NAME] is complete. Surfaces may still be damp for a bit. If you spot anything we should touch up, reply here. A quick review at [REVIEW_LINK] is also a huge help!',
+      },
+      {
+        key: 'rain-reschedule',
+        description: 'Weather reschedule text.',
+        body:
+          'Weather is not cooperating today, so we need to reschedule your pressure washing. We will text you with our next available times. Thank you for your understanding!',
+      },
+    ],
+    ivr: {
+      greeting:
+        'Thanks for calling [BUSINESS_NAME], pressure washing and soft washing in [CITY]. Press 1 to get a text where you can send photos for a fast estimate, press 2 to talk about pricing and scheduling, or press 3 to leave a message.',
+      afterHours:
+        'You have reached [BUSINESS_NAME] after hours. Tell us your address, what you want cleaned, and if you can text photos. We will respond with an estimate as soon as we can.',
+    },
+    websiteCopy: {
+      heroTitle: 'Professional Pressure Washing in [CITY]',
+      heroSubtitle:
+        'Driveways, houses, patios, and more — cleaned with the right pressure and attention.',
+      aboutBlurb:
+        '[BUSINESS_NAME] specializes in exterior cleaning for homeowners and small commercial properties in [CITY]. We use pro-grade equipment and methods tailored to each surface so you get a fresh look without unnecessary damage.',
+      servicesIntro:
+        'From slippery sidewalks to algae-covered siding, we help restore curb appeal and prolong the life of your exterior surfaces.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Confident, safety-aware, and practical. Explains risks and limitations clearly and doesn\'t overpromise on stain removal.',
+      keyPhrases: [
+        'We match pressure and chemicals to the surface to avoid damage.',
+        'Soft washing is often the safest way to clean siding and roofs.',
+        'Photos help us give a faster and more accurate estimate.',
+        'Weather can shift our schedule, but we keep you posted.',
+        'Some deep or rust stains may lighten but not fully disappear.',
+      ],
+    },
+  },
+
+  // 5) WINDOW CLEANING
+  'window-cleaning': {
+    key: 'window-cleaning',
+    name: 'Window Cleaning',
+    defaultServices: [
+      {
+        key: 'exterior-windows',
+        name: 'Exterior Window Cleaning',
+        description:
+          'Hand or pole-clean exterior glass and wipe frames/sills on accessible windows.',
+        basePriceHint: 180,
+        durationMinutes: 150,
+        category: 'core',
+      },
+      {
+        key: 'interior-windows',
+        name: 'Interior Window Cleaning',
+        description:
+          'Clean interior glass and wipe frames/sills for reachable windows and doors.',
+        basePriceHint: 160,
+        durationMinutes: 140,
+        category: 'core',
+      },
+      {
+        key: 'inside-out-package',
+        name: 'Inside & Out Window Package',
+        description:
+          'Full window cleaning service for both interior and exterior glass where safely reachable.',
+        basePriceHint: 320,
+        durationMinutes: 240,
+        category: 'premium',
+      },
+      {
+        key: 'screen-clean-addon',
+        name: 'Screen Cleaning Add-On',
+        description:
+          'Remove and clean window screens where accessible as an add-on to a window service.',
+        basePriceHint: 70,
+        durationMinutes: 60,
+        category: 'addon',
+      },
+      {
+        key: 'hard-water-treatment',
+        name: 'Hard Water Stain Treatment',
+        description:
+          'Attempt to reduce hard water spotting and staining on select panes, where possible.',
+        basePriceHint: 90,
+        durationMinutes: 75,
+        category: 'addon',
+      },
+      {
+        key: 'small-commercial-fronts',
+        name: 'Small Commercial Storefronts',
+        description:
+          'Recurring exterior window cleaning for small storefronts and offices.',
+        basePriceHint: 120,
+        durationMinutes: 90,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you clean both inside and outside windows?',
+        answer:
+          'Yes, we offer exterior-only, interior-only, or combined inside-and-out packages depending on your goals and budget.',
+      },
+      {
+        question: 'What about high or hard-to-reach windows?',
+        answer:
+          'We use extension poles and may use ladders where safe and allowed. Some extremely high or risky windows may not be serviceable.',
+      },
+      {
+        question: 'Do you clean screens?',
+        answer:
+          'Yes, screens can be cleaned as an add-on. We will remove them where possible, wash them, let them dry, and reinstall.',
+      },
+      {
+        question: 'Can you remove hard water stains?',
+        answer:
+          'We can often improve or reduce hard water stains with special treatments, but very old or severe staining may not be fully removable.',
+      },
+      {
+        question: 'How often should I have my windows cleaned?',
+        answer:
+          'Most homeowners prefer once or twice a year, while storefronts and small commercial spaces might need monthly or quarterly service.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'intro-quote',
+        description: 'Intro text for window cleaning quote.',
+        body:
+          'Hi, this is [BUSINESS_NAME] window cleaning in [CITY]. Is this for a home or business, and about how many windows do you have (even a rough guess is okay)?',
+      },
+      {
+        key: 'prep-instructions',
+        description: 'Prep instructions text.',
+        body:
+          'Thanks for booking window cleaning with [BUSINESS_NAME]! On your service day, please open blinds/curtains where windows will be cleaned and move fragile items away from sills if possible.',
+      },
+      {
+        key: 'after-service-followup',
+        description: 'Post-service follow-up.',
+        body:
+          'Your window cleaning with [BUSINESS_NAME] is complete. If you notice any streaks or misses after everything dries, please text a photo so we can make it right. A quick review at [REVIEW_LINK] also helps a lot!',
+      },
+      {
+        key: 'weather-delay',
+        description: 'Weather delay for exterior work.',
+        body:
+          'Weather is not ideal for exterior window cleaning today. We will reschedule your appointment and text you new options. Inside windows can often still be done if you prefer.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You have reached [BUSINESS_NAME], residential and light commercial window cleaning in [CITY]. Press 1 to get a text to send photos for a quote, press 2 to ask about pricing and schedules, or press 3 to leave a message.',
+      afterHours:
+        'Thanks for calling [BUSINESS_NAME]. Leave your name, address, and whether this is a home or business, and we will follow up by text or call with quote options.',
+    },
+    websiteCopy: {
+      heroTitle: 'Crystal Clear Window Cleaning in [CITY]',
+      heroSubtitle:
+        'Residential and small commercial window cleaning that actually shows up and leaves the glass streak-free.',
+      aboutBlurb:
+        '[BUSINESS_NAME] focuses on reliable scheduling, careful work around your home or business, and clean glass that genuinely looks better in normal daylight, not just staged photos.',
+      servicesIntro:
+        'Choose exterior only, interior only, or full inside-and-out packages, with optional screen cleaning and hard water treatments.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Polite, detail-focused, and realistic about limitations like hard water and extreme height. Reassures clients about care around their home.',
+      keyPhrases: [
+        'We work carefully around your home and belongings.',
+        'Some very high or risky windows may not be serviceable.',
+        'Hard water stains can often be improved but not always erased.',
+        'Most homes do well with once or twice a year cleaning.',
+        'We are happy to start with the most visible windows if you prefer.',
+      ],
+    },
+  },
+
+  // 6) HVAC SERVICE
+  'hvac-service': {
+    key: 'hvac-service',
+    name: 'HVAC Service & Repair',
+    defaultServices: [
+      {
+        key: 'ac-tuneup',
+        name: 'AC Tune-Up & System Check',
+        description:
+          'Multi-point inspection, cleaning, and performance check of your cooling system before or during hot season.',
+        basePriceHint: 140,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'furnace-tuneup',
+        name: 'Furnace Tune-Up & Safety Check',
+        description:
+          'Inspection and safety-focused tune-up of heating systems, including ignition, burners, and basic cleaning.',
+        basePriceHint: 150,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'diagnostic-visit',
+        name: 'Diagnostic Service Call',
+        description:
+          'Visit to diagnose system issues, present findings, and quote repairs. Often credited toward repair if approved.',
+        basePriceHint: 120,
+        durationMinutes: 60,
+        category: 'core',
+      },
+      {
+        key: 'filter-change-addon',
+        name: 'Filter Change & Filter Education',
+        description:
+          'Replace air filter(s) and explain recommended change intervals for your specific system.',
+        basePriceHint: 40,
+        durationMinutes: 15,
+        category: 'addon',
+      },
+      {
+        key: 'duct-cleaning',
+        name: 'Basic Duct Cleaning',
+        description:
+          'Limited duct cleaning service for typical residential systems (if offered by that business).',
+        basePriceHint: 420,
+        durationMinutes: 240,
+        category: 'premium',
+      },
+      {
+        key: 'maintenance-plan',
+        name: 'Annual Maintenance Plan',
+        description:
+          'Twice-yearly visits and priority scheduling for members, often with discounts on repairs.',
+        basePriceHint: 260,
+        durationMinutes: 120,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you offer emergency or after-hours service?',
+        answer:
+          'Many HVAC companies do offer after-hours or emergency service for no-heat/no-cool situations. There may be an extra fee. The agent can clarify based on your actual company policies.',
+      },
+      {
+        question: 'Is there a diagnostic fee?',
+        answer:
+          'Most service calls include a diagnostic fee that covers travel time and system evaluation. Often if you approve the repair, part of that fee is applied toward the total.',
+      },
+      {
+        question: 'Should I repair or replace my system?',
+        answer:
+          'That depends on age, condition, and cost of repairs. The technician will outline your options clearly and never pressure you into something you do not need.',
+      },
+      {
+        question: 'How often should I change my filters?',
+        answer:
+          'Many homes do well with 1–3 month filter changes, but it depends on pets, dust, allergies, and system type. We can help pick the right filter and schedule.',
+      },
+      {
+        question: 'Do you work on all brands?',
+        answer:
+          'Most residential systems use similar components, but the tech will confirm any brand limitations when scheduling or on site.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'no-cool-intake',
+        description: 'Intake text for no-cooling issue.',
+        body:
+          'Hi, this is [BUSINESS_NAME] HVAC in [CITY]. Sorry to hear your AC is having issues. Is it blowing warm air, not turning on at all, or something else? Also, what year is your system if you know?',
+      },
+      {
+        key: 'arrival-window',
+        description: 'Arrival window text.',
+        body:
+          'Your HVAC visit with [BUSINESS_NAME] is scheduled for [APPT_DATE] between [WINDOW_START] and [WINDOW_END]. We will text when the tech is on the way. Please make sure pets are secure and we can access the system and thermostat.',
+      },
+      {
+        key: 'diagnostic-complete',
+        description: 'Diagnostic summary + repair quote offer.',
+        body:
+          'This is [BUSINESS_NAME]. We\'ve completed your system diagnostic. We will text or go over repair options with pricing so you can choose what works best. There is no pressure to decide immediately.',
+      },
+      {
+        key: 'maintenance-reminder',
+        description: 'Maintenance plan reminder.',
+        body:
+          'Reminder from [BUSINESS_NAME]: it might be time for your seasonal HVAC tune-up so your system is ready for the weather. Would you like to schedule a quick check-up?',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You have reached [BUSINESS_NAME] heating and air in [CITY]. If you have no heat or no cooling, press 1 and we will prioritize your call. For maintenance or tune-ups, press 2. To leave a message for the office, press 3.',
+      afterHours:
+        'If this is a safety emergency such as a gas smell or fire, hang up and call emergency services. Otherwise, leave your name, address, and what your system is doing, and we will contact you with the earliest available time.',
+    },
+    websiteCopy: {
+      heroTitle: 'Honest HVAC Service & Repair in [CITY]',
+      heroSubtitle:
+        'Heating and cooling help that explains your options in plain language, not sales pressure.',
+      aboutBlurb:
+        '[BUSINESS_NAME] focuses on clear communication, safety, and comfort. We show you what we see, explain your options, and help you choose repairs or replacements that make sense for your home and budget.',
+      servicesIntro:
+        'From tune-ups and diagnostics to full system replacements, we help your home stay comfortable through the extremes.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Calm, safety-aware, and informative. Never fearmongers, never pressures. Prioritizes comfort, safety, and budgets.',
+      keyPhrases: [
+        'We will start with a diagnostic so we actually know what is going on.',
+        'The tech will give you clear options and pricing before doing any repair.',
+        'In true no-heat or no-cool, we try to prioritize as best we can.',
+        'Filter changes and maintenance can prevent many breakdowns.',
+        'If something is unsafe, we will be very clear about it and why.',
+      ],
+    },
+  },
+
+  // 7) HANDYMAN
+  'handyman': {
+    key: 'handyman',
+    name: 'Handyman & Home Repair',
+    defaultServices: [
+      {
+        key: 'small-repair-visit',
+        name: 'Small Repairs Visit (1–2 hours)',
+        description:
+          'General punch-list visit for small tasks like loose hinges, drywall patches, caulking, and minor fixes.',
+        basePriceHint: 180,
+        durationMinutes: 120,
+        category: 'core',
+      },
+      {
+        key: 'half-day-project',
+        name: 'Half-Day Project Block',
+        description:
+          'Up to 4 hours of handyman labor to tackle a larger list of tasks in one visit.',
+        basePriceHint: 320,
+        durationMinutes: 240,
+        category: 'core',
+      },
+      {
+        key: 'full-day-project',
+        name: 'Full-Day Project Block',
+        description:
+          'Full day reserved for bigger handyman and light carpentry projects.',
+        basePriceHint: 560,
+        durationMinutes: 480,
+        category: 'premium',
+      },
+      {
+        key: 'tv-mount-addon',
+        name: 'TV Mounting Add-On',
+        description:
+          'Mount customer-supplied TV and bracket, including basic wire concealment if agreed.',
+        basePriceHint: 130,
+        durationMinutes: 90,
+        category: 'addon',
+      },
+      {
+        key: 'fixture-replacement-addon',
+        name: 'Fixture Replacement Add-On',
+        description:
+          'Replace light fixtures, faucets, or hardware as part of a handyman visit. Customer typically supplies fixtures.',
+        basePriceHint: 90,
+        durationMinutes: 60,
+        category: 'addon',
+      },
+      {
+        key: 'furniture-assembly',
+        name: 'Furniture Assembly',
+        description:
+          'Assemble flat-pack furniture, beds, shelving, and similar items.',
+        basePriceHint: 160,
+        durationMinutes: 150,
+        category: 'core',
+      },
+    ],
+    faqs: [
+      {
+        question: 'What types of jobs do you handle?',
+        answer:
+          'Handyman work usually includes small repairs, minor carpentry, caulking, drywall patches, TV mounting, furniture assembly, and similar tasks. Large structural, major electrical, or major plumbing jobs generally require licensed specialists.',
+      },
+      {
+        question: 'Do you charge by the hour or by the job?',
+        answer:
+          'Many handyman services work in fixed time blocks (like 2-hour, half-day, or full-day) to tackle a list of tasks efficiently. Some specific jobs may be flat-priced.',
+      },
+      {
+        question: 'Do I need to provide materials?',
+        answer:
+          'For simple jobs, you can provide parts and fixtures and we bring tools and basic supplies. For more complex work, we can help source materials or advise you on what to purchase.',
+      },
+      {
+        question: 'Can I send a punch list?',
+        answer:
+          'Yes, sending a list and photos helps us estimate how much time you need and what tools or materials to bring.',
+      },
+      {
+        question: 'Are you licensed and insured?',
+        answer:
+          'Handyman licensing requirements vary by location and job type. The agent should use your company\'s real licensing/insurance status in its responses.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'punch-list-intake',
+        description: 'Ask for a punch list.',
+        body:
+          'Hi, this is [BUSINESS_NAME] handyman service in [CITY]. Can you text a short list of everything you want done, plus photos where possible? That helps us recommend the right time block.',
+      },
+      {
+        key: 'booking-confirm',
+        description: 'Booking confirmation.',
+        body:
+          'Your handyman visit with [BUSINESS_NAME] is set for [APPT_DATE] at [APPT_TIME]. Please have any fixtures, hardware, or materials you\'ve purchased on-site so we can get right to work.',
+      },
+      {
+        key: 'running-over-time',
+        description: 'Time-overage check-in.',
+        body:
+          'We\'re wrapping up your current list and are close to your booked time. There are still a few items left; would you like a quick quote to extend the visit today or schedule a follow-up?',
+      },
+      {
+        key: 'followup-review',
+        description: 'Review request.',
+        body:
+          'Thank you for having [BUSINESS_NAME] help with your home projects! If you were happy with the work, a quick review at [REVIEW_LINK] helps other homeowners find us.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You\'ve reached [BUSINESS_NAME], handyman and small home repair in [CITY]. Press 1 to receive a text so you can send your punch list and photos, press 2 to talk about an upcoming project, or press 3 to leave a message.',
+      afterHours:
+        'Thanks for calling [BUSINESS_NAME]. Leave your name, address, and a brief list of projects you need help with, and we will text or call you back to schedule.',
+    },
+    websiteCopy: {
+      heroTitle: 'Handyman & Home Repair Help in [CITY]',
+      heroSubtitle:
+        'From punch lists to small projects, we help you knock out the things that never quite get done.',
+      aboutBlurb:
+        '[BUSINESS_NAME] is a local handyman service in [CITY] focused on showing up when we say we will, communicating clearly, and respecting your home. We are best for the "too small for a contractor, too big to keep ignoring" type of projects.',
+      servicesIntro:
+        'Book a time block and we will work through your prioritized list, from simple fixes to light carpentry and installs.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Practical, approachable, and resourceful. Helps customers prioritize what fits into their time block and sets realistic expectations.',
+      keyPhrases: [
+        'A photo of each item really helps us plan tools and time.',
+        'We\'re a better fit for small-to-medium tasks than major renovations.',
+        'We can start with your top three priorities and work down the list.',
+        'You can either supply fixtures or we can help you choose them.',
+        'If something needs a licensed specialist, we\'ll be clear about that.',
+      ],
+    },
+  },
+
+  // 8) PLUMBING
+  'plumbing': {
+    key: 'plumbing',
+    name: 'Plumbing Service',
+    defaultServices: [
+      {
+        key: 'leak-diagnostic',
+        name: 'Leak or Drip Diagnostic',
+        description:
+          'Identify the source of leaks, drips, or moisture issues and present repair options.',
+        basePriceHint: 140,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'drain-clearing',
+        name: 'Drain Clearing (Non-Main Line)',
+        description:
+          'Attempt to clear clogged sink, tub, or small drain lines using proper tools.',
+        basePriceHint: 180,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'water-heater-service',
+        name: 'Water Heater Service / Replacement Quote',
+        description:
+          'Inspect existing water heater, flush as appropriate, and provide quotes for repair or replacement.',
+        basePriceHint: 220,
+        durationMinutes: 120,
+        category: 'core',
+      },
+      {
+        key: 'fixture-install',
+        name: 'Fixture Install (Faucet/Toilet)',
+        description:
+          'Install customer-supplied faucet, toilet, or similar fixture, with basic removal of old unit.',
+        basePriceHint: 240,
+        durationMinutes: 150,
+        category: 'core',
+      },
+      {
+        key: 'emergency-break-fix',
+        name: 'Emergency Burst Pipe / Shutoff',
+        description:
+          'Emergency visit to locate shutoffs, stabilize burst piping, and begin repairs where possible.',
+        basePriceHint: 420,
+        durationMinutes: 180,
+        category: 'premium',
+      },
+      {
+        key: 'membership-plan',
+        name: 'Home Plumbing Membership',
+        description:
+          'Annual membership with priority scheduling and discounts on certain services (if the business offers it).',
+        basePriceHint: 220,
+        durationMinutes: 90,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you offer 24/7 emergency plumbing?',
+        answer:
+          'Some plumbing companies do, others do not. The agent should reflect the actual company policy but always prioritize safety and shutoff guidance.',
+      },
+      {
+        question: 'Is there a trip or diagnostic fee?',
+        answer:
+          'Most plumbing services charge a service or diagnostic fee to come out and inspect the issue. The tech will explain costs before doing repairs.',
+      },
+      {
+        question: 'What can I do about a leak before you arrive?',
+        answer:
+          'If safe, locate and turn off the nearest shutoff valve or main water supply. Avoid using affected fixtures. If water is near electrical or ceilings are sagging, prioritize safety first.',
+      },
+      {
+        question: 'Do you work on tankless water heaters?',
+        answer:
+          'Many plumbers service both tank and tankless heaters, but the tech will confirm based on your system brand and age.',
+      },
+      {
+        question: 'Can you give exact quotes by text?',
+        answer:
+          'We can often give ballpark ranges based on photos and description, but precise quotes usually require a tech on-site to see the full situation.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'emergency-intake',
+        description: 'Emergency plumbing intake.',
+        body:
+          'Hi, this is [BUSINESS_NAME] plumbing in [CITY]. Is water currently running or spraying, or has the main shutoff been turned off? If you can safely locate the main shutoff, turn it off and tell us what you are seeing.',
+      },
+      {
+        key: 'standard-intake',
+        description: 'Non-emergency intake.',
+        body:
+          'Thanks for reaching out to [BUSINESS_NAME]. Is this about a leak, a clog, a water heater, or something else? Photos of the issue and surrounding area help us a lot.',
+      },
+      {
+        key: 'on-the-way',
+        description: 'On-the-way message.',
+        body:
+          'Your plumber from [BUSINESS_NAME] is on the way and should arrive around [ETA]. Please ensure pets are secure and we can access the affected area.',
+      },
+      {
+        key: 'work-complete',
+        description: 'Work complete + review ask.',
+        body:
+          'Your visit from [BUSINESS_NAME] plumbing is complete. If you have any concerns, reply here so we can address them. If everything looks good, a quick review at [REVIEW_LINK] is greatly appreciated.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You\'ve reached [BUSINESS_NAME] plumbing in [CITY]. If you have an active leak or burst pipe, press 1 so we can help you with shutoff and priority scheduling. For other service or quotes, press 2. To leave a message, press 3.',
+      afterHours:
+        'If this is an active water emergency and you can safely do so, turn off your main water shutoff and leave us a message describing the situation. For non-emergency issues, leave your name, address, and a brief description and we will return your call.',
+    },
+    websiteCopy: {
+      heroTitle: 'Local Plumbing Services in [CITY]',
+      heroSubtitle:
+        'From leaks and clogs to water heaters, we help you get back to normal as quickly as possible.',
+      aboutBlurb:
+        '[BUSINESS_NAME] provides residential plumbing services in [CITY] with a focus on clear communication, up-front pricing, and respect for your home. We explain what we find and what your options are so you can decide what works for you.',
+      servicesIntro:
+        'Whether it\'s a slow drip, a stubborn clog, or a water heater that gave up, we can help diagnose and solve the issue.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Steady, safety-conscious, and reassuring. Guides customers to safe immediate steps and sets realistic expectations about diagnosis and pricing.',
+      keyPhrases: [
+        'If you can safely find the shutoff, that is the best first step.',
+        'We\'ll start with a diagnostic so we know what is really happening.',
+        'The tech will talk through your options and costs before any work begins.',
+        'Photos of the leak or clog area help us prepare.',
+        'If something is urgent, we will do our best to prioritize it.',
+      ],
+    },
+  },
+
+  // 9) ELECTRICAL
+  'electrical': {
+    key: 'electrical',
+    name: 'Electrical Service',
+    defaultServices: [
+      {
+        key: 'electrical-diagnostic',
+        name: 'Electrical Diagnostic & Safety Check',
+        description:
+          'Visit to troubleshoot electrical issues like dead outlets, tripping breakers, or flickering lights, with safety check.',
+        basePriceHint: 160,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'fixture-install',
+        name: 'Light Fixture or Fan Install',
+        description:
+          'Install customer-supplied lights or ceiling fans, including basic wiring connections.',
+        basePriceHint: 220,
+        durationMinutes: 120,
+        category: 'core',
+      },
+      {
+        key: 'panel-inspection',
+        name: 'Panel Inspection & Labeling',
+        description:
+          'Inspect main panel for major issues and help label breakers for a more organized system.',
+        basePriceHint: 260,
+        durationMinutes: 150,
+        category: 'core',
+      },
+      {
+        key: 'ev-charger-quote',
+        name: 'EV Charger Circuit / Outlet Quote',
+        description:
+          'Site visit to assess and quote adding a dedicated EV charging circuit or outlet.',
+        basePriceHint: 220,
+        durationMinutes: 120,
+        category: 'premium',
+      },
+      {
+        key: 'smoke-detector-upgrade',
+        name: 'Smoke & CO Detector Upgrade',
+        description:
+          'Install or replace smoke/CO detectors to meet modern safety standards, where permitted by local code.',
+        basePriceHint: 200,
+        durationMinutes: 120,
+        category: 'premium',
+      },
+      {
+        key: 'small-job-block',
+        name: 'Small Electrical Jobs Block',
+        description:
+          'Time block for minor projects such as adding outlets, switches, and minor wiring corrections.',
+        basePriceHint: 320,
+        durationMinutes: 240,
+        category: 'core',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Is this something that needs an electrician?',
+        answer:
+          'Anything involving wiring, panels, or safety concerns should be handled by a licensed electrician, not DIY. Simple bulb changes are fine, but troubleshooting circuits should be left to a pro.',
+      },
+      {
+        question: 'Can you quote work over the phone?',
+        answer:
+          'We can give rough ranges for simple projects, but accurate pricing usually requires a tech seeing the panel, wiring, and access.',
+      },
+      {
+        question: 'Do you pull permits?',
+        answer:
+          'Many larger jobs will require permits. Whether we handle permits or coordinate with you depends on job size and local regulations.',
+      },
+      {
+        question: 'Is my panel safe?',
+        answer:
+          'Certain older panel brands and wiring methods can be problematic. A panel inspection is the best way to assess risk and options.',
+      },
+      {
+        question: 'Do you handle EV charger installs?',
+        answer:
+          'Many modern electricians do. The tech will evaluate your panel capacity and parking area to recommend options.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'intake-issue',
+        description: 'Ask about electrical issue details.',
+        body:
+          'Hi, this is [BUSINESS_NAME] electrical in [CITY]. What is going on — are you seeing dead outlets, tripping breakers, flickering lights, or something else? Any burning smells or signs of heat?',
+      },
+      {
+        key: 'safety-disclaimer',
+        description: 'Safety disclaimer for obvious hazards.',
+        body:
+          'If you notice burning smells, smoke, or visible arcing, please shut off power at the main if it is safe to do so and keep people and pets away from the area until a pro can inspect it.',
+      },
+      {
+        key: 'appointment-window',
+        description: 'Appointment window and access.',
+        body:
+          'Your electrical visit with [BUSINESS_NAME] is set for [APPT_DATE] between [WINDOW_START] and [WINDOW_END]. Please make sure we can access your panel and the areas with issues.',
+      },
+      {
+        key: 'post-visit-followup',
+        description: 'Follow-up after electrical work.',
+        body:
+          'Thanks for choosing [BUSINESS_NAME] for your electrical work. If anything seems off after the visit, let us know right away. If things look good, a quick review at [REVIEW_LINK] helps other homeowners find us.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You have reached [BUSINESS_NAME], residential electrical service in [CITY]. If you have a safety concern like burning smells or sparking, press 1. For general electrical projects and quotes, press 2. To leave a message, press 3.',
+      afterHours:
+        'If you suspect an electrical fire, call emergency services immediately. For non-emergency electrical issues, leave your name, address, and a brief description and we will contact you as soon as possible.',
+    },
+    websiteCopy: {
+      heroTitle: 'Licensed Electrical Service in [CITY]',
+      heroSubtitle:
+        'From troubleshooting to upgrades, we help keep your home\'s electrical system safe and functional.',
+      aboutBlurb:
+        '[BUSINESS_NAME] provides residential electrical services in [CITY] with a safety-first mindset and clear communication. We treat your home like our own and take time to explain what we recommend and why.',
+      servicesIntro:
+        'Whether you need a new fixture hung, a panel looked at, or are planning for an EV charger, we can help you plan and execute safely.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Safety-forward and calm. Avoids giving DIY instructions and encourages proper inspections. Speaks in simple terms, not jargon.',
+      keyPhrases: [
+        'If anything looks or smells unsafe, step back and keep people away.',
+        'We recommend a proper inspection rather than guessing.',
+        'Permits and code compliance are there to protect you and your home.',
+        'Your electrician will walk you through what they find.',
+        'We avoid giving step-by-step DIY wiring instructions for safety reasons.',
+      ],
+    },
+  },
+
+  // 10) PEST CONTROL
+  'pest-control': {
+    key: 'pest-control',
+    name: 'Pest Control',
+    defaultServices: [
+      {
+        key: 'general-pest-treatment',
+        name: 'General Pest Treatment',
+        description:
+          'Interior and/or exterior treatment targeting common pests like ants, spiders, and roaches.',
+        basePriceHint: 160,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'quarterly-service',
+        name: 'Quarterly Pest Protection',
+        description:
+          'Recurring exterior barrier treatments with interior service as needed for ongoing protection.',
+        basePriceHint: 120,
+        durationMinutes: 60,
+        category: 'core',
+      },
+      {
+        key: 'specialty-treatment',
+        name: 'Specialty Treatment (Fleas, Bedbugs, etc.)',
+        description:
+          'Targeted treatments for specific pests that require special prep and follow-up.',
+        basePriceHint: 320,
+        durationMinutes: 180,
+        category: 'premium',
+      },
+      {
+        key: 'rodent-inspection',
+        name: 'Rodent Inspection & Exclusion Plan',
+        description:
+          'Inspect for rodent activity, entry points, and develop a trapping/exclusion plan.',
+        basePriceHint: 220,
+        durationMinutes: 120,
+        category: 'core',
+      },
+      {
+        key: 'wasp-nest-removal',
+        name: 'Wasp or Hornet Nest Removal',
+        description:
+          'Treat and remove accessible wasp, hornet, or yellow jacket nests.',
+        basePriceHint: 180,
+        durationMinutes: 60,
+        category: 'addon',
+      },
+      {
+        key: 'termite-inspection',
+        name: 'Termite Inspection & Treatment Options',
+        description:
+          'Inspect for termite activity and recommend treatment options if needed.',
+        basePriceHint: 250,
+        durationMinutes: 120,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Are the products safe for kids and pets?',
+        answer:
+          'Most modern treatments are designed to be safe when applied correctly. We ask that children and pets stay away from treated areas until dry, and we can adjust products based on sensitivities.',
+      },
+      {
+        question: 'Do I need to leave the house during treatment?',
+        answer:
+          'For general pest treatments, many services can be done while you are home. Certain specialty treatments may require you to leave for a period of time. We will explain clearly before scheduling.',
+      },
+      {
+        question: 'How long does the treatment last?',
+        answer:
+          'General barrier treatments typically last several weeks, which is why many customers choose quarterly or bi-monthly plans for consistent coverage.',
+      },
+      {
+        question: 'Can I just do a one-time service?',
+        answer:
+          'Yes, one-time services are available, though recurring plans provide better long-term control and often better pricing per visit.',
+      },
+      {
+        question: 'What prep do I need to do?',
+        answer:
+          'Prep depends on pest type. For general pests, clearing clutter along baseboards and pulling items away from walls helps. For specialty treatments, we will send a prep checklist.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'intake-pest-type',
+        description: 'Ask what pests they are seeing.',
+        body:
+          'Hi, this is [BUSINESS_NAME] pest control in [CITY]. What are you seeing — ants, spiders, roaches, rodents, or something else? Photos can help us identify and pick the best treatment.',
+      },
+      {
+        key: 'treatment-prep',
+        description: 'General prep instructions.',
+        body:
+          'Your pest treatment with [BUSINESS_NAME] is scheduled for [APPT_DATE]. Please pick up toys from floors, keep pets away from treatment areas, and make sure we can access baseboards and entry points.',
+      },
+      {
+        key: 'aftercare-instructions',
+        description: 'Aftercare + expectations.',
+        body:
+          'After today\'s treatment, you may see some increased activity as pests are exposed. This is normal. If you still see issues after [DAYS] days, text us so we can advise or schedule a follow-up.',
+      },
+      {
+        key: 'plan-upgrade',
+        description: 'Offer recurring service.',
+        body:
+          'To keep pests under control long-term, many clients switch to our quarterly plan. Want details on pricing and what it includes?',
+      },
+    ],
+    ivr: {
+      greeting:
+        'Thanks for calling [BUSINESS_NAME] pest control in [CITY]. Press 1 if you are seeing active pests now and want the soonest visit, press 2 for quote questions, or press 3 to leave a message.',
+      afterHours:
+        'You have reached [BUSINESS_NAME] after hours. Leave your name, address, what pests you are seeing, and how long it has been going on. We will call or text you as soon as we can.',
+    },
+    websiteCopy: {
+      heroTitle: 'Pest Control & Prevention in [CITY]',
+      heroSubtitle:
+        'Keep ants, spiders, roaches, and more from turning your home into their home.',
+      aboutBlurb:
+        '[BUSINESS_NAME] offers targeted, modern pest control treatments in [CITY] with clear prep instructions, clear expectations, and options for both one-time and recurring service.',
+      servicesIntro:
+        'From general pest control to specialty treatments and rodent work, we build a plan around your home and comfort level.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Calm and educational. Sets realistic expectations (especially about seeing activity after treatment) and emphasizes safety and prep.',
+      keyPhrases: [
+        'Photos help us identify the pest more accurately.',
+        'You may see a bit more activity right after treatment as pests come into contact with the product.',
+        'We can tailor the plan to kids, pets, and sensitivities.',
+        'Recurring plans usually give the best long-term results.',
+        'We\'ll send you any special prep steps before the visit.',
+      ],
+    },
+  },
+
+  // 11) POOL SERVICE
+  'pool-service': {
+    key: 'pool-service',
+    name: 'Pool Cleaning & Maintenance',
+    defaultServices: [
+      {
+        key: 'weekly-service',
+        name: 'Weekly Pool Service',
+        description:
+          'Regular cleaning, skimming, water testing, and chemical balancing to keep pools swimmable.',
+        basePriceHint: 160,
+        durationMinutes: 60,
+        category: 'core',
+      },
+      {
+        key: 'biweekly-service',
+        name: 'Bi-Weekly Pool Service',
+        description:
+          'Every-other-week service for lower-demand pools, including testing and adjustments.',
+        basePriceHint: 180,
+        durationMinutes: 75,
+        category: 'core',
+      },
+      {
+        key: 'green-to-clean',
+        name: 'Green to Clean Recovery',
+        description:
+          'Intensive treatment plan to bring a green or heavily clouded pool back to clear over multiple visits.',
+        basePriceHint: 420,
+        durationMinutes: 240,
+        category: 'premium',
+      },
+      {
+        key: 'equipment-check',
+        name: 'Equipment Inspection & Tune-Up',
+        description:
+          'Check pump, filter, and related equipment for issues and recommend repairs or upgrades.',
+        basePriceHint: 190,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'opening-service',
+        name: 'Seasonal Opening',
+        description:
+          'Remove cover, restart equipment, test and balance water at the start of the season.',
+        basePriceHint: 260,
+        durationMinutes: 150,
+        category: 'premium',
+      },
+      {
+        key: 'closing-service',
+        name: 'Seasonal Closing / Winterization',
+        description:
+          'Prepare pool for winter with equipment shut-down, water adjustment, and cover install.',
+        basePriceHint: 260,
+        durationMinutes: 150,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'How often should I have my pool serviced?',
+        answer:
+          'Weekly visits are most common during the swimming season, with some pools doing fine on bi-weekly service depending on use and environment.',
+      },
+      {
+        question: 'Can you turn a green pool clear again?',
+        answer:
+          'Many green pools can be brought back with a green-to-clean process, which usually requires multiple visits and careful balancing. Severe cases may take longer or need more intensive steps.',
+      },
+      {
+        question: 'Do I still need to check the pool myself?',
+        answer:
+          'Your technician will handle regular testing and balancing during visits. In between visits, you may occasionally need to skim debris or run the pump longer during heavy use or storms.',
+      },
+      {
+        question: 'Do you handle equipment repairs?',
+        answer:
+          'Many pool companies can handle basic repairs and coordinate larger equipment replacements. The tech will confirm what is possible based on your equipment.',
+      },
+      {
+        question: 'What about saltwater pools?',
+        answer:
+          'Saltwater systems still require testing and balancing. The agent should follow your company\'s real policies on salt system service.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'intake-pool-type',
+        description: 'Ask about pool details.',
+        body:
+          'Hi, this is [BUSINESS_NAME] pool service in [CITY]. Is your pool in-ground or above-ground, and about what size is it? Are you looking for weekly service, a one-time cleanup, or something else?',
+      },
+      {
+        key: 'visit-reminder',
+        description: 'Service day reminder.',
+        body:
+          'Reminder from [BUSINESS_NAME]: your pool service is scheduled for tomorrow. Please make sure we can access the gate and that pets are secured.',
+      },
+      {
+        key: 'post-service-update',
+        description: 'Post-service update + notes.',
+        body:
+          'Your pool has been serviced by [BUSINESS_NAME]. Levels are looking [STATUS]. If we recommended any changes to run time or chemicals, they will be in your notes here.',
+      },
+      {
+        key: 'green-pool-expectations',
+        description: 'Set expectations for green-to-clean.',
+        body:
+          'For a green pool recovery, expect cloudy or changing colors during the process. It usually takes multiple visits and you should not swim until we confirm it\'s safe.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You\'ve reached [BUSINESS_NAME] pool service in [CITY]. Press 1 to talk about weekly or bi-weekly service, press 2 if your pool is green or cloudy and you need help, or press 3 to leave a message.',
+      afterHours:
+        'Thanks for calling [BUSINESS_NAME]. Leave your name, address, whether your pool is green, cloudy, or just needs routine care, and we will follow up by text or call.',
+    },
+    websiteCopy: {
+      heroTitle: 'Pool Cleaning & Maintenance in [CITY]',
+      heroSubtitle:
+        'Weekly care, seasonal openings/closings, and green pool recovery to keep your water ready when you are.',
+      aboutBlurb:
+        '[BUSINESS_NAME] helps pool owners in [CITY] spend more time swimming and less time fighting chemistry. We handle the details so you can enjoy clear, comfortable water.',
+      servicesIntro:
+        'From weekly service and seasonal visits to green-to-clean recoveries, we can build a plan that fits how you actually use your pool.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Relaxed but knowledgeable. Helps people understand that pools are systems and sets realistic expectations for green pool recovery.',
+      keyPhrases: [
+        'Weekly service is usually the sweet spot for most pools.',
+        'A green-to-clean process often takes multiple visits.',
+        'We\'ll let you know when it\'s actually safe to swim again.',
+        'Equipment health matters just as much as chemistry.',
+        'We can adjust the plan based on how often you use the pool.',
+      ],
+    },
+  },
+
+  // 12) CARPET CLEANING
+  'carpet-cleaning': {
+    key: 'carpet-cleaning',
+    name: 'Carpet & Upholstery Cleaning',
+    defaultServices: [
+      {
+        key: 'whole-home-carpet',
+        name: 'Whole Home Carpet Clean (Up to X sq ft)',
+        description:
+          'Truckmount or portable hot water extraction cleaning of carpeted areas up to a defined square footage.',
+        basePriceHint: 260,
+        durationMinutes: 180,
+        category: 'core',
+      },
+      {
+        key: 'room-based-clean',
+        name: 'Per-Room Carpet Cleaning',
+        description:
+          'Carpet cleaning priced per room or area, with a typical minimum.',
+        basePriceHint: 80,
+        durationMinutes: 45,
+        category: 'core',
+      },
+      {
+        key: 'upholstery-sofa',
+        name: 'Sofa & Upholstery Cleaning',
+        description:
+          'Clean and rinse upholstered furniture like sofas, loveseats, or chairs.',
+        basePriceHint: 140,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'pet-treatment-addon',
+        name: 'Pet Stain & Odor Treatment Add-On',
+        description:
+          'Targeted treatment for pet accidents and spots with specialized solutions.',
+        basePriceHint: 70,
+        durationMinutes: 45,
+        category: 'addon',
+      },
+      {
+        key: 'protectant-addon',
+        name: 'Carpet & Fabric Protectant Add-On',
+        description:
+          'Apply protective treatment to help future spills bead up and clean more easily.',
+        basePriceHint: 80,
+        durationMinutes: 40,
+        category: 'addon',
+      },
+      {
+        key: 'move-out-special',
+        name: 'Move-Out Carpet Special',
+        description:
+          'Focused carpet clean for tenants or homeowners moving out, targeting traffic lanes and obvious spots.',
+        basePriceHint: 220,
+        durationMinutes: 150,
+        category: 'premium',
+      },
+    ],
+    faqs: [
+      {
+        question: 'How long does it take carpet to dry?',
+        answer:
+          'Dry times depend on airflow, humidity, and carpet type, but most homes are mostly dry within 6–12 hours. We recommend running fans and HVAC to speed this up.',
+      },
+      {
+        question: 'Can you remove all stains?',
+        answer:
+          'Many stains improve significantly, but some may be permanent depending on what was spilled and how long it has been there. We will be honest about expectations.',
+      },
+      {
+        question: 'Do I need to move furniture?',
+        answer:
+          'Small items and breakables should be moved by the client. We can often slide or work around larger furniture, or move select items by arrangement.',
+      },
+      {
+        question: 'Is your process safe for kids and pets?',
+        answer:
+          'We use professional cleaning solutions and rinse thoroughly. Once carpets are dry, they are safe to walk and play on. We recommend keeping kids and pets off damp carpets to avoid slips and re-soiling.',
+      },
+      {
+        question: 'How often should I have carpets cleaned?',
+        answer:
+          'Many households aim for once a year, or more often with heavy use, pets, or allergies.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'intake-rooms',
+        description: 'Ask about number of rooms and issues.',
+        body:
+          'Hi, this is [BUSINESS_NAME] carpet cleaning in [CITY]. About how many rooms or square feet of carpet do you want cleaned, and are there any pet spots or heavy staining?',
+      },
+      {
+        key: 'prep-instructions',
+        description: 'Prep instructions.',
+        body:
+          'Before we arrive, please pick up small items from floors and vacuum if you are able. We will handle the deep cleaning. Pets should stay off damp carpets until fully dry.',
+      },
+      {
+        key: 'dry-time-note',
+        description: 'Dry time note.',
+        body:
+          'Your carpet cleaning with [BUSINESS_NAME] is complete. Typical dry time is 6–12 hours. Running fans and HVAC helps speed this up. Please use caution when walking from damp carpet onto hard floors.',
+      },
+      {
+        key: 'review-request',
+        description: 'Review ask.',
+        body:
+          'Thanks again for choosing [BUSINESS_NAME]! If your carpets are looking better, a quick review at [REVIEW_LINK] helps us reach more local homeowners.',
+      },
+    ],
+    ivr: {
+      greeting:
+        'You\'ve reached [BUSINESS_NAME], carpet and upholstery cleaning in [CITY]. Press 1 to get a text where you can tell us how many rooms you have, press 2 to talk about pricing and scheduling, or press 3 to leave a message.',
+      afterHours:
+        'Thanks for calling [BUSINESS_NAME]. Leave your name, address, how many rooms or areas you want cleaned, and whether you have any pet stains. We will contact you with options.',
+    },
+    websiteCopy: {
+      heroTitle: 'Carpet & Upholstery Cleaning in [CITY]',
+      heroSubtitle:
+        'Get your carpets, rugs, and furniture looking and feeling fresh again.',
+      aboutBlurb:
+        '[BUSINESS_NAME] uses professional equipment and methods to deep-clean carpets and upholstery in [CITY]. We focus on honest expectations, careful work, and clear communication.',
+      servicesIntro:
+        'Whether it\'s a move-out clean, pet accident recovery, or an annual refresh, we can build a service around your home and budget.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Friendly and realistic. Sets clear expectations around stain removal and dry times, and gently nudges add-ons like protectant where appropriate.',
+      keyPhrases: [
+        'We can usually improve stains significantly, but some may not disappear completely.',
+        'Dry time depends a lot on airflow and humidity.',
+        'Protectant is great in high-traffic or kid/pet areas.',
+        'We\'ll be careful with your furniture and belongings.',
+        'Photos of the worst areas help us give better estimates.',
+      ],
+    },
+  },
+
+  // 13) PET GROOMING
+  'pet-grooming': {
+    key: 'pet-grooming',
+    name: 'Pet Grooming (Mobile or Salon)',
+    defaultServices: [
+      {
+        key: 'full-groom-small-dog',
+        name: 'Full Groom – Small Dog',
+        description:
+          'Bath, blow-dry, haircut, nail trim, ear cleaning, and finishing touches for small dogs.',
+        basePriceHint: 80,
+        durationMinutes: 90,
+        category: 'core',
+      },
+      {
+        key: 'full-groom-large-dog',
+        name: 'Full Groom – Large Dog',
+        description:
+          'Bath, blow-dry, haircut, nail trim, and ear cleaning for larger breeds.',
+        basePriceHint: 120,
+        durationMinutes: 150,
+        category: 'core',
+      },
+      {
+        key: 'bath-brush-only',
+        name: 'Bath & Brush Package',
+        description:
+          'Bath, blow-dry, brush out, and nail trim without a full haircut, great between full grooms.',
+        basePriceHint: 70,
+        durationMinutes: 75,
+        category: 'core',
+      },
+      {
+        key: 'nails-only-addon',
+        name: 'Nail Trim & File',
+        description:
+          'Quick nail trim and filing for dogs or cats, often as a short appointment.',
+        basePriceHint: 30,
+        durationMinutes: 20,
+        category: 'addon',
+      },
+      {
+        key: 'de-shed-treatment',
+        name: 'Deshedding Treatment Add-On',
+        description:
+          'Special shampoo and brushing to help reduce shedding for double-coated breeds.',
+        basePriceHint: 50,
+        durationMinutes: 40,
+        category: 'addon',
+      },
+      {
+        key: 'mobile-trip-fee',
+        name: 'Mobile Trip Fee',
+        description:
+          'On-site visit fee for mobile grooming vans, often baked into packages but noted here for clarity.',
+        basePriceHint: 30,
+        durationMinutes: 0,
+        category: 'addon',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Do you groom all breeds and sizes?',
+        answer:
+          'Most groomers handle a wide range of breeds and sizes but may have weight or temperament limits. The agent should reflect your real policies.',
+      },
+      {
+        question: 'How often should my dog be groomed?',
+        answer:
+          'Many dogs do well on a 4–8 week schedule, depending on coat type and how short you keep the haircut.',
+      },
+      {
+        question: 'Do you sedate pets?',
+        answer:
+          'Groomers do not sedate pets. Sedation decisions must be made with a veterinarian. We focus on handling techniques and scheduling that help reduce stress.',
+      },
+      {
+        question: 'What if my dog is anxious or reactive?',
+        answer:
+          'We can often work with anxious dogs using calm handling and shorter sessions, but truly aggressive behavior may not be safe. We will always put safety first.',
+      },
+      {
+        question: 'What vaccinations are required?',
+        answer:
+          'Most groomers require up-to-date core vaccinations. The agent should follow your real vaccination policy and cannot give medical advice.',
+      },
+    ],
+    smsTemplates: [
+      {
+        key: 'intake-pet-info',
+        description: 'Ask for pet details.',
+        body:
+          'Hi, this is [BUSINESS_NAME] grooming in [CITY]. What kind of pet do you have (breed, size, age), and when was their last professional groom?',
+      },
+      {
+        key: 'appointment-confirm',
+        description: 'Appointment confirmation.',
+        body:
+          'Your grooming appointment with [BUSINESS_NAME] is set for [APPT_DATE] at [APPT_TIME]. Please have your dog pottied before arrival and let us know about any health or behavior concerns.',
+      },
+      {
+        key: 'pickup-notice',
+        description: 'Pickup or service complete notice.',
+        body:
+          'Your pup is all finished at [BUSINESS_NAME]! They did great. You can pick up any time after [READY_TIME].',
+      },
+      {
+        key: 'recurring-reminder',
+        description: 'Reminder to rebook grooming.',
+        body:
+          'It might be time for your pet\'s next groom with [BUSINESS_NAME]. Would you like to grab a spot in the next few weeks before our schedule fills?',
+      },
+    ],
+    ivr: {
+      greeting:
+        'Thanks for calling [BUSINESS_NAME] pet grooming in [CITY]. Press 1 to receive a text so you can send your pet\'s breed and size for a quote, press 2 to ask about availability, or press 3 to leave a message.',
+      afterHours:
+        'You have reached [BUSINESS_NAME] after hours. Leave your name, pet\'s name and breed, and what service you are interested in, and we will text or call you back with options.',
+    },
+    websiteCopy: {
+      heroTitle: 'Pet Grooming in [CITY] with Extra Care',
+      heroSubtitle:
+        'Full grooming, baths, and nail care focused on comfort and kindness.',
+      aboutBlurb:
+        '[BUSINESS_NAME] is a pet grooming service in [CITY] that cares as much about your pet\'s comfort as the finished haircut. We communicate clearly, move at your pet\'s pace, and never rush unsafe situations.',
+      servicesIntro:
+        'From full grooms and bath-and-brush packages to quick nail trims and deshedding treatments, we tailor each visit to your pet.',
+      cityPlaceholder: '[CITY]',
+    },
+    agentPersona: {
+      toneDescription:
+        'Gentle, empathetic, and reassuring. Talks about pets like family and sets expectations around timing, stress, and safety.',
+      keyPhrases: [
+        'We go at your pet\'s pace as much as we can.',
+        'We\'ll let you know honestly how your pet handles the process.',
+        'We do not sedate; that is always a vet conversation.',
+        'Regular grooming makes it easier and less stressful over time.',
+        'If something seems unsafe or too stressful, we will stop and discuss options.',
+      ],
+    },
+  },
+};
+
+export function getIndustryPack(key: IndustryKey): IndustryPack | null {
+  return INDUSTRY_PACKS[key] ?? null;
+}

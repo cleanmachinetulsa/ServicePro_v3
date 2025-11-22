@@ -379,7 +379,124 @@ This is where you can include “extras” per tier (e.g. logo help, extra copyw
 
 ---
 
-## 8. PHASE 7 – TIERS, BILLING, AND PLAN FEATURES 📝
+## 8. PHASE 7 – TIERS, BILLING & INTERNAL FAMILY TIER ✅
+
+> Core implementation complete (plan tiers, status, feature gating, internal tier).  
+> Full Stripe subscription flows will be a later “Phase 7B”.
+
+### 8.1 Plan & Status Fields
+
+`tenants` table now includes:
+
+- `planTier`: `'starter' | 'pro' | 'elite' | 'internal'` (default: `'starter'`)
+- `status`: `'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled'` (default: `'trialing'`)
+
+Existing tenants were backfilled so that:
+
+- Root tenant (`root`) = `planTier = 'elite'`, `status = 'active'`.
+
+### 8.2 Feature Map & Gating
+
+New shared feature config:
+
+- `FEATURE_KEYS` and `FeatureKey` type
+- `TIER_FEATURES` map defining which plan has which features:
+  - `starter`: basic features, no AI voice/campaigns, limited automation.
+  - `pro`: AI SMS, campaigns, dedicated number, website generator, etc.
+  - `elite`: everything, including AI voice.
+  - `internal`: **all features ON**, intended for family/friends/demo at-cost.
+
+Helper:
+
+- `hasFeature(tenant, key)` used in backend and frontend:
+  - Critical endpoints (e.g., AI SMS/AI Voice, campaigns) now check `hasFeature` and block/404 when the feature isn’t available on the tenant’s plan.
+
+### 8.3 Admin UI – Plan & Status Management
+
+Admin Tenants page now:
+
+- Shows **Plan Tier** and **Status** badges per tenant.
+- Adds an owner-only control to change:
+  - `planTier` (`starter`, `pro`, `elite`, `internal`)
+  - `status` (`trialing`, `active`, `past_due`, `suspended`, `cancelled`)
+
+New backend endpoint:
+
+- `PATCH /api/admin/tenants/:id/plan`
+  - Owner-only.
+  - Validates and updates `planTier` / `status`.
+
+Special behavior:
+
+- `planTier = 'internal'`:
+  - Treats tenant as a **family/friends at-cost account** with full feature access.
+  - No SaaS markup logic attached yet (no Stripe subscription in this phase).
+
+### 8.4 Notes
+
+- Full Stripe subscription creation, upgrades/downgrades, and webhook-driven status changes will be implemented in **Phase 7B – Billing & Stripe Wiring**.
+- For now, plan and status management is manual via the Admin Tenants UI, which is enough for:
+  - Internal usage
+  - Early adopters
+  - Family/friend tenants
+> Core implementation complete (plan tiers, status, feature gating, internal tier).  
+> Full Stripe subscription flows will be a later “Phase 7B”.
+
+### 8.1 Plan & Status Fields
+
+`tenants` table now includes:
+
+- `planTier`: `'starter' | 'pro' | 'elite' | 'internal'` (default: `'starter'`)
+- `status`: `'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled'` (default: `'trialing'`)
+
+Existing tenants were backfilled so that:
+
+- Root tenant (`root`) = `planTier = 'elite'`, `status = 'active'`.
+
+### 8.2 Feature Map & Gating
+
+New shared feature config:
+
+- `FEATURE_KEYS` and `FeatureKey` type
+- `TIER_FEATURES` map defining which plan has which features:
+  - `starter`: basic features, no AI voice/campaigns, limited automation.
+  - `pro`: AI SMS, campaigns, dedicated number, website generator, etc.
+  - `elite`: everything, including AI voice.
+  - `internal`: **all features ON**, intended for family/friends/demo at-cost.
+
+Helper:
+
+- `hasFeature(tenant, key)` used in backend and frontend:
+  - Critical endpoints (e.g., AI SMS/AI Voice, campaigns) now check `hasFeature` and block/404 when the feature isn’t available on the tenant’s plan.
+
+### 8.3 Admin UI – Plan & Status Management
+
+Admin Tenants page now:
+
+- Shows **Plan Tier** and **Status** badges per tenant.
+- Adds an owner-only control to change:
+  - `planTier` (`starter`, `pro`, `elite`, `internal`)
+  - `status` (`trialing`, `active`, `past_due`, `suspended`, `cancelled`)
+
+New backend endpoint:
+
+- `PATCH /api/admin/tenants/:id/plan`
+  - Owner-only.
+  - Validates and updates `planTier` / `status`.
+
+Special behavior:
+
+- `planTier = 'internal'`:
+  - Treats tenant as a **family/friends at-cost account** with full feature access.
+  - No SaaS markup logic attached yet (no Stripe subscription in this phase).
+
+### 8.4 Notes
+
+- Full Stripe subscription creation, upgrades/downgrades, and webhook-driven status changes will be implemented in **Phase 7B – Billing & Stripe Wiring**.
+- For now, plan and status management is manual via the Admin Tenants UI, which is enough for:
+  - Internal usage
+  - Early adopters
+  - Family/friend tenants
 
 High level (details already designed previously):
 

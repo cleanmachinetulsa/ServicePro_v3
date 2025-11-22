@@ -1,4 +1,6 @@
-import { lazy } from "react";
+// src/App.tsx
+
+import React, { lazy } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -6,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useKeyboardDismiss } from "@/hooks/useKeyboardDismiss";
 import { PwaProvider } from "@/contexts/PwaContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+
 import NotFound from "@/pages/not-found";
 import ChatPage from "@/pages/chat";
 import DirectionsPage from "@/pages/directions";
@@ -22,98 +25,88 @@ import SchedulePage from "@/pages/Schedule";
 import QuickBookingPage from "@/pages/quick-booking";
 import LoyaltyPointsPage from "@/pages/rewards";
 import DashboardNavButton from "@/components/DashboardNavButton";
-import GalleryPage from './pages/gallery';
-import ReviewsPage from './pages/reviews';
-import MessagesPage from './pages/messages';
-import PhonePage from './pages/phone';
-import SettingsPage from './pages/settings';
-import SettingsAdmin from './pages/settings-admin';
-import FacebookSettingsPage from './pages/facebook-settings';
-import LoginPage from './pages/login';
-import ForgotPasswordPage from './pages/forgot-password';
-import ResetPasswordPage from './pages/reset-password';
-import ChangePasswordPage from './pages/change-password';
-import AuthGuard from './components/AuthGuard';
-import UserManagement from './pages/user-management';
-import PasswordChangeModal from './components/PasswordChangeModal';
-import NotificationsSettings from './pages/notifications-settings';
-import AnalyticsPage from './pages/analytics';
-import CustomerRecurringServicesPage from './pages/customer-recurring-services';
-import RecurringServiceBookingPage from './pages/recurring-service-booking';
-import TechWizard from './pages/tech-wizard';
-import TechProfile from './pages/tech-profile';
-import TechProfilePublic from './pages/tech-profile-public';
-import TechnicianSchedule from './pages/TechnicianSchedule';
-import AdminEmployees from './pages/admin-employees';
-import AdminJobEditor from './pages/admin-job-editor';
-import AdminQuoteRequests from './pages/admin-quote-requests';
-import AdminApplications from './pages/AdminApplications';
-import AdminTenants from './pages/AdminTenants';
-import AdminPhoneConfig from './pages/AdminPhoneConfig';
-import AdminConciergeSetup from './pages/AdminConciergeSetup';
-import PayerApprovalPage from './pages/payer-approval';
-import QuoteApprovalPage from './pages/quote-approval';
-import SMSConsentPage from './pages/sms-consent';
-import PrivacyPolicyPage from './pages/privacy-policy';
-import CallMetricsPage from './pages/CallMetrics';
-import Maintenance from './pages/maintenance';
-import Careers from './pages/Careers';
-import ShowcasePage from './pages/Showcase';
-import CleanMachineShowcase from './pages/clean-machine-showcase';
-import SecuritySettingsPage from './pages/security-settings';
-import TechnicianPage from './pages/technician';
-import ReferralPage from './pages/ReferralPage';
-import PhoneSettingsPage from './pages/phone-settings';
-import SipSetupGuide from './pages/sip-setup-guide';
-import Billing from './pages/billing';
-import EscalationsPage from './pages/escalations';
-import ReminderDashboard from './pages/ReminderDashboard';
-import SchedulingDashboard from './pages/SchedulingDashboard';
-import RequestPTO from './pages/RequestPTO';
-import AdminPTO from './pages/AdminPTO';
-import OpenShifts from './pages/OpenShifts';
-import ShiftTrades from './pages/ShiftTrades';
-import HomepageEditor from './pages/HomepageEditor';
-import UsageDashboard from './pages/UsageDashboard';
-import GalleryManagementPage from './pages/gallery-management';
-import DownloadExportPage from './pages/download-export';
-import LaunchPage from './pages/launch';
+import GalleryPage from "./pages/gallery";
+import ReviewsPage from "./pages/reviews";
+import MessagesPage from "./pages/messages";
+import PhonePage from "./pages/phone";
+import SettingsPage from "./pages/settings";
+import SettingsAdmin from "./pages/settings-admin";
+import FacebookSettingsPage from "./pages/facebook-settings";
+import LoginPage from "./pages/login";
+import ForgotPasswordPage from "./pages/forgot-password";
+import ResetPasswordPage from "./pages/reset-password";
+import ChangePasswordPage from "./pages/change-password";
+import AuthGuard from "./components/AuthGuard";
+import UserManagement from "./pages/user-management";
+import PasswordChangeModal from "./components/PasswordChangeModal";
+import NotificationsSettings from "./pages/notifications-settings";
+import AnalyticsPage from "./pages/analytics";
+import CustomerRecurringServicesPage from "./pages/customer-recurring-services";
+import RecurringServiceBookingPage from "./pages/recurring-service-booking";
+import TechWizard from "./pages/tech-wizard";
+import TechProfile from "./pages/tech-profile";
+import TechProfilePublic from "./pages/tech-profile-public";
+import TechnicianSchedule from "./pages/TechnicianSchedule";
+import AdminEmployees from "./pages/admin-employees";
+import AdminJobEditor from "./pages/admin-job-editor";
+import AdminQuoteRequests from "./pages/admin-quote-requests";
+import AdminApplications from "./pages/AdminApplications";
+import AdminTenants from "./pages/AdminTenants";
+import AdminPhoneConfig from "./pages/AdminPhoneConfig";
+import AdminConciergeSetup from "./pages/AdminConciergeSetup";
+import PayerApprovalPage from "./pages/payer-approval";
+import QuoteApprovalPage from "./pages/quote-approval";
+import SMSConsentPage from "./pages/sms-consent";
+import PrivacyPolicyPage from "./pages/privacy-policy";
+import CallMetricsPage from "./pages/CallMetrics";
+import Maintenance from "./pages/maintenance";
+import Careers from "./pages/Careers";
+import ShowcasePage from "./pages/Showcase";
+import CleanMachineShowcase from "./pages/clean-machine-showcase";
+import SecuritySettingsPage from "./pages/security-settings";
+import TechnicianPage from "./pages/technician";
+import ReferralPage from "./pages/ReferralPage";
+import PhoneSettingsPage from "./pages/phone-settings";
+import SipSetupGuide from "./pages/sip-setup-guide";
+import Billing from "./pages/billing";
+import EscalationsPage from "./pages/escalations";
+import ReminderDashboard from "./pages/ReminderDashboard";
+import SchedulingDashboard from "./pages/SchedulingDashboard";
+import RequestPTO from "./pages/RequestPTO";
+import AdminPTO from "./pages/AdminPTO";
+import OpenShifts from "./pages/OpenShifts";
+import ShiftTrades from "./pages/ShiftTrades";
+import HomepageEditor from "./pages/HomepageEditor";
+import UsageDashboard from "./pages/UsageDashboard";
+import GalleryManagementPage from "./pages/gallery-management";
+import DownloadExportPage from "./pages/download-export";
+import LaunchPage from "./pages/launch";
 
 function Router() {
   return (
     <Switch>
-      {/* Smart PWA launch router - device-aware routing */}
       <Route path="/launch">
         <AuthGuard><LaunchPage /></AuthGuard>
       </Route>
-      
-      {/* Public download page */}
+
       <Route path="/export-download" component={DownloadExportPage} />
-      
-      {/* Public maintenance page */}
       <Route path="/maintenance" component={Maintenance} />
-      
-      {/* Public showcase/demo pages */}
+
       <Route path="/showcase" component={ShowcasePage} />
       <Route path="/clean-machine" component={CleanMachineShowcase} />
-      
-      {/* Public authentication routes */}
+
       <Route path="/login" component={LoginPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/change-password" component={ChangePasswordPage} />
-      
-      {/* Public payer approval (no auth required) */}
+
       <Route path="/approve/:token" component={PayerApprovalPage} />
-      
-      {/* Payment Success/Cancel Pages - Public */}
+
       <Route path="/deposit-payment-success" component={lazy(() => import('./pages/deposit-payment-success'))} />
       <Route path="/deposit-payment-cancelled" component={lazy(() => import('./pages/deposit-payment-cancelled'))} />
-      
-      {/* Public quote approval (no auth required) */}
+
       <Route path="/quote-approval/:token" component={QuoteApprovalPage} />
 
-      {/* Protected admin routes */}
       <Route path="/dashboard">
         <AuthGuard><Dashboard /></AuthGuard>
       </Route>
@@ -214,7 +207,6 @@ function Router() {
         <AuthGuard><BannerManagement /></AuthGuard>
       </Route>
 
-      {/* Technician portal routes */}
       <Route path="/technician">
         <AuthGuard><TechnicianPage /></AuthGuard>
       </Route>
@@ -236,34 +228,9 @@ function Router() {
       <Route path="/tech/shift-trades">
         <AuthGuard><ShiftTrades /></AuthGuard>
       </Route>
-      
-      {/* Route aliases for backward compatibility with onboarding documentation */}
-      <Route path="/tech-profile">
-        <AuthGuard><TechProfile /></AuthGuard>
-      </Route>
-      <Route path="/tech-wizard">
-        <AuthGuard><TechWizard /></AuthGuard>
-      </Route>
-      <Route path="/admin-applications">
-        <AuthGuard><AdminApplications /></AuthGuard>
-      </Route>
-      <Route path="/technician-schedule">
-        <AuthGuard><TechnicianSchedule /></AuthGuard>
-      </Route>
-      <Route path="/request-pto">
-        <AuthGuard><RequestPTO /></AuthGuard>
-      </Route>
-      <Route path="/shift-trades">
-        <AuthGuard><ShiftTrades /></AuthGuard>
-      </Route>
-      <Route path="/scheduling-dashboard">
-        <AuthGuard><SchedulingDashboard /></AuthGuard>
-      </Route>
-      
-      {/* Public tech profile (no auth required) */}
+
       <Route path="/p/:publicId" component={TechProfilePublic} />
 
-      {/* Customer-facing pages (not protected) */}
       <Route path="/chat" component={ChatPage} />
       <Route path="/schedule" component={SchedulePage} />
       <Route path="/book" component={SchedulePage} />
@@ -283,37 +250,31 @@ function Router() {
       <Route path="/privacy-policy" component={PrivacyPolicyPage} />
       <Route path="/careers" component={Careers} />
 
-      {/* Home route must come after other routes */}
       <Route path="/" component={HomePage} />
-      {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function App() {
-  // Get current location to determine if we're on an admin page
   const [location] = useLocation();
-  
-  // Universal keyboard auto-dismiss for mobile
   useKeyboardDismiss();
 
-  // Check if current page is a customer-facing page
   const isCustomerFacingPage = () => {
     const adminPages = [
-      '/dashboard', 
-      '/customer-database',
-      '/business-settings',
-      '/damage-assessment',
-      '/formatter-test',
-      '/messages',
-      '/facebook-settings',
-      '/settings',
-      '/admin/employees',
-      '/admin/jobs',
-      '/admin/quote-requests'
+      "/dashboard",
+      "/customer-database",
+      "/business-settings",
+      "/damage-assessment",
+      "/formatter-test",
+      "/messages",
+      "/facebook-settings",
+      "/settings",
+      "/admin/employees",
+      "/admin/jobs",
+      "/admin/quote-requests"
     ];
-    return !adminPages.some(page => location.startsWith(page));
+    return !adminPages.some((page) => location.startsWith(page));
   };
 
   return (
@@ -324,8 +285,13 @@ function App() {
           <PasswordChangeModal />
           <BannerDisplay />
           <Router />
-          {/* Only show dashboard button on admin pages (except dashboard, messages, phone which have own nav) */}
-          {!isCustomerFacingPage() && !location.startsWith('/dashboard') && !location.startsWith('/messages') && !location.startsWith('/phone') && !location.startsWith('/notifications-settings') && <DashboardNavButton />}
+          {!isCustomerFacingPage() &&
+            !location.startsWith("/dashboard") &&
+            !location.startsWith("/messages") &&
+            !location.startsWith("/phone") &&
+            !location.startsWith("/notifications-settings") && (
+              <DashboardNavButton />
+            )}
         </PwaProvider>
       </ThemeProvider>
     </QueryClientProvider>
