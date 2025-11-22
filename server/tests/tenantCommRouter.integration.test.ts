@@ -8,10 +8,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { db } from '../db';
-import { tenantPhoneConfig, tenants } from '../../shared/schema';
+import { tenantPhoneConfig, tenants, conversations } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { registerCanonicalVoiceRoutes } from '../routes.twilioVoiceCanonical';
+import { verifyTwilioSignature } from '../twilioSignatureMiddleware';
+import { normalizePhone } from '../phoneValidationMiddleware';
 
 describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
   let app: express.Express;
@@ -267,6 +269,171 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
 
       // Verify caller ID is preserved in TwiML
       expect(response.text).toContain(`callerId="${callerNumber}"`);
+    });
+  });
+
+  describe('POST /sms - SMS route integration', () => {
+    let smsApp: express.Express;
+
+    beforeAll(async () => {
+      // Set up Express app with SMS route
+      smsApp = express();
+      smsApp.use(express.urlencoded({ extended: false }));
+      smsApp.use(express.json());
+
+      // Register SMS route (simplified version for testing - no phone validation)
+      smsApp.post('/sms', verifyTwilioSignature, async (req, res) => {
+        try {
+          const { resolveTenantFromInbound } = await import('../services/tenantCommRouter');
+          const { wrapTenantDb } = await import('../tenantDb');
+          
+          // Use centralized router
+          const resolution = await resolveTenantFromInbound(req, db);
+          
+          // Set up tenant context
+          req.tenant = { id: resolution.tenantId } as any;
+          req.tenantDb = wrapTenantDb(db, resolution.tenantId);
+          (req as any).phoneConfig = resolution.phoneConfig;
+          (req as any).tenantResolution = resolution;
+
+          // Return tenant info for test verification
+          res.json({
+            tenantId: resolution.tenantId,
+            resolvedBy: resolution.resolvedBy,
+            ivrMode: resolution.ivrMode,
+            hasPhoneConfig: !!resolution.phoneConfig,
+          });
+        } catch (error) {
+          console.error('[SMS TEST] Error:', error);
+          res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      });
+    });
+
+    it('should route SMS by MessagingServiceSid (Strategy 1)', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+15555551234',
+          To: testPhoneNumber,
+          Body: 'Test message',
+          MessagingServiceSid: testMessagingServiceSid,
+        })
+        .expect(200);
+
+      expect(response.body.tenantId).toBe(testTenantId);
+      expect(response.body.resolvedBy).toBe('messagingServiceSid');
+      expect(response.body.hasPhoneConfig).toBe(true);
+    });
+
+    it('should route SMS by phone number when no MessagingServiceSid (Strategy 2)', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+15555551234',
+          To: testPhoneNumber,
+          Body: 'Test message',
+          // No MessagingServiceSid
+        })
+        .expect(200);
+
+      expect(response.body.tenantId).toBe(testTenantId);
+      expect(response.body.resolvedBy).toBe('phoneNumber');
+      expect(response.body.hasPhoneConfig).toBe(true);
+    });
+
+    it('should fallback to root for unknown phone numbers', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+15555551234',
+          To: '+19998887777', // Unknown number
+          Body: 'Test message',
+        })
+        .expect(200);
+
+      expect(response.body.tenantId).toBe('root');
+      expect(response.body.resolvedBy).toBe('fallback');
+      expect(response.body.hasPhoneConfig).toBe(false); // Fallback has no phoneConfig
+    });
+
+    it('should handle SMS with missing To field gracefully', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+15555551234',
+          Body: 'Test message',
+          // To is missing
+        })
+        .expect(200);
+
+      // Should fallback to root
+      expect(response.body.tenantId).toBe('root');
+      expect(response.body.resolvedBy).toBe('fallback');
+      expect(response.body.hasPhoneConfig).toBe(false);
+    });
+
+    it('should handle SMS with empty request body gracefully', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({})
+        .expect(200);
+
+      // Should fallback to root
+      expect(response.body.tenantId).toBe('root');
+      expect(response.body.resolvedBy).toBe('fallback');
+      expect(response.body.hasPhoneConfig).toBe(false);
+    });
+
+    it('should route different numbers to different tenants (SMS multi-tenancy)', async () => {
+      // Create a second tenant
+      const tenant2Id = 'test-integration-sms-2-' + nanoid(8);
+      const tenant2Phone = '+19995553333'; // Different from testPhoneNumber
+      const tenant2ConfigId = nanoid();
+
+      await db.insert(tenants).values({
+        id: tenant2Id,
+        name: 'Test SMS Tenant 2',
+        subdomain: null,
+        isRoot: false,
+      });
+
+      await db.insert(tenantPhoneConfig).values({
+        id: tenant2ConfigId,
+        tenantId: tenant2Id,
+        phoneNumber: tenant2Phone,
+        ivrMode: 'ivr',
+      });
+
+      // SMS to tenant 1
+      const response1 = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+15555551234',
+          To: testPhoneNumber,
+          Body: 'Test to tenant 1',
+        });
+
+      // SMS to tenant 2
+      const response2 = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+15555551234',
+          To: tenant2Phone,
+          Body: 'Test to tenant 2',
+        });
+
+      // Verify correct tenant routing
+      expect(response1.body.tenantId).toBe(testTenantId);
+      expect(response2.body.tenantId).toBe(tenant2Id);
+      
+      // Verify IVR modes are preserved
+      expect(response1.body.ivrMode).toBe('simple');
+      expect(response2.body.ivrMode).toBe('ivr');
+
+      // Clean up
+      await db.delete(tenantPhoneConfig).where(eq(tenantPhoneConfig.id, tenant2ConfigId));
+      await db.delete(tenants).where(eq(tenants.id, tenant2Id));
     });
   });
 });
