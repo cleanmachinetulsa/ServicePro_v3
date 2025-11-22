@@ -1,5 +1,4 @@
 import { Express, Request, Response } from 'express';
-import { db } from './db';
 import { webauthnCredentials, users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import {
@@ -46,10 +45,10 @@ export function registerWebAuthnRoutes(app: Express) {
       }
 
       // Get user from database
-      const userResult = await db
+      const userResult = await req.tenantDb!
         .select()
         .from(users)
-        .where(eq(users.id, req.session.userId))
+        .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId)))
         .limit(1);
 
       if (!userResult || userResult.length === 0) {
@@ -62,10 +61,10 @@ export function registerWebAuthnRoutes(app: Express) {
       const user = userResult[0];
 
       // Get existing credentials for this user
-      const existingCredentials = await db
+      const existingCredentials = await req.tenantDb!
         .select()
         .from(webauthnCredentials)
-        .where(eq(webauthnCredentials.userId, user.id));
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.userId, user.id)));
 
       const options = await generateRegistrationOptions({
         rpName,
@@ -130,7 +129,7 @@ export function registerWebAuthnRoutes(app: Express) {
       const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
 
       // Store credential in database
-      await db.insert(webauthnCredentials).values({
+      await req.tenantDb!.insert(webauthnCredentials).values({
         userId: req.session.userId,
         credentialId: Buffer.from(credentialID).toString('base64'),
         publicKey: Buffer.from(credentialPublicKey).toString('base64'),
@@ -176,10 +175,10 @@ export function registerWebAuthnRoutes(app: Express) {
 
       // LEGACY FLOW: Username provided, use traditional credential-specific authentication
       // Find user
-      const userResult = await db
+      const userResult = await req.tenantDb!
         .select()
         .from(users)
-        .where(eq(users.username, username))
+        .where(req.tenantDb!.withTenantFilter(users, eq(users.username, username)))
         .limit(1);
 
       if (!userResult || userResult.length === 0) {
@@ -192,10 +191,10 @@ export function registerWebAuthnRoutes(app: Express) {
       const user = userResult[0];
 
       // Get user's credentials
-      const credentials = await db
+      const credentials = await req.tenantDb!
         .select()
         .from(webauthnCredentials)
-        .where(eq(webauthnCredentials.userId, user.id));
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.userId, user.id)));
 
       if (credentials.length === 0) {
         return res.status(404).json({
@@ -252,10 +251,10 @@ export function registerWebAuthnRoutes(app: Express) {
       const credentialIdBase64 = base64UrlToBase64(id);
 
       // Get credential from database (lookup by credential ID for both flows)
-      const credentialResult = await db
+      const credentialResult = await req.tenantDb!
         .select()
         .from(webauthnCredentials)
-        .where(eq(webauthnCredentials.credentialId, credentialIdBase64))
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.credentialId, credentialIdBase64)))
         .limit(1);
 
       if (!credentialResult || credentialResult.length === 0) {
@@ -299,16 +298,16 @@ export function registerWebAuthnRoutes(app: Express) {
       }
 
       // Update counter
-      await db
+      await req.tenantDb!
         .update(webauthnCredentials)
         .set({ counter: verification.authenticationInfo.newCounter })
-        .where(eq(webauthnCredentials.id, credential.id));
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.id, credential.id)));
 
       // Get user
-      const userResult = await db
+      const userResult = await req.tenantDb!
         .select()
         .from(users)
-        .where(eq(users.id, credential.userId))
+        .where(req.tenantDb!.withTenantFilter(users, eq(users.id, credential.userId)))
         .limit(1);
 
       if (!userResult || userResult.length === 0) {
@@ -374,14 +373,14 @@ export function registerWebAuthnRoutes(app: Express) {
         });
       }
 
-      const credentials = await db
+      const credentials = await req.tenantDb!
         .select({
           id: webauthnCredentials.id,
           deviceName: webauthnCredentials.deviceName,
           createdAt: webauthnCredentials.createdAt,
         })
         .from(webauthnCredentials)
-        .where(eq(webauthnCredentials.userId, req.session.userId));
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.userId, req.session.userId)));
 
       res.json({
         success: true,
@@ -409,10 +408,10 @@ export function registerWebAuthnRoutes(app: Express) {
       const credentialId = parseInt(req.params.id);
 
       // Verify credential belongs to user
-      const credentialResult = await db
+      const credentialResult = await req.tenantDb!
         .select()
         .from(webauthnCredentials)
-        .where(eq(webauthnCredentials.id, credentialId))
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.id, credentialId)))
         .limit(1);
 
       if (!credentialResult || credentialResult.length === 0) {
@@ -429,9 +428,9 @@ export function registerWebAuthnRoutes(app: Express) {
         });
       }
 
-      await db
+      await req.tenantDb!
         .delete(webauthnCredentials)
-        .where(eq(webauthnCredentials.id, credentialId));
+        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.id, credentialId)));
 
       res.json({
         success: true,

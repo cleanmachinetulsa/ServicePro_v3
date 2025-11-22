@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as Twilio from 'twilio';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
-import { db } from './db';
 import { businessSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -33,7 +32,7 @@ if (twilioAccountSid && twilioAuthToken) {
 router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Response) => {
   try {
     // Query business settings for SMS fallback config
-    const [settings] = await db.select().from(businessSettings).limit(1);
+    const [settings] = await req.tenantDb!.select().from(businessSettings).where(req.tenantDb!.withTenantFilter(businessSettings)).limit(1);
     
     // Check if SMS fallback is enabled
     if (!settings || !settings.smsFallbackEnabled) {
@@ -62,9 +61,9 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
       console.warn('[SMS FALLBACK] Enabled but no phone configured - AUTO-DISABLING for safety (migration self-heal)');
       
       // Persist the auto-disable to database
-      await db.update(businessSettings)
+      await req.tenantDb!.update(businessSettings)
         .set({ smsFallbackEnabled: false })
-        .where(eq(businessSettings.id, settings.id));
+        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, settings.id)));
       
       console.log('[SMS FALLBACK] Auto-disabled SMS fallback in database - system self-healed');
       
@@ -113,7 +112,7 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
  */
 router.get('/sms-fallback/health', async (req: Request, res: Response) => {
   try {
-    const [settings] = await db.select().from(businessSettings).limit(1);
+    const [settings] = await req.tenantDb!.select().from(businessSettings).where(req.tenantDb!.withTenantFilter(businessSettings)).limit(1);
     
     const status = {
       status: 'operational',

@@ -11,7 +11,6 @@
 
 import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
-import { db } from './db';
 import { appointments, paymentLinks, auditLog, invoices } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { markDepositPaid } from './depositManager';
@@ -82,19 +81,19 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
   try {
     switch (event.type) {
       case 'checkout.session.completed':
-        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+        await handleCheckoutSessionCompleted(req, event.data.object as Stripe.Checkout.Session);
         break;
 
       case 'payment_intent.succeeded':
-        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+        await handlePaymentIntentSucceeded(req, event.data.object as Stripe.PaymentIntent);
         break;
 
       case 'payment_intent.payment_failed':
-        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+        await handlePaymentIntentFailed(req, event.data.object as Stripe.PaymentIntent);
         break;
 
       case 'charge.refunded':
-        await handleChargeRefunded(event.data.object as Stripe.Charge);
+        await handleChargeRefunded(req, event.data.object as Stripe.Charge);
         break;
 
       default:
@@ -102,7 +101,7 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
     }
 
     // Log webhook event
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       actionType: 'stripe_webhook_received',
       entityType: 'payment',
       details: {
@@ -122,7 +121,7 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
 /**
  * Handle successful checkout session
  */
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutSessionCompleted(req: Request, session: Stripe.Checkout.Session) {
   console.log('[STRIPE WEBHOOK] Checkout session completed:', session.id);
 
   const appointmentId = session.metadata?.appointmentId;
@@ -140,7 +139,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     console.log(`[STRIPE WEBHOOK] Deposit paid for appointment ${appointmentId}`);
   } else if (type === 'balance') {
     // Mark invoice as paid
-    await markInvoicePaid(parseInt(appointmentId), session.payment_intent as string);
+    await markInvoicePaid(req, parseInt(appointmentId), session.payment_intent as string);
 
     console.log(`[STRIPE WEBHOOK] Balance paid for appointment ${appointmentId}`);
   }
@@ -149,7 +148,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 /**
  * Handle successful payment intent
  */
-async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentIntentSucceeded(req: Request, paymentIntent: Stripe.PaymentIntent) {
   console.log('[STRIPE WEBHOOK] Payment intent succeeded:', paymentIntent.id);
 
   const appointmentId = paymentIntent.metadata?.appointmentId;
@@ -161,7 +160,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
   }
 
   // Update payment link status
-  await db
+  await req.tenantDb!
     .update(paymentLinks)
     .set({
       status: 'paid',
@@ -169,9 +168,12 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
       stripePaymentIntentId: paymentIntent.id,
     })
     .where(
-      and(
-        eq(paymentLinks.appointmentId, parseInt(appointmentId)),
-        eq(paymentLinks.status, 'pending')
+      req.tenantDb!.withTenantFilter(
+        paymentLinks,
+        and(
+          eq(paymentLinks.appointmentId, parseInt(appointmentId)),
+          eq(paymentLinks.status, 'pending')
+        )
       )
     )
     .execute();
@@ -182,7 +184,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
 /**
  * Handle failed payment intent
  */
-async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentIntentFailed(req: Request, paymentIntent: Stripe.PaymentIntent) {
   console.log('[STRIPE WEBHOOK] Payment intent failed:', paymentIntent.id);
 
   const appointmentId = paymentIntent.metadata?.appointmentId;
@@ -193,22 +195,25 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
   }
 
   // Update payment link status
-  await db
+  await req.tenantDb!
     .update(paymentLinks)
     .set({
       status: 'failed',
       failureReason: paymentIntent.last_payment_error?.message,
     })
     .where(
-      and(
-        eq(paymentLinks.appointmentId, parseInt(appointmentId)),
-        eq(paymentLinks.status, 'pending')
+      req.tenantDb!.withTenantFilter(
+        paymentLinks,
+        and(
+          eq(paymentLinks.appointmentId, parseInt(appointmentId)),
+          eq(paymentLinks.status, 'pending')
+        )
       )
     )
     .execute();
 
   // Log failure
-  await db.insert(auditLog).values({
+  await req.tenantDb!.insert(auditLog).values({
     actionType: 'payment_failed',
     entityType: 'appointment',
     entityId: parseInt(appointmentId),
@@ -224,7 +229,7 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
 /**
  * Handle charge refunded
  */
-async function handleChargeRefunded(charge: Stripe.Charge) {
+async function handleChargeRefunded(req: Request, charge: Stripe.Charge) {
   console.log('[STRIPE WEBHOOK] Charge refunded:', charge.id);
 
   const appointmentId = charge.metadata?.appointmentId;
@@ -235,7 +240,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
   }
 
   // Log refund
-  await db.insert(auditLog).values({
+  await req.tenantDb!.insert(auditLog).values({
     actionType: 'payment_refunded',
     entityType: 'appointment',
     entityId: parseInt(appointmentId),
@@ -253,14 +258,15 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
  * Mark invoice as paid
  */
 async function markInvoicePaid(
+  req: Request,
   appointmentId: number,
   stripePaymentIntentId: string
 ): Promise<void> {
   try {
-    const [invoice] = await db
+    const [invoice] = await req.tenantDb!
       .select()
       .from(invoices)
-      .where(eq(invoices.appointmentId, appointmentId));
+      .where(req.tenantDb!.withTenantFilter(invoices, eq(invoices.appointmentId, appointmentId)));
 
     if (!invoice) {
       console.warn(`[STRIPE WEBHOOK] Invoice not found for appointment ${appointmentId}`);
@@ -268,7 +274,7 @@ async function markInvoicePaid(
     }
 
     // Update invoice with both legacy and new payment status fields
-    await db
+    await req.tenantDb!
       .update(invoices)
       .set({
         status: 'paid',                    // Legacy field - backward compatibility
@@ -277,10 +283,10 @@ async function markInvoicePaid(
         paidAt: new Date(),                // Payment timestamp
         stripePaymentIntentId,             // Stripe payment intent ID
       })
-      .where(eq(invoices.id, invoice.id));
+      .where(req.tenantDb!.withTenantFilter(invoices, eq(invoices.id, invoice.id)));
 
     // Log payment
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       actionType: 'invoice_paid',
       entityType: 'invoice',
       entityId: invoice.id,

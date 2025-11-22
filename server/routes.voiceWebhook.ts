@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import twilio from 'twilio';
-import { db } from './db';
 import { notificationSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { handleConversationalScheduling } from './conversationalScheduling';
@@ -29,12 +28,12 @@ function getRandomJoke(): string {
 }
 
 // Helper function to get voice webhook settings
-async function getVoiceSettings() {
+async function getVoiceSettings(req: Request) {
   try {
-    const [settings] = await db
+    const [settings] = await req.tenantDb!
       .select()
       .from(notificationSettings)
-      .where(eq(notificationSettings.settingKey, 'voice_webhook'))
+      .where(req.tenantDb!.withTenantFilter(notificationSettings, eq(notificationSettings.settingKey, 'voice_webhook')))
       .limit(1);
 
     if (!settings || !settings.enabled) {
@@ -49,13 +48,13 @@ async function getVoiceSettings() {
 }
 
 // Helper function to get phone line greeting configuration
-async function getPhoneLineGreeting(phoneNumber: string) {
+async function getPhoneLineGreeting(req: Request, phoneNumber: string) {
   try {
     const { phoneLines } = await import('@shared/schema');
-    const [line] = await db
+    const [line] = await req.tenantDb!
       .select()
       .from(phoneLines)
-      .where(eq(phoneLines.phoneNumber, phoneNumber))
+      .where(req.tenantDb!.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, phoneNumber)))
       .limit(1);
 
     if (!line) {
@@ -73,8 +72,8 @@ async function getPhoneLineGreeting(phoneNumber: string) {
 }
 
 // Helper function to add voicemail greeting to TwiML
-async function addVoicemailGreeting(twiml: any, phoneNumber: string, defaultGreeting: string) {
-  const greetingConfig = await getPhoneLineGreeting(phoneNumber);
+async function addVoicemailGreeting(req: Request, twiml: any, phoneNumber: string, defaultGreeting: string) {
+  const greetingConfig = await getPhoneLineGreeting(req, phoneNumber);
   
   if (greetingConfig?.voicemailGreetingUrl) {
     // Play audio recording if available
@@ -356,6 +355,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
         case '3':
           // Press 3: Leave voicemail for Jody
           await addVoicemailGreeting(
+            req,
             twiml,
             twilioPhone,
             "Please leave your name, number, and a brief description of your vehicle " +
@@ -485,13 +485,14 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
 
     // Send automatic SMS response
     try {
-      await sendMissedCallSMS(callerPhone);
+      await sendMissedCallSMS(req, callerPhone);
     } catch (error) {
       console.error('[VOICE] Failed to send missed call SMS:', error);
     }
 
     // Offer voicemail
     await addVoicemailGreeting(
+      req,
       twiml,
       twilioPhone,
       'Sorry we missed your call. We\'ve sent you a text message. You can also leave a voicemail after the beep.'
@@ -543,6 +544,7 @@ router.post('/voice-dial-status', verifyTwilioSignature, async (req: Request, re
       const routing = await getPhoneLineRoutingDecision(twilioPhone);
       
       await addVoicemailGreeting(
+        req,
         twiml,
         twilioPhone,
         routing.voicemailGreeting || "Thank you for calling Clean Machine Auto Detail. Please leave your name, number, and a brief message after the beep."
@@ -605,9 +607,12 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
     const { users } = await import('@shared/schema');
     const { shouldSendNotification } = await import('./notificationHelper');
     
-    const owner = await db.query.users.findFirst({
-      where: eq(users.role, 'owner')
-    });
+    const owner = await req.tenantDb!
+      .select()
+      .from(users)
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.role, 'owner')))
+      .limit(1)
+      .then(results => results[0]);
     
     if (owner) {
       // Send SMS notification with voicemail details
@@ -652,11 +657,11 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
  * Send automatic AI-powered response to caller who got a missed call
  * This initiates an intelligent conversation that checks calendar and books appointments
  */
-async function sendMissedCallSMS(toPhone: string) {
+async function sendMissedCallSMS(req: Request, toPhone: string) {
   console.log(`[VOICE] Initiating AI conversation for missed call from ${toPhone}`);
 
   // Get dynamic settings to check if AI mode is enabled
-  const settings = await getVoiceSettings();
+  const settings = await getVoiceSettings(req);
 
   // Check if AI conversation mode is enabled (default to true for intelligent responses)
   const useAIMode = settings?.useAIConversation !== false;

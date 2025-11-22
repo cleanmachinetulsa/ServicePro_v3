@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
-import { db } from './db';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -21,10 +20,10 @@ router.post('/change-password', requireAuth, async (req, res) => {
       });
     }
 
-    const [user] = await db
+    const [user] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, req.session.userId!))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
       .limit(1);
 
     if (!user) {
@@ -56,14 +55,14 @@ router.post('/change-password', requireAuth, async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // Update password
-    await db
+    await req.tenantDb!
       .update(users)
       .set({
         password: hashedPassword,
         requirePasswordChange: false,
         lastPasswordChange: new Date(),
       })
-      .where(eq(users.id, req.session.userId!));
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)));
 
     res.json({
       success: true,

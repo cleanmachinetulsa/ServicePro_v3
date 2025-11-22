@@ -1,6 +1,5 @@
 import { Express, Request, Response } from 'express';
 import { requireAuth } from './authMiddleware';
-import { db } from './db';
 import { referrals, customers } from '@shared/schema';
 import { eq, sql, desc } from 'drizzle-orm';
 
@@ -16,7 +15,7 @@ export function registerAdminReferralStatsRoutes(app: Express) {
   app.get('/api/admin/referral-stats', requireAuth, async (req: Request, res: Response) => {
     try {
       // Get all referrals with referrer names
-      const allReferrals = await db
+      const allReferrals = await req.tenantDb!
         .select({
           id: referrals.id,
           referrerId: referrals.referrerId,
@@ -34,6 +33,7 @@ export function registerAdminReferralStatsRoutes(app: Express) {
         })
         .from(referrals)
         .leftJoin(customers, eq(referrals.referrerId, customers.id))
+        .where(req.tenantDb!.withTenantFilter(referrals))
         .orderBy(desc(referrals.createdAt));
 
       // Calculate overall stats

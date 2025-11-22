@@ -9,7 +9,6 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { appointments, contacts, authorizations, paymentLinks, auditLog } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { sendSMS } from './notifications';
@@ -96,10 +95,10 @@ router.get('/api/payer-approval/:token', async (req: Request, res: Response) => 
     }
     
     // Find authorization
-    const authResult = await db
+    const authResult = await req.tenantDb!
       .select()
       .from(authorizations)
-      .where(eq(authorizations.token, token))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.token, token)))
       .execute();
     
     if (!authResult || authResult.length === 0) {
@@ -109,10 +108,10 @@ router.get('/api/payer-approval/:token', async (req: Request, res: Response) => 
     const authorization = authResult[0];
     
     // Fetch associated appointment
-    const apptResult = await db
+    const apptResult = await req.tenantDb!
       .select()
       .from(appointments)
-      .where(eq(appointments.id, authorization.appointmentId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, authorization.appointmentId)))
       .execute();
     
     if (!apptResult || apptResult.length === 0) {
@@ -123,11 +122,11 @@ router.get('/api/payer-approval/:token', async (req: Request, res: Response) => 
     
     // Fetch contacts
     const serviceContactResult = appointment.serviceContactId
-      ? await db.select().from(contacts).where(eq(contacts.id, appointment.serviceContactId)).execute()
+      ? await req.tenantDb!.select().from(contacts).where(req.tenantDb!.withTenantFilter(contacts, eq(contacts.id, appointment.serviceContactId))).execute()
       : null;
     
     const payerResult = appointment.billingContactId
-      ? await db.select().from(contacts).where(eq(contacts.id, appointment.billingContactId)).execute()
+      ? await req.tenantDb!.select().from(contacts).where(req.tenantDb!.withTenantFilter(contacts, eq(contacts.id, appointment.billingContactId))).execute()
       : null;
     
     if (!serviceContactResult?.[0] || !payerResult?.[0]) {
@@ -196,10 +195,10 @@ router.post('/api/payer-approval/:token/verify-otp', async (req: Request, res: R
     }
     
     // Find authorization
-    const authResult = await db
+    const authResult = await req.tenantDb!
       .select()
       .from(authorizations)
-      .where(eq(authorizations.token, token))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.token, token)))
       .execute();
     
     if (!authResult || authResult.length === 0) {
@@ -219,10 +218,10 @@ router.post('/api/payer-approval/:token/verify-otp', async (req: Request, res: R
       return res.status(404).json({ error: 'Payer contact not found' });
     }
     
-    const payerResult = await db
+    const payerResult = await req.tenantDb!
       .select()
       .from(contacts)
-      .where(eq(contacts.id, apptResult[0].billingContactId))
+      .where(req.tenantDb!.withTenantFilter(contacts, eq(contacts.id, apptResult[0].billingContactId)))
       .execute();
     
     if (!payerResult?.[0]?.phoneE164) {
@@ -239,17 +238,17 @@ router.post('/api/payer-approval/:token/verify-otp', async (req: Request, res: R
     }
     
     // Mark OTP as verified on authorization
-    await db
+    await req.tenantDb!
       .update(authorizations)
       .set({
         otpVerified: true,
         otpVerifiedAt: new Date().toISOString(),
       })
-      .where(eq(authorizations.id, authorization.id))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.id, authorization.id)))
       .execute();
     
     // Log successful OTP verification
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       actionType: 'otp_verified',
       entityType: 'authorization',
       entityId: authorization.id,
@@ -284,14 +283,14 @@ router.post('/api/payer-approval/:token/apply-referral', async (req: Request, re
     
     // SECURITY FIX: Load authorization AND appointment from database - never trust client pricing
     const { appointments } = await import('@shared/schema');
-    const authResult = await db
+    const authResult = await req.tenantDb!
       .select({
         auth: authorizations,
         appointment: appointments,
       })
       .from(authorizations)
       .leftJoin(appointments, eq(authorizations.appointmentId, appointments.id))
-      .where(eq(authorizations.token, token))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.token, token)))
       .execute();
     
     if (!authResult || authResult.length === 0) {
@@ -334,14 +333,14 @@ router.post('/api/payer-approval/:token/apply-referral', async (req: Request, re
     
     // Validate referral code using existing referral service
     const { referrals, customers } = await import('@shared/schema');
-    const referralResult = await db
+    const referralResult = await req.tenantDb!
       .select({
         referral: referrals,
         referrer: customers,
       })
       .from(referrals)
       .leftJoin(customers, eq(referrals.referrerCustomerId, customers.id))
-      .where(eq(referrals.code, code))
+      .where(req.tenantDb!.withTenantFilter(referrals, eq(referrals.code, code)))
       .execute();
     
     if (!referralResult || referralResult.length === 0) {
@@ -371,9 +370,10 @@ router.post('/api/payer-approval/:token/apply-referral', async (req: Request, re
     
     // Get referral configuration to determine reward
     const { referralConfigurations } = await import('@shared/schema');
-    const configResult = await db
+    const configResult = await req.tenantDb!
       .select()
       .from(referralConfigurations)
+      .where(req.tenantDb!.withTenantFilter(referralConfigurations))
       .execute();
     
     if (!configResult || configResult.length === 0) {
@@ -416,7 +416,7 @@ router.post('/api/payer-approval/:token/apply-referral', async (req: Request, re
     }
     
     // Store referral metadata AND updated deposit on authorization
-    await db
+    await req.tenantDb!
       .update(authorizations)
       .set({
         referralCode: code,
@@ -425,11 +425,11 @@ router.post('/api/payer-approval/:token/apply-referral', async (req: Request, re
         referralReferrerId: referral.referrerCustomerId,
         depositAmount: isDiscount && computedDiscount > 0 ? newDepositAmount : authorization.depositAmount,
       })
-      .where(eq(authorizations.id, authorization.id))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.id, authorization.id)))
       .execute();
     
     // Log the application
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       actionType: 'referral_code_applied',
       entityType: 'authorization',
       entityId: authorization.id,
@@ -477,10 +477,10 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
     const { ipAddress, userAgent } = req.body;
     
     // Find authorization
-    const authResult = await db
+    const authResult = await req.tenantDb!
       .select()
       .from(authorizations)
-      .where(eq(authorizations.token, token))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.token, token)))
       .execute();
     
     if (!authResult || authResult.length === 0) {
@@ -496,17 +496,17 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
     
     // Check if expired
     if (new Date(authorization.expiresAt) < new Date()) {
-      await db
+      await req.tenantDb!
         .update(authorizations)
         .set({ status: 'expired' })
-        .where(eq(authorizations.id, authorization.id))
+        .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.id, authorization.id)))
         .execute();
       
       return res.status(400).json({ error: 'Authorization link has expired' });
     }
     
     // Update authorization status
-    await db
+    await req.tenantDb!
       .update(authorizations)
       .set({
         status: 'approved',
@@ -514,20 +514,20 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
         approvedByIp: ipAddress,
         approvedByUserAgent: userAgent,
       })
-      .where(eq(authorizations.id, authorization.id))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.id, authorization.id)))
       .execute();
     
     // Fetch appointment to check if deposit required
-    const apptResult = await db
+    const apptResult = await req.tenantDb!
       .select()
       .from(appointments)
-      .where(eq(appointments.id, authorization.appointmentId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, authorization.appointmentId)))
       .execute();
     
     const appointment = apptResult[0];
     
     // Log approval
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       actionType: 'payer_approved',
       entityType: 'appointment',
       entityId: appointment.id,
@@ -590,7 +590,7 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
         paymentLink = session.url;
         
         // Store payment link in database (matching actual schema)
-        await db.insert(paymentLinks).values({
+        await req.tenantDb!.insert(paymentLinks).values({
           appointmentId: appointment.id,
           contactId: authorization.payerId, // Who should pay
           linkType: 'deposit',
@@ -599,7 +599,6 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
           publicUrl: paymentLink!,
           status: 'pending',
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-          tenantId: 'default', // Multi-tenancy support
         });
         
         console.log(`[PAYER APPROVAL] Created Stripe checkout session ${session.id} for appointment ${appointment.id}`);
@@ -691,10 +690,10 @@ router.post('/api/payer-approval/:token/decline', async (req: Request, res: Resp
     const { reason, ipAddress, userAgent } = req.body;
     
     // Find authorization
-    const authResult = await db
+    const authResult = await req.tenantDb!
       .select()
       .from(authorizations)
-      .where(eq(authorizations.token, token))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.token, token)))
       .execute();
     
     if (!authResult || authResult.length === 0) {
@@ -709,18 +708,18 @@ router.post('/api/payer-approval/:token/decline', async (req: Request, res: Resp
     }
     
     // Update authorization status
-    await db
+    await req.tenantDb!
       .update(authorizations)
       .set({
         status: 'declined',
         declinedAt: new Date().toISOString(),
         declineReason: reason,
       })
-      .where(eq(authorizations.id, authorization.id))
+      .where(req.tenantDb!.withTenantFilter(authorizations, eq(authorizations.id, authorization.id)))
       .execute();
     
     // Log decline
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       actionType: 'payer_declined',
       entityType: 'appointment',
       entityId: authorization.appointmentId,

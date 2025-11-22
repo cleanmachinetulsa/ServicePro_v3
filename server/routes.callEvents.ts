@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { callEvents, conversations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -11,7 +10,7 @@ export function registerCallEventsRoutes(app: Router) {
   router.get('/recent', requireAuth, async (req, res) => {
     try {
       // Query recent inbound calls with conversation data
-      const recentCalls = await db
+      const recentCalls = await req.tenantDb!
         .select({
           id: callEvents.id,
           from: callEvents.from,
@@ -27,7 +26,7 @@ export function registerCallEventsRoutes(app: Router) {
         })
         .from(callEvents)
         .leftJoin(conversations, eq(callEvents.conversationId, conversations.id))
-        .where(eq(callEvents.direction, 'inbound'))
+        .where(req.tenantDb!.withTenantFilter(callEvents, eq(callEvents.direction, 'inbound')))
         .orderBy(desc(callEvents.createdAt))
         .limit(20);
 
