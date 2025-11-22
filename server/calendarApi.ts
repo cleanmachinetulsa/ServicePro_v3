@@ -833,21 +833,28 @@ export async function generateAvailableSlots(serviceName: string) {
   }
 
   // Load business settings from database
+  // TODO: Make this fully multi-tenant by passing tenant_id through the call chain
+  // For now, query root tenant settings since scheduling is currently root-tenant only
   const { db: dbInstance } = await import('./db');
   const { businessSettings, serviceLimits } = await import('@shared/schema');
   const { eq, and, or, gte, lte, sql } = await import('drizzle-orm');
   
-  const settingsResult = await dbInstance.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+  const settingsResult = await dbInstance
+    .select()
+    .from(businessSettings)
+    .where(eq(businessSettings.tenantId, 'root'))
+    .limit(1);
+    
   const settings = settingsResult[0] || {
     startHour: 9,
     startMinute: 0,
     endHour: 15,
     endMinute: 0,
-    enableLunchBreak: true,
+    enableLunchBreak: false,
     lunchHour: 12,
     lunchMinute: 0,
-    daysOfWeek: [1, 2, 3, 4, 5],
-    allowWeekendBookings: false,
+    daysOfWeek: [1, 2, 3, 4, 5, 6],
+    allowWeekendBookings: true,
     halfHourIncrements: true,
     minimumNoticeHours: 24,
   };

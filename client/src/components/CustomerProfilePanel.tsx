@@ -144,7 +144,7 @@ export default function CustomerProfilePanel({ conversationId }: Props) {
 
   if (!profile) {
     return (
-      <div className="h-full flex items-center justify-center p-6">
+      <div className="h-full flex items-center justify-center p-6 md:hidden">
         <div className="text-sm text-muted-foreground text-center">
           No conversation selected
         </div>
