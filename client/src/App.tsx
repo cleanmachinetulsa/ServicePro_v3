@@ -81,10 +81,17 @@ import UsageDashboard from "./pages/UsageDashboard";
 import GalleryManagementPage from "./pages/gallery-management";
 import DownloadExportPage from "./pages/download-export";
 import LaunchPage from "./pages/launch";
+import OnboardingIndustryPage from "./pages/OnboardingIndustry";
 
 function Router() {
   return (
     <Switch>
+      <Route path="/admin/onboarding-industry">
+        <AuthGuard>
+          <OnboardingIndustryPage />
+        </AuthGuard>
+      </Route>
+
       <Route path="/launch">
         <AuthGuard><LaunchPage /></AuthGuard>
       </Route>
