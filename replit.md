@@ -27,17 +27,21 @@ The application is being transformed into a multi-tenant platform with the follo
   - UX Quality: react-hook-form + zodResolver + Form components, tenant dropdown selector, complete data-testid coverage
   - Backend: Uses shared `insertTenantPhoneConfigSchema` with schema.shape validators, proper null handling for optional fields
   - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md` and `PHASE_2_3_IVR_MODE.md`
-  - Phase 3: ✅ Tenant Communication Routing Engine (IMPLEMENTED)
+  - Phase 3: ✅ Tenant Communication Routing Engine (COMPLETE)
   - Centralized Routing: All inbound communications (SMS, Voice, IVR) use single `resolveTenantFromInbound()` service
   - Resolution Strategy: 1) MessagingServiceSid match (highest priority), 2) Phone number match, 3) Fallback to 'root'
   - Deterministic Queries: Uses `orderBy(desc(id))` for consistent results when multiple configs match
   - Eliminates: Duplicated tenant lookup logic, misrouting edge cases, scaling bottlenecks
   - Integration: `/sms` and `/twilio/voice/incoming` routes refactored to use centralized router
   - Tenant Context: Both routes properly set req.tenant, req.tenantDb, phoneConfig, and tenantResolution
-  - Testing: ✅ 16/16 unit tests passing, ✅ 14/14 integration tests passing (8 voice + 6 SMS)
+  - Testing: ✅ 16/16 unit tests passing, ✅ 20/20 integration tests passing (8 voice + 12 SMS with full middleware stack)
   - Multi-tenant Ready: Supports multiple phone numbers per tenant, multiple messaging service SIDs
-  - Test Coverage: Routing logic fully tested (unit tests), voice route fully tested (integration), SMS routing tested via simplified test handler
-  - Test Limitation: SMS integration tests use simplified route without production normalizePhone middleware; full SMS middleware stack untested
+  - Test Coverage: Complete production parity - SMS tests use full middleware stack (normalizePhone + Twilio signature verification)
+  - Phase 3.1: ✅ SMS Middleware Coverage Hardening (COMPLETE)
+  - Enhanced SMS integration tests to use complete production middleware including E.164 normalization and signature verification
+  - Comprehensive validation tests: phone number formats (E.164, 10-digit, formatted), whitespace handling, invalid characters
+  - Edge case coverage: missing From/To fields, empty requests, multi-tenant routing, fallback scenarios
+  - Production-ready: All 36 tests passing (16 unit + 20 integration) with full production middleware stack
 
 **Key Files:**
 - `server/services/tenantCommRouter.ts` - Centralized tenant resolution engine (Phase 3)
