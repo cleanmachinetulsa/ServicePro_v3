@@ -473,5 +473,5 @@ Short list of “future awesome”:
 - 🟡 **You’re about to implement Phase 4: AI Voice Entry (`/twilio/voice/ai`).**  
 - 🔜 After that, we pivot to **Phase 5 (Concierge Setup Dashboard)** and **Phase 6 (Impersonate Tenant)** to unlock:
   - Done-for-you setups as a premium offering.
-  - Instant “fix it for me” support.
+support.
 
