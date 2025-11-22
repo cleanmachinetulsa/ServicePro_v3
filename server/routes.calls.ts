@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { conversations, appointments, callEvents, customers, messages } from '@shared/schema';
 import { desc, eq, and, or, gte, sql } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -12,7 +11,7 @@ export function registerCallRoutes(app: Router) {
   app.get('/api/calls/customers', requireAuth, async (req: Request, res: Response) => {
     try {
       // Get recent conversations (customers who reached out in last 30 days)
-      const recentConversations = await db
+      const recentConversations = await req.tenantDb!
         .select({
           id: conversations.id,
           customerName: conversations.customerName,
@@ -21,9 +20,11 @@ export function registerCallRoutes(app: Router) {
         })
         .from(conversations)
         .where(
-          and(
-            eq(conversations.platform, 'sms'),
-            gte(conversations.lastMessageTime, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+          req.tenantDb!.withTenantFilter(conversations,
+            and(
+              eq(conversations.platform, 'sms'),
+              gte(conversations.lastMessageTime, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+            )
           )
         )
         .orderBy(desc(conversations.lastMessageTime))
@@ -32,13 +33,13 @@ export function registerCallRoutes(app: Router) {
       // Get the most recent message for each conversation
       const conversationIds = recentConversations.map(c => c.id);
       const recentMessages = conversationIds.length > 0
-        ? await db
+        ? await req.tenantDb!
             .select({
               conversationId: messages.conversationId,
               content: messages.content,
             })
             .from(messages)
-            .where(sql`${messages.conversationId} IN (${sql.join(conversationIds.map(id => sql`${id}`), sql`, `)})`)
+            .where(req.tenantDb!.withTenantFilter(messages, sql`${messages.conversationId} IN (${sql.join(conversationIds.map(id => sql`${id}`), sql`, `)})`))
             .orderBy(desc(messages.timestamp))
         : [];
 
@@ -51,7 +52,7 @@ export function registerCallRoutes(app: Router) {
       });
 
       // Get upcoming and pending appointments with customer data
-      const upcomingAppointments = await db
+      const upcomingAppointments = await req.tenantDb!
         .select({
           id: appointments.id,
           customerId: appointments.customerId,
@@ -64,9 +65,11 @@ export function registerCallRoutes(app: Router) {
         .from(appointments)
         .leftJoin(customers, eq(appointments.customerId, customers.id))
         .where(
-          or(
-            eq(appointments.status, 'scheduled'),
-            eq(appointments.status, 'pending')
+          req.tenantDb!.withTenantFilter(appointments,
+            or(
+              eq(appointments.status, 'scheduled'),
+              eq(appointments.status, 'pending')
+            )
           )
         )
         .orderBy(desc(appointments.scheduledTime))
@@ -167,9 +170,10 @@ export function registerCallRoutes(app: Router) {
   app.get('/api/calls/recent', requireAuth, async (req: Request, res: Response) => {
     try {
       // Fetch recent calls from database (last 50 calls)
-      const recentCalls = await db
+      const recentCalls = await req.tenantDb!
         .select()
         .from(callEvents)
+        .where(req.tenantDb!.withTenantFilter(callEvents))
         .orderBy(desc(callEvents.createdAt))
         .limit(50);
 
@@ -207,10 +211,10 @@ export function registerCallRoutes(app: Router) {
       const callId = parseInt(req.params.id);
       
       // Fetch call details from database
-      const [call] = await db
+      const [call] = await req.tenantDb!
         .select()
         .from(callEvents)
-        .where(eq(callEvents.id, callId))
+        .where(req.tenantDb!.withTenantFilter(callEvents, eq(callEvents.id, callId)))
         .limit(1);
 
       if (!call) {
@@ -332,7 +336,7 @@ export function registerCallRoutes(app: Router) {
         });
         
         // Log to audit table
-        await db.insert(await import('@shared/schema').then(s => s.auditLog)).values({
+        await req.tenantDb!.insert(await import('@shared/schema').then(s => s.auditLog)).values({
           userId: userId || null,
           action: 'click_to_call_initiated',
           entityType: 'call',
@@ -435,10 +439,10 @@ export function registerCallRoutes(app: Router) {
       }
 
       // Fetch customer phone from database (stored during call logging)
-      const [callEvent] = await db
+      const [callEvent] = await req.tenantDb!
         .select({ customerPhone: callEvents.customerPhone })
         .from(callEvents)
-        .where(eq(callEvents.callSid, callSid))
+        .where(req.tenantDb!.withTenantFilter(callEvents, eq(callEvents.callSid, callSid)))
         .limit(1);
 
       if (!callEvent?.customerPhone) {
@@ -506,10 +510,10 @@ export function registerCallRoutes(app: Router) {
       }
 
       // Fetch customer phone from database (stored during call logging)
-      const [callEvent] = await db
+      const [callEvent] = await req.tenantDb!
         .select({ customerPhone: callEvents.customerPhone })
         .from(callEvents)
-        .where(eq(callEvents.callSid, callSid))
+        .where(req.tenantDb!.withTenantFilter(callEvents, eq(callEvents.callSid, callSid)))
         .limit(1);
 
       if (!callEvent?.customerPhone) {
@@ -564,10 +568,10 @@ export function registerCallRoutes(app: Router) {
   app.get('/api/voicemail/inbox', requireAuth, async (req: Request, res: Response) => {
     try {
       // Fetch all call events with recordings (voicemails)
-      const voicemails = await db
+      const voicemails = await req.tenantDb!
         .select()
         .from(callEvents)
-        .where(sql`${callEvents.recordingUrl} IS NOT NULL`)
+        .where(req.tenantDb!.withTenantFilter(callEvents, sql`${callEvents.recordingUrl} IS NOT NULL`))
         .orderBy(desc(callEvents.createdAt));
 
       // Transform to match frontend interface
@@ -599,9 +603,9 @@ export function registerCallRoutes(app: Router) {
     try {
       const id = parseInt(req.params.id);
 
-      await db
+      await req.tenantDb!
         .delete(callEvents)
-        .where(eq(callEvents.id, id));
+        .where(req.tenantDb!.withTenantFilter(callEvents, eq(callEvents.id, id)));
 
       res.json({
         success: true,
@@ -621,10 +625,10 @@ export function registerCallRoutes(app: Router) {
     try {
       const id = parseInt(req.params.id);
 
-      await db
+      await req.tenantDb!
         .update(callEvents)
         .set({ readAt: new Date() })
-        .where(eq(callEvents.id, id));
+        .where(req.tenantDb!.withTenantFilter(callEvents, eq(callEvents.id, id)));
 
       res.json({
         success: true,

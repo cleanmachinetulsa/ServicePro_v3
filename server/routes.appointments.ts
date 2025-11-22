@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { appointments, conversations, services, customers } from '@shared/schema';
 import { eq, and, lte, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -16,8 +15,8 @@ router.get('/conversations/:conversationId/appointment', async (req, res) => {
     const conversationId = parseInt(req.params.conversationId);
     
     // Get conversation
-    const conversation = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
+    const conversation = await req.tenantDb!.query.conversations.findFirst({
+      where: req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)),
     });
     
     if (!conversation || !conversation.appointmentId) {
@@ -25,23 +24,23 @@ router.get('/conversations/:conversationId/appointment', async (req, res) => {
     }
     
     // Get appointment
-    const [appointment] = await db.select()
+    const [appointment] = await req.tenantDb!.select()
       .from(appointments)
-      .where(eq(appointments.id, conversation.appointmentId));
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, conversation.appointmentId)));
     
     if (!appointment) {
       return res.json({ success: true, appointment: null });
     }
     
     // Get service details
-    const [service] = await db.select()
+    const [service] = await req.tenantDb!.select()
       .from(services)
-      .where(eq(services.id, appointment.serviceId));
+      .where(req.tenantDb!.withTenantFilter(services, eq(services.id, appointment.serviceId)));
     
     // Get customer details
-    const [customer] = await db.select()
+    const [customer] = await req.tenantDb!.select()
       .from(customers)
-      .where(eq(customers.id, appointment.customerId));
+      .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, appointment.customerId)));
     
     res.json({ 
       success: true, 
@@ -78,8 +77,8 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
     const data = schema.parse(req.body);
     
     // Get conversation to check if appointment already exists
-    const conversation = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
+    const conversation = await req.tenantDb!.query.conversations.findFirst({
+      where: req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)),
     });
     
     if (!conversation) {
@@ -90,7 +89,7 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
     
     if (conversation.appointmentId) {
       // Update existing appointment
-      await db.update(appointments)
+      await req.tenantDb!.update(appointments)
         .set({
           serviceId: data.serviceId,
           scheduledTime: data.scheduledTime,
@@ -98,12 +97,12 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
           additionalRequests: data.additionalRequests,
           addOns: data.addOns,
         })
-        .where(eq(appointments.id, conversation.appointmentId));
+        .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, conversation.appointmentId)));
       
       appointmentId = conversation.appointmentId;
     } else {
       // Create new appointment - wrap in transaction with stats update
-      await db.transaction(async (tx) => {
+      await req.tenantDb!.transaction(async (tx) => {
         const [newAppointment] = await tx.insert(appointments)
           .values({
             customerId: data.customerId,
@@ -128,19 +127,19 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
     }
     
     // Fetch updated appointment
-    const [appointment] = await db.select()
+    const [appointment] = await req.tenantDb!.select()
       .from(appointments)
-      .where(eq(appointments.id, appointmentId));
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)));
     
     // Get service details
-    const [service] = await db.select()
+    const [service] = await req.tenantDb!.select()
       .from(services)
-      .where(eq(services.id, appointment.serviceId));
+      .where(req.tenantDb!.withTenantFilter(services, eq(services.id, appointment.serviceId)));
     
     // Get customer details
-    const [customer] = await db.select()
+    const [customer] = await req.tenantDb!.select()
       .from(customers)
-      .where(eq(customers.id, appointment.customerId));
+      .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, appointment.customerId)));
     
     res.json({ 
       success: true, 
@@ -165,8 +164,8 @@ router.delete('/conversations/:conversationId/appointment', async (req, res) => 
     const conversationId = parseInt(req.params.conversationId);
     
     // Get conversation
-    const conversation = await db.query.conversations.findFirst({
-      where: eq(conversations.id, conversationId),
+    const conversation = await req.tenantDb!.query.conversations.findFirst({
+      where: req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)),
     });
     
     if (!conversation || !conversation.appointmentId) {
@@ -174,9 +173,9 @@ router.delete('/conversations/:conversationId/appointment', async (req, res) => 
     }
     
     // Remove appointment reference from conversation
-    await db.update(conversations)
+    await req.tenantDb!.update(conversations)
       .set({ appointmentId: null })
-      .where(eq(conversations.id, conversationId));
+      .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)));
     
     // Optionally delete the appointment itself
     // await db.delete(appointments).where(eq(appointments.id, conversation.appointmentId));
@@ -194,7 +193,7 @@ router.delete('/conversations/:conversationId/appointment', async (req, res) => 
  */
 router.get('/damage-assessment/pending', async (req, res) => {
   try {
-    const pendingAppointments = await db.select({
+    const pendingAppointments = await req.tenantDb!.select({
       appointment: appointments,
       service: services,
       customer: customers,
@@ -202,7 +201,7 @@ router.get('/damage-assessment/pending', async (req, res) => {
       .from(appointments)
       .leftJoin(services, eq(appointments.serviceId, services.id))
       .leftJoin(customers, eq(appointments.customerId, customers.id))
-      .where(eq(appointments.damageAssessmentStatus, 'pending'));
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.damageAssessmentStatus, 'pending')));
     
     // Filter out any appointments where service or customer is null (data integrity issue)
     const validAppointments = pendingAppointments.filter(a => a.service && a.customer);
@@ -237,12 +236,12 @@ router.patch('/:id/damage-assessment', async (req, res) => {
       });
     }
     
-    await db.update(appointments)
+    await req.tenantDb!.update(appointments)
       .set({
         damageAssessmentStatus: status,
         assessmentReviewedAt: new Date(),
       })
-      .where(eq(appointments.id, appointmentId));
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)));
     
     console.log(`[DAMAGE ASSESSMENT] Appointment ${appointmentId} marked as ${status}`);
     
@@ -266,8 +265,8 @@ router.get('/customer/:phone', async (req, res) => {
     }
 
     // Find customer by phone
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.phone, phone),
+    const customer = await req.tenantDb!.query.customers.findFirst({
+      where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone)),
     });
 
     if (!customer) {
@@ -275,7 +274,7 @@ router.get('/customer/:phone', async (req, res) => {
     }
 
     // Get appointments for this customer only
-    const customerAppointments = await db
+    const customerAppointments = await req.tenantDb!
       .select({
         id: appointments.id,
         customerId: appointments.customerId,
@@ -288,7 +287,7 @@ router.get('/customer/:phone', async (req, res) => {
       })
       .from(appointments)
       .leftJoin(services, eq(appointments.serviceId, services.id))
-      .where(eq(appointments.customerId, customer.id));
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.customerId, customer.id)));
 
     res.json({ success: true, data: customerAppointments });
   } catch (error) {

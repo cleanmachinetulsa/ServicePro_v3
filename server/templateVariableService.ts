@@ -1,5 +1,5 @@
 import { getConversationById } from './conversationService';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { appointments, customers } from '@shared/schema';
 import { eq, and, gte } from 'drizzle-orm';
 
@@ -20,6 +20,7 @@ interface TemplateContext {
 }
 
 export async function replaceTemplateVariables(
+  tenantDb: TenantDb,
   message: string,
   context: TemplateContext
 ): Promise<string> {
@@ -28,7 +29,7 @@ export async function replaceTemplateVariables(
   }
 
   // Get conversation data
-  const conversation = await getConversationById(context.conversationId);
+  const conversation = await getConversationById(tenantDb, context.conversationId);
   if (!conversation) {
     return message;
   }
@@ -36,10 +37,10 @@ export async function replaceTemplateVariables(
   // Get customer data for vehicle info
   let vehicleInfo = 'your vehicle';
   if (conversation.customerPhone) {
-    const customerData = await db
+    const customerData = await tenantDb
       .select()
       .from(customers)
-      .where(eq(customers.phone, conversation.customerPhone))
+      .where(tenantDb.withTenantFilter(customers, eq(customers.phone, conversation.customerPhone)))
       .limit(1);
 
     if (customerData.length > 0 && customerData[0].vehicleInfo) {
@@ -50,20 +51,22 @@ export async function replaceTemplateVariables(
   // Get next appointment for this customer
   let nextSlot = 'Contact us to schedule';
   if (conversation.customerPhone) {
-    const customerData = await db
+    const customerData = await tenantDb
       .select()
       .from(customers)
-      .where(eq(customers.phone, conversation.customerPhone))
+      .where(tenantDb.withTenantFilter(customers, eq(customers.phone, conversation.customerPhone)))
       .limit(1);
 
     if (customerData.length > 0) {
-      const upcomingAppointment = await db
+      const upcomingAppointment = await tenantDb
         .select()
         .from(appointments)
         .where(
-          and(
-            eq(appointments.customerId, customerData[0].id),
-            gte(appointments.scheduledTime, new Date())
+          tenantDb.withTenantFilter(appointments,
+            and(
+              eq(appointments.customerId, customerData[0].id),
+              gte(appointments.scheduledTime, new Date())
+            )
           )
         )
         .orderBy(appointments.scheduledTime)

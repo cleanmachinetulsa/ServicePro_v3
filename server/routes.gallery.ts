@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { galleryPhotos } from '@shared/schema';
 import { eq, desc, asc } from 'drizzle-orm';
 import multer from 'multer';
@@ -56,10 +55,12 @@ router.get('/', async (req: Request, res: Response) => {
     
     let photos;
     if (includeInactive) {
-      photos = await db.select().from(galleryPhotos).orderBy(asc(galleryPhotos.displayOrder));
+      photos = await req.tenantDb!.select().from(galleryPhotos)
+        .where(req.tenantDb!.withTenantFilter(galleryPhotos))
+        .orderBy(asc(galleryPhotos.displayOrder));
     } else {
-      photos = await db.select().from(galleryPhotos)
-        .where(eq(galleryPhotos.isActive, true))
+      photos = await req.tenantDb!.select().from(galleryPhotos)
+        .where(req.tenantDb!.withTenantFilter(galleryPhotos, eq(galleryPhotos.isActive, true)))
         .orderBy(asc(galleryPhotos.displayOrder));
     }
     
@@ -86,8 +87,9 @@ router.post('/', upload.array('photos', 20), async (req: Request, res: Response)
     const userId = (req as any).session?.userId || null;
     
     // Get the current max display order
-    const maxOrderResult = await db.select({ maxOrder: galleryPhotos.displayOrder })
+    const maxOrderResult = await req.tenantDb!.select({ maxOrder: galleryPhotos.displayOrder })
       .from(galleryPhotos)
+      .where(req.tenantDb!.withTenantFilter(galleryPhotos))
       .orderBy(desc(galleryPhotos.displayOrder))
       .limit(1);
     
@@ -100,7 +102,7 @@ router.post('/', upload.array('photos', 20), async (req: Request, res: Response)
     for (const file of req.files) {
       const imageUrl = `/uploads/gallery/${file.filename}`;
       
-      const [newPhoto] = await db.insert(galleryPhotos).values({
+      const [newPhoto] = await req.tenantDb!.insert(galleryPhotos).values({
         imageUrl,
         title: null,
         description: null,
@@ -141,9 +143,9 @@ router.patch('/:id', async (req: Request, res: Response) => {
     if (description !== undefined) updateData.description = description;
     if (isActive !== undefined) updateData.isActive = isActive;
     
-    const [updatedPhoto] = await db.update(galleryPhotos)
+    const [updatedPhoto] = await req.tenantDb!.update(galleryPhotos)
       .set(updateData)
-      .where(eq(galleryPhotos.id, photoId))
+      .where(req.tenantDb!.withTenantFilter(galleryPhotos, eq(galleryPhotos.id, photoId)))
       .returning();
     
     if (!updatedPhoto) {
@@ -166,15 +168,16 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const photoId = parseInt(req.params.id);
     
     // Get photo details to delete the file
-    const [photo] = await db.select().from(galleryPhotos)
-      .where(eq(galleryPhotos.id, photoId));
+    const [photo] = await req.tenantDb!.select().from(galleryPhotos)
+      .where(req.tenantDb!.withTenantFilter(galleryPhotos, eq(galleryPhotos.id, photoId)));
     
     if (!photo) {
       return res.status(404).json({ success: false, error: 'Photo not found' });
     }
     
     // Delete from database
-    await db.delete(galleryPhotos).where(eq(galleryPhotos.id, photoId));
+    await req.tenantDb!.delete(galleryPhotos)
+      .where(req.tenantDb!.withTenantFilter(galleryPhotos, eq(galleryPhotos.id, photoId)));
     
     // Delete the file from disk
     try {
@@ -211,9 +214,9 @@ router.post('/reorder', async (req: Request, res: Response) => {
     
     // Update each photo's display order
     const updates = photos.map(({ id, displayOrder }) => 
-      db.update(galleryPhotos)
+      req.tenantDb!.update(galleryPhotos)
         .set({ displayOrder })
-        .where(eq(galleryPhotos.id, id))
+        .where(req.tenantDb!.withTenantFilter(galleryPhotos, eq(galleryPhotos.id, id)))
     );
     
     await Promise.all(updates);
@@ -279,15 +282,16 @@ router.post('/sync-google-photos', async (req: Request, res: Response) => {
         fs.writeFileSync(filepath, Buffer.from(imageResponse.data));
         
         // Get current max display order
-        const maxOrderResult = await db.select({ maxOrder: galleryPhotos.displayOrder })
+        const maxOrderResult = await req.tenantDb!.select({ maxOrder: galleryPhotos.displayOrder })
           .from(galleryPhotos)
+          .where(req.tenantDb!.withTenantFilter(galleryPhotos))
           .orderBy(desc(galleryPhotos.displayOrder))
           .limit(1);
         
         const nextOrder = (maxOrderResult[0]?.maxOrder || 0) + 1;
         
         // Insert into database
-        await db.insert(galleryPhotos).values({
+        await req.tenantDb!.insert(galleryPhotos).values({
           imageUrl: `/uploads/gallery/${filename}`,
           title: photo.name || `Photo ${i + 1}`,
           description: null,

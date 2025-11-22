@@ -1,6 +1,5 @@
 import { Express, Request, Response } from 'express';
 import { eq, desc } from 'drizzle-orm';
-import { db } from './db';
 import { appointments, customers, loyaltyPoints } from '@shared/schema';
 import { getEnhancedCustomerServiceHistory } from './enhancedCustomerSearch';
 import { recordAppointmentCreated } from './customerBookingStats';
@@ -43,8 +42,8 @@ export function registerQuickBookingRoutes(app: Express) {
       if (isPhone) {
         // Try multiple phone formats to find customer
         for (const phoneVariant of phoneVariants) {
-          customer = await db.query.customers.findFirst({
-            where: eq(customers.phone, phoneVariant),
+          customer = await req.tenantDb!.query.customers.findFirst({
+            where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phoneVariant)),
           });
           if (customer) {
             console.log(`[Quick Booking] Found customer with phone variant: ${phoneVariant}`);
@@ -53,8 +52,8 @@ export function registerQuickBookingRoutes(app: Express) {
         }
       } else {
         // Search by email (case-insensitive would be better, but this works for now)
-        customer = await db.query.customers.findFirst({
-          where: eq(customers.email, contact.toLowerCase()),
+        customer = await req.tenantDb!.query.customers.findFirst({
+          where: req.tenantDb!.withTenantFilter(customers, eq(customers.email, contact.toLowerCase())),
         });
       }
       
@@ -76,8 +75,8 @@ export function registerQuickBookingRoutes(app: Express) {
       // Get loyalty points if customer exists
       let customerLoyaltyPoints = 0;
       if (customer) {
-        const loyaltyRecord = await db.query.loyaltyPoints.findFirst({
-          where: eq(loyaltyPoints.customerId, customer.id),
+        const loyaltyRecord = await req.tenantDb!.query.loyaltyPoints.findFirst({
+          where: req.tenantDb!.withTenantFilter(loyaltyPoints, eq(loyaltyPoints.customerId, customer.id)),
         });
         customerLoyaltyPoints = loyaltyRecord?.points || 0;
       }
@@ -85,8 +84,8 @@ export function registerQuickBookingRoutes(app: Express) {
       // Get last appointment from database
       let lastAppointment;
       if (customer) {
-        lastAppointment = await db.query.appointments.findFirst({
-          where: eq(appointments.customerId, customer.id),
+        lastAppointment = await req.tenantDb!.query.appointments.findFirst({
+          where: req.tenantDb!.withTenantFilter(appointments, eq(appointments.customerId, customer.id)),
           orderBy: [desc(appointments.scheduledTime)],
           with: {
             service: true,
@@ -195,13 +194,13 @@ export function registerQuickBookingRoutes(app: Express) {
       }
       
       // Find or create customer
-      let customer = await db.query.customers.findFirst({
-        where: eq(customers.phone, phone),
+      let customer = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone)),
       });
       
       if (!customer) {
         // Create new customer
-        const [newCustomer] = await db.insert(customers).values({
+        const [newCustomer] = await req.tenantDb!.insert(customers).values({
           name,
           phone,
           email: email || null,
@@ -211,19 +210,19 @@ export function registerQuickBookingRoutes(app: Express) {
         customer = newCustomer;
       } else {
         // Update existing customer info if changed
-        await db.update(customers)
+        await req.tenantDb!.update(customers)
           .set({
             name,
             email: email || customer.email,
             address: address || customer.address,
             vehicleInfo: vehicles && vehicles.length > 0 ? JSON.stringify(vehicles) : customer.vehicleInfo,
           })
-          .where(eq(customers.id, customer.id));
+          .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, customer.id)));
       }
       
       // Create appointment - wrap in transaction with stats update
       let appointment: any;
-      await db.transaction(async (tx) => {
+      await req.tenantDb!.transaction(async (tx) => {
         const [newAppointment] = await tx.insert(appointments).values({
           customerId: customer.id,
           serviceId: serviceId || 1, // Default to service ID 1 if not provided

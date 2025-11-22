@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { 
   customers, 
   customerVehicles, 
@@ -21,8 +20,8 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
     try {
       const { phone } = req.params;
 
-      const customer = await db.query.customers.findFirst({
-        where: eq(customers.phone, phone)
+      const customer = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone))
       });
 
       if (!customer) {
@@ -32,13 +31,13 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
         });
       }
 
-      const vehicles = await db.query.customerVehicles.findMany({
-        where: eq(customerVehicles.customerId, customer.id),
+      const vehicles = await req.tenantDb!.query.customerVehicles.findMany({
+        where: req.tenantDb!.withTenantFilter(customerVehicles, eq(customerVehicles.customerId, customer.id)),
         orderBy: [desc(customerVehicles.isPrimary), desc(customerVehicles.createdAt)]
       });
 
-      const history = await db.query.customerServiceHistory.findMany({
-        where: eq(customerServiceHistory.customerId, customer.id),
+      const history = await req.tenantDb!.query.customerServiceHistory.findMany({
+        where: req.tenantDb!.withTenantFilter(customerServiceHistory, eq(customerServiceHistory.customerId, customer.id)),
         orderBy: [desc(customerServiceHistory.serviceDate)],
         limit: 10
       });
@@ -79,8 +78,8 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
     try {
       const customerId = parseInt(req.params.customerId);
 
-      const recentServices = await db.query.customerServiceHistory.findMany({
-        where: eq(customerServiceHistory.customerId, customerId),
+      const recentServices = await req.tenantDb!.query.customerServiceHistory.findMany({
+        where: req.tenantDb!.withTenantFilter(customerServiceHistory, eq(customerServiceHistory.customerId, customerId)),
         orderBy: [desc(customerServiceHistory.serviceDate)],
         limit: 3
       });
@@ -107,7 +106,7 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
         amount
       } = req.body;
 
-      const [historyRecord] = await db.insert(customerServiceHistory).values({
+      const [historyRecord] = await req.tenantDb!.insert(customerServiceHistory).values({
         customerId,
         appointmentId,
         serviceDate: new Date(),
@@ -117,7 +116,7 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
         amount: amount?.toString()
       }).returning();
 
-      const customerStats = await db
+      const customerStats = await req.tenantDb!
         .select({
           totalAppointments: sql<number>`count(*)`,
           lifetimeValue: sql<string>`COALESCE(sum(${customerServiceHistory.amount}), 0)`,
@@ -125,12 +124,12 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
           lastAppointment: sql<Date>`max(${customerServiceHistory.serviceDate})`
         })
         .from(customerServiceHistory)
-        .where(eq(customerServiceHistory.customerId, customerId))
+        .where(req.tenantDb!.withTenantFilter(customerServiceHistory, eq(customerServiceHistory.customerId, customerId)))
         .groupBy(customerServiceHistory.customerId);
 
       if (customerStats.length > 0) {
         const stats = customerStats[0];
-        await db.update(customers)
+        await req.tenantDb!.update(customers)
           .set({
             isReturningCustomer: stats.totalAppointments > 0,
             totalAppointments: stats.totalAppointments,
@@ -138,7 +137,7 @@ export function registerCustomerIntelligenceRoutes(app: Router) {
             firstAppointmentAt: stats.firstAppointment,
             lastAppointmentAt: stats.lastAppointment
           })
-          .where(eq(customers.id, customerId));
+          .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, customerId)));
       }
 
       res.json({ success: true, historyRecord });
