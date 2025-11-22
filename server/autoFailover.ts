@@ -6,6 +6,7 @@
  */
 
 import { db } from "./db";
+import { wrapTenantDb } from "./tenantDb";
 import { businessSettings, errorLogs } from "@shared/schema";
 import { eq, gte, and, or } from "drizzle-orm";
 import { invalidateMaintenanceCache } from "./maintenanceMode";
@@ -25,12 +26,14 @@ const COOLDOWN_PERIOD_MS = 30 * 60 * 1000; // 30 minutes
  * - 30-minute cooldown between auto-triggers
  */
 export async function checkAutoFailover(): Promise<{ triggered: boolean; reason?: string; suppressed?: boolean }> {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     // Get current business settings
-    const [settings] = await db
+    const [settings] = await tenantDb
       .select()
       .from(businessSettings)
-      .where(eq(businessSettings.id, 1))
+      .where(tenantDb.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
       .limit(1);
 
     if (!settings) {
@@ -59,15 +62,17 @@ export async function checkAutoFailover(): Promise<{ triggered: boolean; reason?
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     
     // Get critical errors (excluding validation errors)
-    const criticalErrors = await db
+    const criticalErrors = await tenantDb
       .select()
       .from(errorLogs)
       .where(
-        and(
-          eq(errorLogs.severity, 'critical'),
-          gte(errorLogs.createdAt, fiveMinutesAgo),
-          // Exclude validation errors (user input issues, not system failures)
-          // Note: Using sql operator for NOT LIKE would be cleaner, but simplified here
+        tenantDb.withTenantFilter(errorLogs,
+          and(
+            eq(errorLogs.severity, 'critical'),
+            gte(errorLogs.createdAt, fiveMinutesAgo),
+            // Exclude validation errors (user input issues, not system failures)
+            // Note: Using sql operator for NOT LIKE would be cleaner, but simplified here
+          )
         )
       );
 
@@ -77,13 +82,15 @@ export async function checkAutoFailover(): Promise<{ triggered: boolean; reason?
     );
 
     // Get high-severity errors (excluding validation)
-    const highErrors = await db
+    const highErrors = await tenantDb
       .select()
       .from(errorLogs)
       .where(
-        and(
-          eq(errorLogs.severity, 'high'),
-          gte(errorLogs.createdAt, fiveMinutesAgo)
+        tenantDb.withTenantFilter(errorLogs,
+          and(
+            eq(errorLogs.severity, 'high'),
+            gte(errorLogs.createdAt, fiveMinutesAgo)
+          )
         )
       );
 
@@ -139,9 +146,11 @@ async function triggerMaintenanceMode(
   reason: string,
   settings: typeof businessSettings.$inferSelect
 ): Promise<void> {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     // Update business settings to enable maintenance mode
-    await db
+    await tenantDb
       .update(businessSettings)
       .set({
         maintenanceMode: true,
@@ -149,7 +158,7 @@ async function triggerMaintenanceMode(
         lastFailoverAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(businessSettings.id, 1));
+      .where(tenantDb.withTenantFilter(businessSettings, eq(businessSettings.id, 1)));
 
     // Invalidate cache to apply changes immediately
     try {
@@ -290,12 +299,14 @@ export async function forwardBookingToBackup(bookingDetails: {
   vehicleInfo?: string;
   notes?: string;
 }): Promise<{ success: boolean; error?: any }> {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     // Get business settings to retrieve backup email
-    const [settings] = await db
+    const [settings] = await tenantDb
       .select()
       .from(businessSettings)
-      .where(eq(businessSettings.id, 1))
+      .where(tenantDb.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
       .limit(1);
 
     if (!settings || !settings.backupEmail) {

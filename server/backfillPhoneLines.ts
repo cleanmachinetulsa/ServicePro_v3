@@ -1,6 +1,7 @@
 import { db } from './db';
 import { conversations, messages, phoneLines } from '@shared/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { wrapTenantDb } from './tenantDb';
 
 /**
  * Backfill phoneLineId for existing conversations and messages
@@ -11,11 +12,12 @@ import { eq, and, isNull } from 'drizzle-orm';
  * - This is a one-time migration for historical data
  */
 export async function backfillPhoneLineIds() {
+  const tenantDb = wrapTenantDb(db, 'root');
   try {
     console.log('[BACKFILL] Starting phone line ID backfill...');
 
     // Get the Main Line ID by label (flexible - works regardless of phone number)
-    const [mainLine] = await db
+    const [mainLine] = await tenantDb
       .select()
       .from(phoneLines)
       .where(eq(phoneLines.label, 'Main Business Line'))
@@ -29,7 +31,7 @@ export async function backfillPhoneLineIds() {
     console.log(`[BACKFILL] Main Line ID: ${mainLine.id}`);
 
     // Update all SMS conversations without a phoneLineId
-    const smsConversationsResult = await db
+    const smsConversationsResult = await tenantDb
       .update(conversations)
       .set({ phoneLineId: mainLine.id })
       .where(
@@ -43,7 +45,7 @@ export async function backfillPhoneLineIds() {
     console.log(`[BACKFILL] Updated ${smsConversationsResult.length} SMS conversations to Main Line`);
 
     // Update all SMS messages without a phoneLineId
-    const smsMessagesResult = await db
+    const smsMessagesResult = await tenantDb
       .update(messages)
       .set({ phoneLineId: mainLine.id })
       .where(

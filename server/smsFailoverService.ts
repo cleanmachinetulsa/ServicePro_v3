@@ -9,7 +9,7 @@
  * line +19188565711 when Error 30024 is detected.
  */
 
-import { db } from './db';
+import type { TenantDb } from './db';
 import { phoneLines } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import * as Twilio from 'twilio';
@@ -34,7 +34,7 @@ let backupPhoneLineCache: { number: string; id: number; label: string } | null =
  * Get backup phone line (Jody's Line +19188565711)
  * This is the working Twilio number that can send SMS while main line is provisioning
  */
-async function getBackupPhoneLine(): Promise<{ number: string; id: number; label: string } | null> {
+async function getBackupPhoneLine(tenantDb: TenantDb): Promise<{ number: string; id: number; label: string } | null> {
   if (backupPhoneLineCache) {
     return backupPhoneLineCache;
   }
@@ -43,7 +43,7 @@ async function getBackupPhoneLine(): Promise<{ number: string; id: number; label
     // Jody's Line should be ID 2 in the database, or we can search by number
     const backupLineNumber = '+19188565711';
     
-    const [backupLine] = await db
+    const [backupLine] = await tenantDb
       .select()
       .from(phoneLines)
       .where(eq(phoneLines.phoneNumber, backupLineNumber))
@@ -91,6 +91,7 @@ function isProvisioningError(error: any): boolean {
  * @returns Success status and message SID
  */
 export async function sendSMSWithFailover(
+  tenantDb: TenantDb,
   toPhone: string,
   message: string,
   fromPhone: string,
@@ -135,7 +136,7 @@ export async function sendSMSWithFailover(
         console.log(`[SMS FAILOVER] Initiating automatic failover to backup line...`);
         
         // ATTEMPT 2: Retry with backup phone line
-        const backupLine = await getBackupPhoneLine();
+        const backupLine = await getBackupPhoneLine(tenantDb);
         
         if (!backupLine) {
           console.error('[SMS FAILOVER] ❌ No backup line available - failing');

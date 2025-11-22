@@ -10,6 +10,7 @@ import { appointments, contacts, type Appointment, type Contact } from "@shared/
 import { eq } from "drizzle-orm";
 import { sendSMS } from "./notifications";
 import { sendBusinessEmail } from "./emailService";
+import type { TenantDb } from "./tenantDb";
 
 /**
  * Notification templates for each role and event type
@@ -127,6 +128,7 @@ function getTemplate(event: NotificationEvent, role: 'payer' | 'service_contact'
  * Send notification to specific contact
  */
 async function sendToContact(
+  tenantDb: TenantDb,
   contact: Contact,
   message: string,
   channel: NotificationChannel
@@ -150,7 +152,7 @@ async function sendToContact(
   // Send SMS
   if ((channel === 'sms' || channel === 'both') && prefs.sms && contact.phoneE164 && !contact.smsOptOut) {
     try {
-      const smsResult = await sendSMS(contact.phoneE164, message);
+      const smsResult = await sendSMS(tenantDb, contact.phoneE164, message);
       results.sms = smsResult.success;
     } catch (error) {
       console.error(`Failed to send SMS to ${contact.phoneE164}:`, error);
@@ -182,6 +184,7 @@ async function sendToContact(
  * Send role-aware notifications for a specific event
  */
 export async function sendRoleAwareNotification(
+  tenantDb: TenantDb,
   appointmentId: number,
   event: NotificationEvent,
   metadata: Record<string, any> = {},
@@ -191,7 +194,7 @@ export async function sendRoleAwareNotification(
   failed: { role: string; reason: string }[];
 }> {
   // Fetch appointment with all role contacts
-  const appointment = await db
+  const appointment = await tenantDb
     .select()
     .from(appointments)
     .where(eq(appointments.id, appointmentId))
@@ -219,7 +222,7 @@ export async function sendRoleAwareNotification(
   } = {};
 
   if (contactIds.length > 0) {
-    const fetchedContacts = await db
+    const fetchedContacts = await tenantDb
       .select()
       .from(contacts)
       .where(eq(contacts.id, contactIds[0])) // Start with first ID
@@ -227,7 +230,7 @@ export async function sendRoleAwareNotification(
 
     // Fetch remaining contacts
     for (const id of contactIds.slice(1)) {
-      const c = await db.select().from(contacts).where(eq(contacts.id, id)).execute();
+      const c = await tenantDb.select().from(contacts).where(eq(contacts.id, id)).execute();
       fetchedContacts.push(...c);
     }
 
@@ -267,7 +270,7 @@ export async function sendRoleAwareNotification(
         payerName: roleContacts.payer.name,
       });
 
-      const result = await sendToContact(roleContacts.payer, message, channel);
+      const result = await sendToContact(tenantDb, roleContacts.payer, message, channel);
       if (result.sms) sent.push({ role: 'payer', channel: 'sms', success: true });
       if (result.email) sent.push({ role: 'payer', channel: 'email', success: true });
       if (!result.sms && !result.email) {
@@ -285,7 +288,7 @@ export async function sendRoleAwareNotification(
         contactName: roleContacts.serviceContact.name,
       });
 
-      const result = await sendToContact(roleContacts.serviceContact, message, channel);
+      const result = await sendToContact(tenantDb, roleContacts.serviceContact, message, channel);
       if (result.sms) sent.push({ role: 'service_contact', channel: 'sms', success: true });
       if (result.email) sent.push({ role: 'service_contact', channel: 'email', success: true });
       if (!result.sms && !result.email) {
@@ -303,7 +306,7 @@ export async function sendRoleAwareNotification(
         requesterName: roleContacts.requester.name,
       });
 
-      const result = await sendToContact(roleContacts.requester, message, channel);
+      const result = await sendToContact(tenantDb, roleContacts.requester, message, channel);
       if (result.sms) sent.push({ role: 'requester', channel: 'sms', success: true });
       if (result.email) sent.push({ role: 'requester', channel: 'email', success: true });
       if (!result.sms && !result.email) {
@@ -325,7 +328,7 @@ export async function sendRoleAwareNotification(
         ownerName: roleContacts.vehicleOwner.name,
       });
 
-      const result = await sendToContact(roleContacts.vehicleOwner, message, channel);
+      const result = await sendToContact(tenantDb, roleContacts.vehicleOwner, message, channel);
       if (result.sms) sent.push({ role: 'vehicle_owner', channel: 'sms', success: true });
       if (result.email) sent.push({ role: 'vehicle_owner', channel: 'email', success: true });
       if (!result.sms && !result.email) {
@@ -343,11 +346,12 @@ export async function sendRoleAwareNotification(
  * Hides location from payer if configured
  */
 export async function sendPrivacyAwareNotification(
+  tenantDb: TenantDb,
   appointmentId: number,
   event: NotificationEvent,
   metadata: Record<string, any> = {}
 ): Promise<any> {
-  const appointment = await db
+  const appointment = await tenantDb
     .select()
     .from(appointments)
     .where(eq(appointments.id, appointmentId))
@@ -380,5 +384,5 @@ export async function sendPrivacyAwareNotification(
   // Send with appropriate metadata based on role
   // This would require modifying sendRoleAwareNotification to accept per-role metadata
   // For now, use the existing function
-  return sendRoleAwareNotification(appointmentId, event, metadata);
+  return sendRoleAwareNotification(tenantDb, appointmentId, event, metadata);
 }

@@ -6,6 +6,7 @@ import { google } from 'googleapis';
 import { getAuthClient } from './googleIntegration';
 import { addDays } from 'date-fns';
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { services } from '@shared/schema';
 
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'cleanmachinetulsa@gmail.com';
@@ -27,8 +28,10 @@ interface Appointment {
  * Load known service names from database for validation
  */
 async function loadKnownServices(): Promise<void> {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
-    const serviceList = await db.select().from(services);
+    const serviceList = await tenantDb.select().from(services);
     knownServiceNames = serviceList.map(s => s.name);
     console.log(`[WEATHER] Loaded ${knownServiceNames.length} known services for validation`);
   } catch (error) {

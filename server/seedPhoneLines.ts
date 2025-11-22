@@ -1,6 +1,7 @@
 import { db } from './db';
 import { phoneLines, phoneSchedules } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { wrapTenantDb } from './tenantDb';
 
 /**
  * Seeds the database with Clean Machine's phone lines and default business hours
@@ -10,11 +11,12 @@ import { eq } from 'drizzle-orm';
  * - BUSINESS_OWNER_PHONE: Forwarding destination
  */
 export async function seedPhoneLines() {
+  const tenantDb = wrapTenantDb(db, 'root');
   try {
     console.log('[SEED] Checking phone lines...');
 
     // Check if phone lines already exist
-    const existingLines = await db.select().from(phoneLines);
+    const existingLines = await tenantDb.select().from(phoneLines);
     
     if (existingLines.length > 0) {
       console.log('[SEED] Phone lines already seeded, skipping...');
@@ -27,7 +29,7 @@ export async function seedPhoneLines() {
     const forwardingNumber = process.env.BUSINESS_OWNER_PHONE || null;
 
     // Create Main Line - Primary Twilio business number
-    const [mainLine] = await db.insert(phoneLines).values({
+    const [mainLine] = await tenantDb.insert(phoneLines).values({
       phoneNumber: mainLineNumber,
       label: 'Main Line',
       forwardingEnabled: true,
@@ -38,7 +40,7 @@ export async function seedPhoneLines() {
     console.log('[SEED] Created Main Line:', mainLine.phoneNumber);
 
     // Create VIP Line - Emergency alerts and priority customers
-    const [vipLine] = await db.insert(phoneLines).values({
+    const [vipLine] = await tenantDb.insert(phoneLines).values({
       phoneNumber: vipLineNumber,
       label: 'VIP Line',
       forwardingEnabled: true,
@@ -58,7 +60,7 @@ export async function seedPhoneLines() {
       action: 'forward' as const,
     }));
 
-    await db.insert(phoneSchedules).values(schedules);
+    await tenantDb.insert(phoneSchedules).values(schedules);
     console.log('[SEED] Created business hours for Main Line (Mon-Fri 9am-6pm)');
 
     // Create same schedule for VIP Line
@@ -70,7 +72,7 @@ export async function seedPhoneLines() {
       action: 'forward' as const,
     }));
 
-    await db.insert(phoneSchedules).values(vipSchedules);
+    await tenantDb.insert(phoneSchedules).values(vipSchedules);
     console.log('[SEED] Created business hours for VIP Line (Mon-Fri 9am-6pm)');
 
     console.log('[SEED] ✅ Phone lines seeded successfully!');

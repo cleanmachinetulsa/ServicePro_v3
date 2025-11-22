@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { technicians, ptoRequests, shiftTrades, applicants, extensionPool, businessSettings } from '@shared/schema';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 
@@ -9,7 +9,7 @@ const router = Router();
 router.get('/api/admin/employees/overview', async (req: Request, res: Response) => {
   try {
     // Get total and active technicians
-    const allTechs = await db.select().from(technicians);
+    const allTechs = await req.tenantDb!.select().from(technicians);
     const totalTechnicians = allTechs.length;
     const activeTechnicians = allTechs.filter(t => t.employmentStatus === 'active').length;
     
@@ -23,24 +23,26 @@ router.get('/api/admin/employees/overview', async (req: Request, res: Response) 
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     
-    const upcomingPTORequests = await db.select().from(ptoRequests).where(
-      and(
-        eq(ptoRequests.status, 'approved'),
-        gte(ptoRequests.startDate, new Date().toISOString().split('T')[0]),
-        lte(ptoRequests.startDate, thirtyDaysFromNow.toISOString().split('T')[0])
+    const upcomingPTORequests = await req.tenantDb!.select().from(ptoRequests).where(
+      req.tenantDb!.withTenantFilter(ptoRequests,
+        and(
+          eq(ptoRequests.status, 'approved'),
+          gte(ptoRequests.startDate, new Date().toISOString().split('T')[0]),
+          lte(ptoRequests.startDate, thirtyDaysFromNow.toISOString().split('T')[0])
+        )
       )
     );
     const upcomingPTO = upcomingPTORequests.length;
 
     // Count open shift trade requests
-    const openTrades = await db.select().from(shiftTrades).where(
-      eq(shiftTrades.status, 'pending')
+    const openTrades = await req.tenantDb!.select().from(shiftTrades).where(
+      req.tenantDb!.withTenantFilter(shiftTrades, eq(shiftTrades.status, 'pending'))
     );
     const openShiftTrades = openTrades.length;
 
     // Count pending applicants (new + screening status)
-    const pendingApplicantsList = await db.select().from(applicants).where(
-      sql`${applicants.applicationStatus} IN ('new', 'screening')`
+    const pendingApplicantsList = await req.tenantDb!.select().from(applicants).where(
+      req.tenantDb!.withTenantFilter(applicants, sql`${applicants.applicationStatus} IN ('new', 'screening')`)
     );
     const pendingApplicants = pendingApplicantsList.length;
 
@@ -69,7 +71,7 @@ router.get('/api/admin/employees/directory', async (req: Request, res: Response)
   try {
     const { search, status } = req.query;
 
-    let query = db.select({
+    let query = req.tenantDb!.select({
       id: technicians.id,
       preferredName: technicians.preferredName,
       fullName: technicians.fullName,
@@ -120,7 +122,7 @@ router.get('/api/admin/employees/profiles', async (req: Request, res: Response) 
     const { status } = req.query;
 
     // Get all technicians with full profile data
-    let techs = await db.select().from(technicians);
+    let techs = await req.tenantDb!.select().from(technicians);
 
     // Filter by review status
     if (status === 'pending') {
@@ -160,7 +162,9 @@ router.post('/api/admin/employees/:id/approve', async (req: Request, res: Respon
     }
 
     // Check if technician exists
-    const [existingTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [existingTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     if (!existingTech) {
       return res.status(404).json({ 
         success: false,
@@ -169,12 +173,14 @@ router.post('/api/admin/employees/:id/approve', async (req: Request, res: Respon
     }
 
     // Update profile reviewed flag
-    await db.update(technicians)
+    await req.tenantDb!.update(technicians)
       .set({ profileReviewed: true })
-      .where(eq(technicians.id, techId));
+      .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)));
 
     // Fetch updated profile to confirm change
-    const [updatedTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [updatedTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (!updatedTech) {
       return res.status(500).json({ 
@@ -213,7 +219,9 @@ router.post('/api/admin/employees/:id/request-changes', async (req: Request, res
     }
 
     // Check if technician exists
-    const [existingTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [existingTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     if (!existingTech) {
       return res.status(404).json({ 
         success: false,
@@ -222,15 +230,17 @@ router.post('/api/admin/employees/:id/request-changes', async (req: Request, res
     }
 
     // Update profile reviewed flag to false
-    await db.update(technicians)
+    await req.tenantDb!.update(technicians)
       .set({ profileReviewed: false })
-      .where(eq(technicians.id, techId));
+      .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)));
 
     // TODO: Send notification to technician with reason
     // This could be implemented via SMS, email, or in-app notification
 
     // Fetch updated profile to confirm change
-    const [updatedTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [updatedTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (!updatedTech) {
       return res.status(500).json({ 
@@ -282,9 +292,9 @@ function generateEmailAlias(fullName: string): string {
  * - Increment happens atomically in database
  * - Prevents duplicate extensions from concurrent requests
  */
-async function getNextExtension(): Promise<number> {
+async function getNextExtension(tenantDb: any): Promise<number> {
   try {
-    return await db.transaction(async (tx) => {
+    return await tenantDb.raw.transaction(async (tx: any) => {
       // SELECT ... FOR UPDATE locks the row until transaction completes
       const [pool] = await tx.select().from(extensionPool).for('update').limit(1);
       
@@ -428,7 +438,9 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
     }
     
     // Get employee record
-    const [tech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [tech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (!tech) {
       return res.status(404).json({
@@ -454,11 +466,13 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
     console.log(`[PROVISIONING] Generated email for ${tech.fullName}: ${generatedEmail}`);
     
     // Check for duplicate email
-    const [existingEmail] = await db.select()
+    const [existingEmail] = await req.tenantDb!.select()
       .from(technicians)
-      .where(and(
-        eq(technicians.generatedEmail, generatedEmail),
-        sql`${technicians.id} != ${techId}`
+      .where(req.tenantDb!.withTenantFilter(technicians,
+        and(
+          eq(technicians.generatedEmail, generatedEmail),
+          sql`${technicians.id} != ${techId}`
+        )
       ));
     
     if (existingEmail) {
@@ -470,7 +484,7 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
     // STEP 2: Assign phone extension
     let phoneExtension: number;
     try {
-      phoneExtension = await getNextExtension();
+      phoneExtension = await getNextExtension(req.tenantDb!);
       console.log(`[PROVISIONING] Assigned extension ${phoneExtension} to ${tech.fullName}`);
     } catch (error: any) {
       console.error('[PROVISIONING] Failed to allocate extension:', error);
@@ -493,7 +507,7 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
     const userId = (req.user as any)?.id || null;
     
     try {
-      await db.update(technicians)
+      await req.tenantDb!.update(technicians)
         .set({
           generatedEmail,
           phoneExtension,
@@ -503,7 +517,7 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
           provisionedBy: userId,
           updatedAt: new Date(),
         })
-        .where(eq(technicians.id, techId));
+        .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)));
     } catch (dbError: any) {
       // Check for unique constraint violation on phone extension
       if (dbError.code === '23505' && dbError.constraint === 'technicians_phone_extension_unique_idx') {
@@ -520,7 +534,9 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
     }
     
     // STEP 5: Get updated record
-    const [updatedTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [updatedTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     // STEP 6: Log provisioning event
     console.log(`[PROVISIONING] Employee ${tech.fullName} provisioning ${provisioningStatus}:`, {
@@ -588,7 +604,9 @@ router.post('/api/admin/employees/:id/retry-provision', async (req: Request, res
       });
     }
     
-    const [tech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [tech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (!tech) {
       return res.status(404).json({
@@ -614,7 +632,7 @@ router.post('/api/admin/employees/:id/retry-provision', async (req: Request, res
     const provisioningStatus = emailResult.success ? 'provisioned' : 'failed';
     const userId = (req.user as any)?.id || null;
     
-    await db.update(technicians)
+    await req.tenantDb!.update(technicians)
       .set({
         provisioningStatus,
         provisioningError: emailResult.error || null,
@@ -622,9 +640,11 @@ router.post('/api/admin/employees/:id/retry-provision', async (req: Request, res
         provisionedBy: emailResult.success ? userId : tech.provisionedBy,
         updatedAt: new Date(),
       })
-      .where(eq(technicians.id, techId));
+      .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)));
     
-    const [updatedTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [updatedTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (emailResult.success) {
       return res.json({
@@ -668,10 +688,10 @@ router.patch('/api/admin/employees/:id', async (req: Request, res: Response) => 
 
     // Get authenticated user from database
     const { users } = await import('@shared/schema');
-    const [user] = await db
+    const [user] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, req.session.userId))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId)))
       .limit(1);
 
     if (!user) {
@@ -705,7 +725,9 @@ router.patch('/api/admin/employees/:id', async (req: Request, res: Response) => 
     }
     
     // Fetch existing technician record
-    const [existingTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [existingTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (!existingTech) {
       return res.status(404).json({
@@ -757,12 +779,14 @@ router.patch('/api/admin/employees/:id', async (req: Request, res: Response) => 
     console.log(`[EMPLOYEE UPDATE] Whitelisted fields updated:`, Object.keys(updateData).filter(k => k !== 'updatedAt'));
     
     // Update technician record with ONLY whitelisted fields
-    await db.update(technicians)
+    await req.tenantDb!.update(technicians)
       .set(updateData)
-      .where(eq(technicians.id, techId));
+      .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)));
     
     // Fetch updated technician
-    const [updatedTech] = await db.select().from(technicians).where(eq(technicians.id, techId));
+    const [updatedTech] = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId))
+    );
     
     if (!updatedTech) {
       return res.status(500).json({
@@ -778,14 +802,16 @@ router.patch('/api/admin/employees/:id', async (req: Request, res: Response) => 
       // Wrap all notifications in try-catch to prevent breaking the update flow
       try {
         // Fetch business settings for notification contacts
-        const [settings] = await db.select().from(businessSettings).limit(1);
+        const [settings] = await req.tenantDb!.select().from(businessSettings).limit(1);
         
         // Get admin user who made the change (if authenticated)
         const adminUserId = (req.user as any)?.id;
         let adminName = 'Admin';
         if (adminUserId) {
           const { users } = await import('@shared/schema');
-          const [adminUser] = await db.select().from(users).where(eq(users.id, adminUserId)).limit(1);
+          const [adminUser] = await req.tenantDb!.select().from(users).where(
+            req.tenantDb!.withTenantFilter(users, eq(users.id, adminUserId))
+          ).limit(1);
           if (adminUser) {
             adminName = adminUser.fullName || adminUser.username;
           }
@@ -977,10 +1003,10 @@ View Employee Profile: ${process.env.REPLIT_DOMAIN || 'https://yourapp.replit.ap
           const { inArray } = await import('drizzle-orm');
           
           // Get all owner/manager users
-          const adminUsers = await db
+          const adminUsers = await req.tenantDb!
             .select({ id: users.id, role: users.role })
             .from(users)
-            .where(inArray(users.role, ['owner', 'manager']))
+            .where(req.tenantDb!.withTenantFilter(users, inArray(users.role, ['owner', 'manager'])))
             .groupBy(users.id, users.role);
           
           if (adminUsers.length > 0) {

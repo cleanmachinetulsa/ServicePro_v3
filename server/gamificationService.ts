@@ -1,4 +1,4 @@
-import { db } from "./db";
+import type { TenantDb } from "./db";
 import { 
   loyaltyPoints, 
   pointsTransactions, 
@@ -12,30 +12,25 @@ import {
   type InsertLoyaltyTier
 } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import type { ExtractTablesWithRelations } from "drizzle-orm";
-
-// Type for database executor - can be the global db or an active transaction
-type DbExecutor = NodePgDatabase<any> | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * Award points to a customer
  */
 export async function awardPoints(
+  tenantDb: TenantDb,
   customerId: number,
   amount: number,
   source: string,
   sourceId: number | null,
-  description: string,
-  executor: DbExecutor = db
+  description: string
 ): Promise<{ success: boolean; currentPoints: number }> {
   try {
     // Get or create loyalty points record for customer
-    let customerPoints = await getCustomerLoyaltyPoints(customerId, executor);
+    let customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
     
     if (!customerPoints) {
       // Create new loyalty points record for customer
-      const [newPoints] = await executor
+      const [newPoints] = await tenantDb
         .insert(loyaltyPoints)
         .values({ customerId, points: 0 })
         .returning();
@@ -47,7 +42,7 @@ export async function awardPoints(
     const newPointsTotal = customerPoints.points + amount;
     
     // Update the loyalty points record
-    const [updatedPoints] = await executor
+    const [updatedPoints] = await tenantDb
       .update(loyaltyPoints)
       .set({ 
         points: newPointsTotal,
@@ -57,7 +52,7 @@ export async function awardPoints(
       .returning();
     
     // Record the transaction
-    await executor.insert(pointsTransactions).values({
+    await tenantDb.insert(pointsTransactions).values({
       loyaltyPointsId: customerPoints.id,
       amount,
       description,
@@ -67,7 +62,7 @@ export async function awardPoints(
     });
     
     // Check if customer has earned any new achievements
-    await checkForNewAchievements(customerId, newPointsTotal, executor);
+    await checkForNewAchievements(tenantDb, customerId, newPointsTotal);
     
     return { 
       success: true, 
@@ -86,6 +81,7 @@ export async function awardPoints(
  * Redeem points from a customer's balance
  */
 export async function redeemPoints(
+  tenantDb: TenantDb,
   customerId: number,
   amount: number,
   source: string,
@@ -94,7 +90,7 @@ export async function redeemPoints(
 ): Promise<{ success: boolean; currentPoints: number }> {
   try {
     // Get loyalty points record for customer
-    const customerPoints = await getCustomerLoyaltyPoints(customerId);
+    const customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
     
     if (!customerPoints) {
       return { 
@@ -115,7 +111,7 @@ export async function redeemPoints(
     const newPointsTotal = customerPoints.points - amount;
     
     // Update the loyalty points record
-    const [updatedPoints] = await db
+    const [updatedPoints] = await tenantDb
       .update(loyaltyPoints)
       .set({ 
         points: newPointsTotal,
@@ -125,7 +121,7 @@ export async function redeemPoints(
       .returning();
     
     // Record the transaction
-    await db.insert(pointsTransactions).values({
+    await tenantDb.insert(pointsTransactions).values({
       loyaltyPointsId: customerPoints.id,
       amount: -amount, // Negative for redemption
       description,
@@ -150,8 +146,8 @@ export async function redeemPoints(
 /**
  * Get a customer's loyalty points
  */
-export async function getCustomerLoyaltyPoints(customerId: number, executor: DbExecutor = db) {
-  const [customerPoints] = await executor
+export async function getCustomerLoyaltyPoints(tenantDb: TenantDb, customerId: number) {
+  const [customerPoints] = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
@@ -162,15 +158,15 @@ export async function getCustomerLoyaltyPoints(customerId: number, executor: DbE
 /**
  * Get a customer's current loyalty tier
  */
-export async function getCustomerLoyaltyTier(customerId: number) {
-  const customerPoints = await getCustomerLoyaltyPoints(customerId);
+export async function getCustomerLoyaltyTier(tenantDb: TenantDb, customerId: number) {
+  const customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
   
   if (!customerPoints) {
     return null;
   }
   
   // Get highest tier customer qualifies for
-  const [tier] = await db
+  const [tier] = await tenantDb
     .select()
     .from(loyaltyTiers)
     .where(gte(customerPoints.points, loyaltyTiers.pointThreshold))
@@ -183,14 +179,14 @@ export async function getCustomerLoyaltyTier(customerId: number) {
 /**
  * Get a customer's transaction history
  */
-export async function getCustomerTransactionHistory(customerId: number) {
-  const customerPoints = await getCustomerLoyaltyPoints(customerId);
+export async function getCustomerTransactionHistory(tenantDb: TenantDb, customerId: number) {
+  const customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
   
   if (!customerPoints) {
     return [];
   }
   
-  return db
+  return tenantDb
     .select()
     .from(pointsTransactions)
     .where(eq(pointsTransactions.loyaltyPointsId, customerPoints.id))
@@ -200,8 +196,8 @@ export async function getCustomerTransactionHistory(customerId: number) {
 /**
  * Get a customer's achievements
  */
-export async function getCustomerAchievements(customerId: number) {
-  return db
+export async function getCustomerAchievements(tenantDb: TenantDb, customerId: number) {
+  return tenantDb
     .select({
       id: achievements.id,
       name: achievements.name,
@@ -219,13 +215,13 @@ export async function getCustomerAchievements(customerId: number) {
 /**
  * Check if a customer has earned any new achievements
  */
-async function checkForNewAchievements(customerId: number, currentPoints: number, executor: DbExecutor = db) {
+async function checkForNewAchievements(tenantDb: TenantDb, customerId: number, currentPoints: number) {
   try {
     // Get all achievements
-    const allAchievements = await executor.select().from(achievements);
+    const allAchievements = await tenantDb.select().from(achievements);
     
     // Get customer's existing achievements
-    const existingAchievements = await executor
+    const existingAchievements = await tenantDb
       .select()
       .from(customerAchievements)
       .where(eq(customerAchievements.customerId, customerId));
@@ -255,7 +251,7 @@ async function checkForNewAchievements(customerId: number, currentPoints: number
     
     // Save new achievements
     if (newAchievements.length > 0) {
-      await executor.insert(customerAchievements).values(newAchievements);
+      await tenantDb.insert(customerAchievements).values(newAchievements);
     }
     
     return newAchievements.length;
@@ -268,9 +264,9 @@ async function checkForNewAchievements(customerId: number, currentPoints: number
 /**
  * Create default achievements if not exists
  */
-export async function createDefaultAchievements() {
+export async function createDefaultAchievements(tenantDb: TenantDb) {
   try {
-    const count = await db.select({ count: sql<number>`count(*)` }).from(achievements);
+    const count = await tenantDb.select({ count: sql<number>`count(*)` }).from(achievements);
     
     if (count[0].count === 0) {
       // No achievements exist, let's create defaults
@@ -341,7 +337,7 @@ export async function createDefaultAchievements() {
         }
       ];
       
-      await db.insert(achievements).values(defaultAchievements);
+      await tenantDb.insert(achievements).values(defaultAchievements);
     }
   } catch (error) {
     console.error("Error creating default achievements:", error);
@@ -351,9 +347,9 @@ export async function createDefaultAchievements() {
 /**
  * Create default loyalty tiers if not exists
  */
-export async function createDefaultLoyaltyTiers() {
+export async function createDefaultLoyaltyTiers(tenantDb: TenantDb) {
   try {
-    const count = await db.select({ count: sql<number>`count(*)` }).from(loyaltyTiers);
+    const count = await tenantDb.select({ count: sql<number>`count(*)` }).from(loyaltyTiers);
     
     if (count[0].count === 0) {
       // No tiers exist, let's create defaults
@@ -393,7 +389,7 @@ export async function createDefaultLoyaltyTiers() {
         }
       ];
       
-      await db.insert(loyaltyTiers).values(defaultTiers);
+      await tenantDb.insert(loyaltyTiers).values(defaultTiers);
     }
   } catch (error) {
     console.error("Error creating default loyalty tiers:", error);
@@ -404,6 +400,7 @@ export async function createDefaultLoyaltyTiers() {
  * Award points for a completed appointment
  */
 export async function awardPointsForAppointment(
+  tenantDb: TenantDb,
   customerId: number,
   appointmentId: number,
   serviceAmount: number
@@ -412,6 +409,7 @@ export async function awardPointsForAppointment(
   const pointsEarned = Math.floor(serviceAmount);
   
   return awardPoints(
+    tenantDb,
     customerId,
     pointsEarned,
     "appointment",
@@ -424,20 +422,20 @@ export async function awardPointsForAppointment(
  * Award points for a referral
  */
 export async function awardPointsForReferral(
+  tenantDb: TenantDb,
   customerId: number,
-  referredCustomerId: number,
-  executor: DbExecutor = db
+  referredCustomerId: number
 ) {
   // Referrals are worth 500 points
   const referralPoints = 500;
   
   return awardPoints(
+    tenantDb,
     customerId,
     referralPoints,
     "referral",
     referredCustomerId,
-    `Earned ${referralPoints} points for referring a new customer`,
-    executor  // Pass transaction executor through
+    `Earned ${referralPoints} points for referring a new customer`
   );
 }
 
@@ -445,6 +443,7 @@ export async function awardPointsForReferral(
  * Award points for leaving a review
  */
 export async function awardPointsForReview(
+  tenantDb: TenantDb,
   customerId: number,
   invoiceId: number
 ) {
@@ -452,6 +451,7 @@ export async function awardPointsForReview(
   const reviewPoints = 100;
   
   return awardPoints(
+    tenantDb,
     customerId,
     reviewPoints,
     "review",
@@ -464,6 +464,7 @@ export async function awardPointsForReview(
  * Award points for account anniversary 
  */
 export async function awardPointsForAnniversary(
+  tenantDb: TenantDb,
   customerId: number,
   yearsActive: number
 ) {
@@ -471,6 +472,7 @@ export async function awardPointsForAnniversary(
   const anniversaryPoints = 250 * yearsActive;
   
   return awardPoints(
+    tenantDb,
     customerId,
     anniversaryPoints,
     "anniversary",

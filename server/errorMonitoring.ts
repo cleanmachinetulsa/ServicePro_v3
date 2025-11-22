@@ -1,6 +1,7 @@
 import { sendSMS } from './notifications';
 import { db } from './db';
 import { errorLogs } from '@shared/schema';
+import { wrapTenantDb } from './tenantDb';
 
 // In-memory tracking for duplicate error prevention
 const recentErrors = new Map<string, number>();
@@ -21,12 +22,13 @@ interface ErrorDetails {
  * Log error to database and optionally notify admin
  */
 export async function logError(details: ErrorDetails): Promise<void> {
+  const tenantDb = wrapTenantDb(db, 'root');
   try {
     // CRITICAL FIX: Always log to database and check failover BEFORE duplicate suppression
     // This ensures repeated identical errors still count toward auto-failover threshold
     
     // Log to database (ALWAYS, even for duplicates)
-    await db.insert(errorLogs).values({
+    await tenantDb.insert(errorLogs).values({
       errorType: details.type,
       severity: details.severity,
       message: details.message,
@@ -180,8 +182,9 @@ export function asyncHandler(fn: Function) {
  * Get recent errors for admin dashboard
  */
 export async function getRecentErrors(limit: number = 50): Promise<typeof errorLogs.$inferSelect[]> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const { desc } = await import('drizzle-orm');
-  return db
+  return tenantDb
     .select()
     .from(errorLogs)
     .orderBy(desc(errorLogs.createdAt))
@@ -192,8 +195,9 @@ export async function getRecentErrors(limit: number = 50): Promise<typeof errorL
  * Mark error as resolved
  */
 export async function markErrorResolved(errorId: number): Promise<void> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const { eq } = await import('drizzle-orm');
-  await db
+  await tenantDb
     .update(errorLogs)
     .set({ resolved: new Date() })
     .where(eq(errorLogs.id, errorId));

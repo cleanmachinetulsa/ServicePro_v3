@@ -1,4 +1,4 @@
-import { db } from "./db";
+import type { TenantDb } from "./db";
 import { quoteRequests, customers } from "../shared/schema";
 import { nanoid } from "nanoid";
 import { sendSMS } from "./notifications";
@@ -7,7 +7,7 @@ import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
 /**
  * Create a specialty quote request for jobs requiring manual pricing
  */
-export async function requestSpecialtyQuote(params: {
+export async function requestSpecialtyQuote(tenantDb: TenantDb, params: {
   phone: string;
   customerName: string;
   issueDescription: string;
@@ -26,7 +26,7 @@ export async function requestSpecialtyQuote(params: {
     console.log('[QUOTE REQUEST] Creating specialty quote request:', params);
 
     // Check if customer exists in database
-    const existingCustomers = await db
+    const existingCustomers = await tenantDb
       .select()
       .from(customers)
       .where(eq(customers.phone, params.phone))
@@ -38,7 +38,7 @@ export async function requestSpecialtyQuote(params: {
     const approvalToken = nanoid(32);
 
     // Create quote request record
-    const [quoteRequest] = await db
+    const [quoteRequest] = await tenantDb
       .insert(quoteRequests)
       .values({
         customerId: customerId || undefined,
@@ -99,6 +99,7 @@ Photos will appear when customer uploads them.`;
  * Get AI-powered pricing suggestions based on past completed specialty jobs
  */
 export async function getPricingSuggestions(
+  tenantDb: TenantDb,
   damageType: string,
   issueDescription: string
 ): Promise<{
@@ -124,7 +125,7 @@ export async function getPricingSuggestions(
     console.log('[PRICING SUGGESTIONS] Analyzing historical data for:', damageType);
 
     // Get completed quotes with pricing data
-    const completedQuotes = await db
+    const completedQuotes = await tenantDb
       .select()
       .from(quoteRequests)
       .where(

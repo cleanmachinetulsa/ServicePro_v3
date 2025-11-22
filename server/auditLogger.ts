@@ -5,7 +5,7 @@
  * Tracks all role changes, approvals, payments, and privacy-sensitive actions
  */
 
-import { db } from "./db";
+import type { TenantDb } from './tenantDb';
 import { auditLog, type InsertAuditLog } from "@shared/schema";
 import type { Request } from "express";
 
@@ -37,7 +37,7 @@ export type AuditAction =
 /**
  * Log an audit event
  */
-export async function logAudit(params: {
+export async function logAudit(tenantDb: TenantDb, params: {
   userId?: number | null;
   technicianId?: number | null;
   actionType: AuditAction;
@@ -58,7 +58,7 @@ export async function logAudit(params: {
       userAgent: params.req?.headers['user-agent'] as string || null,
     };
 
-    await db.insert(auditLog).values(auditEntry).execute();
+    await tenantDb.insert(auditLog).values(auditEntry).execute();
 
     // Log to console for immediate visibility (production would use proper logging service)
     console.log(`[AUDIT] ${params.actionType} on ${params.entityType}:${params.entityId} by user:${params.userId || 'system'}`);
@@ -72,12 +72,13 @@ export async function logAudit(params: {
  * Log contact creation
  */
 export async function logContactCreated(
+  tenantDb: TenantDb,
   contactId: number,
   userId: number,
   details: { name: string; phone: string; email?: string; company?: string },
   req?: Request
 ): Promise<void> {
-  await logAudit({
+  await logAudit(tenantDb, {
     userId,
     actionType: 'contact_created',
     entityType: 'contact',
@@ -95,6 +96,7 @@ export async function logContactCreated(
  * Log role assignment or change
  */
 export async function logRoleChange(
+  tenantDb: TenantDb,
   appointmentId: number,
   userId: number,
   changes: {
@@ -104,7 +106,7 @@ export async function logRoleChange(
   }[],
   req?: Request
 ): Promise<void> {
-  await logAudit({
+  await logAudit(tenantDb, {
     userId,
     actionType: changes.some(c => c.oldContactId) ? 'role_changed' : 'role_assigned',
     entityType: 'appointment',
@@ -118,6 +120,7 @@ export async function logRoleChange(
  * Log privacy setting change
  */
 export async function logPrivacyChange(
+  tenantDb: TenantDb,
   appointmentId: number,
   userId: number,
   changes: {
@@ -127,7 +130,7 @@ export async function logPrivacyChange(
   }[],
   req?: Request
 ): Promise<void> {
-  await logAudit({
+  await logAudit(tenantDb, {
     userId,
     actionType: 'privacy_setting_changed',
     entityType: 'appointment',
@@ -141,6 +144,7 @@ export async function logPrivacyChange(
  * Log payer approval events
  */
 export async function logPayerApproval(
+  tenantDb: TenantDb,
   appointmentId: number,
   authorizationId: number,
   action: 'sent' | 'approved' | 'declined',
@@ -158,7 +162,7 @@ export async function logPayerApproval(
     declined: 'payer_declined' as const,
   };
 
-  await logAudit({
+  await logAudit(tenantDb, {
     userId: null, // May be initiated by payer, not admin
     actionType: actionMap[action],
     entityType: 'authorization',
@@ -175,6 +179,7 @@ export async function logPayerApproval(
  * Log payment events
  */
 export async function logPayment(
+  tenantDb: TenantDb,
   appointmentId: number,
   paymentType: 'deposit' | 'invoice' | 'balance',
   status: 'requested' | 'paid' | 'failed',
@@ -205,7 +210,7 @@ export async function logPayment(
     },
   };
 
-  await logAudit({
+  await logAudit(tenantDb, {
     userId: null,
     actionType: actionMap[paymentType][status],
     entityType: 'appointment',
@@ -224,6 +229,7 @@ export async function logPayment(
  * Log gift card events
  */
 export async function logGiftCard(
+  tenantDb: TenantDb,
   giftCardId: number,
   action: 'issued' | 'redeemed',
   details: {
@@ -236,7 +242,7 @@ export async function logGiftCard(
   },
   req?: Request
 ): Promise<void> {
-  await logAudit({
+  await logAudit(tenantDb, {
     userId: null,
     actionType: action === 'issued' ? 'gift_card_issued' : 'gift_card_redeemed',
     entityType: 'gift_card',
@@ -254,13 +260,14 @@ export async function logGiftCard(
  * Log billing type change
  */
 export async function logBillingTypeChange(
+  tenantDb: TenantDb,
   appointmentId: number,
   userId: number,
   oldType: string,
   newType: string,
   req?: Request
 ): Promise<void> {
-  await logAudit({
+  await logAudit(tenantDb, {
     userId,
     actionType: 'billing_type_changed',
     entityType: 'appointment',
@@ -277,13 +284,14 @@ export async function logBillingTypeChange(
  * Log price lock event
  */
 export async function logPriceLock(
+  tenantDb: TenantDb,
   appointmentId: number,
   userId: number | null,
   price: number,
   reason: 'payer_approved' | 'manual_lock',
   req?: Request
 ): Promise<void> {
-  await logAudit({
+  await logAudit(tenantDb, {
     userId,
     actionType: 'price_locked',
     entityType: 'appointment',
@@ -300,14 +308,15 @@ export async function logPriceLock(
  * Get audit history for an entity
  */
 export async function getAuditHistory(
+  tenantDb: TenantDb,
   entityType: string,
   entityId: number,
   limit: number = 50
 ): Promise<any[]> {
-  const history = await db
+  const history = await tenantDb
     .select()
     .from(auditLog)
-    .where(eq(auditLog.entityType, entityType))
+    .where(tenantDb.withTenantFilter(auditLog, eq(auditLog.entityType, entityType)))
     .where(eq(auditLog.entityId, entityId))
     .orderBy(desc(auditLog.timestamp))
     .limit(limit)

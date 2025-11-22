@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { 
   conversations, 
   humanEscalationRequests,
@@ -332,7 +332,7 @@ export function detectEscalationTrigger(messageText: string): { match: string; t
   return null;
 }
 
-export async function createEscalationRequest(params: {
+export async function createEscalationRequest(tenantDb: TenantDb, params: {
   conversationId: number;
   customerId: number;
   customerPhone: string;
@@ -350,7 +350,7 @@ export async function createEscalationRequest(params: {
       recentMessages = []
     } = params;
 
-    const conversation = await db.query.conversations.findFirst({
+    const conversation = await tenantDb.query.conversations.findFirst({
       where: eq(conversations.id, conversationId)
     });
 
@@ -359,7 +359,7 @@ export async function createEscalationRequest(params: {
       return null;
     }
 
-    const customerContext = await buildCustomerContext(customerPhone);
+    const customerContext = await buildCustomerContext(tenantDb, customerPhone);
     
     const messageSummary = recentMessages
       .slice(-5)
@@ -369,7 +369,7 @@ export async function createEscalationRequest(params: {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
 
-    const [escalation] = await db.insert(humanEscalationRequests).values({
+    const [escalation] = await tenantDb.insert(humanEscalationRequests).values({
       conversationId,
       customerId,
       customerPhone,
@@ -387,14 +387,14 @@ export async function createEscalationRequest(params: {
       pushNotificationSent: false,
     }).returning();
 
-    await db.update(conversations)
+    await tenantDb.update(conversations)
       .set({
         humanEscalationActive: true,
         humanEscalationRequestedAt: new Date(),
       })
       .where(eq(conversations.id, conversationId));
 
-    await sendOwnerNotifications(escalation, customerContext);
+    await sendOwnerNotifications(tenantDb, escalation, customerContext);
 
     console.log('[ESCALATION] Created escalation request', escalation.id);
     return escalation;
@@ -406,6 +406,7 @@ export async function createEscalationRequest(params: {
 }
 
 async function sendOwnerNotifications(
+  tenantDb: TenantDb,
   escalation: HumanEscalationRequest,
   customerContext: any
 ) {
@@ -431,10 +432,10 @@ async function sendOwnerNotifications(
     message += `\nTrigger: "${escalation.triggerPhrase}"\n\n`;
     message += `Reply to this customer via the Messages dashboard.`;
 
-    const smsResult = await sendSMS(ownerPhone, message);
+    const smsResult = await sendSMS(tenantDb, ownerPhone, message);
     const smsSent = smsResult.success;
 
-    const adminUsers = await db.query.users.findMany({
+    const adminUsers = await tenantDb.query.users.findMany({
       where: eq(users.role, 'admin')
     });
 
@@ -457,7 +458,7 @@ async function sendOwnerNotifications(
       }
     }
 
-    await db.update(humanEscalationRequests)
+    await tenantDb.update(humanEscalationRequests)
       .set({
         smsNotificationSent: smsSent,
         pushNotificationSent: pushSent,
@@ -469,9 +470,9 @@ async function sendOwnerNotifications(
   }
 }
 
-export async function acknowledgeEscalation(escalationId: number, userId: number) {
+export async function acknowledgeEscalation(tenantDb: TenantDb, escalationId: number, userId: number) {
   try {
-    await db.update(humanEscalationRequests)
+    await tenantDb.update(humanEscalationRequests)
       .set({
         status: 'acknowledged',
         acknowledgedAt: new Date(),
@@ -484,22 +485,22 @@ export async function acknowledgeEscalation(escalationId: number, userId: number
   }
 }
 
-export async function resolveEscalation(escalationId: number, userId: number) {
+export async function resolveEscalation(tenantDb: TenantDb, escalationId: number, userId: number) {
   try {
-    const escalation = await db.query.humanEscalationRequests.findFirst({
+    const escalation = await tenantDb.query.humanEscalationRequests.findFirst({
       where: eq(humanEscalationRequests.id, escalationId)
     });
 
     if (!escalation) return;
 
-    await db.update(humanEscalationRequests)
+    await tenantDb.update(humanEscalationRequests)
       .set({
         status: 'resolved',
         resolvedAt: new Date(),
       })
       .where(eq(humanEscalationRequests.id, escalationId));
 
-    await db.update(conversations)
+    await tenantDb.update(conversations)
       .set({
         humanEscalationActive: false,
         humanHandledAt: new Date(),
@@ -513,12 +514,12 @@ export async function resolveEscalation(escalationId: number, userId: number) {
   }
 }
 
-export async function expireOldEscalations() {
+export async function expireOldEscalations(tenantDb: TenantDb) {
   try {
     const now = new Date();
     
     // Expire both pending AND acknowledged escalations past their expiry time
-    const expired = await db.update(humanEscalationRequests)
+    const expired = await tenantDb.update(humanEscalationRequests)
       .set({ status: 'expired' })
       .where(
         and(
@@ -532,7 +533,7 @@ export async function expireOldEscalations() {
     // Resume AI for expired conversations
     if (expired.length > 0) {
       for (const escalation of expired) {
-        await db.update(conversations)
+        await tenantDb.update(conversations)
           .set({ humanEscalationActive: false })
           .where(eq(conversations.id, escalation.conversationId));
       }

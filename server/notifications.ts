@@ -3,6 +3,7 @@ import { sendBookingConfirmationEmail, sendReminderEmail } from './emailService'
 import { WeatherCheckResult } from './weatherService';
 import { db } from './db';
 import { smsDeliveryStatus } from '@shared/schema';
+import type { TenantDb } from './tenantDb';
 
 // Set to true if you want to enable demo mode restrictions
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
@@ -45,18 +46,20 @@ First I'll pull the vehicle under my pop-up canopy. I'll just need to connect to
  * Send SMS opt-in confirmation to new users
  */
 export async function sendSMSOptInConfirmation(
+  tenantDb: TenantDb,
   phoneNumber: string
 ): Promise<{ success: boolean; error?: any }> {
   const confirmationMessage = "Clean Machine Auto Detail: You are now opted in for appointment updates and service reminders. Reply HELP for help. Reply STOP to opt out anytime.";
 
   // Use Main Line (ID 1) for automated opt-in confirmations
-  return await sendSMS(phoneNumber, confirmationMessage, undefined, undefined, 1);
+  return await sendSMS(tenantDb, phoneNumber, confirmationMessage, undefined, undefined, 1);
 }
 
 /**
  * Send an SMS notification with delivery tracking and opt-out enforcement
  */
 export async function sendSMS(
+  tenantDb: TenantDb,
   phoneNumber: string,
   message: string,
   conversationId?: number,
@@ -88,7 +91,7 @@ export async function sendSMS(
       const { phoneLines } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       
-      const [phoneLine] = await db
+      const [phoneLine] = await tenantDb
         .select()
         .from(phoneLines)
         .where(eq(phoneLines.id, phoneLineId))
@@ -209,7 +212,7 @@ export async function sendSMS(
 
     // Log to delivery tracking database
     try {
-      await db.insert(smsDeliveryStatus).values({
+      await tenantDb.insert(smsDeliveryStatus).values({
         messageSid: messageSid,
         conversationId: conversationId || null,
         messageId: messageId || null,
@@ -240,6 +243,7 @@ export async function sendSMS(
  * Works for both 5304 and 5711 phone lines
  */
 export async function smartSendNotification(
+  tenantDb: TenantDb,
   customerPhone: string,
   customerEmail: string | undefined,
   message: string,
@@ -250,7 +254,7 @@ export async function smartSendNotification(
 ): Promise<{ success: boolean; method: 'sms' | 'email' | 'emergency'; error?: any }> {
   // Step 1: Try SMS first
   console.log(`[SMART NOTIFY] Attempting SMS to ${customerPhone}`);
-  const smsResult = await sendSMS(customerPhone, message, conversationId, messageId, phoneLineId);
+  const smsResult = await sendSMS(tenantDb, customerPhone, message, conversationId, messageId, phoneLineId);
   
   if (smsResult.success) {
     console.log(`[SMART NOTIFY] ✅ SMS sent successfully via line ${phoneLineId || 'default'}`);
@@ -299,6 +303,7 @@ export async function smartSendNotification(
  * @deprecated Use sendBusinessEmail from emailService.ts instead
  */
 export async function sendEmail(
+  tenantDb: TenantDb,
   email: string,
   subject: string,
   message: string,
@@ -312,6 +317,7 @@ export async function sendEmail(
  * Send booking confirmation notifications
  */
 export async function sendBookingConfirmation(
+  tenantDb: TenantDb,
   appointmentDetails: {
     name: string;
     phone: string;
@@ -351,6 +357,7 @@ export async function sendBookingConfirmation(
   const time = dateMatch ? dateMatch[2] : formattedTime.split(' at ')[1] || formattedTime;
 
   const templateResult = await renderSmsTemplateOrFallback(
+    tenantDb,
     'booking_confirmation',
     {
       firstName,
@@ -375,7 +382,7 @@ Directions to your location: https://cleanmachine.app/directions?address=${encod
   const confirmationMessage = templateResult.message;
 
   // Send SMS confirmation using Main Line (ID 1) for automated booking confirmations
-  const smsResult = await sendSMS(phone, confirmationMessage, undefined, undefined, 1);
+  const smsResult = await sendSMS(tenantDb, phone, confirmationMessage, undefined, undefined, 1);
 
   // Send email confirmation if email is provided
   let emailResult = { success: false };
@@ -413,6 +420,7 @@ Directions to your location: https://cleanmachine.app/directions?address=${encod
  * Schedule a day-before reminder for an appointment
  */
 export function scheduleDayBeforeReminder(
+  tenantDb: TenantDb,
   appointmentDetails: {
     name: string;
     phone: string;
@@ -437,7 +445,7 @@ export function scheduleDayBeforeReminder(
     const now = new Date();
     if (reminderTime < now) {
       // Appointment is less than 24 hours away, send reminder now
-      sendReminderNotifications(appointmentDetails);
+      sendReminderNotifications(tenantDb, appointmentDetails);
       return { success: true, scheduledTime: now };
     }
 
@@ -446,7 +454,7 @@ export function scheduleDayBeforeReminder(
 
     // Schedule the reminder
     setTimeout(() => {
-      sendReminderNotifications(appointmentDetails);
+      sendReminderNotifications(tenantDb, appointmentDetails);
     }, msUntilReminder);
 
     console.log(`Reminder scheduled for ${reminderTime.toLocaleString()} (${msUntilReminder}ms from now)`);
@@ -461,6 +469,7 @@ export function scheduleDayBeforeReminder(
  * Send day-before reminder notifications
  */
 async function sendReminderNotifications(
+  tenantDb: TenantDb,
   appointmentDetails: {
     name: string;
     phone: string;
@@ -498,6 +507,7 @@ async function sendReminderNotifications(
   const time = timeMatch ? timeMatch[1] : formattedTime;
 
   const templateResult = await renderSmsTemplateOrFallback(
+    tenantDb,
     'appointment_reminder_24h',
     {
       firstName,
@@ -523,7 +533,7 @@ Directions to your location: https://cleanmachine.app/directions?address=${encod
   const reminderMessage = templateResult.message;
 
   // Send SMS reminder using Main Line (ID 1) for automated reminders
-  const smsResult = await sendSMS(phone, reminderMessage, undefined, undefined, 1);
+  const smsResult = await sendSMS(tenantDb, phone, reminderMessage, undefined, undefined, 1);
 
   // Send email reminder if email is provided
   let emailResult = { success: false };
@@ -555,6 +565,7 @@ Directions to your location: https://cleanmachine.app/directions?address=${encod
  * Send an "on the way" notification with estimated arrival time
  */
 export async function sendOnTheWayNotification(
+  tenantDb: TenantDb,
   phoneNumber: string,
   address: string,
   estimatedMinutes: number
@@ -575,7 +586,7 @@ See you soon!
 `;
 
   // Send the SMS using Main Line (ID 1) for automated ETA notifications
-  return await sendSMS(phoneNumber, message, undefined, undefined, 1);
+  return await sendSMS(tenantDb, phoneNumber, message, undefined, undefined, 1);
 }
 
 /**
@@ -584,6 +595,7 @@ See you soon!
  * @param weatherResult Weather check result with severity information
  */
 export async function sendWeatherAlertNotification(
+  tenantDb: TenantDb,
   appointmentDetails: {
     name: string;
     phone: string;
@@ -652,7 +664,7 @@ Questions? Text back or call (918) 856-5304
 `;
 
   // Send SMS weather alert using Main Line (ID 1) for automated weather alerts
-  const smsResult = await sendSMS(phone, weatherAlertMessage, undefined, undefined, 1);
+  const smsResult = await sendSMS(tenantDb, phone, weatherAlertMessage, undefined, undefined, 1);
 
   // Send email weather alert if email is provided
   let emailResult = { success: false };

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { getAuthClient } from './googleIntegration';
-import { db } from './db';
+import type { TenantDb } from './db';
 import { businessSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -19,9 +19,9 @@ const METERS_PER_MILE = 1609.34;
 /**
  * Get max drive time from business settings or use default
  */
-async function getMaxDriveTime(): Promise<number> {
+async function getMaxDriveTime(tenantDb: TenantDb): Promise<number> {
   try {
-    const settings = await db.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+    const settings = await tenantDb.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
     if (settings.length > 0 && settings[0].maxDriveTimeMinutes) {
       return settings[0].maxDriveTimeMinutes;
     }
@@ -92,7 +92,7 @@ function preprocessAddress(rawAddress: string): string {
  * Geocode an address to get its coordinates
  * Now includes smart preprocessing for incomplete addresses
  */
-export async function geocodeAddress(address: string) {
+export async function geocodeAddress(tenantDb: TenantDb, address: string) {
   try {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     
@@ -156,7 +156,7 @@ export async function geocodeAddress(address: string) {
 /**
  * Check if an address is within the service area
  */
-export async function checkDistanceToBusinessLocation(address: string) {
+export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, address: string) {
   try {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     
@@ -166,7 +166,7 @@ export async function checkDistanceToBusinessLocation(address: string) {
     }
 
     // First geocode the address
-    const geocodeResult = await geocodeAddress(address);
+    const geocodeResult = await geocodeAddress(tenantDb, address);
     if (!geocodeResult.success) {
       return geocodeResult; // Return the error from geocoding
     }
@@ -208,7 +208,7 @@ export async function checkDistanceToBusinessLocation(address: string) {
     const driveTimeMinutes = distanceElement.duration.value / 60; // Convert seconds to minutes
 
     // Get configurable max drive time from business settings
-    const maxDriveTime = await getMaxDriveTime();
+    const maxDriveTime = await getMaxDriveTime(tenantDb);
     
     // Determine if the address is within the service area based on drive time
     const isInServiceArea = driveTimeMinutes <= maxDriveTime;
@@ -235,10 +235,10 @@ export async function checkDistanceToBusinessLocation(address: string) {
  * Calculate ETA and generate navigation link for an appointment
  * Returns ETA time and Google Maps navigation URL
  */
-export async function calculateETAAndGenerateNavLink(address: string) {
+export async function calculateETAAndGenerateNavLink(tenantDb: TenantDb, address: string) {
   try {
     // Get distance and drive time information
-    const distanceResult = await checkDistanceToBusinessLocation(address);
+    const distanceResult = await checkDistanceToBusinessLocation(tenantDb, address);
     
     if (!distanceResult.success || !('driveTime' in distanceResult)) {
       return distanceResult; // Return the error

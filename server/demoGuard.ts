@@ -4,7 +4,6 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { db } from './db';
 import { platformSettings } from '@shared/schema';
 
 /**
@@ -13,7 +12,7 @@ import { platformSettings } from '@shared/schema';
  */
 export async function requireDemoEnabled(req: Request, res: Response, next: NextFunction) {
   try {
-    const [settings] = await db.select().from(platformSettings).limit(1);
+    const [settings] = await req.tenantDb!.select().from(platformSettings).limit(1);
     
     if (!settings || !settings.demoModeEnabled) {
       return res.status(403).json({ 

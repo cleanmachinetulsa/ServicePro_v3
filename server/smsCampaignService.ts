@@ -5,6 +5,7 @@ import Bottleneck from 'bottleneck';
 import twilio from 'twilio';
 import { fromZonedTime, toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { addDays } from 'date-fns';
+import type { TenantDb } from './tenantDb';
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
@@ -168,11 +169,11 @@ function estimateSmsSegments(message: string): number {
  * Atomically increment SMS counter with daily limit check
  * Returns true if increment succeeded, false if limit reached
  */
-async function incrementSmsCounterAtomic(): Promise<boolean> {
+async function incrementSmsCounterAtomic(tenantDb: TenantDb): Promise<boolean> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  const result = await db.execute(sql`
+  const result = await tenantDb.execute(sql`
     UPDATE daily_send_counters
     SET 
       sms_count = sms_count + 1,
@@ -197,9 +198,9 @@ async function incrementSmsCounterAtomic(): Promise<boolean> {
 /**
  * Get recipients based on target audience
  */
-async function getRecipientsByAudience(targetAudience: string): Promise<Array<{ phone: string; customerId?: number; timezone?: string }>> {
+async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: string): Promise<Array<{ phone: string; customerId?: number; timezone?: string }>> {
   if (targetAudience === 'all') {
-    const result = await db.execute(sql`
+    const result = await tenantDb.execute(sql`
       SELECT 
         c.id as customer_id,
         c.phone_number as phone,
@@ -216,7 +217,7 @@ async function getRecipientsByAudience(targetAudience: string): Promise<Array<{ 
       timezone: row.timezone || 'America/Chicago'
     }));
   } else if (targetAudience === 'vip') {
-    const result = await db.execute(sql`
+    const result = await tenantDb.execute(sql`
       SELECT 
         c.id as customer_id,
         c.phone_number as phone,
@@ -234,7 +235,7 @@ async function getRecipientsByAudience(targetAudience: string): Promise<Array<{ 
       timezone: row.timezone || 'America/Chicago'
     }));
   } else if (targetAudience === 'loyalty') {
-    const result = await db.execute(sql`
+    const result = await tenantDb.execute(sql`
       SELECT 
         c.id as customer_id,
         c.phone_number as phone,
@@ -259,15 +260,15 @@ async function getRecipientsByAudience(targetAudience: string): Promise<Array<{ 
 /**
  * Create campaign recipients in database
  */
-async function populateCampaignRecipients(campaignId: number, targetAudience: string): Promise<number> {
-  const recipients = await getRecipientsByAudience(targetAudience);
+async function populateCampaignRecipients(tenantDb: TenantDb, campaignId: number, targetAudience: string): Promise<number> {
+  const recipients = await getRecipientsByAudience(tenantDb, targetAudience);
   
   if (recipients.length === 0) {
     throw new Error('No recipients found for target audience');
   }
   
   for (const recipient of recipients) {
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       INSERT INTO sms_campaign_recipients (
         campaign_id, 
         customer_id, 
@@ -287,7 +288,7 @@ async function populateCampaignRecipients(campaignId: number, targetAudience: st
   }
   
   // Update campaign recipient count
-  await db.execute(sql`
+  await tenantDb.execute(sql`
     UPDATE sms_campaigns
     SET recipient_count = ${recipients.length}
     WHERE id = ${campaignId}
@@ -299,14 +300,14 @@ async function populateCampaignRecipients(campaignId: number, targetAudience: st
 /**
  * Process all scheduled SMS campaigns (called by cron)
  */
-export async function processSMSCampaigns() {
+export async function processSMSCampaigns(tenantDb: TenantDb) {
   try {
     console.log('[SMS CAMPAIGN] Processing scheduled campaigns...');
     
     const now = new Date();
     
     // Find campaigns scheduled for now or earlier that aren't completed
-    const campaigns = await db.execute(sql`
+    const campaigns = await tenantDb.execute(sql`
       SELECT * FROM sms_campaigns
       WHERE status = 'scheduled'
         AND scheduled_date <= ${now.toISOString()}
@@ -321,7 +322,7 @@ export async function processSMSCampaigns() {
     console.log(`[SMS CAMPAIGN] Found ${campaigns.rows.length} campaign(s) to process`);
     
     for (const campaign of campaigns.rows) {
-      await processSingleCampaign(campaign);
+      await processSingleCampaign(tenantDb, campaign);
     }
     
   } catch (error) {
@@ -332,19 +333,19 @@ export async function processSMSCampaigns() {
 /**
  * Process a single campaign
  */
-async function processSingleCampaign(campaign: any) {
+async function processSingleCampaign(tenantDb: TenantDb, campaign: any) {
   try {
     console.log(`[SMS CAMPAIGN] Processing campaign: ${campaign.name} (ID: ${campaign.id})`);
     
     // Update status to sending
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       UPDATE sms_campaigns
       SET status = 'sending'
       WHERE id = ${campaign.id}
     `);
     
     // Get pending recipients (including deferred ones whose scheduledFor has arrived)
-    const recipients = await db.execute(sql`
+    const recipients = await tenantDb.execute(sql`
       SELECT * FROM sms_campaign_recipients
       WHERE campaign_id = ${campaign.id}
         AND status = 'pending'
@@ -356,14 +357,14 @@ async function processSingleCampaign(campaign: any) {
     
     if (recipients.rows.length === 0) {
       // Check if campaign is complete (all recipients in terminal states)
-      const pending = await db.execute(sql`
+      const pending = await tenantDb.execute(sql`
         SELECT COUNT(*) as count FROM sms_campaign_recipients
         WHERE campaign_id = ${campaign.id}
           AND status = 'pending'
       `);
       
       if ((pending.rows[0] as any).count === 0) {
-        await db.execute(sql`
+        await tenantDb.execute(sql`
           UPDATE sms_campaigns
           SET status = 'sent', completed_at = NOW()
           WHERE id = ${campaign.id}
@@ -378,12 +379,12 @@ async function processSingleCampaign(campaign: any) {
     
     // Send to each recipient
     for (const recipient of recipients.rows) {
-      await sendSingleCampaignSMS(campaign, recipient);
+      await sendSingleCampaignSMS(tenantDb, campaign, recipient);
     }
     
   } catch (error) {
     console.error(`[SMS CAMPAIGN] Error processing campaign ${campaign.id}:`, error);
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       UPDATE sms_campaigns
       SET status = 'failed'
       WHERE id = ${campaign.id}
@@ -394,17 +395,17 @@ async function processSingleCampaign(campaign: any) {
 /**
  * Send individual SMS with TCPA compliance and rate limiting
  */
-async function sendSingleCampaignSMS(campaign: any, recipient: any) {
+async function sendSingleCampaignSMS(tenantDb: TenantDb, campaign: any, recipient: any) {
   try {
     // Check suppression list
-    const suppressed = await db.execute(sql`
+    const suppressed = await tenantDb.execute(sql`
       SELECT * FROM sms_suppression_list
       WHERE phone_number = ${recipient.phone_number}
     `);
     
     if (suppressed.rows.length > 0) {
       console.log(`[SMS CAMPAIGN] Skipping suppressed number: ${recipient.phone_number}`);
-      await db.execute(sql`
+      await tenantDb.execute(sql`
         UPDATE sms_campaign_recipients
         SET status = 'suppressed', last_error = 'Number is on suppression list'
         WHERE id = ${recipient.id}
@@ -417,7 +418,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
       const nextSendTime = getNextSendTime(recipient.timezone || 'America/Chicago');
       console.log(`[SMS CAMPAIGN] Quiet hours for ${recipient.phone_number}, deferring until ${nextSendTime.toISOString()}`);
       
-      await db.execute(sql`
+      await tenantDb.execute(sql`
         UPDATE sms_campaign_recipients
         SET 
           status = 'pending',
@@ -428,19 +429,19 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
     }
     
     // Mark as sending
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       UPDATE sms_campaign_recipients
       SET status = 'sending'
       WHERE id = ${recipient.id}
     `);
     
     // Atomically claim a send slot BEFORE calling Twilio (prevents overage)
-    const incrementSuccess = await incrementSmsCounterAtomic();
+    const incrementSuccess = await incrementSmsCounterAtomic(tenantDb);
     
     if (!incrementSuccess) {
       // Daily limit reached - defer this recipient WITHOUT sending
       console.log(`[SMS CAMPAIGN] Daily limit reached before send, deferring ${recipient.phone_number}`);
-      await db.execute(sql`
+      await tenantDb.execute(sql`
         UPDATE sms_campaign_recipients
         SET 
           status = 'pending',
@@ -453,7 +454,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
     // Personalize message (replace {name} with customer name if available)
     let personalizedMessage = campaign.message;
     if (recipient.customer_id) {
-      const customer = await db.execute(sql`
+      const customer = await tenantDb.execute(sql`
         SELECT name FROM customers WHERE id = ${recipient.customer_id}
       `);
       
@@ -485,7 +486,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
       }
       
       // Update recipient status
-      await db.execute(sql`
+      await tenantDb.execute(sql`
         UPDATE sms_campaign_recipients
         SET 
           status = 'sent',
@@ -496,7 +497,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
       `);
       
       // Increment campaign sent counter
-      await db.execute(sql`
+      await tenantDb.execute(sql`
         UPDATE sms_campaigns
         SET sent_count = sent_count + 1
         WHERE id = ${campaign.id}
@@ -510,7 +511,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
     
     const shouldRetry = recipient.attempt_count < 2;
     
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       UPDATE sms_campaign_recipients
       SET 
         status = ${shouldRetry ? 'pending' : 'failed'},
@@ -522,7 +523,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
     `);
     
     if (!shouldRetry) {
-      await db.execute(sql`
+      await tenantDb.execute(sql`
         UPDATE sms_campaigns
         SET failed_count = failed_count + 1
         WHERE id = ${campaign.id}
@@ -534,7 +535,7 @@ async function sendSingleCampaignSMS(campaign: any, recipient: any) {
 /**
  * Create a new SMS campaign
  */
-export async function createSMSCampaign(data: {
+export async function createSMSCampaign(tenantDb: TenantDb, data: {
   name: string;
   message: string;
   targetAudience: string;
@@ -545,7 +546,7 @@ export async function createSMSCampaign(data: {
   try {
     const segments = estimateSmsSegments(data.message);
     
-    const result = await db.execute(sql`
+    const result = await tenantDb.execute(sql`
       INSERT INTO sms_campaigns (
         name,
         message,
@@ -572,7 +573,7 @@ export async function createSMSCampaign(data: {
     
     // If scheduled, populate recipients
     if (data.scheduledDate) {
-      await populateCampaignRecipients((campaign as any).id, data.targetAudience);
+      await populateCampaignRecipients(tenantDb, (campaign as any).id, data.targetAudience);
     }
     
     return campaign;
@@ -585,9 +586,9 @@ export async function createSMSCampaign(data: {
 /**
  * Send campaign immediately
  */
-export async function sendSMSCampaignNow(id: number) {
+export async function sendSMSCampaignNow(tenantDb: TenantDb, id: number) {
   try {
-    const campaign = await db.execute(sql`
+    const campaign = await tenantDb.execute(sql`
       SELECT * FROM sms_campaigns WHERE id = ${id}
     `);
     
@@ -602,7 +603,7 @@ export async function sendSMSCampaignNow(id: number) {
     }
     
     // Update to scheduled with current time (triggers immediate processing by cron)
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       UPDATE sms_campaigns
       SET 
         status = 'scheduled',
@@ -612,14 +613,14 @@ export async function sendSMSCampaignNow(id: number) {
     
     // Populate recipients if not already done
     if (campaignData.recipient_count === 0) {
-      await populateCampaignRecipients(id, campaignData.target_audience || 'all');
+      await populateCampaignRecipients(tenantDb, id, campaignData.target_audience || 'all');
     }
     
     // Trigger campaign processing immediately (respects all limits and quotas)
-    await processSMSCampaigns();
+    await processSMSCampaigns(tenantDb);
     
     // Return updated campaign
-    const updated = await db.execute(sql`
+    const updated = await tenantDb.execute(sql`
       SELECT * FROM sms_campaigns WHERE id = ${id}
     `);
     
@@ -633,8 +634,8 @@ export async function sendSMSCampaignNow(id: number) {
 /**
  * Get all campaigns
  */
-export async function getAllSMSCampaigns() {
-  const result = await db.execute(sql`
+export async function getAllSMSCampaigns(tenantDb: TenantDb) {
+  const result = await tenantDb.execute(sql`
     SELECT * FROM sms_campaigns
     ORDER BY created_at DESC
   `);
@@ -645,8 +646,8 @@ export async function getAllSMSCampaigns() {
 /**
  * Get campaign by ID with recipient stats
  */
-export async function getSMSCampaignById(id: number) {
-  const campaign = await db.execute(sql`
+export async function getSMSCampaignById(tenantDb: TenantDb, id: number) {
+  const campaign = await tenantDb.execute(sql`
     SELECT * FROM sms_campaigns WHERE id = ${id}
   `);
   
@@ -654,7 +655,7 @@ export async function getSMSCampaignById(id: number) {
     throw new Error('Campaign not found');
   }
   
-  const recipients = await db.execute(sql`
+  const recipients = await tenantDb.execute(sql`
     SELECT 
       status,
       COUNT(*) as count
@@ -672,9 +673,9 @@ export async function getSMSCampaignById(id: number) {
 /**
  * Cancel a scheduled campaign
  */
-export async function cancelSMSCampaign(id: number) {
+export async function cancelSMSCampaign(tenantDb: TenantDb, id: number) {
   try {
-    const result = await db.execute(sql`
+    const result = await tenantDb.execute(sql`
       UPDATE sms_campaigns
       SET status = 'cancelled'
       WHERE id = ${id} AND status IN ('draft', 'scheduled')
@@ -695,8 +696,8 @@ export async function cancelSMSCampaign(id: number) {
 /**
  * Add phone number to suppression list
  */
-export async function addToSMSSuppressionList(phoneNumber: string, reason: string = 'user_request') {
-  await db.execute(sql`
+export async function addToSMSSuppressionList(tenantDb: TenantDb, phoneNumber: string, reason: string = 'user_request') {
+  await tenantDb.execute(sql`
     INSERT INTO sms_suppression_list (phone_number, reason, added_at)
     VALUES (${phoneNumber}, ${reason}, NOW())
     ON CONFLICT (phone_number) DO NOTHING
@@ -708,8 +709,8 @@ export async function addToSMSSuppressionList(phoneNumber: string, reason: strin
 /**
  * Check if phone number is on suppression list
  */
-export async function isPhoneSuppressed(phoneNumber: string): Promise<boolean> {
-  const result = await db.execute(sql`
+export async function isPhoneSuppressed(tenantDb: TenantDb, phoneNumber: string): Promise<boolean> {
+  const result = await tenantDb.execute(sql`
     SELECT COUNT(*) as count FROM sms_suppression_list
     WHERE phone_number = ${phoneNumber}
   `);

@@ -1,6 +1,5 @@
 
 import { Request, Response, NextFunction } from 'express';
-import { db } from './db';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -20,7 +19,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     // Get user from database
-    const userResult = await db
+    const userResult = await req.tenantDb!
       .select()
       .from(users)
       .where(eq(users.id, req.session.userId))

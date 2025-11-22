@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { db } from "./db";
 import { businessSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { wrapTenantDb } from "./tenantDb";
 
 /**
  * In-memory cache for maintenance mode settings
@@ -31,6 +32,7 @@ export function invalidateMaintenanceCache() {
  * Get maintenance mode settings with caching
  */
 async function getMaintenanceSettings(): Promise<MaintenanceCache> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const now = Date.now();
   
   // Return cached value if still valid
@@ -39,7 +41,7 @@ async function getMaintenanceSettings(): Promise<MaintenanceCache> {
   }
 
   // Fetch from database
-  const [settings] = await db
+  const [settings] = await tenantDb
     .select()
     .from(businessSettings)
     .where(eq(businessSettings.id, 1))

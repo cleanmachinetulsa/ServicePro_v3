@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { customers, appointments } from '@shared/schema';
 import { eq, and, sql, desc, asc } from 'drizzle-orm';
 
@@ -25,6 +25,7 @@ import { eq, and, sql, desc, asc } from 'drizzle-orm';
  * @param txInstance - Optional transaction instance (for nested transactions)
  */
 export async function recordAppointmentCreated(
+  tenantDb: TenantDb,
   customerId: number,
   scheduledTime: Date,
   txInstance?: any
@@ -78,7 +79,7 @@ export async function recordAppointmentCreated(
       });
     } else {
       // Create new transaction
-      await db.transaction(async (tx: any) => {
+      await tenantDb.transaction(async (tx: any) => {
         // Get current customer data
         const [customer] = await tx
           .select({
@@ -138,6 +139,7 @@ export async function recordAppointmentCreated(
  * @param txInstance - Optional transaction instance (for nested transactions)
  */
 export async function recordAppointmentCompleted(
+  tenantDb: TenantDb,
   customerId: number,
   txInstance?: any
 ): Promise<void> {
@@ -174,7 +176,7 @@ export async function recordAppointmentCompleted(
       }
     } else {
       // Create new transaction
-      await db.transaction(async (tx: any) => {
+      await tenantDb.transaction(async (tx: any) => {
         // Count completed appointments for this customer
         const [result] = await tx
           .select({
@@ -220,6 +222,7 @@ export async function recordAppointmentCompleted(
  * @param txInstance - Optional transaction instance (for nested transactions)
  */
 export async function handleAppointmentCancellation(
+  tenantDb: TenantDb,
   customerId: number,
   txInstance?: any
 ): Promise<void> {
@@ -285,7 +288,7 @@ export async function handleAppointmentCancellation(
       });
     } else {
       // Create new transaction
-      await db.transaction(async (tx: any) => {
+      await tenantDb.transaction(async (tx: any) => {
         // Get current customer data
         const [customer] = await tx
           .select({
@@ -364,6 +367,7 @@ export async function handleAppointmentCancellation(
  * @param txInstance - Optional transaction instance (for nested transactions)
  */
 export async function recalcCustomerAppointmentStats(
+  tenantDb: TenantDb,
   customerId: number,
   txInstance?: any
 ): Promise<void> {
@@ -423,7 +427,7 @@ export async function recalcCustomerAppointmentStats(
       });
     } else {
       // Create new transaction
-      await db.transaction(async (tx: any) => {
+      await tenantDb.transaction(async (tx: any) => {
         // Get all non-cancelled appointments for this customer
         const customerAppointments = await tx
           .select({
@@ -489,6 +493,7 @@ export async function recalcCustomerAppointmentStats(
  * @returns Object with success/failure counts
  */
 export async function batchRecalcCustomerStats(
+  tenantDb: TenantDb,
   customerIds: number[]
 ): Promise<{ success: number; failed: number; errors: Array<{ customerId: number; error: string }> }> {
   const results = {
@@ -501,7 +506,7 @@ export async function batchRecalcCustomerStats(
 
   for (const customerId of customerIds) {
     try {
-      await recalcCustomerAppointmentStats(customerId);
+      await recalcCustomerAppointmentStats(tenantDb, customerId);
       results.success++;
     } catch (error: any) {
       results.failed++;

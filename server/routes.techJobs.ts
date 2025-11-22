@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users, customerServiceHistory, services } from '@shared/schema';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import { requireTechnician } from './technicianMiddleware';
@@ -79,7 +79,7 @@ router.get('/jobs/today', requireTechnician, async (req: Request, res: Response)
     const todayEnd = endOfDay(today);
 
     // Step 1: Get database appointments
-    const dbAppointments = await db
+    const dbAppointments = await req.tenantDb!
       .select({
         id: appointments.id,
         customerId: appointments.customerId,
@@ -99,9 +99,11 @@ router.get('/jobs/today', requireTechnician, async (req: Request, res: Response)
       .from(appointments)
       .leftJoin(customers, eq(appointments.customerId, customers.id))
       .where(
-        and(
-          gte(appointments.scheduledTime, todayStart),
-          lte(appointments.scheduledTime, todayEnd)
+        req.tenantDb!.withTenantFilter(appointments,
+          and(
+            gte(appointments.scheduledTime, todayStart),
+            lte(appointments.scheduledTime, todayEnd)
+          )
         )
       );
 
@@ -270,10 +272,10 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
     console.log(`[TECH JOBS] Technician ${technician.id} updating job ${appointmentId} to status: ${status}`);
 
     // Check if appointment exists
-    const [appointment] = await db
+    const [appointment] = await req.tenantDb!
       .select()
       .from(appointments)
-      .where(eq(appointments.id, appointmentId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
       .limit(1);
 
     if (!appointment) {
@@ -317,10 +319,10 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
       updateData.jobNotes = notes;
     }
 
-    const [updatedAppointment] = await db
+    const [updatedAppointment] = await req.tenantDb!
       .update(appointments)
       .set(updateData)
-      .where(eq(appointments.id, appointmentId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
       .returning();
 
     console.log(`[TECH JOBS] Job ${appointmentId} status updated to: ${status}`);
@@ -329,10 +331,10 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
     if (status === 'on_site') {
       try {
         // Get customer phone number
-        const [customer] = await db
+        const [customer] = await req.tenantDb!
           .select({ phone: customers.phone, name: customers.name })
           .from(customers)
-          .where(eq(customers.id, appointment.customerId))
+          .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, appointment.customerId)))
           .limit(1);
 
         if (customer && customer.phone) {
@@ -392,7 +394,7 @@ router.get('/jobs/:id/messages', requireTechnician, async (req: Request, res: Re
     console.log(`[TECH JOBS] Fetching messages for job ${appointmentId}`);
 
     // Get appointment with customer info
-    const [appointmentData] = await db
+    const [appointmentData] = await req.tenantDb!
       .select({
         id: appointments.id,
         customerId: appointments.customerId,
@@ -402,7 +404,7 @@ router.get('/jobs/:id/messages', requireTechnician, async (req: Request, res: Re
       })
       .from(appointments)
       .leftJoin(customers, eq(appointments.customerId, customers.id))
-      .where(eq(appointments.id, appointmentId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
       .limit(1);
 
     if (!appointmentData) {
@@ -435,10 +437,10 @@ router.get('/jobs/:id/messages', requireTechnician, async (req: Request, res: Re
     }
 
     // Find conversation for this customer phone
-    const [conversation] = await db
+    const [conversation] = await req.tenantDb!
       .select()
       .from(conversations)
-      .where(eq(conversations.customerPhone, appointmentData.customerPhone))
+      .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.customerPhone, appointmentData.customerPhone)))
       .limit(1);
 
     if (!conversation) {
@@ -451,10 +453,10 @@ router.get('/jobs/:id/messages', requireTechnician, async (req: Request, res: Re
     }
 
     // Get messages for this conversation
-    const messageList = await db
+    const messageList = await req.tenantDb!
       .select()
       .from(messagesTable)
-      .where(eq(messagesTable.conversationId, conversation.id))
+      .where(req.tenantDb!.withTenantFilter(messagesTable, eq(messagesTable.conversationId, conversation.id)))
       .orderBy(desc(messagesTable.timestamp))
       .limit(100); // Last 100 messages
 
@@ -506,7 +508,7 @@ router.post('/jobs/:id/photos', requireTechnician, jobPhotoUpload.single('photo'
     console.log(`[TECH JOBS] Photo upload request for job ${appointmentId} by technician ${technician.id}`);
 
     // Get appointment with customer info and verify ownership
-    const [appointmentData] = await db
+    const [appointmentData] = await req.tenantDb!
       .select({
         id: appointments.id,
         customerId: appointments.customerId,
@@ -517,7 +519,7 @@ router.post('/jobs/:id/photos', requireTechnician, jobPhotoUpload.single('photo'
       })
       .from(appointments)
       .leftJoin(customers, eq(appointments.customerId, customers.id))
-      .where(eq(appointments.id, appointmentId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
       .limit(1);
 
     if (!appointmentData) {
@@ -639,7 +641,7 @@ router.post('/jobs/:id/photos', requireTechnician, jobPhotoUpload.single('photo'
       console.log(`[TECH JOBS] Photo uploaded successfully: ${photoUrl}`);
 
       // Create record in jobPhotos table
-      const [photoRecord] = await db
+      const [photoRecord] = await req.tenantDb!
         .insert(jobPhotos)
         .values({
           appointmentId,
@@ -739,7 +741,7 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
     }
 
     // Fetch appointment details
-    const [appointment] = await db
+    const [appointment] = await req.tenantDb!
       .select({
         id: appointments.id,
         customerId: appointments.customerId,
@@ -750,7 +752,7 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
       })
       .from(appointments)
       .leftJoin(customers, eq(appointments.customerId, customers.id))
-      .where(eq(appointments.id, jobId))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, jobId)))
       .limit(1);
 
     if (!appointment) {
@@ -769,7 +771,8 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
     }
 
     // ATOMIC TRANSACTION: Create invoice, update job, update deposit
-    const result = await db.transaction(async (tx) => {
+    // TODO: Wrap tx with tenant context for full tenant isolation within transactions
+    const result = await req.tenantDb!.raw.transaction(async (tx) => {
       // 1. Create invoice using invoiceService
       const invoice = await createInvoice(req.tenantDb!, jobId);
 
@@ -946,13 +949,15 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
       const { shouldSendNotification } = await import('./notificationHelper');
       
       // Get owner/manager users
-      const ownerManagers = await db
+      const ownerManagers = await req.tenantDb!
         .select()
         .from(users)
         .where(
-          and(
-            eq(users.isActive, true),
-            or(eq(users.role, 'owner'), eq(users.role, 'manager'))
+          req.tenantDb!.withTenantFilter(users,
+            and(
+              eq(users.isActive, true),
+              or(eq(users.role, 'owner'), eq(users.role, 'manager'))
+            )
           )
         );
 

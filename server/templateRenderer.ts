@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { smsTemplates, smsTemplateVersions } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import type { TenantDb } from "./tenantDb";
 
 /**
  * Template Renderer Service
@@ -78,6 +79,7 @@ function interpolateTemplate(
  * @returns Rendered template string or null if template not found/disabled
  */
 export async function renderTemplate(
+  tenantDb: TenantDb,
   templateKey: string,
   payload: Record<string, string> = {},
   options: { preview?: boolean; language?: string } = {}
@@ -91,7 +93,7 @@ export async function renderTemplate(
 
     if (!template || preview) {
       // Fetch from database
-      const [dbTemplate] = await db
+      const [dbTemplate] = await tenantDb
         .select()
         .from(smsTemplates)
         .where(
@@ -162,9 +164,9 @@ export async function renderTemplate(
 /**
  * Get template with metadata (for dashboard preview)
  */
-export async function getTemplate(templateKey: string, language: string = 'en') {
+export async function getTemplate(tenantDb: TenantDb, templateKey: string, language: string = 'en') {
   try {
-    const [template] = await db
+    const [template] = await tenantDb
       .select()
       .from(smsTemplates)
       .where(
@@ -186,6 +188,7 @@ export async function getTemplate(templateKey: string, language: string = 'en') 
  * Save a new version of a template
  */
 export async function saveTemplateVersion(
+  tenantDb: TenantDb,
   templateId: number,
   newBody: string,
   newVariables: any,
@@ -194,7 +197,7 @@ export async function saveTemplateVersion(
 ) {
   try {
     // Get current template
-    const [currentTemplate] = await db
+    const [currentTemplate] = await tenantDb
       .select()
       .from(smsTemplates)
       .where(eq(smsTemplates.id, templateId))
@@ -205,7 +208,7 @@ export async function saveTemplateVersion(
     }
 
     // Save version history
-    await db.insert(smsTemplateVersions).values({
+    await tenantDb.insert(smsTemplateVersions).values({
       templateId,
       version: currentTemplate.version,
       body: currentTemplate.body,
@@ -215,7 +218,7 @@ export async function saveTemplateVersion(
     });
 
     // Update template
-    const [updated] = await db
+    const [updated] = await tenantDb
       .update(smsTemplates)
       .set({
         body: newBody,
@@ -247,9 +250,9 @@ export async function saveTemplateVersion(
 /**
  * Helper function to get template version history
  */
-export async function getTemplateVersionHistory(templateId: number) {
+export async function getTemplateVersionHistory(tenantDb: TenantDb, templateId: number) {
   try {
-    const versions = await db
+    const versions = await tenantDb
       .select()
       .from(smsTemplateVersions)
       .where(eq(smsTemplateVersions.templateId, templateId))
@@ -284,6 +287,7 @@ export async function getTemplateVersionHistory(templateId: number) {
  * console.log(result.fallbackUsed); // true if template failed
  */
 export async function renderSmsTemplateOrFallback(
+  tenantDb: TenantDb,
   templateKey: string,
   payload: Record<string, string>,
   fallback: () => string,
@@ -296,7 +300,7 @@ export async function renderSmsTemplateOrFallback(
 }> {
   try {
     // Attempt to render the template
-    const result = await renderTemplate(templateKey, payload, options);
+    const result = await renderTemplate(tenantDb, templateKey, payload, options);
 
     if (result.success && result.rendered) {
       // Template rendered successfully

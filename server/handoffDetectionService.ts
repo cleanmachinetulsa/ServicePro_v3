@@ -3,6 +3,7 @@ import { conversations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { broadcastControlModeChange } from './websocketService';
 import OpenAI from 'openai';
+import type { TenantDb } from './tenantDb';
 
 const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
 const openai = OPENAI_ENABLED ? new OpenAI({
@@ -167,6 +168,7 @@ Does this customer need to be handed off to a human?`
 }
 
 export async function triggerHandoff(
+  tenantDb: TenantDb,
   conversationId: number,
   reason: string,
   agentName?: string
@@ -174,7 +176,7 @@ export async function triggerHandoff(
   try {
     const now = new Date();
     
-    await db
+    await tenantDb
       .update(conversations)
       .set({
         controlMode: 'manual',
@@ -188,7 +190,7 @@ export async function triggerHandoff(
       .where(eq(conversations.id, conversationId));
 
     // Broadcast the control mode change
-    const updatedConversation = await db
+    const updatedConversation = await tenantDb
       .select()
       .from(conversations)
       .where(eq(conversations.id, conversationId))
@@ -206,12 +208,13 @@ export async function triggerHandoff(
 }
 
 export async function returnToAI(
+  tenantDb: TenantDb,
   conversationId: number,
   agentName?: string,
   notifyCustomer: boolean = true
 ): Promise<string | null> {
   try {
-    await db
+    await tenantDb
       .update(conversations)
       .set({
         controlMode: 'auto',

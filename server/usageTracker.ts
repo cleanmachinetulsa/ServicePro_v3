@@ -1,4 +1,5 @@
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { apiUsageLogs, serviceHealth } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
@@ -34,8 +35,10 @@ export async function logApiUsage(
   metadata?: any,
   timestamp?: Date
 ) {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
-    await db.insert(apiUsageLogs).values({
+    await tenantDb.insert(apiUsageLogs).values({
       service,
       apiType,
       quantity,
@@ -59,12 +62,13 @@ async function isAlreadyLoggedWithMetadata(
   metadataKey: string,
   metadataValue: string
 ): Promise<boolean> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const startOfDay = new Date(date);
   startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date);
   endOfDay.setHours(23, 59, 59, 999);
   
-  const existing = await db.select()
+  const existing = await tenantDb.select()
     .from(apiUsageLogs)
     .where(sql`
       ${apiUsageLogs.service} = ${service} 
@@ -171,6 +175,8 @@ export async function fetchOpenAIUsage() {
  * Fetch Stripe fees from balance transactions
  */
 export async function fetchStripeUsage() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -187,7 +193,7 @@ export async function fetchStripeUsage() {
         const fee = charge.balance_transaction.fee / 100;
         
         // Check if this specific charge was already logged (use charge ID)
-        const existing = await db.select()
+        const existing = await tenantDb.select()
           .from(apiUsageLogs)
           .where(sql`
             ${apiUsageLogs.service} = 'stripe' 
@@ -301,15 +307,16 @@ async function updateServiceHealth(
   status: 'healthy' | 'degraded' | 'down',
   lastError?: string
 ) {
+  const tenantDb = wrapTenantDb(db, 'root');
   const now = new Date();
   
   try {
-    const existing = await db.query.serviceHealth.findFirst({
+    const existing = await tenantDb.query.serviceHealth.findFirst({
       where: (health, { eq }) => eq(health.service, service),
     });
 
     if (existing) {
-      await db.update(serviceHealth)
+      await tenantDb.update(serviceHealth)
         .set({
           status,
           lastCheck: now,
@@ -318,9 +325,9 @@ async function updateServiceHealth(
           consecutiveFailures: status === 'healthy' ? 0 : (existing.consecutiveFailures + 1),
           updatedAt: now,
         })
-        .where(eq(serviceHealth.service, service));
+        .where(tenantDb.withTenantFilter(serviceHealth, eq(serviceHealth.service, service)));
     } else {
-      await db.insert(serviceHealth).values({
+      await tenantDb.insert(serviceHealth).values({
         service,
         status,
         lastCheck: now,

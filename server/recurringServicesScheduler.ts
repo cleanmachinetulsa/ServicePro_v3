@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { recurringServices, appointments, customers, services } from '@shared/schema';
 import { eq, and, lte, gte } from 'drizzle-orm';
 import { addDays, addWeeks, addMonths, addYears, format } from 'date-fns';
@@ -36,6 +37,8 @@ function calculateNextDate(currentDate: Date, frequency: string): Date {
  * Process recurring services and create appointments for due services
  */
 async function processRecurringServices() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     console.log('[RECURRING] Starting recurring services processing...');
     
@@ -44,7 +47,7 @@ async function processRecurringServices() {
     today.setHours(0, 0, 0, 0);
 
     // Find all active recurring services that are due (nextScheduledDate <= today)
-    const dueServices = await db
+    const dueServices = await tenantDb
       .select({
         recurringService: recurringServices,
         customer: customers,
@@ -54,9 +57,11 @@ async function processRecurringServices() {
       .leftJoin(customers, eq(recurringServices.customerId, customers.id))
       .leftJoin(services, eq(recurringServices.serviceId, services.id))
       .where(
-        and(
-          eq(recurringServices.status, 'active'),
-          lte(recurringServices.nextScheduledDate, today.toISOString().split('T')[0])
+        tenantDb.withTenantFilter(recurringServices,
+          and(
+            eq(recurringServices.status, 'active'),
+            lte(recurringServices.nextScheduledDate, today.toISOString().split('T')[0])
+          )
         )
       );
 
@@ -100,8 +105,10 @@ async function processRecurringServices() {
         }
 
         // Create the appointment - wrap in transaction with stats update and recurring service update
-        await db.transaction(async (tx) => {
-          const [newAppointment] = await tx
+        await tenantDb.transaction(async (tx) => {
+          const txTenantDb = wrapTenantDb(tx, 'root');
+          
+          const [newAppointment] = await txTenantDb
             .insert(appointments)
             .values({
               customerId: customer.id,
@@ -125,14 +132,14 @@ async function processRecurringServices() {
           );
 
           // Update the recurring service - in same transaction
-          await tx
+          await txTenantDb
             .update(recurringServices)
             .set({
               nextScheduledDate: nextDate.toISOString().split('T')[0],
               lastAppointmentCreatedAt: new Date(),
               updatedAt: new Date(),
             })
-            .where(eq(recurringServices.id, recurringService.id));
+            .where(txTenantDb.withTenantFilter(recurringServices, eq(recurringServices.id, recurringService.id)));
 
           console.log(`[RECURRING] Updated recurring service ${recurringService.id}, next date: ${nextDate.toISOString().split('T')[0]}`);
         });
@@ -181,6 +188,8 @@ export function initializeRecurringServicesScheduler() {
  * Sends reminders 3 days before and 1 day before appointments
  */
 async function processRecurringServiceReminders() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     console.log('[RECURRING] Checking for appointments needing reminders...');
     
@@ -206,7 +215,7 @@ async function processRecurringServiceReminders() {
     const { sendReminderEmail } = await import('./emailService');
 
     // Get appointments that need 3-day reminders
-    const threeDayReminders = await db
+    const threeDayReminders = await tenantDb
       .select({
         appointment: appointments,
         customer: customers,
@@ -216,15 +225,17 @@ async function processRecurringServiceReminders() {
       .leftJoin(customers, eq(appointments.customerId, customers.id))
       .leftJoin(services, eq(appointments.serviceId, services.id))
       .where(
-        and(
-          eq(appointments.completed, false),
-          gte(appointments.scheduledTime, threeDaysFromNow),
-          lte(appointments.scheduledTime, threeDaysEnd)
+        tenantDb.withTenantFilter(appointments,
+          and(
+            eq(appointments.completed, false),
+            gte(appointments.scheduledTime, threeDaysFromNow),
+            lte(appointments.scheduledTime, threeDaysEnd)
+          )
         )
       );
 
     // Get appointments that need 1-day reminders
-    const oneDayReminders = await db
+    const oneDayReminders = await tenantDb
       .select({
         appointment: appointments,
         customer: customers,
@@ -234,11 +245,13 @@ async function processRecurringServiceReminders() {
       .leftJoin(customers, eq(appointments.customerId, customers.id))
       .leftJoin(services, eq(appointments.serviceId, services.id))
       .where(
-        and(
-          eq(appointments.completed, false),
-          eq(appointments.reminderSent, false),
-          gte(appointments.scheduledTime, oneDayFromNow),
-          lte(appointments.scheduledTime, oneDayEnd)
+        tenantDb.withTenantFilter(appointments,
+          and(
+            eq(appointments.completed, false),
+            eq(appointments.reminderSent, false),
+            gte(appointments.scheduledTime, oneDayFromNow),
+            lte(appointments.scheduledTime, oneDayEnd)
+          )
         )
       );
 
@@ -283,10 +296,10 @@ async function processRecurringServiceReminders() {
       }
 
       // Mark reminder as sent
-      await db
+      await tenantDb
         .update(appointments)
         .set({ reminderSent: true })
-        .where(eq(appointments.id, appointment.id));
+        .where(tenantDb.withTenantFilter(appointments, eq(appointments.id, appointment.id)));
 
       console.log(`[RECURRING] Sent 1-day reminder to ${customer.name} for appointment ${appointment.id}`);
       remindersCount++;

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from './authMiddleware';
 import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { callEvents, conversations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
 
@@ -27,7 +28,7 @@ router.post('/test/inbound-call', requireAuth, async (req: Request, res: Respons
     };
     
     // Log test call event
-    const [callEvent] = await db.insert(callEvents).values({
+    const [callEvent] = await req.tenantDb!.insert(callEvents).values({
       callSid: testCallSid,
       from: testPhoneNumber,
       to: simulatedWebhook.To || '+19188565304',
@@ -116,7 +117,7 @@ router.post('/test/voicemail-flow', requireAuth, async (req: Request, res: Respo
     const testTranscription = req.body.transcription || 'This is a test voicemail message';
     
     // Log voicemail call event
-    const [callEvent] = await db.insert(callEvents).values({
+    const [callEvent] = await req.tenantDb!.insert(callEvents).values({
       callSid: testCallSid,
       from: testPhoneNumber,
       to: process.env.TWILIO_PHONE_NUMBER || '+19188565304',
@@ -154,7 +155,7 @@ router.post('/test/voicemail-flow', requireAuth, async (req: Request, res: Respo
 router.get('/test/call-quality-metrics', requireAuth, async (req: Request, res: Response) => {
   try {
     // Get recent call events
-    const recentCalls = await db
+    const recentCalls = await req.tenantDb!
       .select()
       .from(callEvents)
       .orderBy(desc(callEvents.createdAt))
@@ -300,7 +301,7 @@ router.get('/test/voice-system-check', requireAuth, async (req: Request, res: Re
     
     // Check database connectivity
     try {
-      await db.select().from(callEvents).limit(1);
+      await req.tenantDb!.select().from(callEvents).limit(1);
       checks.databaseConnected = true;
     } catch {
       checks.databaseConnected = false;
@@ -310,7 +311,7 @@ router.get('/test/voice-system-check', requireAuth, async (req: Request, res: Re
     checks.webhooksConfigured = true; // Webhooks are hardcoded in routes
     
     // Check call logging
-    const recentCalls = await db.select().from(callEvents).limit(1);
+    const recentCalls = await req.tenantDb!.select().from(callEvents).limit(1);
     checks.callLoggingWorking = recentCalls.length > 0;
     
     // WebSocket check (basic)

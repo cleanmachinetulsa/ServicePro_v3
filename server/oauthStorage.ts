@@ -2,6 +2,7 @@ import { db } from './db';
 import { users, oauthProviders } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
+import { wrapTenantDb } from './tenantDb';
 
 export interface OAuthProvider {
   id: number;
@@ -18,7 +19,8 @@ export interface OAuthProvider {
 }
 
 export async function getOAuthProvider(provider: string, providerId: string) {
-  const [result] = await db
+  const tenantDb = wrapTenantDb(db, 'root');
+  const [result] = await tenantDb
     .select()
     .from(oauthProviders)
     .where(
@@ -41,7 +43,8 @@ export async function createOAuthProvider(data: {
   accessToken?: string;
   refreshToken?: string | null;
 }) {
-  const [provider] = await db
+  const tenantDb = wrapTenantDb(db, 'root');
+  const [provider] = await tenantDb
     .insert(oauthProviders)
     .values({
       userId: data.userId,
@@ -66,7 +69,8 @@ export async function updateOAuthProvider(
     lastUsedAt?: Date;
   }
 ) {
-  const [updated] = await db
+  const tenantDb = wrapTenantDb(db, 'root');
+  const [updated] = await tenantDb
     .update(oauthProviders)
     .set(updates)
     .where(eq(oauthProviders.id, id))
@@ -75,7 +79,8 @@ export async function updateOAuthProvider(
 }
 
 export async function getUserByEmail(email: string) {
-  const [user] = await db
+  const tenantDb = wrapTenantDb(db, 'root');
+  const [user] = await tenantDb
     .select()
     .from(users)
     .where(eq(users.email, email))
@@ -84,7 +89,8 @@ export async function getUserByEmail(email: string) {
 }
 
 export async function getUserById(id: number) {
-  const [user] = await db
+  const tenantDb = wrapTenantDb(db, 'root');
+  const [user] = await tenantDb
     .select()
     .from(users)
     .where(eq(users.id, id))
@@ -97,13 +103,14 @@ export async function createUserFromOAuth(data: {
   fullName: string;
   role: string;
 }) {
+  const tenantDb = wrapTenantDb(db, 'root');
   // Generate a random password for OAuth users (they won't use it)
   const randomPassword = await bcrypt.hash(Math.random().toString(36), 10);
   
   // Create username from email
   const username = data.email.split('@')[0] + '_' + Math.random().toString(36).substring(7);
 
-  const [user] = await db
+  const [user] = await tenantDb
     .insert(users)
     .values({
       username,
