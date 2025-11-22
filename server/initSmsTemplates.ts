@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { smsTemplates } from "@shared/schema";
+import { smsTemplates, tenants } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { wrapTenantDb } from "./tenantDb";
 
@@ -165,61 +165,74 @@ const DEFAULT_TEMPLATES = [
 /**
  * Initialize SMS templates (idempotent - safe to run multiple times)
  * Uses upsert pattern: updates if exists, inserts if new
+ * Runs for ALL tenants in the system
  */
 export async function initializeSmsTemplates() {
   try {
     console.log('[SMS TEMPLATES INIT] Starting template initialization...');
 
-    let created = 0;
-    let updated = 0;
+    // Get all tenants
+    const allTenants = await db.select().from(tenants);
+    console.log(`[SMS TEMPLATES INIT] Found ${allTenants.length} tenant(s) to initialize`);
 
-    for (const template of DEFAULT_TEMPLATES) {
-      // Check if template already exists  
-      const [existing] = await db
-        .select()
-        .from(smsTemplates)
-        .where(
-          and(
-            eq(smsTemplates.tenantId, 'root'),
-            eq(smsTemplates.templateKey, template.templateKey),
-            eq(smsTemplates.language, "en")
+    let totalCreated = 0;
+    let totalUpdated = 0;
+
+    // Initialize templates for each tenant
+    for (const tenant of allTenants) {
+      const tenantDb = wrapTenantDb(db, tenant.id);
+      console.log(`[SMS TEMPLATES INIT] Initializing templates for tenant: ${tenant.name} (${tenant.id})`);
+
+      let created = 0;
+      let updated = 0;
+
+      for (const template of DEFAULT_TEMPLATES) {
+        // Check if template already exists
+        const [existing] = await tenantDb
+          .select()
+          .from(smsTemplates)
+          .where(
+            and(
+              eq(smsTemplates.templateKey, template.templateKey),
+              eq(smsTemplates.language, "en")
+            )
           )
-        )
-        .limit(1);
+          .limit(1);
 
-      if (existing) {
-        // Update existing template (preserves custom edits to name/description/enabled status)
-        // Only updates body/variables if they haven't been customized
-        if (existing.version === 1) {
-          await db
-            .update(smsTemplates)
-            .set({
-              body: template.body,
-              variables: template.variables,
-              defaultPayload: template.defaultPayload,
-              updatedAt: new Date(),
-            })
-            .where(and(
-              eq(smsTemplates.tenantId, 'root'),
-              eq(smsTemplates.id, existing.id)
-            ));
-          updated++;
+        if (existing) {
+          // Update existing template (preserves custom edits to name/description/enabled status)
+          // Only updates body/variables if they haven't been customized
+          if (existing.version === 1) {
+            await tenantDb
+              .update(smsTemplates)
+              .set({
+                body: template.body,
+                variables: template.variables,
+                defaultPayload: template.defaultPayload,
+                updatedAt: new Date(),
+              })
+              .where(eq(smsTemplates.id, existing.id));
+            updated++;
+          }
+        } else {
+          // Insert new template
+          await tenantDb.insert(smsTemplates).values({
+            ...template,
+            channel: "sms",
+            language: "en",
+            version: 1,
+          });
+          created++;
         }
-      } else {
-        // Insert new template
-        await db.insert(smsTemplates).values({
-          ...template,
-          tenantId: 'root',
-          channel: "sms",
-          language: "en",
-          version: 1,
-        });
-        created++;
       }
+
+      console.log(`[SMS TEMPLATES INIT] Tenant ${tenant.id}: ${created} created, ${updated} updated`);
+      totalCreated += created;
+      totalUpdated += updated;
     }
 
-    console.log(`[SMS TEMPLATES INIT] Initialization complete: ${created} created, ${updated} updated`);
-    return { success: true, created, updated };
+    console.log(`[SMS TEMPLATES INIT] Initialization complete across all tenants: ${totalCreated} created, ${totalUpdated} updated`);
+    return { success: true, created: totalCreated, updated: totalUpdated };
   } catch (error) {
     console.error('[SMS TEMPLATES INIT] Error initializing templates:', error);
     return { success: false, error };
