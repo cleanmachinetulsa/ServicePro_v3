@@ -22,7 +22,10 @@ The application is being transformed into a multi-tenant platform with the follo
   - Phase 2.5: ✅ Admin Phone & IVR Configuration UI (COMPLETE)
   - Admin UI: `/admin/phone-config` for managing phone numbers and IVR modes across all tenants
   - Features: Create/edit/delete phone configs, toggle IVR modes (simple/ivr/ai-voice), configure SIP settings
-  - Security: Owner-only access with RBAC middleware, E.164 phone validation, duplicate number prevention
+  - Security: Owner-only access with RBAC middleware, E.164 phone validation, duplicate number prevention, root tenant deletion guard
+  - Data Integrity: Whitespace trimming, nullable field validation with shared schema, empty → NULL persistence
+  - UX Quality: react-hook-form + zodResolver + Form components, tenant dropdown selector, complete data-testid coverage
+  - Backend: Uses shared `insertTenantPhoneConfigSchema` with schema.shape validators, proper null handling for optional fields
   - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md` and `PHASE_2_3_IVR_MODE.md`
 
 **Key Files:**

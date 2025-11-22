@@ -59,17 +59,17 @@ const createPhoneConfigSchema = z.object({
   tenantId: z.string().min(1, 'Tenant is required'),
   phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g., +19185551234)'),
   ivrMode: z.enum(['simple', 'ivr', 'ai-voice']),
-  sipDomain: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().optional()),
-  sipUsername: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().optional()),
-  messagingServiceSid: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().optional()),
+  sipDomain: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().nullish()),
+  sipUsername: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().nullish()),
+  messagingServiceSid: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().nullish()),
 });
 
 const editPhoneConfigSchema = z.object({
   phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g., +19185551234)'),
   ivrMode: z.enum(['simple', 'ivr', 'ai-voice']),
-  sipDomain: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().optional()),
-  sipUsername: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().optional()),
-  messagingServiceSid: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().optional()),
+  sipDomain: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().nullish()),
+  sipUsername: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().nullish()),
+  messagingServiceSid: z.preprocess((val) => !val || (typeof val === 'string' && val.trim() === '') ? null : val, z.string().nullish()),
 });
 
 type CreatePhoneConfigForm = z.infer<typeof createPhoneConfigSchema>;
