@@ -1,6 +1,6 @@
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
-import { conversations, messages } from '@shared/schema';
+import { conversations, messages, tenants } from '@shared/schema';
 import { eq, and, lt, sql } from 'drizzle-orm';
 import { returnToAI } from './handoffDetectionService';
 import { notifyTimeout } from './smsNotificationService';
@@ -38,53 +38,68 @@ async function checkTimeouts() {
   try {
     console.log('[TIMEOUT MONITOR] Checking for timed-out conversations...');
 
-    const timeoutThreshold = new Date();
-    timeoutThreshold.setHours(timeoutThreshold.getHours() - TIMEOUT_HOURS);
+    // Get all tenants
+    const allTenants = await db.select().from(tenants);
+    console.log(`[TIMEOUT MONITOR] Checking ${allTenants.length} tenant(s)`);
 
-    // Find conversations in manual mode that haven't had activity in TIMEOUT_HOURS
-    const timedOutConversations = await db
-      .select()
-      .from(conversations)
-      .where(
-        and(
-          eq(conversations.tenantId, 'root'),
-          eq(conversations.controlMode, 'manual'),
-          eq(conversations.status, 'active'),
-          lt(conversations.lastMessageTime, timeoutThreshold)
-        )
-      );
+    let totalTimedOut = 0;
 
-    console.log(`[TIMEOUT MONITOR] Found ${timedOutConversations.length} timed-out conversations`);
+    // Check timeouts for each tenant
+    for (const tenant of allTenants) {
+      const tenantDb = wrapTenantDb(db, tenant.id);
 
-    for (const conversation of timedOutConversations) {
-      try {
-        console.log(`[TIMEOUT MONITOR] Processing timeout for conversation ${conversation.id}`);
+      const timeoutThreshold = new Date();
+      timeoutThreshold.setHours(timeoutThreshold.getHours() - TIMEOUT_HOURS);
 
-        // Return to AI
-        const customerNotification = await returnToAI(conversation.id, 'system', true);
-
-        // Send notification to customer if they're on SMS
-        if (conversation.platform === 'sms' && customerNotification && conversation.customerPhone) {
-          const timeoutMessage = `Hi${conversation.customerName ? ' ' + conversation.customerName : ''}! I noticed we haven't heard back in a while. I'm back to help if you need anything! Or just text back if you'd like to continue.`;
-          
-          await sendSMS(conversation.customerPhone, timeoutMessage);
-          console.log(`[TIMEOUT MONITOR] Sent timeout message to customer ${conversation.customerPhone}`);
-        }
-
-        // Notify business owner
-        await notifyTimeout(
-          conversation.id,
-          conversation.customerName,
-          conversation.customerPhone || 'Unknown'
+      // Find conversations in manual mode that haven't had activity in TIMEOUT_HOURS
+      const timedOutConversations = await tenantDb
+        .select()
+        .from(conversations)
+        .where(
+          and(
+            eq(conversations.controlMode, 'manual'),
+            eq(conversations.status, 'active'),
+            lt(conversations.lastMessageTime, timeoutThreshold)
+          )
         );
 
-      } catch (error) {
-        console.error(`[TIMEOUT MONITOR] Error processing conversation ${conversation.id}:`, error);
+      if (timedOutConversations.length > 0) {
+        console.log(`[TIMEOUT MONITOR] Tenant ${tenant.id}: Found ${timedOutConversations.length} timed-out conversations`);
+        totalTimedOut += timedOutConversations.length;
+      }
+
+      for (const conversation of timedOutConversations) {
+        try {
+          console.log(`[TIMEOUT MONITOR] Tenant ${tenant.id}: Processing timeout for conversation ${conversation.id}`);
+
+          // Return to AI
+          const customerNotification = await returnToAI(conversation.id, 'system', true);
+
+          // Send notification to customer if they're on SMS
+          if (conversation.platform === 'sms' && customerNotification && conversation.customerPhone) {
+            const timeoutMessage = `Hi${conversation.customerName ? ' ' + conversation.customerName : ''}! I noticed we haven't heard back in a while. I'm back to help if you need anything! Or just text back if you'd like to continue.`;
+            
+            await sendSMS(conversation.customerPhone, timeoutMessage);
+            console.log(`[TIMEOUT MONITOR] Sent timeout message to customer ${conversation.customerPhone}`);
+          }
+
+          // Notify business owner
+          await notifyTimeout(
+            conversation.id,
+            conversation.customerName,
+            conversation.customerPhone || 'Unknown'
+          );
+
+        } catch (error) {
+          console.error(`[TIMEOUT MONITOR] Error processing conversation ${conversation.id}:`, error);
+        }
       }
     }
 
-    if (timedOutConversations.length === 0) {
-      console.log('[TIMEOUT MONITOR] No timed-out conversations found');
+    if (totalTimedOut === 0) {
+      console.log('[TIMEOUT MONITOR] No timed-out conversations found across all tenants');
+    } else {
+      console.log(`[TIMEOUT MONITOR] Total: Found ${totalTimedOut} timed-out conversations across all tenants`);
     }
 
   } catch (error) {
@@ -98,8 +113,10 @@ export async function triggerTimeoutCheck() {
 }
 
 // Update the last activity timestamp for a conversation
-export async function updateLastActivity(conversationId: number) {
-  const tenantDb = wrapTenantDb(db, 'root');
+// NOTE: This function takes conversationId which doesn't include tenant context.
+// It should be called from req.tenantDb context, or refactored to accept tenant ID.
+export async function updateLastActivity(conversationId: number, tenantId: string = 'root') {
+  const tenantDb = wrapTenantDb(db, tenantId);
   
   try {
     await tenantDb

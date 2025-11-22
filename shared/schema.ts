@@ -471,7 +471,7 @@ export const technicianDeposits = pgTable("technician_deposits", {
 
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
-  tenantId: varchar("tenant_id", { length: 255 }).notNull().default('root'),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").references(() => customers.id),
   customerPhone: text("customer_phone"),
   customerName: text("customer_name"),
@@ -1113,8 +1113,8 @@ export const notificationSettings = pgTable("notification_settings", {
 // SMS Templates - Centralized template management with versioning
 export const smsTemplates = pgTable("sms_templates", {
   id: serial("id").primaryKey(),
-  tenantId: varchar("tenant_id", { length: 255 }).notNull().default('root'),
-  templateKey: varchar("template_key", { length: 100 }).notNull().unique(), // e.g., 'on_site_arrival', 'booking_confirmation'
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  templateKey: varchar("template_key", { length: 100 }).notNull(), // e.g., 'on_site_arrival', 'booking_confirmation'
   category: varchar("category", { length: 50 }).notNull(), // 'booking', 'technician', 'referrals', 'payment', etc.
   channel: varchar("channel", { length: 20 }).notNull().default("sms"), // Future: 'sms', 'email', 'push'
   language: varchar("language", { length: 10 }).notNull().default("en"), // Future: 'en', 'es', etc.
@@ -1128,7 +1128,10 @@ export const smsTemplates = pgTable("sms_templates", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
-});
+}, (table) => ({
+  // Composite unique constraint: template_key must be unique PER TENANT
+  tenantTemplateKeyUnique: uniqueIndex("sms_templates_tenant_id_template_key_unique").on(table.tenantId, table.templateKey),
+}));
 
 // SMS Template Versions - Audit trail and rollback support
 export const smsTemplateVersions = pgTable("sms_template_versions", {
@@ -1338,7 +1341,7 @@ export const serviceLimits = pgTable("service_limits", {
 // Site-wide Banners - Scheduled announcements with multiple display modes
 export const banners = pgTable("banners", {
   id: serial("id").primaryKey(),
-  tenantId: varchar("tenant_id", { length: 255 }).notNull().default('root'),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   title: text("title").notNull(),
   bodyText: text("body_text").notNull(), // Plain text or markdown, NO raw HTML (sanitized on render)
   displayMode: varchar("display_mode", { length: 20 }).notNull().default("top_bar"), // top_bar, modal, floating
