@@ -31,7 +31,8 @@ import {
   Plane,
   MessageCircle,
   History,
-  Wallet
+  Wallet,
+  Sparkles
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -223,6 +224,37 @@ export const navigationItems: NavigationItem[] = [
     label: 'Usage Dashboard',
     icon: Wallet,
     path: '/admin/usage-dashboard',
+  },
+
+  // MULTI-TENANT MANAGEMENT (Owner Only)
+  {
+    id: 'separator-multi-tenant',
+    label: '',
+    icon: Building2,
+    path: '',
+    separator: true,
+    sectionHeader: 'Multi-Tenant Management',
+  },
+  {
+    id: 'concierge-setup',
+    label: 'Concierge Setup',
+    icon: Sparkles,
+    path: '/admin/concierge-setup',
+    badge: 'Owner',
+  },
+  {
+    id: 'tenants',
+    label: 'Tenant Management',
+    icon: Building2,
+    path: '/admin/tenants',
+    badge: 'Owner',
+  },
+  {
+    id: 'phone-config',
+    label: 'Phone & IVR Config',
+    icon: Phone,
+    path: '/admin/phone-config',
+    badge: 'Owner',
   },
 
   // WORKFORCE MANAGEMENT

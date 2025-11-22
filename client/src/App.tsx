@@ -50,6 +50,7 @@ import AdminQuoteRequests from './pages/admin-quote-requests';
 import AdminApplications from './pages/AdminApplications';
 import AdminTenants from './pages/AdminTenants';
 import AdminPhoneConfig from './pages/AdminPhoneConfig';
+import AdminConciergeSetup from './pages/AdminConciergeSetup';
 import PayerApprovalPage from './pages/payer-approval';
 import QuoteApprovalPage from './pages/quote-approval';
 import SMSConsentPage from './pages/sms-consent';
@@ -190,6 +191,9 @@ function Router() {
       </Route>
       <Route path="/admin/phone-config">
         <AuthGuard><AdminPhoneConfig /></AuthGuard>
+      </Route>
+      <Route path="/admin/concierge-setup">
+        <AuthGuard><AdminConciergeSetup /></AuthGuard>
       </Route>
       <Route path="/admin/scheduling">
         <AuthGuard><SchedulingDashboard /></AuthGuard>
