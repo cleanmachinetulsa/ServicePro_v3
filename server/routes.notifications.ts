@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { notificationSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -24,10 +23,10 @@ router.get('/settings/:key', requireAuth, async (req: Request, res: Response) =>
   try {
     const { key } = req.params;
     
-    const [setting] = await db
+    const [setting] = await req.tenantDb!
       .select()
       .from(notificationSettings)
-      .where(eq(notificationSettings.settingKey, key))
+      .where(req.tenantDb!.withTenantFilter(notificationSettings, eq(notificationSettings.settingKey, key)))
       .limit(1);
 
     if (!setting) {
@@ -58,9 +57,10 @@ router.get('/settings/:key', requireAuth, async (req: Request, res: Response) =>
  */
 router.get('/settings', requireAuth, async (req: Request, res: Response) => {
   try {
-    const settings = await db
+    const settings = await req.tenantDb!
       .select()
-      .from(notificationSettings);
+      .from(notificationSettings)
+      .where(req.tenantDb!.withTenantFilter(notificationSettings));
 
     res.json({
       success: true,
@@ -86,17 +86,17 @@ router.put('/settings/:key', requireAuth, async (req: Request, res: Response) =>
     const userId = (req as any).user?.id;
 
     // Check if setting exists
-    const [existingSetting] = await db
+    const [existingSetting] = await req.tenantDb!
       .select()
       .from(notificationSettings)
-      .where(eq(notificationSettings.settingKey, key))
+      .where(req.tenantDb!.withTenantFilter(notificationSettings, eq(notificationSettings.settingKey, key)))
       .limit(1);
 
     let result;
 
     if (existingSetting) {
       // Update existing setting
-      [result] = await db
+      [result] = await req.tenantDb!
         .update(notificationSettings)
         .set({
           enabled: enabled !== undefined ? enabled : existingSetting.enabled,
@@ -104,11 +104,11 @@ router.put('/settings/:key', requireAuth, async (req: Request, res: Response) =>
           updatedAt: new Date(),
           updatedBy: userId
         })
-        .where(eq(notificationSettings.settingKey, key))
+        .where(req.tenantDb!.withTenantFilter(notificationSettings, eq(notificationSettings.settingKey, key)))
         .returning();
     } else {
       // Create new setting
-      [result] = await db
+      [result] = await req.tenantDb!
         .insert(notificationSettings)
         .values({
           settingKey: key,

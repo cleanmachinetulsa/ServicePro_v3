@@ -1862,6 +1862,7 @@ export async function registerRoutes(app: Express) {
       const { processConversation } = await import('./conversationHandler');
       
       const { conversation } = await getOrCreateConversation(
+        req.tenantDb!,
         webIdentifier, // Use session-based ID, not client-supplied phone
         null, // customerName
         'web', // platform
@@ -1869,10 +1870,10 @@ export async function registerRoutes(app: Express) {
       );
       
       // Save incoming message
-      await addMessage(conversation.id, message, 'customer', 'web');
+      await addMessage(req.tenantDb!, conversation.id, message, 'customer', 'web');
       
       // Process with AI
-      const response = await processConversation(webIdentifier, message, 'web');
+      const response = await processConversation(req.tenantDb!, webIdentifier, message, 'web');
       
       return res.json({
         success: true,
@@ -1922,10 +1923,10 @@ export async function registerRoutes(app: Express) {
         const { phoneLines } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
         
-        const [phoneLine] = await db
+        const [phoneLine] = await req.tenantDb!
           .select()
           .from(phoneLines)
-          .where(eq(phoneLines.phoneNumber, To))
+          .where(req.tenantDb!.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, To)))
           .limit(1);
         
         if (phoneLine) {
@@ -1999,6 +2000,7 @@ export async function registerRoutes(app: Express) {
       // Get or create conversation first (needed for consent keyword processing)
       const { getOrCreateConversation, addMessage } = await import('./conversationService');
       let { conversation } = await getOrCreateConversation(
+        req.tenantDb!,
         phone,
         customerName || null,
         platform,
@@ -2019,10 +2021,10 @@ export async function registerRoutes(app: Express) {
           console.log(`[SMS CONSENT] Detected ${consentResult.keyword} keyword for conversation ${conversation.id}`);
           
           // Save the consent keyword message from customer
-          await addMessage(conversation.id, message, 'customer', platform, null, phoneLineId);
+          await addMessage(req.tenantDb!, conversation.id, message, 'customer', platform, null, phoneLineId);
           
           // Save the auto-response message
-          await addMessage(conversation.id, consentResult.autoResponse, 'agent', platform, null, phoneLineId);
+          await addMessage(req.tenantDb!, conversation.id, consentResult.autoResponse, 'agent', platform, null, phoneLineId);
           
           // Send the auto-response via TwiML
           res.set('Content-Type', 'text/xml');
@@ -2038,11 +2040,11 @@ export async function registerRoutes(app: Express) {
         console.log(`[WEB CHAT] Auto-resetting conversation ${conversation.id} to auto mode (was ${conversation.controlMode})`);
         const { handoffConversation } = await import('./conversationService');
         // Update the conversation in the database and get the refreshed object
-        conversation = await handoffConversation(conversation.id);
+        conversation = await handoffConversation(req.tenantDb!, conversation.id);
         console.log(`[WEB CHAT] After handoff, controlMode is now: ${conversation.controlMode}`);
       }
 
-      const savedMessage = await addMessage(conversation.id, message, 'customer', platform, null, phoneLineId);
+      const savedMessage = await addMessage(req.tenantDb!, conversation.id, message, 'customer', platform, null, phoneLineId);
 
       // Check for escalation triggers (Phase 2: "Ask for Jody" VIP Escalation System)
       if (conversation.controlMode === 'auto' && !conversation.humanEscalationActive) {
@@ -2055,7 +2057,7 @@ export async function registerRoutes(app: Express) {
           console.log('[ESCALATION] Escalation trigger detected:', escalationMatch.tier, '-', escalationMatch.match);
           
           // Get full conversation for context
-          const fullConversation = await getConversationById(conversation.id);
+          const fullConversation = await getConversationById(req.tenantDb!, conversation.id);
           const messageHistory = fullConversation?.messages?.map(m => ({
             role: m.fromCustomer ? 'customer' : 'agent',
             content: m.content
@@ -2064,13 +2066,13 @@ export async function registerRoutes(app: Express) {
           // Get or create customer record
           const { customers } = await import('@shared/schema');
           const { eq } = await import('drizzle-orm');
-          let customer = await db.query.customers.findFirst({
-            where: eq(customers.phone, phone)
+          let customer = await req.tenantDb!.query.customers.findFirst({
+            where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone))
           });
           
           // Create customer if doesn't exist
           if (!customer) {
-            const [newCustomer] = await db.insert(customers).values({
+            const [newCustomer] = await req.tenantDb!.insert(customers).values({
               phone: phone,
               name: conversation.customerName || undefined,
               isReturningCustomer: false,
@@ -2092,7 +2094,7 @@ export async function registerRoutes(app: Express) {
           const confirmationMessage = `Thank you! I've notified our owner, Jody. She'll respond to you directly very soon. In the meantime, I'm here if you need anything else.`;
           
           // Save and send confirmation message
-          await addMessage(conversation.id, confirmationMessage, 'agent', platform, null, phoneLineId);
+          await addMessage(req.tenantDb!, conversation.id, confirmationMessage, 'agent', platform, null, phoneLineId);
           
           // Send TwiML response for SMS
           if (!isWebClient && platform === 'sms') {
@@ -2112,14 +2114,14 @@ export async function registerRoutes(app: Express) {
         // Don't generate AI response - human is handling
         // Send gentle reminder only if last message wasn't already a paused message
         const { getConversationById } = await import('./conversationService');
-        const fullConversation = await getConversationById(conversation.id);
+        const fullConversation = await getConversationById(req.tenantDb!, conversation.id);
         const lastAgentMessage = fullConversation?.messages?.filter(m => !m.fromCustomer).pop();
         const shouldSendReminder = !lastAgentMessage || 
           !lastAgentMessage.content.includes('Jody has been notified');
         
         if (shouldSendReminder) {
           const pausedMessage = `Jody has been notified and will respond shortly. Feel free to wait here or she'll reach out directly!`;
-          await addMessage(conversation.id, pausedMessage, 'agent', platform, null, phoneLineId);
+          await addMessage(req.tenantDb!, conversation.id, pausedMessage, 'agent', platform, null, phoneLineId);
           
           if (!isWebClient && platform === 'sms') {
             res.set('Content-Type', 'text/xml');
@@ -2145,7 +2147,7 @@ export async function registerRoutes(app: Express) {
         const { getConversationById } = await import('./conversationService');
 
         // Get message history for better detection
-        const fullConversation = await getConversationById(conversation.id);
+        const fullConversation = await getConversationById(req.tenantDb!, conversation.id);
         const messageHistory = fullConversation?.messages || [];
 
         const handoffDetection = await detectHandoffNeed(message, conversation.id, messageHistory);
@@ -2195,7 +2197,7 @@ export async function registerRoutes(app: Express) {
       const behaviorSettings = conversation.behaviorSettings as any || {};
 
       // Get full conversation history (excluding current message which is already in DB)
-      const fullConversation = await getConversationById(conversation.id);
+      const fullConversation = await getConversationById(req.tenantDb!, conversation.id);
       const allMessages = fullConversation?.messages || [];
       // Exclude the last message (current one we just added) from history
       const conversationHistory = allMessages.slice(0, -1);
@@ -2212,7 +2214,7 @@ export async function registerRoutes(app: Express) {
       );
 
       // Save AI response
-      await addMessage(conversation.id, response, 'ai', platform);
+      await addMessage(req.tenantDb!, conversation.id, response, 'ai', platform);
 
       // Return appropriate format
       if (isWebClient) {
@@ -2251,7 +2253,7 @@ export async function registerRoutes(app: Express) {
 
       // Get or create conversation
       const { getOrCreateConversation, addMessage } = await import('./conversationService');
-      let { conversation } = await getOrCreateConversation(phone, customerName || null, platform);
+      let { conversation } = await getOrCreateConversation(req.tenantDb!, phone, customerName || null, platform);
 
       console.log(`[API/CHAT] Conversation ${conversation.id}, controlMode: ${conversation.controlMode}`);
 
@@ -2259,18 +2261,18 @@ export async function registerRoutes(app: Express) {
       if (conversation.controlMode !== 'auto') {
         console.log(`[API/CHAT] Resetting conversation ${conversation.id} to auto mode`);
         const { handoffConversation } = await import('./conversationService');
-        conversation = await handoffConversation(conversation.id);
+        conversation = await handoffConversation(req.tenantDb!, conversation.id);
       }
 
       // Save customer message
-      await addMessage(conversation.id, message, 'customer', platform);
+      await addMessage(req.tenantDb!, conversation.id, message, 'customer', platform);
 
       // Get behavior settings from conversation
       const behaviorSettings = conversation.behaviorSettings as any || {};
 
       // Get full conversation history (excluding current message which is already in DB)
       const { getConversationById } = await import('./conversationService');
-      const fullConversation = await getConversationById(conversation.id);
+      const fullConversation = await getConversationById(req.tenantDb!, conversation.id);
       const allMessages = fullConversation?.messages || [];
       // Exclude the last message (current one we just added) from history
       const conversationHistory = allMessages.slice(0, -1);
@@ -2288,7 +2290,7 @@ export async function registerRoutes(app: Express) {
       );
 
       // Save AI response
-      await addMessage(conversation.id, aiResponse, 'ai', platform);
+      await addMessage(req.tenantDb!, conversation.id, aiResponse, 'ai', platform);
 
       // Return JSON format expected by frontend
       res.json({

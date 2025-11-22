@@ -1,7 +1,6 @@
 import { Express, Request, Response, NextFunction } from 'express';
 import twilio from 'twilio';
 import axios from 'axios';
-import { db } from './db';
 import { facebookPageTokens, conversations, messageReactions, messages, customers, appointments } from '@shared/schema';
 import { eq, and, inArray, gte } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -49,6 +48,7 @@ export function registerConversationRoutes(app: Express) {
       if (platform === 'sms') {
         // Phone is already validated and normalized to E.164 by middleware
         const { conversation, isNew } = await getOrCreateConversation(
+          req.tenantDb!,
           phone,
           name || null,
           'sms',
@@ -75,6 +75,7 @@ export function registerConversationRoutes(app: Express) {
         }
 
         const { conversation, isNew } = await getOrCreateConversation(
+          req.tenantDb!,
           email,
           name || null,
           'email'
@@ -95,6 +96,7 @@ export function registerConversationRoutes(app: Express) {
         }
 
         const { conversation, isNew } = await getOrCreateConversation(
+          req.tenantDb!,
           socialId,
           name || null,
           platform
@@ -110,6 +112,7 @@ export function registerConversationRoutes(app: Express) {
         const identifier = phone || email || `web-${Date.now()}`;
         
         const { conversation, isNew } = await getOrCreateConversation(
+          req.tenantDb!,
           identifier,
           name || null,
           'web'
@@ -142,7 +145,7 @@ export function registerConversationRoutes(app: Express) {
     try {
       const { status, phoneLineId } = req.query;
       const phoneLineIdNum = phoneLineId ? parseInt(phoneLineId as string) : undefined;
-      const conversations = await getAllConversations(status as string, phoneLineIdNum);
+      const conversations = await getAllConversations(req.tenantDb!, status as string, phoneLineIdNum);
 
       res.json({
         success: true,
@@ -183,7 +186,7 @@ export function registerConversationRoutes(app: Express) {
         }
       }
 
-      const conversation = await getConversationById(conversationId, options);
+      const conversation = await getConversationById(req.tenantDb!, conversationId, options);
 
       if (!conversation) {
         return res.status(404).json({
@@ -226,7 +229,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await takeoverConversation(conversationId, agentUsername);
+      const conversation = await takeoverConversation(req.tenantDb!, conversationId, agentUsername);
 
       res.json({
         success: true,
@@ -255,7 +258,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await handoffConversation(conversationId);
+      const conversation = await handoffConversation(req.tenantDb!, conversationId);
 
       res.json({
         success: true,
@@ -285,7 +288,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await updateBehaviorSettings(conversationId, behaviorSettings);
+      const conversation = await updateBehaviorSettings(req.tenantDb!, conversationId, behaviorSettings);
 
       res.json({
         success: true,
@@ -314,7 +317,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await pauseConversation(conversationId);
+      const conversation = await pauseConversation(req.tenantDb!, conversationId);
 
       res.json({
         success: true,
@@ -343,7 +346,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await resumeConversation(conversationId);
+      const conversation = await resumeConversation(req.tenantDb!, conversationId);
 
       res.json({
         success: true,
@@ -372,7 +375,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await closeConversation(conversationId);
+      const conversation = await closeConversation(req.tenantDb!, conversationId);
 
       res.json({
         success: true,
@@ -411,7 +414,7 @@ export function registerConversationRoutes(app: Express) {
       }
 
       // Get conversation to find customer phone
-      const conversation = await getConversationById(conversationId);
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
       if (!conversation) {
         return res.status(404).json({
           success: false,
@@ -421,7 +424,7 @@ export function registerConversationRoutes(app: Express) {
 
       // Replace template variables with actual data
       const { replaceTemplateVariables } = await import('./templateVariableService');
-      const processedContent = await replaceTemplateVariables(content, {
+      const processedContent = await replaceTemplateVariables(req.tenantDb!, content, {
         conversationId,
         operatorName: req.body.operatorName || 'agent',
         userId: (req as any).session?.userId, // Pass authenticated user ID for operator name lookup
@@ -497,10 +500,10 @@ export function registerConversationRoutes(app: Express) {
           }
 
           // Get page access token
-          const pageTokens = await db
+          const pageTokens = await req.tenantDb!
             .select()
             .from(facebookPageTokens)
-            .where(eq(facebookPageTokens.pageId, conversation.facebookPageId));
+            .where(req.tenantDb!.withTenantFilter(facebookPageTokens, eq(facebookPageTokens.pageId, conversation.facebookPageId)));
 
           if (pageTokens.length === 0 || !pageTokens[0].isActive) {
             return res.status(404).json({
@@ -545,6 +548,7 @@ export function registerConversationRoutes(app: Express) {
       
       try {
         message = await addMessage(
+          req.tenantDb!,
           conversationId, 
           processedContent || '', 
           'agent', 
@@ -637,7 +641,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await getConversationById(conversationId);
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
 
       if (!conversation) {
         return res.status(404).json({
@@ -672,7 +676,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const conversation = await getConversationById(conversationId);
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
 
       if (!conversation) {
         return res.status(404).json({
@@ -721,7 +725,7 @@ export function registerConversationRoutes(app: Express) {
       const { notifyReturnToAI } = await import('./smsNotificationService');
       const { sendSMS } = await import('./notifications');
 
-      const conversation = await getConversationById(conversationId);
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
       if (!conversation) {
         return res.status(404).json({
           success: false,
@@ -925,7 +929,7 @@ export function registerConversationRoutes(app: Express) {
       }
 
       // Get conversation
-      const conversation = await getConversationById(conversationId);
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
       if (!conversation) {
         return res.status(404).json({
           success: false,
@@ -937,10 +941,10 @@ export function registerConversationRoutes(app: Express) {
       let vehicleInfo = 'your vehicle';
       let nextSlot = 'Contact us to schedule';
       if (conversation.customerPhone) {
-        const customerData = await db
+        const customerData = await req.tenantDb!
           .select()
           .from(customers)
-          .where(eq(customers.phone, conversation.customerPhone))
+          .where(req.tenantDb!.withTenantFilter(customers, eq(customers.phone, conversation.customerPhone)))
           .limit(1);
 
         if (customerData.length > 0) {
@@ -949,13 +953,15 @@ export function registerConversationRoutes(app: Express) {
           }
 
           // Get next appointment
-          const upcomingAppointment = await db
+          const upcomingAppointment = await req.tenantDb!
             .select()
             .from(appointments)
             .where(
-              and(
-                eq(appointments.customerId, customerData[0].id),
-                gte(appointments.scheduledTime, new Date())
+              req.tenantDb!.withTenantFilter(appointments,
+                and(
+                  eq(appointments.customerId, customerData[0].id),
+                  gte(appointments.scheduledTime, new Date())
+                )
               )
             )
             .orderBy(appointments.scheduledTime)
@@ -977,10 +983,10 @@ export function registerConversationRoutes(app: Express) {
       let operatorName = 'Jody';
       if ((req as any).session?.userId) {
         const { users } = await import('@shared/schema');
-        const userData = await db
+        const userData = await req.tenantDb!
           .select()
           .from(users)
-          .where(eq(users.id, (req as any).session.userId))
+          .where(req.tenantDb!.withTenantFilter(users, eq(users.id, (req as any).session.userId)))
           .limit(1);
         
         if (userData.length > 0 && userData[0].operatorName) {
@@ -996,20 +1002,22 @@ export function registerConversationRoutes(app: Express) {
       let estimatedDuration = '';
       
       if (conversation.customerPhone) {
-        const customerData = await db
+        const customerData = await req.tenantDb!
           .select()
           .from(customers)
-          .where(eq(customers.phone, conversation.customerPhone))
+          .where(req.tenantDb!.withTenantFilter(customers, eq(customers.phone, conversation.customerPhone)))
           .limit(1);
 
         if (customerData.length > 0) {
-          const nextAppointment = await db
+          const nextAppointment = await req.tenantDb!
             .select()
             .from(appointments)
             .where(
-              and(
-                eq(appointments.customerId, customerData[0].id),
-                gte(appointments.scheduledTime, new Date())
+              req.tenantDb!.withTenantFilter(appointments,
+                and(
+                  eq(appointments.customerId, customerData[0].id),
+                  gte(appointments.scheduledTime, new Date())
+                )
               )
             )
             .orderBy(appointments.scheduledTime)
@@ -1130,10 +1138,10 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const updated = await db
+      const updated = await req.tenantDb!
         .update(conversations)
         .set({ assignedAgent: agentName || null })
-        .where(eq(conversations.id, conversationId))
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
         .returning();
 
       res.json({
@@ -1164,10 +1172,10 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const updated = await db
+      const updated = await req.tenantDb!
         .update(conversations)
         .set({ snoozedUntil: snoozedUntil ? new Date(snoozedUntil) : null })
-        .where(eq(conversations.id, conversationId))
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
         .returning();
 
       res.json({
@@ -1197,13 +1205,13 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const updated = await db
+      const updated = await req.tenantDb!
         .update(conversations)
         .set({ 
           status: 'closed',
           resolved: true,
         })
-        .where(eq(conversations.id, conversationId))
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
         .returning();
 
       res.json({
@@ -1268,7 +1276,7 @@ export function registerConversationRoutes(app: Express) {
       }
       
       // Insert reaction (ignore if duplicate due to unique constraint)
-      const [reaction] = await db.insert(messageReactions).values({
+      const [reaction] = await req.tenantDb!.insert(messageReactions).values({
         messageId: parseInt(messageId),
         userId,
         emoji,
@@ -1298,10 +1306,12 @@ export function registerConversationRoutes(app: Express) {
       }
       
       // Delete reaction (only if it belongs to the user)
-      await db.delete(messageReactions).where(
-        and(
-          eq(messageReactions.id, parseInt(reactionId)),
-          eq(messageReactions.userId, userId)
+      await req.tenantDb!.delete(messageReactions).where(
+        req.tenantDb!.withTenantFilter(messageReactions,
+          and(
+            eq(messageReactions.id, parseInt(reactionId)),
+            eq(messageReactions.userId, userId)
+          )
         )
       );
       
@@ -1318,8 +1328,8 @@ export function registerConversationRoutes(app: Express) {
       const { conversationId } = req.params;
       
       // Get all message IDs for this conversation
-      const conversationMessages = await db.query.messages.findMany({
-        where: eq(messages.conversationId, parseInt(conversationId)),
+      const conversationMessages = await req.tenantDb!.query.messages.findMany({
+        where: req.tenantDb!.withTenantFilter(messages, eq(messages.conversationId, parseInt(conversationId))),
         columns: { id: true },
       });
       
@@ -1330,8 +1340,8 @@ export function registerConversationRoutes(app: Express) {
       }
       
       // Get all reactions for these messages
-      const reactions = await db.query.messageReactions.findMany({
-        where: inArray(messageReactions.messageId, messageIds),
+      const reactions = await req.tenantDb!.query.messageReactions.findMany({
+        where: req.tenantDb!.withTenantFilter(messageReactions, inArray(messageReactions.messageId, messageIds)),
       });
       
       res.json({ success: true, reactions });
@@ -1354,8 +1364,8 @@ export function registerConversationRoutes(app: Express) {
       const searchTerm = q.trim().toLowerCase();
       
       // Get all messages for this conversation
-      const conversationMessages = await db.query.messages.findMany({
-        where: eq(messages.conversationId, parseInt(conversationId)),
+      const conversationMessages = await req.tenantDb!.query.messages.findMany({
+        where: req.tenantDb!.withTenantFilter(messages, eq(messages.conversationId, parseInt(conversationId))),
         orderBy: (messages, { desc }) => [desc(messages.timestamp)],
       });
       

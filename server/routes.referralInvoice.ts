@@ -1,5 +1,4 @@
 import { Express, Request, Response } from 'express';
-import { db } from './db';
 import { referrals, customers, invoices } from '@shared/schema';
 import { eq, and, isNull, sql } from 'drizzle-orm';
 import { validateReferralCode } from './referralService';
@@ -44,10 +43,10 @@ export function registerReferralInvoiceRoutes(app: Express) {
       let referrerName = 'a friend';
       
       if (referral) {
-        const [referrer] = await db
+        const [referrer] = await req.tenantDb!
           .select({ name: customers.name })
           .from(customers)
-          .where(eq(customers.id, referral.referrerId))
+          .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, referral.referrerId)))
           .limit(1);
         
         if (referrer) {
@@ -108,7 +107,7 @@ export function registerReferralInvoiceRoutes(app: Express) {
       const user = (req as any).user;
       
       // Use transaction for atomic discount application
-      const result = await db.transaction(async (tx) => {
+      const result = await req.tenantDb!.transaction(async (tx) => {
         // Get and lock the invoice row
         const [invoice] = await tx
           .select()

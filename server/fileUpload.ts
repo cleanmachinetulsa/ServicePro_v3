@@ -498,7 +498,7 @@ View photo: ${result}`;
       }
       
       // Verify conversation exists and user has access to it
-      const conversation = await getConversationById(conversationId);
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
       if (!conversation) {
         return res.status(404).json({ error: 'Conversation not found' });
       }

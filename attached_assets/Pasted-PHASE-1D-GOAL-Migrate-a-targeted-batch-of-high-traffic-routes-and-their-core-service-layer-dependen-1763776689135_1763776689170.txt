@@ -1,0 +1,69 @@
+PHASE 1D GOAL:
+Migrate a targeted batch of high-traffic routes and their core service-layer dependencies to the tenantDb pattern, without changing business logic.
+
+SCOPE – ROUTE FILES (MIGRATE ALL DB USAGE IN THESE FILES ONLY):
+- server/routes.appointments.ts
+- server/routes.conversations.ts
+- server/routes.calls.ts
+- server/routes.auth.ts
+- server/routes.notifications.ts
+- server/routes.escalations.ts
+- server/routes.gallery.ts
+- server/routes.quickbooking.ts
+- server/routes.customerIntelligence.ts
+- server/routes.referralInvoice.ts
+
+SCOPE – SERVICE-LAYER FILES (2 CORE FILES IN THIS BATCH):
+- server/conversationService.ts
+- server/conversationHandler.ts
+
+MIGRATION PATTERN (STRICT – MATCH EXISTING Phase 1B/1C STYLE):
+
+For route files:
+- Remove any: `import { db } from "./db";` or similar.
+- Replace `db.<operation>` with `req.tenantDb!.<operation>`.
+- For SELECTs:
+  - If it was: `.where(eq(table.id, something))`
+  - Change to: `.where(req.tenantDb!.withTenantFilter(table, eq(table.id, something)))`
+  - If no WHERE existed but table is tenant-scoped, add:
+    `.where(req.tenantDb!.withTenantFilter(table))`
+- For INSERTs:
+  - Leave `.values({ ... })` as is; the tenantDb wrapper auto-injects tenantId.
+- For UPDATE/DELETE:
+  - Ensure WHERE uses withTenantFilter:
+    - Before: `.where(eq(table.id, something))`
+    - After:  `.where(req.tenantDb!.withTenantFilter(table, eq(table.id, something)))`
+- For JOINs:
+  - Apply withTenantFilter on the primary tenant-scoped table in the WHERE clause, mirroring patterns already used in routes like routes.contacts.ts and routes.tags.ts.
+
+For service-layer files (conversationService.ts, conversationHandler.ts):
+- Replace direct db usage with a TenantDb-based approach.
+- Each exported function that hits the DB should accept `tenantDb: TenantDb` as the first parameter:
+  - Before:
+    `export async function foo(args...) { const result = await db.query.table.findMany(...); }`
+  - After:
+    `export async function foo(tenantDb: TenantDb, args...) { const result = await tenantDb.query.table.findMany(...); }`
+- In all routes that call these service functions, pass `req.tenantDb!` in as the first argument.
+
+DO NOT:
+- Do not change any routes not listed.
+- Do not refactor unrelated logic or rename functions.
+- Do not modify auth or middleware behavior beyond db → tenantDb access.
+- Do not alter response formats.
+
+AFTER CHANGES, RUN:
+1. Tenant isolation tests only:
+   `npx vitest run server/tests/tenantIsolation/tenantDb.test.ts`
+   → All 11 tests must pass.
+2. Start the dev server (existing dev command).
+3. Hit a couple of migrated endpoints (e.g., appointments, conversations) just to ensure 200 responses.
+
+FINISH BY PRODUCING A REPORT:
+- List each file you changed.
+- Summarize what db operations you migrated (SELECT/INSERT/UPDATE/DELETE/JOIN).
+- Confirm:
+  - TypeScript: 0 server-side errors
+  - Tenant isolation tests: all passing
+  - Server: starts cleanly
+
+Then STOP and wait for further instructions.

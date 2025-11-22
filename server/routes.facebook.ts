@@ -230,6 +230,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
             // Create or get conversation
             const { conversation } = await getOrCreateConversation(
+              req.tenantDb!,
               '', // No phone number for Facebook
               senderName,
               platform as 'facebook' | 'instagram',
@@ -239,6 +240,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
             // Add customer message to conversation
             await addMessage(
+              req.tenantDb!,
               conversation.id,
               messageText,
               'customer',
@@ -276,6 +278,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
                   // Save AI response to conversation
                   await addMessage(
+                    req.tenantDb!,
                     conversation.id,
                     aiResponse.message,
                     'ai',
@@ -287,6 +290,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
                   console.error('[FACEBOOK API] ❌ Failed to send AI response:', sendError.response?.data || sendError.message);
                   // Still save the message to database even if sending failed (for debugging)
                   await addMessage(
+                    req.tenantDb!,
                     conversation.id,
                     `[Failed to send] ${aiResponse.message}`,
                     'ai',

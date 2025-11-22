@@ -1,6 +1,6 @@
 import { generateAIResponse } from './openai';
 import { getOrCreateConversation, addMessage } from './conversationService';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { asc } from 'drizzle-orm';
@@ -38,6 +38,7 @@ const PRIVILEGED_FUNCTIONS = [
  * Process conversation with platform-based security restrictions
  */
 export async function processConversation(
+  tenantDb: TenantDb,
   identifier: string,
   message: string,
   platform: 'sms' | 'web' | 'facebook' | 'instagram' | 'email'
@@ -45,17 +46,18 @@ export async function processConversation(
   
   // For web platform, use restricted mode
   if (platform === 'web') {
-    return await processWebChatConversation(identifier, message);
+    return await processWebChatConversation(tenantDb, identifier, message);
   }
   
   // For authenticated platforms (SMS, social), use full AI capabilities
-  return await processAuthenticatedConversation(identifier, message, platform);
+  return await processAuthenticatedConversation(tenantDb, identifier, message, platform);
 }
 
 /**
  * RESTRICTED: Web chat processor - information only, no privileged actions
  */
 async function processWebChatConversation(
+  tenantDb: TenantDb,
   identifier: string,
   message: string
 ): Promise<{ response: string }> {
@@ -106,8 +108,8 @@ CRITICAL RESTRICTIONS:
 Customer message: ${message}`;
 
     // Get conversation history (lookup by phone for web platform)
-    const conv = await db.query.conversations.findFirst({
-      where: eq(conversations.customerPhone, identifier),
+    const conv = await tenantDb.query.conversations.findFirst({
+      where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)),
       with: {
         messages: {
           orderBy: [asc(messagesTable.timestamp)],
@@ -153,6 +155,7 @@ Or, call us at (918) 856-5304 to book an appointment!`
  * FULL ACCESS: Authenticated conversation processor with all AI capabilities
  */
 async function processAuthenticatedConversation(
+  tenantDb: TenantDb,
   identifier: string,
   message: string,
   platform: 'sms' | 'facebook' | 'instagram' | 'email'
@@ -160,8 +163,8 @@ async function processAuthenticatedConversation(
   
   try {
     // Get conversation history (lookup by phone for authenticated platforms)
-    const conv = await db.query.conversations.findFirst({
-      where: eq(conversations.customerPhone, identifier),
+    const conv = await tenantDb.query.conversations.findFirst({
+      where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)),
       with: {
         messages: {
           orderBy: [asc(messagesTable.timestamp)],

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { humanEscalationRequests } from '@shared/schema';
 import { desc } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -12,7 +11,8 @@ export function registerEscalationRoutes(app: Router) {
 
   router.get('/', async (req, res) => {
     try {
-      const escalations = await db.query.humanEscalationRequests.findMany({
+      const escalations = await req.tenantDb!.query.humanEscalationRequests.findMany({
+        where: req.tenantDb!.withTenantFilter(humanEscalationRequests),
         orderBy: [desc(humanEscalationRequests.requestedAt)],
         limit: 100,
       });

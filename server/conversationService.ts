@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { conversations, messages, customers } from '@shared/schema';
 import { eq, desc, and, sql, or } from 'drizzle-orm';
 import {
@@ -12,7 +12,7 @@ import {
 /**
  * Get all active conversations with customer info and latest message
  */
-export async function getAllConversations(status?: string, phoneLineId?: number) {
+export async function getAllConversations(tenantDb: TenantDb, status?: string, phoneLineId?: number) {
   try {
     const statusFilter = status || 'all';
     
@@ -43,8 +43,9 @@ export async function getAllConversations(status?: string, phoneLineId?: number)
     }
     
     const whereClause = conditions.length > 1 ? and(...conditions) : conditions[0];
+    const finalWhereClause = whereClause ? tenantDb.withTenantFilter(conversations, whereClause) : tenantDb.withTenantFilter(conversations);
     
-    const conversationList = await db
+    const conversationList = await tenantDb
       .select({
         id: conversations.id,
         customerId: conversations.customerId,
@@ -65,21 +66,21 @@ export async function getAllConversations(status?: string, phoneLineId?: number)
         phoneLineId: conversations.phoneLineId,
       })
       .from(conversations)
-      .where(whereClause)
+      .where(finalWhereClause)
       .orderBy(desc(conversations.lastMessageTime));
 
     // Get message counts for each conversation
     const conversationsWithCounts = await Promise.all(
       conversationList.map(async (conv) => {
-        const messageCount = await db
+        const messageCount = await tenantDb
           .select({ count: sql<number>`count(*)` })
           .from(messages)
-          .where(eq(messages.conversationId, conv.id));
+          .where(tenantDb.withTenantFilter(messages, eq(messages.conversationId, conv.id)));
 
-        const latestMessage = await db
+        const latestMessage = await tenantDb
           .select()
           .from(messages)
-          .where(eq(messages.conversationId, conv.id))
+          .where(tenantDb.withTenantFilter(messages, eq(messages.conversationId, conv.id)))
           .orderBy(desc(messages.timestamp))
           .limit(1);
 
@@ -102,6 +103,7 @@ export async function getAllConversations(status?: string, phoneLineId?: number)
  * Get conversation by ID with paginated message history
  */
 export async function getConversationById(
+  tenantDb: TenantDb,
   conversationId: number,
   options?: {
     before?: Date;
@@ -109,10 +111,10 @@ export async function getConversationById(
   }
 ) {
   try {
-    const conversation = await db
+    const conversation = await tenantDb
       .select()
       .from(conversations)
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .limit(1);
 
     if (!conversation || conversation.length === 0) {
@@ -124,7 +126,7 @@ export async function getConversationById(
     const beforeDate = options?.before;
 
     // Build where clause conditionally
-    const whereConditions = beforeDate
+    const baseConditions = beforeDate
       ? and(
           eq(messages.conversationId, conversationId),
           sql`${messages.timestamp} < ${beforeDate.toISOString()}`
@@ -132,10 +134,10 @@ export async function getConversationById(
       : eq(messages.conversationId, conversationId);
 
     // Fetch limit + 1 to determine if there are more messages
-    const messageHistory = await db
+    const messageHistory = await tenantDb
       .select()
       .from(messages)
-      .where(whereConditions)
+      .where(tenantDb.withTenantFilter(messages, baseConditions))
       .orderBy(desc(messages.timestamp))
       .limit(limit + 1);
 
@@ -161,6 +163,7 @@ export async function getConversationById(
  * Create or get conversation for a customer
  */
 export async function getOrCreateConversation(
+  tenantDb: TenantDb,
   customerPhone: string,
   customerName: string | null,
   platform: 'web' | 'sms' | 'facebook' | 'instagram' | 'email',
@@ -179,49 +182,57 @@ export async function getOrCreateConversation(
     let existingConversation;
     if (isFacebookPlatform && facebookSenderId) {
       // Check for active Facebook conversation with this sender
-      existingConversation = await db
+      existingConversation = await tenantDb
         .select()
         .from(conversations)
         .where(
-          and(
-            eq(conversations.facebookSenderId, facebookSenderId),
-            eq(conversations.status, 'active')
+          tenantDb.withTenantFilter(conversations,
+            and(
+              eq(conversations.facebookSenderId, facebookSenderId),
+              eq(conversations.status, 'active')
+            )
           )
         )
         .limit(1);
     } else if (isEmail && emailThreadId) {
       // Check for active email conversation with this thread ID
-      existingConversation = await db
+      existingConversation = await tenantDb
         .select()
         .from(conversations)
         .where(
-          and(
-            eq(conversations.emailThreadId, emailThreadId),
-            eq(conversations.status, 'active')
+          tenantDb.withTenantFilter(conversations,
+            and(
+              eq(conversations.emailThreadId, emailThreadId),
+              eq(conversations.status, 'active')
+            )
           )
         )
         .limit(1);
     } else if (isEmail && emailAddress) {
       // Check for active email conversation with this email address (no thread ID yet)
-      existingConversation = await db
+      existingConversation = await tenantDb
         .select()
         .from(conversations)
         .where(
-          and(
-            eq(conversations.emailAddress, emailAddress),
-            eq(conversations.status, 'active')
+          tenantDb.withTenantFilter(conversations,
+            and(
+              eq(conversations.emailAddress, emailAddress),
+              eq(conversations.status, 'active')
+            )
           )
         )
         .limit(1);
     } else {
       // Check if there's an active conversation for this phone
-      existingConversation = await db
+      existingConversation = await tenantDb
         .select()
         .from(conversations)
         .where(
-          and(
-            eq(conversations.customerPhone, customerPhone),
-            eq(conversations.status, 'active')
+          tenantDb.withTenantFilter(conversations,
+            and(
+              eq(conversations.customerPhone, customerPhone),
+              eq(conversations.status, 'active')
+            )
           )
         )
         .limit(1);
@@ -234,10 +245,10 @@ export async function getOrCreateConversation(
     // Try to find customer ID by phone or email (if available)
     let customerId: number | null = null;
     if (customerPhone) {
-      const customer = await db
+      const customer = await tenantDb
         .select()
         .from(customers)
-        .where(eq(customers.phone, customerPhone))
+        .where(tenantDb.withTenantFilter(customers, eq(customers.phone, customerPhone)))
         .limit(1);
 
       if (customer && customer.length > 0) {
@@ -245,17 +256,17 @@ export async function getOrCreateConversation(
       }
     } else if (emailAddress) {
       // Try to find customer by email
-      const customer = await db
+      const customer = await tenantDb
         .select()
         .from(customers)
-        .where(eq(customers.email, emailAddress))
+        .where(tenantDb.withTenantFilter(customers, eq(customers.email, emailAddress)))
         .limit(1);
 
       if (customer && customer.length > 0) {
         customerId = customer[0].id;
       } else {
         // Auto-create customer record for email-only contacts
-        const newCustomer = await db
+        const newCustomer = await tenantDb
           .insert(customers)
           .values({
             name: customerName || 'Email Customer',
@@ -274,7 +285,7 @@ export async function getOrCreateConversation(
     // Default to Main Line (ID 1) for SMS if phoneLineId not provided
     const effectivePhoneLineId = platform === 'sms' ? (phoneLineId || 1) : null;
     
-    const newConversation = await db
+    const newConversation = await tenantDb
       .insert(conversations)
       .values({
         customerId,
@@ -310,6 +321,7 @@ export async function getOrCreateConversation(
  * Add message to conversation
  */
 export async function addMessage(
+  tenantDb: TenantDb,
   conversationId: number,
   content: string,
   sender: 'customer' | 'ai' | 'agent',
@@ -321,7 +333,7 @@ export async function addMessage(
     // Default to Main Line (ID 1) for SMS if phoneLineId not provided
     const effectivePhoneLineId = channel === 'sms' ? (phoneLineId || 1) : null;
     
-    const newMessage = await db.insert(messages).values({
+    const newMessage = await tenantDb.insert(messages).values({
       conversationId,
       content,
       sender,
@@ -334,22 +346,22 @@ export async function addMessage(
     // Update conversation's last message time and unread count
     if (sender === 'customer') {
       // Customer sent a message - increment unread count
-      await db
+      await tenantDb
         .update(conversations)
         .set({ 
           lastMessageTime: new Date(),
           unreadCount: sql`${conversations.unreadCount} + 1`,
         })
-        .where(eq(conversations.id, conversationId));
+        .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)));
     } else {
       // Agent or AI sent a message - reset unread count (agent has responded)
-      await db
+      await tenantDb
         .update(conversations)
         .set({ 
           lastMessageTime: new Date(),
           unreadCount: 0,
         })
-        .where(eq(conversations.id, conversationId));
+        .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)));
     }
 
     // Broadcast new message to monitoring dashboard
@@ -366,17 +378,18 @@ export async function addMessage(
  * Take over conversation (switch to manual mode)
  */
 export async function takeoverConversation(
+  tenantDb: TenantDb,
   conversationId: number,
   agentUsername: string
 ) {
   try {
-    const updated = await db
+    const updated = await tenantDb
       .update(conversations)
       .set({
         controlMode: 'manual',
         assignedAgent: agentUsername,
       })
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .returning();
 
     // Broadcast control mode change
@@ -393,15 +406,15 @@ export async function takeoverConversation(
 /**
  * Hand off conversation back to AI
  */
-export async function handoffConversation(conversationId: number) {
+export async function handoffConversation(tenantDb: TenantDb, conversationId: number) {
   try {
-    const updated = await db
+    const updated = await tenantDb
       .update(conversations)
       .set({
         controlMode: 'auto',
         assignedAgent: null,
       })
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .returning();
 
     // Broadcast control mode change
@@ -419,6 +432,7 @@ export async function handoffConversation(conversationId: number) {
  * Update conversation behavior settings
  */
 export async function updateBehaviorSettings(
+  tenantDb: TenantDb,
   conversationId: number,
   behaviorSettings: {
     tone?: string;
@@ -429,12 +443,12 @@ export async function updateBehaviorSettings(
   }
 ) {
   try {
-    const updated = await db
+    const updated = await tenantDb
       .update(conversations)
       .set({
         behaviorSettings: behaviorSettings as any,
       })
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .returning();
 
     // Broadcast behavior update
@@ -451,14 +465,14 @@ export async function updateBehaviorSettings(
 /**
  * Pause conversation (AI won't respond)
  */
-export async function pauseConversation(conversationId: number) {
+export async function pauseConversation(tenantDb: TenantDb, conversationId: number) {
   try {
-    const updated = await db
+    const updated = await tenantDb
       .update(conversations)
       .set({
         controlMode: 'paused',
       })
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .returning();
 
     // Broadcast control mode change
@@ -475,14 +489,14 @@ export async function pauseConversation(conversationId: number) {
 /**
  * Resume conversation (switch back to auto)
  */
-export async function resumeConversation(conversationId: number) {
+export async function resumeConversation(tenantDb: TenantDb, conversationId: number) {
   try {
-    const updated = await db
+    const updated = await tenantDb
       .update(conversations)
       .set({
         controlMode: 'auto',
       })
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .returning();
 
     // Broadcast control mode change
@@ -499,15 +513,15 @@ export async function resumeConversation(conversationId: number) {
 /**
  * Close conversation
  */
-export async function closeConversation(conversationId: number) {
+export async function closeConversation(tenantDb: TenantDb, conversationId: number) {
   try {
-    const updated = await db
+    const updated = await tenantDb
       .update(conversations)
       .set({
         status: 'closed',
         resolved: true,
       })
-      .where(eq(conversations.id, conversationId))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
       .returning();
 
     // Broadcast conversation update
