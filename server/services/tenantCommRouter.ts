@@ -24,7 +24,7 @@
  * ```
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { tenantPhoneConfig } from '../../shared/schema';
 import type { DB } from '../db';
 import { Request } from 'express';
@@ -58,11 +58,17 @@ export async function resolveTenantFromInbound(
 
   // Strategy 1: Try MessagingServiceSid match (most specific for SMS)
   // This allows multiple phone numbers to route to the same tenant via Messaging Service
+  // NOTE: MessagingServiceSid should be unique per tenant in practice, but we order
+  // by id desc to ensure deterministic results if duplicates exist
   if (MessagingServiceSid) {
-    const config = await db.query.tenantPhoneConfig.findFirst({
-      where: eq(tenantPhoneConfig.messagingServiceSid, MessagingServiceSid),
-    });
+    const configs = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.messagingServiceSid, MessagingServiceSid))
+      .orderBy(desc(tenantPhoneConfig.id))
+      .limit(1);
 
+    const config = configs[0];
     if (config) {
       console.log(`[TENANT ROUTER] Resolved tenant '${config.tenantId}' via MessagingServiceSid: ${MessagingServiceSid}`);
       return {
@@ -76,11 +82,16 @@ export async function resolveTenantFromInbound(
 
   // Strategy 2: Try To number match via tenantPhoneConfig (standard lookup)
   // This is the primary lookup for voice calls and SMS without Messaging Service
+  // Phone numbers should be unique per the schema, but we order for consistency
   if (To) {
-    const config = await db.query.tenantPhoneConfig.findFirst({
-      where: eq(tenantPhoneConfig.phoneNumber, To),
-    });
+    const configs = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.phoneNumber, To))
+      .orderBy(desc(tenantPhoneConfig.id))
+      .limit(1);
 
+    const config = configs[0];
     if (config) {
       console.log(`[TENANT ROUTER] Resolved tenant '${config.tenantId}' via phoneNumber: ${To}`);
       return {
