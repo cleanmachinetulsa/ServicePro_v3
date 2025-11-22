@@ -203,6 +203,22 @@ export const tenantConfig = pgTable("tenant_config", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Tenant phone configuration - telephony settings per tenant (Phase 2.2)
+export const tenantPhoneConfig = pgTable("tenant_phone_config", {
+  id: varchar("id", { length: 50 }).primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  phoneNumber: varchar("phone_number", { length: 50 }).notNull().unique(), // E.164 format Twilio number
+  messagingServiceSid: varchar("messaging_service_sid", { length: 255 }), // Twilio Messaging Service SID
+  sipDomain: varchar("sip_domain", { length: 255 }), // e.g., cleanmachinetulsa.sip.twilio.com
+  sipUsername: varchar("sip_username", { length: 255 }), // e.g., jody
+  sipPasswordEncrypted: varchar("sip_password_encrypted", { length: 255 }), // Encrypted SIP password (if needed)
+  ivrMode: varchar("ivr_mode", { length: 50 }).default("simple"), // simple | ivr | ai-voice
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  phoneNumberIdx: uniqueIndex("tenant_phone_config_phone_number_idx").on(table.phoneNumber),
+  tenantIdIdx: index("tenant_phone_config_tenant_id_idx").on(table.tenantId),
+}));
+
 // Loyalty tier enum for customer tier upgrades
 export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold', 'platinum']);
 
@@ -2883,8 +2899,11 @@ export type UpdatePlatformSettings = z.infer<typeof updatePlatformSettingsSchema
 // ============================================================
 export const insertTenantSchema = createInsertSchema(tenants).omit({ createdAt: true, updatedAt: true });
 export const insertTenantConfigSchema = createInsertSchema(tenantConfig).omit({ createdAt: true, updatedAt: true });
+export const insertTenantPhoneConfigSchema = createInsertSchema(tenantPhoneConfig).omit({ createdAt: true });
 
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
 export type TenantConfig = typeof tenantConfig.$inferSelect;
 export type InsertTenantConfig = z.infer<typeof insertTenantConfigSchema>;
+export type TenantPhoneConfig = typeof tenantPhoneConfig.$inferSelect;
+export type InsertTenantPhoneConfig = z.infer<typeof insertTenantPhoneConfigSchema>;
