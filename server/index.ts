@@ -298,6 +298,10 @@ app.use((req, res, next) => {
   const { backfillPhoneLines } = await import('./backfillPhoneLines');
   await backfillPhoneLines();
   
+  // Phase 2.2: Seed tenant phone configuration for multi-tenant telephony
+  const { seedTenantPhone } = await import('./seed/seedTenantPhone');
+  await seedTenantPhone(db);
+  
   // Initialize SMS templates (idempotent - safe to run multiple times)
   const { initializeSmsTemplates } = await import('./initSmsTemplates');
   await initializeSmsTemplates();
