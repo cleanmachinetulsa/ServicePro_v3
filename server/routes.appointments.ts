@@ -299,72 +299,110 @@ router.get('/customer/:phone', async (req, res) => {
 /**
  * Manual appointment creation from dashboard
  * POST /api/appointments/create-manual
+ * Requires authentication
  */
 router.post('/create-manual', async (req, res) => {
   try {
+    // Validate and parse request body with safe parsing
     const schema = z.object({
-      customerName: z.string().min(1),
-      phone: z.string().min(1),
-      service: z.string(), // Service ID as string
-      scheduledTime: z.string().transform(str => new Date(str)),
-      address: z.string().min(1),
+      customerName: z.string().min(1, 'Customer name is required'),
+      phone: z.string().min(1, 'Phone number is required'),
+      service: z.string().refine(val => {
+        const num = parseInt(val, 10);
+        return !isNaN(num) && num > 0;
+      }, { message: 'Invalid service ID' }),
+      scheduledTime: z.string().min(1, 'Scheduled time is required').refine(str => {
+        const date = new Date(str);
+        return !isNaN(date.getTime());
+      }, { message: 'Invalid date format' }),
+      address: z.string().min(1, 'Address is required'),
     });
 
-    const data = schema.parse(req.body);
-    const serviceId = parseInt(data.service);
-
-    // Normalize phone number
-    const normalizedPhone = data.phone.replace(/\D/g, '');
-    if (!normalizedPhone) {
-      return res.status(400).json({ success: false, error: 'Invalid phone number' });
+    const parseResult = schema.safeParse(req.body);
+    
+    if (!parseResult.success) {
+      return res.status(400).json({ 
+        success: false, 
+        error: parseResult.error.errors[0]?.message || 'Validation failed' 
+      });
     }
 
-    // Find or create customer
-    let customer = await req.tenantDb!.query.customers.findFirst({
-      where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, normalizedPhone)),
-    });
+    const data = parseResult.data;
+    const serviceId = parseInt(data.service, 10);
+    const scheduledTime = new Date(data.scheduledTime);
 
-    if (!customer) {
-      // Create new customer
-      const [newCustomer] = await req.tenantDb!.insert(customers)
-        .values({
-          name: data.customerName,
-          phone: normalizedPhone,
-          email: null,
-        })
-        .returning();
-      customer = newCustomer;
+    // Normalize phone number to E.164 format (remove all non-digits, ensure US format)
+    let normalizedPhone = data.phone.replace(/\D/g, '');
+    
+    // Handle US numbers - if 10 digits, prepend country code
+    if (normalizedPhone.length === 10) {
+      normalizedPhone = '1' + normalizedPhone;
+    } else if (normalizedPhone.length === 11 && normalizedPhone.startsWith('1')) {
+      // Already has country code
+    } else if (normalizedPhone.length < 10) {
+      return res.status(400).json({ success: false, error: 'Phone number must be at least 10 digits' });
     }
 
-    // Create appointment in transaction with stats tracking
-    const [newAppointment] = await req.tenantDb!.transaction(async (tx) => {
+    // Create appointment with customer in single transaction
+    const result = await req.tenantDb!.transaction(async (tx) => {
+      // Verify service exists in tenant scope (within transaction)
+      const service = await tx.query.services.findFirst({
+        where: req.tenantDb!.withTenantFilter(services, eq(services.id, serviceId)),
+      });
+
+      if (!service) {
+        throw new Error('Service not found');
+      }
+
+      // Find or create customer with tenant filtering (within transaction)
+      let customer = await tx.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, normalizedPhone)),
+      });
+
+      if (!customer) {
+        // Create new customer with tenant context
+        const [newCustomer] = await tx.insert(customers)
+          .values({
+            name: data.customerName,
+            phone: normalizedPhone,
+            email: null,
+          })
+          .returning();
+        customer = newCustomer;
+      }
+
+      // Create appointment with tenant context
       const [apt] = await tx.insert(appointments)
         .values({
-          customerId: customer!.id,
+          customerId: customer.id,
           serviceId: serviceId,
-          scheduledTime: data.scheduledTime,
+          scheduledTime: scheduledTime,
           address: data.address,
           additionalRequests: [],
           addOns: null,
         })
         .returning();
 
-      // Track booking stats
-      await recordAppointmentCreated(customer!.id, data.scheduledTime, tx);
+      // Track booking stats (within same transaction)
+      await recordAppointmentCreated(customer.id, scheduledTime, tx);
 
-      return [apt];
+      return { appointment: apt, customer };
     });
 
-    console.log(`[CREATE MANUAL APPOINTMENT] Created appointment ${newAppointment.id} for customer ${customer.name}`);
+    console.log(`[CREATE MANUAL APPOINTMENT] Created appointment ${result.appointment.id} for customer ${result.customer.name}`);
 
     res.json({ 
       success: true, 
-      appointment: newAppointment,
+      appointment: result.appointment,
       message: 'Appointment created successfully'
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[POST create-manual] Error:', error);
-    res.status(500).json({ success: false, error: 'Failed to create appointment' });
+    
+    res.status(400).json({ 
+      success: false, 
+      error: error.message || 'Failed to create appointment' 
+    });
   }
 });
 
