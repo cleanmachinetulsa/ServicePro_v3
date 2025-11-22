@@ -1,0 +1,73 @@
+You are working in my current Clean Machine repo (the one that just got full tenantDb / tenantMiddleware migration and passes all 11 tenant isolation tests).
+
+Treat Phase 1 (tenant isolation) as COMPLETE and DO NOT change tenantDb.ts, tenantMiddleware.ts, or any of the tenant isolation tests unless absolutely necessary.
+
+Your new task is **Phase 2A – Tenant Registry + Simple Admin UI**.
+
+Objectives:
+
+1. TENANT MODEL CONFIRMATION
+   - Confirm there is a `tenants` table in `shared/schema.ts` that looks roughly like:
+     - id (primary key, string like 'root', 'tenant-xxx')
+     - name
+     - createdAt
+   - Confirm there is a root tenant row in the database (id = 'root') that represents Clean Machine.
+   - If the row does NOT exist, create a small migration/seed or startup check to insert root tenant with:
+     - id: 'root'
+     - name: 'Clean Machine Auto Detail'
+
+2. TENANT CONFIG TABLE (IF NEEDED)
+   - Check if we already have a `tenantConfig`-style table.
+   - If not, create one in `shared/schema.ts` like:
+     - tenantId (FK to tenants.id, primary key)
+     - businessName
+     - logoUrl
+     - primaryColor
+     - tier (starter/pro/elite) with default 'starter'
+     - createdAt
+   - Seed a config row for the root tenant using my current Clean Machine details (business name, etc.) where reasonable.
+
+3. ADMIN BACKEND ENDPOINTS
+   - Add minimal admin routes under something like `server/routes.adminTenants.ts` and wire them in `server/routes.ts`:
+     - `GET /api/admin/tenants` → returns list of tenants with basic info (id, name, tier, createdAt).
+     - `GET /api/admin/tenants/:id` → returns tenant + config details.
+     - `POST /api/admin/tenants` → (for now) create a new tenant with:
+       - name, tier, and optional basic config. Use safe defaults.
+     - For now, authorization can be simple: reuse existing admin auth middleware so only my owner/admin account can hit these endpoints.
+
+   - All queries MUST use `req.tenantDb` or a clean, intentional pattern:
+     - For now, tenants table can be accessed with the root/global db if that’s how architect intended.
+     - If tenants table is tenant-scoped, then make sure it’s consistent with the tenantDb patterns already in place.
+
+4. SIMPLE ADMIN UI (FRONTEND)
+   - Add a new page in the existing React dashboard, something like:
+     - Route: `/admin/tenants`
+     - Visible only to my admin/user account (reuse existing admin-only UI patterns).
+   - This page should:
+     - List tenants in a simple table (id, name, tier, createdAt).
+     - Have a “View” button that links to `/admin/tenants/:id`.
+     - Have a simple “Create Tenant” form (name, tier selects: starter/pro/elite).
+   - Add a basic detail view:
+     - Route: `/admin/tenants/:id`
+     - Show tenant name, tier, createdAt, and any basic config fields (businessName, primaryColor, etc.).
+   - Keep styling consistent with the current dashboard: no fancy redesign, just clean and usable.
+
+5. NO BEHAVIOR CHANGE FOR ROOT
+   - The existing app behavior for the root tenant (Clean Machine) must remain unchanged:
+     - Bookings, SMS, calls, dashboards, etc. should all still work as before.
+   - The new admin tenant UI is additive only.
+
+6. TESTING & VERIFICATION
+   - After changes:
+     - Run: `npx tsc --noEmit`
+     - Run: `npx vitest run server/tests/tenantIsolation/tenantDb.test.ts`
+     - Run: `npm run dev` (or restart dev server) and confirm:
+       - The app still loads.
+       - `/admin/tenants` works in the browser.
+   - Do NOT introduce any new dependency that isn’t absolutely necessary.
+
+When you’re done, give me a short report:
+- What files you created/modified.
+- What endpoints now exist.
+- How to reach the new `/admin/tenants` UI in the browser.
+- Confirm tenant isolation tests still pass.
