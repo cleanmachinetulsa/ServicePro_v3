@@ -2,16 +2,15 @@
  * Phase 2.5: Admin Phone Config Routes
  * 
  * Admin UI for managing tenant phone configurations and IVR modes.
- * Allows owners to toggle between simple/ivr/ai-voice modes without SQL.
+ * Follows same patterns as adminTenants.ts with shared schemas and robust validation.
  */
 
 import { Express, Request, Response } from 'express';
 import { db } from './db';
-import { tenantPhoneConfig, tenants } from '@shared/schema';
+import { tenantPhoneConfig, tenants, insertTenantPhoneConfigSchema } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { requireRole } from './rbacMiddleware';
-import { z } from 'zod';
 import { nanoid } from 'nanoid';
 
 export function registerAdminPhoneConfigRoutes(app: Express) {
@@ -79,22 +78,40 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
   // POST create new phone config
   app.post('/api/admin/phone-config', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
     try {
-      const schema = z.object({
-        tenantId: z.string().min(1, 'Tenant ID is required'),
-        phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (+1...)'),
-        ivrMode: z.enum(['simple', 'ivr', 'ai-voice']).default('simple'),
-        sipDomain: z.string().optional(),
-        sipUsername: z.string().optional(),
-        messagingServiceSid: z.string().optional(),
-      });
-
-      const data = schema.parse(req.body);
+      // Build and validate body with schema
+      const body: any = {
+        id: nanoid(),
+        tenantId: req.body.tenantId,
+        phoneNumber: req.body.phoneNumber,
+        ivrMode: req.body.ivrMode || 'simple',
+      };
+      
+      // Only include optional fields if they have non-empty trimmed values, validate them with schema
+      const sipDomainTrimmed = typeof req.body.sipDomain === 'string' ? req.body.sipDomain.trim() : '';
+      if (sipDomainTrimmed) {
+        const sipDomainSchema = insertTenantPhoneConfigSchema.shape.sipDomain;
+        body.sipDomain = sipDomainSchema.parse(sipDomainTrimmed);
+      }
+      
+      const sipUsernameTrimmed = typeof req.body.sipUsername === 'string' ? req.body.sipUsername.trim() : '';
+      if (sipUsernameTrimmed) {
+        const sipUsernameSchema = insertTenantPhoneConfigSchema.shape.sipUsername;
+        body.sipUsername = sipUsernameSchema.parse(sipUsernameTrimmed);
+      }
+      
+      const messagingServiceSidTrimmed = typeof req.body.messagingServiceSid === 'string' ? req.body.messagingServiceSid.trim() : '';
+      if (messagingServiceSidTrimmed) {
+        const messagingServiceSidSchema = insertTenantPhoneConfigSchema.shape.messagingServiceSid;
+        body.messagingServiceSid = messagingServiceSidSchema.parse(messagingServiceSidTrimmed);
+      }
+      
+      const configData = insertTenantPhoneConfigSchema.parse(body);
 
       // Verify tenant exists
       const [tenant] = await db
         .select({ id: tenants.id })
         .from(tenants)
-        .where(eq(tenants.id, data.tenantId))
+        .where(eq(tenants.id, configData.tenantId))
         .limit(1);
 
       if (!tenant) {
@@ -105,7 +122,7 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
       const [existing] = await db
         .select({ id: tenantPhoneConfig.id })
         .from(tenantPhoneConfig)
-        .where(eq(tenantPhoneConfig.phoneNumber, data.phoneNumber))
+        .where(eq(tenantPhoneConfig.phoneNumber, configData.phoneNumber))
         .limit(1);
 
       if (existing) {
@@ -115,26 +132,31 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
         });
       }
 
-      const id = nanoid();
+      await db.insert(tenantPhoneConfig).values(configData);
 
-      await db.insert(tenantPhoneConfig).values({
-        id,
-        tenantId: data.tenantId,
-        phoneNumber: data.phoneNumber,
-        ivrMode: data.ivrMode,
-        sipDomain: data.sipDomain || null,
-        sipUsername: data.sipUsername || null,
-        messagingServiceSid: data.messagingServiceSid || null,
-      });
+      const [newConfig] = await db
+        .select({
+          id: tenantPhoneConfig.id,
+          tenantId: tenantPhoneConfig.tenantId,
+          phoneNumber: tenantPhoneConfig.phoneNumber,
+          ivrMode: tenantPhoneConfig.ivrMode,
+          sipDomain: tenantPhoneConfig.sipDomain,
+          sipUsername: tenantPhoneConfig.sipUsername,
+          messagingServiceSid: tenantPhoneConfig.messagingServiceSid,
+          createdAt: tenantPhoneConfig.createdAt,
+          tenantName: tenants.name,
+          isRoot: tenants.isRoot,
+        })
+        .from(tenantPhoneConfig)
+        .leftJoin(tenants, eq(tenantPhoneConfig.tenantId, tenants.id))
+        .where(eq(tenantPhoneConfig.id, configData.id))
+        .limit(1);
 
-      console.log(`[ADMIN PHONE CONFIG] Created phone config for tenant ${data.tenantId}: ${data.phoneNumber}`);
-      res.json({ success: true, id });
+      console.log(`[ADMIN PHONE CONFIG] Created phone config for tenant ${configData.tenantId}: ${configData.phoneNumber}`);
+      res.json({ success: true, config: newConfig });
     } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: error.errors[0].message });
-      }
       console.error('[ADMIN PHONE CONFIG] Error creating phone config:', error);
-      res.status(500).json({ success: false, error: error.message });
+      res.status(400).json({ success: false, error: error.message });
     }
   });
 
@@ -143,19 +165,12 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
     try {
       const { id } = req.params;
 
-      const schema = z.object({
-        phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/).optional(),
-        ivrMode: z.enum(['simple', 'ivr', 'ai-voice']).optional(),
-        sipDomain: z.string().nullable().optional(),
-        sipUsername: z.string().nullable().optional(),
-        messagingServiceSid: z.string().nullable().optional(),
-      });
-
-      const data = schema.parse(req.body);
-
       // Verify config exists
       const [existing] = await db
-        .select({ id: tenantPhoneConfig.id })
+        .select({ 
+          id: tenantPhoneConfig.id, 
+          phoneNumber: tenantPhoneConfig.phoneNumber 
+        })
         .from(tenantPhoneConfig)
         .where(eq(tenantPhoneConfig.id, id))
         .limit(1);
@@ -164,35 +179,82 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
         return res.status(404).json({ success: false, error: 'Phone config not found' });
       }
 
-      // If updating phone number, check uniqueness
-      if (data.phoneNumber) {
-        const [duplicate] = await db
-          .select({ id: tenantPhoneConfig.id })
-          .from(tenantPhoneConfig)
-          .where(eq(tenantPhoneConfig.phoneNumber, data.phoneNumber))
-          .limit(1);
+      // Build update object with only provided fields
+      // For optional fields, omit if empty/null so DB sets NULL
+      const updateData: any = {};
+      
+      if (req.body.phoneNumber !== undefined) {
+        // Validate E.164 format
+        const phoneSchema = insertTenantPhoneConfigSchema.shape.phoneNumber;
+        updateData.phoneNumber = phoneSchema.parse(req.body.phoneNumber);
+        
+        // Check uniqueness if changing phone number
+        if (updateData.phoneNumber !== existing.phoneNumber) {
+          const [duplicate] = await db
+            .select({ id: tenantPhoneConfig.id })
+            .from(tenantPhoneConfig)
+            .where(eq(tenantPhoneConfig.phoneNumber, updateData.phoneNumber))
+            .limit(1);
 
-        if (duplicate && duplicate.id !== id) {
-          return res.status(409).json({ 
-            success: false, 
-            error: 'Phone number already in use by another tenant' 
-          });
+          if (duplicate) {
+            return res.status(409).json({ 
+              success: false, 
+              error: 'Phone number already in use by another tenant' 
+            });
+          }
         }
+      }
+
+      if (req.body.ivrMode !== undefined) {
+        const ivrSchema = insertTenantPhoneConfigSchema.shape.ivrMode;
+        updateData.ivrMode = ivrSchema.parse(req.body.ivrMode);
+      }
+
+      // For optional fields: trim, validate non-empty values, or set to null to clear
+      if (req.body.sipDomain !== undefined) {
+        const trimmed = typeof req.body.sipDomain === 'string' ? req.body.sipDomain.trim() : '';
+        if (trimmed === '' || req.body.sipDomain === null) {
+          updateData.sipDomain = null;
+        } else {
+          const sipDomainSchema = insertTenantPhoneConfigSchema.shape.sipDomain;
+          updateData.sipDomain = sipDomainSchema.parse(trimmed);
+        }
+      }
+
+      if (req.body.sipUsername !== undefined) {
+        const trimmed = typeof req.body.sipUsername === 'string' ? req.body.sipUsername.trim() : '';
+        if (trimmed === '' || req.body.sipUsername === null) {
+          updateData.sipUsername = null;
+        } else {
+          const sipUsernameSchema = insertTenantPhoneConfigSchema.shape.sipUsername;
+          updateData.sipUsername = sipUsernameSchema.parse(trimmed);
+        }
+      }
+
+      if (req.body.messagingServiceSid !== undefined) {
+        const trimmed = typeof req.body.messagingServiceSid === 'string' ? req.body.messagingServiceSid.trim() : '';
+        if (trimmed === '' || req.body.messagingServiceSid === null) {
+          updateData.messagingServiceSid = null;
+        } else {
+          const messagingServiceSidSchema = insertTenantPhoneConfigSchema.shape.messagingServiceSid;
+          updateData.messagingServiceSid = messagingServiceSidSchema.parse(trimmed);
+        }
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ success: false, error: 'No valid fields to update' });
       }
 
       await db
         .update(tenantPhoneConfig)
-        .set(data)
+        .set(updateData)
         .where(eq(tenantPhoneConfig.id, id));
 
       console.log(`[ADMIN PHONE CONFIG] Updated phone config ${id}`);
       res.json({ success: true });
     } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, error: error.errors[0].message });
-      }
       console.error('[ADMIN PHONE CONFIG] Error updating phone config:', error);
-      res.status(500).json({ success: false, error: error.message });
+      res.status(400).json({ success: false, error: error.message });
     }
   });
 
@@ -205,6 +267,7 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
         .select({ 
           id: tenantPhoneConfig.id,
           tenantId: tenantPhoneConfig.tenantId,
+          phoneNumber: tenantPhoneConfig.phoneNumber,
         })
         .from(tenantPhoneConfig)
         .where(eq(tenantPhoneConfig.id, id))
@@ -214,20 +277,39 @@ export function registerAdminPhoneConfigRoutes(app: Express) {
         return res.status(404).json({ success: false, error: 'Phone config not found' });
       }
 
-      // Prevent deletion of root tenant's phone config (safety)
+      // CRITICAL: Prevent deletion of root tenant's phone config
       if (existing.tenantId === 'root') {
         return res.status(403).json({ 
           success: false, 
-          error: 'Cannot delete root tenant phone configuration' 
+          error: 'Cannot delete root tenant phone configuration. This is the flagship business phone number.' 
         });
       }
 
       await db.delete(tenantPhoneConfig).where(eq(tenantPhoneConfig.id, id));
 
-      console.log(`[ADMIN PHONE CONFIG] Deleted phone config ${id}`);
+      console.log(`[ADMIN PHONE CONFIG] Deleted phone config ${id} (${existing.phoneNumber})`);
       res.json({ success: true });
     } catch (error: any) {
       console.error('[ADMIN PHONE CONFIG] Error deleting phone config:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // GET all tenants for dropdown
+  app.get('/api/admin/phone-config/tenants/list', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const allTenants = await db
+        .select({
+          id: tenants.id,
+          name: tenants.name,
+          isRoot: tenants.isRoot,
+        })
+        .from(tenants)
+        .orderBy(tenants.createdAt);
+
+      res.json({ success: true, tenants: allTenants });
+    } catch (error: any) {
+      console.error('[ADMIN PHONE CONFIG] Error fetching tenants:', error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
