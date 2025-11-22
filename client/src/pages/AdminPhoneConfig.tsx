@@ -241,7 +241,7 @@ export default function AdminPhoneConfig() {
       case 'ivr':
         return <Badge variant="default">IVR Menu</Badge>;
       case 'ai-voice':
-        return <Badge variant="outline">AI Voice (Future)</Badge>;
+        return <Badge variant="outline" className="border-purple-500 text-purple-700 dark:text-purple-400">AI Voice (Beta)</Badge>;
       default:
         return <Badge variant="secondary">{mode}</Badge>;
     }
@@ -334,7 +334,7 @@ export default function AdminPhoneConfig() {
                           <SelectContent>
                             <SelectItem value="simple">Simple (Direct Forward)</SelectItem>
                             <SelectItem value="ivr">IVR (Press 1/2/3/7 Menu)</SelectItem>
-                            <SelectItem value="ai-voice">AI Voice (Future)</SelectItem>
+                            <SelectItem value="ai-voice">AI Voice (Beta)</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -545,7 +545,7 @@ export default function AdminPhoneConfig() {
                         <SelectContent>
                           <SelectItem value="simple">Simple (Direct Forward)</SelectItem>
                           <SelectItem value="ivr">IVR (Press 1/2/3/7 Menu)</SelectItem>
-                          <SelectItem value="ai-voice">AI Voice (Future)</SelectItem>
+                          <SelectItem value="ai-voice">AI Voice (Beta)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
