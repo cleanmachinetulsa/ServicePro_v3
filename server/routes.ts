@@ -3332,8 +3332,12 @@ Follow up with this lead to set up their 14-day trial!
   // Register SMS fallback routes
   app.use(smsFallbackRoutes);
   
-  // PHASE 2.1: Canonical voice entry-point (registered first for priority routing)
+  // PHASE 2.3: Canonical voice entry-point + IVR (registered first for priority routing)
   registerCanonicalVoiceRoutes(app);
+  
+  // Phase 2.3: IVR callback routes (menu selections, voicemail, etc.)
+  const { registerIvrRoutes } = await import('./routes.twilioVoiceIvr');
+  registerIvrRoutes(app);
   
   // Register NEW Twilio Voice IVR system with business hours detection
   app.use('/twilio/voice', twilioVoiceRoutes);
