@@ -131,10 +131,47 @@ export function DashboardOverview({
   });
 
   const handleCreateAppointment = () => {
-    if (!newAppointmentForm.customerName || !newAppointmentForm.phone || !newAppointmentForm.service || !newAppointmentForm.scheduledTime || !newAppointmentForm.address) {
+    // Validate all required fields
+    if (!newAppointmentForm.customerName || !newAppointmentForm.customerName.trim()) {
       toast({
-        title: 'Missing fields',
-        description: 'Please fill in all required fields',
+        title: 'Customer name required',
+        description: 'Please enter a customer name',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!newAppointmentForm.phone || !newAppointmentForm.phone.trim()) {
+      toast({
+        title: 'Phone number required',
+        description: 'Please enter a phone number',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!newAppointmentForm.service || newAppointmentForm.service === '0' || newAppointmentForm.service === '') {
+      toast({
+        title: 'Service required',
+        description: 'Please select a service',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!newAppointmentForm.scheduledTime || newAppointmentForm.scheduledTime.trim() === '') {
+      toast({
+        title: 'Date & time required',
+        description: 'Please select a date and time',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!newAppointmentForm.address || !newAppointmentForm.address.trim()) {
+      toast({
+        title: 'Address required',
+        description: 'Please enter a service address',
         variant: 'destructive',
       });
       return;

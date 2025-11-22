@@ -150,6 +150,34 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       return;
     }
 
+    // Validate form fields
+    if (!formData.serviceId || formData.serviceId === 0) {
+      toast({
+        title: 'Service required',
+        description: 'Please select a service',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formData.scheduledTime) {
+      toast({
+        title: 'Date & time required',
+        description: 'Please select a date and time',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formData.address || !formData.address.trim()) {
+      toast({
+        title: 'Address required',
+        description: 'Please enter a service address',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const additionalRequestsArray = formData.additionalRequests
       .split(',')
       .map(req => req.trim())

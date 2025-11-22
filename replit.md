@@ -9,6 +9,15 @@ ServicePro is a multi-tenant, white-label SaaS platform transforming Clean Machi
 
 ## Recent Changes
 
+### Phase 7: Mobile UX, Appointment Booking & Bug Fixes (November 22, 2025)
+- **AI Scheduling Multi-Tenant Fix**: Corrected business settings query in `calendarApi.ts` to filter by `tenant_id='root'` instead of hardcoded `id=1`, ensuring Clean Machine's business hours (9 AM-3 PM last appointment, Monday-Saturday) apply only to root tenant and don't leak to other white-label tenants.
+- **Mobile UX Improvements**: Made AI suggestions panel collapsible on mobile devices with toggle button and animated collapse, improving screen space management during conversations. Hidden "No conversation selected" placeholder on tablets (md breakpoint+) to prevent blank screen on iPad.
+- **SMS Deep Link Routing Fix**: Added support for `?conversation=` URL parameter in MessagesPage to enable direct conversation navigation from SMS notifications. Previously only supported `?phone=` parameter, causing 404 black screens when users clicked notification links.
+- **Manual Appointment Booking in ThreadView**: Enhanced BookingPanel component to support creating new appointments from scratch (not just editing existing ones). Added "Create Appointment" button that appears when no appointment exists, with full form validation for service, date/time, and address fields.
+- **Dashboard Calendar Appointment Creation**: Added "+ New" button to dashboard calendar header with dialog interface for manual appointment creation. Includes customer name/phone input, service selection, datetime picker, and address entry. Backend endpoint `/api/appointments/create-manual` handles customer creation/lookup, appointment creation, and booking stats tracking in single transaction with full tenant filtering and Zod validation.
+- **Form Validation**: Implemented comprehensive frontend validation for both BookingPanel and Dashboard appointment forms, preventing empty service IDs, missing dates, and blank addresses. Backend validates all fields with clear error messages.
+- **Security Hardening**: Applied tenant filtering to all appointment creation queries, added proper Zod schema validation with error handling, wrapped customer+appointment creation in database transaction, and normalized phone numbers to E.164 format.
+
 ### Phase 6: Impersonate Tenant ("Login As...") (November 22, 2025)
 - **Owner Impersonation System**: Implemented complete tenant impersonation system allowing owner-level users to view the app as any tenant for support and testing purposes.
 - **Session-Based Context**: Extended session storage to include `impersonatingTenantId` and `impersonationStartedAt` fields, preserving true owner identity.
