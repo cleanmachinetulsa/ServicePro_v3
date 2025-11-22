@@ -1,0 +1,308 @@
+# PHASE 8 — INDUSTRY PACKS v1 (MOBILE DETAILING, LAWN CARE, HOUSE CLEANING)
+
+Goal:
+Create a simple but powerful "Industry Packs" system so that when a tenant chooses an industry (in Concierge Setup), we can:
+- Seed realistic default services (with durations and pricing hints).
+- Seed FAQs and copy.
+- Seed IVR script & SMS template snippets.
+- Seed website copy skeletons (used later by the website generator).
+- Seed basic AI persona instructions.
+
+This phase focuses on:
+- Static config (TypeScript, no heavy DB migrations beyond what's needed).
+- A reusable applyIndustryPack() service.
+- Wiring it into Concierge Setup so new tenants are auto-seeded.
+
+------------------------------------------------
+1) Shared Types & Config — shared/industryPacks.ts
+------------------------------------------------
+
+Create a new shared file:
+
+  shared/industryPacks.ts
+
+Define types:
+
+  export type IndustryKey = 'mobile-detailing' | 'lawn-care' | 'house-cleaning';
+
+  export interface IndustryServiceSeed {
+    key: string; // stable identifier per pack, e.g. 'full-interior-detail'
+    name: string;
+    description: string;
+    basePriceHint: number; // a suggested price
+    durationMinutes: number;
+    category: 'core' | 'addon' | 'premium';
+  }
+
+  export interface IndustryFaqSeed {
+    question: string;
+    answer: string;
+  }
+
+  export interface IndustrySmsTemplateSeed {
+    key: string;
+    description: string;
+    body: string;
+  }
+
+  export interface IndustryIvrConfigSeed {
+    greeting: string;      // main greeting / press-1 explanation
+    afterHours?: string;   // optional after-hours message
+  }
+
+  export interface IndustryWebsiteCopySeed {
+    heroTitle: string;
+    heroSubtitle: string;
+    aboutBlurb: string;
+    servicesIntro: string;
+    cityPlaceholder: string; // e.g. "[CITY]" to be replaced with tenantConfig.city
+  }
+
+  export interface IndustryAgentPersonaSeed {
+    toneDescription: string; // how the AI booking/support agent should sound
+    keyPhrases: string[];    // phrases to lean into
+  }
+
+  export interface IndustryPack {
+    key: IndustryKey;
+    name: string;
+    defaultServices: IndustryServiceSeed[];
+    faqs: IndustryFaqSeed[];
+    smsTemplates: IndustrySmsTemplateSeed[];
+    ivr: IndustryIvrConfigSeed;
+    websiteCopy: IndustryWebsiteCopySeed;
+    agentPersona: IndustryAgentPersonaSeed;
+  }
+
+Then define the packs:
+
+  export const INDUSTRY_PACKS: Record<IndustryKey, IndustryPack> = {
+    'mobile-detailing': { ... },
+    'lawn-care': { ... },
+    'house-cleaning': { ... },
+  };
+
+Keep content focused and realistic, not gigantic. Examples:
+
+For mobile-detailing.defaultServices:
+
+  [
+    {
+      key: 'full-interior-detail',
+      name: 'Full Interior Detail',
+      description: 'Deep interior clean with vacuum, steam, and protectant on all surfaces.',
+      basePriceHint: 200,
+      durationMinutes: 180,
+      category: 'core',
+    },
+    {
+      key: 'basic-wash-wax',
+      name: 'Exterior Wash & Wax',
+      description: 'Hand wash, wheel clean, and spray wax for shine and protection.',
+      basePriceHint: 120,
+      durationMinutes: 90,
+      category: 'core',
+    },
+    {
+      key: 'pet-hair-addon',
+      name: 'Pet Hair Removal',
+      description: 'Extra time for heavy pet hair in seats and carpet.',
+      basePriceHint: 50,
+      durationMinutes: 45,
+      category: 'addon',
+    },
+    // etc.
+  ]
+
+For lawn-care.defaultServices:
+
+  - Weekly Lawn Mowing
+  - Bi-Weekly Lawn Service
+  - Leaf Cleanup
+  - Hedge Trimming (addon)
+  - etc.
+
+For house-cleaning.defaultServices:
+
+  - Standard Clean
+  - Deep Clean
+  - Move-Out Clean
+  - Add-ons: Inside Fridge, Inside Oven, Windows, etc.
+
+Fill in reasonable FAQs, SMS snippets (e.g. “Thanks for booking with [BUSINESS_NAME]…”), IVR greeting, and website copy with [CITY] placeholder where appropriate.
+
+Export a helper:
+
+  export function getIndustryPack(key: IndustryKey): IndustryPack | null {
+    return INDUSTRY_PACKS[key] ?? null;
+  }
+
+------------------------------------------------
+2) Tenant Config — Store Industry Key (if not already done)
+------------------------------------------------
+
+If not already present, update tenant_config in shared/schema.ts to include:
+
+  industryKey: varchar('industry_key', { length: 64 }).default('mobile-detailing'),
+
+Migrate:
+
+- Existing root tenant: set industryKey = 'mobile-detailing' by default.
+
+Concierge Setup already collects industry as a string; make sure that:
+- The industry value maps to one of the allowed IndustryKey values.
+- We store that into tenant_config.industryKey when we create a tenant.
+
+------------------------------------------------
+3) Industry Pack Application Service — server/services/industryPackService.ts
+------------------------------------------------
+
+Create a new service file:
+
+  server/services/industryPackService.ts
+
+Implement:
+
+  import { getIndustryPack, IndustryKey } from '../shared/industryPacks';
+  import { tenantDbWrapperType } from '../tenantDb'; // or whatever your type alias is
+  import { servicesTable, faqsTable, smsTemplatesTable } from '../shared/schema'; 
+  // ^ if you don't have faqsTable/smsTemplatesTable, either:
+  //   - use whatever tables exist, OR
+  //   - create a simple 'faqs' table, OR
+  //   - for now, only implement services and ignore faqs/templates insertion.
+
+  export async function applyIndustryPackToTenant(
+    tenantDb: TenantDb, // tenant-scoped Drizzle client
+    tenantId: string,
+    industryKey: IndustryKey
+  ): Promise<void> {
+    const pack = getIndustryPack(industryKey);
+    if (!pack) return;
+
+    // 1) Seed services
+    // Example: insert defaultServices into your "services" table (or equivalent).
+    // Guard against duplicates by using some combination of:
+    // - a unique key per tenant + service key
+    // - or checking before insert
+
+    for (const svc of pack.defaultServices) {
+      // pseudo:
+      // await tenantDb.insert(servicesTable).values({
+      //   tenantId,
+      //   key: svc.key,
+      //   name: svc.name,
+      //   description: svc.description,
+      //   basePriceHint: svc.basePriceHint,
+      //   durationMinutes: svc.durationMinutes,
+      //   category: svc.category,
+      // });
+    }
+
+    // 2) Seed FAQs (if you have a table for them)
+    // 3) Seed SMS templates (if you have sms_templates table)
+    // 4) Seed website copy skeleton into some "website_seed" table or tenant_config fields
+    //    For now, it's fine to:
+    //    - store websiteCopy as JSON in a column on tenant_config, OR
+    //    - just rely on the pack later when generating the website.
+
+    // Keep this function **idempotent-ish**:
+    // - either skip existing rows
+    // - or ensure re-running doesn't break anything.
+  }
+
+If you don't yet have formal FAQ or smsTemplates tables, it's OK to:
+- Only implement the services seeding now.
+- Add TODO comments for later-phase insertion of FAQs/SMS templates.
+
+------------------------------------------------
+4) Wire Industry Packs into Concierge Setup
+------------------------------------------------
+
+In your Concierge Setup backend (routes.adminConciergeSetup.ts):
+
+After you create the tenant + tenant_config in the onboarding transaction:
+
+- Determine the industryKey (cast from the request):
+  - e.g. 'mobile-detailing' | 'lawn-care' | 'house-cleaning'.
+
+- After tenant & tenant_config creation succeeds:
+  - Use the root DB + tenantId to build a tenantDb scoped to that tenant.
+  - Call applyIndustryPackToTenant(tenantDb, tenantId, industryKey).
+
+This ensures that:
+- Every newly onboarded tenant via Concierge Setup immediately gets:
+  - Seeded services for their industry (at minimum).
+  - In future phases, also FAQs/SMS/website content.
+
+Optional:
+- For existing tenants, you can later build a "Reapply/Change Industry Pack" UI, but not required in this phase.
+
+------------------------------------------------
+5) Admin / UI Enhancements (Small but Helpful)
+------------------------------------------------
+
+5.1 Show Industry on AdminTenants
+
+In AdminTenants:
+
+- Show the tenant’s industryKey as a small label/badge:
+  - "Mobile Detailing"
+  - "Lawn Care"
+  - "House Cleaning"
+
+5.2 Show Industry in Concierge Summary
+
+On the Concierge Setup success screen:
+
+- Include the chosen industry in the summary panel so you see:
+  - Tenant Name
+  - Plan Tier
+  - Industry
+  - (and existing info)
+
+------------------------------------------------
+6) Tests
+------------------------------------------------
+
+Add tests for industry pack application:
+
+- Unit tests:
+  - getIndustryPack returns a pack for each key.
+  - Packs have at least 2–3 defaultServices each.
+
+- Integration-ish test for applyIndustryPackToTenant:
+  - Use a tenantDb scoped to a test tenant.
+  - Call applyIndustryPackToTenant with 'mobile-detailing'.
+  - Assert that the services table has rows with expected names/keys.
+
+- Minimal tests for wiring:
+  - When Concierge Setup creates a tenant with industry = 'mobile-detailing', services are present for that tenant.
+
+------------------------------------------------
+7) Docs — replit.md & MASTER_PLAN
+------------------------------------------------
+
+Update replit.md:
+
+- Add "Phase 8 — Industry Packs v1" section explaining:
+  - What's in each pack (short description).
+  - That Concierge Setup now seeds services based on industry.
+
+Update MASTER_PLAN:
+
+- Mark Phase 8 as complete once tests pass.
+- Note that:
+  - Packs currently seed primarily services.
+  - FAQs, SMS templates, and website copy are available in code and will be consumed by:
+    - Phase 9 (Website generator)
+    - Phase 10 (AI agents)
+  - Additional industries can be added by extending INDUSTRY_PACKS.
+------------------------------------------------
+Completion Checklist:
+
+- [ ] Industry types + INDUSTRY_PACKS defined in shared/industryPacks.ts.
+- [ ] tenant_config stores industryKey.
+- [ ] applyIndustryPackToTenant implemented and called from Concierge Setup.
+- [ ] New tenants created via Concierge Setup get seeded services for their industry.
+- [ ] AdminTenants & Concierge UI show industry.
+- [ ] Basic tests passing.
