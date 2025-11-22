@@ -42,6 +42,7 @@ import voiceWebhookRoutes from './routes.voiceWebhook';
 import twilioVoiceRoutes from './routes.twilioVoice';
 import twilmlRoutes from './routes.twiml';
 import { registerCanonicalVoiceRoutes } from './routes.twilioVoiceCanonical';
+import { registerTwilioVoiceAiRoutes } from './routes.twilioVoiceAi';
 import techJobRoutes from './routes.techJobs';
 import notificationRoutes from './routes.notifications';
 import twilioStatusCallbackRoutes from './routes.twilioStatusCallback';
@@ -3353,6 +3354,9 @@ Follow up with this lead to set up their 14-day trial!
   // Phase 2.3: IVR callback routes (menu selections, voicemail, etc.)
   const { registerIvrRoutes } = await import('./routes.twilioVoiceIvr');
   registerIvrRoutes(app);
+  
+  // PHASE 4: AI Voice route (provider-agnostic entry point)
+  registerTwilioVoiceAiRoutes(app);
   
   // Register NEW Twilio Voice IVR system with business hours detection
   app.use('/twilio/voice', twilioVoiceRoutes);
