@@ -1,7 +1,27 @@
-# Clean Machine Auto Detail - AI-Powered Business Assistant
+# Clean Machine Auto Detail / ServicePro Platform
 
 ## Overview
-Clean Machine Auto Detail is an AI-powered web application designed to streamline operations for an auto detailing service. It provides comprehensive business management, including customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs and OpenAI for intelligent chatbot capabilities, aiming for an 87% automation rate to enhance efficiency and customer engagement.
+Clean Machine Auto Detail is being transformed into **ServicePro** - a multi-tenant, white-label SaaS platform for service businesses. The flagship instance ('root' tenant) remains Clean Machine Auto Detail, an AI-powered web application designed to streamline operations for an auto detailing service. It provides comprehensive business management, including customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs and OpenAI for intelligent chatbot capabilities, aiming for an 87% automation rate to enhance efficiency and customer engagement.
+
+### ServicePro Multi-Tenant Architecture
+**Phase 2.1 Status: ✅ COMPLETE**
+
+The application is being transformed into a multi-tenant platform with the following architecture:
+
+- **Tenant Registry**: `tenantConfig` table with businessName, tier (starter/pro/elite), logoUrl, primaryColor
+- **Admin Interface**: `/admin/tenants` for CRUD tenant management with tier badges
+- **Canonical Voice Entry-Point**: `/twilio/voice/incoming` - standardized webhook for multi-tenant telephony
+  - Current: Hardcoded to 'root' tenant with SIP forwarding to `jody@cleanmachinetulsa.sip.twilio.com`
+  - Future: Dynamic tenant lookup via `tenantPhoneConfig` table (Phase 2.3)
+  - Security: Twilio signature verification with `verifyTwilioSignature` middleware
+  - Testing: 6/6 tests passing, production-ready for root tenant
+  - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md`
+
+**Key Files:**
+- `server/routes.twilioVoiceCanonical.ts` - Canonical voice router
+- `server/routes.adminTenants.ts` - Tenant CRUD API
+- `client/src/pages/AdminTenants.tsx` - Tenant management UI
+- `server/tenantDb.ts` - Tenant isolation utilities (909 usages migrated)
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
