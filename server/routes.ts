@@ -40,6 +40,7 @@ import smsFallbackRoutes from './routes.smsFallback';
 import voiceWebhookRoutes from './routes.voiceWebhook';
 import twilioVoiceRoutes from './routes.twilioVoice';
 import twilmlRoutes from './routes.twiml';
+import { registerCanonicalVoiceRoutes } from './routes.twilioVoiceCanonical';
 import techJobRoutes from './routes.techJobs';
 import notificationRoutes from './routes.notifications';
 import twilioStatusCallbackRoutes from './routes.twilioStatusCallback';
@@ -3330,6 +3331,9 @@ Follow up with this lead to set up their 14-day trial!
 
   // Register SMS fallback routes
   app.use(smsFallbackRoutes);
+  
+  // PHASE 2.1: Canonical voice entry-point (registered first for priority routing)
+  registerCanonicalVoiceRoutes(app);
   
   // Register NEW Twilio Voice IVR system with business hours detection
   app.use('/twilio/voice', twilioVoiceRoutes);

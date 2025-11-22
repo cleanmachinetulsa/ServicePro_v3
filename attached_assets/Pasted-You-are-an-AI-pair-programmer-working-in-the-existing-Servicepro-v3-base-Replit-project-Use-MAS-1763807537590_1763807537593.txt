@@ -1,0 +1,103 @@
+You are an AI pair programmer working in the existing `Servicepro-v3-base` Replit project.
+
+Use `MASTER_PLAN_V3.md` (v3.2) as the source of truth, especially the sections:
+
+- “PHASE 2 – TELEPHONY SPINE (SMS, VOICE, SIP, IVR)”
+- Subsections **2.1 Standardize Voice Entry-Points** and **2.2 SIP → Groundwire Flow (Your Own Calls)**
+
+We have ALREADY completed:
+- Phase 1 tenant isolation
+- Phase 1.4 / Phase 2A: Tenant registry + admin tenant UI (`server/routes.adminTenants.ts`, `client/src/pages/AdminTenants.tsx` etc.)
+
+### GOAL FOR THIS TASK
+
+Implement the **first concrete step of Phase 2**:
+
+1. Standardize inbound voice handling on **one canonical endpoint**:
+   - `POST /twilio/voice/incoming`
+
+2. For NOW, support **root tenant only** (`tenant_id = 'root'`) with an IVR-lite / SIP-forward flow that matches the current Clean Machine behavior:
+
+   - Default behavior:
+     - Receive inbound Twilio webhook.
+     - Resolve tenant as `'root'` (we will add multi-tenant phone lookups later).
+     - Return TwiML that **dials the Groundwire SIP endpoint**:
+       - SIP address: `jody@cleanmachinetulsa.sip.twilio.com`
+       - Caller ID should be the incoming `From` number where possible.
+
+3. DO NOT attempt full multi-tenant phone config yet.
+   - For this step, it is acceptable to hardcode tenant `'root'` and the SIP address.
+   - We just want a clean, well-structured entrypoint that we will later plug into `tenantPhoneConfig`.
+
+### CONCRETE REQUIREMENTS
+
+1. **New or updated Express route**
+
+   - Implement a route registration function, e.g.:
+
+     ```ts
+     // server/routes.twilioVoice.ts (or a dedicated file if already present)
+     export function registerTwilioVoiceRoutes(app: Express) {
+       app.post('/twilio/voice/incoming', tenantResolverForTwilio, handleIncomingVoice);
+     }
+     ```
+
+   - `tenantResolverForTwilio` can, for now, simply attach:
+     - `req.tenant = { id: 'root' }`
+     - `req.tenantDb = wrapTenantDb(db, 'root')`
+     - Later we will enhance this to look up `tenantPhoneConfig` by the `To` number.
+
+   - `handleIncomingVoice` should:
+     - Parse the standard Twilio voice webhook fields (`From`, `To`, `CallSid`, etc.).
+     - Build TwiML that dials the SIP endpoint for root tenant:
+
+       ```xml
+       <Response>
+         <Dial callerId="{From}">
+           <Sip>jody@cleanmachinetulsa.sip.twilio.com</Sip>
+         </Dial>
+       </Response>
+       ```
+
+     - Return XML with the correct `Content-Type: text/xml`.
+
+2. **Wire this as the canonical inbound voice entrypoint**
+
+   - Ensure this route is registered in `server/routes.ts` (or the central routing file) so the Express app serves `/twilio/voice/incoming`.
+   - If there are older voice routes (like `/twilio/voice` or `/voice/incoming`) that are redundant or conflicting:
+     - Either:
+       - Update them to delegate to the new handler, OR
+       - Clearly comment that `/twilio/voice/incoming` is the new canonical entrypoint.
+     - Do NOT delete anything critical yet; be conservative and keep existing behavior intact where unsure.
+
+3. **Keep tenant-aware patterns consistent**
+
+   - Even though we’re hardcoding `'root'`:
+     - Use the existing tenant/DB patterns so that **later** we can plug in `tenantPhoneConfig` and true multi-tenant lookups.
+   - Do NOT introduce any new raw `db` imports in routes; use the established tenant wrappers if needed.
+
+4. **Environment & safety**
+
+   - Code must run even when Twilio env vars are missing in dev.
+   - Do NOT make outbound network calls to Twilio here; this is only a webhook handler that returns TwiML.
+   - Add basic logging for inbound voice calls (tenant id, From, To, CallSid).
+
+5. **Testing / sanity checks**
+
+   - Add at least one basic test (Vitest) that:
+     - Calls the Express handler for `/twilio/voice/incoming` with a fake Twilio webhook payload.
+     - Asserts that the response status is 200 and the body contains a `<Dial>` with the expected `<Sip>` address.
+
+### STYLE & CONSTRAINTS
+
+- Follow existing code style and file structure of the repo.
+- Do not refactor unrelated parts of the system.
+- Keep the implementation focused on:
+  - The new `/twilio/voice/incoming` route
+  - The SIP dial TwiML for root tenant
+  - Minimal test coverage for that route
+
+When you’re done, summarize:
+- Files changed/created
+- How to test the new `/twilio/voice/incoming` endpoint locally
+- Any TODOs you’ve left in comments for later phases (e.g., plugging in `tenantPhoneConfig`).

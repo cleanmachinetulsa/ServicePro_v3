@@ -15,6 +15,46 @@ const VoiceResponse = twilio.twiml.VoiceResponse;
 const AccessToken = twilio.jwt.AccessToken;
 const VoiceGrant = AccessToken.VoiceGrant;
 
+/**
+ * PHASE 2.1 - Tenant Resolver Middleware for Twilio Voice Webhooks
+ * 
+ * For NOW: Hardcoded to 'root' tenant (Clean Machine)
+ * LATER: Will look up tenant by called number (Twilio To field → tenantPhoneConfig)
+ * 
+ * This middleware ensures req.tenant and req.tenantDb are available for voice handlers
+ */
+function tenantResolverForTwilio(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    // TODO Phase 2.3: Look up tenant by req.body.To (Twilio To field)
+    // const phoneNumber = req.body.To;
+    // const tenantPhone = await db.query.tenantPhoneConfig.findFirst({
+    //   where: eq(tenantPhoneConfig.phoneNumber, phoneNumber)
+    // });
+    // const tenantId = tenantPhone?.tenantId || 'root';
+    
+    // For now, hardcode to root tenant
+    const tenantId = 'root';
+    
+    // Import wrapTenantDb to create tenant-scoped database wrapper
+    const { wrapTenantDb } = require('./tenantDb');
+    const { db } = require('./db');
+    
+    req.tenant = { id: tenantId };
+    req.tenantDb = wrapTenantDb(db, tenantId);
+    
+    console.log(`[TWILIO VOICE] Tenant resolved: ${tenantId}`);
+    next();
+  } catch (error) {
+    console.error('[TWILIO VOICE] Error in tenant resolver:', error);
+    // Fallback to root tenant on error
+    const { wrapTenantDb } = require('./tenantDb');
+    const { db } = require('./db');
+    req.tenant = { id: 'root' };
+    req.tenantDb = wrapTenantDb(db, 'root');
+    next();
+  }
+}
+
 // Clean Machine joke bank for Press 9 easter egg
 const cleanMachineJokes = [
   "Why don't dirty cars tell secrets? Because there are too many bugs listening.",
