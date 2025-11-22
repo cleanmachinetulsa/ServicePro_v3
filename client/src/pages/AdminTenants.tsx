@@ -27,7 +27,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Building2, Shield } from 'lucide-react';
+import { Plus, Building2, Shield, UserCircle } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import type { Tenant } from '@shared/schema';
 
@@ -93,6 +93,35 @@ export default function AdminTenants() {
 
   const handleSubmit = (data: CreateTenantForm) => {
     createTenantMutation.mutate(data);
+  };
+
+  const impersonateMutation = useMutation({
+    mutationFn: async (tenantId: string) => {
+      return await apiRequest('/api/admin/impersonate/start', {
+        method: 'POST',
+        body: JSON.stringify({ tenantId }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: 'Impersonation Active',
+        description: `You are now viewing the app as ${data.tenantName}`,
+      });
+      navigate('/');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to start impersonation',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleImpersonate = (tenantId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    impersonateMutation.mutate(tenantId);
   };
 
   const getTierBadge = (tier: string) => {
@@ -340,6 +369,22 @@ export default function AdminTenants() {
                     </span>
                   </div>
                 </div>
+
+                {!tenant.isRoot && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={(e) => handleImpersonate(tenant.id, e)}
+                      disabled={impersonateMutation.isPending}
+                      data-testid={`impersonate-tenant-${tenant.id}`}
+                    >
+                      <UserCircle className="w-4 h-4 mr-2" />
+                      Login as Tenant
+                    </Button>
+                  </div>
+                )}
               </Card>
             ))}
           </div>

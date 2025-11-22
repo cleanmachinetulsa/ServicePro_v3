@@ -1,0 +1,281 @@
+# PHASE 6 — IMPERSONATE TENANT ("LOGIN AS…")
+
+Goal:
+Allow an OWNER-level user to "log in as" a specific tenant so they can see and use the app as that tenant, while:
+- Preserving the true owner identity on the backend (for logging/audit).
+- Making it very obvious in the UI when impersonation is active.
+- Providing a safe "Exit impersonation" action.
+- NOT changing or breaking the existing auth model.
+
+We will:
+- Add an "impersonation context" on top of the existing auth/session.
+- Add backend endpoints to start/stop impersonation.
+- Add UI buttons ("Login as tenant") in Admin screens.
+- Add a global banner when impersonation is active.
+
+DO NOT change how normal tenants log in.
+This is an owner-only tool layered on top.
+
+------------------------------------------------
+1) Auth Layer – Add Impersonation Context
+------------------------------------------------
+
+Update the existing auth/session handling (wherever user context is attached, likely in authMiddleware.ts or a similar file):
+
+1. Extend the server-side user/session type to include optional impersonation data, for example:
+
+   interface AuthContext {
+     userId: string;
+     role: 'owner' | 'admin' | 'staff' | 'tenant' | ...;
+     // existing fields...
+     impersonatingTenantId?: string | null;
+     impersonationStartedAt?: Date;
+   }
+
+2. In authMiddleware (or equivalent), ensure:
+   - `req.auth` (or whatever structure you use) can carry:
+     - `impersonatingTenantId`
+     - `impersonationStartedAt`
+   - If no impersonation is active, these should be undefined/null.
+
+3. Add a small helper in a shared auth/util file:
+
+   - `isImpersonating(req): boolean`
+   - `getEffectiveTenantId(req): string | null`
+     - For now, `getEffectiveTenantId` should:
+       - Prefer `req.auth.impersonatingTenantId` when set.
+       - Fall back to whatever logic currently resolves tenant context for the dashboard (e.g. root/host/domain).
+
+IMPORTANT:
+- Do NOT change how tenantDb / resolveTenantFromInbound works for Twilio.
+- Impersonation is for the web app / dashboard context, not for Twilio webhooks.
+
+------------------------------------------------
+2) Backend Endpoints – Start/Stop Impersonation
+------------------------------------------------
+
+Create a new admin route file:
+
+  server/routes.adminImpersonation.ts
+
+Mount under owner-only admin guard (same as AdminTenants and Concierge).
+
+Endpoints:
+
+A) POST /api/admin/impersonate/start
+
+Request body (Zod schema):
+
+  {
+    tenantId: string;
+  }
+
+Behavior:
+
+  1. Require owner-level user (same check as other owner admin routes).
+  2. Verify that the tenant exists in the `tenants` table.
+     - If not, return 404.
+  3. Update the current session/auth context to include:
+     - impersonatingTenantId = tenantId
+     - impersonationStartedAt = now
+  4. Respond with:
+     {
+       success: true,
+       tenantId,
+       message: "Impersonation started"
+     }
+
+Implementation detail:
+- Use the same auth/session pattern you already use:
+  - If you’re using cookie-backed sessions, store impersonation info in the session.
+  - If JWT-based, add a server-side mechanism (e.g. short-lived token or session record) – follow the existing pattern for updating user context.
+
+B) POST /api/admin/impersonate/stop
+
+Request body: none.
+
+Behavior:
+
+  1. Require authenticated user (owner or any role currently logged in).
+     - For simplicity: allow only owner to call this; but if your design makes sense to allow "exit" universally, that's fine.
+  2. Clear impersonation info in the session/auth context:
+     - impersonatingTenantId = null
+     - impersonationStartedAt = null
+  3. Respond with:
+     {
+       success: true,
+       message: "Impersonation cleared"
+     }
+
+C) Security Notes
+
+- Only allow `start` from owner-level accounts.
+- Never allow a tenant-level account to set `impersonatingTenantId`.
+- Do not allow impersonation of the root tenant (`id = 'root'`) unless we explicitly choose to. For now:
+  - Option A: allow it (you’re already root).
+  - Option B (safer): disallow tenantId === 'root' and return 400 with a message: "Root tenant cannot be impersonated."
+- Log impersonation events to your existing logging system with:
+  - real userId
+  - target tenantId
+  - timestamp
+  - action: "impersonation_start" / "impersonation_stop"
+
+------------------------------------------------
+3) Effective Tenant Context in App Code
+------------------------------------------------
+
+Anywhere the app needs to know "which tenant am I operating as" in the dashboard context, add or use a helper:
+
+- `getEffectiveTenantId(req)` as described above.
+
+For now, we do NOT need to refactor everything; focus on:
+
+- Wherever the dashboard loads tenant-specific data for the admin:
+  - Make sure it can honor `req.auth.impersonatingTenantId` when present.
+- If you already treat everything as `tenant_id = 'root'` for owner views:
+  - We can start with impersonation being used mostly at the UI level (e.g., filtering queries by tenantId when impersonating).
+- The exact integration can be incremental; the key is:
+  - Backend knows when impersonation is active.
+  - Frontend can read that state and show it.
+
+If there’s an existing pattern for “current tenant selection” in the dashboard, make impersonation override that.
+
+------------------------------------------------
+4) Frontend – "Login as Tenant" Buttons
+------------------------------------------------
+
+A) In Admin Tenants List (/admin/tenants)
+
+In `AdminTenants` page (client/src/pages/AdminTenants.tsx or equivalent):
+
+- For each tenant card/row, add a button:
+
+  - Label: "Login as Tenant"
+  - Only visible to owner-level users.
+  - `data-testid` for tests, like: `impersonate-tenant-${tenantId}`.
+
+- On click:
+  1. Call `POST /api/admin/impersonate/start` with `{ tenantId }`.
+  2. On success:
+     - Redirect to a sensible default dashboard route, e.g. `/` or `/dashboard`.
+     - The effect should be: user now sees the app “as that tenant”.
+
+B) On the Concierge Success Screen (/admin/concierge-setup)
+
+In `AdminConciergeSetup` success state:
+
+- After creating a tenant and showing the summary, add a button:
+
+  - Label: "Login as this Tenant"
+  - Same behavior as above:
+    - POST /api/admin/impersonate/start
+    - Redirect to main app view
+
+This gives you immediate “setup → jump into tenant” flow.
+
+------------------------------------------------
+5) Frontend – Global Impersonation Banner + Exit Button
+------------------------------------------------
+
+Create a small global component (or reuse existing layout shell), e.g.:
+
+  client/src/components/ImpersonationBanner.tsx
+
+Behavior:
+
+- If the frontend auth context / current user API indicates an active impersonation:
+
+  - Show a fixed banner at top of the app (or under the main navbar) with:
+
+    - Text like:
+      "You are viewing the app as: [TenantName] (Tenant ID: [id])"
+    - A button:
+      "Exit impersonation"
+
+- When "Exit impersonation" is clicked:
+
+  1. Call `POST /api/admin/impersonate/stop`.
+  2. On success:
+     - Reload the page or redirect to an owner dashboard route (e.g. `/admin/tenants`).
+     - The banner should disappear.
+
+Implementation details:
+
+- The frontend needs a way to know impersonation status:
+  - Option A: include `impersonatingTenantId` and `impersonatedTenantName` in the existing "current user" or "current session" endpoint.
+  - Option B: create a lightweight `/api/me` or `/api/auth/context` that returns:
+    - userId, role, impersonatingTenantId, impersonatedTenantName, etc.
+- Use a simple React context or global query (e.g. TanStack Query) to fetch this once and share it across the app layout.
+
+Styling:
+
+- Make the banner visually distinct (e.g., warning/info style).
+- Do NOT let impersonation be subtle; it should be very obvious that you’re not in your normal context.
+
+------------------------------------------------
+6) Tests
+------------------------------------------------
+
+Backend tests:
+
+1. POST /api/admin/impersonate/start
+   - Owner user:
+     - With valid tenantId → 200, impersonation set.
+     - With non-existent tenantId → 404.
+     - With root tenantId (if you choose to block) → 400 or 403.
+   - Non-owner user:
+     - → 403 forbidden.
+
+2. POST /api/admin/impersonate/stop
+   - Owner with existing impersonation → clears it, 200.
+   - Owner with no active impersonation → still 200 (idempotent).
+   - Ensure impersonation data is removed from session/auth context.
+
+3. If you have a “me” or auth context endpoint:
+   - When impersonation is active:
+     - Returns impersonatingTenantId and the resolved tenant name.
+   - When not active:
+     - Returns no impersonation fields.
+
+Frontend tests (as appropriate for your setup):
+
+- AdminTenants:
+  - Button "Login as Tenant" is rendered for owner.
+  - Clicking it calls the start endpoint (mocked) and triggers navigation.
+
+- ImpersonationBanner:
+  - Renders when impersonation context is present.
+  - Calls stop endpoint when "Exit impersonation" clicked.
+
+------------------------------------------------
+7) Docs – replit.md & MASTER_PLAN_v3.2.md
+------------------------------------------------
+
+Update replit.md:
+
+- Add "Phase 6 — Impersonate Tenant" section describing:
+  - Admin endpoints:
+    - POST /api/admin/impersonate/start
+    - POST /api/admin/impersonate/stop
+  - Global banner behavior.
+  - Owner-only restrictions.
+
+Update MASTER_PLAN_v3.2.md:
+
+- Mark Phase 6 as “in progress” and later “done” when complete.
+- Note that impersonation:
+  - Impacts dashboard context (web app).
+  - Does NOT change Twilio inbound routing (still uses phone numbers / messaging service SIDs).
+  - Is meant for support, debugging, and concierge setup.
+
+------------------------------------------------
+Completion Checklist:
+
+- [ ] Auth/session layer extended with impersonatingTenantId support.
+- [ ] Backend endpoints:
+      - POST /api/admin/impersonate/start
+      - POST /api/admin/impersonate/stop
+- [ ] AdminTenants has "Login as Tenant" button for owner.
+- [ ] AdminConciergeSetup success screen has "Login as this Tenant" button.
+- [ ] Global impersonation banner visible when active, with "Exit impersonation".
+- [ ] All new tests added; all existing tests still passing.
