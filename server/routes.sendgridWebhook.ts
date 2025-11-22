@@ -1,5 +1,4 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { db } from './db';
 import { campaignRecipients, emailSuppressionList } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
@@ -94,7 +93,7 @@ router.post('/api/webhooks/sendgrid',
       console.log(`[SENDGRID WEBHOOK] Received ${events.length} events`);
       
       for (const event of events) {
-        await processWebhookEvent(event);
+        await processWebhookEvent(req, event);
       }
       
       res.status(200).json({ success: true });
@@ -108,7 +107,7 @@ router.post('/api/webhooks/sendgrid',
 /**
  * Process individual webhook event
  */
-async function processWebhookEvent(event: any) {
+async function processWebhookEvent(req: Request, event: any) {
   const eventType = event.event;
   const email = event.email;
   const campaignId = event.campaign_id;
@@ -119,17 +118,20 @@ async function processWebhookEvent(event: any) {
   // Find recipient record
   let recipient;
   if (recipientId) {
-    [recipient] = await db
+    [recipient] = await req.tenantDb!
       .select()
       .from(campaignRecipients)
-      .where(eq(campaignRecipients.id, parseInt(recipientId)))
+      .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, parseInt(recipientId))))
       .limit(1);
   } else if (email && campaignId) {
-    [recipient] = await db
+    [recipient] = await req.tenantDb!
       .select()
       .from(campaignRecipients)
       .where(
-        sql`${campaignRecipients.email} = ${email} AND ${campaignRecipients.campaignId} = ${parseInt(campaignId)}`
+        req.tenantDb!.withTenantFilter(
+          campaignRecipients,
+          sql`${campaignRecipients.email} = ${email} AND ${campaignRecipients.campaignId} = ${parseInt(campaignId)}`
+        )
       )
       .limit(1);
   }
@@ -146,31 +148,31 @@ async function processWebhookEvent(event: any) {
       break;
     
     case 'delivered':
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
           status: 'delivered',
           deliveredAt: new Date(event.timestamp * 1000)
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       break;
     
     case 'open':
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
           openedAt: new Date(event.timestamp * 1000)
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       break;
     
     case 'click':
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
           clickedAt: new Date(event.timestamp * 1000)
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       break;
     
     case 'bounce':
@@ -183,18 +185,19 @@ async function processWebhookEvent(event: any) {
                           bounceReason.toLowerCase().includes('not exist') ||
                           bounceReason.toLowerCase().includes('unknown user');
       
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
           status: 'bounced',
           bouncedAt: new Date(event.timestamp * 1000),
           lastError: `${statusCode}: ${bounceReason}`
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       
       // Add to suppression list
       if (isHardBounce) {
         await addToSuppressionList(
+          req,
           email,
           'hard_bounce',
           `Campaign ${campaignId}: ${statusCode} ${bounceReason}`
@@ -206,16 +209,17 @@ async function processWebhookEvent(event: any) {
       break;
     
     case 'spamreport':
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
           status: 'complained',
           complainedAt: new Date(event.timestamp * 1000)
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       
       // Add to suppression list
       await addToSuppressionList(
+        req,
         email,
         'spam_complaint',
         `Campaign ${campaignId}: Spam complaint`
@@ -224,15 +228,16 @@ async function processWebhookEvent(event: any) {
     
     case 'unsubscribe':
     case 'group_unsubscribe':
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
           status: 'unsubscribed'
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(req.tenantDb!.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       
       // Add to suppression list
       await addToSuppressionList(
+        req,
         email,
         'unsubscribe',
         `Campaign ${campaignId}: Unsubscribed`
@@ -248,6 +253,7 @@ async function processWebhookEvent(event: any) {
  * Add email to suppression list
  */
 async function addToSuppressionList(
+  req: Request,
   email: string,
   reason: string,
   source: string,
@@ -255,15 +261,15 @@ async function addToSuppressionList(
 ) {
   try {
     // Check if already exists
-    const [existing] = await db
+    const [existing] = await req.tenantDb!
       .select()
       .from(emailSuppressionList)
-      .where(eq(emailSuppressionList.email, email.toLowerCase()))
+      .where(req.tenantDb!.withTenantFilter(emailSuppressionList, eq(emailSuppressionList.email, email.toLowerCase())))
       .limit(1);
     
     if (existing) {
       // Update existing
-      await db
+      await req.tenantDb!
         .update(emailSuppressionList)
         .set({
           reason,
@@ -271,10 +277,10 @@ async function addToSuppressionList(
           metadata: metadata || null,
           addedAt: new Date()
         })
-        .where(eq(emailSuppressionList.email, email.toLowerCase()));
+        .where(req.tenantDb!.withTenantFilter(emailSuppressionList, eq(emailSuppressionList.email, email.toLowerCase())));
     } else {
       // Insert new
-      await db
+      await req.tenantDb!
         .insert(emailSuppressionList)
         .values({
           email: email.toLowerCase(),
@@ -304,6 +310,7 @@ router.get('/api/email/unsubscribe', async (req: Request, res: Response) => {
   try {
     // Add to suppression list
     await addToSuppressionList(
+      req,
       email,
       'unsubscribe',
       campaign ? `Campaign ${campaign}: Manual unsubscribe` : 'Manual unsubscribe'
@@ -311,11 +318,14 @@ router.get('/api/email/unsubscribe', async (req: Request, res: Response) => {
     
     // Update recipient if campaign provided
     if (campaign) {
-      await db
+      await req.tenantDb!
         .update(campaignRecipients)
         .set({ status: 'unsubscribed' })
         .where(
-          sql`${campaignRecipients.email} = ${email.toLowerCase()} AND ${campaignRecipients.campaignId} = ${parseInt(campaign as string)}`
+          req.tenantDb!.withTenantFilter(
+            campaignRecipients,
+            sql`${campaignRecipients.email} = ${email.toLowerCase()} AND ${campaignRecipients.campaignId} = ${parseInt(campaign as string)}`
+          )
         );
     }
     

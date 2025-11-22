@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { notificationPreferences } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -11,9 +10,12 @@ export function registerNotificationPreferencesRoutes(app: Router) {
   // GET current user's preferences
   router.get('/me', requireAuth, async (req, res) => {
     try {
-      const prefs = await db.query.notificationPreferences.findFirst({
-        where: eq(notificationPreferences.userId, req.user!.id)
-      });
+      const prefs = await req.tenantDb!
+        .select()
+        .from(notificationPreferences)
+        .where(req.tenantDb!.withTenantFilter(notificationPreferences, eq(notificationPreferences.userId, req.user!.id)))
+        .limit(1)
+        .then(results => results[0]);
 
       // Return defaults if not set
       if (!prefs) {
@@ -53,16 +55,19 @@ export function registerNotificationPreferencesRoutes(app: Router) {
 
       const validated = schema.parse(req.body);
 
-      const existing = await db.query.notificationPreferences.findFirst({
-        where: eq(notificationPreferences.userId, req.user!.id)
-      });
+      const existing = await req.tenantDb!
+        .select()
+        .from(notificationPreferences)
+        .where(req.tenantDb!.withTenantFilter(notificationPreferences, eq(notificationPreferences.userId, req.user!.id)))
+        .limit(1)
+        .then(results => results[0]);
 
       if (existing) {
-        await db.update(notificationPreferences)
+        await req.tenantDb!.update(notificationPreferences)
           .set({ ...validated, updatedAt: new Date() })
-          .where(eq(notificationPreferences.userId, req.user!.id));
+          .where(req.tenantDb!.withTenantFilter(notificationPreferences, eq(notificationPreferences.userId, req.user!.id)));
       } else {
-        await db.insert(notificationPreferences).values({
+        await req.tenantDb!.insert(notificationPreferences).values({
           ...validated,
           userId: req.user!.id
         });

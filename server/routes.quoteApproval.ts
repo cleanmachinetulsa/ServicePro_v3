@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { eq, and } from 'drizzle-orm';
 import { quoteRequests, bookingTokens, businessSettings } from '@shared/schema';
 import { sendSMS } from './notifications';
@@ -66,27 +65,27 @@ router.get('/booking-data/:token', async (req, res) => {
     
     // ATOMIC UPDATE: Mark as used ONLY if not already used (prevents race condition)
     // This ensures only ONE request can successfully retrieve the token data
-    const [bookingToken] = await db
+    const [bookingToken] = await req.tenantDb!
       .update(bookingTokens)
       .set({ 
         used: true, 
         usedAt: new Date() 
       })
       .where(
-        and(
+        req.tenantDb!.withTenantFilter(bookingTokens, and(
           eq(bookingTokens.token, token),
           eq(bookingTokens.used, false)
-        )
+        ))
       )
       .returning();
     
     // If no row was updated, token is either used, expired, or doesn't exist
     if (!bookingToken) {
       // Check if token exists to provide better error message
-      const [existingToken] = await db
+      const [existingToken] = await req.tenantDb!
         .select()
         .from(bookingTokens)
-        .where(eq(bookingTokens.token, token))
+        .where(req.tenantDb!.withTenantFilter(bookingTokens, eq(bookingTokens.token, token)))
         .limit(1);
       
       if (!existingToken) {
@@ -145,10 +144,10 @@ router.get('/:token', async (req, res) => {
     const { token } = req.params;
 
     // Find quote by approval token
-    const [quote] = await db
+    const [quote] = await req.tenantDb!
       .select()
       .from(quoteRequests)
-      .where(eq(quoteRequests.approvalToken, token))
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.approvalToken, token)))
       .limit(1);
 
     if (!quote) {
@@ -315,7 +314,7 @@ router.post('/:token/approve', async (req, res) => {
     // Update quote status to approved
     const approverType = quote.thirdPartyPayerName ? 'third_party' : 'customer';
     
-    await db
+    await req.tenantDb!
       .update(quoteRequests)
       .set({
         status: 'approved',
@@ -323,7 +322,7 @@ router.post('/:token/approve', async (req, res) => {
         approvedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(quoteRequests.id, quote.id));
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.id, quote.id)));
 
     // Send confirmation SMS to customer
     await sendSMS(
@@ -363,7 +362,7 @@ router.post('/:token/approve', async (req, res) => {
     // Store booking token in database (expires in 24 hours, one-time use)
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     
-    await db.insert(bookingTokens).values({
+    await req.tenantDb!.insert(bookingTokens).values({
       token: bookingToken,
       quoteId: quote.id,
       customerName: quote.customerName,
@@ -425,9 +424,10 @@ router.post('/:token/decline', async (req, res) => {
     }
 
     // Fetch business settings for notification recipients
-    const [settings] = await db
+    const [settings] = await req.tenantDb!
       .select()
       .from(businessSettings)
+      .where(req.tenantDb!.withTenantFilter(businessSettings))
       .limit(1);
 
     // Consume OTP before declining (verifies and deletes to prevent reuse)
@@ -441,14 +441,14 @@ router.post('/:token/decline', async (req, res) => {
     }
 
     // Update quote status to declined
-    await db
+    await req.tenantDb!
       .update(quoteRequests)
       .set({
         status: 'declined',
         declinedReason: reason || 'No reason provided',
         updatedAt: new Date(),
       })
-      .where(eq(quoteRequests.id, quote.id));
+      .where(req.tenantDb!.withTenantFilter(quoteRequests, eq(quoteRequests.id, quote.id)));
 
     // Send confirmation SMS to customer
     await sendSMS(
@@ -569,11 +569,11 @@ router.post('/:token/decline', async (req, res) => {
         const { inArray, eq } = await import('drizzle-orm');
         const { sendPushNotification } = await import('./pushNotificationService');
 
-        const adminUsers = await db
+        const adminUsers = await req.tenantDb!
           .select({ id: users.id, role: users.role })
           .from(users)
           .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
-          .where(inArray(users.role, ['owner', 'manager']))
+          .where(req.tenantDb!.withTenantFilter(users, inArray(users.role, ['owner', 'manager'])))
           .groupBy(users.id, users.role);
 
         if (adminUsers.length > 0) {

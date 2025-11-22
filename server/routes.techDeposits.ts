@@ -1,5 +1,4 @@
 import { Router, Express, Request, Response } from 'express';
-import { db } from './db';
 import { technicianDeposits, invoices, users, type TechnicianDeposit } from '@shared/schema';
 import { eq, and, gte, lte, desc, inArray, or } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -31,13 +30,16 @@ export function registerTechDepositRoutes(app: Express) {
       const todayDate = format(today, 'yyyy-MM-dd');
 
       // Find or initialize today's deposit record
-      const [depositRecord] = await db
+      const [depositRecord] = await req.tenantDb!
         .select()
         .from(technicianDeposits)
         .where(
-          and(
-            eq(technicianDeposits.technicianId, technicianId),
-            eq(technicianDeposits.depositDate, todayDate)
+          req.tenantDb!.withTenantFilter(
+            technicianDeposits,
+            and(
+              eq(technicianDeposits.technicianId, technicianId),
+              eq(technicianDeposits.depositDate, todayDate)
+            )
           )
         )
         .limit(1);
@@ -46,19 +48,22 @@ export function registerTechDepositRoutes(app: Express) {
       const todayStart = startOfDay(today);
       const todayEnd = endOfDay(today);
 
-      const cashCheckInvoices = await db
+      const cashCheckInvoices = await req.tenantDb!
         .select()
         .from(invoices)
         .where(
-          and(
-            eq(invoices.technicianId, technicianId),
-            or(
-              eq(invoices.paymentMethod, 'cash'),
-              eq(invoices.paymentMethod, 'check')
-            ),
-            eq(invoices.paymentStatus, 'pending'),
-            gte(invoices.createdAt, todayStart),
-            lte(invoices.createdAt, todayEnd)
+          req.tenantDb!.withTenantFilter(
+            invoices,
+            and(
+              eq(invoices.technicianId, technicianId),
+              or(
+                eq(invoices.paymentMethod, 'cash'),
+                eq(invoices.paymentMethod, 'check')
+              ),
+              eq(invoices.paymentStatus, 'pending'),
+              gte(invoices.createdAt, todayStart),
+              lte(invoices.createdAt, todayEnd)
+            )
           )
         );
 
@@ -117,13 +122,16 @@ export function registerTechDepositRoutes(app: Express) {
       const thirtyDaysAgo = subDays(new Date(), 30);
       const thirtyDaysAgoDate = format(thirtyDaysAgo, 'yyyy-MM-dd');
 
-      const deposits = await db
+      const deposits = await req.tenantDb!
         .select()
         .from(technicianDeposits)
         .where(
-          and(
-            eq(technicianDeposits.technicianId, technicianId),
-            gte(technicianDeposits.depositDate, thirtyDaysAgoDate)
+          req.tenantDb!.withTenantFilter(
+            technicianDeposits,
+            and(
+              eq(technicianDeposits.technicianId, technicianId),
+              gte(technicianDeposits.depositDate, thirtyDaysAgoDate)
+            )
           )
         )
         .orderBy(desc(technicianDeposits.depositDate));
@@ -150,7 +158,7 @@ export function registerTechDepositRoutes(app: Express) {
       const sevenDaysAgo = subDays(new Date(), 7);
       const sevenDaysAgoDate = format(sevenDaysAgo, 'yyyy-MM-dd');
 
-      const allDeposits = await db
+      const allDeposits = await req.tenantDb!
         .select({
           deposit: technicianDeposits,
           technicianName: users.fullName,
@@ -158,7 +166,7 @@ export function registerTechDepositRoutes(app: Express) {
         })
         .from(technicianDeposits)
         .leftJoin(users, eq(technicianDeposits.technicianId, users.id))
-        .where(gte(technicianDeposits.depositDate, sevenDaysAgoDate))
+        .where(req.tenantDb!.withTenantFilter(technicianDeposits, gte(technicianDeposits.depositDate, sevenDaysAgoDate)))
         .orderBy(desc(technicianDeposits.depositDate));
 
       // Transform to include technician name
@@ -187,7 +195,7 @@ export function registerTechDepositRoutes(app: Express) {
   router.get('/tech-deposits/pending', requireAuth, requireRole('owner', 'manager'), async (req: Request, res: Response) => {
     try {
       // Get all pending deposits
-      const pendingDeposits = await db
+      const pendingDeposits = await req.tenantDb!
         .select({
           deposit: technicianDeposits,
           technicianName: users.fullName,
@@ -195,7 +203,7 @@ export function registerTechDepositRoutes(app: Express) {
         })
         .from(technicianDeposits)
         .leftJoin(users, eq(technicianDeposits.technicianId, users.id))
-        .where(eq(technicianDeposits.status, 'pending'))
+        .where(req.tenantDb!.withTenantFilter(technicianDeposits, eq(technicianDeposits.status, 'pending')))
         .orderBy(desc(technicianDeposits.depositDate));
 
       // Group by technician
@@ -248,10 +256,10 @@ export function registerTechDepositRoutes(app: Express) {
       const user = (req as any).user;
 
       // Get the deposit record
-      const [deposit] = await db
+      const [deposit] = await req.tenantDb!
         .select()
         .from(technicianDeposits)
-        .where(eq(technicianDeposits.id, depositId))
+        .where(req.tenantDb!.withTenantFilter(technicianDeposits, eq(technicianDeposits.id, depositId)))
         .limit(1);
 
       if (!deposit) {
@@ -269,20 +277,20 @@ export function registerTechDepositRoutes(app: Express) {
       }
 
       // Update deposit status
-      await db
+      await req.tenantDb!
         .update(technicianDeposits)
         .set({
           status: 'deposited',
           depositedAt: new Date(),
           depositedBy: user.id,
         })
-        .where(eq(technicianDeposits.id, depositId));
+        .where(req.tenantDb!.withTenantFilter(technicianDeposits, eq(technicianDeposits.id, depositId)));
 
       // Get technician name for notification
-      const [technicianUser] = await db
+      const [technicianUser] = await req.tenantDb!
         .select()
         .from(users)
-        .where(eq(users.id, deposit.technicianId))
+        .where(req.tenantDb!.withTenantFilter(users, eq(users.id, deposit.technicianId)))
         .limit(1);
 
       const techName = technicianUser?.fullName || technicianUser?.username || 'Technician';

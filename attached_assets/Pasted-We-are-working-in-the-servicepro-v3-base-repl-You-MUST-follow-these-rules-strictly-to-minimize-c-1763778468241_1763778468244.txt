@@ -1,0 +1,161 @@
+We are working in the "servicepro-v3-base" repl.
+
+You MUST follow these rules strictly to minimize cost and avoid unnecessary work:
+
+1. Only read and modify the files I explicitly list.
+2. Do NOT scan the entire repo or search globally unless I explicitly say so.
+3. Do NOT refactor or reformat code that is unrelated to the specific change requested.
+4. Do NOT touch client-side TypeScript errors or frontend files.
+5. Do NOT change database schema or environment configuration.
+6. Keep all existing API contracts, request/response shapes, and routes exactly the same.
+7. Only change database access: move from direct db usage to the tenantDb pattern we already established.
+8. After making changes, run ONLY the tests or commands I specify (no full test suites unless requested).
+9. When you finish the requested batch, STOP and produce a concise report. Do not start additional work.
+
+----------------------------------------------------------------------
+PHASE 1E GOAL:
+Migrate the following route files from direct db access to the tenant-scoped req.tenantDb pattern, without changing business logic.
+
+ROUTE FILES IN SCOPE (AND ONLY THESE FILES):
+
+- server/routes.password.ts
+- server/routes.webauthn.ts
+- server/routes.sendgridWebhook.ts
+- server/routes.stripeWebhooks.ts
+- server/routes.adminReferralStats.ts
+- server/routes.techDeposits.ts
+- server/routes.payerApproval.ts
+- server/routes.quoteApproval.ts
+- server/routes.notificationPreferences.ts
+- server/routes.smsFallback.ts
+- server/routes.callEvents.ts
+- server/routes.voiceWebhook.ts
+
+IMPORTANT: 
+- Do NOT modify any other files (services, jobs, middleware, etc.) in this phase.
+- Do NOT touch:
+  - server/tenantDb.ts
+  - server/tenantMiddleware.ts
+  - server/tests/setupTenantDb.ts
+  - server/tests/tenantIsolation/tenantDb.test.ts
+
+----------------------------------------------------------------------
+MIGRATION PATTERN (MUST MATCH EXISTING PATTERN FROM Phase 1B/1C/1D):
+
+1) Remove direct db imports in each of the listed files:
+   - Before:
+     import { db } from "./db";
+     or:
+     import { db } from './db';
+   - After:
+     (Remove that import entirely; no direct db import in route files.)
+
+2) Replace all usages of db with req.tenantDb!:
+
+   - Before:
+     const results = await db.select().from(table).where(eq(table.id, id));
+
+   - After:
+     const results = await req.tenantDb!
+       .select()
+       .from(table)
+       .where(
+         req.tenantDb!.withTenantFilter(
+           table,
+           eq(table.id, id)
+         )
+       );
+
+   General rules:
+   - For SELECTs on tenant-scoped tables:
+     - If there was already a WHERE clause:
+       .where(existingCondition)
+       → .where(req.tenantDb!.withTenantFilter(table, existingCondition))
+
+     - If there was NO WHERE clause but the table is tenant-scoped:
+       → Add a WHERE using withTenantFilter:
+       .where(req.tenantDb!.withTenantFilter(table))
+
+   - For INSERTs into tenant-scoped tables:
+     - Use req.tenantDb! instead of db:
+       db.insert(table).values(...)
+       → req.tenantDb!.insert(table).values(...)
+     - Do NOT manually set tenantId; the tenantDb wrapper auto-injects tenantId.
+
+   - For UPDATEs on tenant-scoped tables:
+     - Before:
+       await db.update(table).set(updateVals).where(eq(table.id, id));
+     - After:
+       await req.tenantDb!
+         .update(table)
+         .set(updateVals)
+         .where(
+           req.tenantDb!.withTenantFilter(
+             table,
+             eq(table.id, id)
+           )
+         );
+
+   - For DELETEs on tenant-scoped tables:
+     - Before:
+       await db.delete(table).where(eq(table.id, id));
+     - After:
+       await req.tenantDb!
+         .delete(table)
+         .where(
+           req.tenantDb!.withTenantFilter(
+             table,
+             eq(table.id, id)
+           )
+         );
+
+   - For JOIN queries:
+     - Use the same pattern we already used in:
+       - server/routes.contacts.ts
+       - server/routes.tags.ts
+       - server/routes.twilioVoice.ts
+     - Apply withTenantFilter on the primary tenant-scoped table in the WHERE clause, combining it with any existing conditions.
+
+3) Webhook routes (Stripe, SendGrid, Twilio):
+   - These may not go through normal auth, but tenantMiddleware still attaches a tenant (currently 'root').
+   - Use req.tenantDb! in these route handlers exactly the same way as for any other route.
+   - Do NOT try to add multi-tenant routing logic here yet—just enforce tenant-aware DB access using the current middleware.
+
+4) Do NOT:
+   - Do NOT change route URLs or HTTP methods.
+   - Do NOT change response shapes or status codes.
+   - Do NOT add new features, refactors, or logging beyond what is necessary for db → tenantDb migration.
+   - Do NOT touch files not listed above.
+
+----------------------------------------------------------------------
+AFTER CHANGES – VERIFICATION:
+
+1) Run tenant isolation tests ONLY:
+   npx vitest run server/tests/tenantIsolation/tenantDb.test.ts
+
+   Expected:
+   - 11/11 tests PASSING
+
+2) Start the dev server using the existing dev command.
+   - Confirm it starts cleanly (no runtime errors in the console).
+
+3) Smoke-test a few of the migrated endpoints (just basic checks):
+   - If you can, call each of:
+     - /api/password (or whatever route is exposed for password-related actions)
+     - /api/notification-preferences
+     - Any simple GET route from these files that doesn’t require complex auth
+   - It’s okay if some return "auth required" or similar, as long as there are no crashes or unhandled exceptions.
+
+----------------------------------------------------------------------
+FINAL REPORT (REQUIRED):
+
+When you’re done, produce a concise report that includes:
+
+1) List of all files you actually modified.
+2) For each file, how many DB operations you migrated (rough counts: SELECT/INSERT/UPDATE/DELETE/JOIN).
+3) Confirmation that:
+   - TypeScript server-side compilation has 0 errors.
+   - `npx vitest run server/tests/tenantIsolation/tenantDb.test.ts` all pass.
+   - Dev server starts and runs without runtime errors.
+
+Do NOT start migrating any other files. STOP after completing this Phase 1E batch and the report.
