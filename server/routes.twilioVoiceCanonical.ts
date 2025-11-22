@@ -1,18 +1,19 @@
 /**
- * PHASE 2.2 - Canonical Voice Entry-Point with Dynamic Tenant Lookup
+ * PHASE 2.3 - Canonical Voice Entry-Point with IVR Mode Support
  * 
  * This is the standardized inbound voice webhook handler for ServicePro multi-tenant telephony.
  * 
- * CURRENT (Phase 2.2):
+ * CURRENT (Phase 2.3):
  * - ✅ Dynamic tenant lookup via tenantPhoneConfig table
  * - ✅ Looks up tenant by Twilio 'To' number
  * - ✅ Per-tenant SIP configuration from database
+ * - ✅ IVR mode branching (simple/ivr/ai-voice)
  * - ✅ Caller ID passthrough enabled
  * - ✅ Fallback to 'root' tenant if phone number not found
  * 
- * FUTURE (Phase 2.3+):
- * - Dynamic IVR mode selection (simple/ivr/ai-voice)
- * - AI-powered voice agent mode
+ * FUTURE (Phase 3+):
+ * - AI-powered voice agent mode (ai-voice)
+ * - Per-tenant IVR configurations from database
  * 
  * ENDPOINT: POST /twilio/voice/incoming
  * 
@@ -27,6 +28,9 @@ import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
 import { getTenantByPhoneNumber } from './services/tenantPhone';
+import { tenantConfig } from '../shared/schema';
+import { eq } from 'drizzle-orm';
+import { buildMainMenuTwiml, getIvrConfigForTenant } from './services/ivrHelper';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -77,9 +81,10 @@ async function tenantResolverForTwilio(req: Request, res: Response, next: NextFu
 /**
  * Canonical Inbound Voice Handler
  * 
- * Phase 2.2: Uses per-tenant SIP configuration from database
- * Returns TwiML that forwards the call to the tenant's configured SIP endpoint
- * with caller ID passthrough for proper caller identification
+ * Phase 2.3: Branches on ivrMode to provide different call experiences
+ * - 'simple': Direct SIP forward (legacy behavior)
+ * - 'ivr': Interactive voice menu
+ * - 'ai-voice': AI-powered voice agent (future, falls back to simple for now)
  */
 async function handleIncomingVoice(req: Request, res: Response) {
   const response = new VoiceResponse();
@@ -92,50 +97,112 @@ async function handleIncomingVoice(req: Request, res: Response) {
     
     console.log(`[CANONICAL VOICE] Incoming call from ${fromNumber} to ${toNumber}, CallSid: ${callSid}, Tenant: ${tenantId}`);
     
-    // ✅ Phase 2.2: Get SIP endpoint from tenantPhoneConfig (attached by middleware)
+    // ✅ Phase 2.2: Get phone config from database (attached by middleware)
     const phoneConfig = (req as any).phoneConfig;
+    const ivrMode = phoneConfig?.ivrMode || 'simple';
     
-    let sipEndpoint: string | null = null;
+    console.log(`[CANONICAL VOICE] tenant=${tenantId}, ivrMode=${ivrMode}`);
     
-    if (phoneConfig?.sipDomain && phoneConfig?.sipUsername) {
-      sipEndpoint = `${phoneConfig.sipUsername}@${phoneConfig.sipDomain}`;
-      console.log(`[CANONICAL VOICE] Using database SIP config: ${sipEndpoint}`);
+    // ✅ Phase 2.3: Branch on IVR mode
+    if (ivrMode === 'ivr') {
+      return handleIvrMode(req, res, tenantId, phoneConfig);
+    } else if (ivrMode === 'ai-voice') {
+      // TODO: Phase 4 - Implement AI-voice mode
+      console.log(`[CANONICAL VOICE] AI-voice mode not yet implemented, falling back to simple`);
+      return handleSimpleMode(req, res, tenantId, phoneConfig, fromNumber);
     } else {
-      // Fallback for root tenant if no config found
-      if (tenantId === 'root') {
-        sipEndpoint = 'jody@cleanmachinetulsa.sip.twilio.com';
-        console.log(`[CANONICAL VOICE] Using hardcoded root fallback: ${sipEndpoint}`);
-      }
+      // Default: simple mode (direct SIP forward)
+      return handleSimpleMode(req, res, tenantId, phoneConfig, fromNumber);
     }
-    
-    if (!sipEndpoint) {
-      console.error(`[CANONICAL VOICE] No SIP endpoint configured for tenant ${tenantId}`);
-      response.say({ voice: 'alice' }, 'This number is not configured. Please call back later.');
-      response.hangup();
-      res.type('text/xml');
-      return res.send(response.toString());
-    }
-    
-    console.log(`[CANONICAL VOICE] Forwarding to SIP: ${sipEndpoint}`);
-    
-    // Dial the SIP endpoint with caller ID passthrough
-    const dial = response.dial({
-      callerId: fromNumber, // Pass through the actual caller's number
-    });
-    
-    dial.sip(`sip:${sipEndpoint}`);
-    
-    // If dial fails/times out, the call will just end
-    // TODO Phase 2.3: Add fallback to voicemail or IVR based on ivrMode
     
   } catch (error) {
     console.error('[CANONICAL VOICE] Error handling incoming call:', error);
     response.say({ voice: 'alice' }, 'We encountered an error. Please try again later.');
     response.hangup();
+    res.type('text/xml');
+    res.send(response.toString());
   }
+}
+
+/**
+ * Handle simple mode: Direct SIP forwarding (Phase 2.2 behavior)
+ */
+async function handleSimpleMode(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any,
+  fromNumber: string
+) {
+  const response = new VoiceResponse();
+  
+  let sipEndpoint: string | null = null;
+  
+  if (phoneConfig?.sipDomain && phoneConfig?.sipUsername) {
+    sipEndpoint = `${phoneConfig.sipUsername}@${phoneConfig.sipDomain}`;
+    console.log(`[CANONICAL VOICE] mode=simple, using database SIP config: ${sipEndpoint}`);
+  } else {
+    // Fallback for root tenant if no config found
+    if (tenantId === 'root') {
+      sipEndpoint = 'jody@cleanmachinetulsa.sip.twilio.com';
+      console.log(`[CANONICAL VOICE] mode=simple, using hardcoded root fallback: ${sipEndpoint}`);
+    }
+  }
+  
+  if (!sipEndpoint) {
+    console.error(`[CANONICAL VOICE] No SIP endpoint configured for tenant ${tenantId}`);
+    response.say({ voice: 'alice' }, 'This number is not configured. Please call back later.');
+    response.hangup();
+    res.type('text/xml');
+    return res.send(response.toString());
+  }
+  
+  console.log(`[CANONICAL VOICE] Forwarding to SIP: ${sipEndpoint}`);
+  
+  // Dial the SIP endpoint with caller ID passthrough
+  const dial = response.dial({
+    callerId: fromNumber,
+  });
+  
+  dial.sip(`sip:${sipEndpoint}`);
   
   res.type('text/xml');
   res.send(response.toString());
+}
+
+/**
+ * Handle IVR mode: Interactive voice menu (Phase 2.3)
+ */
+async function handleIvrMode(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any
+) {
+  console.log(`[CANONICAL VOICE] mode=ivr, tenant=${tenantId}, action=main-menu`);
+  
+  // Get tenant business name from config
+  const tenantConfigData = await db
+    .select()
+    .from(tenantConfig)
+    .where(eq(tenantConfig.tenantId, tenantId))
+    .limit(1);
+  
+  const businessName = tenantConfigData[0]?.businessName;
+  
+  // Build IVR config
+  const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig, businessName);
+  
+  // Get callback base URL
+  const callbackBaseUrl = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : 'https://your-domain.repl.co';
+  
+  // Generate main menu TwiML
+  const twiml = buildMainMenuTwiml(ivrConfig, callbackBaseUrl);
+  
+  res.type('text/xml');
+  res.send(twiml);
 }
 
 /**
