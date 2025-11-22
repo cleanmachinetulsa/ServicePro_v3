@@ -272,49 +272,59 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
     });
   });
 
-  describe('POST /sms - SMS route integration', () => {
+  describe('POST /sms - SMS route integration (Phase 3.1: Full Middleware Stack)', () => {
     let smsApp: express.Express;
 
     beforeAll(async () => {
-      // Set up Express app with SMS route
+      // Set up Express app with PRODUCTION middleware stack
       smsApp = express();
       smsApp.use(express.urlencoded({ extended: false }));
       smsApp.use(express.json());
 
-      // Register SMS route (simplified version for testing - no phone validation)
-      smsApp.post('/sms', verifyTwilioSignature, async (req, res) => {
-        try {
-          const { resolveTenantFromInbound } = await import('../services/tenantCommRouter');
-          const { wrapTenantDb } = await import('../tenantDb');
-          
-          // Use centralized router
-          const resolution = await resolveTenantFromInbound(req, db);
-          
-          // Set up tenant context
-          req.tenant = { id: resolution.tenantId } as any;
-          req.tenantDb = wrapTenantDb(db, resolution.tenantId);
-          (req as any).phoneConfig = resolution.phoneConfig;
-          (req as any).tenantResolution = resolution;
+      // Register SMS route with EXACT production middleware stack:
+      // 1. verifyTwilioSignature (Twilio webhook verification)
+      // 2. normalizePhone('From', { required: false, skipValidation: false }) (Phone E.164 normalization)
+      // 3. Handler with tenant routing
+      smsApp.post('/sms', 
+        verifyTwilioSignature, 
+        normalizePhone('From', { required: false, skipValidation: false }), 
+        async (req, res) => {
+          try {
+            const { resolveTenantFromInbound } = await import('../services/tenantCommRouter');
+            const { wrapTenantDb } = await import('../tenantDb');
+            
+            // Use centralized router (mirrors production)
+            const resolution = await resolveTenantFromInbound(req, db);
+            
+            // Set up tenant context (mirrors production)
+            req.tenant = { id: resolution.tenantId } as any;
+            req.tenantDb = wrapTenantDb(db, resolution.tenantId);
+            (req as any).phoneConfig = resolution.phoneConfig;
+            (req as any).tenantResolution = resolution;
 
-          // Return tenant info for test verification
-          res.json({
-            tenantId: resolution.tenantId,
-            resolvedBy: resolution.resolvedBy,
-            ivrMode: resolution.ivrMode,
-            hasPhoneConfig: !!resolution.phoneConfig,
-          });
-        } catch (error) {
-          console.error('[SMS TEST] Error:', error);
-          res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+            // Return tenant info + normalized From for test verification
+            res.json({
+              tenantId: resolution.tenantId,
+              resolvedBy: resolution.resolvedBy,
+              ivrMode: resolution.ivrMode,
+              hasPhoneConfig: !!resolution.phoneConfig,
+              normalizedFrom: req.body.From, // Will be E.164 after middleware
+            });
+          } catch (error) {
+            console.error('[SMS TEST] Error:', error);
+            res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+          }
         }
-      });
+      );
     });
 
-    it('should route SMS by MessagingServiceSid (Strategy 1)', async () => {
+    // ===== TENANT ROUTING TESTS (Strategy 1 & 2) =====
+    
+    it('should route SMS by MessagingServiceSid (Strategy 1) with E.164 normalized From', async () => {
       const response = await request(smsApp)
         .post('/sms')
         .send({
-          From: '+15555551234',
+          From: '+14155551234', // Valid E.164 (San Francisco area code)
           To: testPhoneNumber,
           Body: 'Test message',
           MessagingServiceSid: testMessagingServiceSid,
@@ -324,13 +334,14 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
       expect(response.body.tenantId).toBe(testTenantId);
       expect(response.body.resolvedBy).toBe('messagingServiceSid');
       expect(response.body.hasPhoneConfig).toBe(true);
+      expect(response.body.normalizedFrom).toBe('+14155551234'); // Remains E.164
     });
 
     it('should route SMS by phone number when no MessagingServiceSid (Strategy 2)', async () => {
       const response = await request(smsApp)
         .post('/sms')
         .send({
-          From: '+15555551234',
+          From: '+14155551234',
           To: testPhoneNumber,
           Body: 'Test message',
           // No MessagingServiceSid
@@ -342,12 +353,72 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
       expect(response.body.hasPhoneConfig).toBe(true);
     });
 
+    // ===== PHONE NORMALIZATION TESTS (E.164) =====
+    
+    it('should normalize From field from 10-digit US to E.164', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '9188565711', // 10-digit US format
+          To: testPhoneNumber,
+          Body: 'Test normalization',
+        })
+        .expect(200);
+
+      expect(response.body.normalizedFrom).toBe('+19188565711'); // Normalized to E.164
+      expect(response.body.tenantId).toBe(testTenantId); // Routing still works
+    });
+
+    it('should keep already E.164 formatted From unchanged', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '+19188565711', // Already E.164
+          To: testPhoneNumber,
+          Body: 'Test message',
+        })
+        .expect(200);
+
+      expect(response.body.normalizedFrom).toBe('+19188565711');
+      expect(response.body.tenantId).toBe(testTenantId);
+    });
+
+    it('should reject invalid From phone numbers with 400', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: 'invalid-phone', // Invalid format
+          To: testPhoneNumber,
+          Body: 'Test message',
+        })
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Invalid phone number');
+    });
+
+    it('should allow missing From field (required: false)', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          // From is missing (allowed by middleware)
+          To: testPhoneNumber,
+          Body: 'Test message',
+        })
+        .expect(200);
+
+      expect(response.body.tenantId).toBe(testTenantId);
+      expect(response.body.resolvedBy).toBe('phoneNumber');
+    });
+
+    // ===== FALLBACK TESTS (Strategy 3) =====
+    
     it('should fallback to root for unknown phone numbers', async () => {
       const response = await request(smsApp)
         .post('/sms')
         .send({
-          From: '+15555551234',
-          To: '+19998887777', // Unknown number
+          From: '+14155551234',
+          To: '+19167778888', // Unknown number (Sacramento area code)
           Body: 'Test message',
         })
         .expect(200);
@@ -357,38 +428,69 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
       expect(response.body.hasPhoneConfig).toBe(false); // Fallback has no phoneConfig
     });
 
-    it('should handle SMS with missing To field gracefully', async () => {
+    it('should handle SMS with missing To field and fallback to root', async () => {
       const response = await request(smsApp)
         .post('/sms')
         .send({
-          From: '+15555551234',
+          From: '+14155551234',
           Body: 'Test message',
-          // To is missing
+          // To is missing - tenant router should fallback to root
         })
         .expect(200);
 
-      // Should fallback to root
+      // Should fallback to root when no To provided
       expect(response.body.tenantId).toBe('root');
       expect(response.body.resolvedBy).toBe('fallback');
       expect(response.body.hasPhoneConfig).toBe(false);
     });
 
-    it('should handle SMS with empty request body gracefully', async () => {
+    it('should handle SMS with empty request body and fallback to root', async () => {
       const response = await request(smsApp)
         .post('/sms')
         .send({})
         .expect(200);
 
-      // Should fallback to root
+      // Should fallback to root when no fields provided
       expect(response.body.tenantId).toBe('root');
       expect(response.body.resolvedBy).toBe('fallback');
       expect(response.body.hasPhoneConfig).toBe(false);
     });
 
+    // ===== EDGE CASES & VALIDATION =====
+    
+    it('should handle From field with whitespace and formatting', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: ' (918) 856-5711 ', // Whitespace + formatting
+          To: testPhoneNumber,
+          Body: 'Test message',
+        })
+        .expect(200);
+
+      // Should normalize to E.164
+      expect(response.body.normalizedFrom).toBe('+19188565711');
+      expect(response.body.tenantId).toBe(testTenantId);
+    });
+
+    it('should reject From field with letters/invalid characters', async () => {
+      const response = await request(smsApp)
+        .post('/sms')
+        .send({
+          From: '918-CALL-NOW', // Invalid: contains letters
+          To: testPhoneNumber,
+          Body: 'Test message',
+        })
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('Invalid phone number');
+    });
+
     it('should route different numbers to different tenants (SMS multi-tenancy)', async () => {
       // Create a second tenant
       const tenant2Id = 'test-integration-sms-2-' + nanoid(8);
-      const tenant2Phone = '+19995553333'; // Different from testPhoneNumber
+      const tenant2Phone = '+19167775555'; // Different from testPhoneNumber
       const tenant2ConfigId = nanoid();
 
       await db.insert(tenants).values({
@@ -409,7 +511,7 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
       const response1 = await request(smsApp)
         .post('/sms')
         .send({
-          From: '+15555551234',
+          From: '+14155551234',
           To: testPhoneNumber,
           Body: 'Test to tenant 1',
         });
@@ -418,7 +520,7 @@ describe('Tenant Communication Router - Integration Tests (Phase 3)', () => {
       const response2 = await request(smsApp)
         .post('/sms')
         .send({
-          From: '+15555551234',
+          From: '+14155551234',
           To: tenant2Phone,
           Body: 'Test to tenant 2',
         });
