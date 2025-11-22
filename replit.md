@@ -9,6 +9,17 @@ ServicePro is a multi-tenant, white-label SaaS platform transforming Clean Machi
 
 ## Recent Changes
 
+### Phase 6: Impersonate Tenant ("Login As...") (November 22, 2025)
+- **Owner Impersonation System**: Implemented complete tenant impersonation system allowing owner-level users to view the app as any tenant for support and testing purposes.
+- **Session-Based Context**: Extended session storage to include `impersonatingTenantId` and `impersonationStartedAt` fields, preserving true owner identity.
+- **Backend Endpoints**: Created `/api/admin/impersonate/start` (POST, owner-only) and `/api/admin/impersonate/stop` (POST) with tenant validation and root tenant protection.
+- **Auth Context API**: Added `/api/auth/context` (GET) endpoint exposing user info and impersonation state (tenantId, tenantName, startedAt) to frontend, querying root DB for cross-tenant name resolution.
+- **UI Integration**: Added "Login as Tenant" buttons in AdminTenants page and AdminConciergeSetup success screen for seamless impersonation initiation.
+- **Global Banner**: Created prominent ImpersonationBanner component with gradient amber/orange styling, showing impersonated tenant name and "Exit Impersonation" button, integrated into AppShell layout.
+- **Helper Functions**: Created `isImpersonating()`, `getEffectiveTenantId()` (defaults to 'root' when not impersonating), and `getImpersonationContext()` utility functions in authHelpers.ts for consistent impersonation checks.
+- **Test Coverage**: Basic smoke tests for impersonation start/stop covering owner-only access, tenant existence validation, and root tenant blocking.
+- **Security**: Owner-only start permission, explicit root tenant blocking, audit logging of impersonation events via securityService (start/stop with userId and tenantId).
+
 ### Phase 5: Concierge Setup Dashboard (November 22, 2025)
 - **Concierge Setup Dashboard**: Owner-only streamlined tenant onboarding interface at `/admin/concierge-setup` for guided tenant creation with business information collection, industry/plan tier selection, and optional phone config stub creation.
 - **TenantConfig Schema Extension**: Added `industry` (varchar 100), `primaryContactEmail` (varchar 255), `primaryCity` (varchar 100), and `internalNotes` (text) fields to support concierge onboarding workflow.

@@ -18,9 +18,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Building2, MapPin, Mail, Briefcase, FileText, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Sparkles, Building2, MapPin, Mail, Briefcase, FileText, CheckCircle2, ArrowRight, UserCircle } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const onboardTenantSchema = z.object({
@@ -63,6 +63,7 @@ const industryOptions = [
 
 export default function AdminConciergeSetup() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [createdTenant, setCreatedTenant] = useState<OnboardResponse['tenant'] | null>(null);
 
   const form = useForm<OnboardTenantForm>({
@@ -111,6 +112,36 @@ export default function AdminConciergeSetup() {
   const handleCreateAnother = () => {
     setCreatedTenant(null);
     form.reset();
+  };
+
+  const impersonateMutation = useMutation({
+    mutationFn: async (tenantId: string) => {
+      return await apiRequest('/api/admin/impersonate/start', {
+        method: 'POST',
+        body: JSON.stringify({ tenantId }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: 'Impersonation Active',
+        description: `You are now viewing the app as ${data.tenantName}`,
+      });
+      navigate('/');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to start impersonation',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleImpersonate = () => {
+    if (createdTenant) {
+      impersonateMutation.mutate(createdTenant.tenantId);
+    }
   };
 
   if (createdTenant) {
@@ -181,15 +212,27 @@ export default function AdminConciergeSetup() {
                     </Button>
                   </Link>
                 </div>
-                <Button
-                  onClick={handleCreateAnother}
-                  variant="default"
-                  className="w-full"
-                  data-testid="button-create-another"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Create Another Tenant
-                </Button>
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleImpersonate}
+                    variant="default"
+                    className="w-full"
+                    disabled={impersonateMutation.isPending}
+                    data-testid="button-login-as-tenant"
+                  >
+                    <UserCircle className="w-4 h-4 mr-2" />
+                    Login as this Tenant
+                  </Button>
+                  <Button
+                    onClick={handleCreateAnother}
+                    variant="outline"
+                    className="w-full"
+                    data-testid="button-create-another"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Create Another Tenant
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>

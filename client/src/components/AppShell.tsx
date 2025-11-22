@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
+import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { navigationItems } from '@/config/navigationItems';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -132,6 +133,9 @@ export function AppShell({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Impersonation Banner */}
+        <ImpersonationBanner />
+        
         {/* Top Bar */}
         <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
           <div className="flex items-center gap-1 sm:gap-3 p-2 sm:p-4 min-h-14">

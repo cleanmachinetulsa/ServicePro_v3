@@ -17,6 +17,9 @@ import {
   getAuditLogs,
   getSecurityStats,
 } from './securityService';
+import { requireAuth } from './authMiddleware';
+import { getImpersonationContext } from './authHelpers';
+import { tenants } from '@shared/schema';
 
 const SALT_ROUNDS = 10;
 
@@ -885,6 +888,55 @@ export function registerAuthRoutes(app: Express) {
       res.status(500).json({
         success: false,
         message: 'Failed to get audit logs',
+      });
+    }
+  });
+
+  app.get('/api/auth/context', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      const impersonationContext = getImpersonationContext(req);
+
+      let impersonatedTenantName: string | null = null;
+      if (impersonationContext.tenantId) {
+        const { getRootDb } = await import('./tenantDb');
+        const rootDb = getRootDb();
+        const tenant = await rootDb
+          .select()
+          .from(tenants)
+          .where(eq(tenants.id, impersonationContext.tenantId))
+          .limit(1);
+
+        if (tenant && tenant.length > 0) {
+          impersonatedTenantName = tenant[0].name;
+        }
+      }
+
+      res.json({
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+        },
+        impersonation: {
+          isActive: impersonationContext.isImpersonating,
+          tenantId: impersonationContext.tenantId,
+          tenantName: impersonatedTenantName,
+          startedAt: impersonationContext.startedAt,
+        },
+      });
+    } catch (error) {
+      await logAuditEvent({
+        userId: req.session?.userId || 0,
+        action: 'auth_context_failed',
+        resource: 'auth_context',
+        details: `Failed to retrieve auth context: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get auth context',
       });
     }
   });

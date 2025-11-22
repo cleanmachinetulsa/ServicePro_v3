@@ -6,5 +6,7 @@ declare module 'express-session' {
     twoFactorVerified?: boolean;
     isDemo?: boolean;
     demoStartedAt?: number;
+    impersonatingTenantId?: string | null;
+    impersonationStartedAt?: string | null;
   }
 }
