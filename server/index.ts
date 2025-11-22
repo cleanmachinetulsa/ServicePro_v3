@@ -5,6 +5,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { sessionMiddleware } from './sessionMiddleware';
+import { tenantMiddleware } from './tenantMiddleware';
 import { demoProtectionMiddleware } from "./demoProtection";
 import { checkMaintenanceMode } from "./maintenanceMode";
 import loyaltyRouter from "./loyaltyApi";
@@ -214,6 +215,9 @@ app.use(sessionMiddleware);
 
 // Setup Google OAuth (must be after session middleware)
 setupGoogleOAuth(app);
+
+// Apply tenant middleware (must be after session, before routes)
+app.use(tenantMiddleware);
 
 // Apply demo protection middleware
 app.use(demoProtectionMiddleware);
