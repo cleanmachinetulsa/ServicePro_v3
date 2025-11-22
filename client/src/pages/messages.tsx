@@ -89,12 +89,16 @@ function MessagesPageContent() {
 
   const conversations = conversationsData?.data || [];
 
-  // Handle ?phone= URL parameter to open specific conversation
+  // Handle URL parameters to open specific conversation
+  // Supports both ?phone=xxx (for phone-based lookup) and ?conversation=123 (for direct ID)
   useEffect(() => {
     const params = new URLSearchParams(search);
     const phoneParam = params.get('phone');
+    const conversationParam = params.get('conversation');
     
-    if (phoneParam && conversations.length > 0) {
+    if (conversations.length === 0) return;
+    
+    if (phoneParam) {
       // Find conversation matching this phone number
       const matchingConv = conversations.find(c => c.customerPhone === phoneParam);
       
@@ -102,6 +106,24 @@ function MessagesPageContent() {
         setSelectedConversation(matchingConv.id);
         // Clear the phone parameter from URL
         setLocation('/messages', { replace: true });
+      }
+    } else if (conversationParam) {
+      // Direct conversation ID lookup (from SMS deep links)
+      const conversationId = parseInt(conversationParam, 10);
+      
+      if (!isNaN(conversationId)) {
+        // Check if this conversation exists in the list
+        const matchingConv = conversations.find(c => c.id === conversationId);
+        
+        if (matchingConv) {
+          setSelectedConversation(conversationId);
+          // Clear the conversation parameter from URL
+          setLocation('/messages', { replace: true });
+        } else {
+          // Conversation exists but not in current filter/list - still open it
+          setSelectedConversation(conversationId);
+          setLocation('/messages', { replace: true });
+        }
       }
     }
   }, [search, conversations, setLocation]);
