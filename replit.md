@@ -27,8 +27,17 @@ The application is being transformed into a multi-tenant platform with the follo
   - UX Quality: react-hook-form + zodResolver + Form components, tenant dropdown selector, complete data-testid coverage
   - Backend: Uses shared `insertTenantPhoneConfigSchema` with schema.shape validators, proper null handling for optional fields
   - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md` and `PHASE_2_3_IVR_MODE.md`
+  - Phase 3: ✅ Tenant Communication Routing Engine (COMPLETE)
+  - Centralized Routing: All inbound communications (SMS, Voice, IVR) use single `resolveTenantFromInbound()` service
+  - Resolution Strategy: 1) MessagingServiceSid match (highest priority), 2) Phone number match, 3) Fallback to 'root'
+  - Eliminates: Duplicated tenant lookup logic, misrouting edge cases, scaling bottlenecks
+  - Integration: `/sms` and `/twilio/voice/incoming` routes refactored to use centralized router
+  - Testing: ✅ Comprehensive test coverage for all resolution strategies and edge cases
+  - Multi-tenant Ready: Supports multiple phone numbers per tenant, multiple messaging service SIDs, flawless routing at scale
 
 **Key Files:**
+- `server/services/tenantCommRouter.ts` - Centralized tenant resolution engine (Phase 3)
+- `server/tests/tenantCommRouter.test.ts` - Comprehensive routing tests (Phase 3)
 - `server/routes.twilioVoiceCanonical.ts` - Canonical voice router with ivrMode branching
 - `server/routes.twilioVoiceIvr.ts` - IVR callback handlers (Phase 2.3)
 - `server/services/ivrHelper.ts` - TwiML builders for IVR menu (Phase 2.3)

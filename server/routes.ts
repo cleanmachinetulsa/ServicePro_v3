@@ -1930,8 +1930,11 @@ export async function registerRoutes(app: Express) {
       const { wrapTenantDb } = await import('./tenantDb');
       const resolution = await resolveTenantFromInbound(req, db);
       
+      // Set up tenant context for downstream handlers
       req.tenant = { id: resolution.tenantId } as any;
       req.tenantDb = wrapTenantDb(db, resolution.tenantId);
+      (req as any).phoneConfig = resolution.phoneConfig;
+      (req as any).tenantResolution = resolution;
       
       console.log(`[SMS WEBHOOK] Tenant resolved: ${resolution.tenantId} via ${resolution.resolvedBy}, ivrMode: ${resolution.ivrMode}`);
       
