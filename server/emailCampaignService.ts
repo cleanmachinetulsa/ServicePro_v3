@@ -81,7 +81,10 @@ export interface TemplateData {
  */
 export async function getAllCampaigns(tenantDb: TenantDb) {
   try {
-    return await tenantDb.select().from(emailCampaigns).where(tenantDb.withTenantFilter(emailCampaigns, sql`true`)).orderBy(desc(emailCampaigns.createdAt));
+    return await tenantDb.query.emailCampaigns.findMany({
+      where: tenantDb.withTenantFilter(emailCampaigns),
+      orderBy: desc(emailCampaigns.createdAt)
+    });
   } catch (error) {
     console.error('Error getting campaigns:', error);
     throw new Error('Failed to retrieve email campaigns');
@@ -93,10 +96,9 @@ export async function getAllCampaigns(tenantDb: TenantDb) {
  */
 export async function getCampaignById(tenantDb: TenantDb, id: number) {
   try {
-    const [campaign] = await tenantDb
-      .select()
-      .from(emailCampaigns)
-      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
+    const campaign = await tenantDb.query.emailCampaigns.findFirst({
+      where: tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id))
+    });
     
     return campaign || null;
   } catch (error) {
@@ -626,11 +628,9 @@ export async function sendCampaignNow(tenantDb: TenantDb, id: number) {
     await processEmailCampaigns(tenantDb);
     
     // Return updated campaign
-    const [updatedCampaign] = await tenantDb
-      .select()
-      .from(emailCampaigns)
-      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)))
-      .limit(1);
+    const updatedCampaign = await tenantDb.query.emailCampaigns.findFirst({
+      where: tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id))
+    });
     
     return updatedCampaign;
   } catch (error) {
@@ -644,7 +644,10 @@ export async function sendCampaignNow(tenantDb: TenantDb, id: number) {
  */
 export async function getAllTemplates(tenantDb: TenantDb) {
   try {
-    return await tenantDb.select().from(emailTemplates).where(tenantDb.withTenantFilter(emailTemplates, sql`true`)).orderBy(desc(emailTemplates.lastUsed));
+    return await tenantDb.query.emailTemplates.findMany({
+      where: tenantDb.withTenantFilter(emailTemplates),
+      orderBy: desc(emailTemplates.lastUsed)
+    });
   } catch (error) {
     console.error('Error getting templates:', error);
     throw new Error('Failed to retrieve email templates');

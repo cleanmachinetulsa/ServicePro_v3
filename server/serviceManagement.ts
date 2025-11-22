@@ -8,7 +8,9 @@ export function registerServiceManagementRoutes(app: Express) {
   app.get('/api/admin/services', async (req: Request, res: Response) => {
     try {
       const tenantDb = (req as any).tenantDb as TenantDb;
-      const allServices = await tenantDb.select().from(services).where(tenantDb.withTenantFilter(services));
+      const allServices = await tenantDb.query.services.findMany({
+        where: tenantDb.withTenantFilter(services)
+      });
       res.json({ success: true, services: allServices });
     } catch (error) {
       console.error('Error fetching services from database:', error);
@@ -24,16 +26,18 @@ export function registerServiceManagementRoutes(app: Express) {
     try {
       const tenantDb = (req as any).tenantDb as TenantDb;
       const serviceId = parseInt(req.params.id);
-      const service = await tenantDb.select().from(services).where(tenantDb.withTenantFilter(services, eq(services.id, serviceId)));
+      const service = await tenantDb.query.services.findFirst({
+        where: tenantDb.withTenantFilter(services, eq(services.id, serviceId))
+      });
       
-      if (service.length === 0) {
+      if (!service) {
         return res.status(404).json({ 
           success: false, 
           error: 'Service not found' 
         });
       }
       
-      res.json({ success: true, service: service[0] });
+      res.json({ success: true, service });
     } catch (error) {
       console.error('Error fetching service:', error);
       res.status(500).json({ 

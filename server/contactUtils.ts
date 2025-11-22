@@ -144,11 +144,9 @@ export async function findPotentialDuplicates(
 
   // 1. Exact phone match (highest confidence - 100%)
   if (input.phoneE164) {
-    const phoneMatches = await tenantDb
-      .select()
-      .from(contacts)
-      .where(tenantDb.withTenantFilter(contacts, eq(contacts.phoneE164, input.phoneE164)))
-      .execute();
+    const phoneMatches = await tenantDb.query.contacts.findMany({
+      where: tenantDb.withTenantFilter(contacts, eq(contacts.phoneE164, input.phoneE164))
+    });
 
     for (const contact of phoneMatches) {
       matches.push({
@@ -163,11 +161,9 @@ export async function findPotentialDuplicates(
   if (input.email) {
     const canonicalEmail = canonicalizeEmail(input.email);
     if (canonicalEmail) {
-      const emailMatches = await tenantDb
-        .select()
-        .from(contacts)
-        .where(tenantDb.withTenantFilter(contacts, eq(contacts.email, canonicalEmail)))
-        .execute();
+      const emailMatches = await tenantDb.query.contacts.findMany({
+        where: tenantDb.withTenantFilter(contacts, eq(contacts.email, canonicalEmail))
+      });
 
       for (const contact of emailMatches) {
         // Skip if already matched by phone
@@ -188,7 +184,9 @@ export async function findPotentialDuplicates(
     const nameLower = input.name.toLowerCase();
 
     // Get all contacts and filter by name similarity and phone last 4
-    const allContacts = await tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts)).execute();
+    const allContacts = await tenantDb.query.contacts.findMany({
+      where: tenantDb.withTenantFilter(contacts)
+    });
 
     for (const contact of allContacts) {
       // Skip if already matched
@@ -217,7 +215,9 @@ export async function findPotentialDuplicates(
     const emailDomain = input.email.split('@')[1]?.toLowerCase();
     const nameLower = input.name.toLowerCase();
 
-    const allContacts = await tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts)).execute();
+    const allContacts = await tenantDb.query.contacts.findMany({
+      where: tenantDb.withTenantFilter(contacts)
+    });
 
     for (const contact of allContacts) {
       // Skip if already matched
@@ -343,21 +343,17 @@ export async function searchContacts(
   const canonicalEmail = query.includes('@') ? canonicalizeEmail(query) : null;
 
   // Build search query
-  const results = await tenantDb
-    .select()
-    .from(contacts)
-    .where(
-      tenantDb.withTenantFilter(contacts,
-        or(
-          phoneE164 ? eq(contacts.phoneE164, phoneE164) : undefined,
-          canonicalEmail ? eq(contacts.email, canonicalEmail) : undefined,
-          sql`LOWER(${contacts.name}) LIKE ${`%${queryLower}%`}`,
-          sql`LOWER(${contacts.company}) LIKE ${`%${queryLower}%`}`
-        )
+  const results = await tenantDb.query.contacts.findMany({
+    where: tenantDb.withTenantFilter(contacts,
+      or(
+        phoneE164 ? eq(contacts.phoneE164, phoneE164) : undefined,
+        canonicalEmail ? eq(contacts.email, canonicalEmail) : undefined,
+        sql`LOWER(${contacts.name}) LIKE ${`%${queryLower}%`}`,
+        sql`LOWER(${contacts.company}) LIKE ${`%${queryLower}%`}`
       )
-    )
-    .limit(limit)
-    .execute();
+    ),
+    limit
+  });
 
   return results;
 }
@@ -477,34 +473,34 @@ export async function mergeContacts(
 
   // Get both contacts
   const [primary, duplicate] = await Promise.all([
-    tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts, eq(contacts.id, primaryContactId))).execute(),
-    tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts, eq(contacts.id, duplicateContactId))).execute(),
+    tenantDb.query.contacts.findFirst({ where: tenantDb.withTenantFilter(contacts, eq(contacts.id, primaryContactId)) }),
+    tenantDb.query.contacts.findFirst({ where: tenantDb.withTenantFilter(contacts, eq(contacts.id, duplicateContactId)) }),
   ]);
 
-  if (!primary[0] || !duplicate[0]) {
+  if (!primary || !duplicate) {
     throw new Error('Contact not found');
   }
 
-  console.log(`[Contact Merge] Merging "${duplicate[0].name}" (${duplicate[0].phoneE164}) into "${primary[0].name}" (${primary[0].phoneE164})`);
+  console.log(`[Contact Merge] Merging "${duplicate.name}" (${duplicate.phoneE164}) into "${primary.name}" (${primary.phoneE164})`);
 
   // Use transaction for the entire merge operation
   return await tenantDb.transaction(async (tx) => {
     // Merge strategy: keep primary data, fill in missing fields from duplicate
     const merged = {
-      ...primary[0],
-      email: primary[0].email || duplicate[0].email,
-      company: primary[0].company || duplicate[0].company,
-      address: primary[0].address || duplicate[0].address,
-      city: primary[0].city || duplicate[0].city,
-      state: primary[0].state || duplicate[0].state,
-      zip: primary[0].zip || duplicate[0].zip,
-      notes: primary[0].notes
-        ? `${primary[0].notes}\n\n[Merged from contact #${duplicateContactId}]: ${duplicate[0].notes || ''}`
-        : duplicate[0].notes,
+      ...primary,
+      email: primary.email || duplicate.email,
+      company: primary.company || duplicate.company,
+      address: primary.address || duplicate.address,
+      city: primary.city || duplicate.city,
+      state: primary.state || duplicate.state,
+      zip: primary.zip || duplicate.zip,
+      notes: primary.notes
+        ? `${primary.notes}\n\n[Merged from contact #${duplicateContactId}]: ${duplicate.notes || ''}`
+        : duplicate.notes,
       roleTags: Array.from(
         new Set([
-          ...(primary[0].roleTags as string[] || []),
-          ...(duplicate[0].roleTags as string[] || []),
+          ...(primary.roleTags as string[] || []),
+          ...(duplicate.roleTags as string[] || []),
         ])
       ),
     };
