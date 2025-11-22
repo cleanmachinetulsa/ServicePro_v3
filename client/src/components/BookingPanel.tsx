@@ -51,12 +51,19 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     enabled: !!conversationId,
   });
 
+  // Fetch conversation to get customer ID
+  const { data: conversationData } = useQuery<{ success: boolean; data: any }>({
+    queryKey: [`/api/conversations/${conversationId}`],
+    enabled: !!conversationId,
+  });
+
   // Fetch all services for the dropdown
   const { data: servicesData } = useQuery<{ success: boolean; services: Service[] }>({
     queryKey: ['/api/services'],
   });
 
   const appointment = appointmentData?.appointment;
+  const conversation = conversationData?.data;
   const services = servicesData?.services || [];
 
   // Form state
@@ -131,7 +138,10 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
   });
 
   const handleSave = () => {
-    if (!appointment?.customerId) {
+    // Get customer ID from either existing appointment or conversation
+    const customerId = appointment?.customerId || conversation?.customerId;
+    
+    if (!customerId) {
       toast({
         title: 'Customer required',
         description: 'Cannot create appointment without customer information',
@@ -146,7 +156,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       .filter(req => req.length > 0);
 
     saveAppointmentMutation.mutate({
-      customerId: appointment.customerId,
+      customerId: customerId,
       serviceId: formData.serviceId,
       scheduledTime: formData.scheduledTime,
       address: formData.address,
@@ -161,8 +171,134 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     }
   };
 
-  if (!appointment) {
-    return null; // No appointment associated with this conversation
+  // If no appointment exists and not editing, show a "Create Appointment" button
+  if (!appointment && !isEditing) {
+    return (
+      <div className="border-t border-border">
+        <Card className="rounded-none border-x-0 border-b-0">
+          <CardContent className="px-4 py-3">
+            <Button
+              onClick={() => {
+                setIsEditing(true);
+                setIsOpen(true); // Open the panel when creating
+                // Initialize form with empty values
+                setFormData({
+                  serviceId: services[0]?.id || 0,
+                  scheduledTime: '',
+                  address: '',
+                  additionalRequests: '',
+                });
+              }}
+              className="w-full"
+              variant="outline"
+              size="sm"
+              data-testid="button-create-appointment"
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Create Appointment
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // If no appointment exists but we're editing (creating new), show the form
+  if (!appointment && isEditing) {
+    return (
+      <div className="border-t border-border">
+        <Card className="rounded-none border-x-0 border-b-0">
+          <CardHeader className="py-3 px-4 bg-accent/50">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              <CardTitle className="text-sm font-medium">
+                Create New Appointment
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 pt-4 space-y-4">
+            {/* Create Mode - Same form as edit mode */}
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="service-create" className="text-xs">Service</Label>
+                <Select
+                  value={formData.serviceId.toString()}
+                  onValueChange={(value) => setFormData({ ...formData, serviceId: parseInt(value) })}
+                >
+                  <SelectTrigger id="service-create" className="mt-1" data-testid="select-service">
+                    <SelectValue placeholder="Select a service" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services.map((service) => (
+                      <SelectItem key={service.id} value={service.id.toString()}>
+                        {service.name} ({service.priceRange})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="scheduledTime-create" className="text-xs">Date & Time</Label>
+                <Input
+                  id="scheduledTime-create"
+                  type="datetime-local"
+                  value={formData.scheduledTime ? format(new Date(formData.scheduledTime), "yyyy-MM-dd'T'HH:mm") : ''}
+                  onChange={(e) => setFormData({ ...formData, scheduledTime: new Date(e.target.value).toISOString() })}
+                  className="mt-1"
+                  data-testid="input-scheduled-time"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="address-create" className="text-xs">Address</Label>
+                <Input
+                  id="address-create"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="Enter service address"
+                  className="mt-1"
+                  data-testid="input-address"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="additionalRequests-create" className="text-xs">Additional Requests</Label>
+                <Input
+                  id="additionalRequests-create"
+                  value={formData.additionalRequests}
+                  onChange={(e) => setFormData({ ...formData, additionalRequests: e.target.value })}
+                  placeholder="Comma-separated requests"
+                  className="mt-1"
+                  data-testid="input-additional-requests"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={handleSave}
+                  size="sm"
+                  className="flex-1"
+                  disabled={saveAppointmentMutation.isPending}
+                  data-testid="button-save-appointment"
+                >
+                  <Save className="h-3 w-3 mr-1" />
+                  {saveAppointmentMutation.isPending ? 'Creating...' : 'Create Appointment'}
+                </Button>
+                <Button
+                  onClick={() => setIsEditing(false)}
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-cancel-edit"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
