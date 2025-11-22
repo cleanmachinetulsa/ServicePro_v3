@@ -5,7 +5,6 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { db } from "./db";
 import { contacts, appointments, authorizations, paymentLinks, giftCards } from "@shared/schema";
 import { eq, or, sql, desc, and } from "drizzle-orm";
 import {
@@ -184,10 +183,10 @@ export function registerContactsRoutes(app: Express) {
     try {
       const contactId = parseInt(req.params.id);
 
-      const contact = await db
+      const contact = await req.tenantDb!
         .select()
         .from(contacts)
-        .where(eq(contacts.id, contactId))
+        .where(req.tenantDb!.withTenantFilter(contacts, eq(contacts.id, contactId)))
         .execute();
 
       if (!contact[0]) {
@@ -198,15 +197,18 @@ export function registerContactsRoutes(app: Express) {
       }
 
       // Get related appointments
-      const relatedAppointments = await db
+      const relatedAppointments = await req.tenantDb!
         .select()
         .from(appointments)
         .where(
-          or(
-            eq(appointments.requesterContactId, contactId),
-            eq(appointments.serviceContactId, contactId),
-            eq(appointments.vehicleOwnerContactId, contactId),
-            eq(appointments.billingContactId, contactId)
+          req.tenantDb!.withTenantFilter(
+            appointments,
+            or(
+              eq(appointments.requesterContactId, contactId),
+              eq(appointments.serviceContactId, contactId),
+              eq(appointments.vehicleOwnerContactId, contactId),
+              eq(appointments.billingContactId, contactId)
+            )
           )
         )
         .orderBy(desc(appointments.scheduledTime))
@@ -236,7 +238,7 @@ export function registerContactsRoutes(app: Express) {
       const contactId = parseInt(req.params.id);
       const updates = req.body;
 
-      const updated = await db
+      const updated = await req.tenantDb!
         .update(contacts)
         .set({
           ...updates,
@@ -276,7 +278,7 @@ export function registerContactsRoutes(app: Express) {
       const validated = assignRolesSchema.parse({ ...req.body, appointmentId });
 
       // Update appointment with role assignments
-      const updated = await db
+      const updated = await req.tenantDb!
         .update(appointments)
         .set({
           requesterContactId: validated.requesterContactId,
@@ -322,10 +324,10 @@ export function registerContactsRoutes(app: Express) {
     try {
       const appointmentId = parseInt(req.params.id);
 
-      const appointment = await db
+      const appointment = await req.tenantDb!
         .select()
         .from(appointments)
-        .where(eq(appointments.id, appointmentId))
+        .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
         .execute();
 
       if (!appointment[0]) {
@@ -348,10 +350,10 @@ export function registerContactsRoutes(app: Express) {
       let roleContacts: any = {};
 
       if (contactIds.length > 0) {
-        const fetchedContacts = await db
+        const fetchedContacts = await req.tenantDb!
           .select()
           .from(contacts)
-          .where(sql`${contacts.id} IN ${contactIds}`)
+          .where(req.tenantDb!.withTenantFilter(contacts, sql`${contacts.id} IN ${contactIds}`))
           .execute();
 
         // Map contacts to roles

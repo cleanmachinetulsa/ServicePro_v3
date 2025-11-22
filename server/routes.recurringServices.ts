@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { recurringServices, customers, services, appointments } from '@shared/schema';
 import { eq, and, gte, desc } from 'drizzle-orm';
 import { insertRecurringServiceSchema } from '@shared/schema';
@@ -13,7 +12,7 @@ const router = Router();
 // Get all recurring services
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const allRecurringServices = await db
+    const allRecurringServices = await req.tenantDb!
       .select({
         id: recurringServices.id,
         customerId: recurringServices.customerId,
@@ -37,6 +36,7 @@ router.get('/', async (req: Request, res: Response) => {
       .from(recurringServices)
       .leftJoin(customers, eq(recurringServices.customerId, customers.id))
       .leftJoin(services, eq(recurringServices.serviceId, services.id))
+      .where(req.tenantDb!.withTenantFilter(recurringServices))
       .orderBy(recurringServices.nextScheduledDate);
 
     res.json({ data: allRecurringServices });
@@ -51,10 +51,10 @@ router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
-    const [recurringService] = await db
+    const [recurringService] = await req.tenantDb!
       .select()
       .from(recurringServices)
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .limit(1);
 
     if (!recurringService) {
@@ -73,7 +73,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const validatedData = insertRecurringServiceSchema.parse(req.body);
 
-    const [newRecurringService] = await db
+    const [newRecurringService] = await req.tenantDb!
       .insert(recurringServices)
       .values({
         ...validatedData,
@@ -102,13 +102,13 @@ router.put('/:id', async (req: Request, res: Response) => {
     const updateSchema = insertRecurringServiceSchema.partial();
     const validatedData = updateSchema.parse(req.body);
 
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         ...validatedData,
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     if (!updated) {
@@ -136,7 +136,7 @@ router.post('/:id/pause', async (req: Request, res: Response) => {
     });
     const { reason } = pauseSchema.parse(req.body);
 
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         status: 'paused',
@@ -144,7 +144,7 @@ router.post('/:id/pause', async (req: Request, res: Response) => {
         pausedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     if (!updated) {
@@ -171,7 +171,7 @@ router.post('/:id/resume', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid ID' });
     }
 
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         status: 'active',
@@ -179,7 +179,7 @@ router.post('/:id/resume', async (req: Request, res: Response) => {
         pausedAt: null,
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     if (!updated) {
@@ -198,14 +198,14 @@ router.post('/:id/cancel', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         status: 'cancelled',
         cancelledAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     if (!updated) {
@@ -224,9 +224,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const [deleted] = await db
+    const [deleted] = await req.tenantDb!
       .delete(recurringServices)
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     if (!deleted) {
@@ -247,8 +247,8 @@ router.post('/customer/:phone/pause/:id', async (req: Request, res: Response) =>
     const { reason } = req.body;
 
     // Find customer by phone
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.phone, phone),
+    const customer = await req.tenantDb!.query.customers.findFirst({
+      where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone)),
     });
 
     if (!customer) {
@@ -256,11 +256,11 @@ router.post('/customer/:phone/pause/:id', async (req: Request, res: Response) =>
     }
 
     // Verify the recurring service belongs to this customer
-    const service = await db.query.recurringServices.findFirst({
-      where: and(
+    const service = await req.tenantDb!.query.recurringServices.findFirst({
+      where: req.tenantDb!.withTenantFilter(recurringServices, and(
         eq(recurringServices.id, parseInt(id)),
         eq(recurringServices.customerId, customer.id)
-      ),
+      )),
     });
 
     if (!service) {
@@ -268,13 +268,13 @@ router.post('/customer/:phone/pause/:id', async (req: Request, res: Response) =>
     }
 
     // Pause the service
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         isActive: false,
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     res.json({ data: updated });
@@ -290,8 +290,8 @@ router.post('/customer/:phone/resume/:id', async (req: Request, res: Response) =
     const { phone, id } = req.params;
 
     // Find customer by phone
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.phone, phone),
+    const customer = await req.tenantDb!.query.customers.findFirst({
+      where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone)),
     });
 
     if (!customer) {
@@ -299,11 +299,11 @@ router.post('/customer/:phone/resume/:id', async (req: Request, res: Response) =
     }
 
     // Verify the recurring service belongs to this customer
-    const service = await db.query.recurringServices.findFirst({
-      where: and(
+    const service = await req.tenantDb!.query.recurringServices.findFirst({
+      where: req.tenantDb!.withTenantFilter(recurringServices, and(
         eq(recurringServices.id, parseInt(id)),
         eq(recurringServices.customerId, customer.id)
-      ),
+      )),
     });
 
     if (!service) {
@@ -311,13 +311,13 @@ router.post('/customer/:phone/resume/:id', async (req: Request, res: Response) =
     }
 
     // Resume the service
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         isActive: true,
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     res.json({ data: updated });
@@ -337,8 +337,8 @@ router.get('/customer/:phone', async (req: Request, res: Response) => {
     }
 
     // Find customer by phone
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.phone, phone),
+    const customer = await req.tenantDb!.query.customers.findFirst({
+      where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, phone)),
     });
 
     if (!customer) {
@@ -346,17 +346,17 @@ router.get('/customer/:phone', async (req: Request, res: Response) => {
     }
 
     // Get recurring services for this customer only
-    const customerRecurringServices = await db
+    const customerRecurringServices = await req.tenantDb!
       .select()
       .from(recurringServices)
-      .where(eq(recurringServices.customerId, customer.id))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.customerId, customer.id)))
       .orderBy(desc(recurringServices.createdAt));
 
     // Populate service details
     const servicesWithDetails = await Promise.all(
       customerRecurringServices.map(async (rs) => {
-        const service = await db.query.services.findFirst({
-          where: eq(services.id, rs.serviceId),
+        const service = await req.tenantDb!.query.services.findFirst({
+          where: req.tenantDb!.withTenantFilter(services, eq(services.id, rs.serviceId)),
         });
         return {
           ...rs,
@@ -394,7 +394,7 @@ router.post('/defer/:id', async (req: Request, res: Response) => {
     tokenExpiresAt.setDate(tokenExpiresAt.getDate() + deferredUntilDays + 7); // Extra 7 days buffer
 
     // Update recurring service with defer status
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         status: 'deferred',
@@ -403,7 +403,7 @@ router.post('/defer/:id', async (req: Request, res: Response) => {
         tokenExpiresAt,
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, parseInt(id))))
       .returning();
 
     if (!updated) {
@@ -411,8 +411,8 @@ router.post('/defer/:id', async (req: Request, res: Response) => {
     }
 
     // Get customer info for notification
-    const customer = await db.query.customers.findFirst({
-      where: eq(customers.id, updated.customerId),
+    const customer = await req.tenantDb!.query.customers.findFirst({
+      where: req.tenantDb!.withTenantFilter(customers, eq(customers.id, updated.customerId)),
     });
 
     if (!customer) {
@@ -470,10 +470,10 @@ router.post('/resume-from-token', async (req: Request, res: Response) => {
     }
 
     // Find service by token
-    const [service] = await db
+    const [service] = await req.tenantDb!
       .select()
       .from(recurringServices)
-      .where(eq(recurringServices.bookingToken, token))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.bookingToken, token)))
       .limit(1);
 
     if (!service) {
@@ -487,7 +487,7 @@ router.post('/resume-from-token', async (req: Request, res: Response) => {
 
     // Security: Prevent token reuse by clearing it immediately
     // Restore service to active status and set next scheduled date
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(recurringServices)
       .set({
         status: 'active',
@@ -497,7 +497,7 @@ router.post('/resume-from-token', async (req: Request, res: Response) => {
         nextScheduledDate: nextScheduledDate || null,
         updatedAt: new Date(),
       })
-      .where(eq(recurringServices.id, service.id))
+      .where(req.tenantDb!.withTenantFilter(recurringServices, eq(recurringServices.id, service.id)))
       .returning();
 
     // Return updated service details

@@ -1,5 +1,4 @@
 import { Request, Response, Router } from 'express';
-import { db } from './db';
 import { quickReplyCategories, quickReplyTemplates } from '@shared/schema';
 import { eq, asc } from 'drizzle-orm';
 import { 
@@ -14,18 +13,19 @@ const router = Router();
 // Get all categories with their templates
 router.get('/categories', async (req: Request, res: Response) => {
   try {
-    const categories = await db
+    const categories = await req.tenantDb!
       .select()
       .from(quickReplyCategories)
+      .where(req.tenantDb!.withTenantFilter(quickReplyCategories))
       .orderBy(asc(quickReplyCategories.displayOrder));
 
     // Get templates for each category
     const categoriesWithTemplates = await Promise.all(
       categories.map(async (category) => {
-        const templates = await db
+        const templates = await req.tenantDb!
           .select()
           .from(quickReplyTemplates)
-          .where(eq(quickReplyTemplates.categoryId, category.id))
+          .where(req.tenantDb!.withTenantFilter(quickReplyTemplates, eq(quickReplyTemplates.categoryId, category.id)))
           .orderBy(asc(quickReplyTemplates.displayOrder));
 
         return {
@@ -50,7 +50,7 @@ router.post('/categories', async (req: Request, res: Response) => {
   try {
     const validatedData = insertQuickReplyCategorySchema.parse(req.body);
 
-    const newCategory = await db
+    const newCategory = await req.tenantDb!
       .insert(quickReplyCategories)
       .values(validatedData)
       .returning();
@@ -71,10 +71,10 @@ router.put('/categories/:id', async (req: Request, res: Response) => {
     const categoryId = parseInt(req.params.id);
     const validatedData = insertQuickReplyCategorySchema.partial().parse(req.body);
 
-    const updatedCategory = await db
+    const updatedCategory = await req.tenantDb!
       .update(quickReplyCategories)
       .set(validatedData)
-      .where(eq(quickReplyCategories.id, categoryId))
+      .where(req.tenantDb!.withTenantFilter(quickReplyCategories, eq(quickReplyCategories.id, categoryId)))
       .returning();
 
     if (updatedCategory.length === 0) {
@@ -100,14 +100,14 @@ router.delete('/categories/:id', async (req: Request, res: Response) => {
     const categoryId = parseInt(req.params.id);
 
     // Delete all templates in this category first
-    await db
+    await req.tenantDb!
       .delete(quickReplyTemplates)
-      .where(eq(quickReplyTemplates.categoryId, categoryId));
+      .where(req.tenantDb!.withTenantFilter(quickReplyTemplates, eq(quickReplyTemplates.categoryId, categoryId)));
 
     // Delete the category
-    const deleted = await db
+    const deleted = await req.tenantDb!
       .delete(quickReplyCategories)
-      .where(eq(quickReplyCategories.id, categoryId))
+      .where(req.tenantDb!.withTenantFilter(quickReplyCategories, eq(quickReplyCategories.id, categoryId)))
       .returning();
 
     if (deleted.length === 0) {
@@ -132,7 +132,7 @@ router.post('/templates', async (req: Request, res: Response) => {
   try {
     const validatedData = insertQuickReplyTemplateSchema.parse(req.body);
 
-    const newTemplate = await db
+    const newTemplate = await req.tenantDb!
       .insert(quickReplyTemplates)
       .values(validatedData)
       .returning();
@@ -153,10 +153,10 @@ router.put('/templates/:id', async (req: Request, res: Response) => {
     const templateId = parseInt(req.params.id);
     const validatedData = insertQuickReplyTemplateSchema.partial().parse(req.body);
 
-    const updatedTemplate = await db
+    const updatedTemplate = await req.tenantDb!
       .update(quickReplyTemplates)
       .set(validatedData)
-      .where(eq(quickReplyTemplates.id, templateId))
+      .where(req.tenantDb!.withTenantFilter(quickReplyTemplates, eq(quickReplyTemplates.id, templateId)))
       .returning();
 
     if (updatedTemplate.length === 0) {
@@ -181,9 +181,9 @@ router.delete('/templates/:id', async (req: Request, res: Response) => {
   try {
     const templateId = parseInt(req.params.id);
 
-    const deleted = await db
+    const deleted = await req.tenantDb!
       .delete(quickReplyTemplates)
-      .where(eq(quickReplyTemplates.id, templateId))
+      .where(req.tenantDb!.withTenantFilter(quickReplyTemplates, eq(quickReplyTemplates.id, templateId)))
       .returning();
 
     if (deleted.length === 0) {
@@ -208,10 +208,10 @@ router.post('/templates/:id/use', async (req: Request, res: Response) => {
   try {
     const templateId = parseInt(req.params.id);
 
-    await db
+    await req.tenantDb!
       .update(quickReplyTemplates)
       .set({ lastUsed: new Date() })
-      .where(eq(quickReplyTemplates.id, templateId));
+      .where(req.tenantDb!.withTenantFilter(quickReplyTemplates, eq(quickReplyTemplates.id, templateId)));
 
     res.json({ success: true });
   } catch (error) {
