@@ -1,0 +1,257 @@
+🚀 TASK: Phase 2.3 – IVR Mode Support for /twilio/voice/incoming
+
+Context (from MASTER_PLAN v3.3 – Phase 2):
+
+We already have a canonical voice endpoint: POST /twilio/voice/incoming.
+
+We already have a multi-tenant phone config table: tenant_phone_config with:
+
+tenantId
+
+phoneNumber
+
+sipDomain
+
+sipUsername
+
+ivrMode ('simple' | 'ivr' | 'ai-voice')
+
+Phase 2.1 + 2.2 are done and production-ready:
+
+Calls resolve tenant by phone_number via tenantPhoneConfig.
+
+Default behavior (ivrMode = 'simple') is direct SIP forwarding to:
+
+jody@cleanmachinetulsa.sip.twilio.com for the root tenant.
+
+Root tenant (id = 'root') is configured with:
+
+phoneNumber = +19188565304
+
+sipDomain = cleanmachinetulsa.sip.twilio.com
+
+sipUsername = jody
+
+ivrMode = 'simple' (for now)
+
+🎯 Goal for this task
+
+Implement IVR branching in POST /twilio/voice/incoming based on ivrMode, starting with a simple IVR menu for the root tenant, but designed in a multi-tenant-safe way.
+
+We are not touching AI-voice yet – just simple IVR vs simple SIP forward.
+
+🔧 Behavior Requirements
+
+Respect ivrMode from tenant_phone_config:
+
+If ivrMode === 'simple' → keep current behavior (direct SIP <Dial> to {sipUsername}@{sipDomain} with caller ID passthrough).
+
+If ivrMode === 'ivr' → present a multi-option IVR menu.
+
+If ivrMode === 'ai-voice' → for now, just fallback to simple (we’ll wire AI voice later in Phase 4).
+
+IVR menu (for ivrMode = 'ivr'):
+
+For now, implement this hardcoded for the root tenant, but architected so it can be tenant-specific later:
+
+First interaction (no Digits yet):
+
+Play / say:
+
+“Thanks for calling [Business Name].
+Press 1 to hear a quick overview of our services and get a text with booking info.
+Press 2 if you’d like to talk to a person.
+Press 3 to leave a detailed voicemail and we’ll text you back.
+Press 7 if you’d like to hear something fun.”
+
+Use <Gather numDigits="1"> (or input="dtmf" if needed) around the prompt.
+
+On no input / timeout, repeat once, then route to voicemail or hang up (your call, but please pick one sane default and comment it).
+
+Press 1 – Services overview + SMS:
+
+TwiML:
+
+<Say> a short summary of services (you can hardcode a generic summary for now; we’ll later inject per-tenant copy).
+
+Optionally <Pause> then say they’ll receive a text with a link.
+
+After the call branch, trigger an SMS to the caller using the existing SMS sending infrastructure (whatever helper/service we use now), something like:
+
+“Thanks for calling [Business Name]! Here’s our info & booking link: [URL]”
+
+Then either:
+
+Return to the menu, or
+
+Say goodbye and hang up.
+
+For now, keep logic simple and comment clearly what’s happening.
+
+Press 2 – Talk to a person (single-number pattern):
+
+No second number needed for now.
+
+Behavior:
+
+<Dial callerId="{From}"> <Sip>{sipUsername}@{sipDomain}</Sip> </Dial>
+
+i.e., same SIP endpoint as simple mode.
+
+If the SIP call fails/busy, play a brief apology and optionally drop them into the voicemail branch (reuse code if easy).
+
+Press 3 – Leave voicemail:
+
+TwiML:
+
+Brief instruction via <Say> (e.g., “Please leave your name, vehicle, and what you’re looking to get done, and we’ll text you back.”)
+
+<Record> to capture audio.
+
+Configure action or recordingStatusCallback to an existing or new webhook that:
+
+Saves the voicemail metadata.
+
+Notifies the tenant (root) – SMS or email, whichever is currently easiest with existing code.
+
+After recording:
+
+<Say> a short confirmation + </Hangup>.
+
+Press 7 – Easter egg / fun:
+
+Simple, light behavior:
+
+<Say> a short, fun / kind of playful message (no profanity, no weird stuff).
+
+Then either:
+
+Return to main menu, or
+
+Say goodbye and hang up.
+
+Keep it easily replaceable later (e.g., extracted into a helper or a config block).
+
+Other digits / invalid input:
+
+If user presses something else:
+
+<Say>: “Sorry, that’s not a valid option.”
+
+Return to the menu (once), then fallback to voicemail or hangup after repeated invalid input.
+
+Multi-tenant-safe design
+
+Even though we only have root right now, please design the code so:
+
+The IVR logic can eventually read some config per tenant (e.g., tenant name, booking URL) from:
+
+tenantConfig (business name, etc.), and/or
+
+A future tenant_ivr_config table.
+
+For now, you can hardcode the root tenant’s business name and booking link, but:
+
+Put them behind helpers or constants with clear TODOs so we can later switch to DB-driven IVR per tenant.
+
+Do NOT break existing behavior
+
+If a tenant’s ivrMode is null/undefined/anything unexpected, fallback to simple.
+
+If tenant_phone_config lookup fails, keep the existing fallback to root SIP (as Phase 2.2 currently does).
+
+✅ Implementation Checklist (What I want you to do)
+
+Update canonical voice route
+
+File: server/routes.twilioVoiceCanonical.ts
+
+Add branching on phoneConfig.ivrMode:
+
+'simple' → existing SIP forward (unchanged).
+
+'ivr' → new IVR flow as described.
+
+'ai-voice' → temporary fallback to 'simple' with clear TODO comment.
+
+Use a small helper for IVR logic
+
+Either:
+
+Implement IVR logic inline but organized, or
+
+Extract to a helper like buildIvrResponse(config, reqBody) so we can later plug in per-tenant copy.
+
+Comment clearly where we will later inject:
+
+Tenant business name.
+
+Booking URL.
+
+Custom messaging per tenant.
+
+Integrate SMS + voicemail behavior using existing infra
+
+For Press 1:
+
+Call our existing SMS send helper/service in Node (whatever we use now to send outbound messages) to text the caller.
+
+For Press 3:
+
+Wire recording callbacks into either:
+
+An existing voicemail/recording handler route, or
+
+A small new route that at least logs + notifies via SMS or email for now.
+
+Keep code minimal but real – no dummy no-op stubs. It’s okay if notifications are simple.
+
+Add / extend tests
+
+File: server/tests/twilioVoiceCanonical.test.ts
+
+Add tests for:
+
+ivrMode = 'ivr' → returns TwiML with <Gather> and expected menu text.
+
+Press 1 (Digits=1) → returns TwiML with a message about services.
+
+Press 2 (Digits=2) → returns TwiML with <Dial> and <Sip> using the same SIP config as simple mode.
+
+Press 3 (Digits=3) → returns TwiML with <Record> (voicemail behavior).
+
+Press 7 (Digits=7) → returns TwiML with some “fun” <Say>.
+
+Unknown ivrMode → falls back to simple SIP forward.
+
+You can mock SMS/voicemail side effects where needed; we mainly need to validate TwiML structure and branching.
+
+Keep logs helpful but not noisy
+
+Example:
+
+[CANONICAL VOICE] tenant=root, ivrMode=ivr, action=menu
+
+[CANONICAL VOICE] tenant=root, ivrMode=ivr, selection=2 (forward to SIP)
+
+🧪 Acceptance Criteria (for me to consider Phase 2.3 “DONE”)
+
+ For root tenant, with ivrMode = 'ivr' set in tenant_phone_config, calling the number:
+
+Plays the IVR menu.
+
+Press 1 → plays services overview + sends me an SMS.
+
+Press 2 → calls my SIP endpoint with caller ID preserved.
+
+Press 3 → records a voicemail and triggers a basic notification.
+
+Press 7 → plays a “fun” message.
+
+ For tenants with ivrMode = 'simple' (or unset), behavior is unchanged (direct SIP).
+
+ Tests for IVR mode all pass.
+
+ No breaking changes to existing canonical voice behavior or Telephony spine.
+
+Use this entire message as instructions and implement Phase 2.3 accordingly.
