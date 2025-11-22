@@ -160,7 +160,12 @@ export function createTenantDb(tenant: TenantInfo): TenantDb {
       return wrappedInsert as any;
     },
     
-    select: db.select,
+    select: (...args: any[]) => {
+      console.log('[TENANTDB] Calling select with args:', args);
+      const result = (db as any).select(...args);
+      console.log('[TENANTDB] Select returned:', typeof result, result.constructor?.name);
+      return result;
+    },
     
     update: <T extends any>(table: T) => {
       const metadata = TABLE_METADATA.get(table);
@@ -240,7 +245,18 @@ export function createTenantDb(tenant: TenantInfo): TenantDb {
     withTenantFilter: <T extends any>(table: T, additionalConditions?: SQL | undefined) =>
       withTenantFilter(table, tenantId, additionalConditions),
     
-    execute: db.execute,
+    execute: db.execute.bind(db),
+  };
+}
+
+export function wrapTenantDb(database: typeof db, tenantId: string): TenantDb {
+  const tenantInfo: TenantInfo = { id: tenantId, name: tenantId };
+  const tenantDb = createTenantDb(tenantInfo);
+  
+  return {
+    ...tenantDb,
+    select: (...args: any[]) => (database as any).select(...args),
+    execute: (...args: any[]) => (database as any).execute(...args),
   };
 }
 

@@ -54,7 +54,7 @@ const smsCampaignSchema = z.object({
 // Get all email campaigns
 router.get('/email', async (req, res) => {
   try {
-    const campaigns = await getAllEmailCampaigns();
+    const campaigns = await getAllEmailCampaigns((req as any).tenantDb!);
     res.json({ success: true, campaigns });
   } catch (error: any) {
     console.error('Error fetching email campaigns:', error);
@@ -66,7 +66,7 @@ router.get('/email', async (req, res) => {
 router.get('/email/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const campaign = await getEmailCampaignById(id);
+    const campaign = await getEmailCampaignById((req as any).tenantDb!, id);
     res.json({ success: true, campaign });
   } catch (error: any) {
     console.error('Error fetching email campaign:', error);
@@ -79,7 +79,7 @@ router.post('/email', async (req, res) => {
   try {
     const data = emailCampaignSchema.parse(req.body);
     
-    const campaign = await createEmailCampaign({
+    const campaign = await createEmailCampaign((req as any).tenantDb!, {
       name: data.name,
       subject: data.subject,
       content: data.content,
@@ -104,7 +104,7 @@ router.put('/email/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     const data = emailCampaignSchema.partial().parse(req.body);
     
-    const campaign = await updateEmailCampaign(id, {
+    const campaign = await updateEmailCampaign((req as any).tenantDb!, id, {
       name: data.name,
       subject: data.subject,
       content: data.content,
@@ -126,7 +126,7 @@ router.put('/email/:id', async (req, res) => {
 router.post('/email/:id/send', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const campaign = await sendCampaignNow(id);
+    const campaign = await sendCampaignNow((req as any).tenantDb!, id);
     res.json({ success: true, campaign, message: 'Campaign is being processed' });
   } catch (error: any) {
     console.error('Error sending email campaign:', error);
@@ -138,7 +138,7 @@ router.post('/email/:id/send', async (req, res) => {
 router.delete('/email/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const campaign = await cancelEmailCampaign(id);
+    const campaign = await cancelEmailCampaign((req as any).tenantDb!, id);
     res.json({ success: true, campaign });
   } catch (error: any) {
     console.error('Error cancelling email campaign:', error);

@@ -1392,7 +1392,7 @@ export async function registerRoutes(app: Express) {
   app.get('/api/services', async (req, res) => {
     // Load from Google Sheets (which merges image URLs from database)
     try {
-      const googleSheetServices = await getAllServices();
+      const googleSheetServices = await getAllServices(req.tenantDb!);
 
       if (googleSheetServices && Array.isArray(googleSheetServices) && googleSheetServices.length > 0) {
         // Validate and sanitize Google Sheets data
@@ -1458,7 +1458,7 @@ export async function registerRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Search query is required' });
       }
 
-      const services = await searchServices(query);
+      const services = await searchServices(req.tenantDb!, query);
       res.json({ success: true, services });
     } catch (error) {
       res.status(500).json({
@@ -1472,7 +1472,7 @@ export async function registerRoutes(app: Express) {
   app.get('/api/addon-services', async (req, res) => {
     // Load from Google Sheets with validation
     try {
-      const googleSheetAddons = await getAddonServices();
+      const googleSheetAddons = await getAddonServices(req.tenantDb!);
       
       if (googleSheetAddons && Array.isArray(googleSheetAddons) && googleSheetAddons.length > 0) {
         // Validate and sanitize Google Sheets data

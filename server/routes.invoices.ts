@@ -10,7 +10,7 @@ export function registerInvoiceRoutes(app: Express) {
   // Get all unpaid invoices with customer details (owner/manager only)
   router.get('/api/invoices/unpaid', requireAuth, requireRole('owner', 'manager'), async (req, res) => {
     try {
-      const invoices = await getUnpaidInvoicesWithDetails();
+      const invoices = await getUnpaidInvoicesWithDetails(req.tenantDb!);
       
       res.status(200).json({
         success: true,

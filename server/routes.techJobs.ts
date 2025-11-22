@@ -771,7 +771,7 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
     // ATOMIC TRANSACTION: Create invoice, update job, update deposit
     const result = await db.transaction(async (tx) => {
       // 1. Create invoice using invoiceService
-      const invoice = await createInvoice(jobId);
+      const invoice = await createInvoice(req.tenantDb!, jobId);
 
       console.log(`[TECH JOBS] Invoice created: ${invoice.id}`);
 

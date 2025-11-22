@@ -1,0 +1,91 @@
+We are continuing the multi-tenant migration in "servicepro-v3-base".
+
+You MUST follow these rules strictly:
+
+1. Only modify callers of the service files migrated in Phase 1F.
+2. Do NOT scan or refactor unrelated files.
+3. Do NOT modify any service files again.
+4. Do NOT touch schema, client code, or API contracts.
+5. Do NOT touch tests except running the tenant isolation test suite.
+6. Keep behavior identical — only update function signatures and db access.
+
+----------------------------------------------------------------------
+PHASE 1G GOAL:
+Update every file in the backend that CALLS a migrated service function so that it passes tenantDb as the FIRST parameter.
+
+Service files migrated in Phase 1F (YOU MUST find their callers AND ONLY their callers):
+
+- server/emailCampaignService.ts
+- server/reminderService.ts
+- server/invoiceService.ts
+- server/paymentHandler.ts
+- server/callLoggingService.ts
+- server/notificationHelper.ts
+- server/referralService.ts
+- server/referralConfigService.ts
+- server/creditLedgerService.ts
+- server/calendarAvailability.ts
+- server/services.ts
+- server/serviceManagement.ts
+
+You must:
+
+(1) Update route handlers to pass req.tenantDb! into every service call.
+Before:
+  await sendInvoiceEmail(customer, invoice)
+After:
+  await sendInvoiceEmail(req.tenantDb!, customer, invoice)
+
+(2) Update server/index.ts to fix the two failing calls:
+Before:
+  await initializeReferralConfig();
+  await seedDefaultReminderRules();
+After:
+  await initializeReferralConfig(req.tenantDb!);
+  await seedDefaultReminderRules(req.tenantDb!);
+
+(3) Update background jobs/schedulers that call these services.
+Because jobs have no HTTP request, wrap db before passing to services:
+
+Before:
+  await processReminders()
+After:
+  import { wrapTenantDb } from './tenantDb';
+  const tenantDb = wrapTenantDb(db, 'root'); // temporary for now
+  await processReminders(tenantDb)
+
+IMPORTANT:
+- Use wrapTenantDb(db, 'root') ONLY for background jobs.  
+- DO NOT add real tenant routing yet — this phase is transitional.
+
+(4) DO NOT change function signatures except adding tenantDb parameter.
+(5) DO NOT change any business logic.
+(6) DO NOT scan the entire project — ONLY update callers to the migrated files.
+
+----------------------------------------------------------------------
+AFTER CHANGES — REQUIRED VERIFICATION STEPS:
+
+1. Run tenant isolation tests only:
+   npx vitest run server/tests/tenantIsolation/tenantDb.test.ts
+Expected: 11/11 passing.
+
+2. Start the dev server:
+   Server should start WITH NO runtime errors.
+
+3. Run basic smoke tests:
+   GET /api/homepage-content → 200
+   GET /api/services → 200
+   GET /api/addon-services → 200
+
+----------------------------------------------------------------------
+FINAL REPORT REQUIREMENTS:
+
+Produce a clear report listing:
+1) All files modified.
+2) Number of CALLS updated per file.
+3) Confirmation that:
+   - Server compiles (0 TypeScript server errors)
+   - Tenant isolation tests pass (11/11)
+   - Server boots cleanly
+
+STOP after completing this — do NOT start Phase 1H.

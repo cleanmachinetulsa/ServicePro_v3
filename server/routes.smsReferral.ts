@@ -44,8 +44,8 @@ export function registerSmsReferralRoutes(app: Express) {
       const bookingUrl = `${process.env.REPLIT_DEV_DOMAIN || 'https://cleanmachinetulsa.com'}/book?ref=${referralCode}`;
       
       // Get dynamic reward descriptions from configuration
-      const referrerDescriptor = await getReferrerRewardDescriptor();
-      const refereeDescriptor = await getRefereeRewardDescriptor();
+      const referrerDescriptor = await getReferrerRewardDescriptor(req.tenantDb!);
+      const refereeDescriptor = await getRefereeRewardDescriptor(req.tenantDb!);
       
       const referrerReward = referrerDescriptor ? formatRewardDescription(referrerDescriptor) : '500 loyalty points';
       const refereeReward = refereeDescriptor ? formatRewardDescription(refereeDescriptor) : '$25 off';

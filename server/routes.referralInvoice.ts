@@ -28,7 +28,7 @@ export function registerReferralInvoiceRoutes(app: Express) {
       }
       
       // Validate the code
-      const validation = await validateReferralCode(code);
+      const validation = await validateReferralCode(req.tenantDb!, code);
       
       if (!validation.valid) {
         return res.json({
@@ -55,7 +55,7 @@ export function registerReferralInvoiceRoutes(app: Express) {
       }
       
       // Get referee reward descriptor
-      const rewardDescriptor = await getRefereeRewardDescriptor();
+      const rewardDescriptor = await getRefereeRewardDescriptor(req.tenantDb!);
       const rewardDescription = rewardDescriptor ? formatRewardDescription(rewardDescriptor) : '$25 off';
       
       res.json({
@@ -135,14 +135,14 @@ export function registerReferralInvoiceRoutes(app: Express) {
         }
         
         // Validate the referral code
-        const validation = await validateReferralCode(code);
+        const validation = await validateReferralCode(req.tenantDb!, code);
         
         if (!validation.valid) {
           throw new Error(validation.message || 'Invalid or expired referral code');
         }
         
         // Get reward configuration
-        const rewardDescriptor = await getRefereeRewardDescriptor();
+        const rewardDescriptor = await getRefereeRewardDescriptor(req.tenantDb!);
         
         if (!rewardDescriptor) {
           throw new Error('Referral program configuration not found');
