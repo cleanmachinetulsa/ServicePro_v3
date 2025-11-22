@@ -194,6 +194,7 @@ export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold
 
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   name: text("name").notNull(),
   email: text("email").unique(), // Make email unique for email-only customer lookups
   phone: text("phone").unique(), // Make phone nullable to support email-only customers
@@ -252,6 +253,7 @@ export const customerServiceHistory = pgTable("customer_service_history", {
 
 export const services = pgTable("services", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   name: text("name").notNull(),
   priceRange: text("price_range").notNull(),
   overview: text("overview").notNull(),
@@ -265,6 +267,7 @@ export const services = pgTable("services", {
 
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   serviceId: integer("service_id").notNull().references(() => services.id),
   scheduledTime: timestamp("scheduled_time").notNull(),
