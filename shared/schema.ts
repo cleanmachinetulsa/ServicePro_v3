@@ -179,6 +179,16 @@ export const platformSettings = pgTable("platform_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Tenants table for multi-tenant support
+export const tenants = pgTable("tenants", {
+  id: varchar("id", { length: 50 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  subdomain: varchar("subdomain", { length: 100 }),
+  isRoot: boolean("is_root").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Loyalty tier enum for customer tier upgrades
 export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold', 'platinum']);
 
