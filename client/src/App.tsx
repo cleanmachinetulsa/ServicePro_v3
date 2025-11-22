@@ -81,19 +81,22 @@ import UsageDashboard from "./pages/UsageDashboard";
 import GalleryManagementPage from "./pages/gallery-management";
 import DownloadExportPage from "./pages/download-export";
 import LaunchPage from "./pages/launch";
+
+// 🆕 Industry onboarding page
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/admin/onboarding-industry">
-        <AuthGuard>
-          <OnboardingIndustryPage />
-        </AuthGuard>
-      </Route>
+      {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
+      <Route path="/admin/onboarding-industry" component={OnboardingIndustryPage} />
+
+      {/* Existing routes below */}
 
       <Route path="/launch">
-        <AuthGuard><LaunchPage /></AuthGuard>
+        <AuthGuard>
+          <LaunchPage />
+        </AuthGuard>
       </Route>
 
       <Route path="/export-download" component={DownloadExportPage} />
@@ -109,131 +112,217 @@ function Router() {
 
       <Route path="/approve/:token" component={PayerApprovalPage} />
 
-      <Route path="/deposit-payment-success" component={lazy(() => import('./pages/deposit-payment-success'))} />
-      <Route path="/deposit-payment-cancelled" component={lazy(() => import('./pages/deposit-payment-cancelled'))} />
+      <Route
+        path="/deposit-payment-success"
+        component={lazy(() => import("./pages/deposit-payment-success"))}
+      />
+      <Route
+        path="/deposit-payment-cancelled"
+        component={lazy(() => import("./pages/deposit-payment-cancelled"))}
+      />
 
       <Route path="/quote-approval/:token" component={QuoteApprovalPage} />
 
       <Route path="/dashboard">
-        <AuthGuard><Dashboard /></AuthGuard>
+        <AuthGuard>
+          <Dashboard />
+        </AuthGuard>
       </Route>
       <Route path="/messages">
-        <AuthGuard><MessagesPage /></AuthGuard>
+        <AuthGuard>
+          <MessagesPage />
+        </AuthGuard>
       </Route>
       <Route path="/phone">
-        <AuthGuard><PhonePage /></AuthGuard>
+        <AuthGuard>
+          <PhonePage />
+        </AuthGuard>
       </Route>
       <Route path="/call-metrics">
-        <AuthGuard><CallMetricsPage /></AuthGuard>
+        <AuthGuard>
+          <CallMetricsPage />
+        </AuthGuard>
       </Route>
       <Route path="/facebook-settings">
-        <AuthGuard><FacebookSettingsPage /></AuthGuard>
+        <AuthGuard>
+          <FacebookSettingsPage />
+        </AuthGuard>
       </Route>
       <Route path="/quick-replies">
-        <AuthGuard><SettingsPage /></AuthGuard>
+        <AuthGuard>
+          <SettingsPage />
+        </AuthGuard>
       </Route>
       <Route path="/settings/:section?/:item?">
-        <AuthGuard><SettingsAdmin /></AuthGuard>
+        <AuthGuard>
+          <SettingsAdmin />
+        </AuthGuard>
       </Route>
       <Route path="/security-settings">
-        <AuthGuard><SecuritySettingsPage /></AuthGuard>
+        <AuthGuard>
+          <SecuritySettingsPage />
+        </AuthGuard>
       </Route>
       <Route path="/phone-settings">
-        <AuthGuard><PhoneSettingsPage /></AuthGuard>
+        <AuthGuard>
+          <PhoneSettingsPage />
+        </AuthGuard>
       </Route>
       <Route path="/sip-setup-guide">
-        <AuthGuard><SipSetupGuide /></AuthGuard>
+        <AuthGuard>
+          <SipSetupGuide />
+        </AuthGuard>
       </Route>
       <Route path="/customer-database">
-        <AuthGuard><CustomerDatabasePage /></AuthGuard>
+        <AuthGuard>
+          <CustomerDatabasePage />
+        </AuthGuard>
       </Route>
       <Route path="/business-settings">
-        <AuthGuard><BusinessSettingsPage /></AuthGuard>
+        <AuthGuard>
+          <BusinessSettingsPage />
+        </AuthGuard>
       </Route>
       <Route path="/banner-management">
-        <AuthGuard><BannerManagement /></AuthGuard>
+        <AuthGuard>
+          <BannerManagement />
+        </AuthGuard>
       </Route>
       <Route path="/damage-assessment">
-        <AuthGuard><DamageAssessmentPage /></AuthGuard>
+        <AuthGuard>
+          <DamageAssessmentPage />
+        </AuthGuard>
       </Route>
       <Route path="/user-management">
-        <AuthGuard><UserManagement /></AuthGuard>
+        <AuthGuard>
+          <UserManagement />
+        </AuthGuard>
       </Route>
       <Route path="/escalations">
-        <AuthGuard><EscalationsPage /></AuthGuard>
+        <AuthGuard>
+          <EscalationsPage />
+        </AuthGuard>
       </Route>
       <Route path="/reminders">
-        <AuthGuard><ReminderDashboard /></AuthGuard>
+        <AuthGuard>
+          <ReminderDashboard />
+        </AuthGuard>
       </Route>
       <Route path="/notifications-settings">
-        <AuthGuard><NotificationsSettings /></AuthGuard>
+        <AuthGuard>
+          <NotificationsSettings />
+        </AuthGuard>
       </Route>
       <Route path="/analytics">
-        <AuthGuard><AnalyticsPage /></AuthGuard>
+        <AuthGuard>
+          <AnalyticsPage />
+        </AuthGuard>
       </Route>
       <Route path="/billing">
-        <AuthGuard><Billing /></AuthGuard>
+        <AuthGuard>
+          <Billing />
+        </AuthGuard>
       </Route>
       <Route path="/admin/employees">
-        <AuthGuard><AdminEmployees /></AuthGuard>
+        <AuthGuard>
+          <AdminEmployees />
+        </AuthGuard>
       </Route>
       <Route path="/admin/jobs/:id">
-        <AuthGuard><AdminJobEditor /></AuthGuard>
+        <AuthGuard>
+          <AdminJobEditor />
+        </AuthGuard>
       </Route>
       <Route path="/admin/quote-requests">
-        <AuthGuard><AdminQuoteRequests /></AuthGuard>
+        <AuthGuard>
+          <AdminQuoteRequests />
+        </AuthGuard>
       </Route>
       <Route path="/admin/applications">
-        <AuthGuard><AdminApplications /></AuthGuard>
+        <AuthGuard>
+          <AdminApplications />
+        </AuthGuard>
       </Route>
       <Route path="/admin/tenants">
-        <AuthGuard><AdminTenants /></AuthGuard>
+        <AuthGuard>
+          <AdminTenants />
+        </AuthGuard>
       </Route>
       <Route path="/admin/phone-config">
-        <AuthGuard><AdminPhoneConfig /></AuthGuard>
+        <AuthGuard>
+          <AdminPhoneConfig />
+        </AuthGuard>
       </Route>
       <Route path="/admin/concierge-setup">
-        <AuthGuard><AdminConciergeSetup /></AuthGuard>
+        <AuthGuard>
+          <AdminConciergeSetup />
+        </AuthGuard>
       </Route>
       <Route path="/admin/scheduling">
-        <AuthGuard><SchedulingDashboard /></AuthGuard>
+        <AuthGuard>
+          <SchedulingDashboard />
+        </AuthGuard>
       </Route>
       <Route path="/admin/pto">
-        <AuthGuard><AdminPTO /></AuthGuard>
+        <AuthGuard>
+          <AdminPTO />
+        </AuthGuard>
       </Route>
       <Route path="/admin/homepage-editor">
-        <AuthGuard><HomepageEditor /></AuthGuard>
+        <AuthGuard>
+          <HomepageEditor />
+        </AuthGuard>
       </Route>
       <Route path="/admin/usage-dashboard">
-        <AuthGuard><UsageDashboard /></AuthGuard>
+        <AuthGuard>
+          <UsageDashboard />
+        </AuthGuard>
       </Route>
       <Route path="/admin/gallery-management">
-        <AuthGuard><GalleryManagementPage /></AuthGuard>
+        <AuthGuard>
+          <GalleryManagementPage />
+        </AuthGuard>
       </Route>
       <Route path="/admin/banner-management">
-        <AuthGuard><BannerManagement /></AuthGuard>
+        <AuthGuard>
+          <BannerManagement />
+        </AuthGuard>
       </Route>
 
       <Route path="/technician">
-        <AuthGuard><TechnicianPage /></AuthGuard>
+        <AuthGuard>
+          <TechnicianPage />
+        </AuthGuard>
       </Route>
       <Route path="/tech/wizard">
-        <AuthGuard><TechWizard /></AuthGuard>
+        <AuthGuard>
+          <TechWizard />
+        </AuthGuard>
       </Route>
       <Route path="/tech/profile">
-        <AuthGuard><TechProfile /></AuthGuard>
+        <AuthGuard>
+          <TechProfile />
+        </AuthGuard>
       </Route>
       <Route path="/tech/schedule">
-        <AuthGuard><TechnicianSchedule /></AuthGuard>
+        <AuthGuard>
+          <TechnicianSchedule />
+        </AuthGuard>
       </Route>
       <Route path="/tech/pto">
-        <AuthGuard><RequestPTO /></AuthGuard>
+        <AuthGuard>
+          <RequestPTO />
+        </AuthGuard>
       </Route>
       <Route path="/tech/open-shifts">
-        <AuthGuard><OpenShifts /></AuthGuard>
+        <AuthGuard>
+          <OpenShifts />
+        </AuthGuard>
       </Route>
       <Route path="/tech/shift-trades">
-        <AuthGuard><ShiftTrades /></AuthGuard>
+        <AuthGuard>
+          <ShiftTrades />
+        </AuthGuard>
       </Route>
 
       <Route path="/p/:publicId" component={TechProfilePublic} />
@@ -247,12 +336,17 @@ function Router() {
       <Route path="/demo" component={DemoPage} />
       <Route path="/rewards" component={LoyaltyPointsPage} />
       <Route path="/referrals">
-        <AuthGuard><ReferralPage /></AuthGuard>
+        <AuthGuard>
+          <ReferralPage />
+        </AuthGuard>
       </Route>
       <Route path="/gallery" component={GalleryPage} />
       <Route path="/reviews" component={ReviewsPage} />
       <Route path="/my-services" component={CustomerRecurringServicesPage} />
-      <Route path="/recurring-booking/:serviceId" component={RecurringServiceBookingPage} />
+      <Route
+        path="/recurring-booking/:serviceId"
+        component={RecurringServiceBookingPage}
+      />
       <Route path="/sms-consent" component={SMSConsentPage} />
       <Route path="/privacy-policy" component={PrivacyPolicyPage} />
       <Route path="/careers" component={Careers} />
@@ -279,7 +373,7 @@ function App() {
       "/settings",
       "/admin/employees",
       "/admin/jobs",
-      "/admin/quote-requests"
+      "/admin/quote-requests",
     ];
     return !adminPages.some((page) => location.startsWith(page));
   };
