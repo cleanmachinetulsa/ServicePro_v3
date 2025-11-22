@@ -1,5 +1,5 @@
 import { addDays } from 'date-fns';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { upsellOffers, appointmentUpsells, appointments, services } from '../shared/schema';
 import { eq, and, desc, isNull, gte } from 'drizzle-orm';
 import type { UpsellOffer, AppointmentUpsell, InsertUpsellOffer } from '../shared/schema';
@@ -7,9 +7,9 @@ import type { UpsellOffer, AppointmentUpsell, InsertUpsellOffer } from '../share
 /**
  * Creates a new upsell offer
  */
-export async function createUpsellOffer(offerData: InsertUpsellOffer): Promise<UpsellOffer> {
+export async function createUpsellOffer(tenantDb: TenantDb, offerData: InsertUpsellOffer): Promise<UpsellOffer> {
   try {
-    const result = await db.insert(upsellOffers).values(offerData).returning();
+    const result = await tenantDb.insert(upsellOffers).values(offerData).returning();
     return result[0];
   } catch (error) {
     console.error('Error creating upsell offer:', error);
@@ -20,7 +20,7 @@ export async function createUpsellOffer(offerData: InsertUpsellOffer): Promise<U
 /**
  * Updates an existing upsell offer
  */
-export async function updateUpsellOffer(id: number, offerData: Partial<UpsellOffer>): Promise<UpsellOffer | null> {
+export async function updateUpsellOffer(tenantDb: TenantDb, id: number, offerData: Partial<UpsellOffer>): Promise<UpsellOffer | null> {
   try {
     // Update the updatedAt field
     const dataToUpdate = {
@@ -28,9 +28,9 @@ export async function updateUpsellOffer(id: number, offerData: Partial<UpsellOff
       updatedAt: new Date()
     };
     
-    const result = await db.update(upsellOffers)
+    const result = await tenantDb.update(upsellOffers)
       .set(dataToUpdate)
-      .where(eq(upsellOffers.id, id))
+      .where(tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.id, id)))
       .returning();
     
     return result.length > 0 ? result[0] : null;
@@ -43,9 +43,9 @@ export async function updateUpsellOffer(id: number, offerData: Partial<UpsellOff
 /**
  * Gets all upsell offers
  */
-export async function getAllUpsellOffers(): Promise<UpsellOffer[]> {
+export async function getAllUpsellOffers(tenantDb: TenantDb): Promise<UpsellOffer[]> {
   try {
-    return await db.select().from(upsellOffers).orderBy(desc(upsellOffers.displayOrder));
+    return await tenantDb.select().from(upsellOffers).where(tenantDb.withTenantFilter(upsellOffers)).orderBy(desc(upsellOffers.displayOrder));
   } catch (error) {
     console.error('Error getting upsell offers:', error);
     throw new Error('Failed to get upsell offers');
@@ -55,11 +55,11 @@ export async function getAllUpsellOffers(): Promise<UpsellOffer[]> {
 /**
  * Gets active upsell offers
  */
-export async function getActiveUpsellOffers(): Promise<UpsellOffer[]> {
+export async function getActiveUpsellOffers(tenantDb: TenantDb): Promise<UpsellOffer[]> {
   try {
-    return await db.select()
+    return await tenantDb.select()
       .from(upsellOffers)
-      .where(eq(upsellOffers.active, true))
+      .where(tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.active, true)))
       .orderBy(desc(upsellOffers.displayOrder));
   } catch (error) {
     console.error('Error getting active upsell offers:', error);
@@ -70,11 +70,11 @@ export async function getActiveUpsellOffers(): Promise<UpsellOffer[]> {
 /**
  * Gets a single upsell offer by ID
  */
-export async function getUpsellOfferById(id: number): Promise<UpsellOffer | null> {
+export async function getUpsellOfferById(tenantDb: TenantDb, id: number): Promise<UpsellOffer | null> {
   try {
-    const result = await db.select()
+    const result = await tenantDb.select()
       .from(upsellOffers)
-      .where(eq(upsellOffers.id, id))
+      .where(tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.id, id)))
       .limit(1);
     
     return result.length > 0 ? result[0] : null;
@@ -87,10 +87,10 @@ export async function getUpsellOfferById(id: number): Promise<UpsellOffer | null
 /**
  * Deletes an upsell offer
  */
-export async function deleteUpsellOffer(id: number): Promise<boolean> {
+export async function deleteUpsellOffer(tenantDb: TenantDb, id: number): Promise<boolean> {
   try {
-    const result = await db.delete(upsellOffers)
-      .where(eq(upsellOffers.id, id))
+    const result = await tenantDb.delete(upsellOffers)
+      .where(tenantDb.withTenantFilter(upsellOffers, eq(upsellOffers.id, id)))
       .returning();
     
     return result.length > 0;
@@ -103,10 +103,10 @@ export async function deleteUpsellOffer(id: number): Promise<boolean> {
 /**
  * Creates an appointment upsell offer for a specific appointment
  */
-export async function createAppointmentUpsell(appointmentId: number, upsellOfferId: number): Promise<AppointmentUpsell> {
+export async function createAppointmentUpsell(tenantDb: TenantDb, appointmentId: number, upsellOfferId: number): Promise<AppointmentUpsell> {
   try {
     // Get the upsell offer to determine validity days
-    const offer = await getUpsellOfferById(upsellOfferId);
+    const offer = await getUpsellOfferById(tenantDb, upsellOfferId);
     if (!offer) {
       throw new Error('Upsell offer not found');
     }
@@ -114,7 +114,7 @@ export async function createAppointmentUpsell(appointmentId: number, upsellOffer
     // Calculate expiry date based on validityDays
     const expiryDate = addDays(new Date(), offer.validityDays || 3);
     
-    const result = await db.insert(appointmentUpsells).values({
+    const result = await tenantDb.insert(appointmentUpsells).values({
       appointmentId,
       upsellOfferId,
       status: 'offered',
@@ -132,12 +132,12 @@ export async function createAppointmentUpsell(appointmentId: number, upsellOffer
 /**
  * Get upsell offers applicable for an appointment
  */
-export async function getApplicableUpsellsForAppointment(appointmentId: number): Promise<UpsellOffer[]> {
+export async function getApplicableUpsellsForAppointment(tenantDb: TenantDb, appointmentId: number): Promise<UpsellOffer[]> {
   try {
     // Get the appointment details
-    const appointmentResult = await db.select()
+    const appointmentResult = await tenantDb.select()
       .from(appointments)
-      .where(eq(appointments.id, appointmentId))
+      .where(tenantDb.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
       .limit(1);
     
     if (appointmentResult.length === 0) {
@@ -147,9 +147,9 @@ export async function getApplicableUpsellsForAppointment(appointmentId: number):
     const appointment = appointmentResult[0];
     
     // Get the service details
-    const serviceResult = await db.select()
+    const serviceResult = await tenantDb.select()
       .from(services)
-      .where(eq(services.id, appointment.serviceId))
+      .where(tenantDb.withTenantFilter(services, eq(services.id, appointment.serviceId)))
       .limit(1);
     
     if (serviceResult.length === 0) {
@@ -159,7 +159,7 @@ export async function getApplicableUpsellsForAppointment(appointmentId: number):
     const service = serviceResult[0];
     
     // Get active upsell offers
-    const allOffers = await getActiveUpsellOffers();
+    const allOffers = await getActiveUpsellOffers(tenantDb);
     
     // Filter offers applicable to this service
     // We'll consider an offer applicable if:
@@ -182,6 +182,7 @@ export async function getApplicableUpsellsForAppointment(appointmentId: number):
  * Updates an appointment upsell (e.g., when accepted or declined)
  */
 export async function updateAppointmentUpsell(
+  tenantDb: TenantDb,
   id: number, 
   status: 'offered' | 'accepted' | 'declined' | 'expired', 
   newAppointmentId?: number
@@ -196,9 +197,9 @@ export async function updateAppointmentUpsell(
       updateData.newAppointmentId = newAppointmentId;
     }
     
-    const result = await db.update(appointmentUpsells)
+    const result = await tenantDb.update(appointmentUpsells)
       .set(updateData)
-      .where(eq(appointmentUpsells.id, id))
+      .where(tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.id, id)))
       .returning();
     
     return result.length > 0 ? result[0] : null;
@@ -211,17 +212,19 @@ export async function updateAppointmentUpsell(
 /**
  * Gets all active upsells for an appointment that haven't expired
  */
-export async function getActiveAppointmentUpsells(appointmentId: number): Promise<AppointmentUpsell[]> {
+export async function getActiveAppointmentUpsells(tenantDb: TenantDb, appointmentId: number): Promise<AppointmentUpsell[]> {
   try {
     const now = new Date();
     
-    return await db.select()
+    return await tenantDb.select()
       .from(appointmentUpsells)
       .where(
-        and(
-          eq(appointmentUpsells.appointmentId, appointmentId),
-          eq(appointmentUpsells.status, 'offered'),
-          gte(appointmentUpsells.expiryDate, now)
+        tenantDb.withTenantFilter(appointmentUpsells,
+          and(
+            eq(appointmentUpsells.appointmentId, appointmentId),
+            eq(appointmentUpsells.status, 'offered'),
+            gte(appointmentUpsells.expiryDate, now)
+          )
         )
       );
   } catch (error) {
@@ -234,17 +237,17 @@ export async function getActiveAppointmentUpsells(appointmentId: number): Promis
  * Gets detailed information about upsell offers for an appointment
  * including the offer details and appointment upsell status
  */
-export async function getAppointmentUpsellsWithDetails(appointmentId: number): Promise<any[]> {
+export async function getAppointmentUpsellsWithDetails(tenantDb: TenantDb, appointmentId: number): Promise<any[]> {
   try {
     // Get all appointment upsells for this appointment
-    const appointmentUpsellsList = await db.select()
+    const appointmentUpsellsList = await tenantDb.select()
       .from(appointmentUpsells)
-      .where(eq(appointmentUpsells.appointmentId, appointmentId));
+      .where(tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.appointmentId, appointmentId)));
     
     // Get the upsell offer details for each one
     const result = await Promise.all(
       appointmentUpsellsList.map(async (appUpsell) => {
-        const offer = await getUpsellOfferById(appUpsell.upsellOfferId);
+        const offer = await getUpsellOfferById(tenantDb, appUpsell.upsellOfferId);
         return {
           ...appUpsell,
           offer
@@ -263,14 +266,15 @@ export async function getAppointmentUpsellsWithDetails(appointmentId: number): P
  * Apply an upsell offer by creating a new appointment with the discount applied
  */
 export async function applyUpsellOffer(
+  tenantDb: TenantDb,
   appointmentUpsellId: number, 
   customerInfo: any
 ): Promise<{success: boolean, appointmentId?: number, message: string}> {
   try {
     // Get the appointment upsell details
-    const appointmentUpsellResult = await db.select()
+    const appointmentUpsellResult = await tenantDb.select()
       .from(appointmentUpsells)
-      .where(eq(appointmentUpsells.id, appointmentUpsellId))
+      .where(tenantDb.withTenantFilter(appointmentUpsells, eq(appointmentUpsells.id, appointmentUpsellId)))
       .limit(1);
     
     if (appointmentUpsellResult.length === 0) {
@@ -292,7 +296,7 @@ export async function applyUpsellOffer(
     }
     
     // Get the upsell offer details
-    const upsellOffer = await getUpsellOfferById(appointmentUpsell.upsellOfferId);
+    const upsellOffer = await getUpsellOfferById(tenantDb, appointmentUpsell.upsellOfferId);
     if (!upsellOffer) {
       return {
         success: false,

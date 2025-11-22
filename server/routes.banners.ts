@@ -5,7 +5,6 @@
  */
 
 import type { Express } from "express";
-import { db } from "./db";
 import { banners, insertBannerSchema, type InsertBanner } from "@shared/schema";
 import { eq, and, desc, or, isNull, lte, gte, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -21,9 +20,10 @@ export function registerBannerRoutes(app: Express) {
     }
 
     try {
-      const allBanners = await db
+      const allBanners = await (req as any).tenantDb!
         .select()
         .from(banners)
+        .where((req as any).tenantDb!.withTenantFilter(banners))
         .orderBy(desc(banners.updatedAt));
 
       return res.json(allBanners);
@@ -40,14 +40,16 @@ export function registerBannerRoutes(app: Express) {
   app.get("/api/banners/active", async (req, res) => {
     try {
       const now = new Date();
-      const activeBanners = await db
+      const activeBanners = await (req as any).tenantDb!
         .select()
         .from(banners)
         .where(
-          and(
-            eq(banners.isActive, true),
-            or(isNull(banners.scheduleStart), lte(banners.scheduleStart, now)),
-            or(isNull(banners.scheduleEnd), gte(banners.scheduleEnd, now))
+          (req as any).tenantDb!.withTenantFilter(banners,
+            and(
+              eq(banners.isActive, true),
+              or(isNull(banners.scheduleStart), lte(banners.scheduleStart, now)),
+              or(isNull(banners.scheduleEnd), gte(banners.scheduleEnd, now))
+            )
           )
         )
         .orderBy(desc(banners.priority), desc(banners.createdAt));
@@ -74,10 +76,10 @@ export function registerBannerRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid banner ID" });
       }
 
-      const [banner] = await db
+      const [banner] = await (req as any).tenantDb!
         .select()
         .from(banners)
-        .where(eq(banners.id, bannerId))
+        .where((req as any).tenantDb!.withTenantFilter(banners, eq(banners.id, bannerId)))
         .limit(1);
 
       if (!banner) {
@@ -103,7 +105,7 @@ export function registerBannerRoutes(app: Express) {
     try {
       const validatedData = insertBannerSchema.parse(req.body);
 
-      const [newBanner] = await db
+      const [newBanner] = await (req as any).tenantDb!
         .insert(banners)
         .values({
           ...validatedData,
@@ -144,13 +146,13 @@ export function registerBannerRoutes(app: Express) {
 
       const validatedData = insertBannerSchema.partial().parse(req.body);
 
-      const [updatedBanner] = await db
+      const [updatedBanner] = await (req as any).tenantDb!
         .update(banners)
         .set({
           ...validatedData,
           updatedAt: new Date(),
         })
-        .where(eq(banners.id, bannerId))
+        .where((req as any).tenantDb!.withTenantFilter(banners, eq(banners.id, bannerId)))
         .returning();
 
       if (!updatedBanner) {
@@ -188,9 +190,9 @@ export function registerBannerRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid banner ID" });
       }
 
-      const [deletedBanner] = await db
+      const [deletedBanner] = await (req as any).tenantDb!
         .delete(banners)
-        .where(eq(banners.id, bannerId))
+        .where((req as any).tenantDb!.withTenantFilter(banners, eq(banners.id, bannerId)))
         .returning();
 
       if (!deletedBanner) {

@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { jobApplications, jobPostings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireRole } from './rbacMiddleware';
@@ -9,7 +8,7 @@ const router = Router();
 // GET /api/admin/applications - Fetch all job applications with job posting info
 router.get('/api/admin/applications', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
-    const applications = await db
+    const applications = await req.tenantDb!
       .select({
         id: jobApplications.id,
         jobPostingId: jobApplications.jobPostingId,
@@ -30,6 +29,7 @@ router.get('/api/admin/applications', requireRole('manager', 'owner'), async (re
       })
       .from(jobApplications)
       .leftJoin(jobPostings, eq(jobApplications.jobPostingId, jobPostings.id))
+      .where(req.tenantDb!.withTenantFilter(jobApplications))
       .orderBy(jobApplications.submittedAt);
 
     // Transform data to match frontend interface
@@ -84,10 +84,10 @@ router.put('/api/admin/applications/:id', requireRole('manager', 'owner'), async
     if (status !== undefined) updateData.status = status;
     if (notes !== undefined) updateData.notes = notes;
 
-    const [updatedApplication] = await db
+    const [updatedApplication] = await req.tenantDb!
       .update(jobApplications)
       .set(updateData)
-      .where(eq(jobApplications.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(jobApplications, eq(jobApplications.id, parseInt(id))))
       .returning();
 
     if (!updatedApplication) {

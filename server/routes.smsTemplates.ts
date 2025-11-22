@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { smsTemplates, smsTemplateVersions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -21,10 +20,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {
     const { language = 'en' } = req.query;
     
-    const templates = await db
+    const templates = await req.tenantDb!
       .select()
       .from(smsTemplates)
-      .where(eq(smsTemplates.language, language as string))
+      .where(req.tenantDb!.withTenantFilter(smsTemplates, eq(smsTemplates.language, language as string)))
       .orderBy(smsTemplates.category, smsTemplates.name);
 
     res.json({
@@ -116,10 +115,10 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
 
     // If body or variables changed, save version
     if (body !== undefined || variables !== undefined) {
-      const [currentTemplate] = await db
+      const [currentTemplate] = await req.tenantDb!
         .select()
         .from(smsTemplates)
-        .where(eq(smsTemplates.id, templateId))
+        .where(req.tenantDb!.withTenantFilter(smsTemplates, eq(smsTemplates.id, templateId)))
         .limit(1);
 
       if (!currentTemplate) {
@@ -143,7 +142,7 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
 
       // Also update name, description, enabled if provided
       if (name !== undefined || description !== undefined || enabled !== undefined) {
-        await db
+        await req.tenantDb!
           .update(smsTemplates)
           .set({
             ...(name !== undefined && { name }),
@@ -152,14 +151,14 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
             updatedAt: new Date(),
             updatedBy: userId,
           })
-          .where(eq(smsTemplates.id, templateId));
+          .where(req.tenantDb!.withTenantFilter(smsTemplates, eq(smsTemplates.id, templateId)));
       }
 
       return res.json(result);
     }
 
     // Otherwise just update metadata
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(smsTemplates)
       .set({
         ...(name !== undefined && { name }),
@@ -168,7 +167,7 @@ router.put('/:id', requireAuth, async (req: Request, res: Response) => {
         updatedAt: new Date(),
         updatedBy: userId,
       })
-      .where(eq(smsTemplates.id, templateId))
+      .where(req.tenantDb!.withTenantFilter(smsTemplates, eq(smsTemplates.id, templateId)))
       .returning();
 
     clearTemplateCache();

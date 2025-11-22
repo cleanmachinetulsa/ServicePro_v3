@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { db } from './db';
 import { appointments, invoices, services, emailCampaigns, appointmentUpsells, customers } from '@shared/schema';
 import { sql, gte, lte, and, eq, desc } from 'drizzle-orm';
 
@@ -13,19 +12,19 @@ router.get('/seasonal-trends', async (req, res) => {
     monthsAgo.setMonth(monthsAgo.getMonth() - Number(months));
 
     // Get appointments by month
-    const appointmentTrends = await db
+    const appointmentTrends = await (req as any).tenantDb!
       .select({
         month: sql<string>`TO_CHAR(${appointments.scheduledTime}, 'YYYY-MM')`,
         count: sql<number>`COUNT(*)::int`,
         completed: sql<number>`SUM(CASE WHEN ${appointments.completed} = true THEN 1 ELSE 0 END)::int`
       })
       .from(appointments)
-      .where(gte(appointments.scheduledTime, monthsAgo))
+      .where((req as any).tenantDb!.withTenantFilter(appointments, gte(appointments.scheduledTime, monthsAgo)))
       .groupBy(sql`TO_CHAR(${appointments.scheduledTime}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${appointments.scheduledTime}, 'YYYY-MM')`);
 
     // Get revenue by month
-    const revenueTrends = await db
+    const revenueTrends = await (req as any).tenantDb!
       .select({
         month: sql<string>`TO_CHAR(${invoices.createdAt}, 'YYYY-MM')`,
         revenue: sql<number>`SUM(${invoices.amount})::numeric`,
@@ -33,7 +32,7 @@ router.get('/seasonal-trends', async (req, res) => {
         invoiceCount: sql<number>`COUNT(*)::int`
       })
       .from(invoices)
-      .where(gte(invoices.createdAt, monthsAgo))
+      .where((req as any).tenantDb!.withTenantFilter(invoices, gte(invoices.createdAt, monthsAgo)))
       .groupBy(sql`TO_CHAR(${invoices.createdAt}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${invoices.createdAt}, 'YYYY-MM')`);
 
@@ -55,7 +54,7 @@ router.get('/service-popularity', async (req, res) => {
     const monthsAgo = new Date();
     monthsAgo.setMonth(monthsAgo.getMonth() - Number(months));
 
-    const serviceStats = await db
+    const serviceStats = await (req as any).tenantDb!
       .select({
         serviceName: services.name,
         count: sql<number>`COUNT(*)::int`,
@@ -64,7 +63,7 @@ router.get('/service-popularity', async (req, res) => {
       })
       .from(appointments)
       .innerJoin(services, eq(appointments.serviceId, services.id))
-      .where(gte(appointments.scheduledTime, monthsAgo))
+      .where((req as any).tenantDb!.withTenantFilter(appointments, gte(appointments.scheduledTime, monthsAgo)))
       .groupBy(services.name)
       .orderBy(desc(sql`COUNT(*)`));
 
@@ -82,10 +81,10 @@ router.get('/service-popularity', async (req, res) => {
 router.get('/campaign-effectiveness', async (req, res) => {
   try {
     // Get all sent campaigns
-    const campaigns = await db
+    const campaigns = await (req as any).tenantDb!
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.status, 'sent'))
+      .where((req as any).tenantDb!.withTenantFilter(emailCampaigns, eq(emailCampaigns.status, 'sent')))
       .orderBy(desc(emailCampaigns.sentAt));
 
     // For each campaign, count appointments/revenue in the 7 days after sending
@@ -96,7 +95,7 @@ router.get('/campaign-effectiveness', async (req, res) => {
         const weekAfter = new Date(campaign.sentAt);
         weekAfter.setDate(weekAfter.getDate() + 7);
 
-        const appointmentsAfter = await db
+        const appointmentsAfter = await (req as any).tenantDb!
           .select({
             count: sql<number>`COUNT(*)::int`,
             revenue: sql<number>`COALESCE(SUM(${invoices.amount}), 0)::numeric`
@@ -104,9 +103,11 @@ router.get('/campaign-effectiveness', async (req, res) => {
           .from(appointments)
           .leftJoin(invoices, eq(appointments.id, invoices.appointmentId))
           .where(
-            and(
-              gte(appointments.scheduledTime, campaign.sentAt),
-              lte(appointments.scheduledTime, weekAfter)
+            (req as any).tenantDb!.withTenantFilter(appointments,
+              and(
+                gte(appointments.scheduledTime, campaign.sentAt),
+                lte(appointments.scheduledTime, weekAfter)
+              )
             )
           );
 
@@ -139,14 +140,14 @@ router.get('/financial-forecast', async (req, res) => {
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
-    const historicalRevenue = await db
+    const historicalRevenue = await (req as any).tenantDb!
       .select({
         month: sql<string>`TO_CHAR(${invoices.createdAt}, 'YYYY-MM')`,
         revenue: sql<number>`SUM(CASE WHEN ${invoices.paymentStatus} = 'paid' THEN ${invoices.amount} ELSE 0 END)::numeric`,
         appointmentCount: sql<number>`COUNT(DISTINCT ${invoices.appointmentId})::int`
       })
       .from(invoices)
-      .where(gte(invoices.createdAt, twelveMonthsAgo))
+      .where((req as any).tenantDb!.withTenantFilter(invoices, gte(invoices.createdAt, twelveMonthsAgo)))
       .groupBy(sql`TO_CHAR(${invoices.createdAt}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${invoices.createdAt}, 'YYYY-MM')`);
 
@@ -178,13 +179,13 @@ router.get('/financial-forecast', async (req, res) => {
     }
 
     // Get customer acquisition trends
-    const customerTrends = await db
+    const customerTrends = await (req as any).tenantDb!
       .select({
         month: sql<string>`TO_CHAR(${customers.lastInteraction}, 'YYYY-MM')`,
         newCustomers: sql<number>`COUNT(DISTINCT ${customers.id})::int`
       })
       .from(customers)
-      .where(gte(customers.lastInteraction, twelveMonthsAgo))
+      .where((req as any).tenantDb!.withTenantFilter(customers, gte(customers.lastInteraction, twelveMonthsAgo)))
       .groupBy(sql`TO_CHAR(${customers.lastInteraction}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${customers.lastInteraction}, 'YYYY-MM')`);
 
@@ -212,7 +213,7 @@ router.get('/upsell-performance', async (req, res) => {
     const monthsAgo = new Date();
     monthsAgo.setMonth(monthsAgo.getMonth() - Number(months));
 
-    const upsellStats = await db
+    const upsellStats = await (req as any).tenantDb!
       .select({
         month: sql<string>`TO_CHAR(${appointmentUpsells.offeredAt}, 'YYYY-MM')`,
         offered: sql<number>`COUNT(*)::int`,
@@ -221,7 +222,7 @@ router.get('/upsell-performance', async (req, res) => {
         revenue: sql<number>`SUM(CASE WHEN ${appointmentUpsells.status} = 'accepted' THEN ${appointmentUpsells.discountApplied} ELSE 0 END)::numeric`
       })
       .from(appointmentUpsells)
-      .where(gte(appointmentUpsells.offeredAt, monthsAgo))
+      .where((req as any).tenantDb!.withTenantFilter(appointmentUpsells, gte(appointmentUpsells.offeredAt, monthsAgo)))
       .groupBy(sql`TO_CHAR(${appointmentUpsells.offeredAt}, 'YYYY-MM')`)
       .orderBy(sql`TO_CHAR(${appointmentUpsells.offeredAt}, 'YYYY-MM')`);
 

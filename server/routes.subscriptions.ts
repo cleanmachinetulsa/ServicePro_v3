@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { db } from './db';
 import { subscriptions, insertSubscriptionSchema } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
 
@@ -11,8 +10,9 @@ const router = Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const allSubscriptions = await db.select()
+    const allSubscriptions = await req.tenantDb!.select()
       .from(subscriptions)
+      .where(req.tenantDb!.withTenantFilter(subscriptions))
       .orderBy(desc(subscriptions.createdAt));
     
     // Calculate total monthly cost
@@ -51,7 +51,7 @@ router.post('/', async (req: Request, res: Response) => {
       isActive: (validatedData.status || 'active') === 'active'
     };
     
-    const [newSubscription] = await db.insert(subscriptions)
+    const [newSubscription] = await req.tenantDb!.insert(subscriptions)
       .values(dataToInsert)
       .returning();
     
@@ -85,9 +85,9 @@ router.patch('/:id', async (req: Request, res: Response) => {
     // Update timestamp
     updates.updatedAt = new Date();
     
-    const [updatedSubscription] = await db.update(subscriptions)
+    const [updatedSubscription] = await req.tenantDb!.update(subscriptions)
       .set(updates)
-      .where(eq(subscriptions.id, subscriptionId))
+      .where(req.tenantDb!.withTenantFilter(subscriptions, eq(subscriptions.id, subscriptionId)))
       .returning();
     
     if (!updatedSubscription) {
@@ -111,8 +111,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const subscriptionId = parseInt(req.params.id);
     
-    await db.delete(subscriptions)
-      .where(eq(subscriptions.id, subscriptionId));
+    await req.tenantDb!.delete(subscriptions)
+      .where(req.tenantDb!.withTenantFilter(subscriptions, eq(subscriptions.id, subscriptionId)));
     
     console.log(`[SUBSCRIPTIONS] Deleted subscription ${subscriptionId}`);
     
@@ -130,7 +130,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/seed', async (req: Request, res: Response) => {
   try {
     // Check if already seeded
-    const existingSubscriptions = await db.select().from(subscriptions);
+    const existingSubscriptions = await req.tenantDb!.select()
+      .from(subscriptions)
+      .where(req.tenantDb!.withTenantFilter(subscriptions));
     if (existingSubscriptions.length > 0) {
       return res.json({ 
         success: true, 
@@ -231,7 +233,7 @@ router.post('/seed', async (req: Request, res: Response) => {
     ];
 
     // Insert all subscriptions
-    const createdSubscriptions = await db.insert(subscriptions)
+    const createdSubscriptions = await req.tenantDb!.insert(subscriptions)
       .values(serviceSubscriptions)
       .returning();
 
