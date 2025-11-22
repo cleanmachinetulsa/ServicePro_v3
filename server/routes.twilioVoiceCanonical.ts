@@ -1,17 +1,18 @@
 /**
- * PHASE 2.1 - Canonical Voice Entry-Point
+ * PHASE 2.2 - Canonical Voice Entry-Point with Dynamic Tenant Lookup
  * 
  * This is the standardized inbound voice webhook handler for ServicePro multi-tenant telephony.
  * 
- * CURRENT (Phase 2.1):
- * - Hardcoded to 'root' tenant (Clean Machine)
- * - Simple SIP forwarding to jody@cleanmachinetulsa.sip.twilio.com
- * - Caller ID passthrough enabled
+ * CURRENT (Phase 2.2):
+ * - ✅ Dynamic tenant lookup via tenantPhoneConfig table
+ * - ✅ Looks up tenant by Twilio 'To' number
+ * - ✅ Per-tenant SIP configuration from database
+ * - ✅ Caller ID passthrough enabled
+ * - ✅ Fallback to 'root' tenant if phone number not found
  * 
  * FUTURE (Phase 2.3+):
- * - Tenant lookup via tenantPhoneConfig by Twilio 'To' number
  * - Dynamic IVR mode selection (simple/ivr/ai-voice)
- * - Per-tenant SIP/forwarding configuration
+ * - AI-powered voice agent mode
  * 
  * ENDPOINT: POST /twilio/voice/incoming
  * 
@@ -25,30 +26,44 @@ import twilio from 'twilio';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
+import { getTenantByPhoneNumber } from './services/tenantPhone';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
 /**
  * Tenant Resolver Middleware for Twilio Voice Webhooks
  * 
- * Phase 2.1: Hardcoded to 'root' tenant
- * Phase 2.3: Will look up tenant by req.body.To via tenantPhoneConfig table
+ * Phase 2.2: Dynamic tenant lookup by phone number via tenantPhoneConfig table
+ * 
+ * How it works:
+ * 1. Extract the 'To' number from Twilio request (e.g., +19188565304)
+ * 2. Look up tenantPhoneConfig by phone number
+ * 3. Resolve tenant ID (fallback to 'root' if not found)
+ * 4. Attach tenant context to request for downstream handlers
  */
-function tenantResolverForTwilio(req: Request, res: Response, next: NextFunction) {
+async function tenantResolverForTwilio(req: Request, res: Response, next: NextFunction) {
   try {
-    // TODO Phase 2.3: Dynamic tenant lookup
-    // const phoneNumber = req.body.To;
-    // const tenantPhone = await db.query.tenantPhoneConfig.findFirst({
-    //   where: eq(tenantPhoneConfig.phoneNumber, phoneNumber)
-    // });
-    // const tenantId = tenantPhone?.tenantId || 'root';
+    const phoneNumber = req.body.To;
     
-    const tenantId = 'root';
+    if (!phoneNumber) {
+      console.warn('[CANONICAL VOICE] No "To" number in request, defaulting to root tenant');
+      req.tenant = { id: 'root' };
+      req.tenantDb = wrapTenantDb(db, 'root');
+      return next();
+    }
+    
+    // ✅ Phase 2.2: Dynamic tenant lookup by phone number
+    const phoneConfig = await getTenantByPhoneNumber(db, phoneNumber);
+    
+    const tenantId = phoneConfig?.tenantId || 'root';
     
     req.tenant = { id: tenantId };
     req.tenantDb = wrapTenantDb(db, tenantId);
     
-    console.log(`[CANONICAL VOICE] Tenant resolved: ${tenantId} for incoming call to ${req.body.To}`);
+    // Store phone config on request for handler to access SIP settings
+    (req as any).phoneConfig = phoneConfig;
+    
+    console.log(`[CANONICAL VOICE] Tenant resolved: ${tenantId} for incoming call to ${phoneNumber}${phoneConfig ? '' : ' (fallback to root)'}`);
     next();
   } catch (error) {
     console.error('[CANONICAL VOICE] Error in tenant resolver:', error);
@@ -62,7 +77,8 @@ function tenantResolverForTwilio(req: Request, res: Response, next: NextFunction
 /**
  * Canonical Inbound Voice Handler
  * 
- * Returns TwiML that forwards the call to the root tenant's SIP endpoint
+ * Phase 2.2: Uses per-tenant SIP configuration from database
+ * Returns TwiML that forwards the call to the tenant's configured SIP endpoint
  * with caller ID passthrough for proper caller identification
  */
 async function handleIncomingVoice(req: Request, res: Response) {
@@ -72,22 +88,28 @@ async function handleIncomingVoice(req: Request, res: Response) {
     const fromNumber = req.body.From || 'Unknown';
     const toNumber = req.body.To || 'Unknown';
     const callSid = req.body.CallSid || 'Unknown';
+    const tenantId = req.tenant?.id || 'root';
     
-    console.log(`[CANONICAL VOICE] Incoming call from ${fromNumber} to ${toNumber}, CallSid: ${callSid}`);
+    console.log(`[CANONICAL VOICE] Incoming call from ${fromNumber} to ${toNumber}, CallSid: ${callSid}, Tenant: ${tenantId}`);
     
-    // TODO Phase 2.3: Look up SIP endpoint from tenantPhoneConfig
-    // const tenantPhone = await req.tenantDb!.query.tenantPhoneConfig.findFirst({
-    //   where: req.tenantDb!.withTenantFilter(tenantPhoneConfig, eq(tenantPhoneConfig.phoneNumber, toNumber))
-    // });
-    // const sipEndpoint = tenantPhone?.sipDomain && tenantPhone?.sipUsername 
-    //   ? `${tenantPhone.sipUsername}@${tenantPhone.sipDomain}`
-    //   : null;
+    // ✅ Phase 2.2: Get SIP endpoint from tenantPhoneConfig (attached by middleware)
+    const phoneConfig = (req as any).phoneConfig;
     
-    // For now: Hardcoded Clean Machine SIP endpoint
-    const sipEndpoint = 'jody@cleanmachinetulsa.sip.twilio.com';
+    let sipEndpoint: string | null = null;
+    
+    if (phoneConfig?.sipDomain && phoneConfig?.sipUsername) {
+      sipEndpoint = `${phoneConfig.sipUsername}@${phoneConfig.sipDomain}`;
+      console.log(`[CANONICAL VOICE] Using database SIP config: ${sipEndpoint}`);
+    } else {
+      // Fallback for root tenant if no config found
+      if (tenantId === 'root') {
+        sipEndpoint = 'jody@cleanmachinetulsa.sip.twilio.com';
+        console.log(`[CANONICAL VOICE] Using hardcoded root fallback: ${sipEndpoint}`);
+      }
+    }
     
     if (!sipEndpoint) {
-      console.error('[CANONICAL VOICE] No SIP endpoint configured for tenant');
+      console.error(`[CANONICAL VOICE] No SIP endpoint configured for tenant ${tenantId}`);
       response.say({ voice: 'alice' }, 'This number is not configured. Please call back later.');
       response.hangup();
       res.type('text/xml');
@@ -104,7 +126,7 @@ async function handleIncomingVoice(req: Request, res: Response) {
     dial.sip(`sip:${sipEndpoint}`);
     
     // If dial fails/times out, the call will just end
-    // TODO Phase 2.2: Add fallback to voicemail or IVR based on tenant config
+    // TODO Phase 2.3: Add fallback to voicemail or IVR based on ivrMode
     
   } catch (error) {
     console.error('[CANONICAL VOICE] Error handling incoming call:', error);
