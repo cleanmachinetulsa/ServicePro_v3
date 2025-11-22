@@ -1,0 +1,150 @@
+We are in the "servicepro-v3-base" repl.
+
+Context:
+- Phase 1A: tenantDb + tenantMiddleware + tests are already implemented and passing.
+- Phase 1B: 10 routes have been migrated from direct `db` access to `req.tenantDb` using the pattern defined in TENANT_ISOLATION_IMPORT.md.
+- Goal for Phase 1C: Continue migrating the remaining routes AND key service-layer modules to be fully tenant-aware, but do this in small, safe batches to control cost.
+
+IMPORTANT CONSTRAINTS:
+- DO NOT redesign architecture.
+- DO NOT touch database schema.
+- DO NOT change business logic or API shapes.
+- ONLY replace direct `db` usage with `req.tenantDb` (or tenant-aware wrappers) as per the established pattern from Phase 1B and TENANT_ISOLATION_IMPORT.md.
+- Keep the app fully backward compatible for the single 'root' tenant.
+
+=== BATCH STRATEGY ===
+In this Phase 1C batch, do the following:
+
+1) MIGRATE 10 MORE ROUTE FILES
+
+- Find route files under server/routes.*.ts that are still using:
+    - `import { db } from "./db";`
+    - or any direct `db.` calls
+
+- Choose approximately 10 such route files that:
+    - Have real database usage (queries/inserts/updates/deletes)
+    - Do NOT require large refactors
+
+For EACH selected route file:
+
+    a. Remove direct db import:
+       - Remove: `import { db } from "./db";` (or similar)
+
+    b. Replace all db usage with tenantDb:
+       - Replace `db.` with `req.tenantDb!.` (or `req.tenantDb` if non-null checks not required)
+       - For SELECT queries, ensure tenant filtering:
+         - If previously: 
+           `.where(eq(table.id, something))`
+         - Then now:
+           `.where(req.tenantDb!.withTenantFilter(table, eq(table.id, something)))`
+
+         - If no WHERE clause existed and data is tenant-scoped, add:
+           `.where(req.tenantDb!.withTenantFilter(table))`
+
+    c. For INSERTs:
+       - Keep `.values({ ... })` unchanged.
+       - The tenantDb wrapper will auto-inject tenant_id based on the current tenant, so DO NOT manually add tenant_id unless the code already does.
+    
+    d. For UPDATE and DELETE:
+       - Make sure the WHERE clause includes tenant filtering via `withTenantFilter`, similar to SELECT.
+       - Pattern:
+         - Before:
+           `.where(eq(table.id, something))`
+         - After:
+           `.where(req.tenantDb!.withTenantFilter(table, eq(table.id, something)))`
+
+    e. For JOIN queries:
+       - Ensure the "primary" tenant-scoped table in the query has `withTenantFilter` applied on its WHERE clause.
+       - Follow the exact patterns used in Phase 1B, especially in routes like:
+         - routes.tags.ts
+         - routes.contacts.ts
+         - routes.recurringServices.ts
+
+    f. Do NOT change request/response shapes or route URLs.
+       Only update database access to use req.tenantDb and tenant filters.
+
+
+2) MIGRATE 2 KEY SERVICE-LAYER FILES
+
+In this batch, also migrate 2 high-impact service-layer / utility files that are still using direct db access. For example (if they exist and still use db):
+
+    - server/contactUtils.ts
+    - server/upsellService.ts
+    - server/emailCampaignService.ts
+    - server/reminderService.ts
+    - server/recurringJobProcessor.ts
+    - server/damageAssessmentMonitor.ts
+
+Pick any 2 of these (or similar), prioritizing those that:
+
+    - Are used by already-migrated routes
+    - Contain database calls that must be tenant-safe
+
+For EACH selected service file:
+
+    a. Replace `import { db } from "./db";` with a tenant-aware approach.
+
+    b. If the file is only used inside request/route handlers, change functions to accept `tenantDb` as a parameter:
+
+       Example:
+       - Before:
+         `export async function doThing(...) { const result = await db.query.table.findMany(...); }`
+
+       - After:
+         `export async function doThing(tenantDb: TenantDb, ...) { const result = await tenantDb.query.table.findMany(...); }`
+
+       Then, in the calling route, pass `req.tenantDb!` into that function.
+
+    c. Apply the same tenant filtering patterns as in routes:
+       - `tenantDb.query.table.findFirst({ where: tenantDb.withTenantFilter(table, ...) })`
+       - `tenantDb.insert(table)...` (auto tenant_id injection)
+       - `tenantDb.update(table)...where(tenantDb.withTenantFilter(table, condition))`
+       - `tenantDb.delete(table)...where(tenantDb.withTenantFilter(table, condition))`
+
+    d. If a service file must also be usable outside HTTP (e.g., background jobs), preserve existing signatures but internally get a tenantDb from a helper that can construct a tenantDb with a specified tenantId.
+       If this is non-trivial, make minimal changes and note what you did in the report instead of over-engineering.
+
+3) DO NOT TOUCH THESE (YET):
+
+- DO NOT implement subdomain-based tenant resolution.
+- DO NOT change how we select tenant = 'root' in the middleware.
+- DO NOT create tenant onboarding flows.
+- DO NOT modify any Stripe, Twilio, OpenAI, SendGrid, or Google integrations beyond updating db usage to tenantDb where needed.
+
+
+4) AFTER CODE CHANGES – RUN CHECKS
+
+After migrating ~10 route files and 2 service-layer files:
+
+    a. Run TypeScript compilation / build:
+       - Ensure there are 0 TypeScript errors.
+
+    b. Run the existing tenant isolation test suite:
+       - `npx vitest run server/tests/tenantIsolation/tenantDb.test.ts`
+       - All tests must still pass.
+
+    c. Start the dev server:
+       - Confirm it starts without errors (`npm run dev` or existing command).
+
+    d. Smoke test a few endpoints:
+       - GET /api/homepage-content
+       - GET /api/services
+       - GET /api/addon-services
+       - And any routes you migrated in this batch (just basic 200 OK checks).
+
+
+5) REPORT BACK AND STOP
+
+After completing this batch, STOP and produce a detailed report including:
+
+    - List of route files migrated in this batch.
+    - List of service-layer files migrated in this batch.
+    - Summary of key db operations updated (SELECT, INSERT, UPDATE, DELETE, JOIN patterns).
+    - Confirmation of:
+      - TypeScript: 0 errors
+      - Tenant isolation tests: all passing
+      - Dev server: starts clean
+    - Note any TODOs or tricky areas to revisit later.
+
+Do NOT migrate more than ~10 route files and ~2 service-layer files in this batch. 
+Stop after the report so we can review before the next batch.

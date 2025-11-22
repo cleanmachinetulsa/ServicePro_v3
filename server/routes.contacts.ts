@@ -244,7 +244,7 @@ export function registerContactsRoutes(app: Express) {
           ...updates,
           updatedAt: new Date(),
         })
-        .where(eq(contacts.id, contactId))
+        .where(req.tenantDb!.withTenantFilter(contacts, eq(contacts.id, contactId)))
         .returning()
         .execute();
 
@@ -292,7 +292,7 @@ export function registerContactsRoutes(app: Express) {
           giftMessage: validated.giftMessage,
           poNumber: validated.poNumber,
         })
-        .where(eq(appointments.id, appointmentId))
+        .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
         .returning()
         .execute();
 

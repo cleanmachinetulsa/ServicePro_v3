@@ -59,10 +59,14 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const tagId = parseInt(req.params.id);
 
     // First delete all conversation_tags references
-    await req.tenantDb!.delete(conversationTags).where(eq(conversationTags.tagId, tagId));
+    await req.tenantDb!.delete(conversationTags).where(
+      req.tenantDb!.withTenantFilter(conversationTags, eq(conversationTags.tagId, tagId))
+    );
 
     // Then delete the tag
-    await req.tenantDb!.delete(customerTags).where(eq(customerTags.id, tagId));
+    await req.tenantDb!.delete(customerTags).where(
+      req.tenantDb!.withTenantFilter(customerTags, eq(customerTags.id, tagId))
+    );
 
     res.json({ success: true, message: 'Tag deleted successfully' });
   } catch (error) {
@@ -140,9 +144,12 @@ router.delete('/conversation/:id/remove/:tagId', async (req: Request, res: Respo
     await req.tenantDb!
       .delete(conversationTags)
       .where(
-        and(
-          eq(conversationTags.conversationId, conversationId),
-          eq(conversationTags.tagId, tagId)
+        req.tenantDb!.withTenantFilter(
+          conversationTags,
+          and(
+            eq(conversationTags.conversationId, conversationId),
+            eq(conversationTags.tagId, tagId)
+          )
         )
       );
 
