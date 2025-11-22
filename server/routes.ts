@@ -1925,6 +1925,16 @@ export async function registerRoutes(app: Express) {
       // From is now in E.164 format thanks to middleware
       const phone = From || 'web-client';
       
+      // ✅ Phase 3: Use centralized tenant router for inbound SMS
+      const { resolveTenantFromInbound } = await import('./services/tenantCommRouter');
+      const { wrapTenantDb } = await import('./tenantDb');
+      const resolution = await resolveTenantFromInbound(req, db);
+      
+      req.tenant = { id: resolution.tenantId } as any;
+      req.tenantDb = wrapTenantDb(db, resolution.tenantId);
+      
+      console.log(`[SMS WEBHOOK] Tenant resolved: ${resolution.tenantId} via ${resolution.resolvedBy}, ivrMode: ${resolution.ivrMode}`);
+      
       // Detect which phone line received this SMS by looking up the To number
       let phoneLineId: number | undefined = undefined;
       if (To) {
