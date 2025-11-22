@@ -1,5 +1,5 @@
 # MASTER PLAN v3.2 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM
-
+Deprecated – see MASTER_PLAN_v3.2.md for the latest master plan.
 > Canonical master plan for:
 > - You (Jody)
 > - Your partner
