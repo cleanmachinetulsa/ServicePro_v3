@@ -1,0 +1,135 @@
+// ------------------------------------------------------------
+// PHASE 2.3 – IVR MODE BRANCHING (DROP-IN SNIPPET)
+// ------------------------------------------------------------
+import { Router } from "express";
+import twilio from "twilio";
+import { getTenantPhoneConfigByNumber } from "../services/tenantPhone";
+import { verifyTwilioSignature } from "../utils/twilioSignature";
+
+export const registerCanonicalVoiceRoutes = (app: any) => {
+  const router = Router();
+
+  router.post(
+    "/twilio/voice/incoming",
+    verifyTwilioSignature,
+    async (req, res) => {
+      try {
+        const twiml = new twilio.twiml.VoiceResponse();
+
+        const to = req.body.To;
+        const from = req.body.From || "";
+
+        // lookup tenant config via phone number
+        const phoneConfig = await getTenantPhoneConfigByNumber(to);
+
+        const ivrMode = phoneConfig?.ivrMode ?? "simple";
+        const sipDomain = phoneConfig?.sipDomain;
+        const sipUsername = phoneConfig?.sipUsername;
+
+        // -------------------------
+        // MODE: SIMPLE FORWARDING
+        // -------------------------
+        if (ivrMode === "simple") {
+          const dial = twiml.dial({ callerId: from });
+          dial.sip(`${sipUsername}@${sipDomain}`);
+          return res.type("text/xml").send(twiml.toString());
+        }
+
+        // -------------------------
+        // MODE: IVR MENU (Press 1/2/3/7)
+        // -------------------------
+        if (ivrMode === "ivr") {
+          // If no Digits yet, play menu
+          const digits = req.body.Digits;
+          if (!digits) {
+            const gather = twiml.gather({
+              numDigits: 1,
+              action: "/twilio/voice/incoming",
+              method: "POST",
+            });
+
+            gather.say(
+              "Thanks for calling. Press 1 for service information. " +
+              "Press 2 to talk to a person. " +
+              "Press 3 to leave a voicemail. " +
+              "Press 7 for a surprise."
+            );
+
+            return res.type("text/xml").send(twiml.toString());
+          }
+
+          // Route options
+          switch (digits) {
+            case "1": {
+              twiml.say(
+                "Here is some information about our services. " +
+                "We will text you full details right now."
+              );
+              twiml.message(
+                "Here’s the information you requested! " +
+                "Pricing, services, and booking: https://cleanmachinetulsa.com"
+              );
+              twiml.hangup();
+              return res.type("text/xml").send(twiml.toString());
+            }
+
+            case "2": {
+              const dial = twiml.dial({ callerId: from });
+              dial.sip(`${sipUsername}@${sipDomain}`);
+              return res.type("text/xml").send(twiml.toString());
+            }
+
+            case "3": {
+              twiml.say("Please leave your message after the tone.");
+              twiml.record({
+                maxLength: 120,
+                action: "/twilio/voice/voicemail",
+                method: "POST",
+              });
+              return res.type("text/xml").send(twiml.toString());
+            }
+
+            case "7": {
+              twiml.say("Why did the detailer refuse to clean the car? ");
+              twiml.pause({ length: 1 });
+              twiml.say("Because it was too. . . exhausting.");
+              twiml.hangup();
+              return res.type("text/xml").send(twiml.toString());
+            }
+
+            default: {
+              twiml.say("Invalid option.");
+              twiml.redirect("/twilio/voice/incoming");
+              return res.type("text/xml").send(twiml.toString());
+            }
+          }
+        }
+
+        // -------------------------
+        // MODE: AI VOICE (placeholder until Phase 4)
+        // -------------------------
+        if (ivrMode === "ai-voice") {
+          twiml.say(
+            "AI receptionist is not yet active. Please configure voice mode."
+          );
+          return res.type("text/xml").send(twiml.toString());
+        }
+
+        // -------------------------
+        // DEFAULT FALLBACK
+        // -------------------------
+        const dial = twiml.dial({ callerId: from });
+        dial.sip(`${sipUsername}@${sipDomain}`);
+        return res.type("text/xml").send(twiml.toString());
+
+      } catch (err) {
+        console.error("VOICE ERROR:", err);
+        const twiml = new twilio.twiml.VoiceResponse();
+        twiml.say("An error occurred. Please try again later.");
+        return res.type("text/xml").send(twiml.toString());
+      }
+    }
+  );
+
+  app.use(router);
+};
