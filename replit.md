@@ -4,21 +4,25 @@
 Clean Machine Auto Detail is being transformed into **ServicePro** - a multi-tenant, white-label SaaS platform for service businesses. The flagship instance ('root' tenant) remains Clean Machine Auto Detail, an AI-powered web application designed to streamline operations for an auto detailing service. It provides comprehensive business management, including customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs and OpenAI for intelligent chatbot capabilities, aiming for an 87% automation rate to enhance efficiency and customer engagement.
 
 ### ServicePro Multi-Tenant Architecture
-**Phase 2.1 Status: ✅ COMPLETE**
+**Phase 2.2 Status: ✅ COMPLETE**
 
 The application is being transformed into a multi-tenant platform with the following architecture:
 
 - **Tenant Registry**: `tenantConfig` table with businessName, tier (starter/pro/elite), logoUrl, primaryColor
 - **Admin Interface**: `/admin/tenants` for CRUD tenant management with tier badges
 - **Canonical Voice Entry-Point**: `/twilio/voice/incoming` - standardized webhook for multi-tenant telephony
-  - Current: Hardcoded to 'root' tenant with SIP forwarding to `jody@cleanmachinetulsa.sip.twilio.com`
-  - Future: Dynamic tenant lookup via `tenantPhoneConfig` table (Phase 2.3)
-  - Security: Twilio signature verification with `verifyTwilioSignature` middleware
-  - Testing: 6/6 tests passing, production-ready for root tenant
+  - Current: ✅ Dynamic tenant lookup via `tenantPhoneConfig` table (Phase 2.2 COMPLETE)
+  - Routing: ✅ Per-tenant SIP configuration from database
+  - Fallback: ✅ Falls back to 'root' tenant for unconfigured phone numbers
+  - Security: ✅ Twilio signature verification with `verifyTwilioSignature` middleware
+  - Testing: ✅ 7/7 tests passing, production-ready for multi-tenant
   - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md`
 
 **Key Files:**
-- `server/routes.twilioVoiceCanonical.ts` - Canonical voice router
+- `server/routes.twilioVoiceCanonical.ts` - Canonical voice router with dynamic tenant resolver
+- `server/services/tenantPhone.ts` - Tenant phone config loader functions
+- `server/seed/seedTenantPhone.ts` - Idempotent seeder for root tenant phone config
+- `shared/schema.ts` - `tenantPhoneConfig` table (line 210)
 - `server/routes.adminTenants.ts` - Tenant CRUD API
 - `client/src/pages/AdminTenants.tsx` - Tenant management UI
 - `server/tenantDb.ts` - Tenant isolation utilities (909 usages migrated)
