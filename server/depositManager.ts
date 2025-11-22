@@ -16,9 +16,14 @@ import { sendSMS } from "./notifications";
 import { sendBusinessEmail } from "./emailService";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
+const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-04-30.basil',
-});
+}) : null;
+
+if (!STRIPE_ENABLED) {
+  console.warn('[DEPOSIT MANAGER] STRIPE_SECRET_KEY not configured - deposit payment links will be disabled');
+}
 
 interface DepositReminderResult {
   sent: number;
@@ -75,6 +80,10 @@ export async function sendDepositReminder(
     });
 
     if (!paymentLinkRecord) {
+      if (!stripe) {
+        return { success: false, error: 'Payment links are not available - Stripe not configured' };
+      }
+
       // Create new Stripe payment link
       const paymentLink = await createStripePaymentLink(appt, payer);
       
@@ -263,6 +272,10 @@ async function createStripePaymentLink(
   appointment: any,
   payer: any
 ): Promise<{ id: string; url: string }> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured');
+  }
+
   try {
     // Create Stripe price
     const price = await stripe.prices.create({

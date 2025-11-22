@@ -8,13 +8,15 @@ import { renderInvoiceEmail, renderInvoiceEmailPlainText, type InvoiceEmailData 
 import { signPayToken } from './security/paylink';
 import { applyRefereeReward, calculateInvoiceWithReferralDiscount, markReferralDiscountApplied } from './referralService';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing required Stripe secret: STRIPE_SECRET_KEY');
+const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
+
+if (!STRIPE_ENABLED) {
+  console.warn('[STRIPE] STRIPE_SECRET_KEY not found, payment features will be disabled');
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-04-30.basil",
-});
+}) : null;
 
 /**
  * Create an invoice for a completed appointment
@@ -250,6 +252,10 @@ export async function getInvoice(invoiceId: number): Promise<Invoice | undefined
  * Create a Stripe payment intent for an invoice
  */
 export async function createStripePaymentIntent(invoiceId: number): Promise<string> {
+  if (!STRIPE_ENABLED || !stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
   const invoice = await getInvoice(invoiceId);
   if (!invoice) {
     throw new Error(`Invoice with ID ${invoiceId} not found`);

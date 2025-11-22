@@ -1,7 +1,12 @@
 import { Router, Request, Response } from 'express';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[SEARCH] OpenAI API key not configured - AI-powered search will use fallback matching');
+}
 
 export function registerSearchRoutes(app: Router) {
   app.post('/api/search/help', async (req: Request, res: Response) => {
@@ -28,7 +33,26 @@ export function registerSearchRoutes(app: Router) {
         { name: 'Login', path: '/login', keywords: 'login, sign in, authentication, password', description: 'Login to your account' },
       ];
 
-      // Use GPT to match query to features
+      // Use GPT to match query to features (if available)
+      if (!openai) {
+        // Fallback: Simple keyword matching
+        const lowerQuery = query.toLowerCase();
+        const matches = features.filter(f => 
+          f.name.toLowerCase().includes(lowerQuery) ||
+          f.keywords.toLowerCase().includes(lowerQuery) ||
+          f.description.toLowerCase().includes(lowerQuery)
+        ).slice(0, 5);
+
+        return res.json({
+          success: true,
+          results: matches.map(r => ({
+            name: r.name,
+            path: r.path,
+            description: r.description,
+          })),
+        });
+      }
+
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [

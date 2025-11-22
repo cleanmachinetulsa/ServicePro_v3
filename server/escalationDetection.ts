@@ -6,7 +6,12 @@
 
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
+const openai = OPENAI_ENABLED ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+if (!OPENAI_ENABLED) {
+  console.warn('[ESCALATION] OpenAI API key not configured - will use simple keyword-based escalation detection');
+}
 
 export interface EscalationAnalysis {
   requiresEscalation: boolean;
@@ -25,6 +30,20 @@ export async function analyzeForEscalation(
   hasActiveJob: boolean
 ): Promise<EscalationAnalysis> {
   try {
+    // If OpenAI is not available, use simple keyword-based detection
+    if (!openai) {
+      console.log('[ESCALATION] OpenAI not available, using keyword-based detection');
+      const isEscalation = quickEscalationCheck(customerMessage);
+      
+      return {
+        requiresEscalation: isEscalation,
+        category: isEscalation ? 'complaint' : 'normal',
+        reason: isEscalation ? 'Escalation keywords detected' : 'No escalation needed',
+        suggestedAction: isEscalation ? 'route_to_owner' : (hasActiveJob ? 'route_to_technician' : 'route_to_owner'),
+        confidence: 0.6,
+      };
+    }
+
     console.log(`[ESCALATION] Analyzing message from ${customerPhone}, hasActiveJob: ${hasActiveJob}`);
     
     const systemPrompt = `You are an escalation detection system for Clean Machine Auto Detail. 
