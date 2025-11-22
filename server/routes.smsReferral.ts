@@ -1,6 +1,5 @@
 import { Express, Request, Response } from 'express';
 import { requireAuth } from './authMiddleware';
-import { db } from './db';
 import { customers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { sendSMS } from './notifications';
@@ -28,10 +27,10 @@ export function registerSmsReferralRoutes(app: Express) {
       }
       
       // Get customer name for personalization
-      const [customer] = await db
+      const [customer] = await (req as any).tenantDb!
         .select({ name: customers.name })
         .from(customers)
-        .where(eq(customers.id, Number(customerId)))
+        .where((req as any).tenantDb!.withTenantFilter(customers, eq(customers.id, Number(customerId))))
         .limit(1);
       
       if (!customer) {

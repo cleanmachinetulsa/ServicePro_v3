@@ -1,6 +1,5 @@
 import { Express, Request, Response } from 'express';
 import { requireRole } from './rbacMiddleware';
-import { db } from './db';
 import { customers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -30,13 +29,14 @@ export function registerPublicCustomerLookupRoutes(app: Express) {
       const normalizedPhone = phone.replace(/[\s\-\(\)\+]/g, '');
 
       // Query all customers and filter by normalized phone on both sides
-      const allCustomers = await db
+      const allCustomers = await (req as any).tenantDb!
         .select({
           id: customers.id,
           name: customers.name,
           phone: customers.phone,
         })
-        .from(customers);
+        .from(customers)
+        .where((req as any).tenantDb!.withTenantFilter(customers));
 
       // Find customer by comparing normalized phone numbers
       const customer = allCustomers.find(c => 

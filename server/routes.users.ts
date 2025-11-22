@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
-import { db } from './db';
 import { users } from '@shared/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -13,7 +12,7 @@ const router = Router();
  */
 router.get('/me', requireAuth, async (req, res) => {
   try {
-    const [user] = await db
+    const [user] = await req.tenantDb!
       .select({
         id: users.id,
         username: users.username,
@@ -26,7 +25,7 @@ router.get('/me', requireAuth, async (req, res) => {
         createdAt: users.createdAt,
       })
       .from(users)
-      .where(eq(users.id, req.session.userId!))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
       .limit(1);
 
     if (!user) {
@@ -54,7 +53,7 @@ router.get('/me', requireAuth, async (req, res) => {
  */
 router.get('/all', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
   try {
-    const allUsers = await db
+    const allUsers = await req.tenantDb!
       .select({
         id: users.id,
         username: users.username,
@@ -65,7 +64,8 @@ router.get('/all', requireAuth, requireRole('manager', 'owner'), async (req, res
         createdAt: users.createdAt,
         createdBy: users.createdBy,
       })
-      .from(users);
+      .from(users)
+      .where(req.tenantDb!.withTenantFilter(users));
 
     res.json({
       success: true,
@@ -95,10 +95,10 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
     }
 
     // Check if user can create this role
-    const [currentUser] = await db
+    const [currentUser] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, req.session.userId!))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
       .limit(1);
 
     // Managers can only create employees
@@ -118,10 +118,10 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
     }
 
     // Check if username already exists
-    const [existing] = await db
+    const [existing] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.username, username))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.username, username)))
       .limit(1);
 
     if (existing) {
@@ -136,7 +136,7 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
     // Create user
-    const [newUser] = await db
+    const [newUser] = await req.tenantDb!
       .insert(users)
       .values({
         username,
@@ -187,16 +187,16 @@ router.put('/:id', requireAuth, requireRole('manager', 'owner'), async (req, res
     }
 
     // Get current user and target user
-    const [currentUser] = await db
+    const [currentUser] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, req.session.userId!))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
       .limit(1);
 
-    const [targetUser] = await db
+    const [targetUser] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, userId))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
       .limit(1);
 
     if (!targetUser) {
@@ -236,10 +236,10 @@ router.put('/:id', requireAuth, requireRole('manager', 'owner'), async (req, res
     if (isActive !== undefined) updateData.isActive = isActive;
     if (role !== undefined && currentUser.role === 'owner') updateData.role = role;
 
-    const [updatedUser] = await db
+    const [updatedUser] = await req.tenantDb!
       .update(users)
       .set(updateData)
-      .where(eq(users.id, userId))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
       .returning({
         id: users.id,
         username: users.username,
@@ -277,10 +277,10 @@ router.post('/:id/reset-password', requireAuth, requireRole('manager', 'owner'),
       });
     }
 
-    const [targetUser] = await db
+    const [targetUser] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, userId))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
       .limit(1);
 
     if (!targetUser) {
@@ -294,14 +294,14 @@ router.post('/:id/reset-password', requireAuth, requireRole('manager', 'owner'),
     const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    await db
+    await req.tenantDb!
       .update(users)
       .set({
         password: hashedPassword,
         requirePasswordChange: true,
         lastPasswordChange: new Date(),
       })
-      .where(eq(users.id, userId));
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)));
 
     res.json({
       success: true,
@@ -331,10 +331,10 @@ router.put('/me/operator-name', requireAuth, async (req, res) => {
       });
     }
 
-    const [updatedUser] = await db
+    const [updatedUser] = await req.tenantDb!
       .update(users)
       .set({ operatorName: operatorName.trim() || null })
-      .where(eq(users.id, req.session.userId!))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
       .returning({
         id: users.id,
         username: users.username,
@@ -378,10 +378,10 @@ router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
     }
 
     // Prevent deleting owner accounts
-    const [targetUser] = await db
+    const [targetUser] = await req.tenantDb!
       .select()
       .from(users)
-      .where(eq(users.id, userId))
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
       .limit(1);
 
     if (!targetUser) {
@@ -398,7 +398,7 @@ router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
       });
     }
 
-    await db.delete(users).where(eq(users.id, userId));
+    await req.tenantDb!.delete(users).where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)));
 
     res.json({
       success: true,

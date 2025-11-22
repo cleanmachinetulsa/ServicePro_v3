@@ -4,7 +4,7 @@
  * Production-grade contact management utilities for third-party billing system
  */
 
-import { db } from "./db";
+import type { TenantDb } from './tenantDb';
 import { 
   contacts, 
   appointments, 
@@ -133,6 +133,7 @@ export interface DuplicateMatch {
  * Returns ranked list of potential duplicates with confidence scores
  */
 export async function findPotentialDuplicates(
+  tenantDb: TenantDb,
   input: {
     name?: string;
     phoneE164?: string;
@@ -143,10 +144,10 @@ export async function findPotentialDuplicates(
 
   // 1. Exact phone match (highest confidence - 100%)
   if (input.phoneE164) {
-    const phoneMatches = await db
+    const phoneMatches = await tenantDb
       .select()
       .from(contacts)
-      .where(eq(contacts.phoneE164, input.phoneE164))
+      .where(tenantDb.withTenantFilter(contacts, eq(contacts.phoneE164, input.phoneE164)))
       .execute();
 
     for (const contact of phoneMatches) {
@@ -162,10 +163,10 @@ export async function findPotentialDuplicates(
   if (input.email) {
     const canonicalEmail = canonicalizeEmail(input.email);
     if (canonicalEmail) {
-      const emailMatches = await db
+      const emailMatches = await tenantDb
         .select()
         .from(contacts)
-        .where(eq(contacts.email, canonicalEmail))
+        .where(tenantDb.withTenantFilter(contacts, eq(contacts.email, canonicalEmail)))
         .execute();
 
       for (const contact of emailMatches) {
@@ -187,7 +188,7 @@ export async function findPotentialDuplicates(
     const nameLower = input.name.toLowerCase();
 
     // Get all contacts and filter by name similarity and phone last 4
-    const allContacts = await db.select().from(contacts).execute();
+    const allContacts = await tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts)).execute();
 
     for (const contact of allContacts) {
       // Skip if already matched
@@ -216,7 +217,7 @@ export async function findPotentialDuplicates(
     const emailDomain = input.email.split('@')[1]?.toLowerCase();
     const nameLower = input.name.toLowerCase();
 
-    const allContacts = await db.select().from(contacts).execute();
+    const allContacts = await tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts)).execute();
 
     for (const contact of allContacts) {
       // Skip if already matched
@@ -254,6 +255,7 @@ export async function findPotentialDuplicates(
  * Otherwise, creates new contact
  */
 export async function upsertContact(
+  tenantDb: TenantDb,
   contactData: Omit<InsertContact, 'phoneE164' | 'phoneDisplay'> & {
     phone: string; // Raw phone input
   }
@@ -272,7 +274,7 @@ export async function upsertContact(
   const canonicalEmail = canonicalizeEmail(contactData.email);
 
   // Find potential duplicates
-  const duplicates = await findPotentialDuplicates({
+  const duplicates = await findPotentialDuplicates(tenantDb, {
     name: contactData.name,
     phoneE164,
     email: canonicalEmail || undefined,
@@ -282,7 +284,7 @@ export async function upsertContact(
   const exactMatch = duplicates.find(d => d.confidence === 100);
   if (exactMatch) {
     // Update existing contact with new information (merge strategy)
-    const updated = await db
+    const updated = await tenantDb
       .update(contacts)
       .set({
         ...contactData,
@@ -291,7 +293,7 @@ export async function upsertContact(
         email: canonicalEmail || contactData.email,
         updatedAt: new Date(),
       })
-      .where(eq(contacts.id, exactMatch.contact.id))
+      .where(tenantDb.withTenantFilter(contacts, eq(contacts.id, exactMatch.contact.id)))
       .returning()
       .execute();
 
@@ -303,7 +305,7 @@ export async function upsertContact(
   }
 
   // No exact match - create new contact
-  const newContact = await db
+  const newContact = await tenantDb
     .insert(contacts)
     .values({
       ...contactData,
@@ -328,6 +330,7 @@ export async function upsertContact(
  * Returns exact and fuzzy matches
  */
 export async function searchContacts(
+  tenantDb: TenantDb,
   query: string,
   limit: number = 10
 ): Promise<Contact[]> {
@@ -340,15 +343,17 @@ export async function searchContacts(
   const canonicalEmail = query.includes('@') ? canonicalizeEmail(query) : null;
 
   // Build search query
-  const results = await db
+  const results = await tenantDb
     .select()
     .from(contacts)
     .where(
-      or(
-        phoneE164 ? eq(contacts.phoneE164, phoneE164) : undefined,
-        canonicalEmail ? eq(contacts.email, canonicalEmail) : undefined,
-        sql`LOWER(${contacts.name}) LIKE ${`%${queryLower}%`}`,
-        sql`LOWER(${contacts.company}) LIKE ${`%${queryLower}%`}`
+      tenantDb.withTenantFilter(contacts,
+        or(
+          phoneE164 ? eq(contacts.phoneE164, phoneE164) : undefined,
+          canonicalEmail ? eq(contacts.email, canonicalEmail) : undefined,
+          sql`LOWER(${contacts.name}) LIKE ${`%${queryLower}%`}`,
+          sql`LOWER(${contacts.company}) LIKE ${`%${queryLower}%`}`
+        )
       )
     )
     .limit(limit)
@@ -464,6 +469,7 @@ export async function updateContactReferences(
  * Keeps primaryContactId and deletes duplicateContactId
  */
 export async function mergeContacts(
+  tenantDb: TenantDb,
   primaryContactId: number,
   duplicateContactId: number
 ): Promise<Contact> {
@@ -471,8 +477,8 @@ export async function mergeContacts(
 
   // Get both contacts
   const [primary, duplicate] = await Promise.all([
-    db.select().from(contacts).where(eq(contacts.id, primaryContactId)).execute(),
-    db.select().from(contacts).where(eq(contacts.id, duplicateContactId)).execute(),
+    tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts, eq(contacts.id, primaryContactId))).execute(),
+    tenantDb.select().from(contacts).where(tenantDb.withTenantFilter(contacts, eq(contacts.id, duplicateContactId))).execute(),
   ]);
 
   if (!primary[0] || !duplicate[0]) {
@@ -482,7 +488,7 @@ export async function mergeContacts(
   console.log(`[Contact Merge] Merging "${duplicate[0].name}" (${duplicate[0].phoneE164}) into "${primary[0].name}" (${primary[0].phoneE164})`);
 
   // Use transaction for the entire merge operation
-  return await db.transaction(async (tx) => {
+  return await tenantDb.transaction(async (tx) => {
     // Merge strategy: keep primary data, fill in missing fields from duplicate
     const merged = {
       ...primary[0],
@@ -517,7 +523,7 @@ export async function mergeContacts(
     await updateContactReferences(tx, duplicateContactId, primaryContactId);
 
     // Delete duplicate contact
-    await tx.delete(contacts).where(eq(contacts.id, duplicateContactId)).execute();
+    await tx.delete(contacts).where(tenantDb.withTenantFilter(contacts, eq(contacts.id, duplicateContactId))).execute();
     console.log(`[Contact Merge] Deleted duplicate contact #${duplicateContactId}`);
     console.log(`[Contact Merge] Merge completed successfully`);
 

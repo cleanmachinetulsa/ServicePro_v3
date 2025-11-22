@@ -4,7 +4,6 @@ import sharp from 'sharp';
 import { nanoid } from 'nanoid';
 import fs from 'fs/promises';
 import path from 'path';
-import { db } from './db';
 import { technicians, orgSettings, auditLog, insertTechnicianSchema, insertOrgSettingSchema } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import OpenAI from 'openai';
@@ -53,8 +52,8 @@ router.post('/api/tech/profile/photo', requireRole('manager', 'owner'), upload.s
     }
 
     // Find technician by authenticated user ID
-    const tech = await db.query.technicians.findFirst({
-      where: (technicians, { eq }) => eq(technicians.userId, user.id),
+    const tech = await req.tenantDb!.query.technicians.findFirst({
+      where: (technicians, { eq, and }) => req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, user.id)),
     });
 
     if (!tech) {
@@ -173,8 +172,8 @@ router.get('/api/tech/profile/me', async (req: Request, res: Response) => {
     }
 
     // Find technician by user ID
-    const tech = await db.query.technicians.findFirst({
-      where: (technicians, { eq }) => eq(technicians.userId, user.id),
+    const tech = await req.tenantDb!.query.technicians.findFirst({
+      where: (technicians, { eq }) => req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, user.id)),
     });
 
     if (!tech) {
@@ -194,10 +193,12 @@ router.get('/api/tech/profile/public/:publicId', async (req: Request, res: Respo
     const { publicId } = req.params;
 
     // Find technician by public ID, only return reviewed/approved profiles
-    const tech = await db.query.technicians.findFirst({
-      where: (technicians, { and, eq }) => and(
-        eq(technicians.publicId, publicId),
-        eq(technicians.profileReviewed, true)
+    const tech = await req.tenantDb!.query.technicians.findFirst({
+      where: (technicians, { and, eq }) => req.tenantDb!.withTenantFilter(technicians,
+        and(
+          eq(technicians.publicId, publicId),
+          eq(technicians.profileReviewed, true)
+        )
       ),
     });
 
@@ -233,25 +234,25 @@ router.post('/api/tech/profile', requireRole('manager', 'owner'), async (req: Re
     const data = req.body;
 
     // Find existing technician by user ID
-    const existingTech = await db.query.technicians.findFirst({
-      where: (technicians, { eq }) => eq(technicians.userId, user.id),
+    const existingTech = await req.tenantDb!.query.technicians.findFirst({
+      where: (technicians, { eq }) => req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, user.id)),
     });
 
     let techId: number;
 
     if (existingTech) {
       // Update existing profile
-      await db.update(technicians)
+      await req.tenantDb!.update(technicians)
         .set({
           ...data,
           updatedAt: new Date(),
         })
-        .where(eq(technicians.id, existingTech.id));
+        .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, existingTech.id)));
       
       techId = existingTech.id;
 
       // Log audit event
-      await db.insert(auditLog).values({
+      await req.tenantDb!.insert(auditLog).values({
         userId: user.id,
         technicianId: techId,
         actionType: 'profile_update',
@@ -264,7 +265,7 @@ router.post('/api/tech/profile', requireRole('manager', 'owner'), async (req: Re
     } else {
       // Create new profile with publicId
       const publicId = nanoid(10);
-      const result = await db.insert(technicians).values({
+      const result = await req.tenantDb!.insert(technicians).values({
         ...data,
         userId: user.id,
         publicId,
@@ -273,7 +274,7 @@ router.post('/api/tech/profile', requireRole('manager', 'owner'), async (req: Re
       techId = result[0].id;
 
       // Log audit event
-      await db.insert(auditLog).values({
+      await req.tenantDb!.insert(auditLog).values({
         userId: user.id,
         technicianId: techId,
         actionType: 'profile_create',
@@ -286,8 +287,8 @@ router.post('/api/tech/profile', requireRole('manager', 'owner'), async (req: Re
     }
 
     // Fetch and return updated profile
-    const updatedTech = await db.query.technicians.findFirst({
-      where: (technicians, { eq }) => eq(technicians.id, techId),
+    const updatedTech = await req.tenantDb!.query.technicians.findFirst({
+      where: (technicians, { eq }) => req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)),
     });
 
     res.json(updatedTech);
@@ -305,7 +306,8 @@ router.get('/api/admin/technicians', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Admin access required' });
     }
 
-    const allTechs = await db.query.technicians.findMany({
+    const allTechs = await req.tenantDb!.query.technicians.findMany({
+      where: (technicians) => req.tenantDb!.withTenantFilter(technicians),
       orderBy: (technicians, { desc }) => [desc(technicians.createdAt)],
     });
 
@@ -327,7 +329,7 @@ router.post('/api/admin/tech/:id/review', async (req: Request, res: Response) =>
     const techId = parseInt(req.params.id);
     const { approved, reason } = req.body;
 
-    await db.update(technicians)
+    await req.tenantDb!.update(technicians)
       .set({
         profileReviewed: approved,
         profileReviewedAt: new Date(),
@@ -335,10 +337,10 @@ router.post('/api/admin/tech/:id/review', async (req: Request, res: Response) =>
         profileRejectionReason: approved ? null : reason,
         updatedAt: new Date(),
       })
-      .where(eq(technicians.id, techId));
+      .where(req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, techId)));
 
     // Log audit event
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       userId: user.id,
       technicianId: techId,
       actionType: approved ? 'profile_approve' : 'profile_reject',
@@ -359,7 +361,9 @@ router.post('/api/admin/tech/:id/review', async (req: Request, res: Response) =>
 // Get org settings (feature flags)
 router.get('/api/org/settings', async (req: Request, res: Response) => {
   try {
-    const settings = await db.query.orgSettings.findMany();
+    const settings = await req.tenantDb!.query.orgSettings.findMany({
+      where: (orgSettings) => req.tenantDb!.withTenantFilter(orgSettings),
+    });
     
     // Convert to key-value object for easier access
     const settingsObj = settings.reduce((acc, setting) => {
@@ -385,23 +389,23 @@ router.post('/api/org/settings', async (req: Request, res: Response) => {
     const { settingKey, settingValue, description } = req.body;
 
     // Check if setting exists
-    const existing = await db.query.orgSettings.findFirst({
-      where: (orgSettings, { eq }) => eq(orgSettings.settingKey, settingKey),
+    const existing = await req.tenantDb!.query.orgSettings.findFirst({
+      where: (orgSettings, { eq }) => req.tenantDb!.withTenantFilter(orgSettings, eq(orgSettings.settingKey, settingKey)),
     });
 
     if (existing) {
       // Update existing setting
-      await db.update(orgSettings)
+      await req.tenantDb!.update(orgSettings)
         .set({
           settingValue,
           description,
           updatedAt: new Date(),
           updatedBy: user.id,
         })
-        .where(eq(orgSettings.settingKey, settingKey));
+        .where(req.tenantDb!.withTenantFilter(orgSettings, eq(orgSettings.settingKey, settingKey)));
     } else {
       // Create new setting
-      await db.insert(orgSettings).values({
+      await req.tenantDb!.insert(orgSettings).values({
         settingKey,
         settingValue,
         description,
@@ -423,8 +427,8 @@ router.get('/api/tech/profile/:publicId', async (req: Request, res: Response) =>
   try {
     const { publicId } = req.params;
 
-    const tech = await db.query.technicians.findFirst({
-      where: (technicians, { eq }) => eq(technicians.publicId, publicId),
+    const tech = await req.tenantDb!.query.technicians.findFirst({
+      where: (technicians, { eq }) => req.tenantDb!.withTenantFilter(technicians, eq(technicians.publicId, publicId)),
     });
 
     if (!tech) {
