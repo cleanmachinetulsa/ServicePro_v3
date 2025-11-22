@@ -131,25 +131,25 @@ export function registerAdminTenantRoutes(app: Express) {
       }
 
       await db.transaction(async (tx) => {
-        if (req.body.name || req.body.subdomain !== undefined) {
+        const tenantUpdates: any = { updatedAt: new Date() };
+        if (req.body.name !== undefined) tenantUpdates.name = req.body.name;
+        if (req.body.subdomain !== undefined) tenantUpdates.subdomain = req.body.subdomain;
+        
+        if (Object.keys(tenantUpdates).length > 1) {
           await tx.update(tenants)
-            .set({
-              name: req.body.name,
-              subdomain: req.body.subdomain,
-              updatedAt: new Date(),
-            })
+            .set(tenantUpdates)
             .where(eq(tenants.id, id));
         }
 
-        if (req.body.businessName || req.body.logoUrl !== undefined || req.body.primaryColor || req.body.tier) {
+        const configUpdates: any = { updatedAt: new Date() };
+        if (req.body.businessName !== undefined) configUpdates.businessName = req.body.businessName;
+        if (req.body.logoUrl !== undefined) configUpdates.logoUrl = req.body.logoUrl;
+        if (req.body.primaryColor !== undefined) configUpdates.primaryColor = req.body.primaryColor;
+        if (req.body.tier !== undefined) configUpdates.tier = req.body.tier;
+        
+        if (Object.keys(configUpdates).length > 1) {
           await tx.update(tenantConfig)
-            .set({
-              businessName: req.body.businessName,
-              logoUrl: req.body.logoUrl,
-              primaryColor: req.body.primaryColor,
-              tier: req.body.tier,
-              updatedAt: new Date(),
-            })
+            .set(configUpdates)
             .where(eq(tenantConfig.tenantId, id));
         }
       });
