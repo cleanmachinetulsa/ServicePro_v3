@@ -1,0 +1,243 @@
+Here’s the full, updated Phase 1H prompt with the extra protections baked in, ready to copy-paste as a single block:
+
+---
+
+PHASE 1H – FINAL TENANT ISOLATION SWEEP
+
+Goal:
+Finish the tenant isolation migration so that NO server code uses the raw db directly (except inside tenantDb.ts itself and the dedicated test utilities). All remaining routes, services, background jobs, schedulers, and seed/init functions must be tenant-aware.
+
+Scope / Constraints:
+
+* Only modify files under the server/ directory. Do NOT touch client/frontend code.
+* When scanning for and cleaning up db imports, do NOT change or remove db usage in:
+
+  * server/tenantDb.ts
+  * server/tests/setupTenantDb.ts
+  * server/tests/tenantIsolation/tenantDb.test.ts
+    Those files are allowed to use db directly as part of the tenantDb implementation and tests.
+
+Context:
+
+* tenantDb wrapper and middleware are already implemented and tested.
+* Many routes and services have already been migrated.
+* Phase 1G updated callers to pass tenantDb and the server is running clean with 11/11 tenant tests passing.
+* We now need a final, careful sweep to remove ALL remaining direct db usage from the server codebase under server/, except the explicit allowed files listed above.
+
+Tasks:
+
+1. SCAN FOR REMAINING RAW db USAGE
+
+* Search the server/ directory for any remaining:
+
+  * import { db } from "./db"
+  * import { db } from "../db"
+* Produce a short list of all files still importing db.
+* IMPORTANT: Do NOT modify or “fix” db imports in:
+
+  * server/tenantDb.ts
+  * server/tests/setupTenantDb.ts
+  * server/tests/tenantIsolation/tenantDb.test.ts
+
+2. MIGRATE REMAINING ROUTES TO tenantDb
+
+For any remaining route files under server/ that still import db:
+
+* Remove the line: import { db } from "./db"; (or "../db")
+
+* Change all database calls from:
+
+  * db.select().from(...)
+  * db.insert(...)
+  * db.update(...)
+  * db.delete(...)
+  * db.query.tableName...
+    to the tenantDb pattern:
+
+* Use req.tenantDb! in place of db.
+
+* For SELECTs:
+
+  * If there was NO WHERE before:
+    .where(req.tenantDb!.withTenantFilter(table))
+  * If there WAS a WHERE condition:
+    .where(req.tenantDb!.withTenantFilter(table, existingCondition))
+
+* For UPDATE and DELETE:
+
+  * Always wrap the WHERE clause:
+    .where(req.tenantDb!.withTenantFilter(table, condition))
+
+* For INSERT:
+
+  * Use req.tenantDb!.insert(...) – tenantDb will auto-inject tenant_id, so you shouldn’t manually set tenant_id in most cases.
+
+* Follow the existing patterns used in already migrated route files such as:
+
+  * server/routes.contacts.ts
+  * server/routes.tags.ts
+  * server/routes.appointments.ts
+  * server/routes.conversations.ts
+  * server/routes.subscriptions.ts
+  * server/routes.appointments.ts, routes.conversations.ts, etc.
+
+Do NOT change business logic or API contracts; only change how the database is accessed.
+
+3. MIGRATE BACKGROUND JOBS & SCHEDULERS
+
+For any remaining background jobs, schedulers, or services under server/ that run without an HTTP request (so they don’t have req.tenantDb):
+
+* Replace raw db usage with a TenantDb created by wrapTenantDb:
+
+  import { db } from "./db";
+  import { wrapTenantDb } from "./tenantDb";
+
+  const tenantDb = wrapTenantDb(db, "root");
+
+* Then pass tenantDb into any migrated service functions OR use it directly with the same patterns as routes:
+
+  await someServiceFunction(tenantDb, ...);
+
+  const rows = await tenantDb
+  .select()
+  .from(someTable)
+  .where(tenantDb.withTenantFilter(someTable, condition));
+
+* Files to pay particular attention to (if they still use db):
+
+  * server/timeoutMonitorService.ts
+  * server/damageAssessmentMonitor.ts
+  * server/recurringServicesScheduler.ts
+  * server/weatherScheduler.ts
+  * server/maintenanceNotifications.ts
+  * server/portMonitoring.ts
+  * server/autoFailover.ts
+  * server/usageTracker.ts
+  * server/smsFailoverService.ts
+  * server/callLoggingService.ts
+  * any other scheduler / monitor / background job in server/.
+
+4. MIGRATE ANY REMAINING SERVICE HELPERS
+
+If any service helpers under server/ still import db directly (e.g. services that weren’t covered in earlier phases):
+
+* Update them to accept tenantDb: TenantDb as the first parameter:
+
+  // BEFORE:
+  export async function someServiceFunction(args...) {
+  return await db.select().from(...);
+  }
+
+  // AFTER:
+  import type { TenantDb } from "./tenantDb";
+
+  export async function someServiceFunction(tenantDb: TenantDb, args...) {
+  return await tenantDb
+  .select()
+  .from(table)
+  .where(tenantDb.withTenantFilter(table, condition));
+  }
+
+* Replace db usage with tenantDb usage inside these helpers.
+
+* Update all their callers (routes, jobs, or other services) to pass:
+
+  * req.tenantDb! when called from HTTP route handlers, OR
+  * wrapTenantDb(db, "root") when called from background jobs / startup context.
+
+5. RE-ENABLE SEED / INIT FUNCTIONS SAFELY
+
+Two functions were previously disabled:
+
+* initializeReferralConfig() in server/referralConfigService.ts
+* seedDefaultReminderRules() in server/reminderService.ts
+
+Tasks:
+
+* Refactor these functions so they accept tenantDb: TenantDb instead of using db directly.
+
+* At their call sites (typically in server/index.ts or similar startup files), create a tenantDb using wrapTenantDb(db, "root") and pass it in:
+
+  import { db } from "./db";
+  import { wrapTenantDb } from "./tenantDb";
+  import { initializeReferralConfig } from "./referralConfigService";
+  import { seedDefaultReminderRules } from "./reminderService";
+
+  const tenantDb = wrapTenantDb(db, "root");
+
+  await initializeReferralConfig(tenantDb);
+  await seedDefaultReminderRules(tenantDb);
+
+* Re-enable their usage, ensuring:
+
+  * They only run once per tenant or are idempotent.
+  * They correctly apply tenant filters or insert rows with the correct tenant_id.
+
+* Keep the logic of what they seed the same; only change how they access the database.
+
+6. VERIFICATION
+
+After all migrations are complete:
+
+a) TypeScript:
+
+* Run: npx tsc --noEmit
+* Confirm: 0 server-side TypeScript errors.
+
+b) Tenant isolation tests:
+
+* Run: npx vitest run server/tests/tenantIsolation/tenantDb.test.ts
+* Confirm: 11/11 tests passing.
+
+c) Server:
+
+* Start the dev server (e.g., npm run dev or equivalent).
+* Confirm it boots cleanly on port 5000 with no runtime errors.
+
+d) Smoke tests:
+
+* Call a few representative endpoints (auth-required is fine where expected):
+
+  * GET /api/homepage-content
+  * GET /api/services
+  * GET /api/addon-services
+  * GET /api/appointments
+  * GET /api/conversations
+
+* Confirm they return responses (200 OK or expected auth errors) and do not throw server-side exceptions.
+
+e) Final db import scan:
+
+* Re-run a scan over server/ for any:
+
+  * import { db } from "./db"
+  * import { db } from "../db"
+
+* The ONLY allowed db imports after this phase should be:
+
+  * Inside server/tenantDb.ts
+  * Inside server/tests/setupTenantDb.ts
+  * Inside server/tests/tenantIsolation/tenantDb.test.ts
+
+All other server files should be using tenantDb instead of db.
+
+7. OUTPUT REPORT
+
+Please provide a final Phase 1H report including:
+
+* List of all files modified.
+* Count of operations migrated (SELECT / INSERT / UPDATE / DELETE).
+* Confirmation that all db imports are removed from server code except where explicitly required by:
+
+  * server/tenantDb.ts
+  * server/tests/setupTenantDb.ts
+  * server/tests/tenantIsolation/tenantDb.test.ts
+* Confirmation that:
+
+  * TypeScript compilation passes (server-side).
+  * Tenant isolation tests pass (11/11).
+  * The dev server boots cleanly and smoke tests succeed.
+* Any TODOs, caveats, or edge cases I should be aware of for future phases (for example, any files that could not be migrated cleanly and why).
+
+Important:
+This is a mechanical migration. Do NOT change business logic or API contracts. Only update how the database is accessed to ensure full tenant isolation across the server/ codebase.
