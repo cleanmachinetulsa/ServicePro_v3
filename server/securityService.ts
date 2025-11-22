@@ -1,3 +1,12 @@
+// server/securityService.ts
+// ======================================================================
+// Security & Audit Service
+// - TOTP 2FA setup, verification, and management
+// - Login attempt tracking and account lockout
+// - Audit logging for security events
+// - Security statistics and reporting
+// ======================================================================
+
 import { db } from './db';
 import { totpSecrets, loginAttempts, accountLockouts, auditLogs, users } from '@shared/schema';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
@@ -6,40 +15,23 @@ import QRCode from 'qrcode';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 
-const LOCKOUT_THRESHOLD = 5; // Lock account after 5 failed attempts
-const LOCKOUT_DURATION_MINUTES = 15; // Lock account for 15 minutes
-const ATTEMPT_WINDOW_MINUTES = 15; // Count attempts within 15 minute window
+// Constants for security policies
+const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
+const ATTEMPT_WINDOW_MINUTES = 15;
+const BACKUP_CODES_COUNT = 10;
+const BACKUP_CODE_LENGTH = 8;
 
 // ======================================================================
-// TOTP (Time-based One-Time Password) Functions
+// TOTP 2FA Functions
 // ======================================================================
 
 /**
- * Setup TOTP for a user - generates secret and QR code
- * @param userId - User ID
- * @param email - User email for TOTP label
- * @param appName - App name for TOTP label (default: "Clean Machine")
- * @returns Object with secret, QR code URL, and backup codes
+ * Setup TOTP for a user - generates secret, QR code, and backup codes
+ * Returns everything needed for the user to set up their authenticator app
  */
-export async function setupTOTP(
-  userId: number,
-  email: string,
-  appName: string = "Clean Machine"
-) {
+export async function setupTOTP(userId: number, email: string, appName: string = 'CleanMachine') {
   try {
-    // Generate a new secret
-    const secret = authenticator.generateSecret();
-
-    // Generate backup codes (10 codes, 8 characters each)
-    const backupCodes = Array.from({ length: 10 }, () =>
-      crypto.randomBytes(4).toString('hex').toUpperCase()
-    );
-
-    // Hash backup codes before storing
-    const hashedBackupCodes = await Promise.all(
-      backupCodes.map(code => bcrypt.hash(code, 10))
-    );
-
     // Check if user already has TOTP setup
     const existing = await db
       .select()
@@ -47,57 +39,56 @@ export async function setupTOTP(
       .where(eq(totpSecrets.userId, userId))
       .limit(1);
 
-    if (existing.length > 0) {
-      // Update existing secret (user is re-enrolling)
-      await db
-        .update(totpSecrets)
-        .set({
-          secret,
-          backupCodes: hashedBackupCodes,
-          enabled: false, // Reset to disabled until they verify
-          enabledAt: null,
-        })
-        .where(eq(totpSecrets.userId, userId));
-    } else {
-      // Insert new TOTP secret
-      await db.insert(totpSecrets).values({
-        userId,
-        secret,
-        backupCodes: hashedBackupCodes,
-        enabled: false,
-      });
+    if (existing && existing.length > 0) {
+      throw new Error('TOTP already configured for this user');
     }
+
+    // Generate secret
+    const secret = authenticator.generateSecret();
 
     // Generate OTP auth URL for QR code
     const otpauth = authenticator.keyuri(email, appName, secret);
 
-    // Generate QR code data URL
-    const qrCodeUrl = await QRCode.toDataURL(otpauth);
+    // Generate QR code as data URL
+    const qrCode = await QRCode.toDataURL(otpauth);
+
+    // Generate backup codes
+    const backupCodes: string[] = [];
+    const hashedBackupCodes: string[] = [];
+
+    for (let i = 0; i < BACKUP_CODES_COUNT; i++) {
+      const code = crypto.randomBytes(BACKUP_CODE_LENGTH).toString('hex').toUpperCase();
+      backupCodes.push(code);
+      const hashed = await bcrypt.hash(code, 10);
+      hashedBackupCodes.push(hashed);
+    }
+
+    // Store in database (not enabled yet - user must verify first)
+    await db.insert(totpSecrets).values({
+      userId,
+      secret,
+      enabled: false,
+      backupCodes: hashedBackupCodes,
+    });
 
     return {
-      success: true,
       secret,
-      qrCodeUrl,
-      backupCodes, // Return unhashed codes to display to user (ONLY TIME)
+      qrCode,
+      backupCodes, // Show these once to the user
+      otpauth,
     };
   } catch (error) {
-    console.error('Setup TOTP error:', error);
-    return {
-      success: false,
-      error: 'Failed to setup 2FA',
-    };
+    console.error('[securityService] setupTOTP error:', error);
+    throw error;
   }
 }
 
 /**
- * Enable TOTP for a user after verifying token
- * @param userId - User ID
- * @param token - TOTP token to verify
- * @returns Success status
+ * Enable TOTP after user verifies they can generate valid tokens
  */
-export async function enableTOTP(userId: number, token: string) {
+export async function enableTOTP(userId: number, token: string): Promise<boolean> {
   try {
-    // Get user's TOTP secret
+    // Get the secret
     const totpRecord = await db
       .select()
       .from(totpSecrets)
@@ -105,25 +96,23 @@ export async function enableTOTP(userId: number, token: string) {
       .limit(1);
 
     if (!totpRecord || totpRecord.length === 0) {
-      return {
-        success: false,
-        error: '2FA not set up',
-      };
+      throw new Error('TOTP not configured for this user');
     }
 
     const totp = totpRecord[0];
 
-    // Verify token
+    if (totp.enabled) {
+      throw new Error('TOTP already enabled');
+    }
+
+    // Verify the token
     const isValid = authenticator.verify({
       token,
       secret: totp.secret,
     });
 
     if (!isValid) {
-      return {
-        success: false,
-        error: 'Invalid verification code',
-      };
+      return false;
     }
 
     // Enable TOTP
@@ -135,27 +124,19 @@ export async function enableTOTP(userId: number, token: string) {
       })
       .where(eq(totpSecrets.userId, userId));
 
-    return {
-      success: true,
-    };
+    return true;
   } catch (error) {
-    console.error('Enable TOTP error:', error);
-    return {
-      success: false,
-      error: 'Failed to enable 2FA',
-    };
+    console.error('[securityService] enableTOTP error:', error);
+    throw error;
   }
 }
 
 /**
- * Verify TOTP token or backup code
- * @param userId - User ID
- * @param token - TOTP token or backup code
- * @returns True if valid, false otherwise
+ * Verify a TOTP token or backup code
  */
 export async function verifyTOTP(userId: number, token: string): Promise<boolean> {
   try {
-    // Get user's TOTP secret
+    // Get the secret
     const totpRecord = await db
       .select()
       .from(totpSecrets)
@@ -171,36 +152,34 @@ export async function verifyTOTP(userId: number, token: string): Promise<boolean
 
     const totp = totpRecord[0];
 
-    // First try to verify as TOTP token
+    // First try TOTP token
     const isValidToken = authenticator.verify({
       token,
       secret: totp.secret,
     });
 
     if (isValidToken) {
-      // Update last used timestamp
+      // Update last used
       await db
         .update(totpSecrets)
         .set({ lastUsedAt: new Date() })
         .where(eq(totpSecrets.userId, userId));
-
       return true;
     }
 
-    // If not a valid TOTP token, try backup codes
+    // Try backup codes
     if (totp.backupCodes && totp.backupCodes.length > 0) {
       for (let i = 0; i < totp.backupCodes.length; i++) {
-        const hashedCode = totp.backupCodes[i];
-        const isValidBackup = await bcrypt.compare(token.toUpperCase(), hashedCode);
-
-        if (isValidBackup) {
+        const isMatch = await bcrypt.compare(token, totp.backupCodes[i]);
+        if (isMatch) {
           // Remove used backup code
-          const newBackupCodes = totp.backupCodes.filter((_, idx) => idx !== i);
+          const updatedCodes = [...totp.backupCodes];
+          updatedCodes.splice(i, 1);
 
           await db
             .update(totpSecrets)
             .set({
-              backupCodes: newBackupCodes,
+              backupCodes: updatedCodes,
               lastUsedAt: new Date(),
             })
             .where(eq(totpSecrets.userId, userId));
@@ -212,50 +191,36 @@ export async function verifyTOTP(userId: number, token: string): Promise<boolean
 
     return false;
   } catch (error) {
-    console.error('Verify TOTP error:', error);
+    console.error('[securityService] verifyTOTP error:', error);
     return false;
   }
 }
 
 /**
- * Disable TOTP for a user
- * @param userId - User ID
- * @param token - TOTP token to verify before disabling
- * @returns Success status
+ * Disable TOTP for a user (requires verification)
  */
-export async function disableTOTP(userId: number, token: string) {
+export async function disableTOTP(userId: number, token: string): Promise<boolean> {
   try {
-    // Verify token before disabling
+    // Verify the token first
     const isValid = await verifyTOTP(userId, token);
-
     if (!isValid) {
-      return {
-        success: false,
-        error: 'Invalid verification code',
-      };
+      return false;
     }
 
-    // Delete TOTP secret
+    // Delete TOTP configuration
     await db
       .delete(totpSecrets)
       .where(eq(totpSecrets.userId, userId));
 
-    return {
-      success: true,
-    };
+    return true;
   } catch (error) {
-    console.error('Disable TOTP error:', error);
-    return {
-      success: false,
-      error: 'Failed to disable 2FA',
-    };
+    console.error('[securityService] disableTOTP error:', error);
+    throw error;
   }
 }
 
 /**
  * Check if TOTP is enabled for a user
- * @param userId - User ID
- * @returns True if enabled, false otherwise
  */
 export async function isTOTPEnabled(userId: number): Promise<boolean> {
   try {
@@ -268,9 +233,9 @@ export async function isTOTPEnabled(userId: number): Promise<boolean> {
       ))
       .limit(1);
 
-    return totpRecord.length > 0;
+    return totpRecord && totpRecord.length > 0;
   } catch (error) {
-    console.error('Check TOTP enabled error:', error);
+    console.error('[securityService] isTOTPEnabled error:', error);
     return false;
   }
 }
@@ -281,11 +246,6 @@ export async function isTOTPEnabled(userId: number): Promise<boolean> {
 
 /**
  * Log a login attempt
- * @param username - Username attempting to login
- * @param ipAddress - IP address of the attempt
- * @param success - Whether the attempt was successful
- * @param reason - Reason for failure (optional)
- * @param userAgent - User agent string (optional)
  */
 export async function logLoginAttempt(
   username: string,
@@ -293,7 +253,7 @@ export async function logLoginAttempt(
   success: boolean,
   reason?: string,
   userAgent?: string
-) {
+): Promise<void> {
   try {
     await db.insert(loginAttempts).values({
       username,
@@ -303,124 +263,93 @@ export async function logLoginAttempt(
       userAgent: userAgent || null,
     });
   } catch (error) {
-    console.error('Log login attempt error:', error);
+    console.error('[securityService] logLoginAttempt error:', error);
+    // Don't throw - logging failures shouldn't block authentication
   }
 }
 
 /**
- * Check login attempts and determine if account should be locked
- * @param username - Username to check
- * @param ipAddress - IP address to check
- * @returns Lockout status with remaining attempts
+ * Check if account should be locked based on recent failed attempts
  */
-export async function checkLoginAttempts(username: string, ipAddress: string) {
+export async function checkLoginAttempts(
+  username: string,
+  ipAddress: string
+): Promise<{ locked: boolean; unlockAt?: Date; remainingAttempts?: number }> {
   try {
-    // Check if there's an active lockout for this user
-    const userResult = await db
+    const windowStart = new Date(Date.now() - ATTEMPT_WINDOW_MINUTES * 60 * 1000);
+
+    // Check for existing active lockout
+    const user = await db
       .select()
       .from(users)
       .where(eq(users.username, username))
       .limit(1);
 
-    if (userResult.length > 0) {
-      const user = userResult[0];
-
+    if (user && user.length > 0) {
       const activeLockout = await db
         .select()
         .from(accountLockouts)
         .where(and(
-          eq(accountLockouts.userId, user.id),
+          eq(accountLockouts.userId, user[0].id),
           eq(accountLockouts.unlocked, false),
           gte(accountLockouts.unlockAt, new Date())
         ))
         .limit(1);
 
-      if (activeLockout.length > 0) {
+      if (activeLockout && activeLockout.length > 0) {
         return {
           locked: true,
           unlockAt: activeLockout[0].unlockAt,
-          remainingAttempts: 0,
         };
       }
     }
 
-    // Count recent failed attempts (within window)
-    const windowStart = new Date(Date.now() - ATTEMPT_WINDOW_MINUTES * 60 * 1000);
-
+    // Count recent failed attempts
     const recentFailures = await db
       .select()
       .from(loginAttempts)
       .where(and(
         eq(loginAttempts.username, username),
+        eq(loginAttempts.ipAddress, ipAddress),
         eq(loginAttempts.successful, false),
         gte(loginAttempts.attemptedAt, windowStart)
       ));
 
     const failureCount = recentFailures.length;
-    const remainingAttempts = Math.max(0, LOCKOUT_THRESHOLD - failureCount);
 
-    // If threshold exceeded, create lockout
-    if (failureCount >= LOCKOUT_THRESHOLD && userResult.length > 0) {
-      const user = userResult[0];
-      const unlockAt = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000);
+    if (failureCount >= LOCKOUT_THRESHOLD) {
+      // Create lockout if user exists
+      if (user && user.length > 0) {
+        const unlockAt = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000);
 
-      await db.insert(accountLockouts).values({
-        userId: user.id,
-        unlockAt,
-        reason: 'failed_login_attempts',
-      });
+        await db.insert(accountLockouts).values({
+          userId: user[0].id,
+          unlockAt,
+          reason: 'failed_login_attempts',
+          lockedBy: null,
+        });
 
+        return {
+          locked: true,
+          unlockAt,
+        };
+      }
+
+      // Even if user doesn't exist, return locked status
       return {
         locked: true,
-        unlockAt,
-        remainingAttempts: 0,
+        unlockAt: new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000),
       };
     }
 
     return {
       locked: false,
-      remainingAttempts,
+      remainingAttempts: LOCKOUT_THRESHOLD - failureCount,
     };
   } catch (error) {
-    console.error('Check login attempts error:', error);
-    return {
-      locked: false,
-      remainingAttempts: LOCKOUT_THRESHOLD,
-    };
-  }
-}
-
-/**
- * Unlock a locked account
- * @param userId - User ID to unlock
- * @param unlockedBy - Admin user ID who unlocked the account
- */
-export async function unlockAccount(userId: number, unlockedBy: number) {
-  try {
-    await db
-      .update(accountLockouts)
-      .set({
-        unlocked: true,
-        unlockedAt: new Date(),
-      })
-      .where(and(
-        eq(accountLockouts.userId, userId),
-        eq(accountLockouts.unlocked, false)
-      ));
-
-    // Log audit event
-    await logAuditEvent(
-      'root', // tenantId - using root for now
-      unlockedBy,
-      'account_unlocked',
-      { unlockedUserId: userId },
-      'system'
-    );
-
-    return { success: true };
-  } catch (error) {
-    console.error('Unlock account error:', error);
-    return { success: false, error: 'Failed to unlock account' };
+    console.error('[securityService] checkLoginAttempts error:', error);
+    // On error, allow login to prevent lockout from being a DoS vector
+    return { locked: false };
   }
 }
 
@@ -429,39 +358,72 @@ export async function unlockAccount(userId: number, unlockedBy: number) {
 // ======================================================================
 
 /**
- * Log an audit event
- * @param tenantId - Tenant ID
- * @param userId - User ID performing the action
- * @param action - Action performed
- * @param details - Additional details about the action
- * @param ipAddress - IP address of the action
+ * Log an audit event - supports both positional and object parameter styles
  */
 export async function logAuditEvent(
-  tenantId: string,
-  userId: number,
-  action: string,
-  details: Record<string, any>,
-  ipAddress: string
-) {
+  userIdOrParams: number | {
+    userId: number;
+    action: string;
+    resource: string;
+    details?: string;
+    resourceId?: string;
+    changes?: any;
+    ipAddress?: string;
+    userAgent?: string;
+  },
+  action?: string,
+  resource?: string,
+  resourceId?: string | null,
+  changes?: any,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<void> {
   try {
-    await db.insert(auditLogs).values({
-      userId,
-      action,
-      resource: details.resource || 'unknown',
-      resourceId: details.resourceId?.toString() || null,
-      changes: details,
-      ipAddress,
-      metadata: details.metadata || null,
-    });
+    let auditData: {
+      userId: number;
+      action: string;
+      resource: string;
+      resourceId?: string | null;
+      changes?: any;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+      metadata?: any;
+    };
+
+    // Handle object parameter style
+    if (typeof userIdOrParams === 'object') {
+      auditData = {
+        userId: userIdOrParams.userId,
+        action: userIdOrParams.action,
+        resource: userIdOrParams.resource,
+        resourceId: userIdOrParams.resourceId || null,
+        changes: userIdOrParams.changes || null,
+        ipAddress: userIdOrParams.ipAddress || null,
+        userAgent: userIdOrParams.userAgent || null,
+        metadata: userIdOrParams.details ? { details: userIdOrParams.details } : null,
+      };
+    } else {
+      // Handle positional parameter style
+      auditData = {
+        userId: userIdOrParams,
+        action: action!,
+        resource: resource!,
+        resourceId: resourceId || null,
+        changes: changes || null,
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
+      };
+    }
+
+    await db.insert(auditLogs).values(auditData);
   } catch (error) {
-    console.error('Log audit event error:', error);
+    console.error('[securityService] logAuditEvent error:', error);
+    // Don't throw - logging failures shouldn't block operations
   }
 }
 
 /**
  * Get audit logs with optional filters
- * @param filters - Optional filters for the query
- * @returns Array of audit logs
  */
 export async function getAuditLogs(filters?: {
   userId?: number;
@@ -470,11 +432,13 @@ export async function getAuditLogs(filters?: {
   startDate?: Date;
   endDate?: Date;
   limit?: number;
-}) {
+  offset?: number;
+}): Promise<any[]> {
   try {
-    let query = db.select().from(auditLogs);
+    const limit = filters?.limit || 100;
+    const offset = filters?.offset || 0;
 
-    const conditions = [];
+    const conditions: any[] = [];
 
     if (filters?.userId) {
       conditions.push(eq(auditLogs.userId, filters.userId));
@@ -492,51 +456,65 @@ export async function getAuditLogs(filters?: {
       conditions.push(gte(auditLogs.createdAt, filters.startDate));
     }
 
+    if (filters?.endDate) {
+      conditions.push(sql`${auditLogs.createdAt} <= ${filters.endDate}`);
+    }
+
+    const query = db
+      .select()
+      .from(auditLogs)
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit)
+      .offset(offset);
+
     if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as any;
+      return await query.where(and(...conditions));
     }
 
-    query = query.orderBy(desc(auditLogs.createdAt)) as any;
-
-    if (filters?.limit) {
-      query = query.limit(filters.limit) as any;
-    }
-
-    const logs = await query;
-
-    return {
-      success: true,
-      logs,
-    };
+    return await query;
   } catch (error) {
-    console.error('Get audit logs error:', error);
-    return {
-      success: false,
-      error: 'Failed to retrieve audit logs',
-      logs: [],
-    };
+    console.error('[securityService] getAuditLogs error:', error);
+    return [];
   }
 }
 
-/**
- * Get security statistics
- * @returns Security stats including failed logins, lockouts, etc.
- */
-export async function getSecurityStats() {
-  try {
-    // Get failed login attempts in last 24 hours
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+// ======================================================================
+// Security Statistics
+// ======================================================================
 
-    const failedLogins = await db
+/**
+ * Get security statistics for dashboard
+ */
+export async function getSecurityStats(): Promise<{
+  failedLoginCountLastHour: number;
+  failedLoginCountLast24h: number;
+  activeLocksCount: number;
+  totalAuditEvents24h: number;
+}> {
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Failed login attempts in last hour
+    const failedLastHour = await db
       .select({ count: sql<number>`count(*)` })
       .from(loginAttempts)
       .where(and(
         eq(loginAttempts.successful, false),
-        gte(loginAttempts.attemptedAt, dayAgo)
+        gte(loginAttempts.attemptedAt, oneHourAgo)
       ));
 
-    // Get active lockouts
-    const activeLockouts = await db
+    // Failed login attempts in last 24 hours
+    const failedLast24h = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(loginAttempts)
+      .where(and(
+        eq(loginAttempts.successful, false),
+        gte(loginAttempts.attemptedAt, oneDayAgo)
+      ));
+
+    // Active lockouts
+    const activeLocks = await db
       .select({ count: sql<number>`count(*)` })
       .from(accountLockouts)
       .where(and(
@@ -544,34 +522,42 @@ export async function getSecurityStats() {
         gte(accountLockouts.unlockAt, new Date())
       ));
 
-    // Get 2FA enabled users
-    const twoFactorUsers = await db
+    // Total audit events in last 24h
+    const auditEvents24h = await db
       .select({ count: sql<number>`count(*)` })
-      .from(totpSecrets)
-      .where(eq(totpSecrets.enabled, true));
-
-    // Get total users
-    const totalUsers = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(users);
+      .from(auditLogs)
+      .where(gte(auditLogs.createdAt, oneDayAgo));
 
     return {
-      success: true,
-      stats: {
-        failedLoginsLast24h: Number(failedLogins[0]?.count || 0),
-        activeAccountLockouts: Number(activeLockouts[0]?.count || 0),
-        twoFactorEnabledUsers: Number(twoFactorUsers[0]?.count || 0),
-        totalUsers: Number(totalUsers[0]?.count || 0),
-        twoFactorAdoptionRate: totalUsers[0]?.count 
-          ? ((Number(twoFactorUsers[0]?.count || 0) / Number(totalUsers[0].count)) * 100).toFixed(2)
-          : '0.00',
-      },
+      failedLoginCountLastHour: Number(failedLastHour[0]?.count || 0),
+      failedLoginCountLast24h: Number(failedLast24h[0]?.count || 0),
+      activeLocksCount: Number(activeLocks[0]?.count || 0),
+      totalAuditEvents24h: Number(auditEvents24h[0]?.count || 0),
     };
   } catch (error) {
-    console.error('Get security stats error:', error);
+    console.error('[securityService] getSecurityStats error:', error);
     return {
-      success: false,
-      error: 'Failed to retrieve security statistics',
+      failedLoginCountLastHour: 0,
+      failedLoginCountLast24h: 0,
+      activeLocksCount: 0,
+      totalAuditEvents24h: 0,
     };
   }
 }
+
+// ======================================================================
+// Legacy compatibility exports
+// ======================================================================
+
+export default {
+  setupTOTP,
+  enableTOTP,
+  verifyTOTP,
+  disableTOTP,
+  isTOTPEnabled,
+  logLoginAttempt,
+  checkLoginAttempts,
+  logAuditEvent,
+  getAuditLogs,
+  getSecurityStats,
+};
