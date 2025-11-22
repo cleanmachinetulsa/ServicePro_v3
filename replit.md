@@ -7,6 +7,16 @@ ServicePro is a multi-tenant, white-label SaaS platform transforming Clean Machi
 - Preferred communication style: Simple, everyday language
 - AI Agent Behavior: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
 
+## Recent Changes
+
+### Phase 5: Concierge Setup Dashboard (November 22, 2025)
+- **Concierge Setup Dashboard**: Owner-only streamlined tenant onboarding interface at `/admin/concierge-setup` for guided tenant creation with business information collection, industry/plan tier selection, and optional phone config stub creation.
+- **TenantConfig Schema Extension**: Added `industry` (varchar 100), `primaryContactEmail` (varchar 255), `primaryCity` (varchar 100), and `internalNotes` (text) fields to support concierge onboarding workflow.
+- **Multi-Tenant Navigation**: Created dedicated "Multi-Tenant Management" section in admin navigation with Concierge Setup, Tenant Management, and Phone & IVR Config links (all owner-only with badges).
+- **Backend Endpoint**: Implemented `/api/admin/concierge/onboard-tenant` (owner-only) with duplicate business name prevention, transactional tenant+config creation, and optional stub phone config generation.
+- **Critical Bug Fix**: Fixed authMiddleware.ts security issue where `isTOTPEnabled()` was called without required `tenantDb` parameter, preventing proper 2FA verification.
+- **Test Coverage**: Created comprehensive integration test suite (9 tests) for concierge onboarding endpoint validating auth, RBAC, validation, and business logic.
+
 ## System Architecture
 
 ### UI/UX Decisions
