@@ -1,0 +1,52 @@
+We are in the "servicepro-v3-base" repl, which is a clone of my Clean Machine app. The long-term goal is multi-tenant ServicePro, and the design is documented in MASTER_PLAN_V3.md at the repo root.
+
+Start Phase 1A of tenant isolation. Use TENANT_ISOLATION_IMPORT.md as the source of truth. For this step, ONLY do the foundational work — do NOT migrate any existing routes yet.
+
+Tasks:
+
+1. Create the tenant-aware database wrapper:
+   - Add server/tenantDb.ts
+   - Implement tenantDb exactly as described in TENANT_ISOLATION_IMPORT.md:
+     - Wrap the existing Drizzle db client
+     - Provide req.tenantDb with:
+       - query and insert/update/delete methods
+       - automatic tenant_id injection on inserts
+       - withTenantFilter(table, condition) helper used for WHERE clauses
+
+2. Create the tenant middleware:
+   - Add server/tenantMiddleware.ts
+   - Implement tenantMiddleware so that, for now:
+     - It treats the current business as a single "root" tenant (e.g. tenantId = "root")
+     - It attaches req.tenant and req.tenantDb on every request
+   - Do not implement dynamic subdomain/domain tenant resolution yet; just hard-code the root tenant in a clean, easy-to-change way.
+
+3. Wire the middleware into the server:
+   - In server/index.ts (or the main Express bootstrap file), import tenantMiddleware
+   - Call app.use(tenantMiddleware) BEFORE the main routes are registered
+
+4. Add the test infrastructure described in TENANT_ISOLATION_IMPORT.md:
+   - Create server/tests/setupTenantDb.ts
+   - Create server/tests/tenantIsolation/tenantDb.test.ts
+   - Add or update vitest.config.ts so these tests can run
+   - Use the patterns from TENANT_ISOLATION_IMPORT.md for test structure and helpers
+
+5. Install test dependencies if they are not already installed:
+   - vitest
+   - supertest
+   - @types/supertest
+
+6. Run the tenant isolation test suite and fix any issues:
+   - npx vitest run server/tests/tenantIsolation/tenantDb.test.ts
+   - All tests should pass
+
+CONSTRAINTS:
+- Do NOT migrate any existing route files to req.tenantDb yet.
+- Do NOT change business logic in the existing routes.
+- Do NOT modify database schema beyond what TENANT_ISOLATION_IMPORT.md explicitly requires for tenantDb.
+
+OUTPUT:
+- List the files you created or modified.
+- Confirm that tenant isolation tests pass.
+- Confirm that the dev server still starts cleanly with npm run dev (or the existing start command).
+
+Stop after Phase 1A is complete. Do not begin migrating routes; that will be Phase 1B.
