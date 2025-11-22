@@ -1,0 +1,71 @@
+// tenantDb.ts – REPLACE your existing createTenantDb / wrapTenantDb + withTenantFilter with this
+
+import { db } from './db';
+import { and, eq, SQL } from 'drizzle-orm';
+import { PgTable, Table } from 'drizzle-orm/pg-core';
+
+// Adjust this type name if yours is slightly different
+export interface TenantDb {
+  tenantId: string;
+  select: typeof db.select;
+  insert: typeof db.insert;
+  update: typeof db.update;
+  delete: typeof db.delete;
+  query: typeof db.query;
+  transaction: typeof db.transaction;
+  withTenantFilter<TTable extends PgTable>(
+    table: TTable,
+    condition?: SQL<unknown>
+  ): SQL<unknown>;
+}
+
+// Core helper used by the instance method below
+function buildTenantFilter<TTable extends PgTable>(
+  tenantId: string,
+  table: TTable,
+  condition?: SQL<unknown>
+): SQL<unknown> {
+  const tenantColumn = (table as any).tenantId;
+
+  if (!tenantColumn) {
+    // This is the important part: fail fast with a clear error
+    // instead of generating "WHERE = $1" SQL.
+    const tableName =
+      (table as any)[Table.Symbol.Name] ??
+      (table as any).name ??
+      'unknown_table';
+
+    throw new Error(
+      `withTenantFilter used on table "${tableName}" which has no tenantId column. ` +
+        `Either add tenantId to the schema or stop using withTenantFilter on this table.`
+    );
+  }
+
+  const base = eq(tenantColumn, tenantId);
+  return condition ? and(base, condition) : base;
+}
+
+// This is what you call from the rest of the app, e.g. wrapTenantDb(db, 'root')
+export function wrapTenantDb(baseDb: typeof db, tenantId: string): TenantDb {
+  const tenantDb: TenantDb = {
+    tenantId,
+
+    // simple pass-throughs – no magic here
+    select: baseDb.select.bind(baseDb),
+    insert: baseDb.insert.bind(baseDb),
+    update: baseDb.update.bind(baseDb),
+    delete: baseDb.delete.bind(baseDb),
+    query: baseDb.query,
+    transaction: baseDb.transaction.bind(baseDb),
+
+    // tenant WHERE helper for SELECTs
+    withTenantFilter<TTable extends PgTable>(
+      table: TTable,
+      condition?: SQL<unknown>
+    ) {
+      return buildTenantFilter(tenantId, table, condition);
+    },
+  };
+
+  return tenantDb;
+}

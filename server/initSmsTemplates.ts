@@ -167,8 +167,6 @@ const DEFAULT_TEMPLATES = [
  * Uses upsert pattern: updates if exists, inserts if new
  */
 export async function initializeSmsTemplates() {
-  const tenantDb = wrapTenantDb(db, 'root');
-  
   try {
     console.log('[SMS TEMPLATES INIT] Starting template initialization...');
 
@@ -176,8 +174,8 @@ export async function initializeSmsTemplates() {
     let updated = 0;
 
     for (const template of DEFAULT_TEMPLATES) {
-      // Check if template already exists
-      const [existing] = await tenantDb
+      // Check if template already exists  
+      const [existing] = await db
         .select()
         .from(smsTemplates)
         .where(
@@ -193,7 +191,7 @@ export async function initializeSmsTemplates() {
         // Update existing template (preserves custom edits to name/description/enabled status)
         // Only updates body/variables if they haven't been customized
         if (existing.version === 1) {
-          await tenantDb
+          await db
             .update(smsTemplates)
             .set({
               body: template.body,
@@ -201,13 +199,17 @@ export async function initializeSmsTemplates() {
               defaultPayload: template.defaultPayload,
               updatedAt: new Date(),
             })
-            .where(eq(smsTemplates.id, existing.id));
+            .where(and(
+              eq(smsTemplates.tenantId, 'root'),
+              eq(smsTemplates.id, existing.id)
+            ));
           updated++;
         }
       } else {
         // Insert new template
-        await tenantDb.insert(smsTemplates).values({
+        await db.insert(smsTemplates).values({
           ...template,
+          tenantId: 'root',
           channel: "sms",
           language: "en",
           version: 1,
