@@ -141,6 +141,8 @@ export function createTenantDb(tenant: TenantInfo): TenantDb {
     tenant,
     query: db.query,
     
+    select: db.select.bind(db),
+    
     insert: <T extends any>(table: T) => {
       const metadata = TABLE_METADATA.get(table);
       const originalInsert = db.insert(table);
@@ -159,8 +161,6 @@ export function createTenantDb(tenant: TenantInfo): TenantDb {
       };
       return wrappedInsert as any;
     },
-    
-    select: (...args: any[]) => (db as any).select(...args),
     
     update: <T extends any>(table: T) => {
       const metadata = TABLE_METADATA.get(table);
@@ -250,7 +250,6 @@ export function wrapTenantDb(database: typeof db, tenantId: string): TenantDb {
   
   return {
     ...tenantDb,
-    select: (...args: any[]) => (database as any).select(...args),
     execute: (...args: any[]) => (database as any).execute(...args),
   };
 }
