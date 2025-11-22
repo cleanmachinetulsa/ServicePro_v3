@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { db } from './db';
 import { users, technicians } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -12,7 +11,7 @@ export async function requireTechnician(req: Request, res: Response, next: NextF
       });
     }
 
-    const [user] = await db
+    const [user] = await req.tenantDb!
       .select()
       .from(users)
       .where(eq(users.id, req.session.userId))
@@ -38,7 +37,7 @@ export async function requireTechnician(req: Request, res: Response, next: NextF
       return next();
     }
 
-    const [technician] = await db
+    const [technician] = await req.tenantDb!
       .select()
       .from(technicians)
       .where(eq(technicians.userId, user.id))

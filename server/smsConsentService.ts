@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './db';
 import { conversations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -61,10 +61,11 @@ export function checkConsentKeyword(messageContent: string): ConsentCheckResult 
  * Updates the SMS consent status for a conversation
  */
 export async function updateConsentStatus(
+  tenantDb: TenantDb,
   conversationId: number,
   optOut: boolean
 ): Promise<void> {
-  await db.update(conversations)
+  await tenantDb.update(conversations)
     .set({
       smsOptOut: optOut,
       smsOptOutAt: optOut ? new Date() : null
@@ -75,8 +76,8 @@ export async function updateConsentStatus(
 /**
  * Checks if a conversation has opted out of SMS
  */
-export async function isOptedOut(conversationId: number): Promise<boolean> {
-  const [conversation] = await db
+export async function isOptedOut(tenantDb: TenantDb, conversationId: number): Promise<boolean> {
+  const [conversation] = await tenantDb
     .select({ smsOptOut: conversations.smsOptOut })
     .from(conversations)
     .where(eq(conversations.id, conversationId))
@@ -89,6 +90,7 @@ export async function isOptedOut(conversationId: number): Promise<boolean> {
  * Processes SMS consent keywords and updates database + returns auto-response
  */
 export async function processConsentKeyword(
+  tenantDb: TenantDb,
   conversationId: number,
   messageContent: string
 ): Promise<ConsentCheckResult> {
@@ -97,17 +99,17 @@ export async function processConsentKeyword(
   if (result.isConsentKeyword && result.keyword) {
     // Update database based on keyword
     if (result.keyword === 'STOP') {
-      await updateConsentStatus(conversationId, true);
+      await updateConsentStatus(tenantDb, conversationId, true);
       console.log(`📵 Conversation ${conversationId} opted out via STOP keyword`);
       
       // PHASE 4D: Also handle reminder opt-outs
-      await handleReminderOptOut(conversationId);
+      await handleReminderOptOut(tenantDb, conversationId);
     } else if (result.keyword === 'START') {
-      await updateConsentStatus(conversationId, false);
+      await updateConsentStatus(tenantDb, conversationId, false);
       console.log(`✅ Conversation ${conversationId} opted back in via START keyword`);
       
       // PHASE 4D: Remove reminder opt-out if exists
-      await handleReminderOptIn(conversationId);
+      await handleReminderOptIn(tenantDb, conversationId);
     }
     // HELP doesn't change opt-out status, just sends info
   }
@@ -119,10 +121,10 @@ export async function processConsentKeyword(
  * PHASE 4D: Handle reminder-specific opt-out when STOP keyword is detected
  * Creates reminder_opt_outs record and cancels pending reminder jobs
  */
-async function handleReminderOptOut(conversationId: number): Promise<void> {
+async function handleReminderOptOut(tenantDb: TenantDb, conversationId: number): Promise<void> {
   try {
     // Get customer associated with this conversation
-    const [conversation] = await db
+    const [conversation] = await tenantDb
       .select()
       .from(conversations)
       .where(eq(conversations.id, conversationId))
@@ -137,7 +139,7 @@ async function handleReminderOptOut(conversationId: number): Promise<void> {
     const { customers, reminderOptOuts, reminderJobs, reminderConsent, reminderEvents } = await import('@shared/schema');
     const { and } = await import('drizzle-orm');
     
-    const customer = await db.query.customers.findFirst({
+    const customer = await tenantDb.query.customers.findFirst({
       where: eq(customers.phone, conversation.phoneNumber),
     });
     
@@ -147,19 +149,19 @@ async function handleReminderOptOut(conversationId: number): Promise<void> {
     }
     
     // Insert into reminder_opt_outs (idempotent - ignore if exists)
-    await db.insert(reminderOptOuts).values({
+    await tenantDb.insert(reminderOptOuts).values({
       customerId: customer.id,
       optOutMethod: 'sms_stop_keyword',
       reason: 'Customer replied STOP to SMS reminder',
     }).onConflictDoNothing();
     
     // Update reminder_consent to revoke consent
-    await db.update(reminderConsent)
+    await tenantDb.update(reminderConsent)
       .set({ consentGiven: false })
       .where(eq(reminderConsent.customerId, customer.id));
     
     // Cancel all pending reminder jobs for this customer
-    const cancelledJobs = await db.update(reminderJobs)
+    const cancelledJobs = await tenantDb.update(reminderJobs)
       .set({ 
         status: 'cancelled',
         sentAt: new Date() // Mark as processed
@@ -173,7 +175,7 @@ async function handleReminderOptOut(conversationId: number): Promise<void> {
     // Log opt-out events for each cancelled job
     if (cancelledJobs.length > 0) {
       for (const job of cancelledJobs) {
-        await db.insert(reminderEvents).values({
+        await tenantDb.insert(reminderEvents).values({
           jobId: job.id,
           eventType: 'opted_out',
           eventData: { 
@@ -198,10 +200,10 @@ async function handleReminderOptOut(conversationId: number): Promise<void> {
  * PHASE 4D: Handle reminder opt-in when START keyword is detected
  * Removes reminder_opt_outs record if exists
  */
-async function handleReminderOptIn(conversationId: number): Promise<void> {
+async function handleReminderOptIn(tenantDb: TenantDb, conversationId: number): Promise<void> {
   try {
     // Get customer associated with this conversation
-    const [conversation] = await db
+    const [conversation] = await tenantDb
       .select()
       .from(conversations)
       .where(eq(conversations.id, conversationId))
@@ -214,7 +216,7 @@ async function handleReminderOptIn(conversationId: number): Promise<void> {
     // Find customer by phone number
     const { customers, reminderOptOuts, reminderConsent } = await import('@shared/schema');
     
-    const customer = await db.query.customers.findFirst({
+    const customer = await tenantDb.query.customers.findFirst({
       where: eq(customers.phone, conversation.phoneNumber),
     });
     
@@ -223,11 +225,11 @@ async function handleReminderOptIn(conversationId: number): Promise<void> {
     }
     
     // Remove from reminder_opt_outs
-    await db.delete(reminderOptOuts)
+    await tenantDb.delete(reminderOptOuts)
       .where(eq(reminderOptOuts.customerId, customer.id));
     
     // Update reminder_consent to grant consent
-    await db.update(reminderConsent)
+    await tenantDb.update(reminderConsent)
       .set({ consentGiven: true })
       .where(eq(reminderConsent.customerId, customer.id));
     

@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import { db } from './db';
 import { pushSubscriptions } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { wrapTenantDb } from './tenantDb';
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
@@ -38,13 +39,14 @@ export async function sendPushNotification(
   userId: number,
   payload: PushNotificationPayload
 ): Promise<{ success: number; failed: number }> {
+  const tenantDb = wrapTenantDb(db, 'root');
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     console.warn('[PUSH] Cannot send notification - VAPID keys not configured');
     return { success: 0, failed: 0 };
   }
 
   try {
-    const subscriptions = await db
+    const subscriptions = await tenantDb
       .select()
       .from(pushSubscriptions)
       .where(eq(pushSubscriptions.userId, userId));
@@ -80,7 +82,7 @@ export async function sendPushNotification(
 
         await webpush.sendNotification(pushSubscription, notificationPayload);
 
-        await db
+        await tenantDb
           .update(pushSubscriptions)
           .set({ lastUsedAt: new Date() })
           .where(eq(pushSubscriptions.id, sub.id));
@@ -93,7 +95,7 @@ export async function sendPushNotification(
 
         if (error.statusCode === 410 || error.statusCode === 404) {
           console.log(`[PUSH] Subscription ${sub.id} is invalid, removing from database`);
-          await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
+          await tenantDb.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
         }
       }
     }
@@ -107,8 +109,9 @@ export async function sendPushNotification(
 }
 
 export async function sendPushToAllUsers(payload: PushNotificationPayload): Promise<void> {
+  const tenantDb = wrapTenantDb(db, 'root');
   try {
-    const allSubscriptions = await db.select().from(pushSubscriptions);
+    const allSubscriptions = await tenantDb.select().from(pushSubscriptions);
 
     const uniqueUserIds = Array.from(new Set(allSubscriptions.map((sub) => sub.userId).filter(Boolean)));
 

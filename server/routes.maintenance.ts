@@ -5,7 +5,7 @@
  */
 
 import type { Express, Request, Response } from "express";
-import { db } from "./db";
+import type { TenantDb } from "./tenantDb";
 import { businessSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "./authMiddleware";
@@ -44,7 +44,9 @@ export function registerMaintenanceRoutes(app: Express) {
    */
   app.get("/api/maintenance/settings", requireAuth, async (req: Request, res: Response) => {
     try {
-      const [settings] = await db.select().from(businessSettings).limit(1);
+      const [settings] = await req.tenantDb!.select().from(businessSettings)
+        .where(req.tenantDb!.withTenantFilter(businessSettings))
+        .limit(1);
 
       if (!settings) {
         // Return default values if no settings exist yet
@@ -96,7 +98,9 @@ export function registerMaintenanceRoutes(app: Express) {
       const validatedData = updateMaintenanceSchema.parse(req.body);
 
       // Get existing settings
-      const [existingSettings] = await db.select().from(businessSettings).limit(1);
+      const [existingSettings] = await req.tenantDb!.select().from(businessSettings)
+        .where(req.tenantDb!.withTenantFilter(businessSettings))
+        .limit(1);
 
       // CRITICAL VALIDATION: Prevent enabling SMS fallback without phone number
       if (validatedData.smsFallbackEnabled) {
@@ -121,13 +125,13 @@ export function registerMaintenanceRoutes(app: Express) {
       let updatedSettings;
       if (existingSettings) {
         // Update existing settings
-        [updatedSettings] = await db
+        [updatedSettings] = await req.tenantDb!
           .update(businessSettings)
           .set({
             ...updateData,
             updatedAt: new Date(),
           })
-          .where(eq(businessSettings.id, existingSettings.id))
+          .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, existingSettings.id)))
           .returning();
       } else {
         // Create new settings record - validate phone requirement
@@ -138,7 +142,7 @@ export function registerMaintenanceRoutes(app: Express) {
           });
         }
         
-        [updatedSettings] = await db
+        [updatedSettings] = await req.tenantDb!
           .insert(businessSettings)
           .values({
             ...validatedData,
@@ -222,7 +226,9 @@ export function registerMaintenanceRoutes(app: Express) {
    */
   app.post("/api/maintenance/trigger-failover", requireAuth, async (req: Request, res: Response) => {
     try {
-      const [settings] = await db.select().from(businessSettings).limit(1);
+      const [settings] = await req.tenantDb!.select().from(businessSettings)
+        .where(req.tenantDb!.withTenantFilter(businessSettings))
+        .limit(1);
 
       if (!settings) {
         return res.status(404).json({
@@ -232,14 +238,14 @@ export function registerMaintenanceRoutes(app: Express) {
       }
 
       // Update failover timestamp
-      const [updatedSettings] = await db
+      const [updatedSettings] = await req.tenantDb!
         .update(businessSettings)
         .set({
           lastFailoverAt: new Date(),
           maintenanceMode: true,
           updatedAt: new Date(),
         })
-        .where(eq(businessSettings.id, settings.id))
+        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, settings.id)))
         .returning();
 
       // Invalidate cache to apply changes immediately
@@ -279,7 +285,9 @@ export function registerMaintenanceRoutes(app: Express) {
    */
   app.get("/api/maintenance/status", async (req: Request, res: Response) => {
     try {
-      const [settings] = await db.select().from(businessSettings).limit(1);
+      const [settings] = await req.tenantDb!.select().from(businessSettings)
+        .where(req.tenantDb!.withTenantFilter(businessSettings))
+        .limit(1);
 
       if (!settings || !settings.maintenanceMode) {
         return res.json({

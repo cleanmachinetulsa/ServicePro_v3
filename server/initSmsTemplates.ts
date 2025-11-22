@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { smsTemplates } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { wrapTenantDb } from "./tenantDb";
 
 /**
  * Default SMS Templates
@@ -166,6 +167,7 @@ const DEFAULT_TEMPLATES = [
  * Uses upsert pattern: updates if exists, inserts if new
  */
 export async function initializeSmsTemplates() {
+  const tenantDb = wrapTenantDb(db, 'root');
   try {
     console.log('[SMS TEMPLATES INIT] Starting template initialization...');
 
@@ -174,7 +176,7 @@ export async function initializeSmsTemplates() {
 
     for (const template of DEFAULT_TEMPLATES) {
       // Check if template already exists
-      const [existing] = await db
+      const [existing] = await tenantDb
         .select()
         .from(smsTemplates)
         .where(
@@ -189,7 +191,7 @@ export async function initializeSmsTemplates() {
         // Update existing template (preserves custom edits to name/description/enabled status)
         // Only updates body/variables if they haven't been customized
         if (existing.version === 1) {
-          await db
+          await tenantDb
             .update(smsTemplates)
             .set({
               body: template.body,
@@ -202,7 +204,7 @@ export async function initializeSmsTemplates() {
         }
       } else {
         // Insert new template
-        await db.insert(smsTemplates).values({
+        await tenantDb.insert(smsTemplates).values({
           ...template,
           channel: "sms",
           language: "en",

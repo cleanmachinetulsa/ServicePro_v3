@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { phoneLines, phoneSchedules } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
@@ -14,8 +15,8 @@ router.use(requireAuth);
  */
 router.get('/lines', async (req: Request, res: Response) => {
   try {
-    const lines = await db.select().from(phoneLines);
-    const allSchedules = await db.select().from(phoneSchedules);
+    const lines = await req.tenantDb!.select().from(phoneLines);
+    const allSchedules = await req.tenantDb!.select().from(phoneSchedules);
     
     const linesWithSchedules = lines.map(line => ({
       ...line,
@@ -101,10 +102,10 @@ router.patch('/lines/:id', async (req: Request, res: Response) => {
       }
     }
     
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(phoneLines)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(phoneLines.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(phoneLines, eq(phoneLines.id, parseInt(id))))
       .returning();
     
     if (!updated) {
@@ -148,7 +149,7 @@ router.post('/schedules', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Action must be "forward" or "voicemail"' });
     }
     
-    const [created] = await db
+    const [created] = await req.tenantDb!
       .insert(phoneSchedules)
       .values(scheduleData)
       .returning();
@@ -188,10 +189,10 @@ router.patch('/schedules/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Action must be "forward" or "voicemail"' });
     }
     
-    const [updated] = await db
+    const [updated] = await req.tenantDb!
       .update(phoneSchedules)
       .set(updates)
-      .where(eq(phoneSchedules.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(phoneSchedules, eq(phoneSchedules.id, parseInt(id))))
       .returning();
     
     if (!updated) {
@@ -213,9 +214,9 @@ router.delete('/schedules/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
-    const deleted = await db
+    const deleted = await req.tenantDb!
       .delete(phoneSchedules)
-      .where(eq(phoneSchedules.id, parseInt(id)))
+      .where(req.tenantDb!.withTenantFilter(phoneSchedules, eq(phoneSchedules.id, parseInt(id))))
       .returning();
     
     if (deleted.length === 0) {

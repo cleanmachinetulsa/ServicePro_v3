@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import OpenAI from 'openai';
 import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { orgSettings, auditLog } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import rateLimit from 'express-rate-limit';
@@ -151,7 +152,7 @@ router.post('/api/ai/bio/suggest', requireRole('employee', 'manager', 'owner'), 
     }
 
     // Check if AI Bio Coach is enabled
-    const aiEnabledSetting = await db.query.orgSettings.findFirst({
+    const aiEnabledSetting = await req.tenantDb!.query.orgSettings.findFirst({
       where: (orgSettings, { eq }) => eq(orgSettings.settingKey, 'ai_bio_coach_enabled'),
     });
 
@@ -169,7 +170,7 @@ router.post('/api/ai/bio/suggest', requireRole('employee', 'manager', 'owner'), 
     }
 
     // Get bio policy settings
-    const bioPolicySetting = await db.query.orgSettings.findFirst({
+    const bioPolicySetting = await req.tenantDb!.query.orgSettings.findFirst({
       where: (orgSettings, { eq }) => eq(orgSettings.settingKey, 'bio_policy'),
     });
 
@@ -244,7 +245,7 @@ router.post('/api/ai/bio/suggest', requireRole('employee', 'manager', 'owner'), 
     }
 
     // Log audit event
-    await db.insert(auditLog).values({
+    await req.tenantDb!.insert(auditLog).values({
       userId: user.id,
       actionType: 'ai_suggest',
       entityType: 'technician_bio',

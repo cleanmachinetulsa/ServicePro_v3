@@ -10,6 +10,7 @@ import { sendPushNotification } from './pushNotificationService';
 import { renderBrandedEmail, renderBrandedEmailPlainText } from './emailTemplates/base';
 import type { EmailData } from './emailTemplates/base';
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { users, pushSubscriptions, businessSettings } from '@shared/schema';
 import { inArray, eq } from 'drizzle-orm';
 
@@ -23,6 +24,7 @@ export async function sendMaintenanceEnabledNotifications(
   settings: typeof businessSettings.$inferSelect,
   reason: string
 ): Promise<{ success: boolean; errors: string[] }> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const errors: string[] = [];
   
   try {
@@ -154,11 +156,11 @@ export async function sendMaintenanceEnabledNotifications(
 
     // 3. Send Push Notifications to Admin Users
     try {
-      const adminUsers = await db
+      const adminUsers = await tenantDb
         .select({ id: users.id, role: users.role })
         .from(users)
         .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
-        .where(inArray(users.role, ['owner', 'manager']))
+        .where(tenantDb.withTenantFilter(users, inArray(users.role, ['owner', 'manager'])))
         .groupBy(users.id, users.role);
 
       if (adminUsers.length > 0) {
@@ -216,6 +218,7 @@ export async function sendMaintenanceEnabledNotifications(
 export async function sendMaintenanceDisabledNotifications(
   settings: typeof businessSettings.$inferSelect
 ): Promise<{ success: boolean; errors: string[] }> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const errors: string[] = [];
   
   try {
@@ -343,11 +346,11 @@ export async function sendMaintenanceDisabledNotifications(
 
     // 3. Send Push Notifications to Admin Users
     try {
-      const adminUsers = await db
+      const adminUsers = await tenantDb
         .select({ id: users.id, role: users.role })
         .from(users)
         .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))
-        .where(inArray(users.role, ['owner', 'manager']))
+        .where(tenantDb.withTenantFilter(users, inArray(users.role, ['owner', 'manager'])))
         .groupBy(users.id, users.role);
 
       if (adminUsers.length > 0) {

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { facebookPageTokens, conversations, messages } from '@shared/schema';
 import { insertFacebookPageTokenSchema } from '@shared/schema';
 import { eq } from 'drizzle-orm';
@@ -15,7 +16,7 @@ const router = Router();
  */
 router.get('/pages', async (req: Request, res: Response) => {
   try {
-    const pages = await db
+    const pages = await req.tenantDb!
       .select()
       .from(facebookPageTokens)
       .orderBy(facebookPageTokens.createdAt);
@@ -62,7 +63,7 @@ router.post('/pages', async (req: Request, res: Response) => {
       });
     }
 
-    const newPage = await db
+    const newPage = await req.tenantDb!
       .insert(facebookPageTokens)
       .values(validatedData)
       .returning();
@@ -86,10 +87,10 @@ router.put('/pages/:id', async (req: Request, res: Response) => {
     const pageId = parseInt(req.params.id);
     const validatedData = insertFacebookPageTokenSchema.partial().parse(req.body);
 
-    const updatedPage = await db
+    const updatedPage = await req.tenantDb!
       .update(facebookPageTokens)
       .set({ ...validatedData, updatedAt: new Date() })
-      .where(eq(facebookPageTokens.id, pageId))
+      .where(req.tenantDb!.withTenantFilter(facebookPageTokens, eq(facebookPageTokens.id, pageId)))
       .returning();
 
     if (updatedPage.length === 0) {
@@ -117,9 +118,9 @@ router.delete('/pages/:id', async (req: Request, res: Response) => {
   try {
     const pageId = parseInt(req.params.id);
 
-    const deleted = await db
+    const deleted = await req.tenantDb!
       .delete(facebookPageTokens)
-      .where(eq(facebookPageTokens.id, pageId))
+      .where(req.tenantDb!.withTenantFilter(facebookPageTokens, eq(facebookPageTokens.id, pageId)))
       .returning();
 
     if (deleted.length === 0) {
@@ -195,10 +196,10 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
           try {
             // Get page info to determine platform
-            const pageInfo = await db
+            const pageInfo = await req.tenantDb!
               .select()
               .from(facebookPageTokens)
-              .where(eq(facebookPageTokens.pageId, pageId))
+              .where(req.tenantDb!.withTenantFilter(facebookPageTokens, eq(facebookPageTokens.pageId, pageId)))
               .limit(1);
 
             if (!pageInfo || pageInfo.length === 0 || !pageInfo[0].isActive) {
@@ -331,10 +332,10 @@ router.post('/send-message', async (req: Request, res: Response) => {
     }
 
     // Get page access token
-    const pageTokens = await db
+    const pageTokens = await req.tenantDb!
       .select()
       .from(facebookPageTokens)
-      .where(eq(facebookPageTokens.pageId, pageId));
+      .where(req.tenantDb!.withTenantFilter(facebookPageTokens, eq(facebookPageTokens.pageId, pageId)));
 
     if (pageTokens.length === 0) {
       return res.status(404).json({

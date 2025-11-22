@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { db } from './db';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { wrapTenantDb } from './tenantDb';
 
 let io: SocketIOServer | null = null;
 
@@ -59,6 +60,7 @@ export function initializeWebSocket(socketServer: SocketIOServer) {
 
   // Set up event handlers
   io.on('connection', async (socket) => {
+    const tenantDb = wrapTenantDb(db, 'root');
     // Rate limiting by IP to prevent DoS
     const clientIp = socket.handshake.address || 'unknown';
     if (isRateLimited(clientIp)) {
@@ -83,7 +85,7 @@ export function initializeWebSocket(socketServer: SocketIOServer) {
     
     if (!user) {
       // Cache miss - fetch from database
-      const [dbUser] = await db
+      const [dbUser] = await tenantDb
         .select()
         .from(users)
         .where(eq(users.id, session.userId))

@@ -6,6 +6,7 @@ import {
 import { eq, gt, and, sql } from "drizzle-orm";
 import { sendRewardNotificationEmail } from "./emailService.rewards";
 import { addDays, addMonths } from "date-fns";
+import type { TenantDb } from './tenantDb';
 
 /**
  * Normalize phone number for consistent lookup
@@ -24,7 +25,7 @@ function normalizePhoneNumber(phone: string): string[] {
   return [phone, digitsOnly, withHyphens];
 }
 
-export async function getLoyaltyPointsByPhone(phone: string) {
+export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string) {
   try {
     console.log(`Getting loyalty points for phone: ${phone}`);
     
@@ -34,7 +35,7 @@ export async function getLoyaltyPointsByPhone(phone: string) {
     // First try to get customer from PostgreSQL database using all possible formats
     let customer = null;
     for (const phoneFormat of phoneFormats) {
-      const [found] = await db
+      const [found] = await tenantDb
         .select()
         .from(customers)
         .where(eq(customers.phone, phoneFormat));
@@ -49,7 +50,7 @@ export async function getLoyaltyPointsByPhone(phone: string) {
     if (customer) {
       console.log(`Customer found in PostgreSQL: ${customer.name}`);
       // Get or create loyalty points record
-      const [points] = await db
+      const [points] = await tenantDb
         .select()
         .from(loyaltyPoints)
         .where(eq(loyaltyPoints.customerId, customer.id));
@@ -65,7 +66,7 @@ export async function getLoyaltyPointsByPhone(phone: string) {
         }
 
         // Create new loyalty points record with a points
-        const [newPoints] = await db
+        const [newPoints] = await tenantDb
           .insert(loyaltyPoints)
           .values({
             customerId: customer.id,
@@ -83,7 +84,7 @@ export async function getLoyaltyPointsByPhone(phone: string) {
       }
 
       // Get transactions for this customer
-      const transactions = await db
+      const transactions = await tenantDb
         .select()
         .from(pointsTransactions)
         .where(eq(pointsTransactions.loyaltyPointsId, points.id))
@@ -152,19 +153,19 @@ export async function getLoyaltyPointsByPhone(phone: string) {
 /**
  * Get loyalty points for a customer by email
  */
-export async function getLoyaltyPointsByEmail(email: string) {
+export async function getLoyaltyPointsByEmail(tenantDb: TenantDb, email: string) {
   try {
     console.log(`Getting loyalty points for email: ${email}`);
     
     // First try to get customer from PostgreSQL database
-    const [customer] = await db
+    const [customer] = await tenantDb
       .select()
       .from(customers)
       .where(eq(customers.email, email));
 
     if (customer) {
       console.log(`Customer found in PostgreSQL by email: ${customer.name}`);
-      return getLoyaltyPointsByPhone(customer.phone);
+      return getLoyaltyPointsByPhone(tenantDb, customer.phone);
     }
     
     // If not found in database, try Google Sheets customer records
@@ -184,7 +185,7 @@ export async function getLoyaltyPointsByEmail(email: string) {
       const primaryRecord = customerRecords[0];
       console.log(`Customer found in Google Sheets by email: ${primaryRecord.name}`);
       
-      return getLoyaltyPointsByPhone(primaryRecord.phone);
+      return getLoyaltyPointsByPhone(tenantDb, primaryRecord.phone);
     } catch (sheetsError) {
       console.error("Error searching Google Sheets by email:", sheetsError);
       return null;
@@ -198,8 +199,8 @@ export async function getLoyaltyPointsByEmail(email: string) {
 /**
  * Get available loyalty point offers
  */
-export async function getAvailableRewardServices() {
-  return db
+export async function getAvailableRewardServices(tenantDb: TenantDb) {
+  return tenantDb
     .select()
     .from(rewardServices)
     .where(eq(rewardServices.active, true))
@@ -209,9 +210,9 @@ export async function getAvailableRewardServices() {
 /**
  * Get all loyalty points records for dashboard display
  */
-export async function getAllLoyaltyPoints() {
+export async function getAllLoyaltyPoints(tenantDb: TenantDb) {
   try {
-    const points = await db
+    const points = await tenantDb
       .select()
       .from(loyaltyPoints);
       
@@ -225,9 +226,9 @@ export async function getAllLoyaltyPoints() {
 /**
  * Get all customers for dashboard display
  */
-export async function getAllCustomers() {
+export async function getAllCustomers(tenantDb: TenantDb) {
   try {
-    const customerList = await db
+    const customerList = await tenantDb
       .select()
       .from(customers);
       
@@ -241,9 +242,9 @@ export async function getAllCustomers() {
 /**
  * Get all points transactions for dashboard display
  */
-export async function getAllTransactions() {
+export async function getAllTransactions(tenantDb: TenantDb) {
   try {
-    const transactions = await db
+    const transactions = await tenantDb
       .select()
       .from(pointsTransactions)
       .orderBy(sql`${pointsTransactions.transactionDate} DESC`);
@@ -258,9 +259,9 @@ export async function getAllTransactions() {
 /**
  * Get all loyalty tiers for dashboard display
  */
-export async function getAllLoyaltyTiers() {
+export async function getAllLoyaltyTiers(tenantDb: TenantDb) {
   try {
-    const tiers = await db
+    const tiers = await tenantDb
       .select()
       .from(loyaltyTiers)
       .orderBy(loyaltyTiers.pointThreshold);
@@ -275,9 +276,9 @@ export async function getAllLoyaltyTiers() {
 /**
  * Get all achievements for dashboard display
  */
-export async function getAllAchievements() {
+export async function getAllAchievements(tenantDb: TenantDb) {
   try {
-    const achievementList = await db
+    const achievementList = await tenantDb
       .select()
       .from(achievements)
       .orderBy(achievements.level);
@@ -292,9 +293,9 @@ export async function getAllAchievements() {
 /**
  * Get all customer achievements for dashboard display
  */
-export async function getAllCustomerAchievements() {
+export async function getAllCustomerAchievements(tenantDb: TenantDb) {
   try {
-    const customerAchievementList = await db
+    const customerAchievementList = await tenantDb
       .select()
       .from(customerAchievements);
       
@@ -302,12 +303,12 @@ export async function getAllCustomerAchievements() {
     const results = [];
     
     for (const ca of customerAchievementList) {
-      const [achievement] = await db
+      const [achievement] = await tenantDb
         .select()
         .from(achievements)
         .where(eq(achievements.id, ca.achievementId));
         
-      const [customer] = await db
+      const [customer] = await tenantDb
         .select()
         .from(customers)
         .where(eq(customers.id, ca.customerId));
@@ -331,9 +332,9 @@ export async function getAllCustomerAchievements() {
 /**
  * Get all redeemed rewards for dashboard display
  */
-export async function getAllRedeemedRewards() {
+export async function getAllRedeemedRewards(tenantDb: TenantDb) {
   try {
-    const rewards = await db
+    const rewards = await tenantDb
       .select()
       .from(redeemedRewards);
       
@@ -341,12 +342,12 @@ export async function getAllRedeemedRewards() {
     const results = [];
     
     for (const reward of rewards) {
-      const [customer] = await db
+      const [customer] = await tenantDb
         .select()
         .from(customers)
         .where(eq(customers.id, reward.customerId));
         
-      const [service] = await db
+      const [service] = await tenantDb
         .select()
         .from(rewardServices)
         .where(eq(rewardServices.id, reward.rewardServiceId));
@@ -370,9 +371,9 @@ export async function getAllRedeemedRewards() {
 /**
  * Get all reward services for dashboard display
  */
-export async function getRewardServicesForDashboard() {
+export async function getRewardServicesForDashboard(tenantDb: TenantDb) {
   try {
-    const services = await db
+    const services = await tenantDb
       .select()
       .from(rewardServices);
       
@@ -387,16 +388,16 @@ export async function getRewardServicesForDashboard() {
  * Add loyalty points for a customer from an invoice
  * $1 = 1 point
  */
-export async function addLoyaltyPointsFromInvoice(customerId: number, invoiceId: number, amount: number) {
+export async function addLoyaltyPointsFromInvoice(tenantDb: TenantDb, customerId: number, invoiceId: number, amount: number) {
   // Get or create loyalty points record
-  let [pointsRecord] = await db
+  let [pointsRecord] = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
 
   if (!pointsRecord) {
     // Check if customer has opted into the loyalty program
-    const [customer] = await db
+    const [customer] = await tenantDb
       .select()
       .from(customers)
       .where(eq(customers.id, customerId));
@@ -406,7 +407,7 @@ export async function addLoyaltyPointsFromInvoice(customerId: number, invoiceId:
     }
 
     // Create new loyalty points record
-    [pointsRecord] = await db
+    [pointsRecord] = await tenantDb
       .insert(loyaltyPoints)
       .values({
         customerId,
@@ -426,7 +427,7 @@ export async function addLoyaltyPointsFromInvoice(customerId: number, invoiceId:
   const expiryDate = addMonths(new Date(), 12);
 
   // Add transaction record
-  await db.insert(pointsTransactions).values({
+  await tenantDb.insert(pointsTransactions).values({
     loyaltyPointsId: pointsRecord.id,
     amount: pointsToAdd,
     description: `Points earned from invoice #${invoiceId}`,
@@ -437,7 +438,7 @@ export async function addLoyaltyPointsFromInvoice(customerId: number, invoiceId:
   });
 
   // Update points balance
-  const [updatedPoints] = await db
+  const [updatedPoints] = await tenantDb
     .update(loyaltyPoints)
     .set({ 
       points: pointsRecord.points + pointsToAdd,
@@ -447,7 +448,7 @@ export async function addLoyaltyPointsFromInvoice(customerId: number, invoiceId:
     .returning();
 
   // Check if customer has reached loyalty offer thresholds and send notification
-  checkAndNotifyRewardEligibility(customerId, updatedPoints.points);
+  checkAndNotifyRewardEligibility(tenantDb, customerId, updatedPoints.points);
 
   return updatedPoints;
 }
@@ -455,9 +456,9 @@ export async function addLoyaltyPointsFromInvoice(customerId: number, invoiceId:
 /**
  * Check if customer is eligible for loyalty offers and send notification
  */
-async function checkAndNotifyRewardEligibility(customerId: number, points: number) {
+async function checkAndNotifyRewardEligibility(tenantDb: TenantDb, customerId: number, points: number) {
   // Check if customer has enough points for any loyalty offer
-  const rewardsAvailable = await db
+  const rewardsAvailable = await tenantDb
     .select()
     .from(rewardServices)
     .where(
@@ -471,7 +472,7 @@ async function checkAndNotifyRewardEligibility(customerId: number, points: numbe
 
   if (rewardsAvailable.length > 0) {
     // Customer has enough points for a loyalty offer, send notification
-    const [customer] = await db
+    const [customer] = await tenantDb
       .select()
       .from(customers)
       .where(eq(customers.id, customerId));
@@ -491,6 +492,7 @@ async function checkAndNotifyRewardEligibility(customerId: number, points: numbe
  * Redeem loyalty points for an offer
  */
 export async function redeemPointsForReward(
+  tenantDb: TenantDb,
   customerId: number, 
   rewardServiceId: number,
   quantity: number = 1
@@ -500,7 +502,7 @@ export async function redeemPointsForReward(
   }
 
   // Get the reward service
-  const [rewardService] = await db
+  const [rewardService] = await tenantDb
     .select()
     .from(rewardServices)
     .where(
@@ -515,7 +517,7 @@ export async function redeemPointsForReward(
   }
 
   // Get customer's points
-  const [pointsRecord] = await db
+  const [pointsRecord] = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
@@ -537,7 +539,7 @@ export async function redeemPointsForReward(
   const expiryDate = addDays(new Date(), 90); // Rewards expire in 90 days if not used
 
   for (let i = 0; i < quantity; i++) {
-    const [redeemedReward] = await db
+    const [redeemedReward] = await tenantDb
       .insert(redeemedRewards)
       .values({
         customerId,
@@ -552,7 +554,7 @@ export async function redeemPointsForReward(
   }
 
   // Add transaction record for the redemption
-  await db.insert(pointsTransactions).values({
+  await tenantDb.insert(pointsTransactions).values({
     loyaltyPointsId: pointsRecord.id,
     amount: -totalPointsNeeded,
     description: `Redeemed ${quantity} ${rewardService.name} loyalty offer(s)`,
@@ -562,7 +564,7 @@ export async function redeemPointsForReward(
   });
 
   // Update points balance
-  const [updatedPoints] = await db
+  const [updatedPoints] = await tenantDb
     .update(loyaltyPoints)
     .set({ 
       points: pointsRecord.points - totalPointsNeeded,
@@ -581,9 +583,9 @@ export async function redeemPointsForReward(
 /**
  * Opt a customer into the loyalty program
  */
-export async function optInToLoyaltyProgram(customerId: number) {
+export async function optInToLoyaltyProgram(tenantDb: TenantDb, customerId: number) {
   // Update customer record
-  const [updatedCustomer] = await db
+  const [updatedCustomer] = await tenantDb
     .update(customers)
     .set({ 
       loyaltyProgramOptIn: true,
@@ -593,13 +595,13 @@ export async function optInToLoyaltyProgram(customerId: number) {
     .returning();
 
   // Create loyalty points record if it doesn't exist
-  let [pointsRecord] = await db
+  let [pointsRecord] = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
 
   if (!pointsRecord) {
-    [pointsRecord] = await db
+    [pointsRecord] = await tenantDb
       .insert(loyaltyPoints)
       .values({
         customerId,
@@ -619,9 +621,9 @@ export async function optInToLoyaltyProgram(customerId: number) {
 /**
  * Get a customer's redeemed loyalty offers
  */
-export async function getRedeemedRewards(customerId: number) {
+export async function getRedeemedRewards(tenantDb: TenantDb, customerId: number) {
   try {
-    const rewards = await db
+    const rewards = await tenantDb
       .select()
       .from(redeemedRewards)
       .where(eq(redeemedRewards.customerId, customerId))
@@ -630,7 +632,7 @@ export async function getRedeemedRewards(customerId: number) {
     // Join with reward services
     const result = [];
     for (const reward of rewards) {
-      const [service] = await db
+      const [service] = await tenantDb
         .select()
         .from(rewardServices)
         .where(eq(rewardServices.id, reward.rewardServiceId));
@@ -654,11 +656,11 @@ export async function getRedeemedRewards(customerId: number) {
  * Process expired loyalty points
  * This should be run on a schedule (e.g., daily)
  */
-export async function processExpiredPoints() {
+export async function processExpiredPoints(tenantDb: TenantDb) {
   const now = new Date();
   
   // Find all loyalty points records with expired points
-  const pointsRecords = await db
+  const pointsRecords = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(and(
@@ -668,7 +670,7 @@ export async function processExpiredPoints() {
 
   // For each record, find transactions that have expired
   for (const record of pointsRecords) {
-    const expiredTransactions = await db
+    const expiredTransactions = await tenantDb
       .select()
       .from(pointsTransactions)
       .where(and(
@@ -686,7 +688,7 @@ export async function processExpiredPoints() {
     
     if (expiredPoints > 0) {
       // Add a transaction record for the expired points
-      await db.insert(pointsTransactions).values({
+      await tenantDb.insert(pointsTransactions).values({
         loyaltyPointsId: record.id,
         amount: -expiredPoints,
         description: 'Points expired',
@@ -695,7 +697,7 @@ export async function processExpiredPoints() {
       });
       
       // Update points balance
-      await db
+      await tenantDb
         .update(loyaltyPoints)
         .set({ 
           points: Math.max(0, record.points - expiredPoints),
@@ -710,6 +712,6 @@ export async function processExpiredPoints() {
  * Clean up expired points 
  * Alias for processExpiredPoints for backward compatibility
  */
-export async function cleanupExpiredPoints() {
-  return processExpiredPoints();
+export async function cleanupExpiredPoints(tenantDb: TenantDb) {
+  return processExpiredPoints(tenantDb);
 }

@@ -3,6 +3,7 @@ import { customers, customerVehicles, customerServiceHistory } from '@shared/sch
 import { eq, desc } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { format, differenceInMonths } from 'date-fns';
+import type { TenantDb } from './tenantDb';
 
 const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
 
@@ -36,10 +37,11 @@ interface CustomerContext {
  * Build rich customer context for GPT personalization
  */
 export async function buildCustomerContext(
+  tenantDb: TenantDb,
   phone: string
 ): Promise<CustomerContext | null> {
   try {
-    const customer = await db.query.customers.findFirst({
+    const customer = await tenantDb.query.customers.findFirst({
       where: eq(customers.phone, phone)
     });
 
@@ -47,12 +49,12 @@ export async function buildCustomerContext(
       return null;
     }
 
-    const primaryVehicle = await db.query.customerVehicles.findFirst({
+    const primaryVehicle = await tenantDb.query.customerVehicles.findFirst({
       where: eq(customerVehicles.customerId, customer.id),
       orderBy: [desc(customerVehicles.isPrimary)]
     });
 
-    const recentServices = await db.query.customerServiceHistory.findMany({
+    const recentServices = await tenantDb.query.customerServiceHistory.findMany({
       where: eq(customerServiceHistory.customerId, customer.id),
       orderBy: [desc(customerServiceHistory.serviceDate)],
       limit: 3

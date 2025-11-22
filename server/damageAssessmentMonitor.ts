@@ -1,4 +1,5 @@
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { appointments } from '@shared/schema';
 import { eq, and, lte, sql, isNull } from 'drizzle-orm';
 
@@ -34,6 +35,8 @@ export function stopDamageAssessmentMonitoring() {
 }
 
 async function checkPendingAssessments() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     console.log('[DAMAGE ASSESSMENT MONITOR] Checking for auto-approval candidates...');
     
@@ -44,13 +47,15 @@ async function checkPendingAssessments() {
     // - damageAssessmentStatus = 'pending'
     // - assessmentRequestedAt is more than 2 hours ago
     // - assessmentReviewedAt is null (not reviewed yet)
-    const pendingAppointments = await db.select()
+    const pendingAppointments = await tenantDb.select()
       .from(appointments)
       .where(
-        and(
-          eq(appointments.damageAssessmentStatus, 'pending'),
-          lte(appointments.assessmentRequestedAt, cutoffTime),
-          isNull(appointments.assessmentReviewedAt)
+        tenantDb.withTenantFilter(appointments,
+          and(
+            eq(appointments.damageAssessmentStatus, 'pending'),
+            lte(appointments.assessmentRequestedAt, cutoffTime),
+            isNull(appointments.assessmentReviewedAt)
+          )
         )
       );
     
@@ -60,13 +65,13 @@ async function checkPendingAssessments() {
       for (const appointment of pendingAppointments) {
         try {
           // Auto-approve the appointment
-          await db.update(appointments)
+          await tenantDb.update(appointments)
             .set({
               damageAssessmentStatus: 'approved',
               assessmentReviewedAt: new Date(),
               autoApprovedAt: new Date(),
             })
-            .where(eq(appointments.id, appointment.id));
+            .where(tenantDb.withTenantFilter(appointments, eq(appointments.id, appointment.id)));
           
           console.log(`[DAMAGE ASSESSMENT MONITOR] Auto-approved appointment ${appointment.id} (pending for ${AUTO_APPROVE_DELAY_HOURS} hours)`);
           

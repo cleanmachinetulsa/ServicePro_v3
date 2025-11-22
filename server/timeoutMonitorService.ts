@@ -1,4 +1,5 @@
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { conversations, messages } from '@shared/schema';
 import { eq, and, lt, sql } from 'drizzle-orm';
 import { returnToAI } from './handoffDetectionService';
@@ -34,6 +35,8 @@ export function stopTimeoutMonitoring() {
 }
 
 async function checkTimeouts() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     console.log('[TIMEOUT MONITOR] Checking for timed-out conversations...');
 
@@ -41,14 +44,16 @@ async function checkTimeouts() {
     timeoutThreshold.setHours(timeoutThreshold.getHours() - TIMEOUT_HOURS);
 
     // Find conversations in manual mode that haven't had activity in TIMEOUT_HOURS
-    const timedOutConversations = await db
+    const timedOutConversations = await tenantDb
       .select()
       .from(conversations)
       .where(
-        and(
-          eq(conversations.controlMode, 'manual'),
-          eq(conversations.status, 'active'),
-          lt(conversations.lastMessageTime, timeoutThreshold)
+        tenantDb.withTenantFilter(conversations,
+          and(
+            eq(conversations.controlMode, 'manual'),
+            eq(conversations.status, 'active'),
+            lt(conversations.lastMessageTime, timeoutThreshold)
+          )
         )
       );
 
@@ -97,14 +102,16 @@ export async function triggerTimeoutCheck() {
 
 // Update the last activity timestamp for a conversation
 export async function updateLastActivity(conversationId: number) {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
-    await db
+    await tenantDb
       .update(conversations)
       .set({
         lastMessageTime: new Date(),
         lastAgentActivity: new Date(),
       })
-      .where(eq(conversations.id, conversationId));
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)));
   } catch (error) {
     console.error('[TIMEOUT MONITOR] Error updating last activity:', error);
   }

@@ -10,6 +10,7 @@ import * as path from 'path';
 import { z } from 'zod';
 import { sessionMiddleware } from './sessionMiddleware';
 import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { eq, and, or, desc, asc, isNull, gte, sql } from 'drizzle-orm';
 import { services as servicesTable, businessSettings, agentPreferences, criticalMonitoringSettings, insertCriticalMonitoringSettingsSchema, publicSheetServiceSchema, publicSheetAddonSchema, platformSettings, updatePlatformSettingsSchema } from '@shared/schema';
 import { requireRole } from './rbacMiddleware';
@@ -232,7 +233,7 @@ export async function registerRoutes(app: Express) {
         console.log('[PORT MONITOR STATUS] ✅ Test SMS delivered successfully! Test ID:', testId);
 
         // Mark test as confirmed in database
-        await db.insert(orgSettings).values({
+        await req.tenantDb!.insert(orgSettings).values({
           settingKey: 'port_monitoring_test_status',
           settingValue: {
             testId,
@@ -262,7 +263,7 @@ export async function registerRoutes(app: Express) {
         console.log('[PORT MONITOR STATUS] ❌ Test SMS failed to deliver:', MessageStatus);
         
         // Mark as failed
-        await db.insert(orgSettings).values({
+        await req.tenantDb!.insert(orgSettings).values({
           settingKey: 'port_monitoring_test_status',
           settingValue: {
             testId,
@@ -484,14 +485,14 @@ export async function registerRoutes(app: Express) {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const logs = await db.select()
+      const logs = await req.tenantDb!.select()
         .from(apiUsageLogs)
-        .where(sql`${apiUsageLogs.timestamp} >= ${thirtyDaysAgo}`)
+        .where(req.tenantDb!.withTenantFilter(apiUsageLogs, sql`${apiUsageLogs.timestamp} >= ${thirtyDaysAgo}`))
         .orderBy(sql`${apiUsageLogs.timestamp} DESC`)
         .limit(1000);
 
       // Get service health
-      const health = await db.select().from(serviceHealth);
+      const health = await req.tenantDb!.select().from(serviceHealth);
 
       // Calculate summaries
       const totalCost = logs.reduce((sum, log) => sum + parseFloat(log.cost), 0);
@@ -542,11 +543,13 @@ export async function registerRoutes(app: Express) {
   // Business settings endpoints
   app.get('/api/business-settings', requireAuth, async (req: Request, res: Response) => {
     try {
-      const settings = await db.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+      const settings = await req.tenantDb!.select().from(businessSettings).where(
+        req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, 1))
+      ).limit(1);
       
       // If no settings exist, create default settings
       if (settings.length === 0) {
-        const defaultSettings = await db.insert(businessSettings).values({
+        const defaultSettings = await req.tenantDb!.insert(businessSettings).values({
           id: 1,
           startHour: 9,
           startMinute: 0,
@@ -582,7 +585,7 @@ export async function registerRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid schedule type' });
       }
       
-      const [settings] = await db.select().from(businessSettings).limit(1);
+      const [settings] = await req.tenantDb!.select().from(businessSettings).limit(1);
       
       if (!settings) {
         return res.status(404).json({ success: false, message: 'Business settings not found' });
@@ -610,7 +613,7 @@ export async function registerRoutes(app: Express) {
       }
       
       // Update the settings
-      const [updated] = await db
+      const [updated] = await req.tenantDb!
         .update(businessSettings)
         .set({
           activeScheduleType: scheduleType,
@@ -619,7 +622,7 @@ export async function registerRoutes(app: Express) {
           endHour,
           endMinute,
         })
-        .where(eq(businessSettings.id, 1))
+        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
         .returning();
       
       res.json({ 
@@ -641,9 +644,9 @@ export async function registerRoutes(app: Express) {
         updatedBy: req.user?.id,
       };
       
-      const updated = await db.update(businessSettings)
+      const updated = await req.tenantDb!.update(businessSettings)
         .set(updateData)
-        .where(eq(businessSettings.id, 1))
+        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
         .returning();
       
       res.json({ success: true, settings: updated[0], message: 'Business settings updated successfully' });
@@ -659,11 +662,11 @@ export async function registerRoutes(app: Express) {
       const { homepageContent } = await import('@shared/schema');
       
       // Get the single row (or create default if doesn't exist)
-      let [content] = await db.select().from(homepageContent).limit(1);
+      let [content] = await req.tenantDb!.select().from(homepageContent).limit(1);
       
       if (!content) {
         // Create default content
-        [content] = await db.insert(homepageContent).values({}).returning();
+        [content] = await req.tenantDb!.insert(homepageContent).values({}).returning();
       }
       
       return res.json({ success: true, content });
@@ -689,22 +692,22 @@ export async function registerRoutes(app: Express) {
       }
       
       // Get existing row
-      let [existing] = await db.select().from(homepageContent).limit(1);
+      let [existing] = await req.tenantDb!.select().from(homepageContent).limit(1);
       
       let updated;
       if (existing) {
         // Update existing
-        [updated] = await db.update(homepageContent)
+        [updated] = await req.tenantDb!.update(homepageContent)
           .set({
             ...parsed.data,
             updatedAt: new Date(),
             updatedBy: req.user.id,
           })
-          .where(eq(homepageContent.id, existing.id))
+          .where(req.tenantDb!.withTenantFilter(homepageContent, eq(homepageContent.id, existing.id)))
           .returning();
       } else {
         // Create new
-        [updated] = await db.insert(homepageContent)
+        [updated] = await req.tenantDb!.insert(homepageContent)
           .values({
             ...parsed.data,
             updatedBy: req.user.id,
@@ -747,22 +750,22 @@ export async function registerRoutes(app: Express) {
       }
       
       // Get existing row
-      let [existing] = await db.select().from(homepageContent).limit(1);
+      let [existing] = await req.tenantDb!.select().from(homepageContent).limit(1);
       
       let updated;
       if (existing) {
         // Update only the templateId field (non-destructive)
-        [updated] = await db.update(homepageContent)
+        [updated] = await req.tenantDb!.update(homepageContent)
           .set({
             templateId: parsed.data.templateId,
             updatedAt: new Date(),
             updatedBy: req.user.id,
           })
-          .where(eq(homepageContent.id, existing.id))
+          .where(req.tenantDb!.withTenantFilter(homepageContent, eq(homepageContent.id, existing.id)))
           .returning();
       } else {
         // Create new row with the selected template
-        [updated] = await db.insert(homepageContent)
+        [updated] = await req.tenantDb!.insert(homepageContent)
           .values({
             templateId: parsed.data.templateId,
             updatedBy: req.user.id,
@@ -867,9 +870,9 @@ export async function registerRoutes(app: Express) {
     try {
       const { jobPostings } = await import('@shared/schema');
       
-      const jobs = await db.select()
+      const jobs = await req.tenantDb!.select()
         .from(jobPostings)
-        .where(eq(jobPostings.isActive, true))
+        .where(req.tenantDb!.withTenantFilter(jobPostings, eq(jobPostings.isActive, true)))
         .orderBy(desc(jobPostings.createdAt));
       
       return res.json({ success: true, jobs });
@@ -896,7 +899,7 @@ export async function registerRoutes(app: Express) {
         resumeUrl = `/attached_assets/uploads/${req.file.filename}`;
       }
       
-      const [application] = await db.insert(jobApplications).values({
+      const [application] = await req.tenantDb!.insert(jobApplications).values({
         ...parsed.data,
         resumeUrl,
       }).returning();
@@ -919,7 +922,7 @@ export async function registerRoutes(app: Express) {
     try {
       const { jobApplications, jobPostings } = await import('@shared/schema');
       
-      const applications = await db.query.jobApplications.findMany({
+      const applications = await req.tenantDb!.query.jobApplications.findMany({
         with: {
           jobPosting: true,
         },
@@ -954,13 +957,13 @@ export async function registerRoutes(app: Express) {
       }
       
       const { jobApplications } = await import('@shared/schema');
-      const [updated] = await db.update(jobApplications)
+      const [updated] = await req.tenantDb!.update(jobApplications)
         .set({
           ...parsed.data,
           reviewedBy: req.user.id,
           reviewedAt: new Date(),
         })
-        .where(eq(jobApplications.id, applicationId))
+        .where(req.tenantDb!.withTenantFilter(jobApplications, eq(jobApplications.id, applicationId)))
         .returning();
       
       return res.json({ success: true, application: updated });
@@ -975,11 +978,11 @@ export async function registerRoutes(app: Express) {
   // PUT is owner-only (admin toggle in dashboard)
   app.get('/api/admin/demo-settings', async (req: Request, res: Response) => {
     try {
-      let [settings] = await db.select().from(platformSettings).limit(1);
+      let [settings] = await req.tenantDb!.select().from(platformSettings).limit(1);
       
       // If no settings exist, create default settings
       if (!settings) {
-        [settings] = await db.insert(platformSettings).values({
+        [settings] = await req.tenantDb!.insert(platformSettings).values({
           demoModeEnabled: false,
         }).returning();
       }
@@ -1007,20 +1010,20 @@ export async function registerRoutes(app: Express) {
       }
       
       // Get existing settings or create new
-      let [settings] = await db.select().from(platformSettings).limit(1);
+      let [settings] = await req.tenantDb!.select().from(platformSettings).limit(1);
       
       if (settings) {
         // Update existing
-        [settings] = await db.update(platformSettings)
+        [settings] = await req.tenantDb!.update(platformSettings)
           .set({
             demoModeEnabled: parsed.data.demoModeEnabled,
             updatedAt: new Date(),
           })
-          .where(eq(platformSettings.id, settings.id))
+          .where(req.tenantDb!.withTenantFilter(platformSettings, eq(platformSettings.id, settings.id)))
           .returning();
       } else {
         // Create new
-        [settings] = await db.insert(platformSettings)
+        [settings] = await req.tenantDb!.insert(platformSettings)
           .values({
             demoModeEnabled: parsed.data.demoModeEnabled,
           })
@@ -1043,7 +1046,7 @@ export async function registerRoutes(app: Express) {
   app.post('/api/demo/start', async (req: Request, res: Response) => {
     try {
       // Check if demo mode is enabled
-      const [settings] = await db.select().from(platformSettings).limit(1);
+      const [settings] = await req.tenantDb!.select().from(platformSettings).limit(1);
       
       if (!settings || !settings.demoModeEnabled) {
         return res.status(403).json({ 
@@ -1081,7 +1084,7 @@ export async function registerRoutes(app: Express) {
   // Critical Monitoring Settings endpoints
   app.get('/api/critical-monitoring/settings', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
     try {
-      let [settings] = await db.select().from(criticalMonitoringSettings).limit(1);
+      let [settings] = await req.tenantDb!.select().from(criticalMonitoringSettings).limit(1);
       
       // If no settings exist, create default settings
       if (!settings) {
@@ -1095,7 +1098,7 @@ export async function registerRoutes(app: Express) {
           updatedBy: req.user?.id,
         };
         
-        [settings] = await db.insert(criticalMonitoringSettings)
+        [settings] = await req.tenantDb!.insert(criticalMonitoringSettings)
           .values(defaultSettings)
           .returning();
       }
@@ -1138,18 +1141,18 @@ export async function registerRoutes(app: Express) {
       };
       
       // Check if settings exist
-      const [existingSettings] = await db.select().from(criticalMonitoringSettings).limit(1);
+      const [existingSettings] = await req.tenantDb!.select().from(criticalMonitoringSettings).limit(1);
       
       let updated;
       if (existingSettings) {
         // Update existing settings
-        [updated] = await db.update(criticalMonitoringSettings)
+        [updated] = await req.tenantDb!.update(criticalMonitoringSettings)
           .set(updateData)
-          .where(eq(criticalMonitoringSettings.id, existingSettings.id))
+          .where(req.tenantDb!.withTenantFilter(criticalMonitoringSettings, eq(criticalMonitoringSettings.id, existingSettings.id)))
           .returning();
       } else {
         // Insert new settings
-        [updated] = await db.insert(criticalMonitoringSettings)
+        [updated] = await req.tenantDb!.insert(criticalMonitoringSettings)
           .values(updateData)
           .returning();
       }
@@ -1171,11 +1174,13 @@ export async function registerRoutes(app: Express) {
   // Agent preferences endpoints
   app.get('/api/agent-preferences', requireAuth, async (req: Request, res: Response) => {
     try {
-      const preferences = await db.select().from(agentPreferences).where(eq(agentPreferences.id, 1)).limit(1);
+      const preferences = await req.tenantDb!.select().from(agentPreferences).where(
+        req.tenantDb!.withTenantFilter(agentPreferences, eq(agentPreferences.id, 1))
+      ).limit(1);
       
       // If no preferences exist, create default preferences
       if (preferences.length === 0) {
-        const defaultPreferences = await db.insert(agentPreferences).values({
+        const defaultPreferences = await req.tenantDb!.insert(agentPreferences).values({
           id: 1,
           updatedBy: req.user?.id,
         }).returning();
@@ -1208,9 +1213,9 @@ export async function registerRoutes(app: Express) {
         updatedBy: req.user?.id,
       };
       
-      const updated = await db.update(agentPreferences)
+      const updated = await req.tenantDb!.update(agentPreferences)
         .set(updateData)
-        .where(eq(agentPreferences.id, 1))
+        .where(req.tenantDb!.withTenantFilter(agentPreferences, eq(agentPreferences.id, 1)))
         .returning();
       
       res.json({ success: true, preferences: updated[0], message: 'Agent preferences updated successfully' });
@@ -1612,8 +1617,8 @@ export async function registerRoutes(app: Express) {
       const { customers, reminderJobs, reminderEvents } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       
-      const customer = await db.query.customers.findFirst({
-        where: eq(customers.id, payload.customerId),
+      const customer = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.id, payload.customerId)),
       });
       
       if (!customer) {
@@ -1628,7 +1633,7 @@ export async function registerRoutes(app: Express) {
       }
       
       // Log event to reminder_events
-      await db.insert(reminderEvents).values({
+      await req.tenantDb!.insert(reminderEvents).values({
         jobId: payload.jobId,
         eventType: 'clicked',
         eventData: { action: 'booking_link_clicked', timestamp: new Date().toISOString() },
@@ -1698,8 +1703,8 @@ export async function registerRoutes(app: Express) {
       const { addDays } = await import('date-fns');
       
       // Get the original job
-      const job = await db.query.reminderJobs.findFirst({
-        where: eq(reminderJobs.id, payload.jobId),
+      const job = await req.tenantDb!.query.reminderJobs.findFirst({
+        where: req.tenantDb!.withTenantFilter(reminderJobs, eq(reminderJobs.id, payload.jobId)),
       });
       
       if (!job) {
@@ -1727,8 +1732,8 @@ export async function registerRoutes(app: Express) {
       }
       
       // BUG FIX #3: Check for existing snooze - prevent duplicates
-      const existingSnoozes = await db.query.reminderSnoozes.findMany({
-        where: eq(reminderSnoozes.jobId, payload.jobId),
+      const existingSnoozes = await req.tenantDb!.query.reminderSnoozes.findMany({
+        where: req.tenantDb!.withTenantFilter(reminderSnoozes, eq(reminderSnoozes.jobId, payload.jobId)),
       });
       
       if (existingSnoozes.length > 0) {
@@ -1747,7 +1752,7 @@ export async function registerRoutes(app: Express) {
       const snoozeDays = 7;
       const snoozedUntil = addDays(new Date(), snoozeDays);
       
-      await db.insert(reminderSnoozes).values({
+      await req.tenantDb!.insert(reminderSnoozes).values({
         jobId: payload.jobId,
         customerId: payload.customerId,
         snoozedUntil,
@@ -1755,12 +1760,12 @@ export async function registerRoutes(app: Express) {
       });
       
       // Update original job status
-      await db.update(reminderJobs)
+      await req.tenantDb!.update(reminderJobs)
         .set({ status: 'snoozed' })
-        .where(eq(reminderJobs.id, payload.jobId));
+        .where(req.tenantDb!.withTenantFilter(reminderJobs, eq(reminderJobs.id, payload.jobId)));
       
       // Create new job scheduled for snoozedUntil date
-      await db.insert(reminderJobs).values({
+      await req.tenantDb!.insert(reminderJobs).values({
         ruleId: job.ruleId,
         customerId: job.customerId,
         scheduledFor: snoozedUntil,
@@ -1769,7 +1774,7 @@ export async function registerRoutes(app: Express) {
       });
       
       // Log event
-      await db.insert(reminderEvents).values({
+      await req.tenantDb!.insert(reminderEvents).values({
         jobId: payload.jobId,
         eventType: 'snoozed',
         eventData: { 
@@ -2895,8 +2900,8 @@ Follow up with this lead to set up their 14-day trial!
       const { sql } = await import('drizzle-orm');
       
       // Find QR action for this customer
-      const action = await db.query.qrCodeActions.findFirst({
-        where: eq(qrCodeActions.customerId, customerId)
+      const action = await req.tenantDb!.query.qrCodeActions.findFirst({
+        where: req.tenantDb!.withTenantFilter(qrCodeActions, eq(qrCodeActions.customerId, customerId))
       });
       
       let redirectUrl: string;
@@ -2904,12 +2909,12 @@ Follow up with this lead to set up their 14-day trial!
       if (action) {
         // Track scan if tracking enabled
         if (action.trackingEnabled) {
-          await db.update(qrCodeActions)
+          await req.tenantDb!.update(qrCodeActions)
             .set({
               scans: sql`${qrCodeActions.scans} + 1`,
               lastScannedAt: sql`now()`,
             })
-            .where(eq(qrCodeActions.id, action.id));
+            .where(req.tenantDb!.withTenantFilter(qrCodeActions, eq(qrCodeActions.id, action.id)));
           
           console.log(`QR scan tracked for customer ${customerId}: scan #${action.scans + 1}`);
         }
@@ -2917,8 +2922,8 @@ Follow up with this lead to set up their 14-day trial!
         redirectUrl = action.actionUrl;
       } else {
         // Default: find customer's referral code and redirect to booking
-        const customer = await db.query.customers.findFirst({
-          where: eq(customers.id, customerId),
+        const customer = await req.tenantDb!.query.customers.findFirst({
+          where: req.tenantDb!.withTenantFilter(customers, eq(customers.id, customerId)),
         });
         
         if (!customer) {
@@ -2927,8 +2932,8 @@ Follow up with this lead to set up their 14-day trial!
         }
 
         // Get customer's referral code
-        const referral = await db.query.referrals.findFirst({
-          where: eq(referrals.referrerId, customerId),
+        const referral = await req.tenantDb!.query.referrals.findFirst({
+          where: req.tenantDb!.withTenantFilter(referrals, eq(referrals.referrerId, customerId)),
         });
 
         const referralCode = referral?.referralCode;
@@ -2998,8 +3003,8 @@ Follow up with this lead to set up their 14-day trial!
       const { sql } = await import('drizzle-orm');
       
       // Check if customer exists and get their referral code
-      const customer = await db.query.customers.findFirst({
-        where: eq(customers.id, customerId),
+      const customer = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.id, customerId)),
       });
 
       if (!customer) {
@@ -3007,15 +3012,15 @@ Follow up with this lead to set up their 14-day trial!
       }
 
       // Get customer's referral code
-      const referral = await db.query.referrals.findFirst({
-        where: eq(referrals.referrerId, customerId),
+      const referral = await req.tenantDb!.query.referrals.findFirst({
+        where: req.tenantDb!.withTenantFilter(referrals, eq(referrals.referrerId, customerId)),
       });
 
       const referralCode = referral?.referralCode;
 
       // Check for configured QR action
-      const action = await db.query.qrCodeActions.findFirst({
-        where: eq(qrCodeActions.customerId, customerId),
+      const action = await req.tenantDb!.query.qrCodeActions.findFirst({
+        where: req.tenantDb!.withTenantFilter(qrCodeActions, eq(qrCodeActions.customerId, customerId)),
       });
 
       if (!action) {
@@ -3072,8 +3077,8 @@ Follow up with this lead to set up their 14-day trial!
       const { desc, and } = await import('drizzle-orm');
       
       // Find customer - use simple query, NO complex select
-      const customerData = await db.query.customers.findFirst({
-        where: eq(customers.phone, normalizedPhone),
+      const customerData = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, normalizedPhone)),
       });
       
       if (!customerData) {
@@ -3095,8 +3100,8 @@ Follow up with this lead to set up their 14-day trial!
       else if (lifetimeValue >= 250) loyaltyTier = 'silver';
       
       // Fetch loyalty points from separate table
-      const loyaltyPointsRecord = await db.query.loyaltyPoints?.findFirst({
-        where: eq(loyaltyPoints.customerId, customerData.id),
+      const loyaltyPointsRecord = await req.tenantDb!.query.loyaltyPoints?.findFirst({
+        where: req.tenantDb!.withTenantFilter(loyaltyPoints, eq(loyaltyPoints.customerId, customerData.id)),
       });
       
       // Build customer object
@@ -3114,8 +3119,8 @@ Follow up with this lead to set up their 14-day trial!
       
       // Fetch recent appointment with service relation
       // Use ONLY "with", NO "select"
-      const recentAppt = await db.query.appointments.findFirst({
-        where: eq(appointments.customerId, customerData.id),
+      const recentAppt = await req.tenantDb!.query.appointments.findFirst({
+        where: req.tenantDb!.withTenantFilter(appointments, eq(appointments.customerId, customerData.id)),
         orderBy: (appointments, { desc }) => [desc(appointments.scheduledTime)],
         with: {
           service: true, // Drizzle will auto-join service table
@@ -3135,11 +3140,11 @@ Follow up with this lead to set up their 14-day trial!
       } : null;
       
       // Fetch past completed appointments with service relation
-      const pastApptsRaw = await db.query.appointments.findMany({
-        where: and(
+      const pastApptsRaw = await req.tenantDb!.query.appointments.findMany({
+        where: req.tenantDb!.withTenantFilter(appointments, and(
           eq(appointments.customerId, customerData.id),
           eq(appointments.status, 'completed')
-        ),
+        )),
         orderBy: (appointments, { desc }) => [desc(appointments.scheduledTime)],
         limit: 5,
         with: {
@@ -3162,11 +3167,11 @@ Follow up with this lead to set up their 14-day trial!
       }));
       
       // Fetch active recurring services
-      const recurringServicesRaw = await db.query.recurringServices?.findMany({
-        where: and(
+      const recurringServicesRaw = await req.tenantDb!.query.recurringServices?.findMany({
+        where: req.tenantDb!.withTenantFilter(recurringServices, and(
           eq(recurringServices.customerId, customerData.id),
           eq(recurringServices.status, 'active')
-        ),
+        )),
       }) || [];
       
       // Map frequency from database format to frontend format
@@ -3216,7 +3221,7 @@ Follow up with this lead to set up their 14-day trial!
       const { desc, or, like } = await import('drizzle-orm');
 
       // Build query with optional search
-      let query = db.select({
+      let query = req.tenantDb!.select({
         id: customers.id,
         name: customers.name,
         email: customers.email,
@@ -3229,11 +3234,11 @@ Follow up with this lead to set up their 14-day trial!
       // Apply search filter if provided
       if (searchTerm) {
         query = query.where(
-          or(
+          req.tenantDb!.withTenantFilter(customers, or(
             like(customers.name, `%${searchTerm}%`),
             like(customers.email, `%${searchTerm}%`),
             like(customers.phone, `%${searchTerm}%`)
-          )
+          ))
         );
       }
 
@@ -3341,8 +3346,8 @@ Follow up with this lead to set up their 14-day trial!
   app.get('/api/tech/my-shifts', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians, shifts, shiftTemplates } = await import('@shared/schema');
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.userId, req.user.id),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, req.user.id)),
       });
 
       if (!technician) {
@@ -3353,12 +3358,12 @@ Follow up with this lead to set up their 14-day trial!
       const futureDate = new Date();
       futureDate.setDate(today.getDate() + 30);
 
-      const myShifts = await db.query.shifts.findMany({
-        where: and(
+      const myShifts = await req.tenantDb!.query.shifts.findMany({
+        where: req.tenantDb!.withTenantFilter(shifts, and(
           eq(shifts.technicianId, technician.id),
           gte(shifts.shiftDate, today),
           sql`${shifts.shiftDate} <= ${futureDate}`
-        ),
+        )),
         with: {
           template: true,
         },
@@ -3376,8 +3381,8 @@ Follow up with this lead to set up their 14-day trial!
   app.get('/api/tech/hours-summary', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians, timeEntries } = await import('@shared/schema');
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.userId, req.user.id),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, req.user.id)),
       });
 
       if (!technician) {
@@ -3390,11 +3395,11 @@ Follow up with this lead to set up their 14-day trial!
       startOfWeek.setDate(today.getDate() - today.getDay());
       startOfWeek.setHours(0, 0, 0, 0);
 
-      const entries = await db.query.timeEntries.findMany({
-        where: and(
+      const entries = await req.tenantDb!.query.timeEntries.findMany({
+        where: req.tenantDb!.withTenantFilter(timeEntries, and(
           eq(timeEntries.technicianId, technician.id),
           gte(timeEntries.clockInTime, startOfWeek)
-        ),
+        )),
       });
 
       // Calculate total hours
@@ -3447,8 +3452,8 @@ Follow up with this lead to set up their 14-day trial!
       const { format } = await import('date-fns');
       
       // Get template details first
-      const template = await db.query.shiftTemplates.findFirst({
-        where: eq(shiftTemplates.id, parsed.data.shiftTemplateId),
+      const template = await req.tenantDb!.query.shiftTemplates.findFirst({
+        where: req.tenantDb!.withTenantFilter(shiftTemplates, eq(shiftTemplates.id, parsed.data.shiftTemplateId)),
       });
 
       if (!template) {
@@ -3456,7 +3461,7 @@ Follow up with this lead to set up their 14-day trial!
       }
 
       // Create shift with template details
-      const [newShift] = await db.insert(shifts).values({
+      const [newShift] = await req.tenantDb!.insert(shifts).values({
         technicianId: parsed.data.technicianId,
         shiftDate: new Date(parsed.data.shiftDate),
         templateId: parsed.data.shiftTemplateId,
@@ -3466,8 +3471,8 @@ Follow up with this lead to set up their 14-day trial!
       }).returning();
 
       // Get technician details
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.id, parsed.data.technicianId),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.id, parsed.data.technicianId)),
       });
 
       // Send SMS notification
@@ -3504,9 +3509,9 @@ Follow up with this lead to set up their 14-day trial!
       }
 
       const { shifts } = await import('@shared/schema');
-      const [updated] = await db.update(shifts)
+      const [updated] = await req.tenantDb!.update(shifts)
         .set({ appointmentId: parsed.data.appointmentId })
-        .where(eq(shifts.id, parsed.data.shiftId))
+        .where(req.tenantDb!.withTenantFilter(shifts, eq(shifts.id, parsed.data.shiftId)))
         .returning();
 
       return res.json({ success: true, shift: updated });
@@ -3554,8 +3559,8 @@ Follow up with this lead to set up their 14-day trial!
   app.post('/api/tech/pto', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians, ptoRequests } = await import('@shared/schema');
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.userId, req.user!.id),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, req.user!.id)),
       });
 
       if (!technician) {
@@ -3581,7 +3586,7 @@ Follow up with this lead to set up their 14-day trial!
       const diffTime = Math.abs(end.getTime() - start.getTime());
       const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-      const [request] = await db.insert(ptoRequests).values({
+      const [request] = await req.tenantDb!.insert(ptoRequests).values({
         technicianId: technician.id,
         startDate: start,
         endDate: end,
@@ -3606,7 +3611,7 @@ Follow up with this lead to set up their 14-day trial!
 
     try {
       const { ptoRequests } = await import('@shared/schema');
-      const requests = await db.query.ptoRequests.findMany({
+      const requests = await req.tenantDb!.query.ptoRequests.findMany({
         with: {
           technician: true,
         },
@@ -3641,14 +3646,14 @@ Follow up with this lead to set up their 14-day trial!
       }
 
       const { ptoRequests } = await import('@shared/schema');
-      const [updated] = await db.update(ptoRequests)
+      const [updated] = await req.tenantDb!.update(ptoRequests)
         .set({
           status: parsed.data.status,
           reviewNotes: parsed.data.adminNotes,
           reviewedBy: req.user!.id,
           reviewedAt: new Date(),
         })
-        .where(eq(ptoRequests.id, requestId))
+        .where(req.tenantDb!.withTenantFilter(ptoRequests, eq(ptoRequests.id, requestId)))
         .returning();
 
       return res.json({ success: true, request: updated });
@@ -3683,10 +3688,9 @@ Follow up with this lead to set up their 14-day trial!
 
   app.get('/api/reminders/rules', requireAuth, requireRole('manager', 'owner'), async (req: Request, res: Response) => {
     try {
-      const { db } = await import('./db');
       const { reminderRules } = await import('@shared/schema');
       
-      const rules = await db.query.reminderRules.findMany({
+      const rules = await req.tenantDb!.query.reminderRules.findMany({
         with: {
           service: true,
         },
@@ -3726,8 +3730,8 @@ Follow up with this lead to set up their 14-day trial!
       }
       
       // Verify customer exists
-      const customer = await db.query.customers.findFirst({
-        where: eq(customers.id, customerId),
+      const customer = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.id, customerId)),
       });
       
       if (!customer) {
@@ -3739,8 +3743,8 @@ Follow up with this lead to set up their 14-day trial!
       
       // If ruleId provided, verify it exists
       if (ruleId) {
-        const rule = await db.query.reminderRules.findFirst({
-          where: eq(reminderRules.id, ruleId),
+        const rule = await req.tenantDb!.query.reminderRules.findFirst({
+          where: req.tenantDb!.withTenantFilter(reminderRules, eq(reminderRules.id, ruleId)),
         });
         
         if (!rule) {
@@ -3751,8 +3755,8 @@ Follow up with this lead to set up their 14-day trial!
         }
       } else {
         // FIXED: If no ruleId provided, use default rule and assign its ID
-        const defaultRule = await db.query.reminderRules.findFirst({
-          where: eq(reminderRules.name, 'General Service Reminder - 6 Months'),
+        const defaultRule = await req.tenantDb!.query.reminderRules.findFirst({
+          where: req.tenantDb!.withTenantFilter(reminderRules, eq(reminderRules.name, 'General Service Reminder - 6 Months')),
         });
         
         if (!defaultRule) {
@@ -3773,14 +3777,14 @@ Follow up with this lead to set up their 14-day trial!
       const { differenceInDays } = await import('date-fns');
       
       // Get customer's last appointment to generate context
-      const lastAppointment = await db.query.appointments.findFirst({
-        where: eq(appointments.customerId, customerId),
+      const lastAppointment = await req.tenantDb!.query.appointments.findFirst({
+        where: req.tenantDb!.withTenantFilter(appointments, eq(appointments.customerId, customerId)),
         orderBy: [desc(appointments.scheduledTime)],
         with: { service: true },
       });
       
-      const rule = await db.query.reminderRules.findFirst({
-        where: eq(reminderRules.id, ruleId),
+      const rule = await req.tenantDb!.query.reminderRules.findFirst({
+        where: req.tenantDb!.withTenantFilter(reminderRules, eq(reminderRules.id, ruleId)),
         with: { service: true },
       });
       
@@ -3832,9 +3836,9 @@ Follow up with this lead to set up their 14-day trial!
           
           // Update job with personalized message
           const { reminderJobs } = await import('@shared/schema');
-          await db.update(reminderJobs)
+          await req.tenantDb!.update(reminderJobs)
             .set({ messageContent: reminderMessage })
-            .where(eq(reminderJobs.id, jobId));
+            .where(req.tenantDb!.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)));
             
         } catch (error) {
           console.error('[MANUAL REMINDER] Error generating personalized message:', error);
@@ -3946,8 +3950,8 @@ Follow up with this lead to set up their 14-day trial!
       
       // Check if customer opted out
       const { reminderOptOuts } = await import('@shared/schema');
-      const optOut = await db.query.reminderOptOuts.findFirst({
-        where: eq(reminderOptOuts.customerId, customerId),
+      const optOut = await req.tenantDb!.query.reminderOptOuts.findFirst({
+        where: req.tenantDb!.withTenantFilter(reminderOptOuts, eq(reminderOptOuts.customerId, customerId)),
       });
       
       if (optOut) {
@@ -3960,19 +3964,19 @@ Follow up with this lead to set up their 14-day trial!
       
       // Get customer's most recent appointment
       const { appointments, customers } = await import('@shared/schema');
-      const customer = await db.query.customers.findFirst({
-        where: eq(customers.id, customerId),
+      const customer = await req.tenantDb!.query.customers.findFirst({
+        where: req.tenantDb!.withTenantFilter(customers, eq(customers.id, customerId)),
       });
       
       if (!customer) {
         return res.status(404).json({ success: false, message: 'Customer not found' });
       }
       
-      const lastAppt = await db.query.appointments.findFirst({
-        where: and(
+      const lastAppt = await req.tenantDb!.query.appointments.findFirst({
+        where: req.tenantDb!.withTenantFilter(appointments, and(
           eq(appointments.customerId, customerId),
           eq(appointments.completed, true)
-        ),
+        )),
         orderBy: [desc(appointments.scheduledTime)],
         with: {
           service: true,
@@ -3985,14 +3989,14 @@ Follow up with this lead to set up their 14-day trial!
       
       // Find applicable rule
       const { reminderRules } = await import('@shared/schema');
-      const rule = await db.query.reminderRules.findFirst({
-        where: and(
+      const rule = await req.tenantDb!.query.reminderRules.findFirst({
+        where: req.tenantDb!.withTenantFilter(reminderRules, and(
           eq(reminderRules.enabled, true),
           or(
             eq(reminderRules.serviceId, lastAppt.serviceId),
             isNull(reminderRules.serviceId)
           )
-        ),
+        )),
       });
       
       if (!rule) {
@@ -4153,7 +4157,7 @@ Follow up with this lead to set up their 14-day trial!
       }
 
       const { reminderRules } = await import('@shared/schema');
-      const rules = await db.query.reminderRules.findMany({
+      const rules = await req.tenantDb!.query.reminderRules.findMany({
         with: {
           service: true,
         },
@@ -4204,10 +4208,10 @@ Follow up with this lead to set up their 14-day trial!
       const { reminderRules } = await import('@shared/schema');
       
       // Update rule
-      const [updated] = await db
+      const [updated] = await req.tenantDb!
         .update(reminderRules)
         .set(updateData)
-        .where(eq(reminderRules.id, ruleId))
+        .where(req.tenantDb!.withTenantFilter(reminderRules, eq(reminderRules.id, ruleId)))
         .returning();
       
       if (!updated) {
@@ -4243,7 +4247,7 @@ Follow up with this lead to set up their 14-day trial!
       const { shifts, technicians, shiftTemplates } = await import('@shared/schema');
       const { lte } = await import('drizzle-orm');
       
-      const shiftList = await db
+      const shiftList = await req.tenantDb!
         .select({
           id: shifts.id,
           technicianId: shifts.technicianId,
@@ -4270,10 +4274,10 @@ Follow up with this lead to set up their 14-day trial!
         .leftJoin(technicians, eq(shifts.technicianId, technicians.id))
         .leftJoin(shiftTemplates, eq(shifts.templateId, shiftTemplates.id))
         .where(
-          and(
+          req.tenantDb!.withTenantFilter(shifts, and(
             gte(shifts.shiftDate, startDate as string),
             lte(shifts.shiftDate, endDate as string)
-          )
+          ))
         )
         .orderBy(asc(shifts.shiftDate));
 
@@ -4312,15 +4316,15 @@ Follow up with this lead to set up their 14-day trial!
       const { shifts, shiftTemplates } = await import('@shared/schema');
       
       // Get template to populate shift times
-      const template = await db.query.shiftTemplates.findFirst({
-        where: eq(shiftTemplates.id, parsed.data.shiftTemplateId),
+      const template = await req.tenantDb!.query.shiftTemplates.findFirst({
+        where: req.tenantDb!.withTenantFilter(shiftTemplates, eq(shiftTemplates.id, parsed.data.shiftTemplateId)),
       });
       
       if (!template) {
         return res.status(404).json({ success: false, message: 'Shift template not found' });
       }
 
-      const [newShift] = await db.insert(shifts).values({
+      const [newShift] = await req.tenantDb!.insert(shifts).values({
         technicianId: parsed.data.technicianId,
         shiftDate: parsed.data.shiftDate,
         templateId: parsed.data.shiftTemplateId,
@@ -4355,7 +4359,7 @@ Follow up with this lead to set up their 14-day trial!
       }
       
       const { shifts } = await import('@shared/schema');
-      await db.delete(shifts).where(eq(shifts.id, shiftId));
+      await req.tenantDb!.delete(shifts).where(req.tenantDb!.withTenantFilter(shifts, eq(shifts.id, shiftId)));
 
       return res.json({ success: true });
     } catch (error) {
@@ -4371,8 +4375,8 @@ Follow up with this lead to set up their 14-day trial!
   app.get('/api/admin/shift-templates', requireAuth, async (req: Request, res: Response) => {
     try {
       const { shiftTemplates } = await import('@shared/schema');
-      const templates = await db.query.shiftTemplates.findMany({
-        where: eq(shiftTemplates.isActive, true),
+      const templates = await req.tenantDb!.query.shiftTemplates.findMany({
+        where: req.tenantDb!.withTenantFilter(shiftTemplates, eq(shiftTemplates.isActive, true)),
         orderBy: [asc(shiftTemplates.name)],
       });
 
@@ -4390,8 +4394,8 @@ Follow up with this lead to set up their 14-day trial!
   app.get('/api/technicians', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians } = await import('@shared/schema');
-      const techList = await db.query.technicians.findMany({
-        where: eq(technicians.employmentStatus, 'active'),
+      const techList = await req.tenantDb!.query.technicians.findMany({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.employmentStatus, 'active')),
         orderBy: [asc(technicians.preferredName)],
       });
 
@@ -4428,19 +4432,19 @@ Follow up with this lead to set up their 14-day trial!
   app.get('/api/tech/shift-trades', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians, shiftTrades } = await import('@shared/schema');
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.userId, req.user.id),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, req.user.id)),
       });
 
       if (!technician) {
         return res.status(404).json({ success: false, message: 'Technician profile not found' });
       }
 
-      const trades = await db.query.shiftTrades.findMany({
-        where: or(
+      const trades = await req.tenantDb!.query.shiftTrades.findMany({
+        where: req.tenantDb!.withTenantFilter(shiftTrades, or(
           eq(shiftTrades.offeringTechId, technician.id),
           eq(shiftTrades.requestingTechId, technician.id)
-        ),
+        )),
         with: {
           offeringTech: true,
           requestingTech: true,
@@ -4464,8 +4468,8 @@ Follow up with this lead to set up their 14-day trial!
   app.post('/api/tech/shift-trade', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians, shiftTrades, shifts } = await import('@shared/schema');
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.userId, req.user.id),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, req.user.id)),
       });
 
       if (!technician) {
@@ -4484,7 +4488,7 @@ Follow up with this lead to set up their 14-day trial!
         return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
       }
 
-      const [trade] = await db.insert(shiftTrades).values({
+      const [trade] = await req.tenantDb!.insert(shiftTrades).values({
         offeringTechId: technician.id,
         requestingTechId: parsed.data.targetTechnicianId || null,
         originalShiftId: parsed.data.shiftId,
@@ -4505,11 +4509,11 @@ Follow up with this lead to set up their 14-day trial!
     try {
       const { shifts } = await import('@shared/schema');
       
-      const openShifts = await db.query.shifts.findMany({
-        where: and(
+      const openShifts = await req.tenantDb!.query.shifts.findMany({
+        where: req.tenantDb!.withTenantFilter(shifts, and(
           isNull(shifts.technicianId),
           gte(shifts.shiftDate, new Date())
-        ),
+        )),
         with: {
           template: true,
         },
@@ -4527,8 +4531,8 @@ Follow up with this lead to set up their 14-day trial!
   app.post('/api/tech/claim-shift/:shiftId', requireAuth, async (req: Request, res: Response) => {
     try {
       const { technicians, shifts } = await import('@shared/schema');
-      const technician = await db.query.technicians.findFirst({
-        where: eq(technicians.userId, req.user.id),
+      const technician = await req.tenantDb!.query.technicians.findFirst({
+        where: req.tenantDb!.withTenantFilter(technicians, eq(technicians.userId, req.user.id)),
       });
 
       if (!technician) {
@@ -4538,15 +4542,15 @@ Follow up with this lead to set up their 14-day trial!
       const shiftId = parseInt(req.params.shiftId);
 
       // Update shift to assign to technician
-      const [updated] = await db.update(shifts)
+      const [updated] = await req.tenantDb!.update(shifts)
         .set({
           technicianId: technician.id,
           status: 'scheduled',
         })
-        .where(and(
+        .where(req.tenantDb!.withTenantFilter(shifts, and(
           eq(shifts.id, shiftId),
           isNull(shifts.technicianId) // Ensure still open
-        ))
+        )))
         .returning();
 
       if (!updated) {
@@ -4568,7 +4572,7 @@ Follow up with this lead to set up their 14-day trial!
 
     try {
       const { shiftTrades } = await import('@shared/schema');
-      const trades = await db.query.shiftTrades.findMany({
+      const trades = await req.tenantDb!.query.shiftTrades.findMany({
         with: {
           offeringTech: true,
           requestingTech: true,
@@ -4611,24 +4615,24 @@ Follow up with this lead to set up their 14-day trial!
       const { shiftTrades, shifts, technicians } = await import('@shared/schema');
       
       // Update trade status
-      const [updated] = await db.update(shiftTrades)
+      const [updated] = await req.tenantDb!.update(shiftTrades)
         .set({
           status: parsed.data.status,
           reviewNotes: parsed.data.reviewNotes,
           reviewedBy: req.user.id,
           reviewedAt: new Date(),
         })
-        .where(eq(shiftTrades.id, tradeId))
+        .where(req.tenantDb!.withTenantFilter(shiftTrades, eq(shiftTrades.id, tradeId)))
         .returning();
 
       // If approved, update the shift assignment
       if (parsed.data.status === 'approved' && updated.requestingTechId) {
         // Verify target technician exists and is active
-        const targetTech = await db.query.technicians.findFirst({
-          where: and(
+        const targetTech = await req.tenantDb!.query.technicians.findFirst({
+          where: req.tenantDb!.withTenantFilter(technicians, and(
             eq(technicians.id, updated.requestingTechId),
             eq(technicians.employmentStatus, 'active')
-          ),
+          )),
         });
 
         if (!targetTech) {
@@ -4640,9 +4644,9 @@ Follow up with this lead to set up their 14-day trial!
 
         // Now safe to reassign shift
         console.log(`[SHIFT TRADES] Reassigning shift ${updated.originalShiftId} to technician ${updated.requestingTechId}`);
-        await db.update(shifts)
+        await req.tenantDb!.update(shifts)
           .set({ technicianId: updated.requestingTechId })
-          .where(eq(shifts.id, updated.originalShiftId));
+          .where(req.tenantDb!.withTenantFilter(shifts, eq(shifts.id, updated.originalShiftId)));
       }
 
       return res.json({ success: true, trade: updated });

@@ -1,9 +1,11 @@
 import { db } from './db';
 import { sql } from 'drizzle-orm';
+import { wrapTenantDb } from './tenantDb';
 
 export async function initializePushNotificationsTable(): Promise<void> {
+  const tenantDb = wrapTenantDb(db, 'root');
   try {
-    await db.execute(sql`
+    await tenantDb.execute(sql`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),

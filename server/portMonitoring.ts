@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { orgSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
@@ -19,6 +20,8 @@ let monitoringActive = false;
  * and waiting for webhook confirmation
  */
 async function checkPortStatus(): Promise<boolean> {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     // Use BUSINESS_PHONE_NUMBER env var for flexibility (supports any ported number)
     const portedNumber = process.env.BUSINESS_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER;
@@ -71,7 +74,7 @@ async function checkPortStatus(): Promise<boolean> {
     const expiresAt = new Date(Date.now() + 30000); // 30 second timeout
     
     // Store test status in database
-    await db.insert(orgSettings).values({
+    await tenantDb.insert(orgSettings).values({
       settingKey: 'port_monitoring_test_status',
       settingValue: {
         testId,
@@ -147,15 +150,16 @@ async function checkPortStatus(): Promise<boolean> {
  * Poll database for test confirmation with timeout
  */
 async function waitForTestConfirmation(testId: string, timeoutMs: number): Promise<boolean> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const startTime = Date.now();
   const pollInterval = 1000; // Check every 1 second
   
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const [status] = await db
+      const [status] = await tenantDb
         .select()
         .from(orgSettings)
-        .where(eq(orgSettings.settingKey, 'port_monitoring_test_status'));
+        .where(tenantDb.withTenantFilter(orgSettings, eq(orgSettings.settingKey, 'port_monitoring_test_status')));
       
       if (status?.settingValue) {
         const testStatus = status.settingValue as any;
@@ -211,9 +215,11 @@ async function sendPortCompleteAlert() {
 }
 
 async function disablePortMonitoring() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     // Store in database that monitoring is disabled
-    await db.insert(orgSettings).values({
+    await tenantDb.insert(orgSettings).values({
       settingKey: 'port_monitoring_disabled',
       settingValue: { disabled: true, disabledAt: new Date().toISOString() },
       description: 'Port monitoring automatically disabled after successful completion',
@@ -252,12 +258,14 @@ async function runDailyPortCheck() {
 }
 
 export async function initializePortMonitoring() {
+  const tenantDb = wrapTenantDb(db, 'root');
+  
   // Check if monitoring was previously disabled
   try {
-    const [setting] = await db
+    const [setting] = await tenantDb
       .select()
       .from(orgSettings)
-      .where(eq(orgSettings.settingKey, 'port_monitoring_disabled'));
+      .where(tenantDb.withTenantFilter(orgSettings, eq(orgSettings.settingKey, 'port_monitoring_disabled')));
 
     if (setting?.settingValue && (setting.settingValue as any).disabled === true) {
       console.log('[PORT MONITOR] Monitoring previously disabled - skipping initialization');
@@ -307,7 +315,9 @@ export async function initializePortMonitoring() {
  * Can be called from admin panel if user wants to restart monitoring
  */
 export async function enablePortMonitoring() {
-  await db.insert(orgSettings).values({
+  const tenantDb = wrapTenantDb(db, 'root');
+  
+  await tenantDb.insert(orgSettings).values({
     settingKey: 'port_monitoring_disabled',
     settingValue: { disabled: false, enabledAt: new Date().toISOString() },
     description: 'Port monitoring manually re-enabled',

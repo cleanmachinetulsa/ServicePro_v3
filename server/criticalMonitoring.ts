@@ -8,6 +8,7 @@ import { sendPushNotification } from './pushNotificationService';
 import { db } from './db';
 import { criticalMonitoringSettings, users, pushSubscriptions } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
+import { wrapTenantDb } from './tenantDb';
 
 interface IntegrationHealth {
   name: string;
@@ -54,8 +55,9 @@ class CriticalMonitor {
    * Load settings from database, fallback to env vars
    */
   async loadSettings() {
+    const tenantDb = wrapTenantDb(db, 'root');
     try {
-      const [settings] = await db.select().from(criticalMonitoringSettings).limit(1);
+      const [settings] = await tenantDb.select().from(criticalMonitoringSettings).limit(1);
 
       if (settings) {
         this.config = {
@@ -187,9 +189,10 @@ class CriticalMonitor {
    * Send push notifications to users with specified roles
    */
   private async sendPushAlerts(integrationName: string, health: IntegrationHealth) {
+    const tenantDb = wrapTenantDb(db, 'root');
     try {
       // Find users with push subscriptions and matching roles
-      const usersWithPush = await db
+      const usersWithPush = await tenantDb
         .select({ id: users.id })
         .from(users)
         .innerJoin(pushSubscriptions, eq(pushSubscriptions.userId, users.id))

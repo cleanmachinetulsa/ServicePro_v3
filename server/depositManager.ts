@@ -9,7 +9,7 @@
  * - Integration with Stripe payment links
  */
 
-import { db } from "./db";
+import type { TenantDb } from './tenantDb';
 import { appointments, invoices, paymentLinks, contacts, auditLog } from "@shared/schema";
 import { eq, and, or, lt, isNull } from "drizzle-orm";
 import { sendSMS } from "./notifications";
@@ -35,12 +35,13 @@ interface DepositReminderResult {
  * Send deposit reminder to payer
  */
 export async function sendDepositReminder(
+  tenantDb: TenantDb,
   appointmentId: number,
   reminderType: 'first' | 'second' | 'final' = 'first'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Fetch appointment
-    const appt = await db.query.appointments.findFirst({
+    const appt = await tenantDb.query.appointments.findFirst({
       where: eq(appointments.id, appointmentId),
     });
 
@@ -63,7 +64,7 @@ export async function sendDepositReminder(
       return { success: false, error: 'No billing contact assigned' };
     }
 
-    const payer = await db.query.contacts.findFirst({
+    const payer = await tenantDb.query.contacts.findFirst({
       where: eq(contacts.id, appt.billingContactId),
     });
 
@@ -72,7 +73,7 @@ export async function sendDepositReminder(
     }
 
     // Get or create payment link
-    let paymentLinkRecord = await db.query.paymentLinks.findFirst({
+    let paymentLinkRecord = await tenantDb.query.paymentLinks.findFirst({
       where: and(
         eq(paymentLinks.appointmentId, appointmentId),
         eq(paymentLinks.status, 'pending')
@@ -88,7 +89,7 @@ export async function sendDepositReminder(
       const paymentLink = await createStripePaymentLink(appt, payer);
       
       // Store in database
-      const [newLink] = await db.insert(paymentLinks).values({
+      const [newLink] = await tenantDb.insert(paymentLinks).values({
         appointmentId: appt.id,
         amount: appt.depositAmount,
         description: `Deposit for ${appt.serviceType}`,
@@ -115,7 +116,7 @@ export async function sendDepositReminder(
     if (payer.phoneE164 && !payer.smsOptOut) {
       try {
         // Use Main Line (ID 1) for automated deposit reminders
-        const smsResult = await sendSMS(payer.phoneE164, message, undefined, undefined, 1);
+        const smsResult = await sendSMS(tenantDb, payer.phoneE164, message, undefined, undefined, 1);
         smsSuccess = smsResult.success;
       } catch (error) {
         console.error('[DEPOSIT MGR] SMS send failed:', error);
@@ -127,6 +128,7 @@ export async function sendDepositReminder(
     if (payer.email) {
       try {
         const emailResult = await sendBusinessEmail(
+          tenantDb,
           payer.email,
           `Deposit Due - ${appt.serviceType}`,
           message
@@ -142,7 +144,7 @@ export async function sendDepositReminder(
     }
 
     // Log reminder
-    await db.insert(auditLog).values({
+    await tenantDb.insert(auditLog).values({
       actionType: 'deposit_reminder_sent',
       entityType: 'appointment',
       entityId: appointmentId,
@@ -171,7 +173,7 @@ export async function sendDepositReminder(
  * - 24 hours before appointment (second reminder)
  * - 12 hours before appointment (final reminder)
  */
-export async function processDepositReminders(): Promise<DepositReminderResult> {
+export async function processDepositReminders(tenantDb: TenantDb): Promise<DepositReminderResult> {
   const result: DepositReminderResult = {
     sent: 0,
     failed: 0,
@@ -185,7 +187,7 @@ export async function processDepositReminders(): Promise<DepositReminderResult> 
     const in12Hours = new Date(now.getTime() + 12 * 60 * 60 * 1000);
 
     // Find appointments with unpaid deposits
-    const appts = await db
+    const appts = await tenantDb
       .select()
       .from(appointments)
       .where(
@@ -221,7 +223,7 @@ export async function processDepositReminders(): Promise<DepositReminderResult> 
       }
 
       // Check if we already sent this reminder type
-      const recentLogs = await db
+      const recentLogs = await tenantDb
         .select()
         .from(auditLog)
         .where(
@@ -242,7 +244,7 @@ export async function processDepositReminders(): Promise<DepositReminderResult> 
       }
 
       // Send reminder
-      const sendResult = await sendDepositReminder(appt.id, reminderType);
+      const sendResult = await sendDepositReminder(tenantDb, appt.id, reminderType);
 
       if (sendResult.success) {
         result.sent++;
@@ -321,9 +323,9 @@ async function createStripePaymentLink(
 /**
  * Generate invoice for completed appointment
  */
-export async function generateInvoice(appointmentId: number): Promise<{ invoiceId: number; url: string }> {
+export async function generateInvoice(tenantDb: TenantDb, appointmentId: number): Promise<{ invoiceId: number; url: string }> {
   try {
-    const appt = await db.query.appointments.findFirst({
+    const appt = await tenantDb.query.appointments.findFirst({
       where: eq(appointments.id, appointmentId),
     });
 
@@ -336,7 +338,7 @@ export async function generateInvoice(appointmentId: number): Promise<{ invoiceI
     }
 
     // Check if invoice already exists
-    const existingInvoice = await db.query.invoices.findFirst({
+    const existingInvoice = await tenantDb.query.invoices.findFirst({
       where: eq(invoices.appointmentId, appointmentId),
     });
 
@@ -355,7 +357,7 @@ export async function generateInvoice(appointmentId: number): Promise<{ invoiceI
     const balanceDue = total - depositPaid;
 
     // Create invoice
-    const [newInvoice] = await db.insert(invoices).values({
+    const [newInvoice] = await tenantDb.insert(invoices).values({
       appointmentId: appt.id,
       billToContactId: appt.billingContactId,
       subtotal,
@@ -368,7 +370,7 @@ export async function generateInvoice(appointmentId: number): Promise<{ invoiceI
     }).returning();
 
     // Log invoice creation
-    await db.insert(auditLog).values({
+    await tenantDb.insert(auditLog).values({
       actionType: 'invoice_created',
       entityType: 'invoice',
       entityId: newInvoice.id,
@@ -395,17 +397,18 @@ export async function generateInvoice(appointmentId: number): Promise<{ invoiceI
  * Mark deposit as paid
  */
 export async function markDepositPaid(
+  tenantDb: TenantDb,
   appointmentId: number,
   stripePaymentIntentId?: string
 ): Promise<{ success: boolean }> {
   try {
     // Update appointment
-    await db
+    await tenantDb
       .update(appointments)
       .set({
         depositPaid: true,
         priceLocked: true,
-        priceLockedAmount: (await db.query.appointments.findFirst({
+        priceLockedAmount: (await tenantDb.query.appointments.findFirst({
           where: eq(appointments.id, appointmentId)
         }))?.estimatedPrice,
       })
@@ -413,7 +416,7 @@ export async function markDepositPaid(
       .execute();
 
     // Update payment link status
-    await db
+    await tenantDb
       .update(paymentLinks)
       .set({
         status: 'paid',
@@ -428,7 +431,7 @@ export async function markDepositPaid(
       .execute();
 
     // Log payment
-    await db.insert(auditLog).values({
+    await tenantDb.insert(auditLog).values({
       actionType: 'deposit_paid',
       entityType: 'appointment',
       entityId: appointmentId,

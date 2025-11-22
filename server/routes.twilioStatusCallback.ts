@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { smsDeliveryStatus } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
@@ -45,10 +46,10 @@ router.post('/status-callback', verifyTwilioSignature, async (req: Request, res:
     });
 
     // Check if we already have this message in our database
-    const existingRecord = await db
+    const existingRecord = await req.tenantDb!
       .select()
       .from(smsDeliveryStatus)
-      .where(eq(smsDeliveryStatus.messageSid, MessageSid))
+      .where(req.tenantDb!.withTenantFilter(smsDeliveryStatus, eq(smsDeliveryStatus.messageSid, MessageSid)))
       .limit(1);
 
     if (existingRecord.length > 0) {
@@ -75,15 +76,15 @@ router.post('/status-callback', verifyTwilioSignature, async (req: Request, res:
         updates.priceUnit = PriceUnit || 'USD';
       }
 
-      await db
+      await req.tenantDb!
         .update(smsDeliveryStatus)
         .set(updates)
-        .where(eq(smsDeliveryStatus.messageSid, MessageSid));
+        .where(req.tenantDb!.withTenantFilter(smsDeliveryStatus, eq(smsDeliveryStatus.messageSid, MessageSid)));
 
       console.log('[TWILIO STATUS] Updated existing record:', MessageSid);
     } else {
       // Create new record (in case we missed the initial send)
-      await db.insert(smsDeliveryStatus).values({
+      await req.tenantDb!.insert(smsDeliveryStatus).values({
         messageSid: MessageSid,
         to: To,
         from: From,
@@ -98,7 +99,6 @@ router.post('/status-callback', verifyTwilioSignature, async (req: Request, res:
         sentAt: MessageStatus === 'sent' ? new Date() : null,
         deliveredAt: MessageStatus === 'delivered' ? new Date() : null,
         failedAt: (MessageStatus === 'failed' || MessageStatus === 'undelivered') ? new Date() : null,
-        tenantId: 'root', // Required field for multi-tenancy support
       });
 
       console.log('[TWILIO STATUS] Created new record for:', MessageSid);
@@ -154,7 +154,7 @@ router.get('/delivery-stats', async (req: Request, res: Response) => {
     dateThreshold.setDate(dateThreshold.getDate() - daysInt);
 
     // Get all records within date range
-    const records = await db
+    const records = await req.tenantDb!
       .select()
       .from(smsDeliveryStatus)
       .limit(parseInt(limit as string));
@@ -222,7 +222,7 @@ router.get('/trends', async (req: Request, res: Response) => {
     dateThreshold.setDate(dateThreshold.getDate() - daysInt);
 
     // Get all records
-    const records = await db
+    const records = await req.tenantDb!
       .select()
       .from(smsDeliveryStatus)
       .limit(1000); // Get more records for trend analysis
@@ -320,10 +320,10 @@ router.get('/trends', async (req: Request, res: Response) => {
  */
 router.get('/error-breakdown', async (req: Request, res: Response) => {
   try {
-    const failedMessages = await db
+    const failedMessages = await req.tenantDb!
       .select()
       .from(smsDeliveryStatus)
-      .where(eq(smsDeliveryStatus.status, 'failed'))
+      .where(req.tenantDb!.withTenantFilter(smsDeliveryStatus, eq(smsDeliveryStatus.status, 'failed')))
       .limit(100);
 
     // Group by error code

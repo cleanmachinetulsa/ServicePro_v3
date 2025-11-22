@@ -17,6 +17,7 @@ import { db } from './db';
 import { businessSettings } from '@shared/schema';
 import { Request, Response, Express } from 'express';
 import axios from 'axios';
+import { wrapTenantDb } from './tenantDb';
 
 // Service check result interface
 interface ServiceHealth {
@@ -45,10 +46,11 @@ interface HealthCheckResponse {
  * Check Database connectivity and performance
  */
 async function checkDatabase(): Promise<ServiceHealth> {
+  const tenantDb = wrapTenantDb(db, 'root');
   const start = Date.now();
   try {
     // Simple SELECT query to verify connectivity and performance
-    await db.select().from(businessSettings).limit(1);
+    await tenantDb.select().from(businessSettings).limit(1);
     
     return {
       status: 'healthy',

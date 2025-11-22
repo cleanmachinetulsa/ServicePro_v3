@@ -1,5 +1,4 @@
 import { Request, Response, NextFunction } from 'express';
-import { db } from './db';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -26,7 +25,7 @@ export function requireRole(...allowedRoles: string[]) {
       }
 
       // Get user from database
-      const [user] = await db
+      const [user] = await req.tenantDb!
         .select()
         .from(users)
         .where(eq(users.id, req.session.userId))
@@ -83,7 +82,7 @@ export async function checkPasswordChangeRequired(req: Request, res: Response, n
       return next();
     }
 
-    const [user] = await db
+    const [user] = await req.tenantDb!
       .select()
       .from(users)
       .where(eq(users.id, req.session.userId))
