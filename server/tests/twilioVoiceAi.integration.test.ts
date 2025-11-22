@@ -134,7 +134,7 @@ describe('AI Voice Route - Integration Tests (Phase 4)', () => {
     it('should return error TwiML when ivrMode is not ai-voice', async () => {
       // Create a phone config with simple mode
       const simpleConfigId = nanoid();
-      const simplePhoneNumber = '+19167775555';
+      const simplePhoneNumber = '+19998887777'; // Unique number to avoid conflicts
 
       await db.insert(tenantPhoneConfig).values({
         id: simpleConfigId,
