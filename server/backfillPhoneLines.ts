@@ -20,7 +20,7 @@ export async function backfillPhoneLineIds() {
     const [mainLine] = await tenantDb
       .select()
       .from(phoneLines)
-      .where(eq(phoneLines.label, 'Main Business Line'))
+      .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.label, 'Main Business Line')))
       .limit(1);
 
     if (!mainLine) {
@@ -35,9 +35,11 @@ export async function backfillPhoneLineIds() {
       .update(conversations)
       .set({ phoneLineId: mainLine.id })
       .where(
-        and(
-          eq(conversations.platform, 'sms'),
-          isNull(conversations.phoneLineId)
+        tenantDb.withTenantFilter(conversations,
+          and(
+            eq(conversations.platform, 'sms'),
+            isNull(conversations.phoneLineId)
+          )
         )
       )
       .returning({ id: conversations.id });
@@ -49,9 +51,11 @@ export async function backfillPhoneLineIds() {
       .update(messages)
       .set({ phoneLineId: mainLine.id })
       .where(
-        and(
-          eq(messages.channel, 'sms'),
-          isNull(messages.phoneLineId)
+        tenantDb.withTenantFilter(messages,
+          and(
+            eq(messages.channel, 'sms'),
+            isNull(messages.phoneLineId)
+          )
         )
       )
       .returning({ id: messages.id });
