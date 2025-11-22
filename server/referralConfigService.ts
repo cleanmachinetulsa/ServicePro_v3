@@ -1,4 +1,4 @@
-import { db } from "./db";
+import type { TenantDb } from './tenantDb';
 import { 
   referralProgramConfig, 
   type SelectReferralProgramConfig, 
@@ -27,7 +27,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * Get referral program configuration
  * Uses in-memory cache with TTL, falls back to database
  */
-export async function getReferralConfig(): Promise<SelectReferralProgramConfig | null> {
+export async function getReferralConfig(tenantDb: TenantDb): Promise<SelectReferralProgramConfig | null> {
   try {
     // Check cache validity
     const now = Date.now();
@@ -36,9 +36,10 @@ export async function getReferralConfig(): Promise<SelectReferralProgramConfig |
     }
 
     // Fetch from database
-    const configs = await db
+    const configs = await tenantDb
       .select()
       .from(referralProgramConfig)
+      .where(tenantDb.withTenantFilter(referralProgramConfig))
       .limit(1);
 
     if (configs.length === 0) {
@@ -62,21 +63,23 @@ export async function getReferralConfig(): Promise<SelectReferralProgramConfig |
  * Invalidates cache and ensures singleton behavior
  */
 export async function updateReferralConfig(
+  tenantDb: TenantDb,
   updates: Partial<InsertReferralProgramConfig>,
   userId?: number
 ): Promise<{ success: boolean; config?: SelectReferralProgramConfig; message?: string }> {
   try {
     // Get existing config
-    const existing = await db
+    const existing = await tenantDb
       .select()
       .from(referralProgramConfig)
+      .where(tenantDb.withTenantFilter(referralProgramConfig))
       .limit(1);
 
     let updatedConfig: SelectReferralProgramConfig;
 
     if (existing.length === 0) {
       // Create initial config (should only happen once)
-      const [newConfig] = await db
+      const [newConfig] = await tenantDb
         .insert(referralProgramConfig)
         .values({
           ...updates,
@@ -88,14 +91,14 @@ export async function updateReferralConfig(
       console.log("[REFERRAL CONFIG] Created initial configuration");
     } else {
       // Update existing singleton row
-      const [updated] = await db
+      const [updated] = await tenantDb
         .update(referralProgramConfig)
         .set({
           ...updates,
           updatedAt: new Date(),
           updatedBy: userId,
         })
-        .where(eq(referralProgramConfig.id, existing[0].id))
+        .where(tenantDb.withTenantFilter(referralProgramConfig, eq(referralProgramConfig.id, existing[0].id)))
         .returning();
 
       updatedConfig = updated;
@@ -136,8 +139,8 @@ export function invalidateConfigCache(): void {
  * Returns a structured reward object
  * Handles numeric types properly and guards against null/NaN
  */
-export async function getReferrerRewardDescriptor(): Promise<RewardDescriptor | null> {
-  const config = await getReferralConfig();
+export async function getReferrerRewardDescriptor(tenantDb: TenantDb): Promise<RewardDescriptor | null> {
+  const config = await getReferralConfig(tenantDb);
   if (!config) return null;
 
   // Handle numeric amount - schema stores as numeric type
@@ -163,8 +166,8 @@ export async function getReferrerRewardDescriptor(): Promise<RewardDescriptor | 
  * Returns a structured reward object
  * Handles numeric types properly and guards against null/NaN
  */
-export async function getRefereeRewardDescriptor(): Promise<RewardDescriptor | null> {
-  const config = await getReferralConfig();
+export async function getRefereeRewardDescriptor(tenantDb: TenantDb): Promise<RewardDescriptor | null> {
+  const config = await getReferralConfig(tenantDb);
   if (!config) return null;
 
   // Handle numeric amount - schema stores as numeric type
@@ -258,15 +261,16 @@ export function getDefaultConfig(): Partial<InsertReferralProgramConfig> {
  * Initialize referral config if not exists
  * Should be called on server startup
  */
-export async function initializeReferralConfig(): Promise<void> {
+export async function initializeReferralConfig(tenantDb: TenantDb): Promise<void> {
   try {
-    const existing = await db
+    const existing = await tenantDb
       .select()
       .from(referralProgramConfig)
+      .where(tenantDb.withTenantFilter(referralProgramConfig))
       .limit(1);
 
     if (existing.length === 0) {
-      await db
+      await tenantDb
         .insert(referralProgramConfig)
         .values(getDefaultConfig());
       

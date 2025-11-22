@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { callEvents, conversations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -26,7 +26,7 @@ export interface CallEventData {
 /**
  * Creates a new call event log
  */
-export async function logCallEvent(callData: CallEventData): Promise<number> {
+export async function logCallEvent(tenantDb: TenantDb, callData: CallEventData): Promise<number> {
   try {
     // Find or create conversation for this phone number
     let conversationId: number | null = null;
@@ -36,10 +36,10 @@ export async function logCallEvent(callData: CallEventData): Promise<number> {
     const customerPhone = callData.customerPhone || (callData.direction === 'inbound' ? callData.from : callData.to);
     
     // Try to find existing conversation
-    const [existingConv] = await db
+    const [existingConv] = await tenantDb
       .select()
       .from(conversations)
-      .where(eq(conversations.customerPhone, customerPhone))
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, customerPhone)))
       .limit(1);
     
     if (existingConv) {
@@ -52,7 +52,7 @@ export async function logCallEvent(callData: CallEventData): Promise<number> {
     }
     
     // Insert call event with customer phone metadata for bridge preservation
-    const [callEvent] = await db.insert(callEvents).values({
+    const [callEvent] = await tenantDb.insert(callEvents).values({
       conversationId,
       callSid: callData.callSid,
       direction: callData.direction,
@@ -88,6 +88,7 @@ export async function logCallEvent(callData: CallEventData): Promise<number> {
  * Only updates fields that are defined in the updates object (prevents NULL overwrites)
  */
 export async function updateCallEvent(
+  tenantDb: TenantDb,
   callSid: string,
   updates: Partial<CallEventData>
 ): Promise<void> {
@@ -108,9 +109,9 @@ export async function updateCallEvent(
     
     // Only update if there are fields to update
     if (Object.keys(updateData).length > 0) {
-      await db.update(callEvents)
+      await tenantDb.update(callEvents)
         .set(updateData)
-        .where(eq(callEvents.callSid, callSid));
+        .where(tenantDb.withTenantFilter(callEvents, eq(callEvents.callSid, callSid)));
       
       console.log(`[CALL LOG] Updated call event for ${callSid} with fields:`, Object.keys(updateData));
     } else {
@@ -125,12 +126,12 @@ export async function updateCallEvent(
 /**
  * Gets all call events for a conversation
  */
-export async function getCallEventsForConversation(conversationId: number) {
+export async function getCallEventsForConversation(tenantDb: TenantDb, conversationId: number) {
   try {
-    const events = await db
+    const events = await tenantDb
       .select()
       .from(callEvents)
-      .where(eq(callEvents.conversationId, conversationId))
+      .where(tenantDb.withTenantFilter(callEvents, eq(callEvents.conversationId, conversationId)))
       .orderBy(callEvents.createdAt);
     
     return events;

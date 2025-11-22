@@ -1,0 +1,128 @@
+We are continuing the tenantDb migration in the "servicepro-v3-base" project.
+
+IMPORTANT:
+Follow the exact operational rules below to minimize cost and maintain full code stability.
+
+----------------------------------------------------------------------
+RULES FOR THIS RUN
+----------------------------------------------------------------------
+1. Only modify the service-layer files I list.  
+2. Do NOT scan the entire repo unless explicitly required.  
+3. Do NOT touch any route files in this phase.  
+4. Do NOT modify tenantMiddleware.ts or tenantDb.ts.  
+5. Do NOT modify client-side code.  
+6. Do NOT modify any unrelated code, formatting, or logic.  
+7. Do NOT restructure files or refactor beyond required tenantDb migration.  
+8. Keep all API contracts EXACTLY the same.  
+9. STOP when the listed files are done—do NOT continue to other files.  
+
+----------------------------------------------------------------------
+PHASE 1F GOAL
+----------------------------------------------------------------------
+**Migrate the following service-layer modules from direct db access to tenantDb:**
+
+SERVICE FILES IN SCOPE:
+
+- server/emailCampaignService.ts  
+- server/reminderService.ts  
+- server/invoiceService.ts  
+- server/paymentHandler.ts  
+- server/callLoggingService.ts  
+- server/notificationHelper.ts  
+- server/referralService.ts  
+- server/referralConfigService.ts  
+- server/creditLedgerService.ts  
+- server/calendarAvailability.ts  
+- server/services.ts  
+- server/serviceManagement.ts  
+
+This is a total of **12 files** — ONLY these files.
+
+----------------------------------------------------------------------
+MIGRATION PATTERN
+----------------------------------------------------------------------
+Every exported function in these files must be updated:
+
+Before (current):
+function doThing(arg1, arg2) {
+  return db.select()...
+}
+
+After:
+function doThing(tenantDb: TenantDb, arg1, arg2) {
+  return tenantDb.select()...
+}
+
+And callers will be updated in the route files in later phases (NOT NOW).
+
+Database operation rules:
+
+1) SELECT  
+   Before:
+     db.select().from(table).where(condition)
+   After:
+     tenantDb
+       .select()
+       .from(table)
+       .where(
+         tenantDb.withTenantFilter(table, condition)
+       )
+
+2) INSERT  
+   tenantDb.insert(table).values(...)
+   DO NOT manually set tenantId — wrapper injects it.
+
+3) UPDATE  
+   Wrap WHERE clause:
+   .where(tenantDb.withTenantFilter(table, eq(table.id, id)))
+
+4) DELETE  
+   Same pattern as UPDATE.
+
+5) JOIN queries  
+   Apply withTenantFilter() only to the primary table.
+
+6) Helper functions inside these files  
+   - Must accept tenantDb: TenantDb  
+   - Must use tenantDb instead of db  
+
+----------------------------------------------------------------------
+AFTER CHANGES – REQUIRED VERIFICATIONS
+----------------------------------------------------------------------
+When migration is complete:
+
+1) Run ONLY this test suite:
+   npx vitest run server/tests/tenantIsolation/tenantDb.test.ts
+   EXPECT: 11/11 PASS
+
+2) Start dev server:
+   EXPECT: No runtime errors
+
+3) Perform minimal smoke tests:
+   - GET /api/services  
+   - GET /api/addon-services  
+   - GET /api/homepage-content  
+
+(These must not crash. Auth errors OK.)
+
+----------------------------------------------------------------------
+MANDATORY FINAL REPORT FORMAT
+----------------------------------------------------------------------
+When you finish, produce a report with:
+
+1) List of every file modified  
+2) For each file, a count of:  
+   - SELECT operations migrated  
+   - INSERT operations  
+   - UPDATE operations  
+   - DELETE operations  
+   - JOIN operations  
+3) Confirmation of:  
+   - TypeScript server-side = 0 errors  
+   - tenantIsolation tests = 11/11 PASS  
+   - Server runs cleanly  
+4) STOP after this batch
+
+----------------------------------------------------------------------
+DO NOT MIGRATE ANY OTHER FILES BESIDES THE LISTED 12.
+----------------------------------------------------------------------

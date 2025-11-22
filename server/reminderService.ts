@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { 
   reminderRules, 
   reminderJobs, 
@@ -20,14 +20,15 @@ import { generateReminderMessage, appendActionLinks } from './gptPersonalization
  * Identify customers who need service reminders based on their last appointment
  * and enabled reminder rules
  */
-export async function identifyCustomersNeedingReminders() {
+export async function identifyCustomersNeedingReminders(tenantDb: TenantDb) {
   try {
     console.log('[REMINDER SERVICE] Identifying customers needing reminders...');
 
     // Get all enabled reminder rules (without relations to avoid Drizzle error)
-    const enabledRules = await db.query.reminderRules.findMany({
-      where: eq(reminderRules.enabled, true),
-    });
+    const enabledRules = await tenantDb
+      .select()
+      .from(reminderRules)
+      .where(tenantDb.withTenantFilter(reminderRules, eq(reminderRules.enabled, true)));
 
     if (enabledRules.length === 0) {
       console.log('[REMINDER SERVICE] No enabled reminder rules found');
@@ -61,7 +62,7 @@ export async function identifyCustomersNeedingReminders() {
 
       // CORRECT APPROACH: Find latest appointment FIRST (without date filtering),
       // THEN check if it falls in the trigger window
-      const lastAppointmentsQuery = db
+      const lastAppointmentsQuery = tenantDb
         .select({
           customerId: appointments.customerId,
           lastServiceDate: sql<Date>`MAX(${appointments.scheduledTime})`.as('last_service_date'),
@@ -69,10 +70,10 @@ export async function identifyCustomersNeedingReminders() {
         })
         .from(appointments)
         .where(
-          and(
+          tenantDb.withTenantFilter(appointments, and(
             eq(appointments.completed, true),
             rule.serviceId ? eq(appointments.serviceId, rule.serviceId) : sql`true`
-          )
+          ))
         )
         .groupBy(appointments.customerId, appointments.serviceId);
 
@@ -91,13 +92,17 @@ export async function identifyCustomersNeedingReminders() {
       // Now fetch customer and service details for each eligible appointment
       const matchingAppointments = [];
       for (const appt of eligibleAppointments) {
-        const customer = await db.query.customers.findFirst({
-          where: eq(customers.id, appt.customerId),
-        });
+        const [customer] = await tenantDb
+          .select()
+          .from(customers)
+          .where(tenantDb.withTenantFilter(customers, eq(customers.id, appt.customerId)))
+          .limit(1);
 
-        const service = await db.query.services.findFirst({
-          where: eq(services.id, appt.serviceId),
-        });
+        const [service] = await tenantDb
+          .select()
+          .from(services)
+          .where(tenantDb.withTenantFilter(services, eq(services.id, appt.serviceId)))
+          .limit(1);
 
         if (!customer || !service) {
           console.log(`[REMINDER SERVICE] Skipping - customer or service not found for appointment`);
@@ -125,16 +130,17 @@ export async function identifyCustomersNeedingReminders() {
         }
 
         // Check if customer already has a pending/sent reminder for this service
-        const existingJobs = await db.query.reminderJobs.findMany({
-          where: and(
+        const existingJobs = await tenantDb
+          .select()
+          .from(reminderJobs)
+          .where(tenantDb.withTenantFilter(reminderJobs, and(
             eq(reminderJobs.customerId, appt.customerId),
             eq(reminderJobs.ruleId, rule.id),
             or(
               eq(reminderJobs.status, 'pending'),
               eq(reminderJobs.status, 'sent')
             )
-          ),
-        });
+          )));
 
         if (existingJobs.length > 0) {
           console.log(`[REMINDER SERVICE] Customer ${appt.customerId} already has reminder for rule ${rule.id}`);
@@ -173,6 +179,7 @@ export async function identifyCustomersNeedingReminders() {
  * This ensures ALL reminders have booking, snooze, and opt-out links
  */
 export async function createReminderJob(
+  tenantDb: TenantDb,
   customerId: number,
   ruleId: number,
   scheduledFor: Date = new Date(),
@@ -186,7 +193,7 @@ export async function createReminderJob(
     }
 
     // Create job with initial message
-    const [job] = await db
+    const [job] = await tenantDb
       .insert(reminderJobs)
       .values({
         customerId,
@@ -204,10 +211,10 @@ export async function createReminderJob(
     const messageWithLinks = appendActionLinks(messageContent, customerId, job.id);
     
     // Update job with links
-    await db
+    await tenantDb
       .update(reminderJobs)
       .set({ messageContent: messageWithLinks })
-      .where(eq(reminderJobs.id, job.id));
+      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, job.id)));
     
     console.log(`[REMINDER SERVICE] ✅ Added action links to job ${job.id}`);
 
@@ -222,23 +229,19 @@ export async function createReminderJob(
  * Get reminder jobs filtered by status
  */
 export async function getReminderJobs(
+  tenantDb: TenantDb,
   status?: 'pending' | 'sent' | 'failed' | 'snoozed' | 'cancelled',
   limit: number = 100
 ) {
   try {
-    const jobs = await db.query.reminderJobs.findMany({
-      where: status ? eq(reminderJobs.status, status) : undefined,
-      with: {
-        customer: true,
-        rule: {
-          with: {
-            service: true,
-          },
-        },
-      },
-      orderBy: [desc(reminderJobs.scheduledFor)],
-      limit,
-    });
+    const baseCondition = status ? eq(reminderJobs.status, status) : sql`true`;
+    
+    const jobs = await tenantDb
+      .select()
+      .from(reminderJobs)
+      .where(tenantDb.withTenantFilter(reminderJobs, baseCondition))
+      .orderBy(desc(reminderJobs.scheduledFor))
+      .limit(limit);
 
     return jobs;
   } catch (error) {
@@ -251,31 +254,34 @@ export async function getReminderJobs(
  * Mark a reminder job as successfully sent
  */
 export async function markReminderSent(
+  tenantDb: TenantDb,
   jobId: number,
   channel: 'sms' | 'email' | 'push'
 ): Promise<boolean> {
   try {
     // Update job status
-    await db
+    await tenantDb
       .update(reminderJobs)
       .set({
         status: 'sent',
         sentAt: new Date(),
         lastAttemptAt: new Date(),
       })
-      .where(eq(reminderJobs.id, jobId));
+      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)));
 
     // Get job details for event logging
-    const job = await db.query.reminderJobs.findFirst({
-      where: eq(reminderJobs.id, jobId),
-    });
+    const [job] = await tenantDb
+      .select()
+      .from(reminderJobs)
+      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)))
+      .limit(1);
 
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
     }
 
     // Create reminder event
-    await db.insert(reminderEvents).values({
+    await tenantDb.insert(reminderEvents).values({
       jobId,
       customerId: job.customerId,
       eventType: 'sent',
@@ -296,21 +302,24 @@ export async function markReminderSent(
  * Mark a reminder job as failed
  */
 export async function markReminderFailed(
+  tenantDb: TenantDb,
   jobId: number,
   errorMessage: string
 ): Promise<boolean> {
   try {
     // Get current job to increment attempts
-    const job = await db.query.reminderJobs.findFirst({
-      where: eq(reminderJobs.id, jobId),
-    });
+    const [job] = await tenantDb
+      .select()
+      .from(reminderJobs)
+      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)))
+      .limit(1);
 
     if (!job) {
       throw new Error(`Job ${jobId} not found`);
     }
 
     // Update job status
-    await db
+    await tenantDb
       .update(reminderJobs)
       .set({
         status: 'failed',
@@ -318,10 +327,10 @@ export async function markReminderFailed(
         lastAttemptAt: new Date(),
         attemptsCount: (job.attemptsCount || 0) + 1,
       })
-      .where(eq(reminderJobs.id, jobId));
+      .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)));
 
     // Create reminder event
-    await db.insert(reminderEvents).values({
+    await tenantDb.insert(reminderEvents).values({
       jobId,
       customerId: job.customerId,
       eventType: 'failed',
@@ -380,12 +389,12 @@ function mapWeatherCode(code: number): string {
  * Main function to process proactive reminders
  * Called by cron job every 6 hours
  */
-export async function processProactiveReminders() {
+export async function processProactiveReminders(tenantDb: TenantDb) {
   try {
     console.log('[PROACTIVE REMINDERS] Starting proactive reminder processing...');
 
     // Identify customers needing reminders
-    const customersNeedingReminders = await identifyCustomersNeedingReminders();
+    const customersNeedingReminders = await identifyCustomersNeedingReminders(tenantDb);
 
     if (customersNeedingReminders.length === 0) {
       console.log('[PROACTIVE REMINDERS] No customers need reminders at this time');
@@ -403,9 +412,11 @@ export async function processProactiveReminders() {
     for (const customer of customersNeedingReminders) {
       // PHASE 4D: Skip customers who have opted out of reminders
       const { reminderOptOuts } = await import('@shared/schema');
-      const optOut = await db.query.reminderOptOuts.findFirst({
-        where: eq(reminderOptOuts.customerId, customer.customerId),
-      });
+      const [optOut] = await tenantDb
+        .select()
+        .from(reminderOptOuts)
+        .where(tenantDb.withTenantFilter(reminderOptOuts, eq(reminderOptOuts.customerId, customer.customerId)))
+        .limit(1);
       
       if (optOut) {
         console.log(`[PROACTIVE REMINDERS] ⏭️ Skipping customer ${customer.customerId} - opted out on ${optOut.optedOutAt?.toISOString()}`);
@@ -414,14 +425,16 @@ export async function processProactiveReminders() {
       
       // PHASE 4D: Skip customers with active snoozes
       const { reminderSnoozes } = await import('@shared/schema');
-      const { and, gte } = await import('drizzle-orm');
+      const { and: andOp, gte } = await import('drizzle-orm');
       
-      const activeSnooze = await db.query.reminderSnoozes.findFirst({
-        where: and(
+      const [activeSnooze] = await tenantDb
+        .select()
+        .from(reminderSnoozes)
+        .where(tenantDb.withTenantFilter(reminderSnoozes, andOp(
           eq(reminderSnoozes.customerId, customer.customerId),
           gte(reminderSnoozes.snoozedUntil, new Date())
-        ),
-      });
+        )))
+        .limit(1);
       
       if (activeSnooze) {
         console.log(`[PROACTIVE REMINDERS] ⏭️ Skipping customer ${customer.customerId} - snoozed until ${activeSnooze.snoozedUntil?.toISOString()}`);
@@ -429,9 +442,11 @@ export async function processProactiveReminders() {
       }
       
       // Get full customer details with loyalty tier
-      const customerData = await db.query.customers.findFirst({
-        where: eq(customers.id, customer.customerId),
-      });
+      const [customerData] = await tenantDb
+        .select()
+        .from(customers)
+        .where(tenantDb.withTenantFilter(customers, eq(customers.id, customer.customerId)))
+        .limit(1);
 
       if (!customerData) {
         console.error(`[PROACTIVE REMINDERS] Customer ${customer.customerId} not found`);
@@ -440,18 +455,22 @@ export async function processProactiveReminders() {
       }
 
       // Get recommended service details
-      const rule = await db.query.reminderRules.findFirst({
-        where: eq(reminderRules.id, customer.ruleId),
-      });
+      const [rule] = await tenantDb
+        .select()
+        .from(reminderRules)
+        .where(tenantDb.withTenantFilter(reminderRules, eq(reminderRules.id, customer.ruleId)))
+        .limit(1);
 
       // Get service details separately if serviceId exists
       let recommendedService = 'maintenance detail';
       let recommendedServicePrice = '$150-200';
       
       if (rule?.serviceId) {
-        const service = await db.query.services.findFirst({
-          where: eq(services.id, rule.serviceId),
-        });
+        const [service] = await tenantDb
+          .select()
+          .from(services)
+          .where(tenantDb.withTenantFilter(services, eq(services.id, rule.serviceId)))
+          .limit(1);
         if (service) {
           recommendedService = service.name;
           recommendedServicePrice = service.priceRange || '$150-200';
@@ -465,6 +484,7 @@ export async function processProactiveReminders() {
         
         // Create job with fallback message first
         const jobId = await createReminderJob(
+          tenantDb,
           customer.customerId,
           customer.ruleId,
           scheduledFor,
@@ -494,9 +514,9 @@ export async function processProactiveReminders() {
           );
           
           // Update job with personalized message
-          await db.update(reminderJobs)
+          await tenantDb.update(reminderJobs)
             .set({ messageContent: reminderMessage })
-            .where(eq(reminderJobs.id, jobId));
+            .where(tenantDb.withTenantFilter(reminderJobs, eq(reminderJobs.id, jobId)));
             
         } catch (error) {
           console.error('[PROACTIVE REMINDERS] GPT error, keeping fallback message:', error);
@@ -533,33 +553,42 @@ export async function processProactiveReminders() {
  * Seed default reminder rules
  * This is idempotent - only creates rules if they don't exist
  */
-export async function seedDefaultReminderRules() {
+export async function seedDefaultReminderRules(tenantDb: TenantDb) {
   try {
     console.log('[REMINDER SERVICE] Seeding default reminder rules...');
 
     // Check if rules already exist
-    const existingRules = await db.query.reminderRules.findMany();
+    const existingRules = await tenantDb
+      .select()
+      .from(reminderRules)
+      .where(tenantDb.withTenantFilter(reminderRules, sql`true`));
     if (existingRules.length > 0) {
       console.log('[REMINDER SERVICE] Reminder rules already exist, skipping seed');
       return;
     }
 
     // Get service IDs for the default rules
-    const maintenanceDetail = await db.query.services.findFirst({
-      where: sql`LOWER(${services.name}) LIKE '%maintenance%detail%'`,
-    });
+    const [maintenanceDetail] = await tenantDb
+      .select()
+      .from(services)
+      .where(tenantDb.withTenantFilter(services, sql`LOWER(${services.name}) LIKE '%maintenance%detail%'`))
+      .limit(1);
 
-    const fullDetail = await db.query.services.findFirst({
-      where: sql`LOWER(${services.name}) LIKE '%full%detail%'`,
-    });
+    const [fullDetail] = await tenantDb
+      .select()
+      .from(services)
+      .where(tenantDb.withTenantFilter(services, sql`LOWER(${services.name}) LIKE '%full%detail%'`))
+      .limit(1);
 
-    const ceramicCoating = await db.query.services.findFirst({
-      where: sql`LOWER(${services.name}) LIKE '%ceramic%coating%'`,
-    });
+    const [ceramicCoating] = await tenantDb
+      .select()
+      .from(services)
+      .where(tenantDb.withTenantFilter(services, sql`LOWER(${services.name}) LIKE '%ceramic%coating%'`))
+      .limit(1);
 
     // Rule 1: Maintenance Detail Reminder (3 months)
     if (maintenanceDetail) {
-      await db.insert(reminderRules).values({
+      await tenantDb.insert(reminderRules).values({
         name: 'Maintenance Detail - 3 Month Reminder',
         serviceId: maintenanceDetail.id,
         triggerType: 'time_since_last',
@@ -572,7 +601,7 @@ export async function seedDefaultReminderRules() {
 
     // Rule 2: Full Detail Annual Reminder (1 year)
     if (fullDetail) {
-      await db.insert(reminderRules).values({
+      await tenantDb.insert(reminderRules).values({
         name: 'Full Detail - Annual Reminder',
         serviceId: fullDetail.id,
         triggerType: 'time_since_last',
@@ -585,7 +614,7 @@ export async function seedDefaultReminderRules() {
 
     // Rule 3: Ceramic Coating Check-in (6 months)
     if (ceramicCoating) {
-      await db.insert(reminderRules).values({
+      await tenantDb.insert(reminderRules).values({
         name: 'Ceramic Coating - 6 Month Check-in',
         serviceId: ceramicCoating.id,
         triggerType: 'time_since_last',
@@ -597,7 +626,7 @@ export async function seedDefaultReminderRules() {
     }
 
     // Generic rule for all other services (6 months)
-    await db.insert(reminderRules).values({
+    await tenantDb.insert(reminderRules).values({
       name: 'General Service Reminder - 6 Months',
       serviceId: null, // Applies to all services
       triggerType: 'time_since_last',

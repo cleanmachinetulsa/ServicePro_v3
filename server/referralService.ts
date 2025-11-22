@@ -1,4 +1,4 @@
-import { db } from "./db";
+import type { TenantDb } from './tenantDb';
 import { referrals, customers, invoices, rewardAudit, customerAddonCredits } from "@shared/schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import { awardPoints } from "./gamificationService";
@@ -11,13 +11,13 @@ import { nanoid } from "nanoid";
  * Generate a unique referral code for a customer
  * Format: FIRSTNAME-XXXXX (e.g., "JOHN-AB3C5")
  */
-export async function generateReferralCode(customerId: number): Promise<{ success: boolean; code?: string; message?: string }> {
+export async function generateReferralCode(tenantDb: TenantDb, customerId: number): Promise<{ success: boolean; code?: string; message?: string }> {
   try {
     // Get customer info
-    const [customer] = await db
+    const [customer] = await tenantDb
       .select()
       .from(customers)
-      .where(eq(customers.id, customerId));
+      .where(tenantDb.withTenantFilter(customers, eq(customers.id, customerId)));
 
     if (!customer) {
       return { success: false, message: "Customer not found" };
@@ -35,16 +35,16 @@ export async function generateReferralCode(customerId: number): Promise<{ succes
       code = `${firstName}-${randomSuffix}`;
 
       // Check if code already exists
-      const [existing] = await db
+      const [existing] = await tenantDb
         .select()
         .from(referrals)
-        .where(eq(referrals.referralCode, code));
+        .where(tenantDb.withTenantFilter(referrals, eq(referrals.referralCode, code)));
 
       if (!existing) {
         isUnique = true;
         
         // Create the referral record (points will be set when rewarded based on config)
-        const [newReferral] = await db
+        const [newReferral] = await tenantDb
           .insert(referrals)
           .values({
             referrerId: customerId,
@@ -74,9 +74,9 @@ export async function generateReferralCode(customerId: number): Promise<{ succes
 /**
  * Get all referrals made by a customer
  */
-export async function getReferralsByReferrer(customerId: number) {
+export async function getReferralsByReferrer(tenantDb: TenantDb, customerId: number) {
   try {
-    const customerReferrals = await db
+    const customerReferrals = await tenantDb
       .select({
         id: referrals.id,
         referralCode: referrals.referralCode,
@@ -92,7 +92,7 @@ export async function getReferralsByReferrer(customerId: number) {
         expiresAt: referrals.expiresAt,
       })
       .from(referrals)
-      .where(eq(referrals.referrerId, customerId))
+      .where(tenantDb.withTenantFilter(referrals, eq(referrals.referrerId, customerId)))
       .orderBy(sql`${referrals.createdAt} DESC`);
 
     return customerReferrals;
@@ -105,9 +105,9 @@ export async function getReferralsByReferrer(customerId: number) {
 /**
  * Get stats for a customer's referrals
  */
-export async function getReferralStats(customerId: number) {
+export async function getReferralStats(tenantDb: TenantDb, customerId: number) {
   try {
-    const allReferrals = await getReferralsByReferrer(customerId);
+    const allReferrals = await getReferralsByReferrer(tenantDb, customerId);
 
     const stats = {
       totalReferrals: allReferrals.length,
@@ -130,12 +130,12 @@ export async function getReferralStats(customerId: number) {
  * Validate a referral code
  * Returns the referral if valid, null otherwise
  */
-export async function validateReferralCode(code: string) {
+export async function validateReferralCode(tenantDb: TenantDb, code: string) {
   try {
-    const [referral] = await db
+    const [referral] = await tenantDb
       .select()
       .from(referrals)
-      .where(eq(referrals.referralCode, code.toUpperCase()));
+      .where(tenantDb.withTenantFilter(referrals, eq(referrals.referralCode, code.toUpperCase())));
 
     if (!referral) {
       return { valid: false, message: "Referral code not found" };
@@ -144,10 +144,10 @@ export async function validateReferralCode(code: string) {
     // Check if expired
     if (referral.expiresAt && new Date() > referral.expiresAt) {
       // Mark as expired
-      await db
+      await tenantDb
         .update(referrals)
         .set({ status: "expired" })
-        .where(eq(referrals.id, referral.id));
+        .where(tenantDb.withTenantFilter(referrals, eq(referrals.id, referral.id)));
 
       return { valid: false, message: "Referral code has expired" };
     }
@@ -172,6 +172,7 @@ export async function validateReferralCode(code: string) {
  * Track when a referee uses a referral code (signs up)
  */
 export async function trackReferralSignup(
+  tenantDb: TenantDb,
   code: string,
   refereeInfo: {
     phone?: string;
@@ -181,7 +182,7 @@ export async function trackReferralSignup(
   }
 ) {
   try {
-    const validation = await validateReferralCode(code);
+    const validation = await validateReferralCode(tenantDb, code);
     
     if (!validation.valid || !validation.referral) {
       return { success: false, message: validation.message };
@@ -194,11 +195,11 @@ export async function trackReferralSignup(
 
     // Check if this phone/email has already been used for a referral in any non-pending status
     // This prevents fraud by checking signed_up, first_service_completed, and rewarded states
-    const existingReferrals = await db
+    const existingReferrals = await tenantDb
       .select()
       .from(referrals)
       .where(
-        and(
+        tenantDb.withTenantFilter(referrals, and(
           or(
             refereeInfo.phone ? eq(referrals.refereePhone, refereeInfo.phone) : sql`false`,
             refereeInfo.email ? eq(referrals.refereeEmail, refereeInfo.email) : sql`false`
@@ -208,7 +209,7 @@ export async function trackReferralSignup(
             eq(referrals.status, 'first_service_completed'),
             eq(referrals.status, 'rewarded')
           )
-        )
+        ))
       );
 
     if (existingReferrals.length > 0) {
@@ -219,7 +220,7 @@ export async function trackReferralSignup(
     }
 
     // Update referral with referee info and mark as signed up
-    await db
+    await tenantDb
       .update(referrals)
       .set({
         refereePhone: refereeInfo.phone,
@@ -229,7 +230,7 @@ export async function trackReferralSignup(
         status: "signed_up",
         signedUpAt: new Date(),
       })
-      .where(eq(referrals.id, validation.referral.id));
+      .where(tenantDb.withTenantFilter(referrals, eq(referrals.id, validation.referral.id)));
 
     return { 
       success: true, 
@@ -619,17 +620,17 @@ async function applyRewardByType(
  * This should be called after a customer completes their first appointment
  * IDEMPOTENT: Only awards points once via status check + timestamp validation
  */
-export async function checkAndRewardReferral(customerId: number, invoiceId: number) {
+export async function checkAndRewardReferral(tenantDb: TenantDb, customerId: number, invoiceId: number) {
   try {
     // Find referral record for this customer  
-    const [referral] = await db
+    const [referral] = await tenantDb
       .select()
       .from(referrals)
       .where(
-        and(
+        tenantDb.withTenantFilter(referrals, and(
           eq(referrals.refereeCustomerId, customerId),
           eq(referrals.status, 'signed_up')
-        )
+        ))
       );
 
     if (!referral) {
@@ -639,10 +640,10 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
     }
 
     // CRITICAL VALIDATION: Verify this invoice belongs to the referred customer and was paid after signup
-    const [invoice] = await db
+    const [invoice] = await tenantDb
       .select()
       .from(invoices)
-      .where(eq(invoices.id, invoiceId));
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoiceId)));
 
     if (!invoice) {
       console.error(`Invoice ${invoiceId} not found for referral reward`);
@@ -685,7 +686,7 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
     // ATOMIC TRANSACTION: Update referral status and award rewards in single transaction
     // RACE CONDITION PROTECTION: Update WHERE status='signed_up' ensures only ONE concurrent request succeeds
     try {
-      await db.transaction(async (tx) => {
+      await tenantDb.transaction(async (tx) => {
         // CRITICAL: Mark as completed ONLY IF still in 'signed_up' status (prevents race condition)
         // If another concurrent request already updated this, this WHERE clause returns 0 rows
         const [updatedReferral] = await tx
@@ -759,7 +760,7 @@ export async function checkAndRewardReferral(customerId: number, invoiceId: numb
 export async function applyRefereeReward(
   referralId: number,
   customerId: number,
-  executor: any = db
+  executor: any
 ): Promise<{ success: boolean; rewardAuditId?: number; discount?: { type: string; amount: number }; message?: string }> {
   try {
     // Get referee reward configuration
@@ -809,7 +810,7 @@ export async function applyRefereeReward(
 export async function calculateInvoiceWithReferralDiscount(
   baseAmount: number,
   customerId: number,
-  executor: any = db
+  executor: any
 ): Promise<{ 
   finalAmount: number; 
   discount: number; 
@@ -893,7 +894,7 @@ export async function calculateInvoiceWithReferralDiscount(
 export async function markReferralDiscountApplied(
   rewardAuditId: number,
   invoiceId: number,
-  executor: any = db
+  executor: any
 ): Promise<{ success: boolean }> {
   try {
     await executor
@@ -916,17 +917,17 @@ export async function markReferralDiscountApplied(
  * Get or create referral code for a customer
  * Returns existing code if one exists, creates new one otherwise
  */
-export async function getOrCreateReferralCode(customerId: number): Promise<{ success: boolean; code?: string; message?: string }> {
+export async function getOrCreateReferralCode(tenantDb: TenantDb, customerId: number): Promise<{ success: boolean; code?: string; message?: string }> {
   try {
     // Check if customer already has a referral code
-    const [existingReferral] = await db
+    const [existingReferral] = await tenantDb
       .select()
       .from(referrals)
       .where(
-        and(
+        tenantDb.withTenantFilter(referrals, and(
           eq(referrals.referrerId, customerId),
           eq(referrals.status, 'pending')
-        )
+        ))
       )
       .limit(1);
 
@@ -939,7 +940,7 @@ export async function getOrCreateReferralCode(customerId: number): Promise<{ suc
     }
 
     // Generate new code
-    return await generateReferralCode(customerId);
+    return await generateReferralCode(tenantDb, customerId);
   } catch (error) {
     console.error("Error getting or creating referral code:", error);
     return { success: false, message: "Failed to get referral code" };

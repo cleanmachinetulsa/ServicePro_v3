@@ -1,5 +1,5 @@
 import { Express, Request, Response } from 'express';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { services } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 
@@ -7,7 +7,8 @@ export function registerServiceManagementRoutes(app: Express) {
   // Get all services from database
   app.get('/api/admin/services', async (req: Request, res: Response) => {
     try {
-      const allServices = await db.select().from(services);
+      const tenantDb = (req as any).tenantDb as TenantDb;
+      const allServices = await tenantDb.select().from(services).where(tenantDb.withTenantFilter(services));
       res.json({ success: true, services: allServices });
     } catch (error) {
       console.error('Error fetching services from database:', error);
@@ -21,8 +22,9 @@ export function registerServiceManagementRoutes(app: Express) {
   // Get a single service by ID
   app.get('/api/admin/services/:id', async (req: Request, res: Response) => {
     try {
+      const tenantDb = (req as any).tenantDb as TenantDb;
       const serviceId = parseInt(req.params.id);
-      const service = await db.select().from(services).where(eq(services.id, serviceId));
+      const service = await tenantDb.select().from(services).where(tenantDb.withTenantFilter(services, eq(services.id, serviceId)));
       
       if (service.length === 0) {
         return res.status(404).json({ 
@@ -44,6 +46,7 @@ export function registerServiceManagementRoutes(app: Express) {
   // Create a new service
   app.post('/api/admin/services', async (req: Request, res: Response) => {
     try {
+      const tenantDb = (req as any).tenantDb as TenantDb;
       const { name, priceRange, overview, detailedDescription, duration, durationHours, minDurationHours, maxDurationHours, imageUrl } = req.body;
       
       if (!name || !priceRange || !overview || !detailedDescription || !duration) {
@@ -53,7 +56,7 @@ export function registerServiceManagementRoutes(app: Express) {
         });
       }
 
-      const newService = await db.insert(services).values({
+      const newService = await tenantDb.insert(services).values({
         name,
         priceRange,
         overview,
@@ -78,6 +81,7 @@ export function registerServiceManagementRoutes(app: Express) {
   // Update a service
   app.put('/api/admin/services/:id', async (req: Request, res: Response) => {
     try {
+      const tenantDb = (req as any).tenantDb as TenantDb;
       const serviceId = parseInt(req.params.id);
       const { name, priceRange, overview, detailedDescription, duration, durationHours, minDurationHours, maxDurationHours, imageUrl } = req.body;
 
@@ -92,10 +96,10 @@ export function registerServiceManagementRoutes(app: Express) {
       if (maxDurationHours !== undefined) updateData.maxDurationHours = maxDurationHours.toString();
       if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
 
-      const updatedService = await db
+      const updatedService = await tenantDb
         .update(services)
         .set(updateData)
-        .where(eq(services.id, serviceId))
+        .where(tenantDb.withTenantFilter(services, eq(services.id, serviceId)))
         .returning();
 
       if (updatedService.length === 0) {
@@ -118,11 +122,12 @@ export function registerServiceManagementRoutes(app: Express) {
   // Delete a service
   app.delete('/api/admin/services/:id', async (req: Request, res: Response) => {
     try {
+      const tenantDb = (req as any).tenantDb as TenantDb;
       const serviceId = parseInt(req.params.id);
       
-      const deletedService = await db
+      const deletedService = await tenantDb
         .delete(services)
-        .where(eq(services.id, serviceId))
+        .where(tenantDb.withTenantFilter(services, eq(services.id, serviceId)))
         .returning();
 
       if (deletedService.length === 0) {
