@@ -60,7 +60,7 @@ export default function GalleryPhotoManager() {
   const [reorderedPhotos, setReorderedPhotos] = useState<GalleryPhoto[]>([]);
   const [useGooglePhotos, setUseGooglePhotos] = useState(false);
   const [showAlbumSettings, setShowAlbumSettings] = useState(false);
-  const [albumUrl, setAlbumUrl] = useState(localStorage.getItem('googlePhotosAlbumUrl') || '');
+  const [albumUrl, setAlbumUrl] = useState(localStorage.getItem('googlePhotosAlbumUrl') || 'https://photos.app.goo.gl/Jb7vaQo6gYrWTPT88');
   const [tempAlbumUrl, setTempAlbumUrl] = useState(albumUrl);
   const { toast } = useToast();
   const queryClient = useQueryClient();
