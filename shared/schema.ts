@@ -199,6 +199,11 @@ export const tenantConfig = pgTable("tenant_config", {
   logoUrl: text("logo_url"),
   primaryColor: varchar("primary_color", { length: 20 }).default("#3b82f6"),
   tier: tenantTierEnum("tier").default("starter").notNull(),
+  // Concierge setup fields (Phase 5)
+  industry: varchar("industry", { length: 100 }), // e.g., 'mobile-detailing', 'lawn-care', 'house-cleaning'
+  primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
+  primaryCity: varchar("primary_city", { length: 100 }),
+  internalNotes: text("internal_notes"), // Owner-only notes about this tenant
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

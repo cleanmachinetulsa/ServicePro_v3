@@ -1,0 +1,231 @@
+# PHASE 5 — CONCIERGE SETUP DASHBOARD (OWNER-ONLY)
+
+Goal:
+Create an internal “Concierge Setup” page + backend endpoint that lets an owner-level user:
+- Create a new tenant
+- Attach a basic tenant_config (business info, industry, plan tier)
+- Optionally pre-create a stub tenant_phone_config record
+- See a summary + quick links after creation
+
+This is an owner-facing setup tool only. No self-serve changes here. No Twilio provisioning yet; phone numbers can be added/edited later via Admin Phone Config.
+
+------------------------------------------------
+1) Schema & Types (Small Extensions)
+------------------------------------------------
+
+If not already present, extend tenant_config (or equivalent config table) to hold light business metadata used during concierge setup:
+
+- industry (string enum or varchar)
+- primaryContactEmail (optional)
+- primaryCity (optional)
+- notes (optional text, internal-only)
+
+Example (adjust to match existing schema file names):
+
+  // in shared/schema.ts
+  export const tenantConfig = pgTable('tenant_config', {
+    // existing fields...
+    industry: varchar('industry'),              // e.g. 'mobile-detailing', 'lawn-care', etc.
+    primaryContactEmail: varchar('contact_email'),
+    primaryCity: varchar('primary_city'),
+    internalNotes: text('internal_notes'),
+  });
+
+Ensure migrations are created/updated appropriately.
+
+No change to tenants.planTier here yet if we already have it; we’ll just accept planTier as input and set it when creating tenants.
+
+------------------------------------------------
+2) Backend – Concierge Onboard Endpoint
+------------------------------------------------
+
+Create a new backend route file:
+
+  server/routes.adminConciergeSetup.ts
+
+Mount it behind the same owner-only admin guard as AdminTenants and AdminPhoneConfig.
+
+Add endpoint:
+
+  POST /api/admin/concierge/onboard-tenant
+
+Request body (validated via zod/schema):
+
+  {
+    businessName: string;
+    contactEmail?: string;
+    primaryCity?: string;
+    planTier: 'starter' | 'pro' | 'elite';  // no 'internal' yet
+    industry: string;                       // free-form or limited set for now
+    internalNotes?: string;
+    // later: flags like "provisionNumberNow", "applyIndustryPack", etc.
+  }
+
+Behavior:
+
+1. AuthZ:
+   - Require authenticated user with owner-level / super-admin role (same pattern as AdminTenants).
+
+2. Transaction:
+   - Generate a tenant ID (slug/uuid/nanoid or reuse existing helper).
+   - Insert into tenants:
+     - id
+     - name = businessName
+     - planTier = provided plan
+     - status = 'trialing' or 'active' (we can default to 'trialing' for now).
+   - Insert into tenant_config:
+     - tenantId
+     - businessName
+     - industry
+     - primaryContactEmail
+     - primaryCity
+     - tier (if present in config)
+     - internalNotes
+     - basic branding defaults (e.g. primaryColor default).
+
+   - OPTIONAL: Insert a stub row into tenant_phone_config:
+     - tenantId
+     - phoneNumber = null
+     - ivrMode = 'simple'
+     - messagingServiceSid = null
+     - This is just a placeholder so AdminPhoneConfig has something to edit later.
+     - If this is too opinionated, you can skip the stub and let phone config be added manually.
+
+3. Response:
+   - Return 201 with:
+     {
+       tenantId,
+       businessName,
+       planTier,
+       industry,
+       hasPhoneConfigStub: boolean
+     }
+
+4. Errors:
+   - If a tenant with same name or ID already exists, return 409 with a helpful message.
+
+Add Zod schema file for request validation, similar to existing AdminTenants/AdminPhoneConfig patterns.
+
+Register this route in the main routes registration file (e.g. server/routes.ts) under admin routes.
+
+------------------------------------------------
+3) Frontend – Concierge Setup Page (/admin/concierge-setup)
+------------------------------------------------
+
+Create a new page:
+
+  client/src/pages/AdminConciergeSetup.tsx
+
+Behavior:
+
+- Owner-only route (same guard as other admin pages).
+- Located at `/admin/concierge-setup`.
+
+UI/UX:
+
+- Use existing design system: shadcn/ui, react-hook-form, zodResolver.
+- A single-page form with grouped sections (not a wizard yet, keep it simple but polished):
+
+  Section 1: Business Basics
+    - Business Name (required)
+    - Contact Email (optional)
+    - Primary City (optional)
+
+  Section 2: Plan & Industry
+    - Plan Tier (radio buttons or select: Starter / Pro / Elite)
+    - Industry (select or text input, with some suggested values like:
+      "Mobile Auto Detailing", "Lawn Care", "House Cleaning", "Window Washing", "Pet Grooming")
+    - Internal Notes (textarea, visible only in admin)
+
+  Section 3: Submit & Summary
+    - Submit button: "Create Tenant via Concierge"
+    - On success: show a success panel with:
+      - Tenant name
+      - Tenant ID
+      - Plan tier
+      - Industry
+      - A short message like:
+        "Tenant created. You can now: [Manage Tenant] [Configure Phone Numbers] (links)."
+
+Data flow:
+
+- Use react-hook-form + zodResolver for validation.
+- POST to /api/admin/concierge/onboard-tenant.
+- Show loading state while submitting.
+- Handle error messages clearly (e.g., tenant name conflict).
+
+Links/Buttons after success:
+
+- "Go to Tenants" → /admin/tenants
+- "Configure Phone & IVR" → /admin/phone-config (if we have such a route)
+- Placeholder for future:
+  - "Impersonate this Tenant" (Phase 6)
+  - "Open Tenant Website / Admin"
+
+------------------------------------------------
+4) Routing & Navigation
+------------------------------------------------
+
+- Add route to frontend router (e.g. in client/src/App.tsx or wherever routes are declared):
+
+  - Path: /admin/concierge-setup
+  - Component: <AdminConciergeSetup />
+  - Protected by Admin/Owner guard.
+
+- Add a navigation item in the admin navigation area:
+
+  - Label: "Concierge Setup"
+  - Only visible to owner-level users.
+  - Sits near "Admin Tenants" and "Phone Config".
+
+------------------------------------------------
+5) Tests
+------------------------------------------------
+
+Backend tests:
+
+- Unit/integration tests for POST /api/admin/concierge/onboard-tenant:
+
+  - Happy path:
+    - Valid body → creates tenant + tenant_config (+ optional stub phone config).
+    - Response contains tenantId, planTier, etc.
+  - Validation errors:
+    - Missing businessName.
+    - Invalid planTier.
+  - AuthZ:
+    - Non-owner user → 403 / forbidden.
+
+Frontend tests (if we have a pattern for it):
+
+- At minimum, data-testid coverage for:
+  - Form fields (business name, plan, industry).
+  - Submit button.
+  - Success state (summary text present).
+
+------------------------------------------------
+6) Docs – replit.md and MASTER_PLAN_v3.2.md
+------------------------------------------------
+
+Update replit.md:
+
+- Add "Phase 5 — Concierge Setup Dashboard" section.
+- Document:
+  - /api/admin/concierge/onboard-tenant endpoint.
+  - /admin/concierge-setup page.
+  - Owner-only, internal use.
+
+Update MASTER_PLAN_v3.2.md:
+
+- Mark Phase 5 as “in progress” → “done” once implemented.
+- Note that this phase does NOT yet provision Twilio numbers automatically; it only sets up tenant + config and (optionally) a stub phone config row.
+
+------------------------------------------------
+Completion Checklist:
+
+- [ ] New backend route: server/routes.adminConciergeSetup.ts
+- [ ] Endpoint: POST /api/admin/concierge/onboard-tenant with Zod validation
+- [ ] Transactional creation of tenant + tenant_config (+ optional tenant_phone_config stub)
+- [ ] New page: client/src/pages/AdminConciergeSetup.tsx
+- [ ] Route: /admin/concierge-setup (owner-only)
+- [ ] Admin nav link: "Concierge Setup"
+- [ ] Tests added and all existing tests still passing
