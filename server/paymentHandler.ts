@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { Request, Response } from 'express';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { invoices } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { sendInvoiceNotification, sendReviewRequest } from './invoiceService';
@@ -25,13 +25,14 @@ export async function createStripePaymentIntent(req: Request, res: Response) {
       return res.status(503).json({ error: 'Payment processing is not available. Please configure STRIPE_SECRET_KEY.' });
     }
 
+    const tenantDb = (req as any).tenantDb as TenantDb;
     const { invoiceId } = req.params;
     
     // Fetch the invoice details
-    const [invoice] = await db
+    const [invoice] = await tenantDb
       .select()
       .from(invoices)
-      .where(eq(invoices.id, parseInt(invoiceId)));
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, parseInt(invoiceId))));
     
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -55,10 +56,10 @@ export async function createStripePaymentIntent(req: Request, res: Response) {
     });
     
     // Update the invoice with the payment intent ID
-    await db
+    await tenantDb
       .update(invoices)
       .set({ stripePaymentIntentId: paymentIntent.id })
-      .where(eq(invoices.id, parseInt(invoiceId)));
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, parseInt(invoiceId))));
     
     // Return the client secret to the client
     res.status(200).json({
@@ -84,6 +85,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     return res.status(503).json({ error: 'Payment webhooks are not available. Please configure STRIPE_SECRET_KEY.' });
   }
 
+  const tenantDb = (req as any).tenantDb as TenantDb;
   const sig = req.headers['stripe-signature'] as string;
   
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
@@ -112,7 +114,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         const invoiceId = paymentIntent.metadata.invoiceId;
         
         // Update invoice status with both legacy and new payment status fields
-        const [paidInvoice] = await db
+        const [paidInvoice] = await tenantDb
           .update(invoices)
           .set({
             status: 'paid',          // Legacy field - backward compatibility
@@ -120,7 +122,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             paymentMethod: 'stripe',
             paidAt: new Date(),
           })
-          .where(eq(invoices.id, parseInt(invoiceId)))
+          .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, parseInt(invoiceId))))
           .returning();
         
         console.log(`Invoice ${invoiceId} marked as paid via Stripe`);
@@ -164,6 +166,7 @@ export async function handleStripeWebhook(req: Request, res: Response) {
  */
 export async function markInvoiceAsPaid(req: Request, res: Response) {
   try {
+    const tenantDb = (req as any).tenantDb as TenantDb;
     const { invoiceId } = req.params;
     const { paymentMethod } = req.body;
     
@@ -172,7 +175,7 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
     }
     
     // Update the invoice with both legacy and new payment status fields
-    const [updatedInvoice] = await db
+    const [updatedInvoice] = await tenantDb
       .update(invoices)
       .set({
         status: 'paid',          // Legacy field - backward compatibility
@@ -180,7 +183,7 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
         paymentMethod,
         paidAt: new Date(),
       })
-      .where(eq(invoices.id, parseInt(invoiceId)))
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, parseInt(invoiceId))))
       .returning();
     
     if (!updatedInvoice) {
@@ -226,17 +229,18 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
  */
 export async function getPaymentDetails(req: Request, res: Response) {
   try {
+    const tenantDb = (req as any).tenantDb as TenantDb;
     const { invoiceId } = req.params;
     
     // Fetch the invoice with customer details
-    const [invoiceData] = await db.execute(`
+    const [invoiceData] = await tenantDb.execute(`
       SELECT 
         i.id, i.amount, i.service_description, i.payment_status as status, i.payment_method,
         c.name as customer_name, c.phone as customer_phone
       FROM invoices i
       JOIN customers c ON i.customer_id = c.id
-      WHERE i.id = $1
-    `, [invoiceId]);
+      WHERE i.id = $1 AND i.tenant_id = $2
+    `, [invoiceId, tenantDb.tenant.id]);
     
     if (!invoiceData || invoiceData.length === 0) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -277,13 +281,14 @@ export async function getPaymentDetails(req: Request, res: Response) {
  */
 export async function sendPaymentReminder(req: Request, res: Response) {
   try {
+    const tenantDb = (req as any).tenantDb as TenantDb;
     const { invoiceId } = req.params;
     
     // Check if invoice exists and is unpaid
-    const [invoice] = await db
+    const [invoice] = await tenantDb
       .select()
       .from(invoices)
-      .where(eq(invoices.id, parseInt(invoiceId)));
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, parseInt(invoiceId))));
     
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });

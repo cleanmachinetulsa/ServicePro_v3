@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { MailService } from '@sendgrid/mail';
 import { 
   customers,
@@ -43,8 +43,8 @@ const sendGridLimiter = new Bottleneck({
  * Check remaining capacity before scheduling send
  * Ensures we never exceed daily tier limits
  */
-async function checkDailyCapacityBeforeSend(): Promise<boolean> {
-  const counter = await getTodaySendCounter();
+async function checkDailyCapacityBeforeSend(tenantDb: TenantDb): Promise<boolean> {
+  const counter = await getTodaySendCounter(tenantDb);
   const remaining = counter.emailLimit - counter.emailCount;
   
   if (remaining <= 0) {
@@ -79,9 +79,9 @@ export interface TemplateData {
 /**
  * Get all email campaigns
  */
-export async function getAllCampaigns() {
+export async function getAllCampaigns(tenantDb: TenantDb) {
   try {
-    return await db.select().from(emailCampaigns).orderBy(desc(emailCampaigns.createdAt));
+    return await tenantDb.select().from(emailCampaigns).where(tenantDb.withTenantFilter(emailCampaigns, sql`true`)).orderBy(desc(emailCampaigns.createdAt));
   } catch (error) {
     console.error('Error getting campaigns:', error);
     throw new Error('Failed to retrieve email campaigns');
@@ -91,12 +91,12 @@ export async function getAllCampaigns() {
 /**
  * Get campaign by ID
  */
-export async function getCampaignById(id: number) {
+export async function getCampaignById(tenantDb: TenantDb, id: number) {
   try {
-    const [campaign] = await db
+    const [campaign] = await tenantDb
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     return campaign || null;
   } catch (error) {
@@ -108,7 +108,7 @@ export async function getCampaignById(id: number) {
 /**
  * Create a new email campaign with recipient population
  */
-export async function createCampaign(campaignData: CampaignData & { createdBy: number }) {
+export async function createCampaign(tenantDb: TenantDb, campaignData: CampaignData & { createdBy: number }) {
   try {
     const insertData: InsertEmailCampaign = {
       name: campaignData.name,
@@ -121,17 +121,17 @@ export async function createCampaign(campaignData: CampaignData & { createdBy: n
       createdBy: campaignData.createdBy
     };
     
-    const [newCampaign] = await db.insert(emailCampaigns).values(insertData).returning();
+    const [newCampaign] = await tenantDb.insert(emailCampaigns).values(insertData).returning();
     
     // Populate recipients based on target audience
-    await populateCampaignRecipients(newCampaign.id, campaignData.targetAudience);
+    await populateCampaignRecipients(tenantDb, newCampaign.id, campaignData.targetAudience);
     
     // If scheduled for immediate send, update status
     if (campaignData.status === 'scheduled' && new Date(campaignData.scheduledDate!) <= new Date()) {
-      await db
+      await tenantDb
         .update(emailCampaigns)
         .set({ status: 'scheduled' })
-        .where(eq(emailCampaigns.id, newCampaign.id));
+        .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, newCampaign.id)));
     }
     
     return newCampaign;
@@ -144,16 +144,16 @@ export async function createCampaign(campaignData: CampaignData & { createdBy: n
 /**
  * Populate campaign recipients based on target audience
  */
-async function populateCampaignRecipients(campaignId: number, targetAudience: string) {
+async function populateCampaignRecipients(tenantDb: TenantDb, campaignId: number, targetAudience: string) {
   // Get recipients based on target audience
-  const recipients = await getRecipientsByAudience(targetAudience);
+  const recipients = await getRecipientsByAudience(tenantDb, targetAudience);
   
   if (recipients.length === 0) {
     return;
   }
   
   // Insert recipients
-  await db.insert(campaignRecipients).values(
+  await tenantDb.insert(campaignRecipients).values(
     recipients.map((recipient: any) => ({
       campaignId,
       customerId: recipient.id,
@@ -163,22 +163,22 @@ async function populateCampaignRecipients(campaignId: number, targetAudience: st
   );
   
   // Update campaign recipient count
-  await db
+  await tenantDb
     .update(emailCampaigns)
     .set({ recipientCount: recipients.length })
-    .where(eq(emailCampaigns.id, campaignId));
+    .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, campaignId)));
 }
 
 /**
  * Get or create today's send counter
  */
-async function getTodaySendCounter() {
+async function getTodaySendCounter(tenantDb: TenantDb) {
   const today = new Date().toISOString().split('T')[0];
   
-  const [counter] = await db
+  const [counter] = await tenantDb
     .select()
     .from(dailySendCounters)
-    .where(eq(dailySendCounters.date, today))
+    .where(tenantDb.withTenantFilter(dailySendCounters, eq(dailySendCounters.date, today)))
     .limit(1);
   
   if (counter) {
@@ -186,7 +186,7 @@ async function getTodaySendCounter() {
   }
   
   // Create new counter for today
-  const [newCounter] = await db
+  const [newCounter] = await tenantDb
     .insert(dailySendCounters)
     .values({
       date: today,
@@ -203,8 +203,8 @@ async function getTodaySendCounter() {
 /**
  * Check if we can send more emails today
  */
-async function canSendEmail(): Promise<boolean> {
-  const counter = await getTodaySendCounter();
+async function canSendEmail(tenantDb: TenantDb): Promise<boolean> {
+  const counter = await getTodaySendCounter(tenantDb);
   return counter.emailCount < counter.emailLimit;
 }
 
@@ -212,20 +212,23 @@ async function canSendEmail(): Promise<boolean> {
  * Atomically increment today's email counter with daily limit check
  * Returns true if increment succeeded (within limit), false if limit reached
  */
-async function incrementEmailCounterAtomic(): Promise<boolean> {
+async function incrementEmailCounterAtomic(tenantDb: TenantDb): Promise<boolean> {
   const today = new Date().toISOString().split('T')[0];
   
   // Atomic update: only increment if under limit
-  const result = await db
+  const result = await tenantDb
     .update(dailySendCounters)
     .set({
       emailCount: sql`${dailySendCounters.emailCount} + 1`,
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(dailySendCounters.date, today),
-        sql`${dailySendCounters.emailCount} < ${dailySendCounters.emailLimit}`
+      tenantDb.withTenantFilter(
+        dailySendCounters,
+        and(
+          eq(dailySendCounters.date, today),
+          sql`${dailySendCounters.emailCount} < ${dailySendCounters.emailLimit}`
+        )
       )
     )
     .returning();
@@ -237,25 +240,28 @@ async function incrementEmailCounterAtomic(): Promise<boolean> {
 /**
  * Process email campaigns - called by cron job hourly
  */
-export async function processEmailCampaigns() {
+export async function processEmailCampaigns(tenantDb: TenantDb) {
   console.log('[EMAIL CAMPAIGN] Starting hourly processing...');
   
   // Check daily limit
-  const canSend = await canSendEmail();
+  const canSend = await canSendEmail(tenantDb);
   if (!canSend) {
-    const counter = await getTodaySendCounter();
+    const counter = await getTodaySendCounter(tenantDb);
     console.log(`[EMAIL CAMPAIGN] Daily limit reached (${counter.emailCount}/${counter.emailLimit})`);
     return;
   }
   
   // Find campaigns in 'scheduled' or 'sending' status
-  const activeCampaigns = await db
+  const activeCampaigns = await tenantDb
     .select()
     .from(emailCampaigns)
     .where(
-      and(
-        inArray(emailCampaigns.status, ['scheduled', 'sending']),
-        lte(emailCampaigns.scheduledDate, new Date())
+      tenantDb.withTenantFilter(
+        emailCampaigns,
+        and(
+          inArray(emailCampaigns.status, ['scheduled', 'sending']),
+          lte(emailCampaigns.scheduledDate, new Date())
+        )
       )
     )
     .orderBy(emailCampaigns.scheduledDate)
@@ -269,26 +275,26 @@ export async function processEmailCampaigns() {
   console.log(`[EMAIL CAMPAIGN] Found ${activeCampaigns.length} active campaigns`);
   
   for (const campaign of activeCampaigns) {
-    await processSingleCampaign(campaign);
+    await processSingleCampaign(tenantDb, campaign);
   }
 }
 
 /**
  * Process individual campaign - send batch of emails
  */
-async function processSingleCampaign(campaign: any) {
+async function processSingleCampaign(tenantDb: TenantDb, campaign: any) {
   console.log(`[EMAIL CAMPAIGN] Processing campaign ${campaign.id}: ${campaign.name}`);
   
   // Update status to 'sending' if 'scheduled'
   if (campaign.status === 'scheduled') {
-    await db
+    await tenantDb
       .update(emailCampaigns)
       .set({ status: 'sending', sentAt: new Date() })
-      .where(eq(emailCampaigns.id, campaign.id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, campaign.id)));
   }
   
   // Get counter to check remaining capacity
-  const counter = await getTodaySendCounter();
+  const counter = await getTodaySendCounter(tenantDb);
   const remainingCapacity = counter.emailLimit - counter.emailCount;
   
   if (remainingCapacity <= 0) {
@@ -298,15 +304,18 @@ async function processSingleCampaign(campaign: any) {
   
   // Get pending recipients with row locking (respecting scheduledFor deferrals)
   const now = new Date();
-  const pendingRecipients = await db
+  const pendingRecipients = await tenantDb
     .select()
     .from(campaignRecipients)
     .where(
-      and(
-        eq(campaignRecipients.campaignId, campaign.id),
-        eq(campaignRecipients.status, 'pending'),
-        // Only select recipients whose scheduledFor time has passed (or is null)
-        sql`(${campaignRecipients.scheduledFor} IS NULL OR ${campaignRecipients.scheduledFor} <= ${now})`
+      tenantDb.withTenantFilter(
+        campaignRecipients,
+        and(
+          eq(campaignRecipients.campaignId, campaign.id),
+          eq(campaignRecipients.status, 'pending'),
+          // Only select recipients whose scheduledFor time has passed (or is null)
+          sql`(${campaignRecipients.scheduledFor} IS NULL OR ${campaignRecipients.scheduledFor} <= ${now})`
+        )
       )
     )
     .limit(remainingCapacity)
@@ -314,21 +323,21 @@ async function processSingleCampaign(campaign: any) {
   
   if (pendingRecipients.length === 0) {
     // Check if campaign is complete (no pending recipients remaining)
-    const [stats] = await db
+    const [stats] = await tenantDb
       .select({
         total: sql<number>`COUNT(*)::int`,
         pending: sql<number>`COUNT(CASE WHEN ${campaignRecipients.status} = 'pending' THEN 1 END)::int`
       })
       .from(campaignRecipients)
-      .where(eq(campaignRecipients.campaignId, campaign.id));
+      .where(tenantDb.withTenantFilter(campaignRecipients, eq(campaignRecipients.campaignId, campaign.id)));
     
     // Campaign is complete when there are no pending recipients
     // (all have reached terminal states: sent, delivered, bounced, unsubscribed, complained, failed)
     if (stats && stats.pending === 0) {
-      await db
+      await tenantDb
         .update(emailCampaigns)
         .set({ status: 'sent', completedAt: new Date() })
-        .where(eq(emailCampaigns.id, campaign.id));
+        .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, campaign.id)));
       
       console.log(`[EMAIL CAMPAIGN] Campaign ${campaign.id} completed`);
     }
@@ -339,42 +348,42 @@ async function processSingleCampaign(campaign: any) {
   
   // Send emails with rate limiting
   for (const recipient of pendingRecipients) {
-    await sendSingleCampaignEmail(campaign, recipient);
+    await sendSingleCampaignEmail(tenantDb, campaign, recipient);
   }
 }
 
 /**
  * Send individual campaign email with rate limiting and tracking
  */
-async function sendSingleCampaignEmail(campaign: any, recipient: any) {
+async function sendSingleCampaignEmail(tenantDb: TenantDb, campaign: any, recipient: any) {
   try {
     // Check suppression list
-    const [suppressed] = await db
+    const [suppressed] = await tenantDb
       .select()
       .from(emailSuppressionList)
-      .where(eq(emailSuppressionList.email, recipient.email))
+      .where(tenantDb.withTenantFilter(emailSuppressionList, eq(emailSuppressionList.email, recipient.email)))
       .limit(1);
     
     if (suppressed) {
       console.log(`[EMAIL CAMPAIGN] Email ${recipient.email} is suppressed (${suppressed.reason})`);
       
-      await db
+      await tenantDb
         .update(campaignRecipients)
         .set({ 
           status: suppressed.reason === 'unsubscribe' ? 'unsubscribed' : 'bounced',
           attemptCount: sql`${campaignRecipients.attemptCount} + 1`,
           lastError: `Suppressed: ${suppressed.reason}`,
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(tenantDb.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       
       return;
     }
     
     // Mark as sending
-    await db
+    await tenantDb
       .update(campaignRecipients)
       .set({ status: 'sending' })
-      .where(eq(campaignRecipients.id, recipient.id));
+      .where(tenantDb.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
     
     // Personalize content
     const personalizedContent = personalizeCampaignContent(campaign.content, recipient);
@@ -392,18 +401,18 @@ async function sendSingleCampaignEmail(campaign: any, recipient: any) {
     const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'info@cleanmachinetulsa.com';
     
     // Atomically claim a send slot BEFORE calling SendGrid (prevents overage)
-    const incrementSuccess = await incrementEmailCounterAtomic();
+    const incrementSuccess = await incrementEmailCounterAtomic(tenantDb);
     
     if (!incrementSuccess) {
       // Daily limit reached - defer this recipient WITHOUT sending
       console.log(`[EMAIL CAMPAIGN] Daily limit reached before send, deferring ${recipient.email}`);
-      await db
+      await tenantDb
         .update(campaignRecipients)
         .set({ 
           status: 'pending',
           scheduledFor: new Date(Date.now() + 60 * 60 * 1000), // Try again in 1 hour
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(tenantDb.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       return;
     }
     
@@ -427,7 +436,7 @@ async function sendSingleCampaignEmail(campaign: any, recipient: any) {
       const [response] = await mailService.send(msg);
       
       // Update recipient status
-      await db
+      await tenantDb
         .update(campaignRecipients)
         .set({ 
           status: 'sent',
@@ -435,13 +444,13 @@ async function sendSingleCampaignEmail(campaign: any, recipient: any) {
           attemptCount: sql`${campaignRecipients.attemptCount} + 1`,
           messageSid: response.headers['x-message-id'] as string || null,
         })
-        .where(eq(campaignRecipients.id, recipient.id));
+        .where(tenantDb.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
       
       // Increment campaign sent counter
-      await db
+      await tenantDb
         .update(emailCampaigns)
         .set({ sentCount: sql`${emailCampaigns.sentCount} + 1` })
-        .where(eq(emailCampaigns.id, campaign.id));
+        .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, campaign.id)));
       
       console.log(`[EMAIL CAMPAIGN] Sent email to ${recipient.email}`);
     });
@@ -450,7 +459,7 @@ async function sendSingleCampaignEmail(campaign: any, recipient: any) {
     
     const shouldRetry = recipient.attemptCount < 2;
     
-    await db
+    await tenantDb
       .update(campaignRecipients)
       .set({ 
         status: shouldRetry ? 'pending' : 'failed',
@@ -458,13 +467,13 @@ async function sendSingleCampaignEmail(campaign: any, recipient: any) {
         lastError: error.message,
         scheduledFor: shouldRetry ? new Date(Date.now() + 60 * 60 * 1000) : null,
       })
-      .where(eq(campaignRecipients.id, recipient.id));
+      .where(tenantDb.withTenantFilter(campaignRecipients, eq(campaignRecipients.id, recipient.id)));
     
     if (!shouldRetry) {
-      await db
+      await tenantDb
         .update(emailCampaigns)
         .set({ failedCount: sql`${emailCampaigns.failedCount} + 1` })
-        .where(eq(emailCampaigns.id, campaign.id));
+        .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, campaign.id)));
     }
   }
 }
@@ -472,12 +481,12 @@ async function sendSingleCampaignEmail(campaign: any, recipient: any) {
 /**
  * Update an existing campaign
  */
-export async function updateCampaign(id: number, campaignData: Partial<CampaignData>) {
+export async function updateCampaign(tenantDb: TenantDb, id: number, campaignData: Partial<CampaignData>) {
   try {
-    const [campaign] = await db
+    const [campaign] = await tenantDb
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     if (!campaign) {
       throw new Error('Campaign not found');
@@ -502,14 +511,14 @@ export async function updateCampaign(id: number, campaignData: Partial<CampaignD
       
       // If status changed to scheduled, set up the job
       if (campaignData.status === 'scheduled' && campaign.status !== 'scheduled') {
-        scheduleEmailCampaign(id, new Date(campaignData.scheduledDate));
+        scheduleEmailCampaign(tenantDb, id, new Date(campaignData.scheduledDate));
       }
     }
     
-    const [updatedCampaign] = await db
+    const [updatedCampaign] = await tenantDb
       .update(emailCampaigns)
       .set(updateData)
-      .where(eq(emailCampaigns.id, id))
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)))
       .returning();
     
     return updatedCampaign;
@@ -522,12 +531,12 @@ export async function updateCampaign(id: number, campaignData: Partial<CampaignD
 /**
  * Delete a campaign
  */
-export async function deleteCampaign(id: number) {
+export async function deleteCampaign(tenantDb: TenantDb, id: number) {
   try {
-    const [campaign] = await db
+    const [campaign] = await tenantDb
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     if (!campaign) {
       throw new Error('Campaign not found');
@@ -538,9 +547,9 @@ export async function deleteCampaign(id: number) {
       throw new Error('Cannot delete a campaign that has already been sent');
     }
     
-    await db
+    await tenantDb
       .delete(emailCampaigns)
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     return { success: true };
   } catch (error) {
@@ -552,12 +561,12 @@ export async function deleteCampaign(id: number) {
 /**
  * Cancel a scheduled campaign
  */
-export async function cancelCampaign(id: number) {
+export async function cancelCampaign(tenantDb: TenantDb, id: number) {
   try {
-    const [campaign] = await db
+    const [campaign] = await tenantDb
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     if (!campaign) {
       throw new Error('Campaign not found');
@@ -567,10 +576,10 @@ export async function cancelCampaign(id: number) {
       throw new Error('Only scheduled campaigns can be cancelled');
     }
     
-    const [cancelledCampaign] = await db
+    const [cancelledCampaign] = await tenantDb
       .update(emailCampaigns)
       .set({ status: 'cancelled' })
-      .where(eq(emailCampaigns.id, id))
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)))
       .returning();
     
     return cancelledCampaign;
@@ -584,12 +593,12 @@ export async function cancelCampaign(id: number) {
  * Send a campaign immediately (schedules for immediate processing via cron)
  * Routes through same limiter path to respect daily quotas
  */
-export async function sendCampaignNow(id: number) {
+export async function sendCampaignNow(tenantDb: TenantDb, id: number) {
   try {
-    const [campaign] = await db
+    const [campaign] = await tenantDb
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     if (!campaign) {
       throw new Error('Campaign not found');
@@ -600,27 +609,27 @@ export async function sendCampaignNow(id: number) {
     }
     
     // Update campaign to scheduled status with current time (triggers immediate processing by cron)
-    await db
+    await tenantDb
       .update(emailCampaigns)
       .set({ 
         status: 'scheduled',
         scheduledDate: new Date() // Set to now for immediate processing
       })
-      .where(eq(emailCampaigns.id, id));
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)));
     
     // Populate recipients if not already done
     if (campaign.recipientCount === 0) {
-      await populateCampaignRecipients(id, campaign.targetAudience || 'all');
+      await populateCampaignRecipients(tenantDb, id, campaign.targetAudience || 'all');
     }
     
     // Trigger campaign processing immediately (respects all limits and quotas)
-    await processEmailCampaigns();
+    await processEmailCampaigns(tenantDb);
     
     // Return updated campaign
-    const [updatedCampaign] = await db
+    const [updatedCampaign] = await tenantDb
       .select()
       .from(emailCampaigns)
-      .where(eq(emailCampaigns.id, id))
+      .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, id)))
       .limit(1);
     
     return updatedCampaign;
@@ -633,9 +642,9 @@ export async function sendCampaignNow(id: number) {
 /**
  * Get all templates
  */
-export async function getAllTemplates() {
+export async function getAllTemplates(tenantDb: TenantDb) {
   try {
-    return await db.select().from(emailTemplates).orderBy(desc(emailTemplates.lastUsed));
+    return await tenantDb.select().from(emailTemplates).where(tenantDb.withTenantFilter(emailTemplates, sql`true`)).orderBy(desc(emailTemplates.lastUsed));
   } catch (error) {
     console.error('Error getting templates:', error);
     throw new Error('Failed to retrieve email templates');
@@ -645,7 +654,7 @@ export async function getAllTemplates() {
 /**
  * Create a new template
  */
-export async function createTemplate(templateData: TemplateData) {
+export async function createTemplate(tenantDb: TenantDb, templateData: TemplateData) {
   try {
     const insertData: InsertEmailTemplate = {
       name: templateData.name,
@@ -654,7 +663,7 @@ export async function createTemplate(templateData: TemplateData) {
       category: templateData.category
     };
     
-    const [newTemplate] = await db.insert(emailTemplates).values(insertData).returning();
+    const [newTemplate] = await tenantDb.insert(emailTemplates).values(insertData).returning();
     return newTemplate;
   } catch (error) {
     console.error('Error creating template:', error);
@@ -665,18 +674,18 @@ export async function createTemplate(templateData: TemplateData) {
 /**
  * Update a template
  */
-export async function updateTemplate(id: number, templateData: Partial<TemplateData>) {
+export async function updateTemplate(tenantDb: TenantDb, id: number, templateData: Partial<TemplateData>) {
   try {
-    const [template] = await db
+    const [template] = await tenantDb
       .select()
       .from(emailTemplates)
-      .where(eq(emailTemplates.id, id));
+      .where(tenantDb.withTenantFilter(emailTemplates, eq(emailTemplates.id, id)));
     
     if (!template) {
       throw new Error('Template not found');
     }
     
-    const [updatedTemplate] = await db
+    const [updatedTemplate] = await tenantDb
       .update(emailTemplates)
       .set({
         name: templateData.name ?? template.name,
@@ -684,7 +693,7 @@ export async function updateTemplate(id: number, templateData: Partial<TemplateD
         content: templateData.content ?? template.content,
         category: templateData.category ?? template.category,
       })
-      .where(eq(emailTemplates.id, id))
+      .where(tenantDb.withTenantFilter(emailTemplates, eq(emailTemplates.id, id)))
       .returning();
     
     return updatedTemplate;
@@ -697,11 +706,11 @@ export async function updateTemplate(id: number, templateData: Partial<TemplateD
 /**
  * Delete a template
  */
-export async function deleteTemplate(id: number) {
+export async function deleteTemplate(tenantDb: TenantDb, id: number) {
   try {
-    await db
+    await tenantDb
       .delete(emailTemplates)
-      .where(eq(emailTemplates.id, id));
+      .where(tenantDb.withTenantFilter(emailTemplates, eq(emailTemplates.id, id)));
     
     return { success: true };
   } catch (error) {
@@ -713,12 +722,12 @@ export async function deleteTemplate(id: number) {
 /**
  * Get all customers for email campaigns
  */
-export async function getEmailCustomers() {
+export async function getEmailCustomers(tenantDb: TenantDb) {
   try {
     // First try to get customers from the database
     let customerList: Array<{ id: number; name: string; email: string | null; phone: string | null }> = [];
     try {
-      customerList = await db
+      customerList = await tenantDb
         .select({
           id: customers.id,
           name: customers.name,
@@ -727,9 +736,12 @@ export async function getEmailCustomers() {
         })
         .from(customers)
         .where(
-          and(
-            sql`${customers.email} IS NOT NULL`,
-            sql`${customers.email} != ''`
+          tenantDb.withTenantFilter(
+            customers,
+            and(
+              sql`${customers.email} IS NOT NULL`,
+              sql`${customers.email} != ''`
+            )
           )
         );
     } catch (dbError) {
@@ -759,12 +771,12 @@ export async function getEmailCustomers() {
     }
     
     // Get unsubscribed list
-    const unsubscribed = await db
+    const unsubscribed = await tenantDb
       .select({
         email: emailSubscribers.email
       })
       .from(emailSubscribers)
-      .where(eq(emailSubscribers.subscribed, false));
+      .where(tenantDb.withTenantFilter(emailSubscribers, eq(emailSubscribers.subscribed, false)));
     
     const unsubscribedEmails = new Set(unsubscribed.map(u => u.email.toLowerCase()));
     
@@ -832,23 +844,23 @@ export async function generateEmailContent(prompt: string, template?: string) {
 /**
  * Subscribe or unsubscribe a customer from email campaigns
  */
-export async function updateSubscription(email: string, subscribed: boolean) {
+export async function updateSubscription(tenantDb: TenantDb, email: string, subscribed: boolean) {
   try {
     // Check if subscriber exists
-    const [existing] = await db
+    const [existing] = await tenantDb
       .select()
       .from(emailSubscribers)
-      .where(eq(emailSubscribers.email, email.toLowerCase()));
+      .where(tenantDb.withTenantFilter(emailSubscribers, eq(emailSubscribers.email, email.toLowerCase())));
     
     if (existing) {
       // Update existing
-      await db
+      await tenantDb
         .update(emailSubscribers)
         .set({ subscribed })
-        .where(eq(emailSubscribers.email, email.toLowerCase()));
+        .where(tenantDb.withTenantFilter(emailSubscribers, eq(emailSubscribers.email, email.toLowerCase())));
     } else {
       // Create new
-      await db
+      await tenantDb
         .insert(emailSubscribers)
         .values({
           email: email.toLowerCase(),
@@ -867,13 +879,13 @@ export async function updateSubscription(email: string, subscribed: boolean) {
 /**
  * Schedule an email campaign for future sending
  */
-function scheduleEmailCampaign(campaignId: number, scheduledDate: Date) {
+function scheduleEmailCampaign(tenantDb: TenantDb, campaignId: number, scheduledDate: Date) {
   const now = new Date();
   const delay = scheduledDate.getTime() - now.getTime();
   
   if (delay <= 0) {
     // If the scheduled date is in the past, send immediately
-    sendCampaignNow(campaignId).catch(error => {
+    sendCampaignNow(tenantDb, campaignId).catch(error => {
       console.error(`Error sending immediate campaign ${campaignId}:`, error);
     });
     return;
@@ -883,18 +895,21 @@ function scheduleEmailCampaign(campaignId: number, scheduledDate: Date) {
   setTimeout(async () => {
     try {
       // Check if the campaign is still scheduled
-      const [campaign] = await db
+      const [campaign] = await tenantDb
         .select()
         .from(emailCampaigns)
         .where(
-          and(
-            eq(emailCampaigns.id, campaignId),
-            eq(emailCampaigns.status, 'scheduled')
+          tenantDb.withTenantFilter(
+            emailCampaigns,
+            and(
+              eq(emailCampaigns.id, campaignId),
+              eq(emailCampaigns.status, 'scheduled')
+            )
           )
         );
       
       if (campaign) {
-        await sendCampaignNow(campaignId);
+        await sendCampaignNow(tenantDb, campaignId);
       }
     } catch (error) {
       console.error(`Error sending scheduled campaign ${campaignId}:`, error);
@@ -907,19 +922,19 @@ function scheduleEmailCampaign(campaignId: number, scheduledDate: Date) {
 /**
  * Get recipients based on audience targeting
  */
-async function getRecipientsByAudience(targetAudience: string) {
+async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: string) {
   // Get all active subscribers
-  const activeSubscribers = await db
+  const activeSubscribers = await tenantDb
     .select({
       email: emailSubscribers.email
     })
     .from(emailSubscribers)
-    .where(eq(emailSubscribers.subscribed, true));
+    .where(tenantDb.withTenantFilter(emailSubscribers, eq(emailSubscribers.subscribed, true)));
   
   const subscribedEmails = new Set(activeSubscribers.map(s => s.email.toLowerCase()));
   
   // Get customers based on targeting
-  let query = db
+  let query = tenantDb
     .select({
       id: customers.id,
       name: customers.name,
@@ -927,9 +942,12 @@ async function getRecipientsByAudience(targetAudience: string) {
     })
     .from(customers)
     .where(
-      and(
-        sql`${customers.email} IS NOT NULL`,
-        sql`${customers.email} != ''`
+      tenantDb.withTenantFilter(
+        customers,
+        and(
+          sql`${customers.email} IS NOT NULL`,
+          sql`${customers.email} != ''`
+        )
       )
     );
   
@@ -963,7 +981,7 @@ async function getRecipientsByAudience(targetAudience: string) {
 /**
  * Send an email campaign to recipients
  */
-async function sendEmailCampaign(campaign: any, recipients: any[]) {
+async function sendEmailCampaign(tenantDb: TenantDb, campaign: any, recipients: any[]) {
   // Get sender email from environment variable
   const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'info@cleanmachinetulsa.com';
   
@@ -991,14 +1009,14 @@ async function sendEmailCampaign(campaign: any, recipients: any[]) {
   await Promise.all(sendPromises);
   
   // Update campaign status
-  await db
+  await tenantDb
     .update(emailCampaigns)
     .set({
       status: 'sent',
       sentAt: new Date(),
       recipientCount: recipients.length
     })
-    .where(eq(emailCampaigns.id, campaign.id));
+    .where(tenantDb.withTenantFilter(emailCampaigns, eq(emailCampaigns.id, campaign.id)));
   
   return {
     success: true,

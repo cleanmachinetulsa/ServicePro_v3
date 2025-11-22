@@ -1,5 +1,5 @@
 import { sheetsData } from './knowledge';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { services as servicesTable } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 
@@ -31,7 +31,7 @@ function extractDurationHours(durationStr: string): number {
 }
 
 // Get all services from the knowledge base merged with database images
-export async function getAllServices(): Promise<ServiceInfo[]> {
+export async function getAllServices(tenantDb: TenantDb): Promise<ServiceInfo[]> {
   try {
     if (!sheetsData['services'] || !Array.isArray(sheetsData['services'])) {
       console.log('No services found in sheets data, using fallback');
@@ -62,7 +62,7 @@ export async function getAllServices(): Promise<ServiceInfo[]> {
 
     // Fetch service images from database and merge
     try {
-      const dbServices = await db.select().from(servicesTable);
+      const dbServices = await tenantDb.select().from(servicesTable).where(tenantDb.withTenantFilter(servicesTable));
       const serviceImageMap = new Map<string, string | null>(
         dbServices.map(s => [s.name, s.imageUrl])
       );
@@ -83,25 +83,25 @@ export async function getAllServices(): Promise<ServiceInfo[]> {
 }
 
 // Save or update service image URL in database
-export async function saveServiceImage(serviceName: string, imageUrl: string): Promise<boolean> {
+export async function saveServiceImage(tenantDb: TenantDb, serviceName: string, imageUrl: string): Promise<boolean> {
   try {
     // Normalize service name (trim whitespace) to match Google Sheets data
     const normalizedName = serviceName.trim();
     
     // First, check if service exists with this name
-    const existingService = await db.select()
+    const existingService = await tenantDb.select()
       .from(servicesTable)
-      .where(eq(servicesTable.name, normalizedName))
+      .where(tenantDb.withTenantFilter(servicesTable, eq(servicesTable.name, normalizedName)))
       .limit(1);
     
     if (existingService.length > 0) {
       // Update existing service's image URL
-      await db.update(servicesTable)
+      await tenantDb.update(servicesTable)
         .set({ imageUrl: imageUrl })
-        .where(eq(servicesTable.name, normalizedName));
+        .where(tenantDb.withTenantFilter(servicesTable, eq(servicesTable.name, normalizedName)));
     } else {
       // Insert new service with image URL
-      await db.insert(servicesTable).values({
+      await tenantDb.insert(servicesTable).values({
         name: normalizedName,
         priceRange: 'See Google Sheets',
         overview: 'See Google Sheets',
@@ -190,7 +190,7 @@ function getDefaultServices(): ServiceInfo[] {
 }
 
 // Get all add-on services
-export async function getAddonServices(): Promise<ServiceInfo[]> {
+export async function getAddonServices(tenantDb: TenantDb): Promise<ServiceInfo[]> {
   try {
     if (!sheetsData['addons'] || !Array.isArray(sheetsData['addons'])) {
       console.log('No add-on services found in sheets data, using fallback');
@@ -228,7 +228,7 @@ export async function getAddonServices(): Promise<ServiceInfo[]> {
 
     // Fetch service images from database and merge (same as getAllServices)
     try {
-      const dbServices = await db.select().from(servicesTable);
+      const dbServices = await tenantDb.select().from(servicesTable).where(tenantDb.withTenantFilter(servicesTable));
       const serviceImageMap = new Map<string, string | null>(
         dbServices.map(s => [s.name, s.imageUrl])
       );
@@ -319,8 +319,8 @@ function getDefaultAddonServices(): ServiceInfo[] {
   ];
 }
 
-export async function searchServices(query: string): Promise<ServiceInfo[]> {
-  const services = await getAllServices();
+export async function searchServices(tenantDb: TenantDb, query: string): Promise<ServiceInfo[]> {
+  const services = await getAllServices(tenantDb);
   if (!query) return services;
 
   const normalizedQuery = query.toLowerCase();

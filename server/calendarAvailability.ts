@@ -1,7 +1,7 @@
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './googleCalendarConnector';
 import { criticalMonitor } from './criticalMonitoring';
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { businessSettings } from '@shared/schema';
 import { addDays, addMonths, format, parse, startOfDay, endOfDay, addMinutes, isBefore, isAfter } from 'date-fns';
 
@@ -39,8 +39,8 @@ function formatTime(hour: number, minute: number): string {
 /**
  * Get business hours from settings
  */
-async function getBusinessHours() {
-  const [settings] = await db.select().from(businessSettings).limit(1);
+async function getBusinessHours(tenantDb: TenantDb) {
+  const [settings] = await tenantDb.select().from(businessSettings).where(tenantDb.withTenantFilter(businessSettings)).limit(1);
   
   if (!settings) {
     // Default business hours (matching schema defaults)
@@ -230,6 +230,7 @@ function generateDayTimeSlots(
  * Get calendar availability for a date range
  */
 export async function getCalendarAvailability(
+  tenantDb: TenantDb,
   request: AvailabilityRequest
 ): Promise<CalendarDay[]> {
   try {
@@ -237,7 +238,7 @@ export async function getCalendarAvailability(
     const endDate = parse(request.endDate, 'yyyy-MM-dd', new Date());
 
     // Get business hours
-    const businessHours = await getBusinessHours();
+    const businessHours = await getBusinessHours(tenantDb);
 
     // Fetch calendar events
     const events = await getCalendarEvents(
@@ -293,11 +294,12 @@ export async function getCalendarAvailability(
  * Check if specific dates are available
  */
 export async function checkDatesAvailable(
+  tenantDb: TenantDb,
   dates: string[], // Array of YYYY-MM-DD dates
   serviceDurationMinutes: number
 ): Promise<{ date: string; available: boolean; reason?: string }[]> {
   try {
-    const businessHours = await getBusinessHours();
+    const businessHours = await getBusinessHours(tenantDb);
     const results: { date: string; available: boolean; reason?: string }[] = [];
 
     // Fetch events for the date range

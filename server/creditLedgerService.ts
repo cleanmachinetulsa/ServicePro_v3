@@ -1,4 +1,4 @@
-import { db } from "./db";
+import type { TenantDb } from './tenantDb';
 import { 
   creditLedger, 
   creditTransactions,
@@ -9,8 +9,8 @@ import {
 import { eq, and, or, lte, sql, desc, isNull } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-// Type for database executor - REQUIRED, no default (enforces transaction usage)
-type DbExecutor = NodePgDatabase<any> | Parameters<Parameters<typeof db.transaction>[0]>[0];
+// Type for database executor - supports both TenantDb and transaction executor
+type DbExecutor = TenantDb | Parameters<Parameters<TenantDb['raw']['transaction']>[0]>[0];
 
 /**
  * Award credit to a customer (service_credit or gift_card referral reward)
@@ -175,7 +175,7 @@ export async function applyCredit(
     }
 
     // Calculate remaining balance across all credits (within same transaction)
-    const remainingBalance = await getCreditBalance(customerId, executor);
+    const remainingBalance = await getCreditBalance(executor, customerId);
 
     return {
       success: true,
@@ -193,20 +193,28 @@ export async function applyCredit(
  * Filters out expired credits and optionally updates their status
  */
 export async function getActiveCredits(
+  executor: DbExecutor,
   customerId: number,
-  updateExpired: boolean = false,
-  executor: DbExecutor = db
+  updateExpired: boolean = false
 ): Promise<CreditLedger[]> {
   try {
+    // Get tenantDb reference - executor might be tenantDb or transaction
+    const tenantDb = 'withTenantFilter' in executor ? executor : executor as any;
+    
     // Fetch all credits
     const credits = await executor
       .select()
       .from(creditLedger)
       .where(
-        and(
-          eq(creditLedger.customerId, customerId),
-          eq(creditLedger.status, 'active')
-        )
+        tenantDb.withTenantFilter ? 
+          tenantDb.withTenantFilter(creditLedger, and(
+            eq(creditLedger.customerId, customerId),
+            eq(creditLedger.status, 'active')
+          )) :
+          and(
+            eq(creditLedger.customerId, customerId),
+            eq(creditLedger.status, 'active')
+          )
       )
       .orderBy(
         sql`${creditLedger.expiresAt} NULLS LAST`,
@@ -265,9 +273,9 @@ export async function getActiveCredits(
 /**
  * Get total credit balance for a customer (active credits only)
  */
-export async function getCreditBalance(customerId: number, executor: DbExecutor = db): Promise<number> {
+export async function getCreditBalance(executor: DbExecutor, customerId: number): Promise<number> {
   try {
-    const activeCredits = await getActiveCredits(customerId, false, executor);
+    const activeCredits = await getActiveCredits(executor, customerId, false);
     
     return activeCredits.reduce((total, credit) => {
       return total + parseFloat(credit.currentBalance);
@@ -282,18 +290,18 @@ export async function getCreditBalance(customerId: number, executor: DbExecutor 
  * Expire old credits (for cron job)
  * Returns number of credits expired
  */
-export async function expireCredits(): Promise<number> {
+export async function expireCredits(tenantDb: TenantDb): Promise<number> {
   try {
     // Find all active credits that have expired
-    const expiredCredits = await db
+    const expiredCredits = await tenantDb
       .select()
       .from(creditLedger)
       .where(
-        and(
+        tenantDb.withTenantFilter(creditLedger, and(
           eq(creditLedger.status, 'active'),
           sql`${creditLedger.expiresAt} IS NOT NULL`,
           sql`${creditLedger.expiresAt} < NOW()`
-        )
+        ))
       );
 
     if (expiredCredits.length === 0) {
@@ -302,18 +310,18 @@ export async function expireCredits(): Promise<number> {
 
     // Update status to expired and zero out balance
     const expiredIds = expiredCredits.map(c => c.id);
-    await db
+    await tenantDb
       .update(creditLedger)
       .set({ 
         status: 'expired', 
         currentBalance: '0',  // CRITICAL: Zero out balance to prevent re-application
         usedAt: new Date() 
       })
-      .where(sql`${creditLedger.id} = ANY(${expiredIds})`);
+      .where(tenantDb.withTenantFilter(creditLedger, sql`${creditLedger.id} = ANY(${expiredIds})`));
 
     // Log expiration transactions
     for (const credit of expiredCredits) {
-      await db.insert(creditTransactions).values({
+      await tenantDb.insert(creditTransactions).values({
         creditLedgerId: credit.id,
         amount: `-${credit.currentBalance}`,  // Negative amount to reflect zeroing
         description: 'Credit expired (scheduled job)',

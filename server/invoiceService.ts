@@ -1,4 +1,4 @@
-import { db } from './db';
+import type { TenantDb } from './tenantDb';
 import { invoices, appointments, customers, services, loyaltyPoints, referrals, authorizations, type Invoice, type InsertInvoice } from '@shared/schema';
 import { and, eq } from 'drizzle-orm';
 import Stripe from 'stripe';
@@ -21,9 +21,9 @@ const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
 /**
  * Create an invoice for a completed appointment
  */
-export async function createInvoice(appointmentId: number): Promise<Invoice> {
+export async function createInvoice(tenantDb: TenantDb, appointmentId: number): Promise<Invoice> {
   // Get appointment details with customer and service info
-  const [appointmentWithDetails] = await db
+  const [appointmentWithDetails] = await tenantDb
     .select({
       appointment: appointments,
       customer: customers,
@@ -32,7 +32,7 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
     .from(appointments)
     .leftJoin(customers, eq(appointments.customerId, customers.id))
     .leftJoin(services, eq(appointments.serviceId, services.id))
-    .where(eq(appointments.id, appointmentId));
+    .where(tenantDb.withTenantFilter(appointments, eq(appointments.id, appointmentId)));
 
   if (!appointmentWithDetails) {
     throw new Error(`Appointment with ID ${appointmentId} not found`);
@@ -69,7 +69,7 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
   const serviceDescription = `${service.name} - ${service.overview}`;
 
   // ATOMIC TRANSACTION: Apply referee reward, calculate discount, create invoice, mark reward as applied
-  const invoice = await db.transaction(async (tx) => {
+  const invoice = await tenantDb.transaction(async (tx) => {
     let discount = 0;
     let discountType = '';
     let rewardAuditId: number | null = null;
@@ -184,7 +184,7 @@ export async function createInvoice(appointmentId: number): Promise<Invoice> {
  * Create a manual invoice (dashboard flow - no appointment)
  * Looks up or creates customer, then creates invoice record
  */
-export async function createManualInvoice(params: {
+export async function createManualInvoice(tenantDb: TenantDb, params: {
   customerPhone: string;
   customerEmail?: string;
   customerName: string;
@@ -194,20 +194,25 @@ export async function createManualInvoice(params: {
 }): Promise<Invoice> {
   const { customerPhone, customerEmail, customerName, amount, serviceDescription, notes } = params;
 
-  let customer = await db.query.customers.findFirst({
-    where: eq(customers.phone, customerPhone),
-  });
+  let [customer] = await tenantDb
+    .select()
+    .from(customers)
+    .where(tenantDb.withTenantFilter(customers, eq(customers.phone, customerPhone)))
+    .limit(1);
 
   if (!customer) {
     if (customerEmail) {
-      customer = await db.query.customers.findFirst({
-        where: eq(customers.email, customerEmail),
-      });
+      const result = await tenantDb
+        .select()
+        .from(customers)
+        .where(tenantDb.withTenantFilter(customers, eq(customers.email, customerEmail)))
+        .limit(1);
+      customer = result[0];
     }
   }
 
   if (!customer) {
-    const [newCustomer] = await db
+    const [newCustomer] = await tenantDb
       .insert(customers)
       .values({
         name: customerName,
@@ -228,7 +233,7 @@ export async function createManualInvoice(params: {
     notes: notes || `Manual invoice created via dashboard`,
   };
 
-  const [invoice] = await db
+  const [invoice] = await tenantDb
     .insert(invoices)
     .values(newInvoice)
     .returning();
@@ -239,11 +244,11 @@ export async function createManualInvoice(params: {
 /**
  * Get invoice details by ID
  */
-export async function getInvoice(invoiceId: number): Promise<Invoice | undefined> {
-  const [invoice] = await db
+export async function getInvoice(tenantDb: TenantDb, invoiceId: number): Promise<Invoice | undefined> {
+  const [invoice] = await tenantDb
     .select()
     .from(invoices)
-    .where(eq(invoices.id, invoiceId));
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoiceId)));
   
   return invoice;
 }
@@ -251,12 +256,12 @@ export async function getInvoice(invoiceId: number): Promise<Invoice | undefined
 /**
  * Create a Stripe payment intent for an invoice
  */
-export async function createStripePaymentIntent(invoiceId: number): Promise<string> {
+export async function createStripePaymentIntent(tenantDb: TenantDb, invoiceId: number): Promise<string> {
   if (!STRIPE_ENABLED || !stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
   }
 
-  const invoice = await getInvoice(invoiceId);
+  const invoice = await getInvoice(tenantDb, invoiceId);
   if (!invoice) {
     throw new Error(`Invoice with ID ${invoiceId} not found`);
   }
@@ -272,10 +277,10 @@ export async function createStripePaymentIntent(invoiceId: number): Promise<stri
   });
 
   // Update the invoice with the payment intent ID
-  await db
+  await tenantDb
     .update(invoices)
     .set({ stripePaymentIntentId: paymentIntent.id })
-    .where(eq(invoices.id, invoiceId));
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoiceId)));
 
   return paymentIntent.client_secret as string;
 }
@@ -284,11 +289,12 @@ export async function createStripePaymentIntent(invoiceId: number): Promise<stri
  * Update invoice payment status
  */
 export async function updateInvoicePaymentStatus(
+  tenantDb: TenantDb,
   invoiceId: number,
   status: 'paid' | 'unpaid',
   paymentMethod?: string
 ): Promise<Invoice> {
-  const [updatedInvoice] = await db
+  const [updatedInvoice] = await tenantDb
     .update(invoices)
     .set({
       status, // Legacy field - kept for backward compatibility
@@ -296,7 +302,7 @@ export async function updateInvoicePaymentStatus(
       paymentMethod,
       paidAt: status === 'paid' ? new Date() : null,
     })
-    .where(eq(invoices.id, invoiceId))
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoiceId)))
     .returning();
 
   return updatedInvoice;
@@ -305,14 +311,14 @@ export async function updateInvoicePaymentStatus(
 /**
  * Mark review request as sent for an invoice
  */
-export async function markReviewRequested(invoiceId: number): Promise<Invoice> {
-  const [updatedInvoice] = await db
+export async function markReviewRequested(tenantDb: TenantDb, invoiceId: number): Promise<Invoice> {
+  const [updatedInvoice] = await tenantDb
     .update(invoices)
     .set({
       reviewRequestSent: true,
       reviewRequestedAt: new Date(),
     })
-    .where(eq(invoices.id, invoiceId))
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoiceId)))
     .returning();
 
   return updatedInvoice;
@@ -322,27 +328,29 @@ export async function markReviewRequested(invoiceId: number): Promise<Invoice> {
  * Mark an appointment as completed and generate an invoice
  */
 export async function completeAppointmentAndGenerateInvoice(
+  tenantDb: TenantDb,
   appointmentId: number
 ): Promise<Invoice> {
   // First mark the appointment as completed
-  await db
+  await tenantDb
     .update(appointments)
     .set({ completed: true })
-    .where(eq(appointments.id, appointmentId));
+    .where(tenantDb.withTenantFilter(appointments, eq(appointments.id, appointmentId)));
 
   // Then create and return the invoice
-  return createInvoice(appointmentId);
+  return createInvoice(tenantDb, appointmentId);
 }
 
 /**
  * Send invoice notification to customer
  */
 export async function sendInvoiceNotification(
+  tenantDb: TenantDb,
   invoiceId: number,
   platform: 'sms' | 'email' | 'both'
 ): Promise<boolean> {
   // Get invoice with customer and appointment details
-  const [invoiceDetails] = await db
+  const [invoiceDetails] = await tenantDb
     .select({
       invoice: invoices,
       customer: customers,
@@ -353,7 +361,7 @@ export async function sendInvoiceNotification(
     .leftJoin(customers, eq(invoices.customerId, customers.id))
     .leftJoin(appointments, eq(invoices.appointmentId, appointments.id))
     .leftJoin(services, eq(appointments.serviceId, services.id))
-    .where(eq(invoices.id, invoiceId));
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoiceId)));
 
   if (!invoiceDetails) {
     throw new Error('Invoice details not found');
@@ -366,10 +374,10 @@ export async function sendInvoiceNotification(
   }
   
   // Get customer's current loyalty points balance
-  const [loyaltyRecord] = await db
+  const [loyaltyRecord] = await tenantDb
     .select()
     .from(loyaltyPoints)
-    .where(eq(loyaltyPoints.customerId, customer.id))
+    .where(tenantDb.withTenantFilter(loyaltyPoints, eq(loyaltyPoints.customerId, customer.id)))
     .limit(1);
   
   const currentPoints = loyaltyRecord?.points || 0;
@@ -516,18 +524,18 @@ Thanks for trusting us with your vehicle!`;
 /**
  * Send a review request 2 days after the service
  */
-export async function sendReviewRequest(invoiceId: number): Promise<boolean> {
-  const [invoiceDetails] = await db
+export async function sendReviewRequest(tenantDb: TenantDb, invoiceId: number): Promise<boolean> {
+  const [invoiceDetails] = await tenantDb
     .select({
       invoice: invoices,
       customer: customers,
     })
     .from(invoices)
     .leftJoin(customers, eq(invoices.customerId, customers.id))
-    .where(and(
+    .where(tenantDb.withTenantFilter(invoices, and(
       eq(invoices.id, invoiceId),
       eq(invoices.reviewRequestSent, false)
-    ));
+    )));
 
   if (!invoiceDetails) {
     return false;
@@ -559,7 +567,7 @@ Thank you for choosing Clean Machine Auto Detail!`;
     await sendSMS(customer.phone, smsMessage, undefined, undefined, 1);
 
     // Mark review request as sent with timestamp
-    await markReviewRequested(invoiceId);
+    await markReviewRequested(tenantDb, invoiceId);
 
     return true;
   } catch (error) {
@@ -571,18 +579,18 @@ Thank you for choosing Clean Machine Auto Detail!`;
 /**
  * Get all unpaid invoices
  */
-export async function getUnpaidInvoices(): Promise<Invoice[]> {
-  return db
+export async function getUnpaidInvoices(tenantDb: TenantDb): Promise<Invoice[]> {
+  return tenantDb
     .select()
     .from(invoices)
-    .where(eq(invoices.paymentStatus, 'unpaid'));
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.paymentStatus, 'unpaid')));
 }
 
 /**
  * Get unpaid invoices with customer details for admin billing UI
  */
-export async function getUnpaidInvoicesWithDetails() {
-  const unpaidInvoices = await db
+export async function getUnpaidInvoicesWithDetails(tenantDb: TenantDb) {
+  const unpaidInvoices = await tenantDb
     .select({
       id: invoices.id,
       createdAt: invoices.createdAt,
@@ -596,7 +604,7 @@ export async function getUnpaidInvoicesWithDetails() {
     })
     .from(invoices)
     .leftJoin(customers, eq(invoices.customerId, customers.id))
-    .where(eq(invoices.paymentStatus, 'unpaid'))
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.paymentStatus, 'unpaid')))
     .orderBy(invoices.createdAt);
 
   return unpaidInvoices;
@@ -605,9 +613,9 @@ export async function getUnpaidInvoicesWithDetails() {
 /**
  * Get all invoices for a customer
  */
-export async function getCustomerInvoices(customerId: number): Promise<Invoice[]> {
-  return db
+export async function getCustomerInvoices(tenantDb: TenantDb, customerId: number): Promise<Invoice[]> {
+  return tenantDb
     .select()
     .from(invoices)
-    .where(eq(invoices.customerId, customerId));
+    .where(tenantDb.withTenantFilter(invoices, eq(invoices.customerId, customerId)));
 }
