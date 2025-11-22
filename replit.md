@@ -4,7 +4,7 @@
 Clean Machine Auto Detail is being transformed into **ServicePro** - a multi-tenant, white-label SaaS platform for service businesses. The flagship instance ('root' tenant) remains Clean Machine Auto Detail, an AI-powered web application designed to streamline operations for an auto detailing service. It provides comprehensive business management, including customer management, appointment scheduling, loyalty programs, payment processing, and multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). The system integrates with Google Workspace APIs and OpenAI for intelligent chatbot capabilities, aiming for an 87% automation rate to enhance efficiency and customer engagement.
 
 ### ServicePro Multi-Tenant Architecture
-**Phase 2.3 Status: ✅ COMPLETE**
+**Phase 2.5 Status: ✅ COMPLETE**
 
 The application is being transformed into a multi-tenant platform with the following architecture:
 
@@ -19,6 +19,10 @@ The application is being transformed into a multi-tenant platform with the follo
   - IVR Menu: Press 1 (services + SMS), Press 2 (forward), Press 3 (voicemail), Press 7 (easter egg)
   - Security: ✅ Twilio signature verification with `verifyTwilioSignature` middleware
   - Testing: ✅ 15/15 IVR tests passing, production-ready
+  - Phase 2.5: ✅ Admin Phone & IVR Configuration UI (COMPLETE)
+  - Admin UI: `/admin/phone-config` for managing phone numbers and IVR modes across all tenants
+  - Features: Create/edit/delete phone configs, toggle IVR modes (simple/ivr/ai-voice), configure SIP settings
+  - Security: Owner-only access with RBAC middleware, E.164 phone validation, duplicate number prevention
   - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md` and `PHASE_2_3_IVR_MODE.md`
 
 **Key Files:**
@@ -29,7 +33,9 @@ The application is being transformed into a multi-tenant platform with the follo
 - `server/seed/seedTenantPhone.ts` - Idempotent seeder for root tenant phone config
 - `shared/schema.ts` - `tenantPhoneConfig` table with ivrMode column (line 210)
 - `server/routes.adminTenants.ts` - Tenant CRUD API
+- `server/routes.adminPhoneConfig.ts` - Phone & IVR config CRUD API (Phase 2.5)
 - `client/src/pages/AdminTenants.tsx` - Tenant management UI
+- `client/src/pages/AdminPhoneConfig.tsx` - Phone & IVR configuration UI (Phase 2.5)
 - `server/tenantDb.ts` - Tenant isolation utilities (909 usages migrated)
 
 ## User Preferences
