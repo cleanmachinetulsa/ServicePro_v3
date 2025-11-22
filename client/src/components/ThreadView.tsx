@@ -129,6 +129,7 @@ export default function ThreadView({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [suggestionsCollapsed, setSuggestionsCollapsed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1204,10 +1205,15 @@ export default function ThreadView({
             </div>
           </ScrollArea>
 
-          {/* AI Suggestions - Enhanced UI */}
+          {/* AI Suggestions - Enhanced UI with Mobile Collapse */}
           {conversation.controlMode === 'manual' && suggestions.length > 0 && (
-            <div className="border-t dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 px-4 py-3">
-              <div className="flex items-center gap-2 mb-3">
+            <div className="border-t dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
+              {/* Header - Always Visible */}
+              <button
+                onClick={() => setSuggestionsCollapsed(!suggestionsCollapsed)}
+                className="w-full flex items-center gap-2 px-4 py-3 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
+                data-testid="button-toggle-suggestions"
+              >
                 <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-1.5 rounded-lg">
                   <Sparkles className="h-3.5 w-3.5 text-white" />
                 </div>
@@ -1215,33 +1221,46 @@ export default function ThreadView({
                   AI-Powered Suggestions
                 </span>
                 <Badge variant="secondary" className="text-xs">
-                  {suggestions.length} available
+                  {suggestions.length}
                 </Badge>
-              </div>
-              <div className="flex flex-wrap gap-2 max-w-4xl mx-auto">
-                {suggestions.map((suggestion, index) => (
-                  <Button
-                    key={suggestion.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSuggestionClick(suggestion.content)}
-                    className="text-xs h-auto py-2.5 px-4 whitespace-normal text-left bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800 transition-all hover:scale-105 hover:shadow-md"
-                    data-testid={`suggestion-${suggestion.id}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className="font-mono text-blue-600 dark:text-blue-400 text-[10px] mt-0.5">
-                        {index + 1}
-                      </span>
-                      <span className="flex-1">{suggestion.content}</span>
-                      {suggestion.confidence >= 0.9 && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                          High
-                        </Badge>
-                      )}
-                    </div>
-                  </Button>
-                ))}
-              </div>
+                <div className="ml-auto">
+                  <ChevronDown
+                    className={`h-4 w-4 text-blue-600 dark:text-blue-400 transition-transform ${
+                      suggestionsCollapsed ? '-rotate-180' : ''
+                    }`}
+                  />
+                </div>
+              </button>
+              
+              {/* Suggestions - Collapsible */}
+              {!suggestionsCollapsed && (
+                <div className="px-4 pb-3">
+                  <div className="flex flex-wrap gap-2 max-w-4xl mx-auto">
+                    {suggestions.map((suggestion, index) => (
+                      <Button
+                        key={suggestion.id}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSuggestionClick(suggestion.content)}
+                        className="text-xs h-auto py-2.5 px-4 whitespace-normal text-left bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800 transition-all hover:scale-105 hover:shadow-md"
+                        data-testid={`suggestion-${suggestion.id}`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className="font-mono text-blue-600 dark:text-blue-400 text-[10px] mt-0.5">
+                            {index + 1}
+                          </span>
+                          <span className="flex-1">{suggestion.content}</span>
+                          {suggestion.confidence >= 0.9 && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              High
+                            </Badge>
+                          )}
+                        </div>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
