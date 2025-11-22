@@ -296,4 +296,76 @@ router.get('/customer/:phone', async (req, res) => {
   }
 });
 
+/**
+ * Manual appointment creation from dashboard
+ * POST /api/appointments/create-manual
+ */
+router.post('/create-manual', async (req, res) => {
+  try {
+    const schema = z.object({
+      customerName: z.string().min(1),
+      phone: z.string().min(1),
+      service: z.string(), // Service ID as string
+      scheduledTime: z.string().transform(str => new Date(str)),
+      address: z.string().min(1),
+    });
+
+    const data = schema.parse(req.body);
+    const serviceId = parseInt(data.service);
+
+    // Normalize phone number
+    const normalizedPhone = data.phone.replace(/\D/g, '');
+    if (!normalizedPhone) {
+      return res.status(400).json({ success: false, error: 'Invalid phone number' });
+    }
+
+    // Find or create customer
+    let customer = await req.tenantDb!.query.customers.findFirst({
+      where: req.tenantDb!.withTenantFilter(customers, eq(customers.phone, normalizedPhone)),
+    });
+
+    if (!customer) {
+      // Create new customer
+      const [newCustomer] = await req.tenantDb!.insert(customers)
+        .values({
+          name: data.customerName,
+          phone: normalizedPhone,
+          email: null,
+        })
+        .returning();
+      customer = newCustomer;
+    }
+
+    // Create appointment in transaction with stats tracking
+    const [newAppointment] = await req.tenantDb!.transaction(async (tx) => {
+      const [apt] = await tx.insert(appointments)
+        .values({
+          customerId: customer!.id,
+          serviceId: serviceId,
+          scheduledTime: data.scheduledTime,
+          address: data.address,
+          additionalRequests: [],
+          addOns: null,
+        })
+        .returning();
+
+      // Track booking stats
+      await recordAppointmentCreated(customer!.id, data.scheduledTime, tx);
+
+      return [apt];
+    });
+
+    console.log(`[CREATE MANUAL APPOINTMENT] Created appointment ${newAppointment.id} for customer ${customer.name}`);
+
+    res.json({ 
+      success: true, 
+      appointment: newAppointment,
+      message: 'Appointment created successfully'
+    });
+  } catch (error) {
+    console.error('[POST create-manual] Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create appointment' });
+  }
+});
+
 export default router;

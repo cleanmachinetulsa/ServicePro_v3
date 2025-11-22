@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +34,8 @@ import {
   Star,
   Users,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Plus
 } from "lucide-react";
 
 interface Appointment {
@@ -76,6 +83,65 @@ export function DashboardOverview({
 }: DashboardOverviewProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newAppointmentForm, setNewAppointmentForm] = useState({
+    customerName: '',
+    phone: '',
+    service: '',
+    scheduledTime: '',
+    address: '',
+  });
+
+  // Fetch services for dropdown
+  const { data: servicesData } = useQuery<{ success: boolean; services: any[] }>({
+    queryKey: ['/api/services'],
+  });
+
+  const services = servicesData?.services || [];
+
+  // Create appointment mutation
+  const createAppointmentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('POST', '/api/appointments/create-manual', data);
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Appointment created',
+        description: 'The appointment has been created successfully.',
+      });
+      setShowCreateDialog(false);
+      setNewAppointmentForm({
+        customerName: '',
+        phone: '',
+        service: '',
+        scheduledTime: '',
+        address: '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/today'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/appointment-counts'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error creating appointment',
+        description: error.message || 'Failed to create appointment',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCreateAppointment = () => {
+    if (!newAppointmentForm.customerName || !newAppointmentForm.phone || !newAppointmentForm.service || !newAppointmentForm.scheduledTime || !newAppointmentForm.address) {
+      toast({
+        title: 'Missing fields',
+        description: 'Please fill in all required fields',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    createAppointmentMutation.mutate(newAppointmentForm);
+  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -221,6 +287,16 @@ export function DashboardOverview({
                   </div>
                 </div>
                 <div className="flex gap-1 sm:gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="bg-green-500/80 hover:bg-green-600/80 text-white border-green-400/20 backdrop-blur-sm transition-all h-9 px-3 font-medium"
+                    onClick={() => setShowCreateDialog(true)}
+                    data-testid="button-create-appointment"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    New
+                  </Button>
                   <TooltipProvider>
                     <Tooltip delayDuration={200}>
                       <TooltipTrigger asChild>
@@ -812,6 +888,104 @@ export function DashboardOverview({
           </motion.div>
         </div>
       </div>
+
+      {/* Create Appointment Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-green-600" />
+              Create New Appointment
+            </DialogTitle>
+            <DialogDescription>
+              Manually create a new appointment for a customer.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="customer-name">Customer Name *</Label>
+              <Input
+                id="customer-name"
+                placeholder="John Doe"
+                value={newAppointmentForm.customerName}
+                onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, customerName: e.target.value })}
+                data-testid="input-customer-name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="customer-phone">Phone Number *</Label>
+              <Input
+                id="customer-phone"
+                placeholder="+1 (555) 123-4567"
+                value={newAppointmentForm.phone}
+                onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, phone: e.target.value })}
+                data-testid="input-customer-phone"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="service">Service *</Label>
+              <Select
+                value={newAppointmentForm.service}
+                onValueChange={(value) => setNewAppointmentForm({ ...newAppointmentForm, service: value })}
+              >
+                <SelectTrigger id="service" data-testid="select-service">
+                  <SelectValue placeholder="Select a service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((service: any) => (
+                    <SelectItem key={service.id} value={service.id.toString()}>
+                      {service.name} ({service.priceRange})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scheduled-time">Date & Time *</Label>
+              <Input
+                id="scheduled-time"
+                type="datetime-local"
+                value={newAppointmentForm.scheduledTime}
+                onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, scheduledTime: e.target.value })}
+                data-testid="input-scheduled-time"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address">Address *</Label>
+              <Input
+                id="address"
+                placeholder="123 Main St, City, State 12345"
+                value={newAppointmentForm.address}
+                onChange={(e) => setNewAppointmentForm({ ...newAppointmentForm, address: e.target.value })}
+                data-testid="input-address"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateDialog(false)}
+              data-testid="button-cancel-create"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateAppointment}
+              disabled={createAppointmentMutation.isPending}
+              className="bg-green-600 hover:bg-green-700"
+              data-testid="button-confirm-create"
+            >
+              {createAppointmentMutation.isPending ? 'Creating...' : 'Create Appointment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
