@@ -1886,6 +1886,9 @@ export async function registerRoutes(app: Express) {
       // Process with AI
       const response = await processConversation(req.tenantDb!, webIdentifier, message, 'web');
       
+      // Save AI response to database
+      await addMessage(req.tenantDb!, conversation.id, response.response, 'ai', 'web');
+      
       return res.json({
         success: true,
         message: response.response,
