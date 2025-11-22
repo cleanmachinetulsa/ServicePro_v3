@@ -2,6 +2,7 @@ import type { Express, Request, Response } from 'express';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { resolveTenantFromInbound } from './services/tenantCommRouter';
 import { handleAiVoiceRequest, buildAiVoiceErrorTwiML } from './services/aiVoiceSession';
+import { db } from './db';
 
 /**
  * AI Voice Route (Phase 4)
@@ -21,7 +22,7 @@ export function registerTwilioVoiceAiRoutes(app: Express) {
       console.log('[AI VOICE ROUTE] Incoming AI voice request');
 
       // Resolve tenant from inbound call
-      const { tenant, phoneConfig, tenantResolution } = await resolveTenantFromInbound(req);
+      const { tenant, phoneConfig, tenantResolution } = await resolveTenantFromInbound(req, db);
 
       // Guard 1: No tenant or phone config
       if (!tenant || !phoneConfig) {

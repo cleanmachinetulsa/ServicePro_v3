@@ -25,7 +25,6 @@ describe('Canonical Voice Route - AI Voice Mode Regression (Phase 4)', () => {
   let aiVoiceTenantId: string;
   let aiVoicePhoneNumber: string;
   let aiVoicePhoneConfigId: string;
-  let aiVoiceTenantConfigId: string;
 
   beforeAll(async () => {
     // Create Express app with canonical voice routes
@@ -59,7 +58,6 @@ describe('Canonical Voice Route - AI Voice Mode Regression (Phase 4)', () => {
     aiVoiceTenantId = 'test-aivoice-' + nanoid(8);
     aiVoicePhoneNumber = '+19165552222';
     aiVoicePhoneConfigId = nanoid();
-    aiVoiceTenantConfigId = nanoid();
 
     await db.insert(tenants).values({
       id: aiVoiceTenantId,
@@ -69,7 +67,6 @@ describe('Canonical Voice Route - AI Voice Mode Regression (Phase 4)', () => {
     });
 
     await db.insert(tenantConfig).values({
-      id: aiVoiceTenantConfigId,
       tenantId: aiVoiceTenantId,
       businessName: 'AI Voice Auto Detail',
       tier: 'elite',
@@ -91,7 +88,7 @@ describe('Canonical Voice Route - AI Voice Mode Regression (Phase 4)', () => {
     await db.delete(tenants).where(eq(tenants.id, simpleTenantId));
 
     await db.delete(tenantPhoneConfig).where(eq(tenantPhoneConfig.id, aiVoicePhoneConfigId));
-    await db.delete(tenantConfig).where(eq(tenantConfig.id, aiVoiceTenantConfigId));
+    await db.delete(tenantConfig).where(eq(tenantConfig.tenantId, aiVoiceTenantId));
     await db.delete(tenants).where(eq(tenants.id, aiVoiceTenantId));
   });
 
