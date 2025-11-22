@@ -27,17 +27,22 @@ The application is being transformed into a multi-tenant platform with the follo
   - UX Quality: react-hook-form + zodResolver + Form components, tenant dropdown selector, complete data-testid coverage
   - Backend: Uses shared `insertTenantPhoneConfigSchema` with schema.shape validators, proper null handling for optional fields
   - Documentation: See `PHASE_2_1_CANONICAL_VOICE.md` and `PHASE_2_3_IVR_MODE.md`
-  - Phase 3: ✅ Tenant Communication Routing Engine (COMPLETE)
+  - Phase 3: ✅ Tenant Communication Routing Engine (IMPLEMENTED)
   - Centralized Routing: All inbound communications (SMS, Voice, IVR) use single `resolveTenantFromInbound()` service
   - Resolution Strategy: 1) MessagingServiceSid match (highest priority), 2) Phone number match, 3) Fallback to 'root'
+  - Deterministic Queries: Uses `orderBy(desc(id))` for consistent results when multiple configs match
   - Eliminates: Duplicated tenant lookup logic, misrouting edge cases, scaling bottlenecks
   - Integration: `/sms` and `/twilio/voice/incoming` routes refactored to use centralized router
-  - Testing: ✅ Comprehensive test coverage for all resolution strategies and edge cases
-  - Multi-tenant Ready: Supports multiple phone numbers per tenant, multiple messaging service SIDs, flawless routing at scale
+  - Tenant Context: Both routes properly set req.tenant, req.tenantDb, phoneConfig, and tenantResolution
+  - Testing: ✅ 16/16 unit tests passing, ✅ 14/14 integration tests passing (8 voice + 6 SMS)
+  - Multi-tenant Ready: Supports multiple phone numbers per tenant, multiple messaging service SIDs
+  - Test Coverage: Routing logic fully tested (unit tests), voice route fully tested (integration), SMS routing tested via simplified test handler
+  - Test Limitation: SMS integration tests use simplified route without production normalizePhone middleware; full SMS middleware stack untested
 
 **Key Files:**
 - `server/services/tenantCommRouter.ts` - Centralized tenant resolution engine (Phase 3)
-- `server/tests/tenantCommRouter.test.ts` - Comprehensive routing tests (Phase 3)
+- `server/tests/tenantCommRouter.test.ts` - Unit tests for routing logic (Phase 3)
+- `server/tests/tenantCommRouter.integration.test.ts` - Integration tests for SMS & Voice routes (Phase 3)
 - `server/routes.twilioVoiceCanonical.ts` - Canonical voice router with ivrMode branching
 - `server/routes.twilioVoiceIvr.ts` - IVR callback handlers (Phase 2.3)
 - `server/services/ivrHelper.ts` - TwiML builders for IVR menu (Phase 2.3)
