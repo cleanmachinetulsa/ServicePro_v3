@@ -1,0 +1,147 @@
+# PHASE 4 — AI VOICE CONCIERGE ENTRY POINT (PROVIDER-AGNOSTIC)
+
+Goal:
+Add a safe, provider-agnostic AI Voice entry path for ivrMode = 'ai-voice' so:
+- Twilio can call into a single AI voice endpoint
+- The system returns valid TwiML today (placeholder concierge)
+- Later we can swap in streaming OpenAI / ElevenLabs without changing routes
+
+Do NOT integrate any external AI provider yet. This is about clean wiring + safe defaults.
+
+--------------------------------
+1) New backend service: server/services/aiVoiceSession.ts
+--------------------------------
+
+Create a new file: server/services/aiVoiceSession.ts
+
+Export a main function:
+
+  export interface AiVoiceRequestContext {
+    tenant: TenantRow;              // from resolveTenantFromInbound
+    phoneConfig: TenantPhoneConfig; // from resolveTenantFromInbound
+    body: Record<string, any>;      // Twilio webhook body
+  }
+
+  export interface AiVoiceResult {
+    twiml: string;                  // XML string to send back to Twilio
+  }
+
+  export async function handleAiVoiceRequest(
+    ctx: AiVoiceRequestContext
+  ): Promise<AiVoiceResult> {
+    // For now, implement a SIMPLE placeholder:
+    // - Log tenant + CallSid
+    // - Return TwiML <Say> that:
+    //   - Greets caller by tenant businessName (if available)
+    //   - States that they’re speaking to an AI receptionist in beta
+    //   - Prompts them to briefly say what they need help with
+    //
+    // This is intentionally non-streaming and non-AI: just static TwiML.
+  }
+
+Use the same XML builder pattern we use elsewhere (or a tiny helper) to avoid string mistakes.
+
+--------------------------------
+2) New route: /twilio/voice/ai
+--------------------------------
+
+Add a new route file: server/routes.twilioVoiceAi.ts
+
+- Path: POST /twilio/voice/ai
+- Behavior:
+  1. Verify Twilio signature (same middleware we use for /twilio/voice/incoming).
+  2. Use resolveTenantFromInbound(req) to get:
+     - tenant
+     - phoneConfig
+     - ivrMode
+  3. Guardrails:
+     - If no tenant or no phoneConfig → return TwiML that politely says:
+       "We’re having trouble routing your call. Please try again later or send us a text."
+     - If phoneConfig.ivrMode !== 'ai-voice' → return TwiML that says:
+       "This line is not yet configured for our AI receptionist." and then hang up.
+  4. If ivrMode === 'ai-voice':
+     - Call handleAiVoiceRequest({ tenant, phoneConfig, body: req.body })
+     - Send ctx.twiml as the response with correct Content-Type.
+
+--------------------------------
+3) Integrate with /twilio/voice/incoming
+--------------------------------
+
+In the canonical inbound voice route (currently using resolveTenantFromInbound):
+
+- After tenant + phoneConfig resolution:
+
+  if (phoneConfig.ivrMode === 'ai-voice') {
+    // Option A: Call handleAiVoiceRequest() directly from here.
+    // Option B: Internally delegate to the same logic as /twilio/voice/ai.
+    //
+    // Choose whichever keeps the code simpler and avoids duplication.
+  } else if (phoneConfig.ivrMode === 'ivr') {
+    // keep existing IVR flow (press 1/2/3/7) if already present
+  } else {
+    // 'simple' or default: current SIP/forward behavior
+  }
+
+- Keep the existing "simple" behavior 100% unchanged.
+
+- Make sure that if something goes wrong in AI branch, we always:
+  - catch errors
+  - log them
+  - return a safe TwiML apology message instead of crashing.
+
+--------------------------------
+4) Admin UI: mark AI Voice as "Beta" in Phone Config list
+--------------------------------
+
+In client/src/pages/AdminPhoneConfig.tsx:
+
+- Where we display ivrMode in the table/list, update:
+  - SIMPLE → badge "Simple"
+  - IVR → badge "IVR"
+  - AI VOICE → badge "AI Voice (Beta)"
+
+- This is just display; no new form fields or flows. The goal is clarity that AI Voice is special / early access.
+
+--------------------------------
+5) Tests
+--------------------------------
+
+Add tests with a light but real coverage bar:
+
+1. Unit tests for handleAiVoiceRequest:
+   - Returns TwiML with:
+     - <Say> tag
+     - Mentions tenant.businessName if present
+     - Includes a "beta" style message and a prompt-to-speak line
+
+2. Integration tests for /twilio/voice/ai:
+   - Happy path:
+     - tenant + phoneConfig resolved
+     - ivrMode = 'ai-voice'
+     - Returns 200 with TwiML and expected phrases
+   - Misconfigured:
+     - No tenant / no phoneConfig → safe fallback TwiML
+     - ivrMode != 'ai-voice' → “not configured for AI receptionist” message
+
+3. Regression tests for /twilio/voice/incoming:
+   - When ivrMode = 'simple', behavior is unchanged from previous tests.
+   - When ivrMode = 'ai-voice', it calls into the AI path (direct or via shared handler) and returns valid TwiML.
+
+--------------------------------
+6) Docs: replit.md / MASTER_PLAN
+--------------------------------
+
+Update replit.md:
+
+- Add "Phase 4 — AI Voice Concierge Entry Point" section.
+- Describe:
+  - /twilio/voice/ai endpoint
+  - How ivrMode = 'ai-voice' changes routing
+  - That the current behavior is a static TwiML placeholder, ready to be replaced by streaming AI.
+
+Once complete, please summarize:
+
+- New files created
+- Routes updated
+- Number of new tests added
+- Confirmation that ALL existing tests still pass

@@ -31,6 +31,7 @@ import { resolveTenantFromInbound } from './services/tenantCommRouter';
 import { tenantConfig } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 import { buildMainMenuTwiml, getIvrConfigForTenant } from './services/ivrHelper';
+import { handleAiVoiceRequest } from './services/aiVoiceSession';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -91,13 +92,12 @@ async function handleIncomingVoice(req: Request, res: Response) {
     
     console.log(`[CANONICAL VOICE] tenant=${tenantId}, ivrMode=${ivrMode}`);
     
-    // ✅ Phase 2.3: Branch on IVR mode
+    // ✅ Phase 2.3/Phase 4: Branch on IVR mode
     if (ivrMode === 'ivr') {
       return handleIvrMode(req, res, tenantId, phoneConfig);
     } else if (ivrMode === 'ai-voice') {
-      // TODO: Phase 4 - Implement AI-voice mode
-      console.log(`[CANONICAL VOICE] AI-voice mode not yet implemented, falling back to simple`);
-      return handleSimpleMode(req, res, tenantId, phoneConfig, fromNumber);
+      // ✅ Phase 4: AI Voice mode - delegate to AI voice handler
+      return handleAiVoiceMode(req, res, tenantId, phoneConfig);
     } else {
       // Default: simple mode (direct SIP forward)
       return handleSimpleMode(req, res, tenantId, phoneConfig, fromNumber);
@@ -191,6 +191,55 @@ async function handleIvrMode(
   
   res.type('text/xml');
   res.send(twiml);
+}
+
+/**
+ * Handle AI Voice mode: Provider-agnostic AI voice agent (Phase 4)
+ */
+async function handleAiVoiceMode(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any
+) {
+  console.log(`[CANONICAL VOICE] mode=ai-voice, tenant=${tenantId}`);
+  
+  try {
+    // Get tenant data for personalized greeting
+    const tenantConfigData = await db
+      .select()
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    
+    const tenant = {
+      id: tenantId,
+      name: tenantConfigData[0]?.businessName || 'Our Business',
+      subdomain: null,
+      isRoot: tenantId === 'root',
+      businessName: tenantConfigData[0]?.businessName,
+      tier: tenantConfigData[0]?.tier,
+      logoUrl: tenantConfigData[0]?.logoUrl,
+      primaryColor: tenantConfigData[0]?.primaryColor,
+    };
+    
+    // Call AI voice handler
+    const result = await handleAiVoiceRequest({
+      tenant,
+      phoneConfig,
+      body: req.body,
+    });
+    
+    res.type('text/xml');
+    res.send(result.twiml);
+  } catch (error) {
+    console.error('[CANONICAL VOICE] Error in AI voice mode:', error);
+    const response = new VoiceResponse();
+    response.say({ voice: 'alice' }, 'We encountered an error with our AI receptionist. Please try again later.');
+    response.hangup();
+    res.type('text/xml');
+    res.send(response.toString());
+  }
 }
 
 /**
