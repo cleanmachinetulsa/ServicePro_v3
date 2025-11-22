@@ -20,10 +20,11 @@ export function registerBannerRoutes(app: Express) {
     }
 
     try {
-      const allBanners = await (req as any).tenantDb!
+      const tenantDb = (req as any).tenantDb!;
+      const allBanners = await tenantDb
         .select()
         .from(banners)
-        .where((req as any).tenantDb!.withTenantFilter(banners))
+        .where(eq(banners.tenantId, tenantDb.tenant.id))
         .orderBy(desc(banners.updatedAt));
 
       return res.json(allBanners);
@@ -40,16 +41,16 @@ export function registerBannerRoutes(app: Express) {
   app.get("/api/banners/active", async (req, res) => {
     try {
       const now = new Date();
-      const activeBanners = await (req as any).tenantDb!
+      const tenantDb = (req as any).tenantDb!;
+      const activeBanners = await tenantDb
         .select()
         .from(banners)
         .where(
-          (req as any).tenantDb!.withTenantFilter(banners,
-            and(
-              eq(banners.isActive, true),
-              or(isNull(banners.scheduleStart), lte(banners.scheduleStart, now)),
-              or(isNull(banners.scheduleEnd), gte(banners.scheduleEnd, now))
-            )
+          and(
+            eq(banners.tenantId, tenantDb.tenant.id),
+            eq(banners.isActive, true),
+            or(isNull(banners.scheduleStart), lte(banners.scheduleStart, now)),
+            or(isNull(banners.scheduleEnd), gte(banners.scheduleEnd, now))
           )
         )
         .orderBy(desc(banners.priority), desc(banners.createdAt));
@@ -76,10 +77,16 @@ export function registerBannerRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid banner ID" });
       }
 
-      const [banner] = await (req as any).tenantDb!
+      const tenantDb = (req as any).tenantDb!;
+      const [banner] = await tenantDb
         .select()
         .from(banners)
-        .where((req as any).tenantDb!.withTenantFilter(banners, eq(banners.id, bannerId)))
+        .where(
+          and(
+            eq(banners.tenantId, tenantDb.tenant.id),
+            eq(banners.id, bannerId)
+          )
+        )
         .limit(1);
 
       if (!banner) {
@@ -152,7 +159,7 @@ export function registerBannerRoutes(app: Express) {
           ...validatedData,
           updatedAt: new Date(),
         })
-        .where((req as any).tenantDb!.withTenantFilter(banners, eq(banners.id, bannerId)))
+        .where(eq(banners.id, bannerId))
         .returning();
 
       if (!updatedBanner) {
@@ -192,7 +199,7 @@ export function registerBannerRoutes(app: Express) {
 
       const [deletedBanner] = await (req as any).tenantDb!
         .delete(banners)
-        .where((req as any).tenantDb!.withTenantFilter(banners, eq(banners.id, bannerId)))
+        .where(eq(banners.id, bannerId))
         .returning();
 
       if (!deletedBanner) {

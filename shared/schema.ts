@@ -665,6 +665,7 @@ export const callEvents = pgTable("call_events", {
 // Phone Lines - Configuration for each Twilio business phone line
 export const phoneLines = pgTable("phone_lines", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   phoneNumber: varchar("phone_number", { length: 20 }).notNull().unique(), // +19188565304 or +19188565711
   label: varchar("label", { length: 100 }).notNull(), // "Main Line", "VIP Line"
   forwardingEnabled: boolean("forwarding_enabled").default(true), // Enable/disable call forwarding

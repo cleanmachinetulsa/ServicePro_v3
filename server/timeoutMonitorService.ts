@@ -48,12 +48,11 @@ async function checkTimeouts() {
       .select()
       .from(conversations)
       .where(
-        tenantDb.withTenantFilter(conversations,
-          and(
-            eq(conversations.controlMode, 'manual'),
-            eq(conversations.status, 'active'),
-            lt(conversations.lastMessageTime, timeoutThreshold)
-          )
+        and(
+          eq(conversations.tenantId, 'root'),
+          eq(conversations.controlMode, 'manual'),
+          eq(conversations.status, 'active'),
+          lt(conversations.lastMessageTime, timeoutThreshold)
         )
       );
 
@@ -111,7 +110,7 @@ export async function updateLastActivity(conversationId: number) {
         lastMessageTime: new Date(),
         lastAgentActivity: new Date(),
       })
-      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)));
+      .where(eq(conversations.id, conversationId));
   } catch (error) {
     console.error('[TIMEOUT MONITOR] Error updating last activity:', error);
   }

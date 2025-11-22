@@ -168,6 +168,7 @@ const DEFAULT_TEMPLATES = [
  */
 export async function initializeSmsTemplates() {
   const tenantDb = wrapTenantDb(db, 'root');
+  
   try {
     console.log('[SMS TEMPLATES INIT] Starting template initialization...');
 
@@ -181,6 +182,7 @@ export async function initializeSmsTemplates() {
         .from(smsTemplates)
         .where(
           and(
+            eq(smsTemplates.tenantId, 'root'),
             eq(smsTemplates.templateKey, template.templateKey),
             eq(smsTemplates.language, "en")
           )
