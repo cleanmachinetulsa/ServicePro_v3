@@ -1,0 +1,154 @@
+// 🔧 PHASE 1I FIX – SINGLE DROP-IN PATCH
+// Apply this to the repo. It creates/overwrites server/backfillPhoneLines.ts
+// and wires it into server/index.ts startup.
+
+// ================================
+// FILE: server/backfillPhoneLines.ts
+// ================================
+/**
+ * Tenant-safe backfill for legacy phoneLines and tenantPhoneConfig rows.
+ *
+ * This version:
+ * - Uses raw `db` only to FIND legacy rows with NULL tenantId.
+ * - Uses tenant-aware `tenantDb('root')` for UPDATEs.
+ * - Does NOT use withTenantFilter() on legacy rows (they don't have tenantId yet).
+ * - Is idempotent: safe to run multiple times.
+ */
+
+import { db } from "./db";
+import { wrapTenantDb } from "./tenantDb";
+import { phoneLines, tenantPhoneConfig } from "./shared/schema";
+import { eq, isNull } from "drizzle-orm";
+
+export async function backfillPhoneLines() {
+  console.log("[backfillPhoneLines] Starting backfill...");
+
+  // 1) Select legacy rows directly from base db (NO tenant filter yet).
+  const legacyLines = await db
+    .select()
+    .from(phoneLines)
+    .where(isNull(phoneLines.tenantId));
+
+  if (legacyLines.length === 0) {
+    console.log("[backfillPhoneLines] No legacy rows found. Nothing to do.");
+    return;
+  }
+
+  console.log(
+    `[backfillPhoneLines] Found ${legacyLines.length} legacy phone lines needing backfill`
+  );
+
+  // 2) Use tenant-aware wrapper for updates (root tenant).
+  const tenantDb = wrapTenantDb(db, "root");
+
+  for (const line of legacyLines) {
+    try {
+      await tenantDb
+        .update(phoneLines)
+        .set({
+          tenantId: "root",
+        })
+        // IMPORTANT: do NOT use withTenantFilter() here.
+        // These rows don't have tenantId yet; we're assigning it.
+        .where(eq(phoneLines.id, line.id));
+
+      console.log(
+        `[backfillPhoneLines] Updated phoneLine ${line.id} → tenant=root`
+      );
+    } catch (err) {
+      console.error(
+        `[backfillPhoneLines] ERROR updating phoneLine ${line.id}:`,
+        err
+      );
+    }
+  }
+
+  console.log("[backfillPhoneLines] Backfill complete.");
+}
+
+/**
+ * Optional companion: ensures tenantPhoneConfig rows are tagged with tenantId.
+ * Only acts on records where tenantId IS NULL.
+ */
+export async function backfillTenantPhoneConfig() {
+  console.log("[backfillTenantPhoneConfig] Starting...");
+
+  const missing = await db
+    .select()
+    .from(tenantPhoneConfig)
+    .where(isNull(tenantPhoneConfig.tenantId));
+
+  if (missing.length === 0) {
+    console.log("[backfillTenantPhoneConfig] Nothing to fix.");
+    return;
+  }
+
+  const tenantDb = wrapTenantDb(db, "root");
+
+  for (const cfg of missing) {
+    try {
+      await tenantDb
+        .update(tenantPhoneConfig)
+        .set({
+          tenantId: "root",
+        })
+        .where(eq(tenantPhoneConfig.id, cfg.id));
+
+      console.log(
+        `[backfillTenantPhoneConfig] Marked config ${cfg.id} as tenant=root`
+      );
+    } catch (err) {
+      console.error(
+        `[backfillTenantPhoneConfig] ERROR updating config ${cfg.id}:`,
+        err
+      );
+    }
+  }
+
+  console.log("[backfillTenantPhoneConfig] Done.");
+}
+
+// ================================
+// FILE: server/index.ts (PATCH)
+// ================================
+//
+// 1) At the top of server/index.ts, WITH THE OTHER IMPORTS, add this import:
+//
+//   import { backfillPhoneLines, backfillTenantPhoneConfig } from "./backfillPhoneLines";
+//
+// If there is an old/backfill import or commented-out call, this replaces it.
+//
+// 2) In the main startup/bootstrap flow, AFTER db init/migrations and BEFORE
+// starting the HTTP server, ensure we call the backfill exactly once:
+//
+//   // Run backfills for legacy phone line + phone config rows
+//   await backfillPhoneLines();
+//   await backfillTenantPhoneConfig();
+//
+// 3) REMOVE any old "TODO: re-enable after tenant fix" comments or disabled calls like:
+//   // await backfillPhoneLines();
+//
+// The end result should look roughly like:
+//
+//   import { backfillPhoneLines, backfillTenantPhoneConfig } from "./backfillPhoneLines";
+//
+//   async function main() {
+//     // ... existing setup (env checks, db connect, migrations, etc.)
+//
+//     await backfillPhoneLines();
+//     await backfillTenantPhoneConfig();
+//
+//     // then start server
+//     app.listen(PORT, () => {
+//       console.log(`Server listening on ${PORT}`);
+//     });
+//   }
+//
+//   main().catch((err) => {
+//     console.error("Fatal startup error", err);
+//     process.exit(1);
+//   });
+//
+// ================================
+// END OF SINGLE DROP-IN PATCH
+// ================================
