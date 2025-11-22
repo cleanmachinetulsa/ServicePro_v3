@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum, sql } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -180,7 +180,10 @@ export const platformSettings = pgTable("platform_settings", {
 });
 
 // Tenant tier enum for subscription levels
-export const tenantTierEnum = pgEnum('tenant_tier', ['starter', 'pro', 'elite']);
+export const tenantTierEnum = pgEnum('tenant_tier', ['starter', 'pro', 'elite', 'internal']);
+
+// Tenant status enum for subscription/account status
+export const tenantStatusEnum = pgEnum('tenant_status', ['trialing', 'active', 'past_due', 'suspended', 'cancelled']);
 
 // Tenants table for multi-tenant support
 export const tenants = pgTable("tenants", {
@@ -188,6 +191,8 @@ export const tenants = pgTable("tenants", {
   name: varchar("name", { length: 255 }).notNull(),
   subdomain: varchar("subdomain", { length: 100 }),
   isRoot: boolean("is_root").default(false).notNull(),
+  planTier: tenantTierEnum("plan_tier").default("starter").notNull(),
+  status: tenantStatusEnum("status").default("trialing").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -4,6 +4,7 @@ import { tenants, tenantConfig, insertTenantSchema, insertTenantConfigSchema } f
 import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { requireRole } from './rbacMiddleware';
+import { z } from 'zod';
 
 export function registerAdminTenantRoutes(app: Express) {
   
@@ -15,6 +16,8 @@ export function registerAdminTenantRoutes(app: Express) {
           name: tenants.name,
           subdomain: tenants.subdomain,
           isRoot: tenants.isRoot,
+          planTier: tenants.planTier,
+          status: tenants.status,
           createdAt: tenants.createdAt,
           updatedAt: tenants.updatedAt,
           businessName: tenantConfig.businessName,
@@ -43,6 +46,8 @@ export function registerAdminTenantRoutes(app: Express) {
           name: tenants.name,
           subdomain: tenants.subdomain,
           isRoot: tenants.isRoot,
+          planTier: tenants.planTier,
+          status: tenants.status,
           createdAt: tenants.createdAt,
           updatedAt: tenants.updatedAt,
           businessName: tenantConfig.businessName,
@@ -201,6 +206,81 @@ export function registerAdminTenantRoutes(app: Express) {
     } catch (error: any) {
       console.error('[ADMIN TENANTS] Error deleting tenant:', error);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  /**
+   * PHASE 7: Update tenant plan and status
+   * PATCH /api/admin/tenants/:id/plan
+   * Owner-only endpoint for managing tenant plan tier and status
+   */
+  app.patch('/api/admin/tenants/:id/plan', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+
+      // Zod schema for plan updates
+      const planUpdateSchema = z.object({
+        planTier: z.enum(['starter', 'pro', 'elite', 'internal']).optional(),
+        status: z.enum(['trialing', 'active', 'past_due', 'suspended', 'cancelled']).optional(),
+      });
+
+      const parseResult = planUpdateSchema.safeParse(req.body);
+
+      if (!parseResult.success) {
+        return res.status(400).json({
+          success: false,
+          error: parseResult.error.errors[0]?.message || 'Invalid plan tier or status'
+        });
+      }
+
+      const { planTier, status } = parseResult.data;
+
+      // Check if tenant exists
+      const [existing] = await db.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+      
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Tenant not found' });
+      }
+
+      // Build updates object
+      const updates: any = { updatedAt: new Date() };
+      if (planTier !== undefined) updates.planTier = planTier;
+      if (status !== undefined) updates.status = status;
+
+      // Only update if there are changes
+      if (Object.keys(updates).length > 1) {
+        await db.update(tenants)
+          .set(updates)
+          .where(eq(tenants.id, id));
+
+        console.log(`[ADMIN TENANTS] Updated plan for tenant ${id}: planTier=${planTier || 'unchanged'}, status=${status || 'unchanged'}`);
+      }
+
+      // Return updated tenant
+      const [updatedTenant] = await db
+        .select({
+          id: tenants.id,
+          name: tenants.name,
+          subdomain: tenants.subdomain,
+          isRoot: tenants.isRoot,
+          planTier: tenants.planTier,
+          status: tenants.status,
+          createdAt: tenants.createdAt,
+          updatedAt: tenants.updatedAt,
+          businessName: tenantConfig.businessName,
+          logoUrl: tenantConfig.logoUrl,
+          primaryColor: tenantConfig.primaryColor,
+          tier: tenantConfig.tier,
+        })
+        .from(tenants)
+        .leftJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
+        .where(eq(tenants.id, id))
+        .limit(1);
+
+      res.json({ success: true, tenant: updatedTenant });
+    } catch (error: any) {
+      console.error('[ADMIN TENANTS] Error updating plan:', error);
+      res.status(400).json({ success: false, error: error.message });
     }
   });
 }

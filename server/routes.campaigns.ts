@@ -15,6 +15,10 @@ import {
   cancelSMSCampaign
 } from './smsCampaignService';
 import { z } from 'zod';
+import { hasFeature } from '@shared/features';
+import { db } from './db';
+import { tenants } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 const router = Router();
 
@@ -29,8 +33,39 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// Apply auth middleware to all routes
+// PHASE 7: Feature gating for campaigns
+async function requireCampaignsFeature(req: Request, res: Response, next: NextFunction) {
+  try {
+    const tenantId = (req as any).tenant?.id || 'root';
+    const [tenantRecord] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    
+    if (!tenantRecord) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tenant not found'
+      });
+    }
+
+    if (!hasFeature(tenantRecord, 'campaigns')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Campaigns feature requires Pro plan or higher. Please upgrade your plan to access this feature.'
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('[CAMPAIGNS] Feature gating error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to verify feature access'
+    });
+  }
+}
+
+// Apply auth and feature gating middleware to all routes
 router.use(requireAuth);
+router.use(requireCampaignsFeature);
 
 // Validation schemas
 const emailCampaignSchema = z.object({

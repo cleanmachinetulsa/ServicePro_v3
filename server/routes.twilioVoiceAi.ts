@@ -5,6 +5,7 @@ import { resolveTenantFromInbound } from './services/tenantCommRouter';
 import { handleAiVoiceRequest, buildAiVoiceErrorTwiML } from './services/aiVoiceSession';
 import { db } from './db';
 import { tenants, tenantConfig } from '@shared/schema';
+import { hasFeature } from '@shared/features';
 
 /**
  * AI Voice Route (Phase 4)
@@ -49,6 +50,17 @@ export function registerTwilioVoiceAiRoutes(app: Express) {
       // Fetch full tenant record with businessName
       const [tenantRecord] = await db.select().from(tenants).where(eq(tenants.id, resolution.tenantId));
       const [configRecord] = await db.select().from(tenantConfig).where(eq(tenantConfig.tenantId, resolution.tenantId));
+
+      // Guard 3: Feature gating - AI Voice Agent (Phase 7)
+      if (tenantRecord && !hasFeature(tenantRecord, 'aiVoiceAgent')) {
+        console.warn(
+          `[AI VOICE ROUTE] Tenant '${tenantRecord.id}' with plan '${tenantRecord.planTier}' does not have access to AI Voice Agent`
+        );
+        const errorTwiml = buildAiVoiceErrorTwiML(
+          "This feature is not available on your current plan. Please upgrade to access the A I voice receptionist, or send us a text message instead."
+        );
+        return res.type('text/xml').send(errorTwiml);
+      }
 
       if (!tenantRecord) {
         console.warn(`[AI VOICE ROUTE] Tenant record not found for ID '${resolution.tenantId}', returning error TwiML`);

@@ -2213,6 +2213,30 @@ export async function registerRoutes(app: Express) {
         return;
       }
 
+      // PHASE 7: Feature gating for AI SMS Agent
+      const { hasFeature } = await import('@shared/features');
+      const { tenants: tenantsTable } = await import('@shared/schema');
+      const { eq: eqOp } = await import('drizzle-orm');
+      
+      const tenantId = (req.tenant as any)?.id || 'root';
+      const [tenantRecord] = await db.select().from(tenantsTable).where(eqOp(tenantsTable.id, tenantId));
+      
+      if (tenantRecord && !hasFeature(tenantRecord, 'aiSmsAgent')) {
+        console.warn(`[AI SMS AGENT] Tenant '${tenantId}' with plan '${tenantRecord.planTier}' does not have access to AI SMS Agent`);
+        
+        // Send a fallback message indicating AI is not available
+        const fallbackMessage = 'Thank you for your message. A team member will respond to you shortly.';
+        
+        await addMessage(req.tenantDb!, conversation.id, fallbackMessage, 'agent', platform, null, phoneLineId);
+        
+        if (!isWebClient && platform === 'sms') {
+          res.set('Content-Type', 'text/xml');
+          return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(fallbackMessage)}</Message></Response>`);
+        }
+        
+        return res.json({ success: true, message: fallbackMessage });
+      }
+
       // Import the unified AI system (with scheduling tools integrated)
       const { generateAIResponse } = await import('./openai');
       const { getConversationById } = await import('./conversationService');
