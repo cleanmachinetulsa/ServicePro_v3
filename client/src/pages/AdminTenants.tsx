@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState } from 'wouter';
+import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,7 @@ type CreateTenantForm = z.infer<typeof createTenantSchema>;
 
 export default function AdminTenants() {
   const { toast } = useToast();
-  const [, navigate] = useState();
+  const [, navigate] = useLocation();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data: tenantsData, isLoading } = useQuery<{ tenants: any[] }>({
