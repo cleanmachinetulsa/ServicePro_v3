@@ -1,0 +1,91 @@
+ PHASE 3 — TENANT COMMUNICATION ROUTING ENGINE
+# Deliverables for this phase:
+
+1. Create a new server service: /server/services/tenantCommRouter.ts
+   - A single entry point function: resolveTenantFromInbound(req)
+   - Accepts inbound webhook: (From, To, Body, MessagingServiceSid)
+   - Returns { tenantId, phoneConfig, ivrMode }
+
+2. Update inbound SMS + Voice routes to use resolveTenantFromInbound()
+   - server/routes.inboundSms.ts
+   - server/routes.inboundVoice.ts
+
+3. Implement IVR Mode Routing Logic
+   - simple: return standard text responses (existing logic)
+   - ivr: return TwiML referencing stored IVR config records
+   - ai-voice: pass through to new AI Voice endpoint (Phase 4)
+
+4. Add automatic fallback rules:
+   - If MessagingServiceSid matches a tenant → use that tenant
+   - Else if To number matches tenant phone config → use that tenant
+   - Else default to rootTenant for error handling only
+
+5. Create backend test coverage:
+   - Test tenant resolution by number
+   - Test tenant resolution by MessagingServiceSid
+   - Test failure behavior when no tenant is found
+
+6. Frontend: add missing IVR mode tags to the AdminPhoneConfig list UI
+   - On the table list view, show a badge for:
+     - SIMPLE
+     - IVR
+     - AI VOICE
+
+7. Documentation: Append Phase 3 section to replit.md
+   - Routing rules
+   - Examples of inbound request and how resolution works
+   - Troubleshooting matrix
+⚙️ What Phase 3 Actually Does
+1. Centralizes all inbound communication logic
+Every SMS, call, IVR request — all of it flows through one resolver.
+This eliminates:
+
+duplicated logic
+
+tenant misrouting
+
+edge-case failures
+
+scaling pain when you reach 50+ tenants
+
+2. Makes your app truly multi-tenant
+ServicePro now supports:
+
+multiple numbers per tenant
+
+multiple Messaging Service SIDs per tenant
+
+multiple IVR styles per number
+
+flawless routing no matter where the request originates
+
+3. Prepares the system for:
+Phase 4: AI Voice Concierge (ElevenLabs / OpenAI Voice)
+
+Phase 5: Multi-tenant Outbound Messaging Orchestration
+
+Phase 6: Per-tenant onboarding wizards
+
+Phase 7: White-Label Export Mode
+
+You have officially hit the point where ServicePro starts looking like a real platform.
+
+📦 Phase 3 Output (when complete in Replit)
+Replit should output:
+
+“TenantCommRouter: inbound resolution implemented”
+
+“Inbound SMS/Voice routes refactored”
+
+“IVR mode routing verified”
+
+“AdminPhoneConfig updated with mode badges”
+
+“Phase 3 docs added to replit.md”
+
+All new tests passing
+
+All linting passing
+
+Once it prints a summary like that, Phase 3 is complete.
+

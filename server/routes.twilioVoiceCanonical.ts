@@ -1,19 +1,19 @@
 /**
- * PHASE 2.3 - Canonical Voice Entry-Point with IVR Mode Support
+ * PHASE 3 - Canonical Voice Entry-Point with Centralized Tenant Routing
  * 
  * This is the standardized inbound voice webhook handler for ServicePro multi-tenant telephony.
  * 
- * CURRENT (Phase 2.3):
+ * CURRENT (Phase 3):
+ * - ✅ Centralized tenant routing via tenantCommRouter service
  * - ✅ Dynamic tenant lookup via tenantPhoneConfig table
- * - ✅ Looks up tenant by Twilio 'To' number
+ * - ✅ Supports MessagingServiceSid and phone number resolution
  * - ✅ Per-tenant SIP configuration from database
  * - ✅ IVR mode branching (simple/ivr/ai-voice)
  * - ✅ Caller ID passthrough enabled
  * - ✅ Fallback to 'root' tenant if phone number not found
  * 
- * FUTURE (Phase 3+):
+ * FUTURE (Phase 4+):
  * - AI-powered voice agent mode (ai-voice)
- * - Per-tenant IVR configurations from database
  * 
  * ENDPOINT: POST /twilio/voice/incoming
  * 
@@ -27,7 +27,7 @@ import twilio from 'twilio';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
-import { getTenantByPhoneNumber } from './services/tenantPhone';
+import { resolveTenantFromInbound } from './services/tenantCommRouter';
 import { tenantConfig } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 import { buildMainMenuTwiml, getIvrConfigForTenant } from './services/ivrHelper';
@@ -37,37 +37,25 @@ const VoiceResponse = twilio.twiml.VoiceResponse;
 /**
  * Tenant Resolver Middleware for Twilio Voice Webhooks
  * 
- * Phase 2.2: Dynamic tenant lookup by phone number via tenantPhoneConfig table
+ * Phase 3: Uses centralized tenant communication router
  * 
  * How it works:
- * 1. Extract the 'To' number from Twilio request (e.g., +19188565304)
- * 2. Look up tenantPhoneConfig by phone number
- * 3. Resolve tenant ID (fallback to 'root' if not found)
- * 4. Attach tenant context to request for downstream handlers
+ * 1. Call resolveTenantFromInbound() service
+ * 2. Service tries MessagingServiceSid match, then phone number, then fallback
+ * 3. Attach tenant context to request for downstream handlers
  */
 async function tenantResolverForTwilio(req: Request, res: Response, next: NextFunction) {
   try {
-    const phoneNumber = req.body.To;
+    // ✅ Phase 3: Use centralized tenant router
+    const resolution = await resolveTenantFromInbound(req, db);
     
-    if (!phoneNumber) {
-      console.warn('[CANONICAL VOICE] No "To" number in request, defaulting to root tenant');
-      req.tenant = { id: 'root' };
-      req.tenantDb = wrapTenantDb(db, 'root');
-      return next();
-    }
+    req.tenant = { id: resolution.tenantId };
+    req.tenantDb = wrapTenantDb(db, resolution.tenantId);
     
-    // ✅ Phase 2.2: Dynamic tenant lookup by phone number
-    const phoneConfig = await getTenantByPhoneNumber(db, phoneNumber);
+    // Store phone config and resolution metadata on request
+    (req as any).phoneConfig = resolution.phoneConfig;
+    (req as any).tenantResolution = resolution;
     
-    const tenantId = phoneConfig?.tenantId || 'root';
-    
-    req.tenant = { id: tenantId };
-    req.tenantDb = wrapTenantDb(db, tenantId);
-    
-    // Store phone config on request for handler to access SIP settings
-    (req as any).phoneConfig = phoneConfig;
-    
-    console.log(`[CANONICAL VOICE] Tenant resolved: ${tenantId} for incoming call to ${phoneNumber}${phoneConfig ? '' : ' (fallback to root)'}`);
     next();
   } catch (error) {
     console.error('[CANONICAL VOICE] Error in tenant resolver:', error);
