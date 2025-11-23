@@ -15,13 +15,15 @@ interface AppShellProps {
   title?: string;
   showSearch?: boolean;
   pageActions?: React.ReactNode;
+  sidebarActions?: React.ReactNode;
 }
 
 export function AppShell({ 
   children, 
   title, 
   showSearch = true, 
-  pageActions 
+  pageActions,
+  sidebarActions
 }: AppShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [location, navigate] = useLocation();
@@ -100,6 +102,12 @@ export function AppShell({
         </div>
 
         <div className="flex-1 overflow-y-auto py-4 px-2">
+          {sidebarActions && (
+            <div className="mb-4 px-2">
+              {sidebarActions}
+              <Separator className="mt-4" />
+            </div>
+          )}
           {renderNavigationItems()}
         </div>
 
@@ -122,6 +130,12 @@ export function AppShell({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto py-4 px-2">
+            {sidebarActions && (
+              <div className="mb-4 px-2">
+                {sidebarActions}
+                <Separator className="mt-4" />
+              </div>
+            )}
             {renderNavigationItems(true)}
           </div>
 
