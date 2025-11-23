@@ -281,6 +281,19 @@ export const campaignConfigs = pgTable("campaign_configs", {
   tenantCampaignIdx: uniqueIndex("campaign_configs_tenant_campaign_idx").on(table.tenantId, table.campaignKey),
 }));
 
+// Campaign sends - track when campaigns are sent to customers for AI awareness
+export const campaignSends = pgTable("campaign_sends", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "cascade" }),
+  campaignKey: varchar("campaign_key", { length: 100 }).notNull(), // e.g. 'welcome_back_v1_vip', 'welcome_back_v1_regular'
+  channel: varchar("channel", { length: 20 }).notNull(), // 'sms', 'email', 'both'
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantCustomerCampaignIdx: index("campaign_sends_tenant_customer_campaign_idx").on(table.tenantId, table.customerId, table.campaignKey),
+  sentAtIdx: index("campaign_sends_sent_at_idx").on(table.sentAt),
+}));
+
 // Loyalty tier enum for customer tier upgrades
 export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold', 'platinum']);
 

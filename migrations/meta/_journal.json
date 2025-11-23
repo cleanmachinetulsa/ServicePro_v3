@@ -8,6 +8,13 @@
       "when": 1763876223707,
       "tag": "0000_aromatic_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1763940971585,
+      "tag": "0001_aspiring_cerebro",
+      "breakpoints": true
     }
   ]
 }
