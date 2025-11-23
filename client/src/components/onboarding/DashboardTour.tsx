@@ -92,7 +92,7 @@ export function DashboardTour({
   const overlay = (
     <div
       className="fixed inset-0 z-[9999] bg-black/60"
-      style={{ pointerEvents: "auto" }}
+      style={{ pointerEvents: "none" }}
     >
       {/* Highlight box */}
       {targetRect && (
@@ -113,6 +113,7 @@ export function DashboardTour({
         style={{
           top: (targetRect?.top ?? 80) + (targetRect?.height ?? 0) + 20,
           left: targetRect?.left ?? 24,
+          pointerEvents: "auto",
         }}
       >
         <div className="font-semibold text-lg mb-2 text-gray-900 dark:text-white">

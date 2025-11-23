@@ -1,0 +1,109 @@
+YOU ARE REPLIT AI WORKING ON THE "SERVICEPRO" / "CLEAN MACHINE" WHITE-LABEL APP.
+
+CONTEXT (DO NOT IGNORE):
+- The dashboard UI was originally built in the Clean Machine app and had carefully tuned:
+  - animated transitions
+  - hamburger menus
+  - layout sizing for buttons and cards
+- After migrating into ServicePro, the dashboard NOW:
+  - visually looks similar to the old one
+  - BUT there is a large block / overlay covering it
+  - I cannot click any buttons or interact with the underlying UI.
+- I can reach the dashboard by going to /dashboard, but it’s effectively unusable because of the overlay.
+
+GOAL
+Find and fix whatever is BLOCKING the dashboard interactivity (likely a full-screen overlay, tour, or welcome block), WITHOUT breaking:
+- existing animations and transitions
+- base layout and styling
+- any of the new dashboard tour logic we just added (Phase 9)
+
+LIMIT SCOPE
+- Only touch components/layouts directly related to the main dashboard screen and any overlays/tours that render on top of it.
+- Do NOT alter global auth, onboarding endpoints, or tenant creation logic.
+- Do NOT redesign the dashboard; only remove/fix the blocker so the underlying dashboard is usable again.
+
+========================
+STEP 1 – FIND THE OVERLAY / BLOCK
+========================
+1) Look in the client for the dashboard page and related components:
+   - e.g. files like:
+     - client/src/pages/Dashboard.tsx
+     - client/src/components/dashboard/*
+     - any “DashboardTour”, “OnboardingOverlay”, or “Welcome” components.
+
+2) SEARCH for:
+   - elements with Tailwind classes like:
+     - `fixed inset-0`
+     - `absolute inset-0`
+     - `z-40`, `z-50`, `z-[9999]`
+   - components that conditionally render over the entire screen:
+     - tours, welcome overlays, “no tenant” overlays, etc.
+
+3) Identify which element is actually covering the dashboard:
+   - A component that wraps the whole viewport,
+   - Or a div that conditionally renders and takes the full width/height.
+
+========================
+STEP 2 – MAKE THE OVERLAY BEHAVE CORRECTLY
+========================
+When you find the offending overlay/blocker:
+
+1) Determine its INTENDED behavior:
+   - Is it a first-time dashboard tour overlay?
+   - A “no tenant configured” message?
+   - A loading state while fetching data?
+   - An onboarding prompt?
+
+2) FIX ITS CONDITIONS so that:
+   - It ONLY shows when it actually should:
+     - e.g. first visit and hasn’t dismissed the tour,
+     - or when there truly is no tenant or no data.
+   - It is DISMISSIBLE (when appropriate) via:
+     - a close button,
+     - or finishing the tour,
+     - or successful data load.
+
+3) ENSURE that when it’s NOT supposed to show:
+   - It is NOT rendered, OR
+   - It renders in a smaller area (e.g. a card **within** the dashboard, not covering everything).
+
+4) Do NOT remove the dashboard tour logic; instead:
+   - Confirm that the tour overlay has a clear “finished/dismissed” state,
+   - That state is stored (e.g. in local storage or user settings),
+   - And once finished, the overlay does not appear again.
+
+========================
+STEP 3 – PRESERVE ORIGINAL DASHBOARD FEEL
+========================
+1) DO NOT:
+   - Remove the animated transitions system.
+   - Flatten the layout.
+   - Strip the hamburger menu or nav structure.
+
+2) If you have to adjust z-index values:
+   - Use the minimal change necessary so the dashboard remains visible & clickable.
+   - Ensure components that truly should be on top (modals, menus) still work when active.
+
+========================
+STEP 4 – VERIFY INTERACTIVITY
+========================
+After your changes:
+
+1) Confirm that:
+   - When visiting /dashboard as a logged-in user:
+     - The main dashboard is fully visible.
+     - Buttons, cards, and hamburger menus are clickable.
+   - The big blocking overlay is gone EXCEPT in cases where it is truly needed (e.g., an intentional tour or modal).
+
+2) If there is a first-time tour:
+   - Verify it can be dismissed/completed.
+   - After it’s dismissed, reload /dashboard and ensure the tour does NOT block the screen again.
+
+========================
+STEP 5 – SUMMARY
+========================
+At the end, log a short summary describing:
+- Which file(s) contained the blocking overlay.
+- What conditions/state you used to control its visibility.
+- Any z-index or layout changes made.
+- Confirmation that the dashboard is now usable and the tour/overlays behave as intended.
