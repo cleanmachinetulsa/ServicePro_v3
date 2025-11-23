@@ -56,3 +56,16 @@ The Express server uses `app.set('trust proxy', true)` to correctly handle Repli
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversation handling, email content generation, and service recommendations.
+
+## Recent Changes
+
+### Customizable Dashboard System (November 2025)
+Implemented a fully customizable dashboard with drag-and-drop widget rearrangement:
+- 7 granular widgets: Monthly Stats, Calendar, Daily Schedule, Daily Insights, Quick Actions, Cash Collections, Deposit History
+- Per-user, per-tenant layout persistence in `dashboardLayouts` table
+- Layout reconciliation system to handle new widgets added in future updates
+- "Customize Dashboard" button in sidebar for easy access
+- AI Help Search always visible at top of sidebar
+
+## Future Enhancements Roadmap
+- **Universal Customizability**: Extend drag-and-drop widget customization to all pages and panels across the platform for a fully personalized user experience

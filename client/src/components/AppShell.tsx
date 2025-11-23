@@ -102,6 +102,9 @@ export function AppShell({
         </div>
 
         <div className="flex-1 overflow-y-auto py-4 px-2">
+          <div className="px-2 mb-4">
+            <AiHelpSearch />
+          </div>
           {sidebarActions && (
             <div className="mb-4 px-2">
               {sidebarActions}
@@ -130,6 +133,9 @@ export function AppShell({
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto py-4 px-2">
+            <div className="px-2 mb-4">
+              <AiHelpSearch />
+            </div>
             {sidebarActions && (
               <div className="mb-4 px-2">
                 {sidebarActions}
