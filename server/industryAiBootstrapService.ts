@@ -5,11 +5,19 @@ import { wrapTenantDb } from './tenantDb';
 
 /**
  * Bootstrap industry-specific AI behavior rules, SMS templates, and FAQ entries for a tenant.
- * This is idempotent - safe to run multiple times without creating duplicates.
+ * 
+ * Behavior:
+ * - For each bootstrap record (templates, rules, FAQs), performs an UPSERT operation:
+ *   - If a matching record exists for this tenant/key, it UPDATES the existing record
+ *   - If no match exists, it CREATES a new record
+ * - This allows us to improve bootstrap data over time and re-run onboarding
+ *   without manual cleanup. It's idempotent and safe to call multiple times.
+ * - For SMS templates, only updates if version === 1 (hasn't been customized by user)
  * 
  * @param tenantId - The tenant ID to bootstrap
  * @param industryId - The industry pack ID (e.g., 'auto_detailing_mobile')
  * @param bootstrapData - The bootstrap data containing AI rules, SMS templates, and FAQ entries
+ * @returns Result object with success flag and summary of created/updated counts
  */
 export async function bootstrapIndustryAiAndMessaging(
   tenantId: string,
@@ -225,7 +233,7 @@ export async function bootstrapIndustryAiAndMessaging(
       },
     };
 
-    console.log('[INDUSTRY AI BOOTSTRAP] Bootstrap complete:', JSON.stringify(result.summary));
+    console.log(`[ONBOARDING_AI_BOOTSTRAP] Tenant: ${tenantId}, Industry: ${industryId}, Summary:`, JSON.stringify(result.summary));
     return result;
 
   } catch (error) {
