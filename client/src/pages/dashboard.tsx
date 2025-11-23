@@ -24,6 +24,9 @@ import { useQuery } from "@tanstack/react-query";
 import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
 import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
 import { InstallPromptBanner, OfflineIndicator } from "@/components/PwaComponents";
+import { useDashboardOnboarding } from "@/hooks/useDashboardOnboarding";
+import { DashboardTour } from "@/components/onboarding/DashboardTour";
+import { dashboardTourSteps } from "@/config/dashboardTourSteps";
 
 interface Appointment {
   id: string;
@@ -63,10 +66,27 @@ interface InvoiceDetails {
 
 export default function Dashboard() {
   const [location, navigate] = useLocation();
-  const { data: currentUserData } = useQuery<{ success: boolean; user: { id: number; role: string } }>({
+  const { data: currentUserData } = useQuery<{ 
+    success: boolean; 
+    user: { 
+      id: number; 
+      role: string;
+      hasSeenDashboardTour?: boolean;
+    } 
+  }>({
     queryKey: ['/api/users/me'],
   });
   const currentUser = currentUserData?.user;
+
+  // Dashboard tour
+  const {
+    shouldShowTour,
+    setShouldShowTour,
+    markTourCompleted,
+  } = useDashboardOnboarding({
+    initialHasSeenTour: currentUser?.hasSeenDashboardTour ?? false,
+    userId: currentUser?.id,
+  });
   const [todayDate, setTodayDate] = useState<Date>(new Date());
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   
@@ -705,6 +725,14 @@ export default function Dashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dashboard Tour */}
+      <DashboardTour
+        steps={dashboardTourSteps}
+        isOpen={shouldShowTour}
+        onClose={() => setShouldShowTour(false)}
+        onFinish={markTourCompleted}
+      />
     </>
   );
 }
