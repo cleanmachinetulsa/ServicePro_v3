@@ -84,12 +84,20 @@ import LaunchPage from "./pages/launch";
 
 // 🆕 Industry onboarding page
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
+import AdminIndustryImages from "./pages/AdminIndustryImages";
 
 function Router() {
   return (
     <Switch>
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
       <Route path="/admin/onboarding-industry" component={OnboardingIndustryPage} />
+      
+      {/* 🆕 ADMIN INDUSTRY IMAGE UPLOAD PAGE */}
+      <Route path="/admin/industry-images">
+        <AuthGuard>
+          <AdminIndustryImages />
+        </AuthGuard>
+      </Route>
 
       {/* Existing routes below */}
 

@@ -155,6 +155,42 @@ const serviceImageUpload = multer({
   }
 });
 
+// Storage configuration for industry hero images (saved to public directory)
+const industryImageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'industry');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const industryId = req.body.industryId || 'unknown';
+    const ext = path.extname(file.originalname);
+    // Use industry ID in filename for easy identification
+    cb(null, `${industryId}${ext}`);
+  }
+});
+
+// Create multer instance for industry hero images
+const industryImageUpload = multer({ 
+  storage: industryImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max size
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (extname && mimetype) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
+    }
+  }
+});
+
 /**
  * Register file upload routes
  */
@@ -474,6 +510,43 @@ View photo: ${result}`;
       }
     } catch (error: any) {
       console.error('Error deleting service image:', error);
+      res.status(500).json({ 
+        error: 'Internal server error',
+        message: error.message || 'An unexpected error occurred'
+      });
+    }
+  });
+
+  // Route for uploading industry hero images
+  app.post('/api/upload-industry-image', industryImageUpload.single('image'), async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      
+      const { industryId } = req.body;
+      if (!industryId) {
+        return res.status(400).json({ error: 'Industry ID is required' });
+      }
+      
+      // Return the public URL for the uploaded image
+      const imageUrl = `/uploads/industry/${req.file.filename}`;
+      
+      console.log(`[INDUSTRY IMAGE] Uploaded hero image for industry '${industryId}':`, {
+        filename: req.file.filename,
+        size: req.file.size,
+        url: imageUrl
+      });
+      
+      res.status(200).json({
+        success: true,
+        message: 'Industry hero image uploaded successfully',
+        imageUrl: imageUrl,
+        filename: req.file.filename,
+        industryId: industryId
+      });
+    } catch (error: any) {
+      console.error('Error uploading industry image:', error);
       res.status(500).json({ 
         error: 'Internal server error',
         message: error.message || 'An unexpected error occurred'
