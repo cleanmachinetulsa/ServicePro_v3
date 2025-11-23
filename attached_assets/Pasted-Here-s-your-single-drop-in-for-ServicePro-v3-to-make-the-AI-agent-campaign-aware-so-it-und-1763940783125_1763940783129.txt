@@ -1,0 +1,390 @@
+Here’s your **single drop-in** for **ServicePro v3** to make the AI agent *campaign-aware* so it understands and responds intelligently to the Welcome Back offer.
+
+You’ll do Clean Machine legacy after this; this block is **ONLY** for the **ServicePro v3 multi-tenant repl**.
+
+---
+
+````text
+You are updating my **ServicePro v3 WHITE-LABEL multi-tenant platform** (NOT the legacy Clean Machine-only app).
+
+GOAL:
+Make the AI agents (SMS + web chat) **campaign-aware** so when a customer replies to the “Welcome Back Campaign” message (or visits from that campaign), the agent:
+
+- Knows which campaign they received (e.g. Welcome Back New System Launch).
+- Knows how many bonus points were added for them.
+- Never replies as if this is a totally new random conversation.
+- Proactively explains the promo and next steps instead of confusion.
+
+This must:
+- Respect multi-tenant isolation (`tenantId` + `tenantDb.withTenantFilter`).
+- Plug into the **existing Welcome Back Campaign feature you already implemented**.
+- Reuse existing loyaltyService, campaign logic, and AI prompt builders.
+- NOT break behavior for tenants who never use campaigns.
+
+======================================
+STEP 1 – DISCOVER EXISTING AGENT STRUCTURE
+======================================
+
+Before coding, scan the repo and identify:
+
+1) SMS AI plumbing:
+   - Locate:
+     - `server/openai.ts` (core AI wrapper)
+     - `server/ai/smsAgentPromptBuilder.ts` (or equivalent)
+   - Confirm:
+     - How we build system prompts for SMS conversations.
+     - What request shape is passed in (tenantId, platform = 'sms', customerId / phone).
+
+2) Web chat / omni-channel AI plumbing:
+   - Locate:
+     - Any prompt builder for web chat, e.g. `server/ai/chatAgentPromptBuilder.ts`, `webChatPromptBuilder.ts`, or similar.
+   - Confirm:
+     - How web chat calls into `openai.ts` and with what context (tenantId, session, customer info).
+
+3) Loyalty & customer access:
+   - Confirm `server/loyaltyService.ts`:
+     - How we fetch current points for a given `{ tenantId, customerId }`.
+   - Confirm customer model:
+     - How we identify `customerId` from phone, email, or conversation.
+
+4) Welcome Back Campaign data:
+   - Locate your campaign send/grant storage from the Welcome Back feature:
+     - Either:
+       - `campaign_grants` table
+       - OR loyalty transactions with a `campaignKey` (like `'welcome_back_v1_vip'` / `'welcome_back_v1_regular'`).
+     - Confirm how to query:
+       - “Latest Welcome Back campaign sent for this `{tenantId, customerId}`”.
+
+Do NOT refactor anything yet. Use this discovery to wire into existing pieces cleanly.
+
+======================================
+STEP 2 – EXTEND CAMPAIGN SEND LOGGING (IF NEEDED)
+======================================
+
+We need a reliable way to know “this customer received Welcome Back V1 on this date”.
+
+1) If not already present, add a **campaign send record** per customer:
+
+   - Either:
+     - A dedicated table `campaign_sends` with:
+       - `id`
+       - `tenantId`
+       - `customerId`
+       - `campaignKey` (e.g. 'welcome_back_v1_vip', 'welcome_back_v1_regular')
+       - `channel` (e.g. 'sms', 'email')
+       - `sentAt`
+     - Or, if your existing campaign infrastructure already stores this event in some table:
+       - Ensure we can query it by `{tenantId, customerId, campaignKey}` and sort by date.
+
+2) In the **Welcome Back campaign send** logic (the function that sends VIP/Regular messages in `tenantWelcomeBackCampaignService` or equivalent):
+
+   - After successfully sending the SMS (and/or email) and granting points:
+     - Create or update the corresponding `campaign_sends` entry.
+   - Always tag:
+     - `campaignKey`:
+       - `'welcome_back_v1_vip'` for the VIP audience.
+       - `'welcome_back_v1_regular'` for the regular audience.
+
+3) (Optional but helpful) Add a small **system message** into the conversation thread when the campaign is sent, e.g.:
+
+   - In the conversation/messages table, insert an internal/system message like:
+     - `[system] Sent Welcome Back campaign (VIP: 500 points added)` or
+     - `[system] Sent Welcome Back campaign (Regular: 100 points added)`.
+
+   This is not strictly required for the AI behavior, but helps debugging in the UI.
+
+All writes must:
+- Use `tenantDb.withTenantFilter` or equivalent tenant scoping.
+- Never touch data outside the current tenant.
+
+======================================
+STEP 3 – CREATE CAMPAIGN CONTEXT SERVICE
+======================================
+
+We want a single helper that can, given `{ tenantId, customerId }`, tell us:
+
+- Whether this customer recently got a campaign (like Welcome Back).
+- What campaign it was.
+- How many bonus points it added (if we can infer that).
+- Their current total points.
+
+Create:
+
+- `server/services/campaignContextService.ts` (or similar, following your naming conventions).
+
+Implement:
+
+```ts
+// server/services/campaignContextService.ts
+
+export interface CampaignContext {
+  hasRecentCampaign: boolean;
+  campaignKey?: string;          // e.g. 'welcome_back_v1_vip'
+  campaignName?: string;         // e.g. 'Welcome Back: New System Launch'
+  lastSentAt?: Date;
+  bonusPointsFromCampaign?: number;
+  currentPoints?: number;
+}
+
+export async function getCampaignContextForCustomer(options: {
+  tenantId: string;
+  customerId: string;
+  recentDays?: number;           // default ~30
+}): Promise<CampaignContext>;
+````
+
+Implementation guidelines:
+
+1. Look up the **most recent campaign send** for this customer and tenant:
+
+   * From `campaign_sends` or equivalent table.
+   * Filter by `recentDays` (e.g. last 30 days; default to 30 if not provided).
+   * Prefer the Welcome Back campaign keys:
+
+     * `'welcome_back_v1_vip'`
+     * `'welcome_back_v1_regular'`
+   * If none → return `{ hasRecentCampaign: false }`.
+
+2. Map campaign keys to friendly names + bonus points:
+
+   * For now, hardcode a minimal mapping in this service (or read from config if you already store it):
+
+   ```ts
+   function mapCampaignKeyToNameAndBonus(campaignKey: string) {
+     switch (campaignKey) {
+       case 'welcome_back_v1_vip':
+         return { name: 'Welcome Back: New System Launch', bonusPoints: 500 };
+       case 'welcome_back_v1_regular':
+         return { name: 'Welcome Back: New System Launch', bonusPoints: 100 };
+       default:
+         return { name: 'Campaign', bonusPoints: undefined };
+     }
+   }
+   ```
+
+   * You can note a TODO to make this dynamic later.
+
+3. Fetch current points:
+
+   * Use `loyaltyService` (or equivalent) to get the current total points for `{tenantId, customerId}`.
+   * Set `currentPoints` accordingly.
+
+4. Build and return:
+
+```ts
+return {
+  hasRecentCampaign: true,
+  campaignKey,
+  campaignName,
+  lastSentAt,
+  bonusPointsFromCampaign: inferredBonus,
+  currentPoints,
+};
+```
+
+If no recent campaign is found, return:
+
+```ts
+return {
+  hasRecentCampaign: false,
+  currentPoints, // still may be useful for general context
+};
+```
+
+All DB queries in this service must be tenant-scoped.
+
+======================================
+STEP 4 – MAKE THE SMS PROMPT BUILDER CAMPAIGN-AWARE
+===================================================
+
+Update the **SMS agent** so that whenever it replies to a customer, it:
+
+* Checks for campaign context.
+* Injects that context into the system prompt.
+* Adjusts behavior accordingly.
+
+1. Open `server/ai/smsAgentPromptBuilder.ts` (or the equivalent SMS-specific prompt builder).
+
+2. Find the main function that builds the SMS system prompt, something like:
+
+```ts
+export async function buildSmsAgentPrompt(options: {
+  tenantId: string;
+  // ...
+  customerId?: string;
+  phone?: string;
+  // ...
+}): Promise<string> { ... }
+```
+
+(Names may differ; adapt as needed.)
+
+3. Inside this function, once you know `tenantId` and `customerId`:
+
+   * Call:
+
+   ```ts
+   import { getCampaignContextForCustomer } from '../services/campaignContextService';
+
+   const campaignContext = customerId
+     ? await getCampaignContextForCustomer({ tenantId, customerId })
+     : { hasRecentCampaign: false };
+   ```
+
+4. When composing the system prompt, add a **Campaign Awareness section** if `campaignContext.hasRecentCampaign` is true.
+
+For example (pseudo):
+
+```ts
+let systemPrompt = `You are the SMS agent for a service business...`;
+
+// existing business/industry rules here...
+
+if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
+  systemPrompt += `
+
+CAMPAIGN CONTEXT:
+- This customer recently received the "${campaignContext.campaignName}" campaign.
+- Campaign key: ${campaignContext.campaignKey}
+- Date sent: ${campaignContext.lastSentAt?.toISOString() || 'recently'}
+- Bonus points from this campaign: ${campaignContext.bonusPointsFromCampaign ?? 'N/A'}
+- Current total points: ${campaignContext.currentPoints ?? 'unknown'}
+
+BEHAVIOR RULES FOR CAMPAIGN-RELATED MESSAGES:
+- If the customer mentions:
+  - "your text", "your message", "your email",
+  - "500 points", "100 points", "bonus points",
+  - "new system", "welcome back",
+  assume they are referring to this campaign.
+- Do NOT say "I don’t know what you’re talking about".
+- Instead:
+  1) Confirm they received the offer in simple language.
+  2) Briefly explain how the points work and how many points they have (if known).
+  3) Offer a clear next step: for example,
+     - help them book an appointment using their points, or
+     - help them log in / use the booking link.
+- If there is any ambiguity, calmly restate the offer and ask a simple clarifying question instead of expressing confusion.
+`;
+}
+```
+
+5. Make sure you **do not** break existing SMS behavior for tenants who never ran the campaign:
+
+* If `campaignContext.hasRecentCampaign` is false:
+
+  * Don’t add the section above.
+  * The SMS prompt stays exactly as before.
+
+======================================
+STEP 5 – MAKE THE WEB CHAT / OMNI-CHANNEL PROMPT BUILDER CAMPAIGN-AWARE
+=======================================================================
+
+Repeat the same pattern for your web chat (or omni-channel) prompt builder.
+
+1. Open the web chat prompt builder, e.g.:
+
+* `server/ai/chatAgentPromptBuilder.ts`
+* Or whichever file builds prompts for platform `'web'` / `'chat'`.
+
+2. Once you have `tenantId` and `customerId` (or can resolve customer from session/email/phone):
+
+   * Call `getCampaignContextForCustomer({ tenantId, customerId })`.
+
+3. Inject a similar **CAMPAIGN CONTEXT** block into the system prompt as in SMS:
+
+* Same rules:
+
+  * Recognize mentions of “your message/text/email”, “500 points”, “100 points”, “new system”.
+  * Don’t play dumb; assume it’s about the last campaign.
+  * Explain points + offer next step.
+
+4. If the web chat is started via a link that includes a `campaign` query param (e.g. `?campaign=welcome_back_v1`), you may additionally:
+
+   * Pass that `campaignKey` down to the prompt builder.
+   * If the customer is not yet resolved, still mention:
+
+   ```text
+   - This session originated from the Welcome Back campaign link.
+   - If they mention the campaign, treat them as an existing customer interested in the promo, not a cold lead.
+   ```
+
+Make sure this is additive:
+
+* If no campaign context is found, don’t change default behavior.
+
+======================================
+STEP 6 – GLOBAL BEHAVIOR RULES FOR CAMPAIGN MESSAGES
+====================================================
+
+To avoid “sorry, I don’t know about that” replies **anywhere**, add some generic rules to your SMS + web chat system prompts (these can be added regardless of the context):
+
+Somewhere near your general behavior section, append:
+
+```text
+GENERAL CAMPAIGN & PROMO HANDLING RULES:
+- If the customer references:
+  - a recent text or email "you" sent,
+  - promo language like "points", "bonus", "welcome back", "new system",
+  you should:
+  1) Check the customer’s campaign context (if provided above).
+  2) If there is a recent campaign, assume that is what they mean.
+  3) Briefly restate the offer and how it works.
+  4) Offer to help them use it (check points, book, log in, etc.).
+- Avoid saying "I have no record of that" as a first response.
+- Instead, try to interpret based on the latest campaign and the customer’s current loyalty status.
+```
+
+This ensures the agent never sends the user in circles, even when message wording is slightly different from what we expect.
+
+======================================
+STEP 7 – TESTS & SAFETY CHECKS
+==============================
+
+1. Unit / integration tests:
+
+   * Add tests for `getCampaignContextForCustomer`:
+
+     * Customer with no campaigns → `hasRecentCampaign = false`.
+     * Customer with VIP campaign last week → `hasRecentCampaign = true`, correct `campaignKey`, bonus, and `currentPoints`.
+   * Add tests or logs verifying that:
+
+     * SMS prompt builder includes `CAMPAIGN CONTEXT` when campaign exists.
+     * Web chat prompt builder does as well.
+
+2. Manual QA scenarios (for at least one test tenant):
+
+   * Scenario A (SMS):
+
+     * Send Welcome Back VIP campaign to a test customer.
+     * Let them reply: “Hey, I got your 500 points text, how does that work?”
+     * Confirm the AI:
+
+       * Recognizes the campaign.
+       * Explains the points.
+       * Offers to help them book.
+   * Scenario B (Web chat):
+
+     * Open a web chat session where the customer is already recognized (logged in or identified).
+     * Say: “I got your new system message with points—can I use them for a detail this week?”
+     * Confirm similar behavior.
+
+3. Tenant safety:
+
+   * Verify all campaign-related DB queries use tenant scoping.
+   * Ensure this logic does not leak one tenant’s campaigns to another.
+
+4. No-breakage guarantee:
+
+   * If a tenant never uses campaigns at all, SMS and chat behavior should be unchanged except for the general “be nice about promos” rules (which should be neutral/harmless).
+
+Once all of this is implemented:
+
+* Run TypeScript build and tests.
+* Start the dev server, check logs for any new runtime errors.
+* Optionally, log a single line on startup like:
+
+  * `Phase: Campaign-aware agents enabled (Welcome Back).`
+    to confirm this feature is active.
+
+```
+```
