@@ -402,25 +402,6 @@ export default function Dashboard() {
   // Page-specific actions
   const pageActions = (
     <>
-      <Button
-        size="sm"
-        variant={isEditMode ? "default" : "ghost"}
-        onClick={toggleEditMode}
-        data-testid="button-toggle-edit-mode"
-        className={isEditMode ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
-      >
-        {isEditMode ? (
-          <>
-            <Save className="h-4 w-4 mr-2" />
-            Save Layout
-          </>
-        ) : (
-          <>
-            <Edit3 className="h-4 w-4 mr-2" />
-            Customize
-          </>
-        )}
-      </Button>
       {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
         <Button
           size="sm"
@@ -444,11 +425,34 @@ export default function Dashboard() {
     </>
   );
 
+  // Sidebar actions (passed to AppShell)
+  const sidebarActions = (
+    <Button
+      size="sm"
+      variant={isEditMode ? "default" : "ghost"}
+      onClick={toggleEditMode}
+      data-testid="button-toggle-edit-mode"
+      className={`w-full justify-start ${isEditMode ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}`}
+    >
+      {isEditMode ? (
+        <>
+          <Save className="h-4 w-4 mr-2" />
+          Save Layout
+        </>
+      ) : (
+        <>
+          <Edit3 className="h-4 w-4 mr-2" />
+          Customize Dashboard
+        </>
+      )}
+    </Button>
+  );
+
   return (
     <>
       <OfflineIndicator />
       <InstallPromptBanner />
-      <AppShell title="Dashboard" pageActions={pageActions}>
+      <AppShell title="Dashboard" pageActions={pageActions} sidebarActions={sidebarActions}>
         <div data-tour-id="main-dashboard-root">
         {isLoadingData ? (
           <div className="space-y-4 p-6">
@@ -480,12 +484,12 @@ export default function Dashboard() {
           </div>
         ) : (
           <DashboardGrid
-            widgets={widgets}
+            widgets={widgets.slice(0, 2)}
             onReorder={handleWidgetReorder}
             isEditMode={isEditMode}
           >
             {(widget) => {
-              if (widget.id === 'calendar' || widget.id === 'monthly-stats' || widget.id === 'schedule' || widget.id === 'daily-insights' || widget.id === 'quick-actions') {
+              if (widget.id === 'monthly-stats') {
                 return (
                   <DashboardOverview
                     appointments={appointments}
@@ -504,12 +508,12 @@ export default function Dashboard() {
                 );
               }
 
-              if ((widget.id === 'cash-collections' || widget.id === 'deposit-history') && currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager')) {
+              if (widget.id === 'cash-collections' && currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager')) {
                 return (
-                  <div className="space-y-4 p-6 pt-0">
+                  <div className="p-6 pt-0">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {widget.id === 'cash-collections' && <CashCollectionsWidget />}
-                      {widget.id === 'deposit-history' && <DepositHistoryWidget />}
+                      <CashCollectionsWidget />
+                      <DepositHistoryWidget />
                     </div>
                   </div>
                 );
