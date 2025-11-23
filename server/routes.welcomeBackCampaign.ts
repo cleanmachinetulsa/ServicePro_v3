@@ -4,7 +4,6 @@ import { hasFeature } from '@shared/features';
 import { db } from './db';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import { getTenantDb } from './tenantDb';
 import {
   getTenantWelcomeBackCampaignConfig,
   updateTenantWelcomeBackCampaignConfig,
@@ -74,7 +73,7 @@ router.use(requireCampaignsFeature);
 router.get('/welcome-back', async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).tenant?.id || 'root';
-    const tenantDb = getTenantDb(tenantId);
+    const tenantDb = (req as any).tenantDb!;
     
     const config = await getTenantWelcomeBackCampaignConfig(tenantDb, tenantId);
     
@@ -111,7 +110,7 @@ const updateConfigSchema = z.object({
 router.put('/welcome-back', async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).tenant?.id || 'root';
-    const tenantDb = getTenantDb(tenantId);
+    const tenantDb = (req as any).tenantDb!;
     
     // Validate request body
     const validation = updateConfigSchema.safeParse(req.body);
@@ -154,7 +153,7 @@ const sendCampaignSchema = z.object({
 router.post('/welcome-back/send', async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).tenant?.id || 'root';
-    const tenantDb = getTenantDb(tenantId);
+    const tenantDb = (req as any).tenantDb!;
     
     // Validate request body
     const validation = sendCampaignSchema.safeParse(req.body);

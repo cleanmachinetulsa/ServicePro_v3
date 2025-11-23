@@ -3,7 +3,9 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Mail, MessageSquare, Send, Calendar, Users } from 'lucide-react';
+import { Plus, Mail, MessageSquare, Send, Calendar, Users, Gift, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -66,6 +68,223 @@ export function CommunicationsSettings() {
           <SMSCampaigns />
         </TabsContent>
       </Tabs>
+
+      {/* Special Campaigns Section */}
+      <SpecialCampaignsSection />
+    </div>
+  );
+}
+
+function SpecialCampaignsSection() {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <Card className="border-blue-200 dark:border-blue-800">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
+          <CollapsibleTrigger className="w-full">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="text-left">
+                  <CardTitle className="text-xl">Special Campaigns</CardTitle>
+                  <CardDescription>Advanced loyalty bonus campaigns and promotions</CardDescription>
+                </div>
+              </div>
+              {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </div>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-4">
+            <WelcomeBackCampaign />
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+function WelcomeBackCampaign() {
+  const { toast } = useToast();
+  const [previewMode, setPreviewMode] = useState<'vip' | 'regular' | null>(null);
+  const [sending, setSending] = useState(false);
+
+  // Fetch campaign config
+  const { data: configData, isLoading: configLoading } = useQuery({
+    queryKey: ['/api/admin/campaigns/welcome-back'],
+  });
+
+  const config = configData?.config;
+
+  // Update config mutation
+  const updateConfigMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return apiRequest('/api/admin/campaigns/welcome-back', 'PUT', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/campaigns/welcome-back'] });
+      toast({ title: 'Campaign settings saved successfully' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error saving settings', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  // Send campaign mutation
+  const sendCampaignMutation = useMutation({
+    mutationFn: async ({ audience, previewOnly }: { audience: 'vip' | 'regular'; previewOnly: boolean }) => {
+      return apiRequest('/api/admin/campaigns/welcome-back/send', 'POST', { audience, previewOnly });
+    },
+    onSuccess: (data, variables) => {
+      if (variables.previewOnly) {
+        const result = data.result;
+        toast({
+          title: `Preview: ${variables.audience.toUpperCase()} Campaign`,
+          description: `Would send to ${result.total} customers. Sample message: ${result.sampleMessage?.slice(0, 100)}...`,
+        });
+        setPreviewMode(null);
+      } else {
+        toast({
+          title: 'Campaign sent successfully',
+          description: `Sent to ${data.result.success} customers. ${data.result.failed} failed.`,
+        });
+      }
+      setSending(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error sending campaign', description: error.message, variant: 'destructive' });
+      setSending(false);
+      setPreviewMode(null);
+    },
+  });
+
+  const handlePreview = (audience: 'vip' | 'regular') => {
+    setPreviewMode(audience);
+    sendCampaignMutation.mutate({ audience, previewOnly: true });
+  };
+
+  const handleSend = (audience: 'vip' | 'regular') => {
+    if (!confirm(`Are you sure you want to send the ${audience.toUpperCase()} campaign? This will award points and send messages to customers.`)) {
+      return;
+    }
+    setSending(true);
+    sendCampaignMutation.mutate({ audience, previewOnly: false });
+  };
+
+  if (configLoading) {
+    return <div className="text-center py-8 text-muted-foreground">Loading campaign settings...</div>;
+  }
+
+  return (
+    <div className="space-y-6" id="welcome-back-campaign">
+      {/* Header */}
+      <div className="flex items-start gap-3 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        <Gift className="h-6 w-6 text-blue-600 dark:text-blue-400 mt-0.5" />
+        <div>
+          <h3 className="font-semibold text-lg">Welcome Back Campaign</h3>
+          <p className="text-sm text-muted-foreground">
+            Reward your VIP and regular customers with bonus loyalty points to bring them back!
+          </p>
+          <Badge className="mt-2" variant="secondary">
+            <Sparkles className="h-3 w-3 mr-1" />
+            New System Launch
+          </Badge>
+        </div>
+      </div>
+
+      {/* Configuration Preview */}
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* VIP Campaign */}
+        <Card className="border-purple-200 dark:border-purple-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-purple-600" />
+              VIP Campaign
+            </CardTitle>
+            <CardDescription>{config?.vipPointsBonus || 500} Bonus Points</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">SMS Template Preview</Label>
+              <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-900 rounded text-sm">
+                {config?.smsTemplateVip?.slice(0, 150)}...
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handlePreview('vip')}
+                disabled={previewMode === 'vip'}
+                data-testid="button-preview-vip"
+              >
+                {previewMode === 'vip' ? 'Previewing...' : 'Preview'}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleSend('vip')}
+                disabled={sending}
+                data-testid="button-send-vip"
+              >
+                {sending ? 'Sending...' : 'Send VIP Campaign'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Regular Campaign */}
+        <Card className="border-blue-200 dark:border-blue-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              Regular Campaign
+            </CardTitle>
+            <CardDescription>{config?.regularPointsBonus || 100} Bonus Points</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">SMS Template Preview</Label>
+              <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-900 rounded text-sm">
+                {config?.smsTemplateRegular?.slice(0, 150)}...
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handlePreview('regular')}
+                disabled={previewMode === 'regular'}
+                data-testid="button-preview-regular"
+              >
+                {previewMode === 'regular' ? 'Previewing...' : 'Preview'}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => handleSend('regular')}
+                disabled={sending}
+                data-testid="button-send-regular"
+              >
+                {sending ? 'Sending...' : 'Send Regular Campaign'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Configuration Link */}
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-sm text-muted-foreground">
+            Need to customize points, templates, or URLs?{' '}
+            <Button variant="link" className="p-0 h-auto" onClick={() => {
+              toast({ title: 'Campaign configuration editor coming soon!' });
+            }}>
+              Edit Campaign Settings →
+            </Button>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
