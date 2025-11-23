@@ -1,0 +1,123 @@
+Task: Make the industry onboarding page use the FULL industry pack list from src/config/industryPacks.ts so all 20 industries show up (including Hair Stylist / Barber, etc.), instead of the smaller hard-coded list.
+
+Project: Servicepro app (Servicepro-v3-base)
+
+Working style:
+- I (the user) will NOT edit files manually.
+- You must do all file edits yourself.
+- I will only paste this prompt and run the agent.
+- At the end, show me a clear summary of what changed.
+
+Goal:
+- The industry selection UI at /admin/onboarding-industry should:
+  - Use src/config/industryPacks.ts as the single source of truth for all industries.
+  - Display ALL configured industries (roughly 20), including things like Hair Stylist / Barber, HVAC, Junk Removal, etc.
+  - Still treat “Photography & Media Studio” as the mega-pack with sub-toggles.
+- Remove the duplicated “mini list” that currently limits the UI to ~11 industries.
+
+Steps:
+
+1) Locate the industry config file
+----------------------------------
+1. Find and open: src/config/industryPacks.ts
+2. Inspect how industries are defined there:
+   - Is it an array of objects like { id, name, category, … }?
+   - Is there a field for “photography” and, if so, does it include sub-packs?
+
+This file is the source of truth. Do NOT reduce or trim industries here. We want ALL of them.
+
+2) Locate the onboarding page that currently hard-codes INDUSTRIES
+-------------------------------------------------------------------
+1. Find the React page for the industry onboarding screen, likely at:
+   - src/pages/OnboardingIndustry.tsx
+   OR
+   - client/src/pages/OnboardingIndustry.tsx
+2. Open that file and confirm:
+   - There is a local constant like `const INDUSTRIES = [...]` with ~11 entries.
+   - It currently maps over `INDUSTRIES` to render cards.
+
+This local `INDUSTRIES` array is the problem. It’s duplicating and limiting the list.
+
+3) Make src/config/industryPacks.ts the source of truth
+-------------------------------------------------------
+1. In the onboarding page file, REMOVE or stop using the local hard-coded `INDUSTRIES` array.
+2. Instead, IMPORT the industry pack config from src/config/industryPacks.ts.
+
+For example (adjust to match the actual export in that file):
+
+   import { industryPacks } from "@/config/industryPacks";
+
+or
+
+   import industries from "@/config/industryPacks";
+
+Use the actual export name that src/config/industryPacks.ts defines.
+
+3. Adapt the UI code so that it uses the imported data structure, e.g.:
+
+   - If the config is an array of objects:
+     - Map over that array to render each industry card.
+   - If it has categories or grouping, you can still flatten it or group it visually, but the important part is:
+     - EVERY industry that is “active” / meant to be selectable shows up as a card.
+
+4) Preserve special treatment for Photography mega-pack
+-------------------------------------------------------
+The current UI has special handling for “Photography & Media Studio”:
+
+- When `selectedIndustry === "photography"`, it shows photography sub-pack toggles (Portrait, Weddings, Events, Real Estate, etc.).
+
+We want to KEEP that behavior.
+
+Update logic as follows:
+
+1. Identify the photography pack from the imported config:
+   - e.g., by id like "photography" or by some type/category field.
+2. Continue using the existing PHOTOGRAPHY_SUBPACKS constant for now **UNLESS** src/config/industryPacks.ts already defines a list of sub-services or sub-packs for photography.
+   - If the config already includes photography sub-pack data, you MAY use that instead of PHOTOGRAPHY_SUBPACKS, but do not remove functionality:
+     - Keep the toggles,
+     - Keep the featureFlags behavior (`photography:SubName` → boolean).
+
+In other words:
+- All industries come from src/config/industryPacks.ts.
+- Photography still shows the extra toggles we already built.
+
+5) Ensure the payload to /api/onboarding/industry is unchanged logically
+------------------------------------------------------------------------
+The POST request to /api/onboarding/industry should still send:
+
+- industryId
+- industryName
+- featureFlags (including photography:SubName flags if photography is selected)
+- rawSelection (containing whatever the current UI captures)
+
+Only the source of the list (the choices shown in the grid) should change.
+Do NOT change the endpoint URL or break the shape of the payload, because Phase 8C persistence is already wired to that.
+
+6) Keep UX and styling intact
+-----------------------------
+- Do NOT change overall layout (cards, grid, header, etc.).
+- Only change where the data comes from and how many industries are rendered.
+- Make sure selection highlighting (isSelected) still works with the new data source.
+
+7) Basic validation
+-------------------
+1. After changes, restart the dev server.
+2. Load /admin/onboarding-industry.
+3. Confirm:
+   - You can see ALL industries defined in src/config/industryPacks.ts (approximately 20).
+   - “Photography & Media Studio” is present and still shows its sub-pack toggles.
+   - Clicking “Save & Continue” still successfully calls /api/onboarding/industry with a valid payload and receives a success response.
+
+8) Report back
+--------------
+When you are done, please provide:
+
+1. A list of files you changed:
+   - e.g., src/pages/OnboardingIndustry.tsx
+   - e.g., any small tweaks to src/config/industryPacks.ts if needed (but do NOT remove packs).
+2. A short explanation of:
+   - How the onboarding page now imports and uses the industry pack config.
+   - How you preserved the special case for photography sub-toggles.
+3. Confirmation that:
+   - All industries from src/config/industryPacks.ts are now visible in the UI.
+   - The /api/onboarding/industry request payload remains compatible with Phase 8C.
