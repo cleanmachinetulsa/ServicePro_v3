@@ -3,6 +3,7 @@ import { db } from './db';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { createTenantDb, type TenantDb } from './tenantDb';
+import { getEffectiveTenantId } from './authHelpers';
 
 export interface TenantInfo {
   id: string;
@@ -26,7 +27,9 @@ export async function tenantMiddleware(
   next: NextFunction
 ) {
   try {
-    const tenantId = 'root';
+    // Use single source of truth for tenant ID (supports impersonation and user's tenant)
+    const tenantId = getEffectiveTenantId(req);
+    
     const [tenant] = await db
       .select()
       .from(tenants)

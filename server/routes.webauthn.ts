@@ -1,6 +1,7 @@
 import { Express, Request, Response } from 'express';
 import { webauthnCredentials, users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { db } from './db';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -174,11 +175,11 @@ export function registerWebAuthnRoutes(app: Express) {
       }
 
       // LEGACY FLOW: Username provided, use traditional credential-specific authentication
-      // Find user
-      const userResult = await req.tenantDb!
+      // Find user using global db (no tenant context needed for login)
+      const userResult = await db
         .select()
         .from(users)
-        .where(req.tenantDb!.withTenantFilter(users, eq(users.username, username)))
+        .where(eq(users.username, username))
         .limit(1);
 
       if (!userResult || userResult.length === 0) {
@@ -190,11 +191,11 @@ export function registerWebAuthnRoutes(app: Express) {
 
       const user = userResult[0];
 
-      // Get user's credentials
-      const credentials = await req.tenantDb!
+      // Get user's credentials using global db
+      const credentials = await db
         .select()
         .from(webauthnCredentials)
-        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.userId, user.id)));
+        .where(eq(webauthnCredentials.userId, user.id));
 
       if (credentials.length === 0) {
         return res.status(404).json({
@@ -250,11 +251,11 @@ export function registerWebAuthnRoutes(app: Express) {
       // Convert Base64URL credential ID to Base64 for database lookup
       const credentialIdBase64 = base64UrlToBase64(id);
 
-      // Get credential from database (lookup by credential ID for both flows)
-      const credentialResult = await req.tenantDb!
+      // Get credential from database using global db (no tenant context needed for login)
+      const credentialResult = await db
         .select()
         .from(webauthnCredentials)
-        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.credentialId, credentialIdBase64)))
+        .where(eq(webauthnCredentials.credentialId, credentialIdBase64))
         .limit(1);
 
       if (!credentialResult || credentialResult.length === 0) {
@@ -297,17 +298,17 @@ export function registerWebAuthnRoutes(app: Express) {
         });
       }
 
-      // Update counter
-      await req.tenantDb!
+      // Update counter using global db
+      await db
         .update(webauthnCredentials)
         .set({ counter: verification.authenticationInfo.newCounter })
-        .where(req.tenantDb!.withTenantFilter(webauthnCredentials, eq(webauthnCredentials.id, credential.id)));
+        .where(eq(webauthnCredentials.id, credential.id));
 
-      // Get user
-      const userResult = await req.tenantDb!
+      // Get user using global db to retrieve tenantId and role for session
+      const userResult = await db
         .select()
         .from(users)
-        .where(req.tenantDb!.withTenantFilter(users, eq(users.id, credential.userId)))
+        .where(eq(users.id, credential.userId))
         .limit(1);
 
       if (!userResult || userResult.length === 0) {
@@ -324,7 +325,7 @@ export function registerWebAuthnRoutes(app: Express) {
       delete req.session.webauthnChallenge;
       delete req.session.webauthnUserId;
 
-      // Regenerate session and log in user
+      // Regenerate session and log in user with full tenant context
       req.session.regenerate((err) => {
         if (err) {
           console.error('Session regeneration error:', err);
@@ -334,7 +335,11 @@ export function registerWebAuthnRoutes(app: Express) {
           });
         }
 
+        // Set full session with tenant context (required for tenant middleware)
         req.session.userId = user.id;
+        req.session.tenantId = user.tenantId;
+        req.session.role = user.role;
+        req.session.twoFactorVerified = true; // WebAuthn is inherently 2FA
 
         req.session.save((saveErr) => {
           if (saveErr) {

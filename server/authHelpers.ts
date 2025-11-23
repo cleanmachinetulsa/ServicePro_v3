@@ -5,11 +5,12 @@ export function isImpersonating(req: Request): boolean {
 }
 
 export function getEffectiveTenantId(req: Request): string {
+  // Priority: impersonation > user's tenant > fallback to root
   if (req.session?.impersonatingTenantId) {
     return req.session.impersonatingTenantId;
   }
   
-  return 'root';
+  return req.session?.tenantId || 'root';
 }
 
 export function getImpersonationContext(req: Request): {
