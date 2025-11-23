@@ -1,0 +1,411 @@
+✅ STEP 1 – New backend route file (FULL DROP-IN)
+
+Create a new file:
+
+server/onboardingIndustryRoutes.ts
+
+Paste this entire thing in it:
+
+// server/onboardingIndustryRoutes.ts
+// ======================================================================
+// Industry Onboarding Routes - Phase 8B
+//
+// Safe stub:
+// - Accepts industry onboarding payload from the frontend
+// - Attaches tenantId if available
+// - Logs everything in a clear, structured way
+// - Always responds with success (unless something truly unexpected happens)
+// - NO hard dependency on DB or other services yet
+// ======================================================================
+
+import type { Express, Request, Response } from "express";
+
+interface IndustryOnboardingPayload {
+  industryId: string;
+  industryName?: string;
+  // generic feature flags / options
+  featureFlags?: Record<string, boolean>;
+  // Whatever else we decide to send from the UI
+  rawSelection?: any;
+}
+
+/**
+ * Helper: pull tenantId off the request if your middleware attaches it.
+ */
+function getTenantId(req: Request): string | null {
+  return (
+    (req as any)?.tenantId ||
+    (req as any)?.tenant_id ||
+    (req as any)?.user?.tenantId ||
+    null
+  );
+}
+
+/**
+ * Register the onboarding routes on the given Express app.
+ */
+export default function registerOnboardingIndustryRoutes(app: Express) {
+  // POST /api/onboarding/industry
+  app.post(
+    "/api/onboarding/industry",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const body = req.body as Partial<IndustryOnboardingPayload> | undefined;
+
+        if (!body || !body.industryId) {
+          res.status(400).json({
+            success: false,
+            message: "Missing required field: industryId",
+          });
+          return;
+        }
+
+        const tenantId = getTenantId(req);
+
+        const payload: IndustryOnboardingPayload & {
+          tenantId: string | null;
+          receivedAt: string;
+          ip: string | undefined;
+          userAgent: string | undefined;
+        } = {
+          industryId: body.industryId,
+          industryName: body.industryName,
+          featureFlags: body.featureFlags ?? {},
+          rawSelection: body.rawSelection ?? {},
+          tenantId,
+          receivedAt: new Date().toISOString(),
+          ip: req.ip,
+          userAgent: req.headers["user-agent"] as string | undefined,
+        };
+
+        // For Phase 8B we just log it clearly.
+        // 8C will actually persist this + bootstrap services.
+        console.log("=== [ONBOARDING] Industry selection received ===");
+        console.log(JSON.stringify(payload, null, 2));
+        console.log("=== [/ONBOARDING] =================================");
+
+        res.json({
+          success: true,
+          message: "Industry selection received (Phase 8B stub).",
+          tenantId,
+        });
+      } catch (err) {
+        console.error("[ONBOARDING] Error handling industry payload:", err);
+        res.status(500).json({
+          success: false,
+          message: "Unexpected error handling industry onboarding.",
+        });
+      }
+    }
+  );
+
+  console.log(
+    "[ONBOARDING] Routes registered: POST /api/onboarding/industry (Phase 8B)"
+  );
+}
+
+
+This file by itself will not break anything.
+It just waits to be wired into the main Express app.
+
+✅ STEP 2 – Wire the route into your server (one tiny hook)
+
+Now we need to tell Express to actually use that route.
+
+Open your main server file – it’s usually something like:
+
+server/index.ts or
+
+server/app.ts
+
+It’s the file that eventually calls app.listen(...) and where other routes are registered (the one that logs things like [CANONICAL VOICE] Routes registered: POST /twilio/voice/incoming).
+
+In that file:
+
+2a) Add this import near your other route imports:
+import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
+
+2b) Find where you register routes and add one line
+
+You’ll see a cluster of calls like:
+
+// Example shape – yours will have many of these:
+registerAdminPhoneConfigRoutes(app);
+registerCanonicalVoiceRoutes(app);
+registerSmsConsentRoutes(app);
+// ...
+
+
+In that same cluster, add this line:
+
+registerOnboardingIndustryRoutes(app);
+
+
+So that block ends up looking like (example):
+
+// Route registration
+registerAdminPhoneConfigRoutes(app);
+registerCanonicalVoiceRoutes(app);
+registerSmsConsentRoutes(app);
+registerOnboardingIndustryRoutes(app); // 🆕 Phase 8B
+// ...other registrations...
+
+
+Save the file, then restart the server.
+
+If that “cluster” is hard to find or feels like too much to touch tonight, you can stop after Step 1 – nothing will break. But wiring that one line in is what actually activates /api/onboarding/industry.
+
+✅ STEP 3 – Update the Industry page to hit the new API
+
+Now we make the Save button call this new endpoint.
+
+Open:
+
+src/pages/OnboardingIndustry.tsx
+(or client/src/pages/OnboardingIndustry.tsx if you have a client/ folder)
+
+Replace its contents with this full drop-in (same UI as before, just with a real handleSubmit that calls the API):
+
+// src/pages/OnboardingIndustry.tsx
+import React, { useState } from "react";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Switch as Toggle } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/use-toast";
+
+const INDUSTRIES = [
+  { id: "auto-detailing", name: "Mobile Auto Detailing" },
+  { id: "lawn-care", name: "Lawn Care" },
+  { id: "house-cleaning", name: "House Cleaning" },
+  { id: "pressure-washing", name: "Pressure Washing" },
+  { id: "mobile-mechanic", name: "Mobile Mechanic" },
+  { id: "pool-service", name: "Pool Service" },
+  { id: "handyman", name: "Handyman Services" },
+  { id: "window-cleaning", name: "Window Cleaning" },
+  { id: "pest-control", name: "Pest Control" },
+  { id: "pet-grooming", name: "Pet Grooming" },
+  { id: "photography", name: "Photography & Media Studio" }, // mega pack
+];
+
+const PHOTOGRAPHY_SUBPACKS = [
+  "Portrait Sessions",
+  "Weddings",
+  "Engagements",
+  "Corporate Headshots",
+  "Events",
+  "Family Photos",
+  "Newborn Photos",
+  "Real Estate Photography",
+  "Aerial Drone",
+  "Product Photography",
+  "Automotive Media",
+];
+
+export default function OnboardingIndustryPage() {
+  const { toast } = useToast();
+  const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
+  const [photoToggles, setPhotoToggles] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(PHOTOGRAPHY_SUBPACKS.map((p) => [p, false]))
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const [debugPayload, setDebugPayload] = useState<any | null>(null);
+
+  const handleToggle = (name: string) => {
+    setPhotoToggles((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedIndustry) return;
+
+    const industryMeta = INDUSTRIES.find((i) => i.id === selectedIndustry);
+
+    const featureFlags =
+      selectedIndustry === "photography"
+        ? Object.fromEntries(
+            Object.entries(photoToggles).map(([k, v]) => [
+              `photography:${k}`,
+              v,
+            ])
+          )
+        : {};
+
+    const payload = {
+      industryId: selectedIndustry,
+      industryName: industryMeta?.name ?? selectedIndustry,
+      featureFlags,
+      rawSelection: {
+        selectedIndustry,
+        photoToggles,
+      },
+    };
+
+    setIsSaving(true);
+    setDebugPayload(null);
+
+    try {
+      const resp = await fetch("/api/onboarding/industry", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to save industry selection");
+      }
+
+      setDebugPayload({
+        sent: payload,
+        serverResponse: data,
+      });
+
+      toast({
+        title: "Industry saved",
+        description:
+          "Your industry selection was sent to the server (Phase 8B stub).",
+      });
+    } catch (err: any) {
+      console.error("[OnboardingIndustry] Save error:", err);
+      toast({
+        title: "Save failed",
+        description:
+          err?.message ||
+          "There was a problem sending your selection to the server.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold mb-2">
+          What kind of business is this?
+        </h1>
+        <p className="text-muted-foreground">
+          Pick the closest match. You&apos;ll be able to fine-tune services,
+          pricing, and wording later.
+        </p>
+      </div>
+
+      {/* INDUSTRY GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+        {INDUSTRIES.map((ind) => {
+          const isSelected = selectedIndustry === ind.id;
+          return (
+            <Card
+              key={ind.id}
+              onClick={() => setSelectedIndustry(ind.id)}
+              className={`cursor-pointer transition border ${
+                isSelected
+                  ? "border-blue-500 ring-2 ring-blue-500/60"
+                  : "border-border hover:border-blue-400/60"
+              }`}
+            >
+              <CardHeader>
+                <CardTitle>{ind.name}</CardTitle>
+              </CardHeader>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* PHOTOGRAPHY SUBPACKS */}
+      {selectedIndustry === "photography" && (
+        <div className="space-y-4">
+          <h2 className="text-2xl font-semibold">
+            What types of photography do you offer?
+          </h2>
+          <p className="text-muted-foreground">
+            Turn on all that apply. Your website, services, and AI concierge can
+            lean into these automatically.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {PHOTOGRAPHY_SUBPACKS.map((sub) => (
+              <Card
+                key={sub}
+                className="p-4 flex justify-between items-center"
+              >
+                <span>{sub}</span>
+                <Toggle
+                  checked={photoToggles[sub]}
+                  onCheckedChange={() => handleToggle(sub)}
+                />
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* SUBMIT */}
+      <div className="pt-4 border-t border-border flex items-center justify-between gap-4">
+        <div className="text-sm text-muted-foreground">
+          You can change this later in admin settings. This just gives you a
+          smart starting point.
+        </div>
+        <Button
+          size="lg"
+          disabled={!selectedIndustry || isSaving}
+          onClick={handleSubmit}
+        >
+          {isSaving ? "Saving..." : "Save & Continue"}
+        </Button>
+      </div>
+
+      {/* DEBUG PANEL (Phase 8B visual) */}
+      {debugPayload && (
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold mb-2">
+            Phase 8B debug payload (sent to server)
+          </h3>
+          <pre className="text-xs bg-black/40 rounded-md p-4 overflow-x-auto">
+{JSON.stringify(debugPayload, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+Save that file.
+
+✅ STEP 4 – Quick test
+
+Make sure the server is running.
+
+Open:
+https://<your-repl>.repl.co/admin/onboarding-industry
+
+Pick an industry (try Photography & Media Studio).
+
+Flip a couple photography toggles.
+
+Click Save & Continue.
+
+You should see:
+
+A toast: “Industry saved”
+
+A debug panel at the bottom showing:
+
+sent payload
+
+serverResponse from /api/onboarding/industry
+
+In server logs, a nice block starting with:
+
+=== [ONBOARDING] Industry selection received ===
+
+If any of that doesn’t happen, tell me exactly which part fails (toast, debug panel, or server log) and we’ll keep the fix as small and gentle as this
