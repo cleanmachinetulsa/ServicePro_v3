@@ -127,7 +127,7 @@ export interface WeatherRiskResult {
  * 
  * Risk calculation logic:
  * - Base: precipitation chance (0-20% → low, 21-49% → medium, 50-79% → high, 80-100% → extreme)
- * - Precipitation intensity (>5mm/hr) → bump by one level
+ * - Precipitation intensity (>2.5mm/hr) → bump by one level
  * - Severe alert active → always extreme
  * - Thunderstorm risk → bump by two levels (to at least high)
  * - High wind (>30 mph) → bump risk by one level
@@ -155,8 +155,8 @@ export function getEnhancedWeatherRiskLevel(ctx: WeatherRiskContext): EnhancedWe
     risk = 'low';
   }
   
-  // Precipitation intensity check: heavy rain (>5mm/hr) bumps risk
-  if (ctx.precipitationIntensityMm && ctx.precipitationIntensityMm > 5) {
+  // Precipitation intensity check: moderate-to-heavy rain (>2.5mm/hr) bumps risk
+  if (ctx.precipitationIntensityMm && ctx.precipitationIntensityMm > 2.5) {
     risk = bumpRiskLevel(risk, 1);
   }
   
