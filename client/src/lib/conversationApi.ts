@@ -126,7 +126,8 @@ export async function handbackConversationToAI(
     throw new Error(error.message || 'Failed to return conversation to AI');
   }
 
-  return response.json();
+  const result = await response.json();
+  return result;
 }
 
 /**
@@ -147,5 +148,6 @@ export async function fetchHandbackAnalysis(conversationId: number): Promise<Sma
   }
 
   const result = await response.json();
+  // Backend returns { success, data, message } where data is SmartHandbackResult
   return result.data;
 }
