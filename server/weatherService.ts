@@ -205,13 +205,13 @@ export async function getHourlyForecast(
       params: {
         latitude: latitude,
         longitude: longitude,
-        hourly: 'temperature_2m,precipitation_probability',
+        hourly: 'temperature_2m,precipitation_probability,precipitation,wind_speed_10m,weather_code',
         current: 'temperature_2m,precipitation',
         timezone: 'America/Chicago',
         timeformat: 'unixtime',
         wind_speed_unit: 'mph',
         temperature_unit: 'fahrenheit',
-        precipitation_unit: 'inch',
+        precipitation_unit: 'mm',  // Changed to mm for consistency with weatherRisk
         forecast_days: Math.min(days, 7) // Open-Meteo supports up to 7 days
       }
     });
@@ -517,6 +517,65 @@ export async function checkAndAlertForUpcomingAppointments(): Promise<{
 }
 
 /**
+ * Phase 13 - Internal helper to fetch enriched hourly forecast data
+ * 
+ * Requests additional weather fields from Open-Meteo for comprehensive risk assessment.
+ * Returns precipitation intensity, wind speed, and weather codes needed for Phase 13.
+ */
+async function getEnrichedHourlyForecast(
+  latitude: number,
+  longitude: number,
+  days: number = 3
+): Promise<Array<{
+  date: string;
+  precipitationChance: number;
+  precipitationIntensityMm: number;
+  windSpeedMph: number;
+  temperatureF: number;
+  weatherCode: number;
+}>> {
+  const response = await axios.get('https://api.open-meteo.com/v1/forecast', {
+    params: {
+      latitude,
+      longitude,
+      hourly: 'temperature_2m,precipitation_probability,precipitation,wind_speed_10m,weather_code',
+      timezone: 'America/Chicago',
+      timeformat: 'unixtime',
+      wind_speed_unit: 'mph',
+      temperature_unit: 'fahrenheit',
+      precipitation_unit: 'mm',
+      forecast_days: Math.min(days, 7)
+    }
+  });
+
+  if (response.status !== 200) {
+    throw new Error(`Open-Meteo API error: ${response.statusText}`);
+  }
+
+  const data = response.data.hourly;
+  const forecasts = [];
+
+  for (let i = 0; i < data.time.length; i++) {
+    const date = new Date(data.time[i] * 1000);
+    const hour = date.getHours();
+
+    // Only include business hours (9am to 5pm)
+    if (hour >= 9 && hour <= 17) {
+      forecasts.push({
+        date: date.toISOString(),
+        precipitationChance: data.precipitation_probability?.[i] || 0,
+        precipitationIntensityMm: data.precipitation?.[i] || 0,
+        windSpeedMph: data.wind_speed_10m?.[i] || 0,
+        temperatureF: data.temperature_2m?.[i] || 0,
+        weatherCode: data.weather_code?.[i] || 0,
+      });
+    }
+  }
+
+  return forecasts;
+}
+
+/**
  * Phase 13 - Get Enhanced Weather Risk for Appointment
  * 
  * Lightweight helper for reminder/notification logic to get comprehensive weather
@@ -560,8 +619,8 @@ export async function getAppointmentWeatherRisk(options: {
     // Use provided date or would load from appointment DB (simplified for Phase 13)
     const appointmentDate = options.appointmentDate ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     
-    // Get forecast for appointment time/location
-    const forecasts = await getHourlyForecast(lat, lon, 3);
+    // Get enriched forecast with full weather context (precipitation intensity, wind, etc.)
+    const forecasts = await getEnrichedHourlyForecast(lat, lon, 3);
     
     if (!forecasts || forecasts.length === 0) {
       return null;
@@ -578,16 +637,22 @@ export async function getAppointmentWeatherRisk(options: {
     }
     
     // Calculate average conditions during appointment window
-    const avgRain = relevantForecasts.reduce((sum, f) => sum + f.chanceOfRain, 0) / relevantForecasts.length;
-    const hasHighSeverity = relevantForecasts.some(f => f.severity === 'severe' || f.severity === 'high');
+    const avgRain = relevantForecasts.reduce((sum, f) => sum + f.precipitationChance, 0) / relevantForecasts.length;
+    const avgIntensity = relevantForecasts.reduce((sum, f) => sum + f.precipitationIntensityMm, 0) / relevantForecasts.length;
+    const avgWind = relevantForecasts.reduce((sum, f) => sum + f.windSpeedMph, 0) / relevantForecasts.length;
+    const avgTemp = relevantForecasts.reduce((sum, f) => sum + f.temperatureF, 0) / relevantForecasts.length;
+    
+    // Check for thunderstorms in forecast window (WMO codes 95-99)
+    const hasThunderstorm = relevantForecasts.some(f => f.weatherCode >= 95 && f.weatherCode <= 99);
     
     // Map to ProviderForecast for Phase 13 assessment
     const providerForecast: ProviderForecast = {
       chanceOfRain: avgRain,
-      temperatureF: relevantForecasts[0]?.temperature,
-      hasSevereAlert: hasHighSeverity,
-      // Note: Open-Meteo doesn't provide wind/precipitation intensity in this simple call
-      // These could be added by calling a more detailed API endpoint in the future
+      precipitationMmPerHour: avgIntensity,
+      windSpeedMph: avgWind,
+      temperatureF: avgTemp,
+      hasThunderstorm,
+      hasSevereAlert: false,  // Could be extended with weather alert API integration
     };
     
     // Use Phase 13 comprehensive risk assessment
