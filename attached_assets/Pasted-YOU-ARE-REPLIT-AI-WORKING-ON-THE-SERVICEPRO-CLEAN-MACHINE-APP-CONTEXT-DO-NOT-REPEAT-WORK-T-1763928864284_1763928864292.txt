@@ -1,0 +1,203 @@
+YOU ARE REPLIT AI WORKING ON THE "SERVICEPRO" / "CLEAN MACHINE" APP.
+
+CONTEXT (DO NOT REPEAT WORK)
+The human already had you analyze OG ServicePro AI behavior vs the new multi-tenant app. You produced this summary:
+
+- A) Maintenance Detail Intelligence → ✅ PRESENT (server/maintenanceDetail.ts)
+- D) Loyalty & Gamification → ✅ PRESENT (server/loyaltyService.ts, server/gamificationService.ts)
+- B) Weather Risk Helpers → ⚠️ MISSING (only partial weather logic)
+- C) Knowledge Base Defaults → ⚠️ MISSING (tabs used but not centralized)
+- E) SMS Interactive Keywords → ⚠️ MISSING (some handling, no centralized constants)
+
+DO NOT re-scan the entire repo. Only search where needed for integration.
+DO NOT modify:
+- auth routes
+- WebAuthn / 2FA
+- tenant middleware
+- onboarding industry flow
+- dashboard layout or tour
+- existing maintenanceDetail or loyalty/gamification logic
+
+Your task now is ONLY to implement the 3 missing pieces (B, C, E) as small, clean modules and lightly integrate them.
+
+======================================================================
+TASK B – WEATHER RISK HELPERS (server/services/weatherRisk.ts)
+======================================================================
+GOAL
+Provide a single source of truth for converting rain chance (%) → risk level and text, matching the OG spec:
+
+Risk bands:
+- severe:   80–100%
+- very-high: 60–80%
+- high:     25–60%
+- moderate: 15–25%
+- low:      0–15% (no alert sent, but still defined)
+
+1) CREATE FILE (if it doesn’t exist yet):
+- server/services/weatherRisk.ts
+
+2) IMPLEMENT:
+
+- Export type WeatherRiskLevel:
+  - "severe" | "very-high" | "high" | "moderate" | "low"
+
+- Export function getWeatherRiskLevel(rainChancePercent: number): WeatherRiskLevel
+  - >= 80 → "severe"
+  - >= 60 → "very-high"
+  - >= 25 → "high"
+  - >= 15 → "moderate"
+  - else → "low"
+
+- Export function getWeatherSeverityText(level: WeatherRiskLevel): string
+  - severe → "severe weather (80-100% chance of rain)"
+  - very-high → "very high chance of rain (60-80%)"
+  - high → "high chance of rain (25-60%)"
+  - moderate → "moderate chance of rain (15-25%)"
+  - low → "low chance of rain (0-15%)"
+
+- Export function getWeatherActionText(level: WeatherRiskLevel): string | null
+  - severe → "We strongly recommend rescheduling to ensure quality service."
+  - very-high → "We recommend rescheduling to ensure quality service."
+  - high → "Consider rescheduling for better detailing results."
+  - moderate → "We can still perform service, but exterior detailing might be affected."
+  - low → null
+
+3) LIGHT INTEGRATION (SAFE ONLY)
+
+- Use a VERY targeted search (rg) to find any existing weather / rain / forecast logic, e.g.:
+  - "OpenWeather", "rainChance", "weather alert", "WEATHER ALERT"
+- If you find an existing weather-alert builder (e.g., a cron job or notification service), you MAY:
+  - Import the helpers from server/services/weatherRisk.ts
+  - Use getWeatherRiskLevel + getWeatherSeverityText + getWeatherActionText to build the message text more cleanly.
+- If there is no obvious existing weather logic or integration is not trivial:
+  - Do NOT create a whole new job or scheduler.
+  - Just leave a clear TODO comment in weatherRisk.ts explaining intended usage:
+    - e.g. “Intended: daily 4pm job checks rain chance for next-day appointments and uses this module to decide whether and how to send alerts.”
+
+Do NOT touch Twilio config, cron wiring, or core notification scheduling in this step.
+
+======================================================================
+TASK C – KNOWLEDGE BASE DEFAULTS (server/ai/knowledgeBaseDefaults.ts)
+======================================================================
+GOAL
+Centralize OG Google Sheets tab names and basic types for AI Behavior Rules and Trigger Phrase Map so you don’t have magic strings scattered around.
+
+1) CREATE FILE:
+- server/ai/knowledgeBaseDefaults.ts
+
+2) IMPLEMENT:
+
+- Export DEFAULT_KB_TAB_NAMES as a readonly object:
+
+  - smsKnowledgeBase: "SMS Knowledge Base"
+  - services: "Services"
+  - addOns: "Add-Ons"
+  - faq: "FAQ"
+  - clientResponses: "Client Responses"
+  - aiBehaviorRules: "AI Behavior Rules"
+  - triggerPhraseMap: "Trigger Phrase Map"
+  - customerInformation: "Customer Information"
+  - serviceHistory: "Service History"
+  - toneTraining: "Tone Training"
+
+- Export interfaces:
+
+  - AiBehaviorRule:
+    - triggerScenario: string
+    - instruction: string
+
+  - TriggerPhraseMapEntry:
+    - phrase: string
+    - mappedAction: string  // e.g. "recommend_full_detail", "ask_for_photos"
+
+3) LIGHT INTEGRATION (NO BIG REFAC)
+
+- Use a narrow search to find the KB loader for Google Sheets, e.g.:
+  - "SMS Knowledge Base"
+  - "Trigger Phrase Map"
+  - "Tone Training"
+- Typical likely locations:
+  - server/ai/*knowledge*.ts
+  - server/services/googleSheets*.ts
+- Replace hard-coded tab name strings with the exported constants from DEFAULT_KB_TAB_NAMES where appropriate.
+  - Example:
+    - BEFORE: loadSheet("SMS Knowledge Base")
+    - AFTER:  loadSheet(DEFAULT_KB_TAB_NAMES.smsKnowledgeBase)
+- Do NOT change logic beyond swapping string literals for the new constants.
+- If multiple loaders exist and you’re unsure, limit yourself to the most obvious centralized loader and leave a short comment referencing the constants.
+
+======================================================================
+TASK E – SMS INTERACTIVE KEYWORDS (server/sms/interactiveKeywords.ts)
+======================================================================
+GOAL
+Centralize handling of SMS commands RESCHEDULE / CANCEL / KEEP so inbound SMS flows behave consistently with OG behavior.
+
+1) CREATE FILE:
+- server/sms/interactiveKeywords.ts
+
+2) IMPLEMENT:
+
+- Export SMS_KEYWORDS constant:
+
+  - RESCHEDULE: "RESCHEDULE"
+  - CANCEL: "CANCEL"
+  - KEEP: "KEEP"
+
+- Export type SmsKeyword as the union of those values.
+
+- Export function normalizeIncomingSmsKeyword(body: string): SmsKeyword | null
+  - Trim the string
+  - Uppercase it
+  - If it equals "RESCHEDULE" → return SMS_KEYWORDS.RESCHEDULE
+  - If "CANCEL" → SMS_KEYWORDS.CANCEL
+  - If "KEEP" → SMS_KEYWORDS.KEEP
+  - Else → null
+
+3) LIGHT INTEGRATION INTO INBOUND SMS HANDLER
+
+- Find the Twilio inbound SMS route / handler with a tight search:
+  - "Twilio" and "req.body.Body"
+  - or check files under server/sms* or server/routes.sms*
+- In that handler:
+  - Import normalizeIncomingSmsKeyword and SMS_KEYWORDS.
+  - At the top of the handler (after reading the incoming body), do:
+
+    - const keyword = normalizeIncomingSmsKeyword(incomingBody);
+
+  - If keyword is not null, branch on it:
+
+    - RESCHEDULE:
+      - Call the existing reschedule logic if it exists.
+      - If reschedule flow isn’t implemented yet, leave a TODO like:
+        - // TODO: implement reschedule flow using existing scheduling tools
+    - CANCEL:
+      - Call any existing cancel logic if present, or leave a TODO.
+    - KEEP:
+      - Confirm that the appointment remains scheduled (or TODO if not implemented).
+
+- Preserve ALL existing behavior unrelated to these commands.
+- If there are existing ad-hoc string checks for "RESCHEDULE", "CANCEL", or "KEEP", you can simplify them to use keyword === SMS_KEYWORDS.X where safe.
+
+======================================================================
+CLEANUP & OUTPUT
+======================================================================
+- Do NOT touch:
+  - server/maintenanceDetail.ts
+  - server/loyaltyService.ts
+  - server/gamificationService.ts
+  - auth / onboarding / dashboard files
+- Keep new modules small, well-typed, and self-contained.
+
+When finished, log a concise summary:
+
+- WEATHER:
+  - Created: server/services/weatherRisk.ts
+  - Integration: [describe if you plugged it into anything, or note TODO-only]
+- KNOWLEDGE BASE:
+  - Created: server/ai/knowledgeBaseDefaults.ts
+  - Updated loaders: [file paths where you swapped string literals for constants]
+- SMS KEYWORDS:
+  - Created: server/sms/interactiveKeywords.ts
+  - Updated inbound handler: [path] with brief description of keyword handling
+
+End of instructions.

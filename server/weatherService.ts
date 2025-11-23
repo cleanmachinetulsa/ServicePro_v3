@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getWeatherRiskLevel, type WeatherRiskLevel } from './services/weatherRisk';
 
 // Types for OpenWeatherMap API responses
 export interface WeatherForecast {
@@ -15,7 +16,7 @@ export interface WeatherCheckResult {
   forecastData: WeatherForecast[];
   recommendation: string;
   urgency: 'none' | 'low' | 'medium' | 'high';
-  weatherRiskLevel: 'none' | 'low' | 'moderate' | 'high' | 'very-high' | 'severe';
+  weatherRiskLevel: WeatherRiskLevel | 'none';
 }
 
 /**
@@ -281,36 +282,38 @@ export async function checkAppointmentWeather(
       f.severity === 'moderate' || f.severity === 'high' || f.severity === 'severe'
     ).length > (appointmentForecasts.length / 2);
     
+    // Use centralized weather risk assessment
+    const { getWeatherSeverityText, getWeatherActionText } = await import('./services/weatherRisk');
+    const weatherRiskLevel = getWeatherRiskLevel(avgRainProbability);
+    
     let needsReschedule = false;
     let recommendation = "";
     let urgency: 'none' | 'low' | 'medium' | 'high' = 'none';
-    let weatherRiskLevel: 'none' | 'low' | 'moderate' | 'high' | 'very-high' | 'severe' = 'none'; // For marking high weather risk appointments
     
-    // Apply the client's specific rain probability thresholds
-    if (avgRainProbability >= 80) {
+    // Build recommendation using centralized helpers
+    const severityText = getWeatherSeverityText(weatherRiskLevel);
+    const actionText = getWeatherActionText(weatherRiskLevel);
+    
+    // Apply urgency and reschedule logic based on risk level
+    if (weatherRiskLevel === 'severe') {
       needsReschedule = true;
-      recommendation = "Severe weather conditions (80-100% chance of rain) are forecasted for this appointment. This will almost certainly prevent detailing work. We strongly recommend rescheduling.";
       urgency = 'high';
-      weatherRiskLevel = 'severe';
-    } else if (avgRainProbability >= 60) {
+      recommendation = `Severe weather conditions (${severityText}) are forecasted for this appointment. ${actionText}`;
+    } else if (weatherRiskLevel === 'very-high') {
       needsReschedule = true;
-      recommendation = "Very high chance of rain (60-80%) during this appointment time. We recommend rescheduling to ensure quality service.";
       urgency = 'high';
-      weatherRiskLevel = 'very-high';
-    } else if (avgRainProbability >= 25) {
+      recommendation = `Very high chance of rain during this appointment time. ${actionText}`;
+    } else if (weatherRiskLevel === 'high') {
       needsReschedule = true;
-      recommendation = "High chance of rain (25-60%) expected during this appointment. Consider rescheduling for better detailing results.";
       urgency = 'medium';
-      weatherRiskLevel = 'high';
-    } else if (avgRainProbability >= 15) {
+      recommendation = `High chance of rain expected during this appointment. ${actionText}`;
+    } else if (weatherRiskLevel === 'moderate') {
       needsReschedule = false;
-      recommendation = "Moderate chance of rain (15-25%) during this appointment. We can still perform the service, but exterior detailing might be affected.";
       urgency = 'low';
-      weatherRiskLevel = 'moderate';
+      recommendation = actionText || "Moderate chance of rain during this appointment.";
     } else {
       recommendation = "Weather looks good for this appointment (less than 15% chance of rain).";
       urgency = 'none';
-      weatherRiskLevel = 'low';
     }
     
     return {

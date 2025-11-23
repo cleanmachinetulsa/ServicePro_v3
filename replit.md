@@ -59,6 +59,12 @@ The Express server uses `app.set('trust proxy', true)` to correctly handle Repli
 
 ## Recent Changes
 
+### Phase 10 - Missing OG Feature Modules (November 23, 2025)
+Created 3 missing feature modules from original ServicePro with clean, modular implementations:
+- **Weather Risk Assessment** (`server/services/weatherRisk.ts`): Centralized weather risk level classification, severity descriptions, and action recommendations. Integrated into weather alert system as single source of truth.
+- **Knowledge Base Defaults** (`server/ai/knowledgeBaseDefaults.ts`): Centralized Google Sheets tab name constants to prevent magic strings and ensure consistency across knowledge base operations.
+- **SMS Interactive Keywords** (`server/sms/interactiveKeywords.ts`): Standardized handling of SMS command keywords (RESCHEDULE, CANCEL, KEEP) with normalization logic. Integrated into inbound SMS flow with TODOs for full scheduling/cancellation implementations.
+
 ### Customizable Dashboard System (November 2025)
 Implemented a fully customizable dashboard with drag-and-drop widget rearrangement:
 - 7 granular widgets: Monthly Stats, Calendar, Daily Schedule, Daily Insights, Quick Actions, Cash Collections, Deposit History
