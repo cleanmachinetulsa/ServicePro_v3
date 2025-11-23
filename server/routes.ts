@@ -2019,6 +2019,27 @@ export async function registerRoutes(app: Express) {
         return res.status(400).send('Message is required');
       }
 
+      // Check for interactive SMS keywords (RESCHEDULE, CANCEL, KEEP)
+      const { normalizeIncomingSmsKeyword, SMS_KEYWORDS } = await import('./sms/interactiveKeywords');
+      const keyword = normalizeIncomingSmsKeyword(message);
+      
+      if (keyword) {
+        console.log(`[SMS KEYWORD] Detected interactive keyword: ${keyword}`);
+        
+        // TODO: Implement keyword-specific flows
+        if (keyword === SMS_KEYWORDS.RESCHEDULE) {
+          // TODO: Implement reschedule flow using existing scheduling tools
+          console.log('[SMS KEYWORD] RESCHEDULE keyword detected - flow not yet implemented');
+        } else if (keyword === SMS_KEYWORDS.CANCEL) {
+          // TODO: Implement cancel flow using existing cancellation logic
+          console.log('[SMS KEYWORD] CANCEL keyword detected - flow not yet implemented');
+        } else if (keyword === SMS_KEYWORDS.KEEP) {
+          // TODO: Confirm appointment remains scheduled
+          console.log('[SMS KEYWORD] KEEP keyword detected - flow not yet implemented');
+        }
+        // For now, continue to normal conversation flow
+      }
+
       // Determine if this is a web client or SMS
       // Web clients send isWebClient in the body, SMS comes from Twilio webhook
       const platform = req.headers['x-client-type'] === 'web' ? 'web' : 'sms';

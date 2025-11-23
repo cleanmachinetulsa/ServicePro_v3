@@ -1002,7 +1002,8 @@ export async function findOrAddCustomer(
         console.log('Importing existing customer data from SMS Knowledge Base...');
 
         // Get data from SMS Knowledge Base
-        const smsRange = 'SMS Knowledge Base!A1:Z1000';
+        const { DEFAULT_KB_TAB_NAMES } = await import('./ai/knowledgeBaseDefaults');
+        const smsRange = `${DEFAULT_KB_TAB_NAMES.smsKnowledgeBase}!A1:Z1000`;
         const smsResponse = await sheets.spreadsheets.values.get({
           spreadsheetId: GOOGLE_SHEET_ID,
           range: smsRange
