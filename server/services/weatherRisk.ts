@@ -198,6 +198,11 @@ export function getEnhancedWeatherSeverityText(
   result: WeatherRiskResult,
   ctx?: WeatherRiskContext
 ): string {
+  // Special handling for severe weather alerts
+  if (ctx?.severeAlertActive) {
+    return "A severe weather alert is in effect for this area.";
+  }
+  
   // Generic defaults for all field service industries
   switch (result.level) {
     case 'low':
@@ -227,6 +232,11 @@ export function getEnhancedWeatherActionText(
   result: WeatherRiskResult,
   ctx?: WeatherRiskContext
 ): string {
+  // Special handling for severe weather alerts
+  if (ctx?.severeAlertActive) {
+    return "Please reschedule immediately for safety. Dangerous weather conditions are expected.";
+  }
+  
   // Generic defaults for all field service industries
   switch (result.level) {
     case 'low':
