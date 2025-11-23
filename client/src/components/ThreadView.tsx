@@ -48,6 +48,10 @@ import MessageBubble from './messages/MessageBubble';
 import SmartComposeRail from './messages/SmartComposeRail';
 import { useToast } from '@/hooks/use-toast';
 import { useReadReceipts } from '@/hooks/useReadReceipts';
+import { ConversationMetaBar } from './conversations/ConversationMetaBar';
+import { SmartSchedulePanel } from './conversations/SmartSchedulePanel';
+import { HandoffControls } from './conversations/HandoffControls';
+import { HandbackAnalysisPanel } from './conversations/HandbackAnalysisPanel';
 
 interface ReplySuggestion {
   id: string;
@@ -1557,64 +1561,92 @@ export default function ThreadView({
             </div>
         </div>
 
-        {/* Quick Reply Templates Sidebar - Enhanced */}
-        {conversation.controlMode === 'manual' && quickReplyCategories.length > 0 && (
+        {/* Right Sidebar - Professional Controls & Quick Replies */}
+        {conversation.controlMode === 'manual' && (
           <div className="lg:w-80 border-t lg:border-t-0 lg:border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto max-h-[400px] lg:max-h-full">
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <div className="bg-primary/10 p-1.5 rounded-lg">
-                    <MessageSquare className="h-4 w-4 text-primary" />
-                  </div>
-                  Quick Replies
+            <div className="p-4 space-y-4">
+              {/* Phase 12: Professional Conversation Management */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Professional Controls
                 </h3>
-                <Badge variant="outline" className="text-xs">
-                  {quickReplyCategories.reduce((sum, cat) => sum + cat.templates.length, 0)} templates
-                </Badge>
+                
+                <ConversationMetaBar
+                  controlMode={conversation.controlMode}
+                  assignedAgent={conversation.assignedAgent}
+                  lastHandoffAt={conversation.lastHandoffAt}
+                  manualModeStartedAt={conversation.manualModeStartedAt}
+                />
+                
+                <HandoffControls
+                  conversationId={conversationId}
+                  controlMode={conversation.controlMode}
+                />
+                
+                <SmartSchedulePanel conversationId={conversationId} />
+                
+                <HandbackAnalysisPanel conversationId={conversationId} />
               </div>
-              
-              <div className="space-y-2">
-                {quickReplyCategories.map((category) => (
-                  <Collapsible
-                    key={category.id}
-                    open={expandedCategories.has(category.id)}
-                    onOpenChange={() => toggleCategory(category.id)}
-                  >
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-between"
-                        data-testid={`category-${category.id}`}
+
+              {/* Quick Reply Templates */}
+              {quickReplyCategories.length > 0 && (
+                <div className="pt-4 border-t dark:border-gray-800">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <div className="bg-primary/10 p-1.5 rounded-lg">
+                        <MessageSquare className="h-4 w-4 text-primary" />
+                      </div>
+                      Quick Replies
+                    </h3>
+                    <Badge variant="outline" className="text-xs">
+                      {quickReplyCategories.reduce((sum, cat) => sum + cat.templates.length, 0)} templates
+                    </Badge>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {quickReplyCategories.map((category) => (
+                      <Collapsible
+                        key={category.id}
+                        open={expandedCategories.has(category.id)}
+                        onOpenChange={() => toggleCategory(category.id)}
                       >
-                        <span className="flex items-center gap-2">
-                          {category.icon && <span>{category.icon}</span>}
-                          {category.name}
-                        </span>
-                        {expandedCategories.has(category.id) ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-1 mt-1">
-                      {category.templates.map((template) => (
-                        <Button
-                          key={template.id}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleQuickReplyClick(template.id, template.content)}
-                          className="w-full text-left justify-start text-xs h-auto py-2 px-3 whitespace-normal"
-                          disabled={sendMessageMutation.isPending}
-                          data-testid={`template-${template.id}`}
-                        >
-                          {template.content}
-                        </Button>
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
-                ))}
-              </div>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-between"
+                            data-testid={`category-${category.id}`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {category.icon && <span>{category.icon}</span>}
+                              {category.name}
+                            </span>
+                            {expandedCategories.has(category.id) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="space-y-1 mt-1">
+                          {category.templates.map((template) => (
+                            <Button
+                              key={template.id}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleQuickReplyClick(template.id, template.content)}
+                              className="w-full text-left justify-start text-xs h-auto py-2 px-3 whitespace-normal"
+                              disabled={sendMessageMutation.isPending}
+                              data-testid={`template-${template.id}`}
+                            >
+                              {template.content}
+                            </Button>
+                          ))}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
