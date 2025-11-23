@@ -26,6 +26,7 @@ import sendgridWebhookRouter from "./routes.sendgridWebhook";
 import twilioVoiceRouter from "./routes.twilioVoice";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
+import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { setupGoogleOAuth } from "./googleOAuth";
@@ -251,6 +252,8 @@ app.use(stripeWebhooksRouter);
 app.use(sendgridWebhookRouter);
 // Register campaign management routes (requires auth)
 app.use('/api/campaigns', campaignsRouter);
+// Register Welcome Back Campaign routes (tenant admin, requires 'campaigns' feature)
+app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 // Register SMS templates routes (requires auth)
 app.use('/api/sms-templates', smsTemplatesRouter);
 // Register referral invoice routes (validation public, apply requires auth)
