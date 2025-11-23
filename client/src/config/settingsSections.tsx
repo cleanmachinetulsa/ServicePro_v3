@@ -15,6 +15,7 @@ import { EmailCampaignsManager } from "../components/EmailCampaignsManager";
 import { SmsTemplatesManager } from "../components/SmsTemplatesManager";
 import EmailTemplatesManager from "../components/EmailTemplatesManager";
 import CancellationDemo from "../components/CancellationDemo";
+import { CommunicationsSettings } from "../components/CommunicationsSettings";
 import SubscriptionManager from "../components/SubscriptionManager";
 import { PhoneSettings } from "../components/PhoneSettings";
 import ServicesManagement from "../components/ServicesManagement";
@@ -67,7 +68,7 @@ export const settingsSections: SettingsSection[] = [
       { id: 'notifications', label: 'Notifications', component: NotificationsSettings },
       { id: 'sms-templates', label: 'SMS Templates', component: SmsTemplatesManager },
       { id: 'email-templates', label: 'Email Templates', component: EmailTemplatesManager },
-      { id: 'email-campaigns', label: 'Email Campaigns', component: EmailCampaignsManager },
+      { id: 'campaigns', label: 'Campaigns', component: CommunicationsSettings },
       { id: 'upsell', label: 'Upsell Offers', component: UpsellManagement },
       { id: 'cancellation', label: 'Cancellation Feedback', component: CancellationDemo },
     ]
