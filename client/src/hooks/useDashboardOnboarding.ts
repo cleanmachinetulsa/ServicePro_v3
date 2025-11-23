@@ -37,10 +37,13 @@ export function useDashboardOnboarding(
   }, [initialHasSeenTour]);
 
   // Decide if we should show tour on load
+  // NOTE: Auto-disabled for now since tour targets are missing from AppShell
+  // Users can manually enable tour later if needed
   useEffect(() => {
-    if (!hasSeenTour) {
-      setShouldShowTour(true);
-    }
+    // Temporarily disabled - tour needs proper data-tour-id attributes on nav elements
+    // if (!hasSeenTour) {
+    //   setShouldShowTour(true);
+    // }
   }, [hasSeenTour]);
 
   const markTourCompleted = useCallback(async () => {
