@@ -9,8 +9,11 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch as Toggle } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { INDUSTRY_PACKS } from "@/config/industryPacks";
+import { Eye, EyeOff } from "lucide-react";
 
 const PHOTOGRAPHY_SUBPACKS = [
   "Portrait Sessions",
@@ -36,13 +39,58 @@ export default function OnboardingIndustryPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [debugPayload, setDebugPayload] = useState<any | null>(null);
 
+  // Account creation form fields
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
   const handleToggle = (name: string) => {
     setPhotoToggles((prev) => ({ ...prev, [name]: !prev[name] }));
   };
 
   const handleSubmit = async () => {
-    if (!selectedIndustry) return;
+    if (!selectedIndustry) {
+      setFormError("Please select an industry first");
+      return;
+    }
 
+    // Validate account fields
+    if (!username.trim()) {
+      setFormError("Username is required");
+      return;
+    }
+
+    if (username.length < 3) {
+      setFormError("Username must be at least 3 characters");
+      return;
+    }
+
+    if (!password) {
+      setFormError("Password is required");
+      return;
+    }
+
+    if (password.length < 6) {
+      setFormError("Password must be at least 6 characters");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setFormError("Passwords do not match");
+      return;
+    }
+
+    // Optional email validation
+    if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      setFormError("Please enter a valid email address");
+      return;
+    }
+
+    setFormError(null);
     const industryMeta = INDUSTRY_PACKS.find((i) => i.id === selectedIndustry);
 
     const featureFlags =
@@ -56,6 +104,9 @@ export default function OnboardingIndustryPage() {
         : {};
 
     const payload = {
+      username: username.trim(),
+      email: email.trim() || undefined,
+      password,
       industryId: selectedIndustry,
       industryName: industryMeta?.label ?? selectedIndustry,
       featureFlags,
@@ -69,18 +120,19 @@ export default function OnboardingIndustryPage() {
     setDebugPayload(null);
 
     try {
-      const resp = await fetch("/api/onboarding/industry", {
+      const resp = await fetch("/api/onboarding/complete", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // Required for session cookie
         body: JSON.stringify(payload),
       });
 
       const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok || !data?.success) {
-        throw new Error(data?.message || "Failed to save industry selection");
+        throw new Error(data?.message || "Failed to create account");
       }
 
       setDebugPayload({
@@ -89,23 +141,44 @@ export default function OnboardingIndustryPage() {
       });
 
       toast({
-        title: "Industry saved",
-        description: data.persisted 
-          ? "Your industry selection has been saved. Redirecting to dashboard..."
-          : "Your industry selection was logged (no tenant context).",
+        title: "Account created!",
+        description: "Taking you to your dashboard...",
       });
 
-      // Redirect to dashboard after successful save
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 1500);
+      // Verify session is established before redirecting
+      try {
+        const verifyResp = await fetch("/api/auth/verify", {
+          credentials: "include",
+        });
+        
+        if (verifyResp.ok) {
+          // Session verified, safe to redirect
+          navigate("/dashboard");
+        } else {
+          // Session not established, redirect to login
+          toast({
+            title: "Please log in",
+            description: "Account created successfully. Please log in with your credentials.",
+            variant: "default",
+          });
+          setTimeout(() => navigate("/login"), 1000);
+        }
+      } catch (verifyError) {
+        // Fallback: redirect to login if verification fails
+        console.error("[OnboardingIndustry] Session verification error:", verifyError);
+        toast({
+          title: "Please log in",
+          description: "Account created. Please log in to continue.",
+          variant: "default",
+        });
+        setTimeout(() => navigate("/login"), 1000);
+      }
     } catch (err: any) {
-      console.error("[OnboardingIndustry] Save error:", err);
+      console.error("[OnboardingIndustry] Account creation error:", err);
+      setFormError(err?.message || "Failed to create account. Please try again.");
       toast({
-        title: "Save failed",
-        description:
-          err?.message ||
-          "There was a problem sending your selection to the server.",
+        title: "Account creation failed",
+        description: err?.message || "There was a problem creating your account.",
         variant: "destructive",
       });
     } finally {
@@ -189,21 +262,141 @@ export default function OnboardingIndustryPage() {
         </div>
       )}
 
-      {/* SUBMIT */}
-      <div className="pt-4 border-t border-border flex items-center justify-between gap-4">
-        <div className="text-sm text-muted-foreground">
-          You can change this later in admin settings. This just gives you a
-          smart starting point.
+      {/* ACCOUNT CREATION FORM - Only show after industry selection */}
+      {selectedIndustry && (
+        <div className="space-y-6 pt-6 border-t border-border">
+          <div>
+            <h2 className="text-2xl font-semibold mb-2">Create Your Account</h2>
+            <p className="text-muted-foreground">
+              Enter your details to save your industry selection and get started.
+            </p>
+          </div>
+
+          <Card className="p-6">
+            <CardContent className="p-0 space-y-4">
+              {/* Username */}
+              <div className="space-y-2">
+                <Label htmlFor="username">
+                  Username <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="johndoe"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={isSaving}
+                  data-testid="input-username"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  At least 3 characters. This will be your login name.
+                </p>
+              </div>
+
+              {/* Email (optional) */}
+              <div className="space-y-2">
+                <Label htmlFor="email">Email (optional)</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="john@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isSaving}
+                  data-testid="input-email"
+                />
+                <p className="text-xs text-muted-foreground">
+                  For password recovery and notifications.
+                </p>
+              </div>
+
+              {/* Password */}
+              <div className="space-y-2">
+                <Label htmlFor="password">
+                  Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isSaving}
+                    data-testid="input-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    data-testid="toggle-password-visibility"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  At least 6 characters.
+                </p>
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">
+                  Confirm Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    disabled={isSaving}
+                    data-testid="input-confirm-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    data-testid="toggle-confirm-password-visibility"
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {formError && (
+                <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md">
+                  <p className="text-sm text-red-600 dark:text-red-400" data-testid="form-error">
+                    {formError}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
-        <Button
-          size="lg"
-          disabled={!selectedIndustry || isSaving}
-          onClick={handleSubmit}
-          data-testid="button-save-continue"
-        >
-          {isSaving ? "Saving..." : "Save & Continue"}
-        </Button>
-      </div>
+      )}
+
+      {/* SUBMIT */}
+      {selectedIndustry && (
+        <div className="pt-4 border-t border-border flex items-center justify-between gap-4">
+          <div className="text-sm text-muted-foreground">
+            Your account will be created and you&apos;ll be logged in automatically.
+          </div>
+          <Button
+            size="lg"
+            disabled={!selectedIndustry || isSaving}
+            onClick={handleSubmit}
+            data-testid="button-create-account"
+          >
+            {isSaving ? "Creating Account..." : "Create Account & Continue"}
+          </Button>
+        </div>
+      )}
 
       {/* DEBUG PANEL (Phase 8B visual) */}
       {debugPayload && (

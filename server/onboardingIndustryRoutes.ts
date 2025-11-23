@@ -12,10 +12,14 @@
 
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
-import { tenantConfig } from "@shared/schema";
+import { tenantConfig, tenants, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { bootstrapIndustryAiAndMessaging } from "./industryAiBootstrapService";
 import { getBootstrapDataForIndustry, hasBootstrapData } from "./industryBootstrapData";
+import bcrypt from "bcrypt";
+import { nanoid } from "nanoid";
+
+const SALT_ROUNDS = 10;
 
 interface IndustryOnboardingPayload {
   industryId: string;
@@ -42,6 +46,197 @@ function getTenantId(req: Request): string | null {
  * Register the onboarding routes on the given Express app.
  */
 export default function registerOnboardingIndustryRoutes(app: Express) {
+  // POST /api/onboarding/complete
+  // Progressive onboarding: create tenant + user + save industry selection atomically
+  app.post(
+    "/api/onboarding/complete",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const { username, password, email, industryId, industryName, featureFlags, rawSelection } = req.body;
+
+        // Validate required fields
+        if (!username || !password) {
+          res.status(400).json({
+            success: false,
+            message: "Username and password are required",
+          });
+          return;
+        }
+
+        if (!industryId) {
+          res.status(400).json({
+            success: false,
+            message: "Industry selection is required",
+          });
+          return;
+        }
+
+        // Validate username length
+        if (username.length < 3) {
+          res.status(400).json({
+            success: false,
+            message: "Username must be at least 3 characters",
+          });
+          return;
+        }
+
+        // Validate password length
+        if (password.length < 6) {
+          res.status(400).json({
+            success: false,
+            message: "Password must be at least 6 characters",
+          });
+          return;
+        }
+
+        // Check if username already exists in ANY tenant (global check)
+        const existingUser = await db
+          .select()
+          .from(users)
+          .where(eq(users.username, username))
+          .limit(1);
+
+        if (existingUser && existingUser.length > 0) {
+          res.status(400).json({
+            success: false,
+            message: "Username already exists",
+          });
+          return;
+        }
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+        // Generate tenant ID from username
+        const tenantId = `tenant_${username.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${nanoid(6)}`;
+
+        // Build industry config object
+        const industryConfigData = {
+          featureFlags: featureFlags ?? {},
+          rawSelection: rawSelection ?? {},
+          version: "v1",
+          updatedAt: new Date().toISOString(),
+        };
+
+        // Create tenant + user atomically
+        let newUser;
+        try {
+          await db.transaction(async (tx) => {
+            // 1. Create tenant
+            await tx.insert(tenants).values({
+              id: tenantId,
+              name: `${username}'s Business`,
+              subdomain: null,
+              isRoot: false,
+              planTier: "starter",
+              status: "trialing",
+            });
+
+            // 2. Create tenant config with industry selection
+            await tx.insert(tenantConfig).values({
+              tenantId,
+              businessName: `${username}'s Business`,
+              logoUrl: null,
+              primaryColor: "#3b82f6",
+              tier: "starter",
+              industry: industryId,
+              industryConfig: industryConfigData,
+            });
+
+            // 3. Create user
+            const [user] = await tx.insert(users).values({
+              username,
+              password: hashedPassword,
+              email: email || null,
+              role: "owner",
+              tenantId,
+            }).returning();
+
+            newUser = user;
+          });
+
+          console.log(`[ONBOARDING] Created tenant ${tenantId} with user ${username} and industry ${industryId}`);
+
+          // Bootstrap AI behavior rules, SMS templates, and FAQ entries if available
+          let bootstrapResult = null;
+          if (hasBootstrapData(industryId)) {
+            console.log(`[ONBOARDING] Bootstrapping AI & messaging for industry: ${industryId}`);
+            const bootstrapData = getBootstrapDataForIndustry(industryId);
+            
+            if (bootstrapData) {
+              bootstrapResult = await bootstrapIndustryAiAndMessaging(
+                tenantId,
+                industryId,
+                bootstrapData
+              );
+
+              if (bootstrapResult.success) {
+                console.log(`[ONBOARDING] Bootstrap complete:`, bootstrapResult.summary);
+              } else {
+                console.error(`[ONBOARDING] Bootstrap failed:`, bootstrapResult.error);
+              }
+            }
+          }
+
+          // Create session (auto-login)
+          req.session.regenerate((err) => {
+            if (err) {
+              console.error('[ONBOARDING] Session regeneration error:', err);
+              res.status(500).json({
+                success: false,
+                message: 'Account created but login failed. Please try logging in manually.',
+              });
+              return;
+            }
+
+            // Store user ID, tenant ID, and role in session (required for tenant middleware)
+            req.session.userId = newUser!.id;
+            req.session.tenantId = tenantId;
+            req.session.role = 'owner';
+            req.session.twoFactorVerified = false;
+
+            // Save session
+            req.session.save((saveErr) => {
+              if (saveErr) {
+                console.error('[ONBOARDING] Session save error:', saveErr);
+                return res.status(500).json({
+                  success: false,
+                  message: 'Account created but login failed. Please try logging in manually.',
+                });
+              }
+
+              return res.json({
+                success: true,
+                message: "Account created successfully",
+                user: {
+                  id: newUser!.id,
+                  username: newUser!.username,
+                },
+                tenant: {
+                  id: tenantId,
+                  industry: industryId,
+                },
+                bootstrap: bootstrapResult,
+              });
+            });
+          });
+        } catch (dbError: any) {
+          console.error('[ONBOARDING] Transaction failed:', dbError);
+          res.status(500).json({
+            success: false,
+            message: "Failed to create account. Please try again.",
+          });
+        }
+      } catch (err) {
+        console.error('[ONBOARDING] Error in /api/onboarding/complete:', err);
+        res.status(500).json({
+          success: false,
+          message: "Unexpected error during account creation.",
+        });
+      }
+    }
+  );
+
   // POST /api/onboarding/industry
   app.post(
     "/api/onboarding/industry",
