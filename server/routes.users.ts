@@ -22,6 +22,7 @@ router.get('/me', requireAuth, async (req, res) => {
         operatorName: users.operatorName,
         requirePasswordChange: users.requirePasswordChange,
         isActive: users.isActive,
+        hasSeenDashboardTour: users.hasSeenDashboardTour,
         createdAt: users.createdAt,
       })
       .from(users)
