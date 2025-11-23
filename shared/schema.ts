@@ -173,6 +173,28 @@ export const errorLogs = pgTable("error_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Dashboard widget layouts for customizable user dashboards
+export const dashboardLayouts = pgTable("dashboard_layouts", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  userId: integer("user_id"), // NULL for tenant-wide default layouts
+  layout: jsonb("layout").notNull().$type<{
+    widgets: Array<{
+      id: string;
+      position: { x: number; y: number };
+      size: { width: number; height: number };
+      visible: boolean;
+      order: number;
+    }>;
+  }>(),
+  layoutVersion: integer("layout_version").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantUserIdx: uniqueIndex("dashboard_layouts_tenant_user_idx").on(table.tenantId, table.userId),
+  userIdIdx: index("dashboard_layouts_user_id_idx").on(table.userId),
+}));
+
 // Platform settings for demo mode and global configurations
 export const platformSettings = pgTable("platform_settings", {
   id: serial("id").primaryKey(),
@@ -2556,8 +2578,31 @@ export const insertCreditTransactionSchema = createInsertSchema(creditTransactio
   createdAt: true,
 });
 
+// Dashboard layout schemas
+export const insertDashboardLayoutSchema = createInsertSchema(dashboardLayouts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const dashboardWidgetSchema = z.object({
+  id: z.string(),
+  position: z.object({ x: z.number(), y: z.number() }),
+  size: z.object({ width: z.number(), height: z.number() }),
+  visible: z.boolean(),
+  order: z.number(),
+});
+
+export const dashboardLayoutPayloadSchema = z.object({
+  widgets: z.array(dashboardWidgetSchema),
+});
+
 // Define types for use in the application
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type DashboardLayout = typeof dashboardLayouts.$inferSelect;
+export type InsertDashboardLayout = z.infer<typeof insertDashboardLayoutSchema>;
+export type DashboardWidget = z.infer<typeof dashboardWidgetSchema>;
+export type DashboardLayoutPayload = z.infer<typeof dashboardLayoutPayloadSchema>;
 export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type InsertRecurringService = z.infer<typeof insertRecurringServiceSchema>;

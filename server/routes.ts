@@ -71,7 +71,9 @@ import {
   updateService,
   getCalendarWeather,
   navigateAndSendETA,
-  sendInvoiceNotification
+  sendInvoiceNotification,
+  getDashboardLayout,
+  saveDashboardLayout
 } from './dashboardApi';
 import {
   getGoogleReviews,
@@ -379,6 +381,8 @@ export async function registerRoutes(app: Express) {
   app.get('/api/dashboard/monthly-stats', requireAuth, getMonthlyStatistics);
   app.get('/api/dashboard/messages', requireAuth, getRecentMessages);
   app.get('/api/dashboard/weather', requireAuth, getCalendarWeather);
+  app.get('/api/dashboard/layout', requireAuth, getDashboardLayout);
+  app.post('/api/dashboard/layout', requireAuth, saveDashboardLayout);
   app.post('/api/dashboard/navigate-and-send-eta', requireAuth, navigateAndSendETA);
   app.post('/api/dashboard/send-invoice', requireAuth, sendInvoiceNotification);
   app.put('/api/dashboard/services/:id', requireAuth, updateService);
