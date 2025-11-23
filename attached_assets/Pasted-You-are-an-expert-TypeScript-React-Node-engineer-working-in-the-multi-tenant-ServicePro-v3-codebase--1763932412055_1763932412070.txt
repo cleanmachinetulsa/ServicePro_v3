@@ -1,0 +1,362 @@
+You are an expert TypeScript/React/Node engineer working in the multi-tenant ServicePro v3 codebase.
+
+The backend already has **Phase 12 – Professional Conversation Management** implemented:
+
+- Conversation model has:
+  - `controlMode` (e.g. 'auto' | 'manual' | 'paused')
+  - `assignedAgent`
+  - handoff timestamps / metadata
+- There is a `server/enhancedHandoffService.ts`
+- `server/routes.conversations.ts` contains the Phase 12 endpoints (look for comments or code around “Phase 12” or “enhanced handoff”):
+  - Smart schedule from thread
+  - Smart handback to AI
+  - Handback analysis (AI recommendations)
+- Endpoints are already tenant-safe via `tenantDb.withTenantFilter(...)`.
+
+Your job in this task:
+Implement a **professional, admin-facing UI** so an owner/agent can:
+
+1. View a conversation (thread transcript + metadata).
+2. Trigger **Smart Schedule from Thread** → see extracted booking details → confirm / edit → create appointment.
+3. Trigger **Smart Handback to AI** → return the conversation to AI control with clear status.
+4. View **Handback Analysis** → see AI suggestions about when/how to hand back.
+
+All changes must:
+- Reuse existing patterns in the client app (pages, routing, API layer, styling).
+- Preserve multi-tenant isolation (never leak data between tenants).
+- Be incremental: don’t break existing screens or routes.
+
+==================================================
+STEP 1 – DISCOVER EXISTING CONVERSATION UI & API
+==================================================
+
+1) Locate conversation-related client code:
+- Search in `client/src` for terms:
+  - `Conversation`
+  - `conversationId`
+  - `routes.conversations`
+  - `/api/conversations`
+- Identify:
+  - Any existing **conversation transcript view** component.
+  - Any existing API helper file for conversations (e.g. `client/src/api/conversations.ts` or similar).
+  - Any admin or operations screen where conversations are listed.
+
+2) If an existing **Conversation Detail** page exists (e.g. something like `/admin/conversations/:conversationId`):
+- Plan to **extend that page** with a new “Professional Controls” panel.
+- DO NOT remove or radically change current functionality.
+
+3) If no such page exists:
+- Plan to create a new admin page like:
+  - `client/src/pages/AdminConversationDetail.tsx`
+  - with route `/admin/conversations/:conversationId`
+- It should be reachable from whatever conversation list UI already exists (if there is one). If there is no list yet, you can add a simple navigation entry from an admin menu or dashboards panel.
+
+==================================================
+STEP 2 – FRONTEND API HELPERS FOR PHASE 12
+==================================================
+
+Create or extend a conversations API helper file (name may vary; discover existing pattern first):
+
+- Prefer: `client/src/api/conversations.ts` (or similar) IF it already exists.
+- Otherwise, create this file and follow existing API style (e.g., `client/src/api/tenants.ts`, `client/src/api/bookings.ts`).
+
+In this file, add typed helper functions that call the Phase 12 endpoints.
+
+1) FIRST: discover the actual backend endpoints
+- Open `server/routes.conversations.ts`.
+- Find the Phase 12 endpoints by searching for:
+  - `enhancedHandoffService`
+  - `smart schedule`
+  - `handback`
+  - or any comments mentioning “Phase 12”.
+- Use the ACTUAL HTTP methods and paths you find there. Do *not* invent new routes; just wrap the existing ones.
+
+2) Implement TS helpers, something conceptually like this (ADAPT names & paths to match actual code):
+
+```ts
+// Example shape – adapt to real routes and DTOs
+export interface SmartScheduleResult {
+  suggestedTime?: string;      // ISO datetime
+  suggestedWindowLabel?: string;
+  serviceName?: string;
+  customerName?: string;
+  address?: string;
+  notes?: string;
+  // include any other fields the backend returns
+}
+
+export interface CreateAppointmentFromSmartScheduleRequest {
+  conversationId: string;
+  confirmedTime: string;      // ISO datetime
+  serviceName: string;
+  notes?: string;
+}
+
+export async function fetchSmartSchedule(conversationId: string): Promise<SmartScheduleResult> {
+  // call the existing Phase 12 smart schedule endpoint
+}
+
+export interface HandbackResult {
+  newControlMode: string;
+  message?: string;
+}
+
+export async function handbackConversationToAI(conversationId: string): Promise<HandbackResult> {
+  // call Phase 12 handback endpoint
+}
+
+export interface HandbackAnalysisResult {
+  recommendation: 'keep_manual' | 'handback_now' | 'monitor';
+  summary: string;
+  reasons: string[];
+}
+
+export async function fetchHandbackAnalysis(conversationId: string): Promise<HandbackAnalysisResult> {
+  // call Phase 12 analysis endpoint
+}
+Requirements:
+
+Use whatever HTTP client abstraction the app already uses (e.g. apiClient, fetchJson, axiosInstance).
+
+Ensure authentication / tenant context are passed in the same way as existing API helpers.
+
+Handle errors by:
+
+Logging to console (dev-mode friendly).
+
+Returning a safe error object or throwing, consistent with existing patterns.
+
+==================================================
+STEP 3 – CONVERSATION MANAGEMENT UI COMPONENTS
+Create modular components so they can be reused in different pages later.
+
+Suggested components (filenames may be adjusted to existing patterns):
+
+client/src/components/conversations/ConversationMetaBar.tsx
+
+Props:
+
+controlMode: 'auto' | 'manual' | 'paused' | string
+
+assignedAgent?: string | null
+
+lastHandoffAt?: string | null
+
+Renders:
+
+Current control mode (badge, color-coded).
+
+Assigned agent (or “Unassigned”).
+
+Last handoff timestamp in friendly format.
+
+Style using the existing UI system:
+
+If using Tailwind, keep it consistent.
+
+If using a component library, use its Card/Tag/Badge components.
+
+client/src/components/conversations/SmartSchedulePanel.tsx
+
+Purpose: Let a human operator generate + confirm booking details from a conversation.
+
+Props:
+
+conversationId: string.
+
+Behavior:
+
+Has a button: “Smart schedule from conversation”.
+
+When clicked:
+
+Calls fetchSmartSchedule(conversationId).
+
+Shows a loading state.
+
+Then shows a small form with:
+
+Suggested service name
+
+Suggested date/time (use a date-time input or whatever is standard in the app)
+
+Address and notes if provided
+
+Form is editable so the human can tweak.
+
+A “Create appointment” button:
+
+Calls the existing appointment creation function that already wires to Google Calendar (e.g., createAppointment from your booking system).
+
+On success: show success toast + maybe link to the appointment details if such a page exists.
+
+Implementation notes:
+
+Reuse any existing date/time picker / form components in the app.
+
+For now, keep layout simple but professional (aligned labels, clear buttons).
+
+Guard against conversation IDs that are invalid by showing a clear error message.
+
+client/src/components/conversations/HandoffControls.tsx
+
+Purpose: Provide human controls for switching between AI/manual and invoking smart handback.
+
+Props:
+
+conversationId: string
+
+controlMode: string
+
+Optional callbacks for parent to refresh data after changes.
+
+UI:
+
+Show the current controlMode with a label and description.
+
+Buttons:
+
+“Return to AI” → calls handbackConversationToAI(conversationId).
+
+Optionally a manual override dropdown for controlMode if the backend exposes such an endpoint (if not, just keep the “Return to AI” action for now).
+
+Show toasts / messages based on HandbackResult.message.
+
+client/src/components/conversations/HandbackAnalysisPanel.tsx
+
+Props:
+
+conversationId: string
+
+Behavior:
+
+Has a small button or link: “Analyze handback”.
+
+On click:
+
+Calls fetchHandbackAnalysis(conversationId).
+
+Renders:
+
+recommendation as a badge (e.g. “AI suggests handback now”).
+
+summary as a short paragraph.
+
+reasons as a bullet list.
+
+This is read-only guidance to help the operator decide when to give control back to AI or keep manual.
+
+==================================================
+STEP 4 – ADMIN PAGE INTEGRATION
+Now integrate these components into an admin/ops page.
+
+Find the main conversation detail page:
+
+Look for something like ConversationDetailPage, AdminConversationPage, or similar in client/src/pages or client/src/features/conversations.
+
+If it exists:
+
+Import and embed:
+
+<ConversationMetaBar />
+
+<HandoffControls />
+
+<SmartSchedulePanel />
+
+<HandbackAnalysisPanel />
+
+All should live in a right-hand or lower panel around the existing transcript view, e.g.:
+
+Pseudocode layout:
+
+tsx
+Copy code
+<div className="flex flex-col lg:flex-row gap-4">
+  <div className="lg:w-2/3">
+    {/* Existing conversation transcript / messages */}
+  </div>
+  <div className="lg:w-1/3 space-y-4">
+    <ConversationMetaBar ... />
+    <HandoffControls ... />
+    <SmartSchedulePanel conversationId={conversationId} />
+    <HandbackAnalysisPanel conversationId={conversationId} />
+  </div>
+</div>
+If no conversation detail page exists:
+
+Create a new page like:
+
+client/src/pages/AdminConversationDetail.tsx
+
+It should:
+
+Read conversationId from the route params.
+
+Fetch conversation details (existing API function).
+
+Render transcript + the new professional controls as above.
+
+Register the route in the app router:
+
+e.g. under /admin → /admin/conversations/:conversationId
+
+Add a navigation entry from the existing admin sidebar/menu so it’s discoverable.
+
+==================================================
+STEP 5 – UX / POLISH REQUIREMENTS
+Show clear loading states when any of the Phase 12 API calls are in flight.
+
+Show error messaging if:
+
+Smart schedule parse fails.
+
+Appointment creation fails.
+
+Handback or analysis endpoints return an error.
+
+Use short, professional copy for buttons and tooltips, example:
+
+“Smart schedule from conversation”
+
+“Create appointment”
+
+“Return control to AI”
+
+“Analyze handback”
+
+Do NOT expose tenant IDs or internal IDs in the UI.
+
+Respect whatever light/dark or branding styles are currently in place.
+
+==================================================
+STEP 6 – TESTING & ACCEPTANCE CRITERIA
+TypeScript:
+
+npm run build (or equivalent) passes with no TS errors.
+
+UI manual tests:
+
+From an admin account:
+
+Open a conversation detail page with a valid conversationId.
+
+Verify:
+
+Conversation meta shows controlMode and assigned agent.
+
+“Smart schedule from conversation” runs and returns a suggestion.
+
+You can edit the suggestion and create an appointment.
+
+“Return to AI” updates the conversation status (and any controlMode shown).
+
+“Analyze handback” shows the recommendation and reasons.
+
+Multi-tenant safety:
+
+Ensure all API calls go through authenticated routes that already enforce tenant context (do not add any unscoped /conversations endpoints).
+
+Do NOT send any tenant IDs from the frontend; use existing auth/session-based tenant resolution.
+
+If you encounter missing or ambiguous types for Phase 12 responses, define small, well-typed interfaces in the frontend, based on the actual JSON returned by the backend endpoints.
