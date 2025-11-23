@@ -1,16 +1,19 @@
 // server/onboardingIndustryRoutes.ts
 // ======================================================================
-// Industry Onboarding Routes - Phase 8B
+// Industry Onboarding Routes - Phase 8C
 //
-// Safe stub:
+// Upgraded from Phase 8B to persist industry selection to database:
 // - Accepts industry onboarding payload from the frontend
 // - Attaches tenantId if available
+// - Persists industry + industryConfig to tenant_config table
 // - Logs everything in a clear, structured way
-// - Always responds with success (unless something truly unexpected happens)
-// - NO hard dependency on DB or other services yet
+// - Gracefully handles missing tenant context
 // ======================================================================
 
 import type { Express, Request, Response } from "express";
+import { db } from "./db";
+import { tenantConfig } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 interface IndustryOnboardingPayload {
   industryId: string;
@@ -70,17 +73,74 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
           userAgent: req.headers["user-agent"] as string | undefined,
         };
 
-        // For Phase 8B we just log it clearly.
-        // 8C will actually persist this + bootstrap services.
+        // Phase 8B logging - keep for debugging
         console.log("=== [ONBOARDING] Industry selection received ===");
         console.log(JSON.stringify(payload, null, 2));
         console.log("=== [/ONBOARDING] =================================");
 
-        res.json({
-          success: true,
-          message: "Industry selection received (Phase 8B stub).",
-          tenantId,
-        });
+        // Phase 8C: Persist to database if tenant context is available
+        if (!tenantId) {
+          console.log("[ONBOARDING] No tenant context – industry selection logged only.");
+          res.json({
+            success: true,
+            message: "Industry selection received (no tenant context – logged only).",
+            tenantId: null,
+            persisted: false,
+          });
+          return;
+        }
+
+        // Check if tenant config exists
+        const [existing] = await db
+          .select()
+          .from(tenantConfig)
+          .where(eq(tenantConfig.tenantId, tenantId))
+          .limit(1);
+
+        if (!existing) {
+          console.error(`[ONBOARDING] Tenant config not found for tenant: ${tenantId}`);
+          res.status(404).json({
+            success: false,
+            message: "Tenant configuration not found.",
+          });
+          return;
+        }
+
+        // Build industry config object
+        const industryConfigData = {
+          featureFlags: body.featureFlags ?? {},
+          rawSelection: body.rawSelection ?? {},
+          version: "v1",
+          updatedAt: new Date().toISOString(),
+        };
+
+        // Update tenant config with industry data
+        try {
+          await db
+            .update(tenantConfig)
+            .set({
+              industry: body.industryId,
+              industryConfig: industryConfigData,
+              updatedAt: new Date(),
+            })
+            .where(eq(tenantConfig.tenantId, tenantId));
+
+          console.log(`[ONBOARDING] Industry selection saved for tenant ${tenantId}: ${body.industryId}`);
+
+          res.json({
+            success: true,
+            message: "Industry selection saved.",
+            tenantId,
+            industryId: body.industryId,
+            persisted: true,
+          });
+        } catch (dbError: any) {
+          console.error(`[ONBOARDING] Failed to persist industry selection for tenant ${tenantId}:`, dbError);
+          res.status(500).json({
+            success: false,
+            message: "Failed to persist industry onboarding settings.",
+          });
+        }
       } catch (err) {
         console.error("[ONBOARDING] Error handling industry payload:", err);
         res.status(500).json({
@@ -92,6 +152,6 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
   );
 
   console.log(
-    "[ONBOARDING] Routes registered: POST /api/onboarding/industry (Phase 8B)"
+    "[ONBOARDING] Routes registered: POST /api/onboarding/industry (Phase 8C)"
   );
 }
