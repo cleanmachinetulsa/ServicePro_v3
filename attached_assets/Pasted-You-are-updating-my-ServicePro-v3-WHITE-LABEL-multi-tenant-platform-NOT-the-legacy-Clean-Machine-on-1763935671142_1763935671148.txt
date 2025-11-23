@@ -1,0 +1,406 @@
+You are updating my ServicePro v3 WHITE-LABEL multi-tenant platform (NOT the legacy Clean Machine-only app). Your goal is to implement PROFESSIONAL-LEVEL flows for:
+
+1) Human takeover of conversations (SMS + web chat, etc.) per tenant
+2) Handing control back to the AI in a smart, context-aware way
+3) A “Smart Schedule from Thread” feature per tenant that can convert ANY messy conversation into a structured booking for that tenant’s industry
+
+This must be done in a way that:
+- Respects multi-tenant isolation (tenantId / plan tiers, etc.)
+- Works across channels (at minimum SMS + web chat; structure it so WhatsApp/etc. can be added later)
+- Plays nicely with the existing ServicePro architecture (industry packs, AI prompt builders, tenant-specific config, etc.)
+- Does NOT break existing behavior for tenants who don’t use these features yet
+
+Assumptions & Constraints:
+- Platform already has:
+  - Tenant-aware AI helpers (e.g. server/openai.ts, smsAgentPromptBuilder, industry packs, etc.)
+  - Multi-tenant DB schema (tenants, users, customers, messages, etc.)
+  - SMS + chat message routing with `tenantId` and `platform` (e.g. 'sms', 'web', etc.)
+  - Existing booking/job creation logic and confirmation messaging
+- You must:
+  - Reuse existing booking/job pipeline instead of inventing a new one
+  - Keep new code modular and well-named
+  - Add or extend TypeScript types as needed
+  - Add feature flags/plan checks where appropriate if plan tiers exist
+
+==================================================
+STEP 1 – DISCOVER EXISTING STRUCTURE (DO NOT SKIP)
+==================================================
+
+Search the repo to understand what’s already there:
+
+1. Conversation & message models:
+   - Find DB models/tables/entities for:
+     - `Conversation` (or equivalent; might be `threads`, `channels`, etc.)
+     - `Message` (incoming/outgoing, with tenantId + channel)
+   - Confirm existing fields:
+     - `id`
+     - `tenantId`
+     - `customerId` / `contactId`
+     - `channel` or `platform` (e.g. 'sms', 'web')
+     - timestamps (createdAt, updatedAt)
+   - See if there is already:
+     - `controlMode` (e.g. 'auto', 'manual', 'paused')
+     - `assignedAgentId` or similar
+     - any existing “handoff” tracking fields
+
+2. AI plumbing:
+   - Locate:
+     - `server/openai.ts` (or similar core AI wrapper)
+     - `server/ai/smsAgentPromptBuilder.ts` or other prompt builders
+   - Confirm:
+     - How we call the AI for SMS vs web chat (platform awareness)
+     - How tenant-specific context is loaded (tenant config, industry settings, etc.)
+
+3. Booking / jobs pipeline:
+   - Find:
+     - The function(s) that create an appointment / job, e.g. `createAppointment`, `createJob`, etc.
+   - Confirm:
+     - Required fields (tenantId, customerId, serviceId / serviceName, start time, notes, etc.)
+     - How Google Calendar or other external systems are wired (if any)
+     - How confirmation SMS/emails are currently sent
+
+4. Multi-tenant + plan tiers:
+   - Identify:
+     - Tenant model + plan tier field(s) (e.g. `planTier`, `features`, etc.)
+   - Note:
+     - Any existing feature-flag or `planTier` checks in the code (we’ll mirror these patterns)
+
+DON’T MAKE ANY CHANGES YET. Just learn the structure and base your next steps on what actually exists.
+
+==================================================
+STEP 2 – SMART CONVERSATION PARSER SERVICE
+==================================================
+
+Create a dedicated service to parse conversation history into structured data for scheduling and handoff hints.
+
+Create a new file:
+
+- `server/smartConversationParser.ts`
+
+Implement:
+
+```ts
+// server/smartConversationParser.ts
+
+export interface ParsedScheduleIntent {
+  found: boolean;
+  customerName?: string;
+  serviceName?: string;
+  serviceId?: string;
+  dateText?: string;        // e.g. "next Tuesday", "tomorrow morning"
+  startTimeText?: string;   // e.g. "9am", "around 3"
+  durationMinutes?: number;
+  addressText?: string;
+  notes?: string;
+}
+
+export interface HandoffSignals {
+  customerFrustrationScore: number; // 0-1
+  agentOverloadedScore: number;     // 0-1 (if we add later)
+  clearResolution?: boolean;
+  shouldOfferHandback?: boolean;
+}
+
+export interface ParsedConversation {
+  scheduleIntent: ParsedScheduleIntent;
+  handoffSignals: HandoffSignals;
+}
+Core function:
+
+ts
+Copy code
+export async function parseConversationForScheduleAndHandoff(options: {
+  tenantId: string;
+  conversationId: string;
+}): Promise<ParsedConversation>;
+Behavior:
+
+Load the conversation messages from the DB:
+
+Only messages for the given tenantId and conversationId.
+
+Ordered from oldest → newest.
+
+Build a compact text representation for the AI:
+
+Include both customer and agent/AI messages.
+
+Truncate if there is a very long history (keep the last N messages, e.g. 30–40).
+
+Call the existing AI infrastructure (reuse server/openai.ts) with:
+
+A system prompt that instructs the model to:
+
+Identify whether the user is trying to book/reschedule a service.
+
+Extract service, date, time window, address, and any notes.
+
+Assess whether the customer seems frustrated or confused.
+
+Suggest whether the conversation is ready to be handed back to AI or needs human oversight.
+
+Ask for a JSON-only response that matches ParsedConversation.
+
+Important:
+
+DO NOT hardcode API keys here; reuse the existing OpenAI helper.
+
+Respect tenant-level AI configuration if such exists.
+
+Validate and sanitize the AI JSON before returning it (e.g., try/catch + fallback).
+
+==================================================
+STEP 3 – ENHANCED HANDOFF SERVICE
+Create a high-level service that orchestrates human takeover, smart scheduling, and returning control to AI.
+
+Create new file:
+
+server/enhancedHandoffService.ts
+
+Implement interfaces:
+
+ts
+Copy code
+export type ControlMode = 'auto' | 'manual' | 'paused';
+
+export interface SmartScheduleFromThreadResult {
+  parsed: ParsedScheduleIntent;
+  // Optionally, pre-resolved entities:
+  resolvedServiceId?: string;
+  resolvedCustomerId?: string;
+  warnings?: string[];
+}
+
+export interface HandbackAnalysisResult {
+  recommendation: 'keep_manual' | 'handback_now' | 'monitor';
+  summary: string;
+  reasons: string[];
+}
+Main functions:
+
+async function takeoverConversation(params: { tenantId: string; conversationId: string; agentUserId: string; }): Promise<void>
+
+Sets the conversation’s controlMode to 'manual'.
+
+Sets assignedAgentId to agentUserId.
+
+Optionally stores a handoffAt timestamp.
+
+Must use tenant-aware DB access (e.g., tenantDb.withTenantFilter or existing pattern).
+
+async function analyzeAndSuggestSchedule(params: { tenantId: string; conversationId: string; }): Promise<SmartScheduleFromThreadResult>
+
+Calls parseConversationForScheduleAndHandoff.
+
+Optionally looks up:
+
+Service by serviceName inside that tenant’s services table (if reasonable).
+
+Customer based on phone/email already attached to the conversation.
+
+Returns a SmartScheduleFromThreadResult that frontends can use to pre-fill a booking form.
+
+async function createBookingFromParsedIntent(params: { tenantId: string; conversationId: string; intent: ParsedScheduleIntent; createdByUserId: string; }): Promise<{ bookingId: string; }>
+
+Reuses the existing booking/job creation logic:
+
+Map the parsed fields into the function you found earlier (createAppointment or equivalent).
+
+MUST NOT bypass existing validation or send notifications in a new way:
+
+Call through the existing pipeline so confirmations, reminders, etc. still work as designed.
+
+async function analyzeHandback(params: { tenantId: string; conversationId: string; }): Promise<HandbackAnalysisResult>
+
+Uses the handoffSignals returned from parseConversationForScheduleAndHandoff.
+
+Logic example:
+
+If customerFrustrationScore is high → recommendation = 'keep_manual'.
+
+If conversation looks resolved and little frustration → recommendation = 'handback_now'.
+
+Otherwise → recommendation = 'monitor'.
+
+Provide a human-readable summary and bullet-style reasons.
+
+async function handbackConversationToAI(params: { tenantId: string; conversationId: string; agentUserId: string; }): Promise<{ controlMode: ControlMode; }>
+
+Sets controlMode back to 'auto'.
+
+Clears or softens assignedAgentId as appropriate.
+
+Optionally writes an internal system message indicating that the conversation has been handed back to AI.
+
+Must respect tenant + plan tier:
+
+If the tenant’s plan does NOT include this feature, either:
+
+Throw a controlled error, or
+
+No-op with a polite error response.
+
+Follow whatever pattern is already used for other feature-gated functionality.
+
+Security:
+
+ALL DB operations MUST be scoped with tenant filtering:
+
+Never query/update a conversation without filtering by tenantId AND id.
+
+==================================================
+STEP 4 – API ENDPOINTS (routes.conversations.ts)
+Wire these new capabilities into HTTP endpoints used by the dashboard / admin UI.
+
+Open:
+
+server/routes.conversations.ts (or whatever file handles conversation admin routes).
+
+Add endpoints (names and paths can be adapted to match existing style, but keep them REST-ish):
+
+Human takeover:
+
+Method: POST
+
+Path: /api/conversations/:conversationId/takeover
+
+Auth: must be an authenticated user belonging to that tenant (follow existing auth pattern).
+
+Body: { agentUserId?: string } (optional; default to current user if not provided).
+
+Behavior:
+
+Calls takeoverConversation({ tenantId, conversationId, agentUserId }).
+
+Responds with updated conversation state.
+
+Smart schedule from thread:
+
+Method: POST
+
+Path: /api/conversations/:conversationId/smart-schedule
+
+Auth: same as above (must be staff/admin).
+
+Body: empty or future options.
+
+Behavior:
+
+Calls analyzeAndSuggestSchedule({ tenantId, conversationId }).
+
+Returns SmartScheduleFromThreadResult.
+
+Create booking from parsed intent:
+
+Method: POST
+
+Path: /api/conversations/:conversationId/create-booking-from-thread
+
+Body: { intentOverride?: Partial<ParsedScheduleIntent> } (allow frontend to override AI fields).
+
+Behavior:
+
+Load parsed intent via analyzeAndSuggestSchedule OR accept overrides.
+
+Call createBookingFromParsedIntent(...).
+
+Return { bookingId }.
+
+Handback analysis:
+
+Method: GET
+
+Path: /api/conversations/:conversationId/handback-analysis
+
+Behavior:
+
+Calls analyzeHandback({ tenantId, conversationId }).
+
+Returns HandbackAnalysisResult.
+
+Handback to AI:
+
+Method: POST
+
+Path: /api/conversations/:conversationId/handback
+
+Body: {} or { reason?: string }.
+
+Behavior:
+
+Calls handbackConversationToAI({ tenantId, conversationId, agentUserId }).
+
+Returns updated controlMode and a short status message.
+
+For ALL endpoints:
+
+Pull tenantId from the existing authenticated context, not from the request body.
+
+Use the existing DB tenant-scoping helper (e.g., tenantDb.withTenantFilter(...)).
+
+Validate that the conversation exists and belongs to this tenant before operating on it.
+
+==================================================
+STEP 5 – PLAN TIER / FEATURE FLAG HOOKS
+If the codebase already has plan tiers or feature flags, do the following:
+
+For each new endpoint:
+
+Check whether this tenant’s plan includes “Pro Conversation Management” or equivalent.
+
+If not:
+
+Return a 403-style error with a clear message ("Feature not available on your current plan").
+
+Implement this check in a small helper (e.g., ensureTenantHasFeature(tenant, 'pro_conversation_management')), mirroring existing patterns.
+
+If plan tiers are not yet implemented, add TODO comments where the checks should go, but DO NOT block functionality.
+
+==================================================
+STEP 6 – TESTS & SAFETY CHECKS
+Unit-ish tests (or integration tests if the project uses them):
+
+For smartConversationParser:
+
+Test that an obviously booking-oriented conversation yields scheduleIntent.found = true.
+
+Test that random chit-chat yields scheduleIntent.found = false.
+
+For enhancedHandoffService:
+
+Test takeoverConversation sets controlMode & assignedAgentId.
+
+Test handbackConversationToAI flips controlMode back to 'auto'.
+
+Test analyzeHandback returns reasonable recommendations for different customerFrustrationScore values.
+
+Tenant isolation:
+
+Ensure every DB query in these new files:
+
+Uses tenant scoping helpers.
+
+Uses WHERE tenantId = ? AND id = ? or the equivalent for the ORM.
+
+TypeScript:
+
+npm run build (or equivalent) passes with no new warnings or errors.
+
+==================================================
+STEP 7 – NO-BREAKAGE GUARANTEES
+Do NOT modify existing AI prompt builders in a way that changes behavior for tenants who never use this Phase 12 feature.
+
+Do NOT change existing booking APIs or routes; instead, call into them.
+
+New endpoints should be additive and only used by the upcoming admin UI.
+
+Once you’ve implemented all of this:
+
+Restart the dev server.
+
+Confirm that the app starts cleanly with no new runtime errors in the console.
+
+Then summarize in logs or docs (replit.md or similar) what endpoints and services were added for Phase 12.
+
+pgsql
+Copy code
