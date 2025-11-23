@@ -11,6 +11,32 @@
  *  1. Let the user choose an industry.
  *  2. Let them toggle features.
  *  3. Auto-populate services, upsells, and AI persona defaults.
+ *
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * HOW TO CHANGE INDUSTRY HERO IMAGES:
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * Each industry has two image fields:
+ *   - imageUrl: The URL of the hero image (HTTPS required)
+ *   - imageAlt: Alt text for accessibility (optional but recommended)
+ * 
+ * To change an image:
+ *   1. Find the industry object you want to update (e.g., "auto_detailing_mobile")
+ *   2. Replace the imageUrl with your new image URL
+ *   3. Update the imageAlt to describe the new image
+ * 
+ * Image recommendations:
+ *   - Use HTTPS URLs only
+ *   - Landscape format works best (16:9 aspect ratio ideal)
+ *   - Use high-quality images from Unsplash, Pexels, or your own CDN
+ *   - Image will display at h-40 (160px height) with object-cover
+ * 
+ * Example image sources:
+ *   - Unsplash: https://images.unsplash.com/photo-ID?w=800&h=450&fit=crop
+ *   - Pexels: https://images.pexels.com/photos/ID/pexels-photo-ID.jpeg
+ *   - Your own: Upload to attached_assets/ or use any HTTPS CDN
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 
 export type ServiceTemplate = {
