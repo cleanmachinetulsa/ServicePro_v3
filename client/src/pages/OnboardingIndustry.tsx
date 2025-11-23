@@ -1,5 +1,6 @@
 // src/pages/OnboardingIndustry.tsx
 import React, { useState } from "react";
+import { useLocation } from "wouter";
 import {
   Card,
   CardHeader,
@@ -27,6 +28,7 @@ const PHOTOGRAPHY_SUBPACKS = [
 
 export default function OnboardingIndustryPage() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [photoToggles, setPhotoToggles] = useState<Record<string, boolean>>(
     () => Object.fromEntries(PHOTOGRAPHY_SUBPACKS.map((p) => [p, false]))
@@ -89,9 +91,14 @@ export default function OnboardingIndustryPage() {
       toast({
         title: "Industry saved",
         description: data.persisted 
-          ? "Your industry selection has been saved to the database."
+          ? "Your industry selection has been saved. Redirecting to dashboard..."
           : "Your industry selection was logged (no tenant context).",
       });
+
+      // Redirect to dashboard after successful save
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 1500);
     } catch (err: any) {
       console.error("[OnboardingIndustry] Save error:", err);
       toast({
