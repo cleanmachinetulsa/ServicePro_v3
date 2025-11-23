@@ -417,11 +417,11 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Find user by email
-      const userResult = await req.tenantDb!
+      // Find user by email using global db (no tenant context needed)
+      const userResult = await db
         .select()
         .from(users)
-        .where(req.tenantDb!.withTenantFilter(users, eq(users.email, email)))
+        .where(eq(users.email, email))
         .limit(1);
 
       // Always return success even if email not found (security best practice)
@@ -438,8 +438,8 @@ export function registerAuthRoutes(app: Express) {
       const resetToken = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-      // Store token in database
-      await req.tenantDb!.insert(passwordResetTokens).values({
+      // Store token in database using global db
+      await db.insert(passwordResetTokens).values({
         userId: user.id,
         token: resetToken,
         expiresAt,
@@ -559,11 +559,11 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Find valid token
-      const tokenResult = await req.tenantDb!
+      // Find valid token using global db (no tenant context needed)
+      const tokenResult = await db
         .select()
         .from(passwordResetTokens)
-        .where(req.tenantDb!.withTenantFilter(passwordResetTokens, eq(passwordResetTokens.token, token)))
+        .where(eq(passwordResetTokens.token, token))
         .limit(1);
 
       if (!tokenResult || tokenResult.length === 0) {
@@ -586,17 +586,17 @@ export function registerAuthRoutes(app: Express) {
       // Hash new password
       const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-      // Update user password
-      await req.tenantDb!
+      // Update user password using global db
+      await db
         .update(users)
         .set({ password: hashedPassword })
-        .where(req.tenantDb!.withTenantFilter(users, eq(users.id, resetToken.userId)));
+        .where(eq(users.id, resetToken.userId));
 
-      // Mark token as used
-      await req.tenantDb!
+      // Mark token as used using global db
+      await db
         .update(passwordResetTokens)
         .set({ used: true })
-        .where(req.tenantDb!.withTenantFilter(passwordResetTokens, eq(passwordResetTokens.id, resetToken.id)));
+        .where(eq(passwordResetTokens.id, resetToken.id));
 
       res.json({
         success: true,

@@ -1,0 +1,170 @@
+YOU ARE REPLIT AI WORKING ON THE "SERVICEPRO" / "CLEAN MACHINE" WHITE-LABEL APP.
+
+PHASE
+**Auth Consistency & Tenant Context Patch**
+
+GOAL
+Make ALL authentication paths follow the same pattern:
+
+1) Use **global db** to verify identity (no tenant context required yet).
+2) Read `tenantId` from the user row.
+3) Establish session with `{ userId, tenantId, role, twoFactorVerified }`.
+4) Let downstream middleware create `req.tenantDb` / tenant context from `tenantId`.
+
+We ALREADY have this behavior for the standard username/password login endpoint.  
+Your job is to find and fix **other auth flows** that still use `req.tenantDb!`.
+
+LIMIT SCOPE
+- DO NOT modify the progressive onboarding endpoint `/api/onboarding/complete`.
+- DO NOT change the already-fixed username/password login logic if it’s correct.
+- DO NOT touch dashboard tour, onboarding UI, or industry bootstrap.
+- ONLY touch auth-related routes that still depend on `req.tenantDb!` before tenant context exists.
+
+========================
+STEP 1 – FIND BROKEN AUTH PATHS
+========================
+Use ripgrep to locate auth flows that still assume tenant context:
+
+1) Search for tenant-scoped db usage in auth routes:
+
+   - `rg -n "req\\.tenantDb" server/routes.auth.ts server`  
+   - Also search for "WebAuthn", "webauthn", "passkey", "impersonate", "impersonation", "password reset":
+
+     - `rg -n "WebAuthn|webauthn|passkey|impersonate|impersonation|password reset" server`
+
+2) Identify any endpoints that:
+   - Run BEFORE a user is authenticated (e.g., WebAuthn login, password reset).
+   - Still use `req.tenantDb!` or any tenant-specific DB helper.
+
+Make a short internal list of these routes (e.g. “WebAuthn begin/finish, password reset POST, impersonation login, etc.”).
+
+========================
+STEP 2 – STANDARDIZE DB USAGE FOR AUTH
+========================
+For EACH identified auth route that is meant to authenticate a user (not just operate on an existing session):
+
+1) CHANGE its DB queries to use the GLOBAL db import, similar to the fixed login:
+
+   Example pattern (ADAPT TO REAL CODE):
+
+   ```ts
+   import { db } from "../db"; // or correct path
+
+   // Instead of:
+   // const user = await req.tenantDb!.select().from(users)...
+   // use:
+   const user = await db
+     .select()
+     .from(users)
+     .where(eq(users.username, username)); // or email / id, etc.
+ENSURE that once a user is verified, the code:
+
+Reads tenantId from the user row.
+
+Populates the session with:
+
+ts
+Copy code
+session.userId = user.id;
+session.tenantId = user.tenantId;
+session.role = user.role;
+session.twoFactorVerified = /* based on flow, e.g. true after WebAuthn or 2FA */;
+Saves the session and returns the appropriate response.
+
+For WebAuthn / passkey login flows:
+
+Use global db to look up the user / credential rather than req.tenantDb!.
+
+After successful WebAuthn verification, set the same session fields as above.
+
+For password reset:
+
+When verifying reset tokens and setting a new password, use global db to locate the user.
+
+After resetting the password, if you log the user in automatically, set { userId, tenantId, role, twoFactorVerified } consistently.
+
+========================
+STEP 3 – ENSURE TENANT CONTEXT MIDDLEWARE USES SESSION
+Locate the middleware responsible for building tenant context / req.tenantDb, for example something like:
+
+server/middleware/tenantContext.ts
+
+or any file where req.tenantDb is derived.
+
+VERIFY that this middleware:
+
+Reads tenantId from the session (NOT from the auth route directly).
+
+Uses that tenantId to configure tenant-scoped DB access (or filtering), e.g.:
+
+ts
+Copy code
+// PSEUDO-CODE – adapt to your existing pattern
+const tenantId = session.tenantId;
+if (!tenantId) {
+  // no tenant context → skip or handle as unauthenticated
+} else {
+  req.tenantId = tenantId;
+  req.tenantDb = makeTenantScopedDb(db, tenantId); // or equivalent helper
+}
+DO NOT change the high-level strategy; just make sure the auth routes you changed now feed this middleware correctly via the session.
+
+========================
+STEP 4 – KEEP ONBOARDING FLOW INTACT
+Double-check that:
+
+/api/onboarding/complete STILL:
+
+Uses global db for its transaction.
+
+Creates tenant_config row (with industry and industryConfig).
+
+Creates a user row with tenantId.
+
+Sets the session { userId, tenantId, role: "owner", twoFactorVerified: false }.
+
+Do NOT modify this route unless you find a clear error.
+
+========================
+STEP 5 – QUICK SAFETY CHECKS
+Manually verify these flows after your changes:
+
+Standard login:
+
+POST /api/auth/login
+
+Works as before (global db → session { userId, tenantId } → redirect to /dashboard).
+
+WebAuthn / passkey login (if implemented):
+
+Begin + finish flows succeed.
+
+After success, session includes correct tenantId and userId.
+
+Protected tenant routes can be accessed.
+
+Password reset:
+
+Request reset.
+
+Use token to set new password.
+
+If flow logs user in: session is consistent.
+
+No req.tenantDb! usage during identity lookup.
+
+Impersonation (if present):
+
+Admin impersonation uses global db to find the target user.
+
+Sets session with target user’s tenantId so tenant context is correct.
+
+========================
+STEP 6 – SUMMARY LOG
+When finished, log a concise summary of:
+
+Auth routes that were updated (filenames + endpoints).
+
+Any remaining references to req.tenantDb! in auth-related code and why they’re still valid (e.g., routes that only run AFTER session/tenant context is guaranteed).
+
+Confirmation that standard login + onboarding login still behave correctly.
