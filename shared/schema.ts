@@ -1224,7 +1224,10 @@ export const faqEntries = pgTable("faq_entries", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
-});
+}, (table) => ({
+  // Composite unique constraint: (category, question) must be unique PER TENANT
+  tenantCategoryQuestionUnique: uniqueIndex("faq_entries_tenant_id_category_question_unique").on(table.tenantId, table.category, table.question),
+}));
 
 // Push notification subscriptions for PWA
 export const pushSubscriptions = pgTable("push_subscriptions", {

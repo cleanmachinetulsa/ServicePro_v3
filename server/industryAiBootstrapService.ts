@@ -67,11 +67,16 @@ export async function bootstrapIndustryAiAndMessaging(
     console.log(`[INDUSTRY AI BOOTSTRAP] Bootstrapping ${bootstrapData.aiRules.length} AI behavior rules...`);
     
     for (const rule of bootstrapData.aiRules) {
-      // Check if rule already exists
+      // Check if rule already exists (must filter by both tenantId AND ruleKey)
       const [existing] = await tenantDb
         .select()
         .from(aiBehaviorRules)
-        .where(eq(aiBehaviorRules.ruleKey, rule.ruleKey))
+        .where(
+          and(
+            eq(aiBehaviorRules.tenantId, tenantId),
+            eq(aiBehaviorRules.ruleKey, rule.ruleKey)
+          )
+        )
         .limit(1);
 
       if (existing) {
@@ -169,12 +174,13 @@ export async function bootstrapIndustryAiAndMessaging(
     console.log(`[INDUSTRY AI BOOTSTRAP] Bootstrapping ${bootstrapData.faqEntries.length} FAQ entries...`);
 
     for (const faq of bootstrapData.faqEntries) {
-      // Check if FAQ already exists (by question)
+      // Check if FAQ already exists (must filter by tenantId, category, AND question)
       const [existing] = await tenantDb
         .select()
         .from(faqEntries)
         .where(
           and(
+            eq(faqEntries.tenantId, tenantId),
             eq(faqEntries.category, faq.category),
             eq(faqEntries.question, faq.question)
           )
