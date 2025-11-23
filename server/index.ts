@@ -387,6 +387,21 @@ app.use((req, res, next) => {
   const { initializePortMonitoring } = await import('./portMonitoring');
   initializePortMonitoring();
   console.log('[SERVER] Port monitoring started - will notify when 918-856-5304 is fully ported');
+  
+  // Start unanswered message monitoring (checks every 5 minutes)
+  const { unansweredMonitor } = await import('./unansweredMessageMonitor');
+  setInterval(() => {
+    unansweredMonitor.checkAndAlert().catch(err => 
+      console.error('[SERVER] Unanswered monitor error:', err)
+    );
+  }, 5 * 60 * 1000); // 5 minutes
+  // Run initial check after 1 minute
+  setTimeout(() => {
+    unansweredMonitor.checkAndAlert().catch(err => 
+      console.error('[SERVER] Unanswered monitor initial check error:', err)
+    );
+  }, 60 * 1000);
+  console.log('[SERVER] Unanswered message monitoring started - checks every 5 minutes for web chat messages without AI responses');
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
