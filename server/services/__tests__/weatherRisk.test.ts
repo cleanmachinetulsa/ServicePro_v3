@@ -112,40 +112,40 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
   
   describe('getEnhancedWeatherRiskLevel - Thunderstorm Risk Bump', () => {
     
-    it('should bump low risk to high when thunderstorm risk exists', () => {
+    it('should bump low risk to high when thunderstorm risk exists (minimum high)', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 15,  // Would be "low"
         thunderstormRisk: true
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
-      expect(level).toBe('high');
+      expect(level).toBe('high');  // low + 2 levels → high (minimum enforced)
     });
     
-    it('should bump medium risk to high when thunderstorm risk exists', () => {
+    it('should bump medium risk to extreme when thunderstorm risk exists', () => {
       const ctx: WeatherRiskContext = {
-        precipitationChance: 25,  // Would be "medium" (25% is in medium range)
+        precipitationChance: 25,  // Would be "medium"
         thunderstormRisk: true
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
-      expect(level).toBe('high');
+      expect(level).toBe('extreme');  // medium + 2 levels → extreme
     });
     
-    it('should not change high risk when thunderstorm risk exists (already high)', () => {
+    it('should bump high risk to extreme when thunderstorm risk exists', () => {
       const ctx: WeatherRiskContext = {
-        precipitationChance: 60,  // Already "high"
+        precipitationChance: 60,  // "high"
         thunderstormRisk: true
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
-      expect(level).toBe('high');
+      expect(level).toBe('extreme');  // high + 2 levels → extreme (capped)
     });
     
-    it('should not change extreme risk when thunderstorm risk exists', () => {
+    it('should not change extreme risk when thunderstorm risk exists (already at cap)', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 85,  // Already "extreme"
         thunderstormRisk: true
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
-      expect(level).toBe('extreme');
+      expect(level).toBe('extreme');  // Already capped at extreme
     });
   });
   
@@ -197,13 +197,52 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
     });
   });
   
+  describe('getEnhancedWeatherRiskLevel - Precipitation Intensity Bump', () => {
+    
+    it('should bump low to medium when heavy rain intensity (>5mm/hr)', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 15,  // "low"
+        precipitationIntensityMm: 6
+      };
+      const level = getEnhancedWeatherRiskLevel(ctx);
+      expect(level).toBe('medium');  // low + 1 → medium
+    });
+    
+    it('should bump medium to high when heavy rain intensity', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 30,  // "medium"
+        precipitationIntensityMm: 8
+      };
+      const level = getEnhancedWeatherRiskLevel(ctx);
+      expect(level).toBe('high');  // medium + 1 → high
+    });
+    
+    it('should not bump when light intensity (≤5mm/hr)', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 30,  // "medium"
+        precipitationIntensityMm: 3
+      };
+      const level = getEnhancedWeatherRiskLevel(ctx);
+      expect(level).toBe('medium');  // No bump for light rain
+    });
+    
+    it('should not bump when intensity is exactly 5mm/hr (threshold)', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 30,  // "medium"
+        precipitationIntensityMm: 5
+      };
+      const level = getEnhancedWeatherRiskLevel(ctx);
+      expect(level).toBe('medium');  // Threshold not exceeded
+    });
+  });
+  
   describe('getEnhancedWeatherRiskLevel - Combined Factors', () => {
     
     it('should handle thunderstorm + high wind + moderate rain → extreme', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 60,  // "high" base
-        thunderstormRisk: true,   // keeps it "high"
-        windSpeedMph: 40          // bumps "high" → "extreme"
+        thunderstormRisk: true,   // bumps by 2 → extreme (capped)
+        windSpeedMph: 40          // would bump but already extreme
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
       expect(level).toBe('extreme');
@@ -220,14 +259,25 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
       expect(level).toBe('extreme');
     });
     
-    it('should handle thunderstorm bumping low + wind bumping to high', () => {
+    it('should handle thunderstorm bumping low + wind bumping to extreme', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 10,  // "low"
-        thunderstormRisk: true,   // bumps to "high"
-        windSpeedMph: 35          // would bump but already at high (no further bump)
+        thunderstormRisk: true,   // bumps by 2 to "high" (minimum enforced)
+        windSpeedMph: 35          // bumps "high" → "extreme"
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
-      expect(level).toBe('high');
+      expect(level).toBe('extreme');
+    });
+    
+    it('should handle all factors together: intensity + thunderstorm + wind', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 25,     // "medium"
+        precipitationIntensityMm: 8, // +1 → "high"
+        thunderstormRisk: true,      // +2 → "extreme" (capped)
+        windSpeedMph: 40             // would bump but already capped
+      };
+      const level = getEnhancedWeatherRiskLevel(ctx);
+      expect(level).toBe('extreme');
     });
   });
   
@@ -333,7 +383,7 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
       };
       const result = evaluateWeatherRisk(ctx);
       
-      // 55% rain → "high", thunderstorm keeps it "high", wind bumps to "extreme"
+      // 55% rain → "high", thunderstorm bumps +2 → "extreme" (capped), wind would bump but already capped
       expect(result.level).toBe('extreme');
       expect(result.severityText).toBeDefined();
       expect(result.actionText).toBeDefined();

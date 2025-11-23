@@ -127,8 +127,9 @@ export interface WeatherRiskResult {
  * 
  * Risk calculation logic:
  * - Base: precipitation chance (0-20% → low, 21-49% → medium, 50-79% → high, 80-100% → extreme)
+ * - Precipitation intensity (>5mm/hr) → bump by one level
  * - Severe alert active → always extreme
- * - Thunderstorm risk → bump to at least high
+ * - Thunderstorm risk → bump by two levels (to at least high)
  * - High wind (>30 mph) → bump risk by one level
  * 
  * @param ctx Weather context with optional fields
@@ -143,30 +144,47 @@ export function getEnhancedWeatherRiskLevel(ctx: WeatherRiskContext): EnhancedWe
   }
   
   // Base risk from precipitation chance
-  let baseRisk: EnhancedWeatherRiskLevel;
+  let risk: EnhancedWeatherRiskLevel;
   if (precipChance >= 80) {
-    baseRisk = 'extreme';
+    risk = 'extreme';
   } else if (precipChance >= 50) {
-    baseRisk = 'high';
+    risk = 'high';
   } else if (precipChance >= 21) {
-    baseRisk = 'medium';
+    risk = 'medium';
   } else {
-    baseRisk = 'low';
+    risk = 'low';
   }
   
-  // Thunderstorm risk bumps to at least high
-  if (ctx.thunderstormRisk && (baseRisk === 'low' || baseRisk === 'medium')) {
-    baseRisk = 'high';
+  // Precipitation intensity check: heavy rain (>5mm/hr) bumps risk
+  if (ctx.precipitationIntensityMm && ctx.precipitationIntensityMm > 5) {
+    risk = bumpRiskLevel(risk, 1);
   }
   
-  // High wind bumps risk by one level (capped at extreme)
+  // Thunderstorm risk: major escalation (bump by 2 levels, minimum high)
+  if (ctx.thunderstormRisk) {
+    risk = bumpRiskLevel(risk, 2);
+    if (risk === 'low' || risk === 'medium') {
+      risk = 'high'; // Ensure minimum of high for thunderstorms
+    }
+  }
+  
+  // High wind bumps risk by one level
   if (ctx.windSpeedMph && ctx.windSpeedMph > 30) {
-    if (baseRisk === 'low') baseRisk = 'medium';
-    else if (baseRisk === 'medium') baseRisk = 'high';
-    else if (baseRisk === 'high') baseRisk = 'extreme';
+    risk = bumpRiskLevel(risk, 1);
   }
   
-  return baseRisk;
+  return risk;
+}
+
+/**
+ * Helper to bump risk level by specified number of tiers
+ * Caps at 'extreme' and doesn't go below 'low'
+ */
+function bumpRiskLevel(current: EnhancedWeatherRiskLevel, tiers: number): EnhancedWeatherRiskLevel {
+  const levels: EnhancedWeatherRiskLevel[] = ['low', 'medium', 'high', 'extreme'];
+  const currentIndex = levels.indexOf(current);
+  const newIndex = Math.min(currentIndex + tiers, levels.length - 1);
+  return levels[newIndex];
 }
 
 /**
