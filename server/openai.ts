@@ -425,6 +425,7 @@ async function executeFunctionCall(
 /**
  * Generate an AI response with function calling support for scheduling
  * Now supports both general conversation AND intelligent appointment booking
+ * PHASE 11: SMS-optimized with tenant-aware prompts
  */
 export async function generateAIResponse(
   userMessage: string, 
@@ -438,9 +439,88 @@ export async function generateAIResponse(
     proactivity?: number;
   },
   conversationHistory?: Array<{ content: string; role: string; sender: string }>,
-  isDemoMode: boolean = false
+  isDemoMode: boolean = false,
+  tenantId?: string
 ) {
   try {
+    // PHASE 11: Use SMS-optimized prompt for SMS platform
+    if (platform === 'sms' && tenantId) {
+      console.log('[PHASE 11 SMS AI] Using tenant-aware SMS prompt builder');
+      const { buildSmsSystemPrompt } = await import('./ai/smsAgentPromptBuilder');
+      
+      try {
+        const smsSystemPrompt = await buildSmsSystemPrompt({ tenantId, phoneNumber });
+        
+        // Build messages array with SMS-optimized prompt
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          { role: "system", content: smsSystemPrompt }
+        ];
+        
+        // Add conversation history
+        if (conversationHistory && conversationHistory.length > 0) {
+          for (const msg of conversationHistory) {
+            if (msg.sender === 'customer') {
+              messages.push({ role: "user", content: msg.content });
+            } else if (msg.sender === 'ai') {
+              messages.push({ role: "assistant", content: msg.content });
+            }
+          }
+        }
+        
+        // Add current user message
+        messages.push({ role: "user", content: userMessage });
+        
+        // Make OpenAI call with SMS-optimized settings
+        const completion = await openai!.chat.completions.create({
+          model: "gpt-4o",
+          messages,
+          tools: SCHEDULING_FUNCTIONS,
+          tool_choice: "auto",
+          max_tokens: 300, // Shorter for SMS
+        });
+        
+        // Log usage
+        try {
+          const { logApiUsage } = await import('./usageTracker');
+          const inputTokens = completion.usage?.prompt_tokens || 0;
+          const outputTokens = completion.usage?.completion_tokens || 0;
+          const totalCost = (inputTokens / 1000000) * 2.50 + (outputTokens / 1000000) * 10.00;
+          
+          await logApiUsage(
+            'openai',
+            'tokens',
+            inputTokens + outputTokens,
+            totalCost,
+            {
+              model: 'gpt-4o',
+              input_tokens: inputTokens,
+              output_tokens: outputTokens,
+              platform: 'sms',
+            }
+          );
+        } catch (err) {
+          console.error('[SMS AI USAGE LOG] Error:', err);
+        }
+        
+        let finalResponse = completion.choices[0].message.content || "I apologize, but I didn't generate a proper response. Please try again.";
+        
+        // SMS length optimization: trim whitespace
+        finalResponse = finalResponse.trim();
+        
+        // TODO: Consider truncating or splitting replies into multiple SMS segments if > 320 chars
+        if (finalResponse.length > 320) {
+          console.warn(`[SMS AI] Response length ${finalResponse.length} exceeds 2 SMS segments (320 chars)`);
+        }
+        
+        console.log(`[PHASE 11 SMS AI] Generated response (${finalResponse.length} chars)`);
+        return finalResponse;
+      } catch (smsPromptError) {
+        console.error('[PHASE 11 SMS AI] Error with SMS prompt builder, falling back to standard prompt:', smsPromptError);
+        // Fall through to standard prompt below
+      }
+    }
+    
+    // Standard (web/fallback) prompt logic
     const prompt = generatePrompt(userMessage);
     const knowledgeBase = extractKnowledgeBase();
     

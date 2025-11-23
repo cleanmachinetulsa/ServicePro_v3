@@ -435,3 +435,12 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
 })();
+// PHASE 11 – SMS AI Agent Parity
+console.log(`
+PHASE 11 – SMS AI Agent Parity:
+- Created: server/ai/smsAgentPromptBuilder.ts
+- Integrated into SMS handler: server/openai.ts (generateAIResponse)
+- Uses tenant-specific business name, industry, services, and booking link
+- System prompt aligned with OG SMS AI spec
+- SMS responses optimized for ≤160 char when possible
+`);

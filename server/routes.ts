@@ -2281,12 +2281,15 @@ export async function registerRoutes(app: Express) {
       console.log(`[AI RESPONSE] Generating AI response for conversation ${conversation.id}, platform: ${platform}, history length: ${conversationHistory.length}`);
 
       // Use unified AI system - handles both general chat AND intelligent scheduling
+      // PHASE 11: Pass tenantId for SMS-optimized prompts
       const response = await generateAIResponse(
         message,
         phone,
         platform,
         behaviorSettings,
-        conversationHistory
+        conversationHistory,
+        false, // isDemoMode
+        tenantId // PHASE 11: tenant-aware SMS prompts
       );
 
       // Save AI response

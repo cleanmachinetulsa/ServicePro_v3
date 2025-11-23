@@ -1,0 +1,208 @@
+YOU ARE REPLIT AI WORKING ON THE "SERVICEPRO" / "CLEAN MACHINE" APP.
+
+PHASE 11 – OG SMS AI AGENT PARITY (SECTION 9 OF SNAPSHOT)
+
+GOAL
+Align the SMS AI assistant behavior with the OG ServicePro spec, using a centralized system-prompt builder that:
+- Knows the business name + industry
+- Knows the current services
+- Enforces SMS constraints (≈160 chars when possible)
+- Uses the OG “don’t make up prices, ask for photos, use booking link” rules
+- Respects multi-tenant setup
+
+DO NOT:
+- Rescan the entire repo from scratch
+- Touch auth, onboarding, tenant middleware, dashboard, maintenanceDetail, or loyalty/gamification
+- Change models used for web/chat agents (only wire SMS-specific flow)
+
+You may:
+- Search narrowly for SMS + OpenAI usage
+- Create 1–2 new small modules
+- Lightly modify the existing SMS agent invocation to use the new builder
+
+======================================================================
+STEP 1 – FIND CURRENT SMS AI HANDLER
+======================================================================
+
+Use tight searches:
+
+- Search for Twilio inbound & SMS AI logic:
+  - "req.body.Body"
+  - "twilio" AND "sms"
+  - "incomingMessage" AND "openai"
+  - "sms" AND "conversation" in server/ or server/sms/*
+
+You’re looking for the function that:
+- Receives an inbound SMS from Twilio
+- Builds messages[] for OpenAI
+- Sends back a reply via Twilio
+
+Identify:
+- The file path of the inbound SMS route (e.g. server/routes.sms.ts or server/routes.ts)
+- Any helper that already builds a system prompt for SMS (if one exists)
+
+IMPORTANT:
+- If there is already a decent SMS system prompt builder, you will UPGRADE it, not duplicate it.
+- If there isn’t one, you’ll add one following the OG spec.
+
+======================================================================
+STEP 2 – CREATE CENTRALIZED SMS PROMPT BUILDER
+======================================================================
+
+Create (or extend if it already exists):
+
+- server/ai/smsAgentPromptBuilder.ts
+
+Implement:
+
+1) Types & imports:
+- Import any existing helpers needed to look up:
+  - tenant / business name (from tenant_config or equivalent)
+  - industry / industryType for that tenant
+  - services for that tenant (from DB or existing service loader)
+- Keep imports minimal; use repo’s existing patterns.
+
+2) System prompt template (from OG snapshot Section 9):
+
+Use this structure (you can format whitespace cleanly):
+
+"You are an AI assistant for {businessName}, a {industryType} business.
+
+Your role:
+- Answer questions about services and pricing
+- Help customers book appointments
+- Provide helpful, friendly support
+- Keep responses under 160 characters when possible
+
+Available services:
+{services_list}
+
+Booking link: {booking_link}
+
+Guidelines:
+- Be conversational and friendly
+- Ask clarifying questions if needed
+- If you detect damage/specialty job keywords, ask for photos
+- If customer wants to book, provide the booking link
+- Never make up pricing - only use the services listed above
+"
+
+3) Export function:
+
+export async function buildSmsSystemPrompt(params: {
+  tenantId: string;
+}): Promise<string> { ... }
+
+Inside:
+
+- Look up tenant config by tenantId to get:
+  - businessName: fall back to something generic like "our team" if not found
+  - industryType: from existing tenant_config industry field, or fallback "service"
+  - subdomain or domain piece if that exists in tenant config (for booking link)
+
+- Get services for that tenant:
+  - Prefer existing service loader; DO NOT reinvent service queries.
+  - Build services_list as a concise bullet/line list, e.g.:
+    - "Full Detail ($150-300), Interior Cleaning ($75-125), Paint Correction ($200-500)..."
+  - If services cannot be loaded, use a short placeholder "Services are configured in your dashboard." and STILL keep the “never make up pricing” guidance.
+
+- Build booking_link:
+  - If there’s an existing function or config that builds public booking URLs, USE IT.
+  - If not obvious:
+    - Use a simple fallback: `https://{tenantSubdomain ?? "book"}.servicepro.com/book`
+    - Where tenantSubdomain comes from any existing field; if none, use "book" and add a TODO comment indicating it should be wired to the real booking URL later.
+
+- Replace placeholders {businessName}, {industryType}, {services_list}, {booking_link} and return the final string.
+
+NOTE:
+- Do NOT throw if some data is missing; degrade gracefully with generic wording and a TODO comment.
+- Keep the string under a few hundred characters but don’t obsess; the SMS message itself will still be controlled when we build the user response.
+
+======================================================================
+STEP 3 – WIRE BUILDER INTO SMS AI CALL
+======================================================================
+
+In the inbound SMS → OpenAI call path you found in STEP 1:
+
+- Locate the code that constructs:
+
+  - messages: [...], model: ..., max_tokens: ..., etc.
+
+- Update it to:
+
+1) Determine tenantId:
+   - Use the existing way tenantId is resolved for SMS (likely from phone-number → tenant mapping or a Twilio → tenant lookup).
+   - If there is no tenant-specific mapping and everything is still single-tenant, you can:
+     - Use a hardcoded default tenantId that is already being used everywhere else for Clean Machine.
+     - Or use session/tenant config if the SMS side already has that.
+
+2) Build system prompt:
+
+   const systemPrompt = await buildSmsSystemPrompt({ tenantId });
+
+3) Build OpenAI messages as:
+
+   const messages = [
+     { role: 'system', content: systemPrompt },
+     ...chatHistory,   // whatever existing context they were loading (last ~10 messages)
+     { role: 'user', content: incomingMessageBody }
+   ];
+
+4) Keep all existing:
+   - model selection (unless obviously incorrect)
+   - max_tokens configuration
+   - temperature settings
+   - error handling / logging
+
+Do NOT:
+- Change the conversation history length logic (just swap in the systemPrompt at the top).
+- Hardcode model names if they are already centralized somewhere else; respect existing patterns.
+
+======================================================================
+STEP 4 – SMS LENGTH & BEHAVIOR HINT (LIGHT TOUCH)
+======================================================================
+
+We are NOT rewriting the whole SMS handler, just gently nudging it toward OG behavior:
+
+Inside the SMS reply builder (AFTER you get the OpenAI completion):
+
+- If there is already some trimming or post-processing of the reply, keep it.
+- If there is NOTHING, you may add a SMALL safeguard:
+
+  - Trim whitespace.
+  - If reply length > 320 characters (2+ typical SMS segments), you MAY:
+    - Leave as-is OR
+    - Add a comment/TODO: 
+      - // TODO: consider truncating or splitting replies into multiple SMS segments.
+
+Do NOT implement fancy splitting or multi-part logic in this phase.
+
+======================================================================
+STEP 5 – RESPECT NEW INTERACTIVE KEYWORDS (READ-ONLY AWARENESS)
+======================================================================
+
+You already created server/sms/interactiveKeywords.ts in Phase 10 and lightly integrated it.
+
+For this phase, just ensure you DO NOT break that logic:
+- The SMS AI call should run after we’ve checked for RESCHEDULE/CANCEL/KEEP.
+- If the handler currently short-circuits on those keywords (e.g. doesn’t call OpenAI for them), keep that behavior.
+- If it doesn’t, leave it for a later phase; do not rewire the control flow now.
+
+======================================================================
+STEP 6 – QUICK SELF-CHECK & LOG SUMMARY
+======================================================================
+
+When done, log a brief, human-readable summary (to the Replit console output) like:
+
+"PHASE 11 – SMS AI Agent Parity:
+- Created/updated: server/ai/smsAgentPromptBuilder.ts
+- Integrated into SMS handler: [path/to/file]
+- Uses tenant-specific business name, industry, services, and booking link.
+- System prompt aligned with OG SMS AI spec."
+
+Verify:
+- TypeScript compiles
+- Server starts with no errors
+- Inbound SMS flow still works (at least at a basic “AI replies” level)
+
+END OF INSTRUCTIONS.
