@@ -119,7 +119,7 @@ export default function OnboardingIndustryPage() {
       </div>
 
       {/* INDUSTRY GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-3 max-[360px]:grid-cols-1 sm:gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {INDUSTRY_PACKS.map((ind) => {
           const isSelected = selectedIndustry === ind.id;
           return (
@@ -134,7 +134,7 @@ export default function OnboardingIndustryPage() {
               data-testid={`industry-${ind.id}`}
             >
               {ind.imageUrl && (
-                <div className="w-full h-40 overflow-hidden">
+                <div className="w-full h-32 md:h-40 overflow-hidden">
                   <img
                     src={ind.imageUrl}
                     alt={ind.imageAlt || ind.label}
@@ -143,8 +143,8 @@ export default function OnboardingIndustryPage() {
                   />
                 </div>
               )}
-              <CardHeader>
-                <CardTitle className="text-base">{ind.label}</CardTitle>
+              <CardHeader className="p-3 sm:p-4">
+                <CardTitle className="text-sm sm:text-base">{ind.label}</CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">{ind.category}</p>
               </CardHeader>
             </Card>
