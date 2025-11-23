@@ -44,6 +44,8 @@ export type IndustryPack = {
   category: string;     // e.g. "Home Services", "Creative"
   description: string;
   exampleBusinessName: string;
+  imageUrl: string;     // Hero image URL (HTTPS, landscape, high-quality)
+  imageAlt?: string;    // Alt text for accessibility
   defaultPrimaryServices: ServiceTemplate[];
   defaultUpsellServices: ServiceTemplate[];
   featureToggles: FeatureToggle[];
@@ -64,6 +66,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Full-service mobile auto detailing: interiors, exteriors, coatings, and maintenance plans.",
     exampleBusinessName: "Clean Machine Auto Detail",
+    imageUrl: "https://images.unsplash.com/photo-1601362840469-51e4d8d58785?w=800&h=450&fit=crop",
+    imageAlt: "Professional detailer polishing luxury car",
     defaultPrimaryServices: [
       {
         id: "detail_basic",
@@ -145,6 +149,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Recurring lawn care, landscaping projects, cleanups, and seasonal services.",
     exampleBusinessName: "GreenLine Lawn & Landscape",
+    imageUrl: "https://images.unsplash.com/photo-1558904541-efa843a96f01?w=800&h=450&fit=crop",
+    imageAlt: "Professional lawn care service with pristine green lawn",
     defaultPrimaryServices: [
       {
         id: "mow_basic",
@@ -208,6 +214,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     category: "Home Services",
     description: "Standard, deep, and move-out cleans for residential homes.",
     exampleBusinessName: "Spark & Shine Home Cleaning",
+    imageUrl: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&h=450&fit=crop",
+    imageAlt: "Professional cleaner in modern clean living room",
     defaultPrimaryServices: [
       {
         id: "recurring_clean",
@@ -280,6 +288,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Driveways, siding, roofs, and commercial flatwork with soft wash and high-pressure options.",
     exampleBusinessName: "Prime Wash Exterior Cleaning",
+    imageUrl: "https://images.unsplash.com/photo-1628177142898-93e36e4e3a50?w=800&h=450&fit=crop",
+    imageAlt: "Pressure washing driveway with professional equipment",
     defaultPrimaryServices: [
       {
         id: "driveway_clean",
@@ -338,6 +348,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     category: "Home Services",
     description: "Interior and exterior window cleaning for homes and light commercial.",
     exampleBusinessName: "CrystalView Window Cleaning",
+    imageUrl: "https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=800&h=450&fit=crop",
+    imageAlt: "Professional window cleaner working on glass windows",
     defaultPrimaryServices: [
       {
         id: "residential_windows",
@@ -382,6 +394,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     category: "Pets",
     description: "In-van grooming with baths, haircuts, deshedding, and spa add-ons.",
     exampleBusinessName: "Paws & Wheels Mobile Grooming",
+    imageUrl: "https://images.unsplash.com/photo-1548681528-6a5c45b66b42?w=800&h=450&fit=crop",
+    imageAlt: "Dog being groomed at professional grooming station",
     defaultPrimaryServices: [
       {
         id: "full_groom",
@@ -440,6 +454,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Heating and cooling diagnostics, repairs, installs, and seasonal tune-ups.",
     exampleBusinessName: "ComfortZone Heating & Air",
+    imageUrl: "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=800&h=450&fit=crop",
+    imageAlt: "HVAC technician servicing air conditioning unit",
     defaultPrimaryServices: [
       {
         id: "diagnostic",
@@ -491,6 +507,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     category: "Trades",
     description: "Residential and light commercial plumbing service and repairs.",
     exampleBusinessName: "FlowRight Plumbing Co.",
+    imageUrl: "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?w=800&h=450&fit=crop",
+    imageAlt: "Professional plumber working on pipes",
     defaultPrimaryServices: [
       {
         id: "service_call",
@@ -535,6 +553,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     category: "Trades",
     description: "Residential and small commercial electrical service and installs.",
     exampleBusinessName: "BrightSpark Electric",
+    imageUrl: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&h=450&fit=crop",
+    imageAlt: "Electrician working on electrical panel",
     defaultPrimaryServices: [
       {
         id: "service_call",
@@ -581,6 +601,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Roof inspections, replacements, repairs, and gutter cleaning/installs.",
     exampleBusinessName: "HighPeak Roofing & Gutters",
+    imageUrl: "https://images.unsplash.com/photo-1632778149955-e80f8ceca2e8?w=800&h=450&fit=crop",
+    imageAlt: "Roofer installing shingles on residential roof",
     defaultPrimaryServices: [
       {
         id: "inspection",
@@ -626,6 +648,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Punch lists, minor repairs, mounting, small carpentry, and honey-do lists.",
     exampleBusinessName: "TaskSmith Home Repair",
+    imageUrl: "https://images.unsplash.com/photo-1504148455328-c376907d081c?w=800&h=450&fit=crop",
+    imageAlt: "Handyman with tools working on home repairs",
     defaultPrimaryServices: [
       {
         id: "punch_list",
@@ -671,6 +695,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Weekly pool service, cleanings, openings/closings, and minor repairs.",
     exampleBusinessName: "BlueWave Pool Service",
+    imageUrl: "https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?w=800&h=450&fit=crop",
+    imageAlt: "Clean swimming pool with maintenance equipment",
     defaultPrimaryServices: [
       {
         id: "weekly_service",
@@ -716,6 +742,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "General pest, termite, rodent, and specialty treatments with recurring plans.",
     exampleBusinessName: "ShieldGuard Pest Solutions",
+    imageUrl: "https://images.unsplash.com/photo-1563207153-f403bf289096?w=800&h=450&fit=crop",
+    imageAlt: "Pest control technician treating home exterior",
     defaultPrimaryServices: [
       {
         id: "initial_treatment",
@@ -761,6 +789,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Steam cleaning, stain removal, upholstery, and odor treatment for homes and offices.",
     exampleBusinessName: "FreshStep Carpet & Upholstery",
+    imageUrl: "https://images.unsplash.com/photo-1628177142898-93e36e4e3a50?w=800&h=450&fit=crop",
+    imageAlt: "Professional carpet cleaning in progress",
     defaultPrimaryServices: [
       {
         id: "whole_home",
@@ -812,6 +842,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Single-item pick-ups, full load hauls, cleanouts, and light demo.",
     exampleBusinessName: "LoadOut Junk Removal",
+    imageUrl: "https://images.unsplash.com/photo-1580121441575-41bcb5c6b47c?w=800&h=450&fit=crop",
+    imageAlt: "Junk removal truck loading furniture and debris",
     defaultPrimaryServices: [
       {
         id: "single_item",
@@ -864,6 +896,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "On-site diagnostics, repairs, maintenance, and inspections for vehicles.",
     exampleBusinessName: "Driveway Mobile Auto Repair",
+    imageUrl: "https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?w=800&h=450&fit=crop",
+    imageAlt: "Mobile mechanic working on car engine",
     defaultPrimaryServices: [
       {
         id: "diag",
@@ -909,6 +943,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Academic tutoring, test prep, and skills coaching (online or in-person).",
     exampleBusinessName: "BrightPath Tutoring & Coaching",
+    imageUrl: "https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?w=800&h=450&fit=crop",
+    imageAlt: "Tutor teaching student at desk with books",
     defaultPrimaryServices: [
       {
         id: "session_standard",
@@ -954,6 +990,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Hair, barbering, brows, lashes, and simple esthetician-style services.",
     exampleBusinessName: "Studio 47 Salon & Grooming",
+    imageUrl: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=800&h=450&fit=crop",
+    imageAlt: "Barber cutting hair in modern barbershop",
     defaultPrimaryServices: [
       {
         id: "haircut_basic",
@@ -1000,6 +1038,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Airbnb/VRBO turnovers, restocking, laundry, and light staging.",
     exampleBusinessName: "TurnKey STR Services",
+    imageUrl: "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&h=450&fit=crop",
+    imageAlt: "Clean modern Airbnb apartment ready for guests",
     defaultPrimaryServices: [
       {
         id: "standard_turnover",
@@ -1045,6 +1085,8 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     description:
       "Portraits, events, weddings, branding, and real estate photography under one roof. Everything is togglable so a single studio can turn niches on/off instead of needing separate sites.",
     exampleBusinessName: "Lightcraft Photo & Media",
+    imageUrl: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?w=800&h=450&fit=crop",
+    imageAlt: "Photographer capturing wedding moment with professional camera",
     defaultPrimaryServices: [
       {
         id: "portraits_standard",

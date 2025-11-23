@@ -1,0 +1,171 @@
+Task: Add high-quality hero images to each industry in the onboarding selector grid.
+
+Project: Servicepro app (Servicepro-v3-base)
+
+Working style:
+- I (the user) will NOT edit any files manually.
+- You must:
+  - Find the correct files
+  - Add fields to the config
+  - Update the UI to render images
+- I only paste this prompt and run it. At the end, show me a clear summary of what changed.
+
+Goal:
+The industry selector at /admin/onboarding-industry should show a high-quality, relevant image on each industry card (auto detailing, house cleaning, hair stylist / barber, photography, etc.). Images should:
+
+- Visually match the industry (no random placeholders)
+- Be landscape hero-style images (banner-like, wide not tall)
+- Load via HTTPS from a stable image CDN (e.g., Unsplash, Pexels, etc.)
+- Look good with Tailwind styling (rounded corners, object-cover, etc.)
+
+The underlying behavior (selection, feature flags, save & continue) must remain unchanged.
+
+Step 1 – Use src/config/industryPacks.ts as the source of truth
+----------------------------------------------------------------
+1. Open: src/config/industryPacks.ts
+2. Confirm this file contains the full list of industries (around 20), including:
+   - auto detailing
+   - house cleaning
+   - lawn care
+   - pool service
+   - pressure washing
+   - pest control
+   - pet grooming
+   - window cleaning
+   - handyman services
+   - photography & media
+   - hair stylist / barber
+   - etc.
+
+This file is the single source of truth for available industries. DO NOT reduce or trim this list.
+
+Step 2 – Extend the industry pack type with image fields
+--------------------------------------------------------
+1. Find the type/interface used for each industry pack in src/config/industryPacks.ts. It might be something like:
+
+   interface IndustryPack {
+     id: string;
+     name: string;
+     // ...
+   }
+
+2. Extend that type to include:
+
+   - imageUrl: string;
+   - imageAlt?: string; // optional alt text for accessibility
+
+3. For EVERY industry in the export (all ~20), set:
+
+   - imageUrl to a HIGH-QUALITY, RELEVANT image URL hosted on a stable image CDN (Unsplash, Pexels, etc.). Use HTTPS links.
+     Examples of types of images to choose (exact URLs are up to you):
+     - Auto Detailing: close-up of a car being detailed / polished
+     - House Cleaning: clean modern living room or person cleaning
+     - Lawn Care: green lawn with someone mowing or trimming
+     - Pressure Washing: driveway or siding being pressure washed
+     - Pool Service: clean swimming pool / service tech at pool
+     - Pest Control: technician in protective gear at home exterior
+     - Pet Grooming: dog being groomed at grooming station
+     - Window Cleaning: person cleaning large windows/glass
+     - Handyman: tools or handyman working
+     - Hair Stylist / Barber: barbershop chair / stylist cutting hair
+     - Photography & Media: photographer with camera in action
+     - HVAC: tech working on AC unit
+     - Junk Removal: truck with junk being loaded
+     - Moving Services: movers carrying boxes
+     - Fence & Deck: fresh wooden deck / fence
+     - Real Estate / Property Services: nice home exterior
+     - Carpet Cleaning: professional carpet cleaning in progress
+     etc.
+
+   - imageAlt to a short description like:
+     - "Car being detailed"
+     - "Cleaner in modern living room"
+     - "Barber cutting hair in barbershop"
+     - "Photographer shooting a wedding"
+     etc.
+
+IMPORTANT:
+- Use DIRECT image URLs that resolve to image content, not to HTML pages.
+- All URLs must be HTTPS.
+- Prefer images that are reasonably wide (16:9 or similar) so they crop nicely in a card.
+
+Step 3 – Update the industry onboarding page to render images
+-------------------------------------------------------------
+1. Find the onboarding page that renders the industry grid. Likely:
+
+   - src/pages/OnboardingIndustry.tsx
+   OR
+   - client/src/pages/OnboardingIndustry.tsx
+
+This is the same file you wired up in Phases 8A–8C.
+
+2. Confirm this page now imports the industry list from src/config/industryPacks.ts (you previously updated it in the last step we ran).
+
+3. In the card rendering, update each industry card to show the image at the top. For example, if you currently have something like:
+
+   <Card ...>
+     <CardHeader>
+       <CardTitle>{ind.name}</CardTitle>
+     </CardHeader>
+     ...
+   </Card>
+
+Change it to something like (adjusting to the actual component structure):
+
+   <Card ...>
+     {ind.imageUrl && (
+       <div className="w-full h-32 overflow-hidden rounded-t-md">
+         <img
+           src={ind.imageUrl}
+           alt={ind.imageAlt || ind.name}
+           className="w-full h-full object-cover"
+           loading="lazy"
+         />
+       </div>
+     )}
+     <CardHeader>
+       <CardTitle>{ind.name}</CardTitle>
+     </CardHeader>
+     ...
+   </Card>
+
+Key requirements:
+- Use Tailwind (or existing className approach) to make the image:
+  - full width of card
+  - fixed height (e.g. h-32 or h-40)
+  - object-cover to avoid distortion
+  - rounded top corners to match card (rounded-t-md or similar)
+- Add loading="lazy" on the <img> for performance.
+- If an industry somehow has no imageUrl, just render the card without the image (no crash).
+
+4. Do NOT change the selection logic:
+   - Clicking a card should still set selectedIndustry exactly as before.
+   - Styling for selected vs non-selected cards should remain the same (just with image above).
+
+5. Do NOT change the POST payload to /api/onboarding/industry. No new fields are needed in the payload. Images are purely visual.
+
+Step 4 – Basic validation
+-------------------------
+1. Restart the dev server.
+2. Open /admin/onboarding-industry in the dev browser.
+3. Confirm:
+   - Every industry card now shows a high-quality, relevant image.
+   - The grid still looks clean and responsive.
+   - Hover/selected styling still works.
+   - Clicking “Save & Continue” still works exactly as before (status toast + API call).
+
+Step 5 – Report back
+--------------------
+When you are done, please provide:
+
+1. A list of files you changed:
+   - e.g., src/config/industryPacks.ts
+   - e.g., src/pages/OnboardingIndustry.tsx (or whatever file you updated for the UI)
+2. A short explanation of:
+   - How the imageUrl/imageAlt fields are structured in the config.
+   - How the image is rendered in the card (what classes / layout).
+3. Confirmation that:
+   - All industries now display appropriate images.
+   - The behavior of selecting an industry and saving the onboarding form is unchanged.
+
+Please apply all edits automatically and show me the summary when you’re done.
