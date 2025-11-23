@@ -199,10 +199,10 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
   
   describe('getEnhancedWeatherRiskLevel - Precipitation Intensity Bump', () => {
     
-    it('should bump low to medium when heavy rain intensity (>5mm/hr)', () => {
+    it('should bump low to medium when moderate-to-heavy rain intensity (>2.5mm/hr)', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 15,  // "low"
-        precipitationIntensityMm: 6
+        precipitationIntensityMm: 3
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
       expect(level).toBe('medium');  // low + 1 → medium
@@ -211,28 +211,37 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
     it('should bump medium to high when heavy rain intensity', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 30,  // "medium"
-        precipitationIntensityMm: 8
+        precipitationIntensityMm: 5
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
       expect(level).toBe('high');  // medium + 1 → high
     });
     
-    it('should not bump when light intensity (≤5mm/hr)', () => {
+    it('should not bump when light intensity (≤2.5mm/hr)', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 30,  // "medium"
-        precipitationIntensityMm: 3
+        precipitationIntensityMm: 2
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
       expect(level).toBe('medium');  // No bump for light rain
     });
     
-    it('should not bump when intensity is exactly 5mm/hr (threshold)', () => {
+    it('should not bump when intensity is exactly 2.5mm/hr (threshold)', () => {
       const ctx: WeatherRiskContext = {
         precipitationChance: 30,  // "medium"
-        precipitationIntensityMm: 5
+        precipitationIntensityMm: 2.5
       };
       const level = getEnhancedWeatherRiskLevel(ctx);
       expect(level).toBe('medium');  // Threshold not exceeded
+    });
+    
+    it('should bump when intensity is just above threshold (2.6mm/hr)', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 15,  // "low"
+        precipitationIntensityMm: 2.6
+      };
+      const level = getEnhancedWeatherRiskLevel(ctx);
+      expect(level).toBe('medium');  // low + 1 → medium (threshold exceeded)
     });
   });
   
