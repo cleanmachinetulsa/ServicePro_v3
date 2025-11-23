@@ -177,6 +177,66 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
     }
   );
 
+  // DEV/TEST ROUTE: Direct AI bootstrap testing (non-production only)
+  if (process.env.NODE_ENV !== "production") {
+    app.post(
+      "/api/dev/test-ai-bootstrap",
+      async (req: Request, res: Response): Promise<void> => {
+        try {
+          const { tenantId, industryId } = req.body;
+
+          if (!tenantId || !industryId) {
+            res.status(400).json({
+              success: false,
+              message: "Missing required fields: tenantId and industryId",
+            });
+            return;
+          }
+
+          if (!hasBootstrapData(industryId)) {
+            res.status(404).json({
+              success: false,
+              message: `No bootstrap data found for industry: ${industryId}`,
+            });
+            return;
+          }
+
+          const bootstrapData = getBootstrapDataForIndustry(industryId);
+          if (!bootstrapData) {
+            res.status(404).json({
+              success: false,
+              message: `Failed to load bootstrap data for industry: ${industryId}`,
+            });
+            return;
+          }
+
+          console.log(`[DEV_BOOTSTRAP] Testing AI bootstrap for tenant ${tenantId}, industry ${industryId}`);
+
+          const result = await bootstrapIndustryAiAndMessaging(
+            tenantId,
+            industryId,
+            bootstrapData
+          );
+
+          res.json({
+            success: true,
+            tenantId,
+            industryId,
+            result,
+          });
+        } catch (error) {
+          console.error("[DEV_BOOTSTRAP] Error:", error);
+          res.status(500).json({
+            success: false,
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+    );
+
+    console.log("[ONBOARDING] DEV route registered: POST /api/dev/test-ai-bootstrap");
+  }
+
   console.log(
     "[ONBOARDING] Routes registered: POST /api/onboarding/industry (Phase 8C)"
   );

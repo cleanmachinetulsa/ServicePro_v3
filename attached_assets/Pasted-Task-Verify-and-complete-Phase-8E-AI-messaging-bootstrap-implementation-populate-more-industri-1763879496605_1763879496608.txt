@@ -1,0 +1,294 @@
+Task: Verify and complete Phase 8E (AI & messaging bootstrap) implementation, populate more industries with real defaults, and make the behavior easy to test and observe.
+
+Project: Servicepro app (Servicepro-v3-base)
+
+Working style:
+- The user will NOT edit files manually.
+- You (the agent) must:
+  - Inspect the current Phase 8E implementation
+  - Confirm it actually runs and writes data
+  - Populate more industries with defaults
+  - Optionally add light logging / testing helpers
+- At the end, provide a clear summary of:
+  - What you changed
+  - How to test it in the browser and/or logs
+
+------------------------------------------------------------
+STEP 1 – Locate existing Phase 8E implementation
+------------------------------------------------------------
+1. Find the AI bootstrap helper file created in the previous step. It was described as:
+
+   - server/industryAiBootstrapService.ts
+   - Function name: bootstrapIndustryAiAndMessaging (not bootstrapIndustryAiForTenant)
+
+   If the filename or function name differ slightly, adjust accordingly, but identify:
+   - The main exported function that handles AI/messaging bootstrap
+   - How it currently:
+     - Loads bootstrap data
+     - Checks for existing templates/rules
+     - Inserts/updates records
+
+2. Confirm where bootstrap defaults live:
+
+   - The analysis said:
+     - client/src/config/industryBootstrapDefaults.ts
+     - server/industryBootstrapData.ts
+
+   Find:
+   - The structure of the bootstrap data (per-industry) in these files
+   - At least one fully populated industry (auto_detailing_mobile)
+   - Other industries that exist but have EMPTY arrays for templates/rules/FAQ
+
+3. Confirm that /api/onboarding/industry is calling this helper:
+
+   - Open server/onboardingIndustryRoutes.ts
+   - Look for the AI bootstrap call after industry persistence and service bootstrap, something like:
+
+     const aiBootstrap = await bootstrapIndustryAiAndMessaging({ ... });
+
+   - Confirm the route response includes an aiBootstrap field with a structure similar to:
+
+     {
+       aiBootstrap: {
+         summary: {
+           aiRules: { created, updated },
+           smsTemplates: { created, updated },
+           faqEntries: { created, updated }
+         },
+         success: true
+       }
+     }
+
+   Do NOT change basic routing or persistence logic.
+
+------------------------------------------------------------
+STEP 2 – Make the AI bootstrap behavior very visible and testable
+------------------------------------------------------------
+Goal: When the user tests onboarding, it should be obvious that AI/messaging bootstrap ran.
+
+1. In server/industryAiBootstrapService.ts:
+
+   - Ensure the main exported function returns a rich summary object like:
+
+     {
+       success: boolean;
+       summary: {
+         aiRules: { created: number; updated: number; };
+         smsTemplates: { created: number; updated: number; };
+         faqEntries: { created: number; updated: number; };
+       };
+       skipped?: boolean;
+       reason?: string;
+     }
+
+   - If this structure already exists, keep it.
+
+2. In server/onboardingIndustryRoutes.ts:
+
+   - Make sure the JSON response explicitly includes the aiBootstrap result, e.g.:
+
+     return res.json({
+       success: true,
+       message: "Industry selection saved.",
+       tenantId,
+       industryId: body.industryId,
+       persisted: true,
+       bootstrap: bootstrapResult,   // services/add-ons
+       aiBootstrap: aiBootstrapResult // AI/messaging
+     });
+
+   - If you are already doing something similar, keep it, but ensure:
+     - aiBootstrap is present even if AI bootstrap fails (use a fallback with success: false or skipped).
+
+3. Add logging (non-noisy, but clear) to server/industryAiBootstrapService.ts:
+
+   - Before returning, log something like:
+
+     console.log("[ONBOARDING_AI_BOOTSTRAP] Tenant:", tenantId, "Industry:", industryId, "Summary:", summary);
+
+   - This makes it easy to see in Replit logs when bootstrap runs and what it did.
+
+------------------------------------------------------------
+STEP 3 – Populate AI/messaging defaults for more industries
+------------------------------------------------------------
+Goal: At minimum, populate these industries with meaningful AI/messaging defaults:
+
+- auto_detailing_mobile (already done)
+- house_cleaning
+- lawn_care
+- photography
+- hair_stylist_barber  (or equivalent IDs you’re already using)
+
+1. Open the bootstrap defaults file:
+
+   - client/src/config/industryBootstrapDefaults.ts
+   - OR whatever file actually defines the bootstrap data used by server/industryBootstrapData.ts.
+
+2. Identify the TypeScript type used for each industry’s bootstrap definition. If one doesn’t exist, infer it from the structure in use. It will roughly have fields like:
+
+   {
+     id: string;
+     smsTemplates?: [...];
+     aiBehaviorRules?: [...];
+     faqSeeds?: [...];
+   }
+
+3. For each of the industries listed above, ensure they have realistic, non-empty defaults:
+
+   a) house_cleaning:
+      - SMS templates:
+        - intro_welcome: first reply asking for home size, city, and type of clean (standard/deep/move-out).
+        - booking_confirmation: confirms date/time and what’s included.
+        - appointment_reminder_24h: basic reminder with access instructions.
+        - missed_call_auto_response: friendly "sorry we missed you, text us / book online" message.
+      - AI behavior rules:
+        - core_persona: cleaning company concierge; explains what’s included, suggests deep cleaning for first visit, etc.
+        - scope_guidelines: how to handle “do you do X?” (inside fridge, oven, baseboards, etc.)
+      - FAQ seeds:
+        - “What’s included in a standard cleaning?”
+        - “Do you bring your own supplies?”
+        - “Do I need to be home?”
+
+   b) lawn_care:
+      - SMS: intro, quote request, reminders for recurring visits, weather-reschedule notice.
+      - Behavior: helps estimate mowing/maintenance cadence, upsell fertilization, weed control, etc.
+      - FAQ: “How often should I mow?”, “Do you haul away clippings?”, etc.
+
+   c) photography:
+      - SMS: first reply asking date/type of shoot, confirmation with location & deposit info, reminder.
+      - Behavior: photographer persona; describes packages, editing timelines, digital delivery.
+      - FAQ: “How many edited photos?”, “Do you require a deposit?”, “What if it rains?”
+
+   d) hair_stylist_barber:
+      - SMS: appointment request, booking confirmation, reschedule / cancellation, reminder.
+      - Behavior: salon/barbershop concierge; explains services (cut, color, trim), no-show policy.
+      - FAQ: “Do you take walk-ins?”, “What is your cancellation policy?”, “How long is a typical appointment?”
+
+4. IMPORTANT:
+   - Use simple text that DOES NOT hard-code “Clean Machine” or “Tulsa”.
+   - These are generic templates to be customized by the tenant later.
+   - Keep all new fields OPTIONAL on the TypeScript types (do not break existing code).
+
+5. Ensure server/industryBootstrapData.ts is correctly loading this data and exposing it to server/industryAiBootstrapService.ts. If necessary:
+
+   - Provide a small helper like:
+
+     export function getAiBootstrapDefaultsForIndustry(industryId: string) {
+       return INDUSTRY_BOOTSTRAP_DEFAULTS[industryId] ?? null;
+     }
+
+   - Use that in industryAiBootstrapService.ts.
+
+------------------------------------------------------------
+STEP 4 – Decide and lock in the bootstrap behavior pattern
+------------------------------------------------------------
+The analysis notes a deviation from the spec:
+
+- Spec wanted SKIP if tenant already has any AI/messaging config.
+- Implementation uses UPSERT (create or update) every time.
+
+This is actually fine and arguably better, but we should make it explicit and robust.
+
+1. In server/industryAiBootstrapService.ts:
+
+   - Keep the UPSERT pattern (create if missing, update if existing).
+   - Add a brief comment at the top of the main function explaining the strategy, e.g.:
+
+     /**
+      * Bootstrap AI/messaging config for a tenant.
+      *
+      * Behavior:
+      * - For each bootstrap record (templates, rules, FAQs), perform an upsert:
+      *   - If a matching record exists for this tenant/key, update it.
+      *   - If not, create it.
+      * - This allows us to improve bootstrap data over time and re-run onboarding
+      *   without manual cleanup. It’s idempotent and safe to call multiple times.
+      */
+
+   - Ensure the summary you return includes both created and updated counts, for full transparency.
+
+2. OPTIONAL (if it’s easy):
+   - Add a boolean flag in the function options like `forceSkipIfConfigured?: boolean` (default false).
+   - If true, use the older behavior (skip when any config exists).
+   - For now, keep default = false so the app uses UPSERT behavior.
+
+------------------------------------------------------------
+STEP 5 – Add a simple dev/test route (optional but helpful)
+------------------------------------------------------------
+Goal: Give the user a way to verify AI bootstrap without going through the whole UI every time.
+
+1. In the same file where /api/onboarding/industry is defined (server/onboardingIndustryRoutes.ts or related routes file), add a **DEV-ONLY** route, guarded by an environment check, for example:
+
+   - POST /api/dev/test-ai-bootstrap
+
+2. This route should:
+
+   - Be available only when NODE_ENV !== "production".
+   - Accept a JSON body with:
+     - tenantId
+     - industryId
+   - Call bootstrapIndustryAiAndMessaging({ tenantId, industryId }) directly.
+   - Return the result as JSON:
+
+     {
+       success: true,
+       result: { ...aiBootstrapResult }
+     }
+
+3. This makes it easy to:
+   - Hit the endpoint via REST client (or browser tool) in dev
+   - See clearly what was created/updated in a single call
+   - Avoid having to click through the onboarding UI every time while testing.
+
+If adding this dev route feels too intrusive, you can skip STEP 5, but it’s helpful.
+
+------------------------------------------------------------
+STEP 6 – Basic end-to-end test
+------------------------------------------------------------
+After making changes:
+
+1. Restart the dev server.
+
+2. In the browser:
+   - Log in as a test tenant that has no services or AI config yet (or a fresh tenant).
+   - Go to /admin/onboarding-industry.
+   - Choose one of the newly populated industries (e.g., house_cleaning or photography).
+   - Click Save & Continue.
+
+3. In the Network tab:
+   - Inspect the POST /api/onboarding/industry response.
+   - Confirm:
+     - success: true
+     - persisted: true
+     - bootstrap summary (services/add-ons) looks correct.
+     - aiBootstrap.summary shows non-zero created counts for the chosen industry.
+
+4. In Replit logs:
+   - Confirm you see the [ONBOARDING_AI_BOOTSTRAP] log with the same summary.
+
+5. If you added the dev route:
+   - Call POST /api/dev/test-ai-bootstrap with a test tenantId + industryId.
+   - Confirm the returned JSON matches the pattern and has created/updated counts.
+
+------------------------------------------------------------
+STEP 7 – Report back
+------------------------------------------------------------
+At the end, please output a summary including:
+
+1. Files created/modified, e.g.:
+   - modified: server/industryAiBootstrapService.ts
+   - modified: server/onboardingIndustryRoutes.ts
+   - modified: client/src/config/industryBootstrapDefaults.ts
+   - modified: server/industryBootstrapData.ts
+   - (optional) added: dev test route
+
+2. Which industries now have AI/messaging defaults (list their IDs).
+
+3. How to manually test:
+   - Via /admin/onboarding-industry
+   - Via any dev/test route you added
+
+4. Confirmation that:
+   - AI bootstrap runs and creates/updates records
+   - It’s safe to re-run (idempotent behavior preserved)
+   - Existing tenants are still unaffected unless they explicitly run onboarding again
