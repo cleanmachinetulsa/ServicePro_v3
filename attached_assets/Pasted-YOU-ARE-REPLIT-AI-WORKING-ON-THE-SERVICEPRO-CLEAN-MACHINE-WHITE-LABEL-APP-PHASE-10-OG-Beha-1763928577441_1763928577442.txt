@@ -1,0 +1,517 @@
+YOU ARE REPLIT AI WORKING ON THE "SERVICEPRO" / "CLEAN MACHINE" WHITE-LABEL APP.
+
+PHASE 10
+**OG Behavior Preservation & Missing Feature Extraction**
+
+GOAL
+From the OG “ServicePro AI - Complete AI Behavior Snapshot” (provided by the human outside the repo), extract ONLY the features that are NOT clearly implemented in the new multi-tenant app, and implement them as SMALL, CLEAN modules.
+
+We already have:
+- Modern multi-tenant auth and tenant context (global db + session.tenantId).
+- Progressive onboarding with industry selection and bootstrap.
+- Functional dashboard + tour.
+
+DO NOT reimplement or disturb those.
+
+FOCUS ONLY ON THESE OG FEATURES:
+A) Maintenance Detail Intelligence (when to offer maintenance program vs full detail)
+B) Weather Risk & Alert Logic (risk levels, copy helpers)
+C) Knowledge Base Defaults / AI Behavior Rules / Trigger Phrase Map structure
+D) Loyalty & Gamification Config (tiers, points, redemption)
+E) Standard SMS interactive keywords (RESCHEDULE / CANCEL / KEEP)
+
+For each of these, you will:
+- Check if v2 already has an equivalent.
+  - If YES and it’s clearly better → mark as PRESENT, do nothing.
+  - If NO or only partially present → mark as MISSING and implement the OG logic as a small module, with only light/safe integration.
+
+LIMIT SCOPE (CRITICAL)
+- Do NOT modify:
+  - auth routes,
+  - WebAuthn / 2FA,
+  - tenant middleware,
+  - onboarding industry endpoint,
+  - dashboard layout or tour logic.
+- Do NOT rewrite scheduling core or industry pack bootstrap.
+- Only add new domain logic modules + minimal hooks where safe.
+
+========================
+STEP 0 – QUICK SCAN FOR EXISTING IMPLEMENTATIONS
+========================
+1) Use rg / search to check for existing implementations of:
+
+   - Maintenance detail logic:
+     - "Maintenance Detail Program", "maintenance detail", "garage kept", "pet hair", "deep clean"
+   - Weather risk / alerts:
+     - "OpenWeather", "weather alert", "rain chance", "risk level"
+   - Knowledge base structure:
+     - "AI Behavior Rules", "Trigger Phrase Map", "Tone Training", "SMS Knowledge Base"
+   - Loyalty system:
+     - "Bronze", "Silver", "Gold", "Platinum", "pointsPerDollar", "loyaltyTier"
+   - SMS command keywords:
+     - "RESCHEDULE", "CANCEL", "KEEP" in SMS handlers
+
+2) For each of the focus areas A–E, decide:
+   - **PRESENT**: there is already a clear, OG-equivalent or better implementation.
+   - **MISSING**: only partial or no implementation; we need to add the OG logic.
+
+You’ll summarize PRESENT vs MISSING at the end.
+
+========================
+FEATURE A – MAINTENANCE DETAIL INTELLIGENCE (IF MISSING)
+========================
+OG Behavior Summary:
+- Offer maintenance detail if:
+  - Customer had service in last 3 months, OR
+  - Message uses “well-maintained / regular detail” style keywords.
+- Do NOT offer maintenance detail if message mentions deep-clean keywords (stains, filthy, pet hair, etc.).
+- Different recommendation copy for repeat vs new customer.
+
+IF you do NOT find a solid equivalent, IMPLEMENT:
+
+1) CREATE MODULE:
+   - `server/ai/domain/maintenanceDetailLogic.ts`
+   (adapt path to match existing ai/domain structure if present, but keep it clearly namespaced under ai/domain.)
+
+2) IMPLEMENT:
+
+   ```ts
+   export const MAINTENANCE_KEYWORDS = [
+     "regularly maintained",
+     "regularly detailed",
+     "regular maintenance",
+     "detailed monthly",
+     "detailed regularly",
+     "garage kept",
+     "keep it clean",
+     "always clean",
+     "clean regularly",
+     "meticulous",
+     "pristine",
+     "showroom condition",
+     "well maintained",
+     "maintained regularly",
+     "every month",
+     "every few weeks",
+     "touch up",
+     "touch-up",
+     "light cleaning",
+     "keep it looking good",
+     "maintain appearance",
+   ];
+
+   export const DEEP_CLEAN_KEYWORDS = [
+     "stain",
+     "stained",
+     "dirty",
+     "filthy",
+     "mess",
+     "messy",
+     "soiled",
+     "soil",
+     "mud",
+     "muddy",
+     "spill",
+     "spilled",
+     "deep clean",
+     "hasn't been cleaned",
+     "hasnt been cleaned",
+     "hasn't been detailed",
+     "hasnt been detailed",
+     "long time",
+     "never detailed",
+     "never been detailed",
+     "neglected",
+     "pet",
+     "dog hair",
+     "cat hair",
+     "fur",
+     "animal",
+     "children",
+     "kids",
+     "food",
+     "drink",
+     "coffee",
+     "soda",
+   ];
+
+   export interface ServiceHistoryEntry {
+     service: string;
+     date: string | Date;
+     notes?: string;
+   }
+
+   export function getLastServiceDate(
+     history: ServiceHistoryEntry[]
+   ): Date | null {
+     if (!history || history.length === 0) return null;
+     const dates = history
+       .map((h) => new Date(h.date))
+       .filter((d) => !isNaN(d.getTime()));
+     if (dates.length === 0) return null;
+     return dates.sort((a, b) => b.getTime() - a.getTime())[0];
+   }
+
+   export function shouldOfferMaintenanceDetail(
+     serviceHistory: ServiceHistoryEntry[] | null | undefined,
+     customerMessage: string
+   ): boolean {
+     const message = (customerMessage || "").toLowerCase();
+
+     // Deep clean keywords override
+     if (
+       DEEP_CLEAN_KEYWORDS.some((kw) => message.includes(kw.toLowerCase()))
+     ) {
+       return false;
+     }
+
+     // Recent service history (< 3 months)
+     if (serviceHistory && serviceHistory.length > 0) {
+       const lastServiceDate = getLastServiceDate(serviceHistory);
+       if (lastServiceDate) {
+         const threeMonthsAgo = new Date();
+         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+         if (lastServiceDate > threeMonthsAgo) {
+           return true;
+         }
+       }
+     }
+
+     // Maintenance-style keywords
+     if (
+       MAINTENANCE_KEYWORDS.some((kw) => message.includes(kw.toLowerCase()))
+     ) {
+       return true;
+     }
+
+     return false;
+   }
+
+   export function getMaintenanceRecommendationText(
+     isRepeatCustomer: boolean
+   ): string {
+     if (isRepeatCustomer) {
+       return "Based on your previous service with us, you might be interested in our Maintenance Detail Program. It's perfect for keeping your vehicle in top condition with regular quick wipe-downs, window cleaning, and wash/wax services for vehicles that are already in good shape.";
+     }
+
+     return "Since you keep your vehicle well-maintained, you might be interested in our Maintenance Detail Program. It’s a lighter service with quick wipe-downs, window cleaning, and wash/wax to maintain appearance. If there are stains or heavy soil, we may need to look at a deeper cleaning instead.";
+   }
+LIGHT INTEGRATION (NO BIG REFAC):
+
+Find the AI/scheduling logic for auto detail recommendations (where we choose services for auto_detail).
+
+Add a small hook (auto_detail only):
+
+If you have serviceHistory and the current customerMessage, call shouldOfferMaintenanceDetail.
+
+If true, append getMaintenanceRecommendationText(isRepeatCustomer) to the AI context or response-building step.
+
+If there’s no obvious safe spot, leave a clear TODO comment in the main scheduling AI handler referencing this module, without breaking anything.
+
+========================
+FEATURE B – WEATHER RISK & ALERT HELPERS (IF MISSING)
+OG Behavior Summary:
+
+Risk levels based on rain %:
+
+severe: 80–100%
+
+very-high: 60–80%
+
+high: 25–60%
+
+moderate: 15–25%
+
+low: 0–15% (no alert)
+
+Severity text and action text vary by level.
+
+Used for SMS weather alerts.
+
+IF missing, IMPLEMENT:
+
+CREATE:
+
+server/services/weatherRisk.ts
+
+IMPLEMENT:
+
+ts
+Copy code
+export type WeatherRiskLevel =
+  | "severe"
+  | "very-high"
+  | "high"
+  | "moderate"
+  | "low";
+
+export function getWeatherRiskLevel(
+  rainChancePercent: number
+): WeatherRiskLevel {
+  if (rainChancePercent >= 80) return "severe";
+  if (rainChancePercent >= 60) return "very-high";
+  if (rainChancePercent >= 25) return "high";
+  if (rainChancePercent >= 15) return "moderate";
+  return "low";
+}
+
+export function getWeatherSeverityText(level: WeatherRiskLevel): string {
+  switch (level) {
+    case "severe":
+      return "severe weather (80-100% chance of rain)";
+    case "very-high":
+      return "very high chance of rain (60-80%)";
+    case "high":
+      return "high chance of rain (25-60%)";
+    case "moderate":
+      return "moderate chance of rain (15-25%)";
+    case "low":
+    default:
+      return "low chance of rain (0-15%)";
+  }
+}
+
+export function getWeatherActionText(level: WeatherRiskLevel): string | null {
+  switch (level) {
+    case "severe":
+      return "We strongly recommend rescheduling to ensure quality service.";
+    case "very-high":
+      return "We recommend rescheduling to ensure quality service.";
+    case "high":
+      return "Consider rescheduling for better detailing results.";
+    case "moderate":
+      return "We can still perform service, but exterior detailing might be affected.";
+    case "low":
+    default:
+      return null;
+  }
+}
+INTEGRATION:
+
+Do NOT build the whole scheduling job here.
+
+If you already have a weather-alert or reminder job, you MAY:
+
+Use these helpers to build nicer SMS copy.
+
+Otherwise, leave a TODO at the top of this file describing:
+
+“Intended usage: daily 4pm job checks rain chance for next-day appointments and uses this module to determine if/what message to send.”
+
+========================
+FEATURE C – KNOWLEDGE BASE DEFAULTS & RULE STRUCTURE (IF MISSING)
+OG Behavior Summary:
+
+Knowledge base supports multi-source (Sheets, JSON, DB).
+
+Default tab names:
+
+"SMS Knowledge Base"
+
+"Services"
+
+"Add-Ons"
+
+"FAQ"
+
+"Client Responses"
+
+"AI Behavior Rules"
+
+"Trigger Phrase Map"
+
+"Customer Information"
+
+"Service History"
+
+"Tone Training"
+
+AI Behavior Rules & Trigger Phrase Map have specific structures.
+
+IF missing or not centralized, IMPLEMENT:
+
+CREATE:
+
+server/ai/knowledgeBaseDefaults.ts
+
+IMPLEMENT:
+
+ts
+Copy code
+export const DEFAULT_KB_TAB_NAMES = {
+  smsKnowledgeBase: "SMS Knowledge Base",
+  services: "Services",
+  addOns: "Add-Ons",
+  faq: "FAQ",
+  clientResponses: "Client Responses",
+  aiBehaviorRules: "AI Behavior Rules",
+  triggerPhraseMap: "Trigger Phrase Map",
+  customerInformation: "Customer Information",
+  serviceHistory: "Service History",
+  toneTraining: "Tone Training",
+} as const;
+
+export interface AiBehaviorRule {
+  triggerScenario: string;
+  instruction: string;
+}
+
+export interface TriggerPhraseMapEntry {
+  phrase: string;
+  mappedAction: string; // e.g. "recommend_full_detail", "ask_for_photos"
+}
+INTEGRATION (LIGHT):
+
+Find the code that loads Google Sheets / KB sources.
+
+Ensure it uses DEFAULT_KB_TAB_NAMES when looking up tabs (instead of hard-coded strings scattered around).
+
+If the loader is already flexible, just import and use these constants.
+
+Leave a brief comment noting that this reflects the OG KB tab naming so future sheets line up.
+
+========================
+FEATURE D – LOYALTY & GAMIFICATION CONFIG (IF MISSING)
+OG Behavior Summary:
+
+Tiers: Bronze, Silver, Gold, Platinum.
+
+Points:
+
+$1 spent = 1 point.
+
+Bonus multipliers: first service, referrals, reviews, birthday month.
+
+Redemption:
+
+100 points = $1.
+
+Max 50% of service cost per redemption.
+
+Tracks achievements and audit trail.
+
+IF no centralized loyalty config exists, IMPLEMENT:
+
+CREATE:
+
+server/loyalty/loyaltyConfig.ts
+
+IMPLEMENT:
+
+ts
+Copy code
+export interface LoyaltyTier {
+  id: "bronze" | "silver" | "gold" | "platinum";
+  name: string;
+  pointsRequired: number;
+  discountPercent: number;
+  colorHex: string;
+}
+
+export const LOYALTY_TIERS: LoyaltyTier[] = [
+  { id: "bronze", name: "Bronze", pointsRequired: 0, discountPercent: 5, colorHex: "#CD7F32" },
+  { id: "silver", name: "Silver", pointsRequired: 500, discountPercent: 10, colorHex: "#C0C0C0" },
+  { id: "gold", name: "Gold", pointsRequired: 1500, discountPercent: 15, colorHex: "#FFD700" },
+  { id: "platinum", name: "Platinum", pointsRequired: 3000, discountPercent: 20, colorHex: "#E5E4E2" },
+];
+
+export const POINTS_PER_DOLLAR = 1;
+
+export const LOYALTY_BONUSES = {
+  firstServiceMultiplier: 2,
+  referralBonusPoints: 100,
+  reviewBonusPoints: 50,
+  birthdayMonthMultiplier: 1.5,
+} as const;
+
+export const REDEMPTION = {
+  pointsPerDollar: 100, // 100 points = $1
+  minRedemptionPoints: 100,
+  maxDiscountPercentPerService: 50,
+} as const;
+INTEGRATION:
+
+Do NOT implement the full loyalty engine here.
+
+If you already have points logic, you can adjust it to use these constants.
+
+Otherwise, leave this as the canonical config to be used by future loyalty/achievements modules.
+
+========================
+FEATURE E – SMS INTERACTIVE KEYWORD CONSTANTS (IF MISSING)
+OG Behavior Summary:
+
+SMS templates use:
+
+RESCHEDULE
+
+CANCEL
+
+KEEP
+
+These should be handled consistently by the inbound SMS handler.
+
+IF no centralized keyword helper exists, IMPLEMENT:
+
+CREATE:
+
+server/sms/interactiveKeywords.ts
+
+IMPLEMENT:
+
+ts
+Copy code
+export const SMS_KEYWORDS = {
+  RESCHEDULE: "RESCHEDULE",
+  CANCEL: "CANCEL",
+  KEEP: "KEEP",
+} as const;
+
+export type SmsKeyword = (typeof SMS_KEYWORDS)[keyof typeof SMS_KEYWORDS];
+
+export function normalizeIncomingSmsKeyword(body: string): SmsKeyword | null {
+  if (!body) return null;
+  const text = body.trim().toUpperCase();
+  if (text === SMS_KEYWORDS.RESCHEDULE) return SMS_KEYWORDS.RESCHEDULE;
+  if (text === SMS_KEYWORDS.CANCEL) return SMS_KEYWORDS.CANCEL;
+  if (text === SMS_KEYWORDS.KEEP) return SMS_KEYWORDS.KEEP;
+  return null;
+}
+LIGHT INTEGRATION:
+
+Find the Twilio inbound SMS route.
+
+Where you currently check for "RESCHEDULE", "CANCEL", etc.:
+
+Replace ad-hoc checks with normalizeIncomingSmsKeyword.
+
+Route:
+
+RESCHEDULE → reschedule flow (or TODO if not implemented yet).
+
+CANCEL → cancel flow (or TODO).
+
+KEEP → confirm appointment.
+
+Keep changes minimal and non-breaking; if flows are not ready, add TODO comments.
+
+========================
+STEP 11 – SUMMARY OUTPUT
+When finished, log a short summary including:
+
+For each of A–E:
+
+Marked as PRESENT or MISSING.
+
+For each MISSING feature:
+
+Files created (paths).
+
+Any light integrations added.
+
+Any TODOs left for future deeper wiring.
+
+Do NOT change unrelated code. Keep this phase focused strictly on OG behavior preservation & missing feature extraction.
+
+vbnet
+Copy code
