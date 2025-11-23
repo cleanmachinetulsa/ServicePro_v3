@@ -9,20 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch as Toggle } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-
-const INDUSTRIES = [
-  { id: "auto-detailing", name: "Mobile Auto Detailing" },
-  { id: "lawn-care", name: "Lawn Care" },
-  { id: "house-cleaning", name: "House Cleaning" },
-  { id: "pressure-washing", name: "Pressure Washing" },
-  { id: "mobile-mechanic", name: "Mobile Mechanic" },
-  { id: "pool-service", name: "Pool Service" },
-  { id: "handyman", name: "Handyman Services" },
-  { id: "window-cleaning", name: "Window Cleaning" },
-  { id: "pest-control", name: "Pest Control" },
-  { id: "pet-grooming", name: "Pet Grooming" },
-  { id: "photography", name: "Photography & Media Studio" }, // mega pack
-];
+import { INDUSTRY_PACKS } from "@/config/industryPacks";
 
 const PHOTOGRAPHY_SUBPACKS = [
   "Portrait Sessions",
@@ -54,10 +41,10 @@ export default function OnboardingIndustryPage() {
   const handleSubmit = async () => {
     if (!selectedIndustry) return;
 
-    const industryMeta = INDUSTRIES.find((i) => i.id === selectedIndustry);
+    const industryMeta = INDUSTRY_PACKS.find((i) => i.id === selectedIndustry);
 
     const featureFlags =
-      selectedIndustry === "photography"
+      selectedIndustry === "photography_full"
         ? Object.fromEntries(
             Object.entries(photoToggles).map(([k, v]) => [
               `photography:${k}`,
@@ -68,7 +55,7 @@ export default function OnboardingIndustryPage() {
 
     const payload = {
       industryId: selectedIndustry,
-      industryName: industryMeta?.name ?? selectedIndustry,
+      industryName: industryMeta?.label ?? selectedIndustry,
       featureFlags,
       rawSelection: {
         selectedIndustry,
@@ -101,8 +88,9 @@ export default function OnboardingIndustryPage() {
 
       toast({
         title: "Industry saved",
-        description:
-          "Your industry selection was sent to the server (Phase 8B stub).",
+        description: data.persisted 
+          ? "Your industry selection has been saved to the database."
+          : "Your industry selection was logged (no tenant context).",
       });
     } catch (err: any) {
       console.error("[OnboardingIndustry] Save error:", err);
@@ -131,8 +119,8 @@ export default function OnboardingIndustryPage() {
       </div>
 
       {/* INDUSTRY GRID */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
-        {INDUSTRIES.map((ind) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {INDUSTRY_PACKS.map((ind) => {
           const isSelected = selectedIndustry === ind.id;
           return (
             <Card
@@ -146,7 +134,8 @@ export default function OnboardingIndustryPage() {
               data-testid={`industry-${ind.id}`}
             >
               <CardHeader>
-                <CardTitle>{ind.name}</CardTitle>
+                <CardTitle className="text-base">{ind.label}</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">{ind.category}</p>
               </CardHeader>
             </Card>
           );
@@ -154,7 +143,7 @@ export default function OnboardingIndustryPage() {
       </div>
 
       {/* PHOTOGRAPHY SUBPACKS */}
-      {selectedIndustry === "photography" && (
+      {selectedIndustry === "photography_full" && (
         <div className="space-y-4">
           <h2 className="text-2xl font-semibold">
             What types of photography do you offer?
