@@ -258,6 +258,29 @@ export const tenantPhoneConfig = pgTable("tenant_phone_config", {
   tenantIdIdx: index("tenant_phone_config_tenant_id_idx").on(table.tenantId),
 }));
 
+// Campaign configurations per tenant for Welcome Back and other campaigns
+export const campaignConfigs = pgTable("campaign_configs", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  campaignKey: varchar("campaign_key", { length: 100 }).notNull(), // e.g. 'welcome_back_v1'
+  configJson: jsonb("config_json").$type<{
+    vipPointsBonus?: number;
+    regularPointsBonus?: number;
+    smsTemplateVip?: string;
+    smsTemplateRegular?: string;
+    emailTemplateVip?: string;
+    emailTemplateRegular?: string;
+    bookingBaseUrl?: string;
+    rewardsBaseUrl?: string;
+    qrUrlVip?: string;
+    qrUrlRegular?: string;
+  }>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantCampaignIdx: uniqueIndex("campaign_configs_tenant_campaign_idx").on(table.tenantId, table.campaignKey),
+}));
+
 // Loyalty tier enum for customer tier upgrades
 export const loyaltyTierEnum = pgEnum('loyalty_tier', ['bronze', 'silver', 'gold', 'platinum']);
 
@@ -280,6 +303,9 @@ export const customers = pgTable("customers", {
   loyaltyTier: loyaltyTierEnum("loyalty_tier").default('bronze'),
   hasPriorityBooking: boolean("has_priority_booking").default(false),
   priorityBookingGrantedAt: timestamp("priority_booking_granted_at"),
+  
+  // VIP customer flag for campaign targeting
+  isVip: boolean("is_vip").default(false),
   
   // Customer Intelligence fields (Phase 1)
   isReturningCustomer: boolean("is_returning_customer").notNull().default(false),
