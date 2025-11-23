@@ -4,6 +4,7 @@ import { users, passwordResetTokens } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
+import { db } from './db';
 import { sendPasswordResetEmail } from './emailService';
 import {
   setupTOTP,
@@ -52,11 +53,11 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Find user
-      const userResult = await req.tenantDb!
+      // Find user using global db (no tenant context needed for login)
+      const userResult = await db
         .select()
         .from(users)
-        .where(req.tenantDb!.withTenantFilter(users, eq(users.username, username)))
+        .where(eq(users.username, username))
         .limit(1);
 
       if (!userResult || userResult.length === 0) {
@@ -128,8 +129,10 @@ export function registerAuthRoutes(app: Express) {
           });
         }
 
-        // Store user ID in session (cookie-based, HttpOnly)
+        // Store user ID, tenant ID, and role in session (required for tenant middleware)
         req.session.userId = user.id;
+        req.session.tenantId = user.tenantId;
+        req.session.role = user.role;
         req.session.twoFactorVerified = false; // No 2FA configured
 
         // Save session before sending response
@@ -253,6 +256,20 @@ export function registerAuthRoutes(app: Express) {
       const userId = pending.userId;
       const username = pending.username;
 
+      // Fetch user to get tenantId and role for session (using global db)
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!user) {
+        return res.status(500).json({
+          success: false,
+          message: 'User not found after 2FA verification',
+        });
+      }
+
       // Clear pending 2FA state
       delete req.session.pending2FA;
 
@@ -269,8 +286,10 @@ export function registerAuthRoutes(app: Express) {
           });
         }
 
-        // Set full session
+        // Set full session with tenant ID and role (required for tenant middleware)
         req.session.userId = userId;
+        req.session.tenantId = user.tenantId;
+        req.session.role = user.role;
         req.session.twoFactorVerified = true;
 
         req.session.save((saveErr) => {

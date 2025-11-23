@@ -386,6 +386,19 @@ export default function LoginPage() {
                 </svg>
                 Sign in with Google
               </Button>
+
+              <div className="text-center text-sm mt-4 pt-4 border-t border-gray-200">
+                <span className="text-gray-600">New to ServicePro? </span>
+                <Button
+                  type="button"
+                  variant="link"
+                  className="text-blue-600 font-medium p-0 h-auto"
+                  onClick={() => setLocation('/onboarding/industry')}
+                  data-testid="link-get-started"
+                >
+                  Get started
+                </Button>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleVerify2FA} className="space-y-4">
