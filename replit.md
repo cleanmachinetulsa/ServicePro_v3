@@ -59,6 +59,13 @@ The Express server uses `app.set('trust proxy', true)` to correctly handle Repli
 
 ## Recent Changes
 
+### Phase 11 - OG SMS AI Agent Parity (November 23, 2025)
+Implemented tenant-aware, SMS-optimized AI agent system prompts aligned with OG ServicePro specification:
+- **SMS Agent Prompt Builder** (`server/ai/smsAgentPromptBuilder.ts`): Centralized system prompt builder that dynamically loads tenant business name, industry type, services list, and booking links. Enforces SMS constraints (≈160 chars when possible) and OG rules ("don't make up prices, ask for photos, use booking link").
+- **Multi-Tenant Integration**: Wired into `generateAIResponse` function in `server/openai.ts`. When `platform === 'sms'`, uses tenant-specific SMS prompt instead of hardcoded "Clean Machine Auto Detail" prompt. Gracefully falls back to standard prompt on errors.
+- **SMS Optimization**: Reduced max_tokens to 300 for SMS responses, added length warnings for messages >320 chars (2 SMS segments), and trimmed whitespace. TODOs added for future multi-part SMS splitting logic.
+- **Booking Link Placeholder**: Temporary booking URL structure uses `https://{subdomain}.servicepro.com/book` with TODO to wire to actual multi-tenant booking pages when ready.
+
 ### Phase 10 - Missing OG Feature Modules (November 23, 2025)
 Created 3 missing feature modules from original ServicePro with clean, modular implementations:
 - **Weather Risk Assessment** (`server/services/weatherRisk.ts`): Centralized weather risk level classification, severity descriptions, and action recommendations. Integrated into weather alert system as single source of truth.
