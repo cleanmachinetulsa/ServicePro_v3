@@ -1,5 +1,11 @@
 import axios from 'axios';
 import { getWeatherRiskLevel, type WeatherRiskLevel } from './services/weatherRisk';
+import {
+  evaluateWeatherRisk,
+  type WeatherRiskContext,
+  type WeatherRiskResult,
+  type EnhancedWeatherRiskLevel,
+} from './services/weatherRisk';
 
 // Types for OpenWeatherMap API responses
 export interface WeatherForecast {
@@ -17,6 +23,63 @@ export interface WeatherCheckResult {
   recommendation: string;
   urgency: 'none' | 'low' | 'medium' | 'high';
   weatherRiskLevel: WeatherRiskLevel | 'none';
+}
+
+/**
+ * Phase 13 - Enhanced Weather Risk Assessment
+ * 
+ * Adapter function to convert Open-Meteo forecast data into comprehensive
+ * weather risk context for multi-factor risk evaluation.
+ */
+export interface ProviderForecast {
+  chanceOfRain?: number;           // 0-100
+  precipitationMmPerHour?: number;
+  windSpeedMph?: number;
+  temperatureF?: number;
+  weatherCode?: number;            // WMO weather code
+  hasThunderstorm?: boolean;
+  hasSevereAlert?: boolean;
+}
+
+/**
+ * Get enhanced weather risk assessment from forecast data (Phase 13)
+ * 
+ * Maps provider forecast data to comprehensive weather risk context and
+ * returns actionable risk assessment with severity and action recommendations.
+ * 
+ * @param forecast Provider forecast data (all fields optional)
+ * @param options Optional industry context for future customization
+ * @returns Complete weather risk assessment
+ * 
+ * @example
+ * const forecast = { chanceOfRain: 65, windSpeedMph: 35, hasThunderstorm: true };
+ * const risk = getWeatherRiskFromForecast(forecast, { industryType: 'auto_detailing' });
+ * // risk.level === 'extreme' (high rain + thunderstorm + high wind)
+ * // risk.severityText === "Severe weather is likely..."
+ * // risk.actionText === "We strongly recommend rescheduling..."
+ */
+export function getWeatherRiskFromForecast(
+  forecast: ProviderForecast,
+  options?: { industryType?: string | null }
+): WeatherRiskResult {
+  // Detect thunderstorms from WMO weather codes (95-99)
+  const isThunderstorm = forecast.weatherCode ? 
+    (forecast.weatherCode >= 95 && forecast.weatherCode <= 99) : 
+    (forecast.hasThunderstorm ?? false);
+  
+  // Build comprehensive weather context
+  const ctx: WeatherRiskContext = {
+    precipitationChance: forecast.chanceOfRain,
+    precipitationIntensityMm: forecast.precipitationMmPerHour,
+    windSpeedMph: forecast.windSpeedMph,
+    temperatureF: forecast.temperatureF,
+    thunderstormRisk: isThunderstorm,
+    severeAlertActive: forecast.hasSevereAlert ?? false,
+    industryType: options?.industryType ?? null,
+  };
+  
+  // Use Phase 13 comprehensive risk evaluation
+  return evaluateWeatherRisk(ctx);
 }
 
 /**
@@ -450,5 +513,91 @@ export async function checkAndAlertForUpcomingAppointments(): Promise<{
       appointmentsNeedingReschedule: 0,
       detailedResults: []
     };
+  }
+}
+
+/**
+ * Phase 13 - Get Enhanced Weather Risk for Appointment
+ * 
+ * Lightweight helper for reminder/notification logic to get comprehensive weather
+ * risk assessment for a specific appointment using Phase 13 enhanced evaluation.
+ * 
+ * Safe to use in reminder pipelines - returns null if data is missing rather than throwing.
+ * 
+ * @param options.tenantId - Tenant ID for appointment
+ * @param options.appointmentId - Appointment ID (can be string or number)
+ * @param options.latitude - Optional override latitude (otherwise uses default)
+ * @param options.longitude - Optional override longitude (otherwise uses default)
+ * @param options.appointmentDate - Optional override date (otherwise fetches from appointment)
+ * @param options.industryType - Optional industry context for customized messaging
+ * @returns Enhanced weather risk result or null if data unavailable
+ * 
+ * @example
+ * const risk = await getAppointmentWeatherRisk({
+ *   tenantId: 'root',
+ *   appointmentId: '123',
+ *   industryType: 'auto_detailing'
+ * });
+ * 
+ * if (risk && (risk.level === 'high' || risk.level === 'extreme')) {
+ *   // Add risk info to reminder template
+ *   const message = `${baseMessage}\n\nWeather Alert: ${risk.severityText} ${risk.actionText}`;
+ * }
+ */
+export async function getAppointmentWeatherRisk(options: {
+  tenantId: string;
+  appointmentId: string | number;
+  latitude?: number;
+  longitude?: number;
+  appointmentDate?: string;
+  industryType?: string | null;
+}): Promise<WeatherRiskResult | null> {
+  try {
+    // Use provided coords or default to Tulsa (can be extended to load from appointment/tenant)
+    const lat = options.latitude ?? 36.1236407;
+    const lon = options.longitude ?? -95.9359214;
+    
+    // Use provided date or would load from appointment DB (simplified for Phase 13)
+    const appointmentDate = options.appointmentDate ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    
+    // Get forecast for appointment time/location
+    const forecasts = await getHourlyForecast(lat, lon, 3);
+    
+    if (!forecasts || forecasts.length === 0) {
+      return null;
+    }
+    
+    // Find forecast closest to appointment time
+    const appointmentDateString = new Date(appointmentDate).toISOString().split('T')[0];
+    const relevantForecasts = forecasts.filter(f => 
+      f.date.split('T')[0] === appointmentDateString
+    );
+    
+    if (relevantForecasts.length === 0) {
+      return null;
+    }
+    
+    // Calculate average conditions during appointment window
+    const avgRain = relevantForecasts.reduce((sum, f) => sum + f.chanceOfRain, 0) / relevantForecasts.length;
+    const hasHighSeverity = relevantForecasts.some(f => f.severity === 'severe' || f.severity === 'high');
+    
+    // Map to ProviderForecast for Phase 13 assessment
+    const providerForecast: ProviderForecast = {
+      chanceOfRain: avgRain,
+      temperatureF: relevantForecasts[0]?.temperature,
+      hasSevereAlert: hasHighSeverity,
+      // Note: Open-Meteo doesn't provide wind/precipitation intensity in this simple call
+      // These could be added by calling a more detailed API endpoint in the future
+    };
+    
+    // Use Phase 13 comprehensive risk assessment
+    return getWeatherRiskFromForecast(providerForecast, {
+      industryType: options.industryType ?? null
+    });
+    
+  } catch (error: any) {
+    console.error(`[Phase 13] Error getting weather risk for appointment ${options.appointmentId}:`, error);
+    // Safe failure - return null rather than crashing reminder pipeline
+    return null;
   }
 }

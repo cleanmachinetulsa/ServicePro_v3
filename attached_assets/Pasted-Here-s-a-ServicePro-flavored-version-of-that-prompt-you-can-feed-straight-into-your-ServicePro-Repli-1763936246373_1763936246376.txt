@@ -1,0 +1,522 @@
+Here’s a ServicePro-flavored version of that prompt you can feed straight into your ServicePro Replit agent so you get the same human-takeover / hand-back-to-AI / Smart Schedule upgrades, but in a multi-tenant, white-label way.
+
+You can literally copy-paste everything inside this block into Replit:
+
+You are updating my ServicePro v3 WHITE-LABEL multi-tenant platform (NOT the legacy Clean Machine-only app). Your goal is to implement PROFESSIONAL-LEVEL flows for:
+
+1) Human takeover of conversations (SMS + web chat, etc.) per tenant
+2) Handing control back to the AI in a smart, context-aware way
+3) A “Smart Schedule from Thread” feature per tenant that can convert ANY messy conversation into a structured booking for that tenant’s industry
+
+This must be done in a way that:
+- Respects multi-tenant isolation (tenantId / plan tiers, etc.)
+- Works across channels (at minimum SMS + web chat; structure it so WhatsApp/etc. can be added later)
+- Plays nicely with the existing ServicePro architecture (industry packs, AI prompt builders, tenant-specific config, etc.)
+- Does NOT break existing behavior for tenants who don’t use these features yet
+
+Assumptions & Constraints:
+- Platform already has:
+  - Tenant-aware AI helpers (e.g. server/openai.ts, smsAgentPromptBuilder, industry packs, etc.)
+  - Multi-tenant DB schema (tenants, users, customers, messages, etc.)
+  - SMS + chat message routing with `tenantId` and `platform` (e.g. 'sms', 'web', etc.)
+  - Existing booking/job creation logic and confirmation messaging
+- You must:
+  - Reuse existing booking/job pipeline instead of inventing a new one
+  - Keep new code modular and well-named
+  - Add or extend TypeScript types as needed
+  - Add feature flags/plan checks where appropriate if plan tiers exist
+
+==================================================
+STEP 1 – DISCOVER EXISTING STRUCTURE (DO NOT SKIP)
+==================================================
+
+Search the repo to understand what’s already there:
+
+1. Conversation & message models:
+   - Find DB models/tables/entities for:
+     - `Conversation` (or equivalent; might be `threads`, `channels`, etc.)
+     - `Message` (incoming/outgoing, with tenantId + channel)
+   - Confirm existing fields:
+     - `tenantId`
+     - `customerId` / `customerPhone` / `contactId`
+     - `channel` or `platform` (e.g. 'sms', 'web')
+     - timestamps
+
+2. AI plumbing:
+   - Find shared OpenAI wrapper (likely `server/openai.ts` or similar)
+   - Find SMS AI handling code (something like `generateAIResponse`, `handleSmsWithAI`, `smsAgentPromptBuilder`, etc.)
+   - Find web chat AI handling code (if separate)
+
+3. Booking/appointment logic:
+   - Find the core service that creates jobs/appointments for a tenant (e.g. `bookingService`, `jobService`, `appointmentService`).
+   - Identify:
+     - Required fields to create a booking
+     - How tenant-specific services/add-ons are referenced (service IDs, durations, etc.)
+     - Where confirmation SMS/email is sent from
+
+4. Internal “agent” UI:
+   - Locate the admin/tenant dashboard where staff can:
+     - View conversations
+     - Reply as a human
+   - Identify:
+     - React components for conversation view
+     - API endpoints it uses for sending human messages
+
+You will need all of this to integrate the new features correctly.
+
+==================================================
+STEP 2 – CONVERSATION MODES FOR HUMAN / AI / RESUME
+==================================================
+
+Extend the conversation model (or create one if needed) to track conversation mode per tenant & channel.
+
+Add fields to the `Conversation` entity/table:
+
+- `mode: 'ai' | 'human' | 'ai_resumed'`
+- `lastHandoffReason?: string | null`
+- `lastHumanSummary?: string | null`
+- (optional for future): `assignedAgentId?: string | null`
+
+Also ensure the model has:
+
+- `tenantId: string`
+- `channel: 'sms' | 'web' | 'whatsapp' | ...`
+- `customerId` and/or `customerPhone`
+
+Behavior:
+
+- New conversations default to `mode = 'ai'` (unless tenant config says otherwise).
+- AI auto-replies MUST only happen when `mode` is `'ai'` or `'ai_resumed'`.
+- When a human (tenant or their staff) sends a manual reply from the dashboard:
+  - Automatically set `mode = 'human'` for that conversation.
+  - Optionally record/update `lastHandoffReason` if UI passes it.
+  - Disable auto AI replies until someone explicitly resumes AI.
+
+Implementation details:
+
+1. Backend:
+   - In the handler that sends human/admin messages:
+     - Load conversation by `{tenantId, conversationId}` or `{tenantId, customerId, channel}`.
+     - Set `mode = 'human'`, save.
+   - In the inbound message handlers (e.g. Twilio SMS webhook, web-chat inbound):
+     - Before calling AI, load the conversation.
+     - If `mode === 'human'`, do NOT auto-send AI response. Just store the incoming message.
+
+2. IMPORTANT: Make this logic multi-tenant safe.
+   - All queries/updates to conversations must be filtered by `tenantId`.
+
+==================================================
+STEP 3 – HAND BACK TO AI (PER TENANT, PER CHANNEL)
+==================================================
+
+Create a backend endpoint to resume AI on a specific conversation:
+
+- Method: POST
+- URL (example): `/api/tenants/:tenantId/conversations/:conversationId/resume-ai`
+- Body:
+  - `handoffReason?: string`
+  - `humanSummary?: string`
+  - `behavior?: 'normal' | 'schedule_first'` (default `'normal'`)
+
+Behavior:
+
+1. Validate that the authenticated user belongs to the tenant and has permissions.
+2. Load the conversation by `tenantId` + `conversationId`.
+3. Update:
+   - `mode = 'ai_resumed'`
+   - `lastHandoffReason = handoffReason ?? existing`
+   - `lastHumanSummary = humanSummary ?? existing`
+4. Load recent message history for that conversation (e.g. last 50–100 messages).
+5. Build a special AI system prompt that includes:
+
+   - Tenant context (industry pack, business name, services, etc. — use existing industry/tenant prompt builder).
+   - Handoff metadata:
+
+     - `handoff_reason`: explain what went wrong (if provided)
+     - `human_summary`: what the human fixed/decided
+     - `resume_behavior`:
+       - `'normal'` → resume as usual, but don’t repeat the problematic piece
+       - `'schedule_first'` → go straight into confirming details and scheduling
+
+   - Explicit instructions:
+     - Do NOT restart the entire flow or repeat questions already clarified in `human_summary`.
+     - Acknowledge that a human stepped in and resolved the issue.
+     - Smoothly continue, prioritizing getting the customer booked as efficiently as possible.
+
+6. Call the shared AI helper with:
+   - `tenantId`
+   - `platform` (e.g. 'sms' or 'web')
+   - The special system prompt
+   - Recent conversation messages as chat history
+7. Save the AI reply as an outgoing `Message` associated with that conversation.
+8. Deliver it via the correct channel:
+   - If `channel === 'sms'`, send via Twilio with the tenant’s configured number.
+   - If `channel === 'web'`, push to web socket / polling mechanism.
+9. Return `{ success: true, message: <AIMessage> }`.
+
+Make sure to:
+- Respect tenant’s plan-tier feature gating (if only certain tiers allow this).
+- Log the handoff/resume event (with tenantId, conversationId, behavior).
+
+==================================================
+STEP 4 – SMART SCHEDULE FROM THREAD (BACKEND, MULTI-TENANT)
+==================================================
+
+Create a service to extract structured booking info from a conversation, **per tenant and per industry**.
+
+File (example): `server/services/smartScheduleFromThread.ts`
+
+Function signature (example):
+
+```ts
+async function buildSmartSchedulePreview(params: {
+  tenantId: string;
+  conversationId: string;
+}): Promise<SmartSchedulePreview> { ... }
+
+Where SmartSchedulePreview is a generic structure that works for all service industries but can lean on each tenant’s industry pack:
+
+interface RequestedService {
+  label: string;            // e.g. "Full Interior Detail", "Bi-weekly lawn care"
+  internalServiceId?: string; // map name→id if possible using tenant’s services
+  addOns?: { label: string; internalAddOnId?: string }[];
+}
+
+interface SmartSchedulePreview {
+  tenantId: string;
+  conversationId: string;
+  customerName: string | null;
+  customerPhone: string;
+  customerEmail?: string | null;
+  address: string | null;
+  serviceRequests: RequestedService[];
+  preferredTimeWindows: string[];   // e.g. "This Friday afternoon", "Next week mornings"
+  hardConstraints: string[];        // e.g. "Needs shade", "Gate code 1234", "No water hookup"
+  notes: string;                    // Free-form notes for technician
+  uncertainFields: string[];        // Things the AI isn’t sure about
+}
+
+Logic:
+
+1. Load full conversation history for {tenantId, conversationId}.
+
+
+2. Load tenant context:
+
+Industry pack (services, add-ons, typical durations)
+
+Tenant business data (name, default service area, etc.)
+
+
+
+3. Build an OpenAI request:
+
+System message (high-level):
+
+“You are a scheduling assistant for a multi-tenant service platform.”
+
+“Tenant industry is: <industryType>.”
+
+“Here are this tenant’s services and add-ons: ...” (summarize)
+
+“Your job is to extract structured booking info ONLY as JSON in this schema: <SmartSchedulePreview-like schema>.”
+
+“If some details are unknown, leave them null or list them in uncertainFields with explanation.”
+
+
+User message:
+
+Full conversation transcript:
+
+Label messages as "AGENT: ...", "AI: ...", "CUSTOMER: ...".
+
+Include both SMS and web-chat messages if relevant.
+
+
+
+
+
+4. Parse the AI response as JSON, validate it, and:
+
+Try to map RequestedService.label to tenant’s actual service/add-on IDs.
+
+Fill out SmartSchedulePreview.
+
+
+
+
+Backend endpoint:
+
+Method: POST
+
+URL: /api/tenants/:tenantId/conversations/:conversationId/smart-schedule-preview
+
+Auth: tenant admin / staff
+
+Behavior: call buildSmartSchedulePreview and return the preview object.
+
+
+================================================== STEP 5 – SMART SCHEDULE CONFIRM (REUSE EXISTING BOOKING PIPELINE)
+
+Create another endpoint that takes the preview + user edits and turns it into a REAL booking using existing booking logic.
+
+Method: POST
+
+URL: /api/tenants/:tenantId/conversations/:conversationId/smart-schedule-confirm
+
+Body:
+
+Finalized booking payload, shaped to match whatever the existing createBooking/createJob function expects.
+
+Include:
+
+customerId or customer info
+
+serviceId/addOnIds
+
+scheduledStart/scheduledEnd or time slot
+
+address
+
+notes
+
+Any other required fields (tech assignment, etc.)
+
+
+
+
+Behavior:
+
+1. Validate tenant and permission.
+
+
+2. Validate payload.
+
+
+3. Call existing booking/job creation service (do NOT duplicate logic).
+
+
+4. Trigger existing confirmation messaging:
+
+SMS, email, etc., using tenant’s configured templates.
+
+
+
+5. Optionally associate the new booking/job ID back to the conversation:
+
+e.g. conversation.bookingId = <id>.
+
+
+
+6. Return created booking object.
+
+
+
+================================================== STEP 6 – FRONTEND (TENANT DASHBOARD / AGENT CONSOLE)
+
+In the tenant-facing “agent console” / conversation view (React or similar):
+
+For each conversation, add:
+
+1. “Hand Back to AI” controls
+
+UI elements:
+
+Textarea: “What went wrong / what did you fix?” → humanSummary.
+
+Optional text input: “Reason for handoff” → handoffReason.
+
+Toggle or select for behavior:
+
+Option A: “Normal resume”
+
+Option B: “Resume & go straight to scheduling”
+
+
+Button: “Hand Back to AI”
+
+
+Behavior:
+
+On click:
+
+Call POST /api/tenants/:tenantId/conversations/:conversationId/resume-ai with:
+
+handoffReason
+
+humanSummary
+
+behavior
+
+
+Show loading state.
+
+When API returns, append AI’s resume message into the conversation UI.
+
+Optionally show a toast like “AI resumed successfully.”
+
+
+
+
+
+2. “🧠 Smart Schedule from Thread” button
+
+Button visible for conversations on tenants that have scheduling features enabled.
+
+On click:
+
+Call POST /api/tenants/:tenantId/conversations/:conversationId/smart-schedule-preview.
+
+Open a modal or side panel with:
+
+Pre-filled fields from SmartSchedulePreview:
+
+Customer name, phone, email
+
+Address
+
+Services & add-ons (map to tenant’s actual services; use selects)
+
+Preferred time windows
+
+Hard constraints
+
+Notes
+
+
+A visible list of uncertainFields with warning icons.
+
+
+
+Let the user:
+
+Edit any fields.
+
+Choose an actual date/time slot using existing date/time pickers.
+
+Select or confirm the correct service and add-ons from the tenant’s configured catalog.
+
+
+“Confirm & Create Booking” button:
+
+Sends the finalized payload to:
+
+POST /api/tenants/:tenantId/conversations/:conversationId/smart-schedule-confirm.
+
+
+On success:
+
+Show success toast.
+
+Optionally display the booking/job ID in the conversation header.
+
+Optionally send a follow-up message in the conversation indicating the job is booked.
+
+
+
+
+
+3. Make it multi-tenant:
+
+Ensure all API calls include tenantId in the URL.
+
+Use tenant context from the current logged-in admin in the front-end state.
+
+
+
+
+================================================== STEP 7 – FEATURE FLAGS / PLAN TIERS
+
+If ServicePro has plan tiers (e.g. Basic, Pro, Premium):
+
+Add a simple feature flag per tenant:
+
+features.humanHandoffAiResume
+
+features.smartScheduleFromThread
+
+
+Only show:
+
+“Hand Back to AI” and
+
+“Smart Schedule from Thread” if the tenant’s plan includes these features.
+
+
+On backend, also enforce checks:
+
+If a tenant without the feature hits these endpoints, return 403.
+
+
+
+================================================== STEP 8 – ERROR HANDLING, LOGGING, AND TESTS
+
+Error handling:
+
+If OpenAI fails or returns invalid JSON for Smart Schedule:
+
+Respond with a clear error, e.g. "smart_schedule_unavailable" and a friendly message.
+
+
+Surface this in the UI (“Couldn’t auto-extract this one, please schedule manually.”).
+
+
+Logging:
+
+Log events:
+
+conversation.mode changes
+
+AI resumes with handoff metadata
+
+Smart Schedule preview build attempts and results (without leaking PII in logs if that’s a concern).
+
+
+
+Tests (at least basic integration/unit tests):
+
+AI resume:
+
+Verify that mode transitions as expected and that AI is only called in allowed modes.
+
+
+Smart Schedule preview:
+
+Mock OpenAI and ensure correct mapping of services/add-ons.
+
+
+Smart Schedule confirm:
+
+Mock booking service and ensure existing booking logic is used.
+
+
+
+
+================================================== STEP 9 – DO NOT BREAK EXISTING BEHAVIOR
+
+When implementing all of the above, make sure:
+
+Existing AI flows for tenants who never use human takeover still behave exactly as before.
+
+Existing booking flows via website or normal AI booking still work unchanged.
+
+The new capabilities are additive and gated by:
+
+Tenant plan, and
+
+UI usage (no surprise behavior changes).
+
+
+
+Implement all of these steps now:
+
+Create or modify backend services, endpoints, and models as needed.
+
+Wire up the front-end admin/agent UI.
+
+Respect multi-tenant isolation at every layer (DB queries, auth, routing).
+
+Keep the code clean, typed, and consistent with the existing ServicePro architecture.
+
+
+If you want, after you paste this into the ServicePro agent and it finishes its pass, we can do a quick “sanity walkthrough” of what it created so you know exactly where the new endpoints, types, and UI hooks live.
