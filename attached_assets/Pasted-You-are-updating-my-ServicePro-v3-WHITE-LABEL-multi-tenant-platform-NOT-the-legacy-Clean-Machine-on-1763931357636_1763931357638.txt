@@ -1,0 +1,41 @@
+You are updating my ServicePro v3 WHITE-LABEL multi-tenant platform (NOT the legacy Clean Machine-only app). Your goal is to implement PROFESSIONAL-LEVEL flows for:
+
+1) Human takeover of conversations (SMS + web chat, etc.) per tenant
+2) Handing control back to the AI in a smart, context-aware way
+3) A “Smart Schedule from Thread” feature per tenant that can convert ANY messy conversation into a structured booking for that tenant’s industry
+
+This must be done in a way that:
+- Respects multi-tenant isolation (tenantId / plan tiers, etc.)
+- Works across channels (at minimum SMS + web chat; structure it so WhatsApp/etc. can be added later)
+- Plays nicely with the existing ServicePro architecture (industry packs, AI prompt builders, tenant-specific config, etc.)
+- Does NOT break existing behavior for tenants who don’t use these features yet
+
+Assumptions & Constraints:
+- Platform already has:
+  - Tenant-aware AI helpers (e.g. server/openai.ts, smsAgentPromptBuilder, industry packs, etc.)
+  - Multi-tenant DB schema (tenants, users, customers, messages, etc.)
+  - SMS + chat message routing with `tenantId` and `platform` (e.g. 'sms', 'web', etc.)
+  - Existing booking/job creation logic and confirmation messaging
+- You must:
+  - Reuse existing booking/job pipeline instead of inventing a new one
+  - Keep new code modular and well-named
+  - Add or extend TypeScript types as needed
+  - Add feature flags/plan checks where appropriate if plan tiers exist
+
+==================================================
+STEP 1 – DISCOVER EXISTING STRUCTURE (DO NOT SKIP)
+==================================================
+
+Search the repo to understand what’s already there:
+
+1. Conversation & message models:
+   - Find DB models/tables/entities for:
+     - `Conversation` (or equivalent; might be `threads`, `channels`, etc.)
+     - `Message` (incoming/outgoing, with tenantId + channel)
+   - Confirm existing fields:
+     - `tenantId`
+     - `customerId` / `customerPhone` / `contactId`
+     - `channel` or `platform` (e.g. 'sms', 'web')
+     - timestamps
+
+2. AI plumbing:
