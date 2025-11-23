@@ -517,8 +517,8 @@ View photo: ${result}`;
     }
   });
 
-  // Route for uploading industry hero images
-  app.post('/api/upload-industry-image', industryImageUpload.single('image'), async (req: Request, res: Response) => {
+  // Route for uploading industry hero images (AUTHENTICATED - admin only)
+  app.post('/api/upload-industry-image', requireAuth, industryImageUpload.single('image'), async (req: Request, res: Response) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
@@ -535,7 +535,8 @@ View photo: ${result}`;
       console.log(`[INDUSTRY IMAGE] Uploaded hero image for industry '${industryId}':`, {
         filename: req.file.filename,
         size: req.file.size,
-        url: imageUrl
+        url: imageUrl,
+        uploadedBy: req.user?.id || 'unknown'
       });
       
       res.status(200).json({
