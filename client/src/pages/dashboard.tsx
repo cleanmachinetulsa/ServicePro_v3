@@ -17,10 +17,14 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
-import { DashboardOverview } from "@/components/DashboardOverview";
 import BusinessChatInterface from "@/components/BusinessChatInterface";
 import { Home, Mail, Plus, Edit3, Save } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { MonthlyStatsWidget } from "@/components/dashboard/MonthlyStatsWidget";
+import { CalendarWidget } from "@/components/dashboard/CalendarWidget";
+import { DailyScheduleWidget } from "@/components/dashboard/DailyScheduleWidget";
+import { DailyInsightsWidget } from "@/components/dashboard/DailyInsightsWidget";
+import { QuickActionsWidget } from "@/components/dashboard/QuickActionsWidget";
 import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
 import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
 import { InstallPromptBanner, OfflineIndicator } from "@/components/PwaComponents";
@@ -484,21 +488,38 @@ export default function Dashboard() {
           </div>
         ) : (
           <DashboardGrid
-            widgets={widgets.slice(0, 2)}
+            widgets={widgets}
             onReorder={handleWidgetReorder}
             isEditMode={isEditMode}
           >
             {(widget) => {
               if (widget.id === 'monthly-stats') {
                 return (
-                  <DashboardOverview
+                  <MonthlyStatsWidget
                     appointments={appointments}
                     appointmentCounts={appointmentCounts}
-                    weatherData={weatherData}
+                  />
+                );
+              }
+
+              if (widget.id === 'calendar') {
+                return (
+                  <CalendarWidget
                     todayDate={todayDate}
                     currentMonth={currentMonth}
+                    appointmentCounts={appointmentCounts}
+                    weatherData={weatherData}
                     onDateChange={handleDateChange}
                     onMonthChange={setCurrentMonth}
+                  />
+                );
+              }
+
+              if (widget.id === 'schedule') {
+                return (
+                  <DailyScheduleWidget
+                    appointments={appointments}
+                    todayDate={todayDate}
                     onCall={handleCall}
                     onChat={handleChat}
                     onNavigate={goToDirections}
@@ -508,15 +529,25 @@ export default function Dashboard() {
                 );
               }
 
-              if (widget.id === 'cash-collections' && currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager')) {
+              if (widget.id === 'daily-insights') {
                 return (
-                  <div className="p-6 pt-0">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <CashCollectionsWidget />
-                      <DepositHistoryWidget />
-                    </div>
-                  </div>
+                  <DailyInsightsWidget
+                    appointments={appointments}
+                    todayDate={todayDate}
+                  />
                 );
+              }
+
+              if (widget.id === 'quick-actions') {
+                return <QuickActionsWidget />;
+              }
+
+              if (widget.id === 'cash-collections' && currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager')) {
+                return <CashCollectionsWidget />;
+              }
+
+              if (widget.id === 'deposit-history' && currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager')) {
+                return <DepositHistoryWidget />;
               }
 
               return null;
