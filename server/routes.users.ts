@@ -50,6 +50,29 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 /**
+ * Mark dashboard tour as completed
+ */
+router.post('/dashboard-tour/complete', requireAuth, async (req, res) => {
+  try {
+    await req.tenantDb!
+      .update(users)
+      .set({ hasSeenDashboardTour: true })
+      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)));
+
+    res.json({
+      success: true,
+      message: 'Dashboard tour marked as completed',
+    });
+  } catch (error) {
+    console.error('Mark dashboard tour error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark dashboard tour as completed',
+    });
+  }
+});
+
+/**
  * Get all users (manager and owner only)
  */
 router.get('/all', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
