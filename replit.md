@@ -53,3 +53,10 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversation handling, email content generation, and service recommendations.
+## Recent Enhancements
+
+**Phase 12 - Professional Conversation Management** (Completed Nov 2025):
+Comprehensive admin UI for managing conversations with smart scheduling extraction, AI-powered handback analysis, and context-aware human-to-AI transitions. Backend services (`server/smartConversationParser.ts`, `server/enhancedHandoffService.ts`) provide AI-driven conversation parsing for booking intent extraction and handoff readiness assessment. Frontend components (`ConversationMetaBar`, `SmartSchedulePanel`, `HandoffControls`, `HandbackAnalysisPanel`) integrated into ThreadView sidebar for manual mode conversations. All features tenant-isolated with strict security and plan-tier checks. API endpoints: POST `/api/conversations/:id/smart-schedule`, POST `/api/conversations/:id/smart-handback`, GET `/api/conversations/:id/handback-analysis`.
+
+**Phase 13 - Weather Risk & Rain Policy Helpers** (Completed Nov 2025):
+Enhanced weather risk assessment system for multi-factor weather evaluation and industry-aware messaging. Core module (`server/services/weatherRisk.ts`) provides comprehensive risk classification (low/medium/high/extreme) based on precipitation, thunderstorms, wind speed, and severe weather alerts. Adapter function (`getWeatherRiskFromForecast()` in `server/weatherService.ts`) maps Open-Meteo API data to risk context. Reminder integration helper (`getAppointmentWeatherRisk()`) provides safe, non-throwing weather risk assessment for notification pipelines. Maintains backward compatibility with legacy 5-level risk system. Supports future industry-specific messaging customization via `industryType` parameter. Comprehensive test coverage in `server/services/__tests__/weatherRisk.test.ts`.
