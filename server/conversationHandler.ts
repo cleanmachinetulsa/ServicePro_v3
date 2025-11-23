@@ -118,15 +118,32 @@ Customer message: ${message}`;
       }
     });
 
-    const conversationHistory = conv?.messages?.map((msg) => ({
+    // Type the messages array explicitly to avoid 'never' inference issue
+    const messages = (conv?.messages ?? []) as (typeof messagesTable.$inferSelect)[];
+    const conversationHistory = messages.map((msg: typeof messagesTable.$inferSelect) => ({
       content: msg.content,
       role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
       sender: msg.sender
-    })) || [];
+    }));
+
+    // After 2-3 message exchanges, ask for contact info to enable booking
+    const customerMessageCount = conversationHistory.filter((m: { sender: string }) => m.sender === 'customer').length;
+    const shouldAskForContact = customerMessageCount >= 2;
+    
+    // Enhanced prompt with contact collection after rapport building
+    const enhancedPrompt = shouldAskForContact ? 
+      `${restrictedPrompt}
+
+IMPORTANT: The customer has been chatting with you and seems interested. After answering their current question, NATURALLY ask for their phone number or email so you can help them book an appointment or follow up. Be friendly and conversational about it.
+
+Example: "I'd love to help you get this scheduled! What's the best number to text you at? That way I can send you available times and we can get you booked."
+
+Don't be pushy - make it feel like a natural next step to help them.` 
+      : restrictedPrompt;
 
     // Call AI with NO function calling enabled (information only)
     const response = await generateAIResponse(
-      restrictedPrompt,
+      enhancedPrompt,
       identifier,
       'web',
       undefined,
@@ -173,11 +190,13 @@ async function processAuthenticatedConversation(
       }
     });
 
-    const conversationHistory = conv?.messages?.map((msg) => ({
+    // Type the messages array explicitly to avoid 'never' inference issue
+    const messages = (conv?.messages ?? []) as (typeof messagesTable.$inferSelect)[];
+    const conversationHistory = messages.map((msg: typeof messagesTable.$inferSelect) => ({
       content: msg.content,
       role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
       sender: msg.sender
-    })) || [];
+    }));
 
     // Full AI capabilities with function calling
     const response = await generateAIResponse(
