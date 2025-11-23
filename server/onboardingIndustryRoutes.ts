@@ -14,6 +14,8 @@ import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import { tenantConfig } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { bootstrapIndustryAiAndMessaging } from "./industryAiBootstrapService";
+import { getBootstrapDataForIndustry, hasBootstrapData } from "./industryBootstrapData";
 
 interface IndustryOnboardingPayload {
   industryId: string;
@@ -127,12 +129,36 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
 
           console.log(`[ONBOARDING] Industry selection saved for tenant ${tenantId}: ${body.industryId}`);
 
+          // Phase 8E: Bootstrap AI behavior rules, SMS templates, and FAQ entries
+          let bootstrapResult = null;
+          if (hasBootstrapData(body.industryId)) {
+            console.log(`[ONBOARDING] Bootstrapping AI & messaging for industry: ${body.industryId}`);
+            const bootstrapData = getBootstrapDataForIndustry(body.industryId);
+            
+            if (bootstrapData) {
+              bootstrapResult = await bootstrapIndustryAiAndMessaging(
+                tenantId,
+                body.industryId,
+                bootstrapData
+              );
+
+              if (bootstrapResult.success) {
+                console.log(`[ONBOARDING] Bootstrap complete:`, bootstrapResult.summary);
+              } else {
+                console.error(`[ONBOARDING] Bootstrap failed:`, bootstrapResult.error);
+              }
+            }
+          } else {
+            console.log(`[ONBOARDING] No bootstrap data available for industry: ${body.industryId}`);
+          }
+
           res.json({
             success: true,
             message: "Industry selection saved.",
             tenantId,
             industryId: body.industryId,
             persisted: true,
+            bootstrap: bootstrapResult,
           });
         } catch (dbError: any) {
           console.error(`[ONBOARDING] Failed to persist industry selection for tenant ${tenantId}:`, dbError);
