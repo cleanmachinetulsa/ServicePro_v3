@@ -1,0 +1,403 @@
+## 🟩 BLOCK 2 – SERVICEPRO V3 REPL (Multi-tenant / White-label)
+
+```text
+You are updating my **ServicePro v3 WHITE-LABEL multi-tenant platform** (NOT the legacy Clean Machine app). 
+
+GOAL:
+Implement a **per-tenant “Welcome Back Campaign”** system that:
+
+- Lets each tenant (starting with Clean Machine root tenant) configure:
+  - VIP bonus points (default 500, editable)
+  - Regular bonus points (default 100, editable)
+  - SMS templates (VIP + Regular)
+  - Email templates (VIP + Regular), if email is configured
+  - Tenant-specific booking URL base
+  - Tenant-specific rewards portal URL
+  - Optional QR URLs for VIP / Regular
+
+- Gives the tenant buttons in their admin dashboard to:
+  - Send VIP campaign (SMS + Email) to their VIP customers
+  - Send Regular campaign (SMS + Email) to all non-VIP customers
+  - Preview the campaign before sending
+
+- Automatically:
+  - Credits loyalty points once per customer per campaign (idempotent)
+  - Respects tenant isolation (no cross-tenant data leakage)
+  - Respects plan tiers/feature flags, if present
+
+Everything must:
+- Use `tenantId` and `tenantDb.withTenantFilter` (or equivalent) for all DB queries.
+- Be additive (no breaking existing loyalty or messaging behavior).
+- Follow the current ServicePro v3 architecture & code style.
+
+======================================
+STEP 1 – DISCOVER MULTI-TENANT STRUCTURE
+======================================
+
+1) Tenant model & plan tiers:
+   - Find the `tenants` table/model and any existing `planTier` or `features` fields.
+   - Identify any helper functions used to check plan-based features for a tenant.
+
+2) Customer model (multi-tenant):
+   - Find where customers are defined, including:
+     - `id`
+     - `tenantId`
+     - `name`
+     - `phone`
+     - `email`
+   - Check if a `isVip` or tagging system exists:
+     - If yes, use that.
+     - If not, we will add a minimal `isVip` boolean per customer.
+
+3) Loyalty / points system:
+   - We already have `server/loyaltyService.ts` – open it.
+   - Confirm:
+     - How points are stored (table/fields).
+     - If there is a ‘reason’ or metadata field we can reuse.
+
+4) Messaging:
+   - SMS:
+     - Find the multi-tenant SMS sending helper (the one that uses tenant-specific Twilio configuration).
+   - Email:
+     - Find the multi-tenant email sending helper, if available.
+   - We will reuse these, not invent new plumbing.
+
+5) Tenant admin dashboard:
+   - Locate the React pages/components used for tenant admin settings.
+   - We will add a new **“Welcome Back Campaign”** page under admin.
+
+Do not refactor anything yet; just understand how these pieces work.
+
+======================================
+STEP 2 – DATA MODEL: CAMPAIGNS & GRANTS
+======================================
+
+Add per-tenant data structures.
+
+1) Campaign config per tenant:
+   - Add a table or reuse existing:
+     - Option A: a `campaigns` table:
+       - `id`
+       - `tenantId`
+       - `campaignKey` (e.g. 'welcome_back_v1')
+       - `configJson` (serialized JSON)
+       - `createdAt`, `updatedAt`
+     - Option B: reuse a generic `tenant_settings` table with a key like 'welcome_back_campaign'.
+
+   - We need to be able to:
+     - Read/write a single config per (`tenantId`, `campaignKey`).
+
+2) Campaign grants per tenant:
+   - Either:
+     - Add a `campaignKey` column to the loyalty transaction table, OR
+     - Create a `campaign_grants` table:
+       - `id`
+       - `tenantId`
+       - `campaignKey`
+       - `customerId`
+       - `pointsGranted`
+       - `createdAt`
+
+   - Goal:
+     - Quickly check: “Has this tenant already granted this campaign to this customer?”
+
+======================================
+STEP 3 – CAMPAIGN SERVICE (SERVER)
+======================================
+
+Create a service file:
+
+- `server/services/tenantWelcomeBackCampaignService.ts`
+(or adapt name to existing patterns).
+
+Define types:
+
+```ts
+export type CampaignAudience = 'vip' | 'regular';
+
+export interface TenantWelcomeBackCampaignConfig {
+  campaignKey: string;         // e.g. 'welcome_back_v1'
+  vipPointsBonus: number;      // default 500
+  regularPointsBonus: number;  // default 100
+  smsTemplateVip: string;
+  smsTemplateRegular: string;
+  emailTemplateVip?: string;
+  emailTemplateRegular?: string;
+  bookingBaseUrl: string;
+  rewardsBaseUrl: string;
+  qrUrlVip?: string;
+  qrUrlRegular?: string;
+}
+Functions:
+
+ts
+Copy code
+export async function getTenantWelcomeBackCampaignConfig(
+  tenantId: string
+): Promise<TenantWelcomeBackCampaignConfig>;
+
+export async function updateTenantWelcomeBackCampaignConfig(
+  tenantId: string,
+  partial: Partial<TenantWelcomeBackCampaignConfig>
+): Promise<TenantWelcomeBackCampaignConfig>;
+
+export interface TenantWelcomeBackSendOptions {
+  tenantId: string;
+  audience: CampaignAudience;
+  previewOnly?: boolean;
+}
+
+export interface TenantWelcomeBackSendResult {
+  total: number;
+  success: number;
+  failed: number;
+  errors: { customerId: string; reason: string }[];
+}
+
+export async function sendTenantWelcomeBackCampaign(
+  options: TenantWelcomeBackSendOptions
+): Promise<TenantWelcomeBackSendResult>;
+Implementation details:
+
+getTenantWelcomeBackCampaignConfig:
+
+Use tenantDb.withTenantFilter to fetch or create a default config for { tenantId, campaignKey: 'welcome_back_v1' }.
+
+Defaults:
+
+vipPointsBonus = 500
+
+regularPointsBonus = 100
+
+Basic SMS templates based on the “Version A” wording from the previous ChatGPT response (you can embed that as a default).
+
+bookingBaseUrl and rewardsBaseUrl can be populated from tenant settings or left as placeholders that the tenant updates in the UI.
+
+sendTenantWelcomeBackCampaign:
+
+Steps:
+
+Load config for this tenant.
+
+Load customers where tenantId = currentTenant.
+
+Filter by isVip based on audience:
+
+'vip' → isVip = true.
+
+'regular' → isVip = false or “everyone not VIP”.
+
+For each customer:
+
+Determine campaignKey for their audience:
+
+'welcome_back_v1_vip' or 'welcome_back_v1_regular'.
+
+Check in campaign_grants (or loyalty audit) whether there is already an entry for {tenantId, customerId, campaignKey}.
+
+If yes → skip (prevents double points).
+
+Build a message context:
+
+customerName
+
+bookingLink = config.bookingBaseUrl
+
+rewardsLink = config.rewardsBaseUrl
+
+qrLink = config.qrUrlVip or config.qrUrlRegular
+
+If previewOnly = true:
+
+Do NOT write to DB or send SMS/email.
+
+Just count and maybe include one example message in the result (for display).
+
+Else:
+
+Grant points using loyaltyService:
+
+Pass tenantId, customerId, points, reason, and campaignKey.
+
+Build SMS text by interpolating placeholders into smsTemplateVip or smsTemplateRegular.
+
+Send SMS using the existing tenant-aware SMS helper.
+
+If email is configured:
+
+Build email body from emailTemplateVip or emailTemplateRegular, and send via existing tenant email helper.
+
+The result should return:
+
+total = number of target customers
+
+success = number of successful sends
+
+failed = number of failures
+
+errors[] with per-customer reasons when something fails (e.g. missing phone).
+
+======================================
+STEP 4 – TENANT ADMIN API ROUTES
+Add new tenant admin routes, e.g. in server/routes.admin.ts or wherever admin routes live.
+
+Endpoints (tenant-scoped, require authenticated tenant admin):
+
+GET /api/admin/campaigns/welcome-back
+
+Resolves tenantId from auth/session.
+
+Calls getTenantWelcomeBackCampaignConfig(tenantId).
+
+PUT /api/admin/campaigns/welcome-back
+
+Body: Partial<TenantWelcomeBackCampaignConfig> (excluding campaignKey).
+
+Resolves tenantId.
+
+Calls updateTenantWelcomeBackCampaignConfig(tenantId, body).
+
+POST /api/admin/campaigns/welcome-back/send
+
+Body: { audience: 'vip' | 'regular', previewOnly?: boolean }
+
+Resolves tenantId.
+
+Calls sendTenantWelcomeBackCampaign({ tenantId, audience, previewOnly }).
+
+Returns TenantWelcomeBackSendResult.
+
+All DB access in these handlers must:
+
+Use tenantDb.withTenantFilter or equivalent.
+
+Never operate on data without scoping to tenantId.
+
+If you have plan tiers:
+
+Add a check (e.g. ensureTenantHasFeature(tenant, 'welcome_back_campaign')).
+
+Return 403 if the tenant is not allowed to use this feature.
+
+======================================
+STEP 5 – FRONTEND: TENANT ADMIN UI WITH BUTTONS
+In the ServicePro v3 React admin frontend, add a new page for the campaign:
+
+Create a page like:
+
+client/src/pages/admin/WelcomeBackCampaignPage.tsx
+(Adapt to existing folder structure and routing.)
+
+Features:
+
+On mount:
+
+Call GET /api/admin/campaigns/welcome-back.
+
+Store TenantWelcomeBackCampaignConfig in component state.
+
+Campaign configuration form:
+
+Inputs:
+
+vipPointsBonus (number)
+
+regularPointsBonus (number)
+
+bookingBaseUrl (string)
+
+rewardsBaseUrl (string)
+
+Textareas:
+
+smsTemplateVip
+
+smsTemplateRegular
+
+emailTemplateVip (optional)
+
+emailTemplateRegular (optional)
+
+Inputs:
+
+qrUrlVip (string)
+
+qrUrlRegular (string)
+
+Button: “Save Settings”
+
+Calls PUT /api/admin/campaigns/welcome-back.
+
+Action section – VIP audience:
+
+Button: “Preview VIP Campaign”
+
+Calls POST /api/admin/campaigns/welcome-back/send with { audience: 'vip', previewOnly: true }.
+
+Shows:
+
+How many VIP customers would receive messages.
+
+A sample rendered SMS (using one real or dummy customer).
+
+Button: “Send VIP Campaign (SMS + Email)”
+
+Calls same endpoint with previewOnly: false.
+
+Displays total, success, failed.
+
+Action section – Regular audience:
+
+Button: “Preview Regular Campaign”
+
+Button: “Send Regular Campaign (SMS + Email)”
+
+Same pattern as VIP.
+
+VIP tagging note:
+
+If the customer model already has isVip:
+
+Show a short note like “VIP audience = customers marked VIP in your customer list.”
+
+If it doesn’t:
+
+Add isVip to customers via migration and minimal UI:
+
+For example, a toggle in the customer list page.
+
+Routing & navigation:
+
+Add a link to this page in the tenant admin navigation:
+
+Name it “Welcome Back Campaign” or “Campaigns & Rewards”.
+
+Optional UX:
+
+Add toasts/snackbars on success/failure.
+
+Disable send buttons while a send request is in progress.
+
+======================================
+STEP 6 – SAFETY, PLAN TIERS, NO-BREAKAGE
+Do NOT modify existing loyaltyService behavior for other use cases.
+
+Do NOT change existing SMS/email sending behavior outside this feature.
+
+Ensure:
+
+All DB operations in this feature use tenantId scoping.
+
+Running the same campaign multiple times does not double-grant points for the same customer because of campaignKey checks.
+
+If plan tiers are implemented:
+
+Hide the UI and block API usage for tenants whose plan does not include campaigns.
+
+Verify:
+
+TypeScript builds cleanly.
+
+The dev server starts with no runtime errors.
+
+Sending a small test campaign for a test tenant works end-to-end (points + SMS/email).
