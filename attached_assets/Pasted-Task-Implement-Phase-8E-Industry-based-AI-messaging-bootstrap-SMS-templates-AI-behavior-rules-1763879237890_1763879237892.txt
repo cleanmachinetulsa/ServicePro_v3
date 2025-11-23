@@ -1,0 +1,307 @@
+Task: Implement Phase 8E – Industry-based AI & messaging bootstrap (SMS templates, AI behavior rules, FAQ seeds) after onboarding.
+
+Project: Servicepro app (Servicepro-v3-base)
+
+Working style:
+- I (the user) will NOT manually edit code.
+- You (the agent) must:
+  - Inspect existing DB/schema and messaging/AI systems
+  - Create any new helper files needed
+  - Wire it into the existing onboarding flow
+- At the end, show me a clear summary of what changed.
+
+High-level goal:
+When a tenant completes industry onboarding via:
+  POST /api/onboarding/industry
+
+and after Phase 8D runs (service/add-on bootstrap), we now want to ALSO:
+
+- Auto-bootstrap **AI & messaging defaults** for that tenant, based on their selected industry, including:
+  - SMS templates (intro text, follow-ups, confirmations, reminders, etc.)
+  - AI behavior rules / persona instructions for the concierge
+  - FAQ seeds where appropriate (basic “how it works” answers for that industry)
+
+This should be:
+- Per-tenant, not global
+- Idempotent (safe to call multiple times; don’t create duplicates)
+- Non-breaking for existing tenants (if they already have config, skip bootstrap)
+
+We ALREADY have:
+- Phase 8A: Industry selector UI
+- Phase 8B: /api/onboarding/industry route
+- Phase 8C: Persistence of industry_config into tenant_config
+- Phase 8D: Service/add-on bootstrap helper called from onboarding route
+
+Now we add Phase 8E.
+
+------------------------------------------------------------
+STEP 1 – Discover existing SMS template and AI configuration models
+------------------------------------------------------------
+1. Search the repo for where AI/messaging behavior and templates live. Look for:
+   - “sms template”, “smsTemplates”
+   - “AI Behavior Rules”
+   - “FAQ”
+   - “Trigger Phrase Map”
+   - Files like:
+     - server/smsTemplateService.ts
+     - server/aiBehaviorRulesService.ts
+     - server/faqService.ts
+     - server/searchKnowledgeBase.ts
+   - Also note any references to the Google Sheets tabs:
+     - "SMS Knowledge Base"
+     - "AI Behavior Rules"
+     - "FAQ"
+     - "Trigger Phrase Map"
+
+2. Identify:
+   - The DB tables that store:
+     - SMS templates
+     - AI behavior rules
+     - FAQ entries (if any)
+   - The helper functions already used to read/write them for tenants.
+   - If some behavior comes only from Google Sheets, treat Sheets as read-only and prefer storing **per-tenant overrides** in DB.
+
+Do NOT modify any live Sheet structures; just understand how the current AI uses them.
+
+------------------------------------------------------------
+STEP 2 – Extend src/config/industryPacks.ts with AI/messaging templates
+------------------------------------------------------------
+1. Open: src/config/industryPacks.ts
+
+2. Confirm this file is the source of truth for the full list of industries used by the onboarding UI.
+
+3. Extend the industry pack type to include OPTIONAL AI/messaging defaults. For example (adapt to existing TS style):
+
+   interface IndustrySmsTemplate {
+     key: string;             // internal key, e.g. "intro_welcome"
+     name: string;            // human label, e.g. "Welcome / Intro"
+     purpose?: string;        // e.g. "first_response", "follow_up", "reminder_24h"
+     defaultBody: string;     // text with placeholders like {{customer_name}}, {{business_name}}
+   }
+
+   interface IndustryAiBehaviorRule {
+     key: string;             // e.g. "core_persona"
+     title: string;           // e.g. "Core Concierge Persona"
+     content: string;         // long-form instruction text for the agent
+   }
+
+   interface IndustryFaqSeed {
+     question: string;
+     answer: string;
+     category?: string;       // e.g. "Services", "Scheduling", "Pricing"
+   }
+
+   interface IndustryPack {
+     id: string;
+     name: string;
+     // existing fields: imageUrl, imageAlt, defaultServices, defaultAddOns, etc.
+     defaultSmsTemplates?: IndustrySmsTemplate[];
+     defaultAiBehaviorRules?: IndustryAiBehaviorRule[];
+     defaultFaqSeeds?: IndustryFaqSeed[];
+   }
+
+4. For the main industries (at minimum: auto-detailing, house-cleaning, lawn-care, photography, hair stylist / barber), populate **good, realistic** defaults:
+
+   Use the existing Clean Machine snapshot as inspiration for structure and tone, but:
+   - Strip out Tulsa-specific references
+   - Strip out explicit “Clean Machine Auto Detail” naming
+   - Adapt language to each industry
+
+   Examples (high-level guidance; you fill in real strings):
+
+   - Auto Detailing:
+     - defaultSmsTemplates:
+       - intro_welcome: friendly first reply asking what they drive and where they’re located.
+       - booking_confirmation: confirms date/time/service.
+       - appointment_reminder_24h and appointment_reminder_1h: similar to current templates but de-branded.
+       - missed_call_auto_response: similar to existing but brand-neutral.
+     - defaultAiBehaviorRules:
+       - core_persona: “You are a mobile auto detailing concierge. You help customers choose the right packages, explain services, schedule appointments, and recommend add-ons like headlight restoration or interior protection…”
+     - defaultFaqSeeds:
+       - “What’s included in a full detail?”
+       - “Do you need access to water or power?”
+       - “How long does a full detail take?”
+
+   - Photography:
+     - SMS templates: first reply, booking confirmation, session reminders.
+     - AI behavior: photographer persona, explains packages, deposits, editing timelines.
+     - FAQ: “How many edited photos do I get?”, “Do you require a deposit?”, “How long until I receive my photos?”
+
+   - Hair Stylist / Barber:
+     - SMS: appointment request, confirmation, reschedule, no-show policy.
+     - Behavior: friendly stylist/barber persona.
+     - FAQ: “Do you take walk-ins?”, “How do I cancel or reschedule?”, etc.
+
+   All new fields MUST be optional; do not break existing consumers of industryPacks.
+
+------------------------------------------------------------
+STEP 3 – Implement AI/messaging bootstrap helper on the server
+------------------------------------------------------------
+1. Create a new helper file:
+
+   server/industryAiBootstrapService.ts
+
+2. In this file:
+
+   - Import DB helpers / services you discovered in STEP 1 for:
+     - creating SMS templates
+     - creating AI behavior rules
+     - creating FAQ entries (if DB-based)
+   - Import industryPacks from src/config/industryPacks.ts (correct relative path).
+
+3. Implement:
+
+   export async function bootstrapIndustryAiForTenant(options: {
+     tenantId: string;
+     industryId: string;
+     industryConfig?: any;
+   }): Promise<{
+     createdSmsTemplates: number;
+     createdAiRules: number;
+     createdFaqs: number;
+     skipped: boolean;
+     reason?: string;
+   }>
+
+4. Logic:
+
+   a) Check if this tenant already has AI/messaging config:
+      - If the tenant already has **any** SMS templates OR **any** AI behavior rules in the DB:
+        - Return { createdSmsTemplates: 0, createdAiRules: 0, createdFaqs: 0, skipped: true, reason: "ai_messaging_already_configured" }
+
+   b) If they have none:
+      - Find the IndustryPack for industryId.
+      - If not found:
+        - console.warn("[ONBOARDING_AI_BOOTSTRAP] No industry pack found for", industryId, "tenant", tenantId);
+        - Return { createdSmsTemplates: 0, createdAiRules: 0, createdFaqs: 0, skipped: true, reason: "no_industry_pack_found" }
+
+      - Initialize counters: createdSmsTemplates = 0, createdAiRules = 0, createdFaqs = 0.
+
+      - For each defaultSmsTemplates entry:
+        - Use the existing SMS template creation logic to insert a per-tenant template.
+        - Map fields properly (tenant_id, key, name, body, purpose, status enabled, etc.).
+        - Increment createdSmsTemplates.
+
+      - For each defaultAiBehaviorRules entry:
+        - Insert a row in the appropriate AI behavior rules table for this tenant.
+        - Map key/title/content to existing columns.
+        - Increment createdAiRules.
+
+      - For each defaultFaqSeeds entry (if you have a DB location for FAQ):
+        - Insert per-tenant FAQ entries.
+        - Increment createdFaqs.
+
+      - Wrap DB operations in try/catch; log errors with prefix:
+        - console.error("[ONBOARDING_AI_BOOTSTRAP] Error for tenant", tenantId, ":", err);
+
+      - On success, return the counts and skipped: false.
+
+   - The function should NOT throw uncaught errors; it should always resolve with a result object.
+
+------------------------------------------------------------
+STEP 4 – Wire AI/messaging bootstrap into /api/onboarding/industry
+------------------------------------------------------------
+1. Open: server/onboardingIndustryRoutes.ts
+
+2. This route already:
+   - Validates incoming payload from the industry onboarding UI
+   - Persists industry_config for the tenant (Phase 8C)
+   - Calls the service/add-on bootstrap helper (Phase 8D)
+
+3. Update as follows:
+
+   - After successful persistence of industry_config and after (or alongside) calling the services bootstrap helper, call:
+
+     const aiBootstrapResult = await bootstrapIndustryAiForTenant({
+       tenantId,
+       industryId: body.industryId,
+       industryConfig: savedIndustryConfig // or body.rawSelection/featureFlags as needed
+     });
+
+   - Wrap this call in try/catch:
+     - On error:
+       - Log with prefix "[ONBOARDING_AI_BOOTSTRAP]" and do NOT fail the entire request.
+       - Use a fallback aiBootstrap object like:
+         { createdSmsTemplates: 0, createdAiRules: 0, createdFaqs: 0, skipped: true, reason: "bootstrap_error" }
+
+   - Extend the JSON response from this route to include aiBootstrap, parallel to the existing bootstrap (services) field. For example:
+
+     {
+       success: true,
+       message: "Industry selection saved.",
+       tenantId,
+       industryId: body.industryId,
+       persisted: true,
+       bootstrap: {
+         createdServices: ...,
+         createdAddOns: ...,
+         skipped: ...,
+         reason: "..."
+       },
+       aiBootstrap: {
+         createdSmsTemplates: ...,
+         createdAiRules: ...,
+         createdFaqs: ...,
+         skipped: ...,
+         reason: "..."
+       }
+     }
+
+4. If there is no tenant context (demo/dev mode):
+   - Do NOT call bootstrapIndustryAiForTenant.
+   - Keep existing behavior as-is.
+
+------------------------------------------------------------
+STEP 5 – Basic testing / sanity checks
+------------------------------------------------------------
+1. Restart the dev server.
+
+2. Use a fresh test tenant (or a tenant with:
+   - no SMS templates
+   - no AI behavior rules
+   - no per-tenant FAQ, if applicable).
+
+3. Perform onboarding for that tenant:
+   - Log in as that tenant.
+   - Go to /admin/onboarding-industry.
+   - Pick an industry (e.g., auto-detailing or photography).
+   - Click “Save & Continue”.
+
+4. In the Network tab, inspect the POST /api/onboarding/industry response:
+   - Confirm:
+     - success: true
+     - persisted: true
+     - bootstrap.createdServices > 0 (Phase 8D)
+     - aiBootstrap.createdSmsTemplates > 0
+     - aiBootstrap.createdAiRules >= 1
+     - aiBootstrap.createdFaqs >= 0 (depending on config)
+
+5. Check the admin UI or DB (if the app has views for this) to confirm:
+   - New per-tenant SMS templates exist and look appropriate for the industry.
+   - New per-tenant AI behavior rules exist, with industry-appropriate instructions.
+   - FAQ entries exist if implemented.
+
+6. Run onboarding again for the SAME tenant:
+   - Confirm no duplicates are created.
+   - aiBootstrap.skipped is true with reason "ai_messaging_already_configured" (or similar).
+
+------------------------------------------------------------
+STEP 6 – Report back
+------------------------------------------------------------
+When finished, please provide:
+
+1. A list of files created/modified, for example:
+   - new: server/industryAiBootstrapService.ts
+   - modified: server/onboardingIndustryRoutes.ts
+   - modified: src/config/industryPacks.ts
+
+2. A short explanation of:
+   - Where the industry-level AI/messaging template data now lives (which fields on industry packs).
+   - How bootstrapIndustryAiForTenant decides when to insert vs skip.
+   - How the onboarding route’s response has been extended.
+
+3. Confirm that:
+   - A brand-new tenant now gets both:
+     - services/add-ons from Phase 8D
+     - AND AI/messaging defaults from Phase 8E, based on the chosen industry,
+   - Without affecting existing tenants that already have their own configurations.
