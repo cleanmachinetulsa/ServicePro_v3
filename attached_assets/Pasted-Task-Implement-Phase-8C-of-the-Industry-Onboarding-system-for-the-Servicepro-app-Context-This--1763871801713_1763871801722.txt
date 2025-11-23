@@ -1,0 +1,137 @@
+Task: Implement Phase 8C of the Industry Onboarding system for the Servicepro app.
+
+Context:
+- This is for the Servicepro app (Servicepro-v3-base), NOT the separate Clean Machine Chatbot project.
+- Phase 8A: Frontend industry selection page at /admin/onboarding-industry is working.
+- Phase 8B: Backend route is wired: POST /api/onboarding/industry
+  - It currently just logs the payload and returns a stub success message.
+- Goal of Phase 8C: Persist the tenant’s selected industry and feature flags in the database in a safe, backwards-compatible way.
+
+IMPORTANT WORKING STYLE:
+- I (the user) do NOT want to manually edit files.
+- You must do ALL file edits yourself.
+- I only paste this prompt and click run.
+- You must:
+  - Locate the right files
+  - Create new files/migrations if needed
+  - Wire imports/routes
+  - Run basic checks
+- At the end, show me a clear diff summary.
+
+High-level objectives for Phase 8C:
+1) Persist the selected industry + options for the CURRENT tenant when /api/onboarding/industry is called.
+2) Do this in a way that is schema-aware (inspect existing DB + migrations first).
+3) Do NOT break existing tenants or production paths.
+4) Keep the Phase 8B logging so I can still see what’s happening.
+
+Concrete requirements:
+
+STEP 1 – Inspect current tenant schema and DB helpers
+----------------------------------------------------
+1. Find the main DB helper(s) you are supposed to use, e.g. ./db, tenantDb, or similar. Use the same approach other tenant-related routes use.
+2. Find the "tenants" table (or equivalent) and inspect:
+   - Existing columns
+   - Whether there is already any field for industry, vertical, business type, or config JSON.
+
+If there is ALREADY a suitable place to store this data (for example: columns like industry, vertical, profile_config JSON, onboarding_state, etc.), prefer USING those instead of creating new columns.
+
+If there is NO existing industry-related config:
+3. Create a migration or schema change following the project’s existing pattern, to add fields to the tenants table (or the appropriate per-tenant config table). Reasonable fields would be:
+
+   - industry_id       (TEXT or VARCHAR)
+   - industry_name     (TEXT or VARCHAR, nullable)
+   - industry_config   (JSONB or TEXT, nullable) – will store featureFlags + rawSelection
+   - onboarding_step   (TEXT or INTEGER, optional) – OPTIONAL, only if there is already an onboarding state concept you can extend
+
+Use the same migration / schema tooling used elsewhere in the project (e.g., Knex, Prisma, SQL files, etc.). Do NOT invent a new migration system.
+
+STEP 2 – Upgrade the /api/onboarding/industry route to persist data
+--------------------------------------------------------------------
+File: server/onboardingIndustryRoutes.ts (this was created in Phase 8B)
+
+Currently this route:
+- Validates presence of industryId
+- Builds a payload
+- Logs it
+- Returns a stub success response
+
+Modify this route so that it ALSO:
+1. Safely resolves the current tenant ID using the same mechanism used elsewhere in the app:
+   - Check for properties such as: req.tenantId, req.tenant_id, req.session.tenantId, req.user.tenantId, etc.
+   - Reuse existing helper functions if there is already a “getTenantIdFromRequest” pattern.
+
+2. If no tenantId can be resolved, do NOT crash:
+   - Keep logging the payload
+   - Return a 200 with success: false and a clear message like: "No tenant context – industry selection logged only."
+   - This way, dev/testing still works without breaking anything.
+
+3. If tenantId IS available:
+   - Upsert/update the tenant record (or tenant config record) to store:
+     - industry_id = body.industryId
+     - industry_name = body.industryName (or null if missing)
+     - industry_config = JSON/JSONB containing:
+       {
+         featureFlags: body.featureFlags || {},
+         rawSelection: body.rawSelection || {},
+         version: "v1",
+         updatedAt: <current timestamp>
+       }
+     - Optionally update onboarding_step or similar if such a field exists
+
+   - All DB operations MUST be wrapped in try/catch:
+     - On DB error:
+       - Log an error with a clear prefix, e.g. "[ONBOARDING] Failed to persist industry selection for tenant ..."
+       - Respond with status 500 and JSON { success: false, message: "Failed to persist industry onboarding settings." }
+     - On success:
+       - Respond with JSON:
+         {
+           success: true,
+           message: "Industry selection saved.",
+           tenantId,
+           industryId: body.industryId
+         }
+
+4. Keep the existing Phase 8B logging around the payload so I can still see:
+   - tenantId
+   - industryId
+   - industryName
+   - featureFlags and rawSelection
+
+STEP 3 – Don’t break anything else
+----------------------------------
+- Do NOT move or remove any existing route registrations besides enhancing /api/onboarding/industry.
+- Do NOT change any existing security / auth logic.
+- Do NOT introduce tenantDb usage in places where the project has standardized on a different helper (use what the rest of the codebase uses).
+
+STEP 4 – Basic validation and testing
+-------------------------------------
+1. Run TypeScript/Node build or tests as appropriate for this repo (for example: `npm run build` or `npm run test` or `npm run lint`), using whatever command is already defined in package.json.
+2. Ensure there are NO TypeScript compilation errors.
+3. If there is an existing HTTP test utility or REST client config in the repo, you may:
+   - Send a test POST request to /api/onboarding/industry using the dev server with a payload like:
+     {
+       "industryId": "photography",
+       "industryName": "Photography & Media Studio",
+       "featureFlags": { "photography:Weddings": true },
+       "rawSelection": { ... }
+     }
+   - Confirm:
+     - The server logs the [ONBOARDING] message
+     - The response success is true (when tenant context is present) or a clear message if no tenant context
+
+STEP 5 – Report back with a clear summary
+-----------------------------------------
+At the end, provide:
+1. A short explanation of:
+   - Where the data is now stored (which table + columns)
+   - How the tenant is determined in the route
+2. A diff summary of the files you changed or created, including:
+   - migrations / schema files
+   - onboardingIndustryRoutes.ts
+   - any helper files touched
+3. Any follow-up notes or TODOs that would be natural candidates for Phase 8D, e.g.:
+   - Auto-generating services/add-ons from industry packs
+   - Marking onboarding completion
+   - Admin UI to view/change industry settings
+
+Please perform all edits automatically and then show me the summary.

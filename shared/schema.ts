@@ -206,6 +206,12 @@ export const tenantConfig = pgTable("tenant_config", {
   tier: tenantTierEnum("tier").default("starter").notNull(),
   // Concierge setup fields (Phase 5)
   industry: varchar("industry", { length: 100 }), // e.g., 'mobile-detailing', 'lawn-care', 'house-cleaning'
+  industryConfig: jsonb("industry_config").$type<{
+    featureFlags?: Record<string, boolean>;
+    rawSelection?: any;
+    version?: string;
+    updatedAt?: string;
+  }>(), // Phase 8C: Industry-specific configuration (feature flags, sub-packs, etc.)
   primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
   primaryCity: varchar("primary_city", { length: 100 }),
   internalNotes: text("internal_notes"), // Owner-only notes about this tenant
