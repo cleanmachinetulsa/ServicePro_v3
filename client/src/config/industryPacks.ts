@@ -20,7 +20,16 @@
  *   - imageUrl: The URL of the hero image (HTTPS required)
  *   - imageAlt: Alt text for accessibility (optional but recommended)
  * 
- * To change an image:
+ * ═══ METHOD 1: UPLOAD VIA ADMIN UI (RECOMMENDED) ═══
+ * 
+ *   1. Go to: /admin/industry-images (login required)
+ *   2. Select an image file for the industry you want to update
+ *   3. Click "Upload" - the image will be saved to /uploads/industry/
+ *   4. Copy the URL from the success message
+ *   5. Paste it into the imageUrl field below (and update imageAlt)
+ * 
+ * ═══ METHOD 2: EDIT CONFIG FILE DIRECTLY ═══
+ * 
  *   1. Find the industry object you want to update (e.g., "auto_detailing_mobile")
  *   2. Replace the imageUrl with your new image URL
  *   3. Update the imageAlt to describe the new image
@@ -29,12 +38,13 @@
  *   - Use HTTPS URLs only
  *   - Landscape format works best (16:9 aspect ratio ideal)
  *   - Use high-quality images from Unsplash, Pexels, or your own CDN
- *   - Image will display at h-40 (160px height) with object-cover
+ *   - Image will display at h-32 (128px) on mobile, h-40 (160px) on desktop
  * 
  * Example image sources:
+ *   - Upload UI: /admin/industry-images (saves to /uploads/industry/)
  *   - Unsplash: https://images.unsplash.com/photo-ID?w=800&h=450&fit=crop
  *   - Pexels: https://images.pexels.com/photos/ID/pexels-photo-ID.jpeg
- *   - Your own: Upload to attached_assets/ or use any HTTPS CDN
+ *   - Your own: Any HTTPS CDN
  * 
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
