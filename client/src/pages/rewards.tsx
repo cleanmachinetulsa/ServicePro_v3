@@ -471,6 +471,25 @@ const LoyaltyPointsPage: React.FC = () => {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Welcome Back Campaign Shortcut */}
+      <Alert className="mb-6 border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
+        <Gift className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+        <AlertTitle className="flex items-center gap-2">
+          Welcome Back Campaign
+          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">New</span>
+        </AlertTitle>
+        <AlertDescription className="mt-2">
+          <p className="text-sm mb-3">
+            Reward your customers with bonus loyalty points! Configure and send VIP or Regular customer campaigns.
+          </p>
+          <Link href="/settings">
+            <Button variant="outline" size="sm" className="border-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900">
+              Configure Welcome Back Campaign →
+            </Button>
+          </Link>
+        </AlertDescription>
+      </Alert>
       
       {hasSearched && (
         <div className="space-y-6">

@@ -2,8 +2,7 @@ import { db } from '../db';
 import type { TenantDb } from '../tenantDb';
 import { campaignConfigs, customers, loyaltyPoints, pointsTransactions, tenants } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { sendSMS } from '../notifications';
-import { sendEmail } from '../emailService';
+import { sendSMS, sendEmail } from '../notifications';
 import { addMonths } from 'date-fns';
 import { hasFeature } from '@shared/features';
 
