@@ -112,6 +112,12 @@ export const navigationItems: NavigationItem[] = [
     icon: History,
     path: '/service-history',
   },
+  {
+    id: 'rewards',
+    label: 'Rewards',
+    icon: Gift,
+    path: '/rewards',
+  },
 
   // SCHEDULING & OPERATIONS
   {

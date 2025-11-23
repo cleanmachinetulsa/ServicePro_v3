@@ -120,7 +120,8 @@ function WelcomeBackCampaign() {
   // Update config mutation
   const updateConfigMutation = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest('/api/admin/campaigns/welcome-back', 'PUT', data);
+      const response = await apiRequest('PUT', '/api/admin/campaigns/welcome-back', data);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/campaigns/welcome-back'] });
@@ -134,7 +135,8 @@ function WelcomeBackCampaign() {
   // Send campaign mutation
   const sendCampaignMutation = useMutation({
     mutationFn: async ({ audience, previewOnly }: { audience: 'vip' | 'regular'; previewOnly: boolean }) => {
-      return apiRequest('/api/admin/campaigns/welcome-back/send', 'POST', { audience, previewOnly });
+      const response = await apiRequest('POST', '/api/admin/campaigns/welcome-back/send', { audience, previewOnly });
+      return response.json();
     },
     onSuccess: (data, variables) => {
       if (variables.previewOnly) {
