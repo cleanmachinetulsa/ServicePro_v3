@@ -27,6 +27,7 @@ import twilioVoiceRouter from "./routes.twilioVoice";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
+import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { setupGoogleOAuth } from "./googleOAuth";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
@@ -254,6 +255,8 @@ app.use('/api/campaigns', campaignsRouter);
 app.use('/api/sms-templates', smsTemplatesRouter);
 // Register referral invoice routes (validation public, apply requires auth)
 registerReferralInvoiceRoutes(app);
+// Register industry onboarding routes (Phase 8B)
+registerOnboardingIndustryRoutes(app);
 
 app.use((req, res, next) => {
   const start = Date.now();
