@@ -1,0 +1,363 @@
+You are updating my ServicePro v3 WHITE-LABEL multi-tenant platform (NOT the legacy Clean Machine-only app).
+
+Your goal in this task is to implement **Phase 13 – Weather Risk & Rain Policy Helpers**:
+
+1) A reusable, well-typed **Weather Risk Helper** module that turns raw forecast data into:
+   - A normalized risk level enum
+   - Human-friendly severity text
+   - Human-friendly “what should we do?” action text
+
+2) Lightweight integration points so this can be used by:
+   - Appointment reminder / confirmation logic
+   - SMS / email messaging for “rain policy” warnings
+   - Future UI dashboards
+
+This must be:
+- Multi-tenant safe (respect tenant config / industry type).
+- Backwards compatible (NO breaking of existing APIs or flows).
+- Modular and testable.
+
+==================================================
+STEP 1 – DISCOVER EXISTING WEATHER STRUCTURE
+==================================================
+
+Before changing anything, inspect what already exists:
+
+1) Search for the weather service:
+   - Likely filenames:
+     - `server/services/weatherService.ts`
+     - or `server/services/weather.ts`
+   - Look for:
+     - Functions that call an external weather API.
+     - Any notion of "rain chance", "forecast", or "severity".
+
+2) Identify existing types:
+   - Look for interfaces like:
+     - `Forecast`, `DailyForecast`, `HourlyForecast`, etc.
+   - Confirm what fields we already have:
+     - Chance of precipitation (0–100)
+     - Rain intensity or precipitation amount
+     - Wind speed
+     - Temperature
+     - Any severe weather flags or alerts
+
+3) Identify where weather is used:
+   - Search for `weather` or `forecast` usage:
+     - Appointment reminders
+     - Scheduling
+     - Any existing "rain policy" comments or TODOs
+
+DO NOT change anything in this step. Just learn the current shape.
+
+==================================================
+STEP 2 – CREATE WEATHER RISK HELPER MODULE
+==================================================
+
+Create a new helper module for central risk logic:
+
+- File: `server/services/weatherRisk.ts`
+
+Implement:
+
+```ts
+// server/services/weatherRisk.ts
+
+export type WeatherRiskLevel = 'low' | 'medium' | 'high' | 'extreme';
+
+export interface WeatherRiskContext {
+  // Core input fields (all optional so we can consume different forecast schemas)
+  precipitationChance?: number;      // 0-100 (%)
+  precipitationIntensityMm?: number; // mm/hr if available
+  thunderstormRisk?: boolean;
+  severeAlertActive?: boolean;       // true if provider indicates a severe alert
+  windSpeedMph?: number;
+  temperatureF?: number;
+
+  // Optional context
+  industryType?: string | null;      // e.g. 'auto_detailing', 'lawn_care', 'house_cleaning'
+}
+
+export interface WeatherRiskResult {
+  level: WeatherRiskLevel;
+  severityText: string;
+  actionText: string;
+}
+Public functions:
+
+ts
+Copy code
+export function getWeatherRiskLevel(ctx: WeatherRiskContext): WeatherRiskLevel;
+
+export function getWeatherSeverityText(
+  result: WeatherRiskResult,
+  ctx?: WeatherRiskContext
+): string;
+
+export function getWeatherActionText(
+  result: WeatherRiskResult,
+  ctx?: WeatherRiskContext
+): string;
+
+export function evaluateWeatherRisk(ctx: WeatherRiskContext): WeatherRiskResult;
+Implementation guidelines:
+
+Risk calculation (getWeatherRiskLevel):
+
+Base it on precipitationChance primarily:
+
+0–20% → 'low'
+
+21–49% → 'medium'
+
+50–79% → 'high'
+
+80–100% → 'extreme'
+
+If severeAlertActive is true → at least 'extreme'.
+
+If thunderstormRisk is true:
+
+Bump at least to 'high' unless already higher.
+
+If windSpeedMph is high (e.g. > 30 mph):
+
+Bump risk by one level (capped at 'extreme').
+
+Implementation should be pure and deterministic.
+
+Texts (getWeatherSeverityText and getWeatherActionText):
+
+Base defaults (general field services like detailing, lawn care, etc.):
+
+For 'low':
+
+severityText: "Weather risk is low."
+
+actionText: "No changes are needed based on the current forecast."
+
+For 'medium':
+
+severityText: "There is a moderate chance of weather affecting this appointment."
+
+actionText: "You can keep your current time, but you may want a backup option in mind."
+
+For 'high':
+
+severityText: "There is a high chance of rain or conditions that may affect outdoor services."
+
+actionText: "We recommend considering a reschedule or moving the appointment to a more flexible time."
+
+For 'extreme':
+
+severityText: "Severe weather is likely during this appointment window."
+
+actionText: "We strongly recommend rescheduling to ensure safety and the best results."
+
+For now, return these exact strings, but structure the code so that:
+
+If industryType is provided (e.g. 'auto_detailing', 'lawn_care'), you can easily add subtle copy variations in the future.
+
+Example: switch on industryType inside the helper, but default to the generic text.
+
+evaluateWeatherRisk(ctx):
+
+Steps:
+
+Compute level = getWeatherRiskLevel(ctx).
+
+Build a WeatherRiskResult with:
+
+level
+
+severityText = getWeatherSeverityText({ level, severityText: '', actionText: '' }, ctx) (or call with a simple object that you then overwrite).
+
+actionText = getWeatherActionText({ level, severityText: '', actionText: '' }, ctx).
+
+Return the fully-populated result.
+
+Code style:
+
+TypeScript, no any.
+
+Clear comments explaining thresholds and why.
+
+==================================================
+STEP 3 – ADAPT EXISTING WEATHER SERVICE TO USE HELPER
+Now integrate the helper into your existing weather service in a non-breaking, additive way.
+
+Open the main weather service file:
+
+Example: server/services/weatherService.ts (adjust to actual path).
+
+Import the helper:
+
+ts
+Copy code
+import {
+  WeatherRiskContext,
+  WeatherRiskResult,
+  evaluateWeatherRisk,
+} from './weatherRisk';
+Create an adapter function to map your provider’s forecast data into a WeatherRiskContext:
+
+If you have something like:
+
+ts
+Copy code
+interface ProviderForecast {
+  chanceOfRain?: number;      // 0-100
+  precipitationMmPerHour?: number;
+  windSpeedMph?: number;
+  temperatureF?: number;
+  thunderstorm?: boolean;
+  severeAlert?: boolean;
+}
+Add:
+
+ts
+Copy code
+export function getWeatherRiskFromForecast(
+  forecast: ProviderForecast,
+  options?: { industryType?: string | null }
+): WeatherRiskResult {
+  const ctx: WeatherRiskContext = {
+    precipitationChance: forecast.chanceOfRain,
+    precipitationIntensityMm: forecast.precipitationMmPerHour,
+    windSpeedMph: forecast.windSpeedMph,
+    temperatureF: forecast.temperatureF,
+    thunderstormRisk: forecast.thunderstorm,
+    severeAlertActive: forecast.severeAlert,
+    industryType: options?.industryType ?? null,
+  };
+
+  return evaluateWeatherRisk(ctx);
+}
+DO NOT break existing APIs:
+
+Keep all existing exports.
+
+getWeatherRiskFromForecast should be a new helper function that other code can import.
+
+If there is already a "severity" concept, you can internally refactor to use evaluateWeatherRisk, but only if you can keep the same external behavior.
+
+==================================================
+STEP 4 – RAIN POLICY HOOKS (LIGHT INTEGRATION)
+We are NOT fully rewriting the reminder system here. We’re just adding safe hooks so reminders/notifications can optionally attach risk info.
+
+Identify appointment reminder / confirmation logic:
+
+Look for functions that:
+
+Send “upcoming appointment” SMS / emails.
+
+Have access to appointment date/time and service info.
+
+Likely in files like:
+
+server/services/notifications.ts
+
+server/services/appointments.ts
+
+or similar.
+
+Add a small helper that can be used by reminder code:
+
+For example, in server/services/weatherService.ts or a new helper file:
+
+ts
+Copy code
+export async function getAppointmentWeatherRisk(options: {
+  tenantId: string;
+  appointmentId: string;
+}): Promise<WeatherRiskResult | null> {
+  // Pseudo-steps:
+  // 1) Load appointment (date/time, location, service, tenantId).
+  // 2) Call existing weather provider function to get forecast for that time/location.
+  // 3) Map to ProviderForecast.
+  // 4) Call getWeatherRiskFromForecast(forecast, { industryType: appointment.industryType or tenant.industry }).
+  // 5) Return WeatherRiskResult.
+  // If weather or appointment data is missing, return null rather than throwing.
+}
+In the reminder / notification logic:
+
+DO NOT change behavior for everyone yet.
+
+Just add an optional step:
+
+Pseudocode:
+
+ts
+Copy code
+const risk = await getAppointmentWeatherRisk({ tenantId, appointmentId });
+
+if (risk && (risk.level === 'high' || risk.level === 'extreme')) {
+  // Expose risk info to templates as optional fields, e.g.:
+  //   riskLevel, riskSeverityText, riskActionText
+  // But do NOT forcibly change message bodies here.
+  // Just make these fields available so templates / future phases can use them.
+}
+This keeps the pipeline intact but starts surfacing risk data for future use.
+
+==================================================
+STEP 5 – UNIT TESTS
+Add tests for the new helper:
+
+File: server/services/__tests__/weatherRisk.test.ts (or match existing test layout).
+
+Test scenarios (at minimum):
+
+precipitationChance = 10 → 'low', severity/action texts match low-risk copy.
+
+precipitationChance = 40 → 'medium'.
+
+precipitationChance = 70 → 'high'.
+
+precipitationChance = 85 → 'extreme'.
+
+precipitationChance = 60 + severeAlertActive = true → 'extreme'.
+
+precipitationChance = 25 + thunderstormRisk = true → at least 'high'.
+
+precipitationChance = 15 + windSpeedMph = 40 → bumped risk level (e.g. from 'low' to 'medium').
+
+Ensure tests use the same threshold logic as implementation.
+
+==================================================
+STEP 6 – ACCEPTANCE CRITERIA
+New file server/services/weatherRisk.ts exists with:
+
+WeatherRiskContext, WeatherRiskResult, WeatherRiskLevel.
+
+Implemented getWeatherRiskLevel, getWeatherSeverityText, getWeatherActionText, evaluateWeatherRisk.
+
+Existing weather service is extended (NOT broken):
+
+A function like getWeatherRiskFromForecast(...) is available and uses evaluateWeatherRisk.
+
+Optional helper getAppointmentWeatherRisk exists and:
+
+Uses appointment data + weather provider to return a WeatherRiskResult | null.
+
+Is safe if data is missing (returns null, doesn’t crash).
+
+No changes to existing public API contracts or routes.
+
+TypeScript build passes with no new errors.
+
+All new tests pass.
+
+==================================================
+STEP 7 – NO-BREAKAGE GUARANTEES
+Do NOT change existing SMS/email templates in this phase.
+
+Do NOT change how reminders are sent; only add optional risk metadata for future usage.
+
+Do NOT introduce any new mandatory config; defaults must work for all current tenants.
+
+Once done:
+
+Restart the server.
+
+Ensure there are no runtime errors.
+
+Optionally, add a short note to replit.md summarizing the new weather risk helper and how it can be used by other phases (rain policy, reminders, dashboards).
