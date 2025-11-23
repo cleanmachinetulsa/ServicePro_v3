@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").default(true),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  hasSeenDashboardTour: boolean("has_seen_dashboard_tour").default(false), // Track if user has completed the dashboard onboarding tour
   createdAt: timestamp("created_at").defaultNow(),
   createdBy: integer("created_by"),
 }, (table) => ({
