@@ -342,6 +342,7 @@ export default function Dashboard() {
       <OfflineIndicator />
       <InstallPromptBanner />
       <AppShell title="Dashboard" pageActions={pageActions}>
+        <div data-tour-id="main-dashboard-root">
         {isLoadingData ? (
           <div className="space-y-4 p-6">
             {/* Statistics Bar Skeleton */}
@@ -398,6 +399,7 @@ export default function Dashboard() {
             )}
           </>
         )}
+        </div>
       </AppShell>
 
       {/* Invoice Modal */}

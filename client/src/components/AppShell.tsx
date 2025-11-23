@@ -41,7 +41,7 @@ export function AppShell({
 
   const renderNavigationItems = (isMobile = false) => {
     return (
-      <nav className="space-y-1">
+      <nav className="space-y-1" data-tour-id="sidebar-nav">
         {navigationItems.map((item) => {
           if (item.separator) {
             return (
@@ -70,6 +70,7 @@ export function AppShell({
               }`}
               onClick={() => handleNavigate(item.path)}
               data-testid={`nav-${item.id}`}
+              data-tour-id={`nav-${item.id}`}
             >
               <Icon className="h-4 w-4 mr-2" />
               <span className="truncate">{item.label}</span>
@@ -159,7 +160,7 @@ export function AppShell({
 
             {/* Search */}
             {showSearch && (
-              <div className="flex-1 max-w-md hidden sm:block">
+              <div className="flex-1 max-w-md hidden sm:block" data-tour-id="ai-help-search">
                 <AiHelpSearch />
               </div>
             )}
