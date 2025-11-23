@@ -126,13 +126,23 @@ export default function OnboardingIndustryPage() {
             <Card
               key={ind.id}
               onClick={() => setSelectedIndustry(ind.id)}
-              className={`cursor-pointer transition border ${
+              className={`cursor-pointer transition border overflow-hidden ${
                 isSelected
                   ? "border-blue-500 ring-2 ring-blue-500/60"
                   : "border-border hover:border-blue-400/60"
               }`}
               data-testid={`industry-${ind.id}`}
             >
+              {ind.imageUrl && (
+                <div className="w-full h-40 overflow-hidden">
+                  <img
+                    src={ind.imageUrl}
+                    alt={ind.imageAlt || ind.label}
+                    className="w-full h-full object-cover transition-transform hover:scale-105"
+                    loading="lazy"
+                  />
+                </div>
+              )}
               <CardHeader>
                 <CardTitle className="text-base">{ind.label}</CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">{ind.category}</p>
