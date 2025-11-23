@@ -1,0 +1,543 @@
+YOU ARE REPLIT AI WORKING ON THE "SERVICEPRO" / "CLEAN MACHINE" WHITE-LABEL APP.
+
+MASTER PLAN PLACEMENT
+This task is **Phase 9** in the Master Plan, right after:
+- Phase 8 (8e): Industry Pack Bootstrap / AI behavior rules / FAQ seeds.
+
+GOAL (PHASE 9)
+Implement a **first-time Guided Dashboard Tour** with a “spotlight” overlay for new users, using a **Down-to-Earth Tulsa** tone. This tour:
+- Runs automatically the first time a user/tenant hits the dashboard.
+- Walks them through the **main areas**: nav, messages, schedule, setup, AI assistant, help.
+- Can be **restarted** later via a “Show me around again” option.
+- Persists completion state (backend flag + localStorage backup).
+- Is architected so later we can easily hook it into the Onboarding Agent and 8e (e.g. “start setup wizard”).
+
+IMPORTANT CONSTRAINTS
+- Do NOT break existing functionality, routing, or tenant isolation.
+- Respect existing stack: React/TypeScript frontend, Node/Express/TypeScript backend, Postgres DB.
+- Prefer small, well-contained modules (hook, component, config).
+- Adapt names/paths to the actual repo (DashboardLayout, AppShell, etc.) but keep structure.
+
+===========================
+STEP 0: DISCOVERY
+===========================
+1. Find the **main dashboard layout** component (examples: `DashboardLayout`, `TenantDashboard`, `MainAppLayout`, etc.).
+2. Identify key UI regions we’ll “spotlight”:
+   - Main nav (sidebar/topbar).
+   - Messages / conversations / SMS inbox area.
+   - Schedule / calendar view.
+   - Setup / settings / onboarding / industry-pack entry point.
+   - AI assistant launcher (if present).
+   - Help / support menu / button (if present).
+3. Find where the frontend gets the **current user / tenant**:
+   - Hooks like `useCurrentUser`, `useTenant`, etc., or props like `currentUser`, `profile`, `settings`.
+4. Find backend user/tenant schema & endpoints used to return current user/settings.
+
+You will use this info to attach and persist onboarding state.
+
+===========================
+STEP 1: ADD BACKEND ONBOARDING STATE
+===========================
+Goal: Track whether a user has already completed the dashboard tour.
+
+1. In the user/tenant settings schema, add an optional boolean field.
+
+   Example (ADAPT to actual model + naming):
+
+   ```ts
+   // e.g. server/models/UserSettings.ts, or embedded on User/TenantUser
+   export interface UserSettings {
+     // ...existing fields
+     hasSeenDashboardTour?: boolean; // default false if missing
+   }
+Add a DB migration (if using migrations):
+
+Add a nullable boolean column to the appropriate table, for example:
+
+has_seen_dashboard_tour BOOLEAN DEFAULT FALSE
+
+Match naming conventions (snake_case in DB, camelCase in TS).
+
+Ensure the API that returns the current user/tenant includes this field:
+
+When the frontend calls GET /api/me or equivalent, include hasSeenDashboardTour in the JSON.
+
+Add or extend an endpoint to mark the tour as completed:
+
+Prefer extending an existing “update settings” endpoint if present.
+
+If not, add a minimal endpoint, e.g.:
+
+ts
+Copy code
+// e.g. server/routes/api/onboarding.ts
+router.post("/dashboard-tour", requireAuth, async (req, res) => {
+  const userId = req.user.id; // adapt to your auth
+  await db("users")
+    .where({ id: userId })
+    .update({ has_seen_dashboard_tour: true });
+
+  res.status(204).send();
+});
+Adjust table, auth, and DB helper to match existing code.
+
+===========================
+STEP 2: FRONTEND HOOK FOR DASHBOARD ONBOARDING STATE
+Create a hook to handle when to show the tour and how to mark it complete.
+
+Add a file:
+
+client/src/hooks/useDashboardOnboarding.ts (or similar path consistent with repo).
+
+Implement the hook (ADAPT types and fetch paths):
+
+ts
+Copy code
+import { useEffect, useState, useCallback } from "react";
+
+interface UseDashboardOnboardingOptions {
+  initialHasSeenTour?: boolean;
+  userId?: string | number | null;
+}
+
+interface DashboardOnboardingState {
+  hasSeenTour: boolean;
+  shouldShowTour: boolean;
+  setShouldShowTour: (value: boolean) => void;
+  markTourCompleted: () => Promise<void>;
+}
+
+const LOCAL_STORAGE_KEY = "servicepro:dashboardTourSeen";
+
+export function useDashboardOnboarding(
+  options: UseDashboardOnboardingOptions
+): DashboardOnboardingState {
+  const { initialHasSeenTour = false, userId } = options;
+
+  const [hasSeenTour, setHasSeenTour] = useState<boolean>(initialHasSeenTour);
+  const [shouldShowTour, setShouldShowTour] = useState<boolean>(false);
+
+  // Pull backup from localStorage
+  useEffect(() => {
+    if (initialHasSeenTour) {
+      setHasSeenTour(true);
+      return;
+    }
+    const stored = typeof window !== "undefined"
+      ? window.localStorage.getItem(LOCAL_STORAGE_KEY)
+      : null;
+    if (stored === "true") {
+      setHasSeenTour(true);
+    }
+  }, [initialHasSeenTour]);
+
+  // Decide if we should show tour on load
+  useEffect(() => {
+    if (!hasSeenTour) {
+      setShouldShowTour(true);
+    }
+  }, [hasSeenTour]);
+
+  const markTourCompleted = useCallback(async () => {
+    setHasSeenTour(true);
+    setShouldShowTour(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, "true");
+    }
+
+    try {
+      await fetch("/api/onboarding/dashboard-tour", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }), // if backend needs it; otherwise omit body
+      });
+    } catch (err) {
+      console.error("Failed to mark dashboard tour completed", err);
+    }
+  }, [userId]);
+
+  return {
+    hasSeenTour,
+    shouldShowTour,
+    setShouldShowTour,
+    markTourCompleted,
+  };
+}
+===========================
+STEP 3: SPOTLIGHT TOUR COMPONENT
+Create a reusable overlay that highlights elements by data-tour-id.
+
+Add:
+
+client/src/components/onboarding/DashboardTour.tsx
+
+Implement a basic version using a portal and inline styles (you can later refactor into your design system; for now keep it simple but clean):
+
+tsx
+Copy code
+import React, { useEffect, useLayoutEffect, useState } from "react";
+import ReactDOM from "react-dom";
+
+export interface DashboardTourStep {
+  id: string;
+  targetId: string; // matches data-tour-id
+  title: string;
+  body: string;
+}
+
+interface DashboardTourProps {
+  steps: DashboardTourStep[];
+  isOpen: boolean;
+  onClose: () => void;
+  onFinish: () => void;
+}
+
+interface Rect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const DashboardTour: React.FC<DashboardTourProps> = ({
+  steps,
+  isOpen,
+  onClose,
+  onFinish,
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [targetRect, setTargetRect] = useState<Rect | null>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const step = steps[currentIndex];
+    if (!step) return;
+
+    const el = document.querySelector(
+      `[data-tour-id="${step.targetId}"]`
+    ) as HTMLElement | null;
+
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      setTargetRect({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
+    } else {
+      setTargetRect(null);
+    }
+  }, [isOpen, currentIndex, steps]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isOpen, onClose]);
+
+  if (!isOpen || steps.length === 0) return null;
+
+  const step = steps[currentIndex];
+  if (!step) return null;
+
+  const goNext = () => {
+    if (currentIndex === steps.length - 1) {
+      onFinish();
+    } else {
+      setCurrentIndex((i) => i + 1);
+    }
+  };
+
+  const goPrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex((i) => i - 1);
+    }
+  };
+
+  const handleSkip = () => {
+    onClose();
+  };
+
+  const overlay = (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        backgroundColor: "rgba(0,0,0,0.5)",
+      }}
+    >
+      {/* Highlight box */}
+      {targetRect && (
+        <div
+          style={{
+            position: "fixed",
+            top: targetRect.top - 8,
+            left: targetRect.left - 8,
+            width: targetRect.width + 16,
+            height: targetRect.height + 16,
+            borderRadius: 8,
+            boxShadow: "0 0 0 2px #ffffff",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
+      {/* Tooltip card */}
+      <div
+        style={{
+          position: "fixed",
+          top: (targetRect?.top ?? 80) + (targetRect?.height ?? 0) + 16,
+          left: targetRect?.left ?? 24,
+          maxWidth: 360,
+          padding: 16,
+          borderRadius: 12,
+          backgroundColor: "#ffffff",
+          color: "#111827",
+          boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>{step.title}</div>
+        <div style={{ fontSize: 14, marginBottom: 12 }}>{step.body}</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleSkip}
+            style={{ fontSize: 12 }}
+          >
+            Skip tour
+          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={currentIndex === 0}
+              style={{
+                fontSize: 12,
+                opacity: currentIndex === 0 ? 0.4 : 1,
+              }}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              style={{ fontSize: 12, fontWeight: 600 }}
+            >
+              {currentIndex === steps.length - 1 ? "Finish" : "Next"}
+            </button>
+          </div>
+        </div>
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            opacity: 0.7,
+          }}
+        >
+          Step {currentIndex + 1} of {steps.length}
+        </div>
+      </div>
+    </div>
+  );
+
+  return ReactDOM.createPortal(overlay, document.body);
+};
+
+export default DashboardTour;
+===========================
+STEP 4: DEFINE DOWN-TO-EARTH TULSA TOUR STEPS
+Create a config file describing the tour in the tone we want.
+
+Add:
+
+client/src/config/dashboardTourSteps.ts
+
+Implement steps (adjust targetIds to match actual data-tour-ids):
+
+ts
+Copy code
+import { DashboardTourStep } from "../components/onboarding/DashboardTour";
+
+export const dashboardTourSteps: DashboardTourStep[] = [
+  {
+    id: "welcome",
+    targetId: "main-dashboard-root",
+    title: "Welcome in 👋",
+    body: "Hey there! Just wanna show you around real quick so you know where everything’s at. We’ll keep it short and simple.",
+  },
+  {
+    id: "nav",
+    targetId: "sidebar-nav",
+    title: "Your main hub",
+    body: "This is your main navigation. You’ll bounce between messages, your schedule, and setup from right here. If you ever feel lost, start here.",
+  },
+  {
+    id: "messages",
+    targetId: "messages-panel",
+    title: "Customer messages",
+    body: "All your customer texts and conversations live in this inbox. This is where the magic happens—booking jobs, answering questions, and keeping folks happy.",
+  },
+  {
+    id: "schedule",
+    targetId: "schedule-view",
+    title: "Your schedule",
+    body: "Here’s your calendar—what’s booked, what’s open, and what’s coming up. This is where you keep your days from turning into total chaos.",
+  },
+  {
+    id: "setup",
+    targetId: "setup-entry",
+    title: "Setup & services",
+    body: "This is where you tweak your services, pricing, and automations. We’ve got smart defaults to get you rolling, and you can fine-tune anytime.",
+  },
+  {
+    id: "assistant",
+    targetId: "ai-assistant-launcher",
+    title: "Need a hand?",
+    body: "Anytime you’re not sure what to do next, hit this assistant. Ask about setup, pricing, automations—you name it. It’s here so you don’t have to figure everything out alone.",
+  },
+  {
+    id: "help",
+    targetId: "help-support",
+    title: "Help & support",
+    body: "If something gets weird or you feel stuck, this is your backup. Quick answers now, and a real human if we need to dig deeper.",
+  },
+  {
+    id: "wrapup",
+    targetId: "main-dashboard-root",
+    title: "You’re all set 👍",
+    body: "That’s the quick tour. You’re ready to click around and make it yours. If you ever want to see this again, use the “Show me around again” option in the menu.",
+  },
+];
+===========================
+STEP 5: TAG DASHBOARD ELEMENTS WITH data-tour-id
+In the main dashboard layout and key child components, add data-tour-id attributes matching those step targetIds:
+
+Main container: data-tour-id="main-dashboard-root"
+
+Sidebar/top nav wrapper: data-tour-id="sidebar-nav"
+
+Messages panel container: data-tour-id="messages-panel"
+
+Schedule/calendar container: data-tour-id="schedule-view"
+
+Setup/settings entry button/menu item: data-tour-id="setup-entry"
+
+AI assistant launcher button/icon: data-tour-id="ai-assistant-launcher"
+
+Help/support entry: data-tour-id="help-support"
+
+Use minimal, non-breaking attribute additions only.
+
+===========================
+STEP 6: WIRE TOUR INTO DASHBOARD LAYOUT
+In the main dashboard layout component:
+
+Import and use the hook, tour component, and steps.
+
+tsx
+Copy code
+import DashboardTour from "../components/onboarding/DashboardTour";
+import { dashboardTourSteps } from "../config/dashboardTourSteps";
+import { useDashboardOnboarding } from "../hooks/useDashboardOnboarding";
+
+const DashboardLayout: React.FC = ({ children }) => {
+  const { currentUser } = useCurrentUser(); // adapt to existing hook
+
+  const {
+    hasSeenTour,
+    shouldShowTour,
+    setShouldShowTour,
+    markTourCompleted,
+  } = useDashboardOnboarding({
+    initialHasSeenTour:
+      currentUser?.settings?.hasSeenDashboardTour ?? false,
+    userId: currentUser?.id,
+  });
+
+  return (
+    <div
+      data-tour-id="main-dashboard-root"
+      className="...existing-classes..."
+    >
+      {/* existing layout structure: nav, content, panels, etc. */}
+
+      {children}
+
+      <DashboardTour
+        steps={dashboardTourSteps}
+        isOpen={shouldShowTour}
+        onClose={() => setShouldShowTour(false)}
+        onFinish={markTourCompleted}
+      />
+    </div>
+  );
+};
+
+export default DashboardLayout;
+Ensure no build errors. If useCurrentUser is named differently, adapt.
+
+===========================
+STEP 7: "SHOW ME AROUND AGAIN" ENTRY POINT
+Add a way for users to restart the tour:
+
+In a Help menu, user profile dropdown, or a small link somewhere obvious, add:
+
+tsx
+Copy code
+<button
+  type="button"
+  onClick={() => setShouldShowTour(true)}
+>
+  Show me around again
+</button>
+This should simply set shouldShowTour to true; we do NOT need to reset hasSeenTour in the backend.
+
+Optional: expose a small context so future agents (Onboarding/Support) can trigger the tour programmatically, e.g., startDashboardTour(); for now, just implement the button.
+
+===========================
+STEP 8: TESTING & SUMMARY
+Manual tests:
+
+New user/tenant:
+
+On first load, tour appears automatically.
+
+Stepping through highlights the right areas.
+
+“Finish” calls the backend endpoint and sets hasSeenDashboardTour.
+
+Refreshing the page does NOT reopen the tour automatically.
+
+“Show me around again”:
+
+Clicking it shows the tour from step 1 even if hasSeenTour is true.
+
+Edge cases:
+
+If a target element does not exist yet, handle gracefully (no crash; tooltip still appears using a default position).
+
+Works on small / narrow viewports.
+
+When done, PRINT a short summary in the Replit console / response including:
+
+Files created or modified.
+
+DB and API changes.
+
+Where the restart button lives.
+
+Any assumptions made (e.g., actual hook names for current user).
+
+END OF INSTRUCTIONS. IMPLEMENT THESE CHANGES NOW.
