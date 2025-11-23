@@ -1,6 +1,6 @@
 import { db } from '../db';
 import type { TenantDb } from '../tenantDb';
-import { campaignConfigs, customers, loyaltyPoints, pointsTransactions, tenants } from '@shared/schema';
+import { campaignConfigs, campaignSends, customers, loyaltyPoints, pointsTransactions, tenants } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { sendSMS, sendEmail } from '../notifications';
 import { addMonths } from 'date-fns';
@@ -440,6 +440,10 @@ export async function sendTenantWelcomeBackCampaign(
         qrLink: qrUrl,
       };
 
+      // Track which channels were successfully sent
+      let smsSent = false;
+      let emailSent = false;
+
       // Send SMS
       if (customer.phone && customer.smsConsent) {
         const smsMessage = interpolateTemplate(smsTemplate, templateVars);
@@ -447,6 +451,7 @@ export async function sendTenantWelcomeBackCampaign(
         if (!smsResult.success) {
           throw new Error(`SMS failed: ${smsResult.error}`);
         }
+        smsSent = true;
       }
 
       // Send Email
@@ -458,10 +463,27 @@ export async function sendTenantWelcomeBackCampaign(
             subject: `Welcome Back! ${pointsBonus} Bonus Points Added 🎉`,
             html: emailBody,
           });
+          emailSent = true;
         } catch (emailError) {
           console.error(`[Campaign] Email failed for customer ${customer.id}:`, emailError);
           // Don't fail the whole operation if email fails
         }
+      }
+
+      // Log campaign send for AI awareness
+      if (smsSent || emailSent) {
+        const channel = smsSent && emailSent ? 'both' : smsSent ? 'sms' : 'email';
+        const campaignKeyWithAudience = `${config.campaignKey}_${audience}`;
+        
+        await tenantDb.insert(campaignSends).values({
+          tenantId,
+          customerId: customer.id,
+          campaignKey: campaignKeyWithAudience,
+          channel,
+          sentAt: new Date(),
+        });
+        
+        console.log(`[Campaign] Logged campaign send for customer ${customer.id} via ${channel}`);
       }
 
       result.success++;

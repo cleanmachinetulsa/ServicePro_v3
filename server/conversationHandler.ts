@@ -1,9 +1,10 @@
 import { generateAIResponse } from './openai';
 import { getOrCreateConversation, addMessage } from './conversationService';
 import type { TenantDb } from './tenantDb';
-import { conversations, messages as messagesTable } from '@shared/schema';
+import { conversations, messages as messagesTable, customers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { asc } from 'drizzle-orm';
+import { getCampaignContextForCustomer, getCustomerIdFromPhone, getCustomerIdFromEmail } from './services/campaignContextService';
 
 /**
  * SECURITY: Web chat conversation processor with privilege restrictions
@@ -87,9 +88,33 @@ Is there anything else I can help you with regarding our services or pricing?`
     };
   }
   
+  // Get campaign context for AI awareness (if we can identify the customer)
+  let customerId: number | null = null;
+  let campaignContext = { hasRecentCampaign: false };
+  
+  try {
+    // Try to identify customer from identifier (could be phone or email)
+    if (identifier.includes('@')) {
+      customerId = await getCustomerIdFromEmail(tenantDb, identifier);
+    } else {
+      customerId = await getCustomerIdFromPhone(tenantDb, identifier);
+    }
+    
+    if (customerId) {
+      const tenantId = tenantDb.tenantId;
+      campaignContext = await getCampaignContextForCustomer({
+        tenantDb,
+        tenantId,
+        customerId,
+      });
+    }
+  } catch (error) {
+    console.error('[WEB CHAT] Error loading campaign context:', error);
+  }
+  
   // For general questions, use AI with restricted system prompt
   try {
-    const restrictedPrompt = `You are a helpful assistant for Clean Machine Auto Detail's website.
+    let restrictedPrompt = `You are a helpful assistant for Clean Machine Auto Detail's website.
     
 You can answer questions about:
 - Services and pricing
@@ -103,7 +128,24 @@ CRITICAL RESTRICTIONS:
 - You CANNOT access customer information
 - You CANNOT provide personalized quotes without photos
 - If someone wants to book, direct them to call (918) 856-5304 or use the online booking system
-- Keep responses concise and helpful
+- Keep responses concise and helpful`;
+
+    // Inject campaign awareness if available
+    if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
+      restrictedPrompt += `
+
+CAMPAIGN CONTEXT:
+- This customer recently received the "${campaignContext.campaignName}" campaign.
+- Bonus points from campaign: ${campaignContext.bonusPointsFromCampaign ?? 'N/A'}
+- Current total points: ${campaignContext.currentPoints ?? 'unknown'}
+
+If they mention the campaign, your message, or bonus points:
+- Acknowledge the campaign offer positively
+- Briefly explain how points work
+- Direct them to call or text to redeem: (918) 856-5304`;
+    }
+
+    restrictedPrompt += `
 
 Customer message: ${message}`;
 
@@ -179,6 +221,25 @@ async function processAuthenticatedConversation(
 ): Promise<{ response: string; functionsCalled?: string[] }> {
   
   try {
+    // Get campaign context for AI awareness
+    let campaignContext = { hasRecentCampaign: false };
+    
+    try {
+      // Get customer ID for campaign lookup
+      const customerId = await getCustomerIdFromPhone(tenantDb, identifier);
+      
+      if (customerId) {
+        const tenantId = tenantDb.tenantId;
+        campaignContext = await getCampaignContextForCustomer({
+          tenantDb,
+          tenantId,
+          customerId,
+        });
+      }
+    } catch (error) {
+      console.error('[AUTHENTICATED CHAT] Error loading campaign context:', error);
+    }
+    
     // Get conversation history (lookup by phone for authenticated platforms)
     const conv = await tenantDb.query.conversations.findFirst({
       where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)),
@@ -198,9 +259,19 @@ async function processAuthenticatedConversation(
       sender: msg.sender
     }));
 
+    // Build enhanced message with campaign context if available
+    let enhancedMessage = message;
+    
+    if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
+      // Prepend campaign context to the message for AI awareness
+      enhancedMessage = `[SYSTEM NOTE: This customer recently received the "${campaignContext.campaignName}" campaign with ${campaignContext.bonusPointsFromCampaign} bonus points. They currently have ${campaignContext.currentPoints ?? 'unknown'} points total. If they mention the campaign, your message, or bonus points, acknowledge it and help them use their rewards.]
+
+Customer message: ${message}`;
+    }
+
     // Full AI capabilities with function calling
     const response = await generateAIResponse(
-      message,
+      enhancedMessage,
       identifier,
       platform === 'sms' ? 'sms' : 'web',
       undefined,
