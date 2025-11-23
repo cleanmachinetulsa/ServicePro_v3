@@ -1079,3 +1079,117 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
     });
   }
 }
+
+export async function getDashboardLayout(req: Request, res: Response) {
+  try {
+    const tenantDb = (req as any).tenantDb!;
+    const tenantId = (req.session as any).tenantId || 'root';
+    const userId = (req.session as any).userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const { dashboardLayouts } = await import('../shared/schema');
+    const { eq, and, isNull } = await import('drizzle-orm');
+
+    const userLayout = await tenantDb
+      .select()
+      .from(dashboardLayouts)
+      .where(
+        and(
+          eq(dashboardLayouts.tenantId, tenantId),
+          eq(dashboardLayouts.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (userLayout.length > 0) {
+      return res.json({ success: true, layout: userLayout[0] });
+    }
+
+    const tenantDefaultLayout = await tenantDb
+      .select()
+      .from(dashboardLayouts)
+      .where(
+        and(
+          eq(dashboardLayouts.tenantId, tenantId),
+          isNull(dashboardLayouts.userId)
+        )
+      )
+      .limit(1);
+
+    if (tenantDefaultLayout.length > 0) {
+      return res.json({ success: true, layout: tenantDefaultLayout[0] });
+    }
+
+    return res.json({ success: true, layout: null });
+  } catch (error) {
+    console.error('Error fetching dashboard layout:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+export async function saveDashboardLayout(req: Request, res: Response) {
+  try {
+    const tenantDb = (req as any).tenantDb!;
+    const tenantId = (req.session as any).tenantId || 'root';
+    const userId = (req.session as any).userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const { dashboardLayouts, dashboardLayoutPayloadSchema } = await import('../shared/schema');
+    const { eq, and } = await import('drizzle-orm');
+
+    const validatedLayout = dashboardLayoutPayloadSchema.parse(req.body.layout);
+    const layoutVersion = req.body.layoutVersion || 1;
+
+    const existingLayout = await tenantDb
+      .select()
+      .from(dashboardLayouts)
+      .where(
+        and(
+          eq(dashboardLayouts.tenantId, tenantId),
+          eq(dashboardLayouts.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (existingLayout.length > 0) {
+      const updated = await tenantDb
+        .update(dashboardLayouts)
+        .set({
+          layout: validatedLayout,
+          layoutVersion,
+          updatedAt: new Date(),
+        })
+        .where(eq(dashboardLayouts.id, existingLayout[0].id))
+        .returning();
+
+      return res.json({ success: true, layout: updated[0] });
+    } else {
+      const inserted = await tenantDb
+        .insert(dashboardLayouts)
+        .values({
+          tenantId,
+          userId,
+          layout: validatedLayout,
+          layoutVersion,
+        })
+        .returning();
+
+      return res.json({ success: true, layout: inserted[0] });
+    }
+  } catch (error) {
+    console.error('Error saving dashboard layout:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}

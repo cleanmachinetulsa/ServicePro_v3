@@ -19,14 +19,18 @@ import { format } from "date-fns";
 import { AppShell } from "@/components/AppShell";
 import { DashboardOverview } from "@/components/DashboardOverview";
 import BusinessChatInterface from "@/components/BusinessChatInterface";
-import { Home, Mail, Plus } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Home, Mail, Plus, Edit3, Save } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { CashCollectionsWidget } from "@/components/dashboard/CashCollectionsWidget";
 import { DepositHistoryWidget } from "@/components/dashboard/DepositHistoryWidget";
 import { InstallPromptBanner, OfflineIndicator } from "@/components/PwaComponents";
 import { useDashboardOnboarding } from "@/hooks/useDashboardOnboarding";
 import { DashboardTour } from "@/components/onboarding/DashboardTour";
 import { dashboardTourSteps } from "@/config/dashboardTourSteps";
+import { DashboardGrid } from "@/components/DashboardGrid";
+import type { DashboardWidget, DashboardLayoutPayload } from "../../../shared/schema";
+import { DEFAULT_WIDGET_CATALOG, reconcileLayoutWithCatalog } from "@/config/defaultDashboardLayout";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Appointment {
   id: string;
@@ -66,6 +70,7 @@ interface InvoiceDetails {
 
 export default function Dashboard() {
   const [location, navigate] = useLocation();
+  const { toast } = useToast();
   const { data: currentUserData } = useQuery<{ 
     success: boolean; 
     user: { 
@@ -77,6 +82,50 @@ export default function Dashboard() {
     queryKey: ['/api/users/me'],
   });
   const currentUser = currentUserData?.user;
+
+  // Dashboard customization state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>(DEFAULT_WIDGET_CATALOG);
+
+  // Fetch dashboard layout
+  const { data: layoutData } = useQuery<{ success: boolean; layout: any }>({
+    queryKey: ['/api/dashboard/layout'],
+  });
+
+  // Save dashboard layout mutation
+  const saveLayoutMutation = useMutation({
+    mutationFn: async (layout: DashboardLayoutPayload) => {
+      return await apiRequest('POST', '/api/dashboard/layout', {
+        layout,
+        layoutVersion: 1,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Layout saved',
+        description: 'Your dashboard layout has been saved successfully.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/layout'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error saving layout',
+        description: error.message || 'Failed to save dashboard layout',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Initialize widgets from saved layout
+  useEffect(() => {
+    if (layoutData?.layout) {
+      const reconciledWidgets = reconcileLayoutWithCatalog(
+        layoutData.layout.layout?.widgets,
+        DEFAULT_WIDGET_CATALOG
+      );
+      setWidgets(reconciledWidgets);
+    }
+  }, [layoutData]);
 
   // Dashboard tour
   const {
@@ -134,8 +183,6 @@ export default function Dashboard() {
     taxEnabled: false,
     autoFillEmail: true
   });
-  
-  const { toast } = useToast();
 
   // Tab Compatibility Mapping - Redirect old ?tab= URLs to new routes
   const tabCompatibilityMap: Record<string, string> = {
@@ -331,9 +378,49 @@ export default function Dashboard() {
     setTodayDate(date);
   };
 
+  // Dashboard layout handlers
+  const handleWidgetReorder = (reorderedWidgets: DashboardWidget[]) => {
+    setWidgets(reorderedWidgets);
+  };
+
+  const handleSaveLayout = () => {
+    const layoutPayload: DashboardLayoutPayload = {
+      widgets: widgets,
+    };
+    saveLayoutMutation.mutate(layoutPayload);
+    setIsEditMode(false);
+  };
+
+  const toggleEditMode = () => {
+    if (isEditMode) {
+      handleSaveLayout();
+    } else {
+      setIsEditMode(true);
+    }
+  };
+
   // Page-specific actions
   const pageActions = (
     <>
+      <Button
+        size="sm"
+        variant={isEditMode ? "default" : "ghost"}
+        onClick={toggleEditMode}
+        data-testid="button-toggle-edit-mode"
+        className={isEditMode ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
+      >
+        {isEditMode ? (
+          <>
+            <Save className="h-4 w-4 mr-2" />
+            Save Layout
+          </>
+        ) : (
+          <>
+            <Edit3 className="h-4 w-4 mr-2" />
+            Customize
+          </>
+        )}
+      </Button>
       {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
         <Button
           size="sm"
@@ -392,32 +479,45 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <>
-            <DashboardOverview
-              appointments={appointments}
-              appointmentCounts={appointmentCounts}
-              weatherData={weatherData}
-              todayDate={todayDate}
-              currentMonth={currentMonth}
-              onDateChange={handleDateChange}
-              onMonthChange={setCurrentMonth}
-              onCall={handleCall}
-              onChat={handleChat}
-              onNavigate={goToDirections}
-              onViewHistory={viewServiceHistory}
-              onSendInvoice={openInvoiceModal}
-            />
+          <DashboardGrid
+            widgets={widgets}
+            onReorder={handleWidgetReorder}
+            isEditMode={isEditMode}
+          >
+            {(widget) => {
+              if (widget.id === 'calendar' || widget.id === 'monthly-stats' || widget.id === 'schedule' || widget.id === 'daily-insights' || widget.id === 'quick-actions') {
+                return (
+                  <DashboardOverview
+                    appointments={appointments}
+                    appointmentCounts={appointmentCounts}
+                    weatherData={weatherData}
+                    todayDate={todayDate}
+                    currentMonth={currentMonth}
+                    onDateChange={handleDateChange}
+                    onMonthChange={setCurrentMonth}
+                    onCall={handleCall}
+                    onChat={handleChat}
+                    onNavigate={goToDirections}
+                    onViewHistory={viewServiceHistory}
+                    onSendInvoice={openInvoiceModal}
+                  />
+                );
+              }
 
-            {/* Cash Deposit Tracking Widgets - Owner/Manager Only */}
-            {currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager') && (
-              <div className="space-y-4 p-6 pt-0">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <CashCollectionsWidget />
-                  <DepositHistoryWidget />
-                </div>
-              </div>
-            )}
-          </>
+              if ((widget.id === 'cash-collections' || widget.id === 'deposit-history') && currentUser && (currentUser.role === 'owner' || currentUser.role === 'manager')) {
+                return (
+                  <div className="space-y-4 p-6 pt-0">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {widget.id === 'cash-collections' && <CashCollectionsWidget />}
+                      {widget.id === 'deposit-history' && <DepositHistoryWidget />}
+                    </div>
+                  </div>
+                );
+              }
+
+              return null;
+            }}
+          </DashboardGrid>
         )}
         </div>
       </AppShell>
