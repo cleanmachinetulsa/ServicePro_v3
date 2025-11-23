@@ -1384,4 +1384,206 @@ export function registerConversationRoutes(app: Express) {
       res.status(500).json({ success: false, message: 'Failed to search messages' });
     }
   });
+  
+  // ==================== PHASE 12: PROFESSIONAL CONVERSATION MANAGEMENT ====================
+  
+  /**
+   * Smart Schedule from Thread
+   * 
+   * Uses LLM to analyze the entire conversation and extract booking/job details.
+   * Returns structured data that can be used to pre-fill a booking form or create an appointment directly.
+   * 
+   * Works across all channels: SMS, web chat, email, Facebook, Instagram.
+   */
+  app.post('/api/conversations/:id/smart-schedule', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      
+      if (isNaN(conversationId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid conversation ID',
+        });
+      }
+      
+      // SECURITY: Verify conversation exists and belongs to this tenant
+      const [conv] = await req.tenantDb!
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+        .limit(1);
+      
+      if (!conv) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversation not found or access denied',
+        });
+      }
+      
+      // Get conversation and all messages (already tenant-filtered via getConversationById)
+      const conversation = await getConversationById(req.tenantDb!, conversationId);
+      
+      if (!conversation) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversation not found',
+        });
+      }
+      
+      const tenantId = (req.tenant as any)?.id || 'root';
+      
+      // Use Smart Conversation Parser to extract booking info
+      const { parseConversationForBooking } = await import('./smartConversationParser');
+      
+      const parsedInfo = await parseConversationForBooking(
+        req.tenantDb!,
+        tenantId,
+        conversation.messages || [],
+        conversation.customerPhone || undefined
+      );
+      
+      res.json({
+        success: true,
+        data: parsedInfo,
+        message: parsedInfo.readyToBook 
+          ? 'Booking information extracted successfully - ready to schedule!'
+          : 'Partial information extracted - additional details needed',
+      });
+      
+    } catch (error) {
+      console.error('[SMART SCHEDULE] Error parsing conversation:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to parse conversation for scheduling',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  
+  /**
+   * Smart Handback to AI
+   * 
+   * Intelligently hand conversation back to AI with context preservation.
+   * Analyzes readiness, generates context summary, optionally notifies customer.
+   */
+  app.post('/api/conversations/:id/smart-handback', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      const { force, notifyCustomer, customMessage } = req.body;
+      const agentName = (req.user as any)?.username || undefined;
+      
+      if (isNaN(conversationId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid conversation ID',
+        });
+      }
+      
+      // SECURITY: Verify conversation exists and belongs to this tenant
+      const [conv] = await req.tenantDb!
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+        .limit(1);
+      
+      if (!conv) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversation not found or access denied',
+        });
+      }
+      
+      const { smartHandbackToAI } = await import('./enhancedHandoffService');
+      
+      const result = await smartHandbackToAI(
+        req.tenantDb!,
+        conversationId,
+        {
+          force: force || false,
+          notifyCustomer: notifyCustomer !== false, // Default to true
+          customMessage,
+          agentName,
+        }
+      );
+      
+      if (!result.success) {
+        return res.status(400).json(result);
+      }
+      
+      res.json({
+        success: true,
+        data: {
+          analysis: result.analysis,
+          contextSummary: result.contextSummary,
+        },
+        message: result.message,
+      });
+      
+    } catch (error) {
+      console.error('[SMART HANDBACK] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to hand back conversation to AI',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  
+  /**
+   * Analyze Handback Readiness
+   * 
+   * Get AI analysis of whether conversation is ready to be handed back to AI.
+   * Does NOT perform the handback - just provides analysis and recommendation.
+   */
+  app.get('/api/conversations/:id/handback-analysis', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      const agentName = (req.user as any)?.username || undefined;
+      
+      if (isNaN(conversationId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid conversation ID',
+        });
+      }
+      
+      // SECURITY: Verify conversation exists and belongs to this tenant
+      const [conv] = await req.tenantDb!
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+        .limit(1);
+      
+      if (!conv) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversation not found or access denied',
+        });
+      }
+      
+      const { analyzeHandbackReadiness } = await import('./enhancedHandoffService');
+      
+      const analysis = await analyzeHandbackReadiness(
+        req.tenantDb!,
+        conversationId,
+        agentName
+      );
+      
+      res.json({
+        success: true,
+        data: analysis,
+        message: analysis.shouldHandback 
+          ? 'Conversation is ready to hand back to AI'
+          : 'Not recommended to hand back yet',
+      });
+      
+    } catch (error) {
+      console.error('[HANDBACK ANALYSIS] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to analyze handback readiness',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
 }
