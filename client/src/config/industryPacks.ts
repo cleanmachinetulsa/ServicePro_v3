@@ -73,6 +73,41 @@ export type AIPersona = {
   emailTone: string; // short description, not actual prompt
 };
 
+export type AIBehaviorRuleTemplate = {
+  ruleKey: string;        // e.g., 'system_prompt', 'topic_boundaries'
+  category: string;       // 'personality', 'boundaries', 'upsell', etc.
+  name: string;
+  description?: string;
+  content: string;        // The actual rule text/prompt
+  priority?: number;      // For ordering rules (lower = higher priority)
+  enabled?: boolean;
+};
+
+export type SmsTemplateConfig = {
+  templateKey: string;    // e.g., 'booking_confirmation'
+  category: string;       // 'booking', 'technician', 'referrals', etc.
+  name: string;
+  description?: string;
+  body: string;           // Template text with {variables}
+  variables: Array<{
+    name: string;
+    description: string;
+    sample: string;
+    required: boolean;
+  }>;
+  defaultPayload?: Record<string, any>;
+  enabled?: boolean;
+};
+
+export type FaqEntryTemplate = {
+  category: string;       // 'pricing', 'services', 'policies', etc.
+  question: string;
+  answer: string;
+  keywords?: string[];
+  displayOrder?: number;
+  enabled?: boolean;
+};
+
 export type IndustryPack = {
   id: string;           // stable key, e.g. "photography_full"
   slug: string;         // for URLs if you want, e.g. "photography"
@@ -86,6 +121,9 @@ export type IndustryPack = {
   defaultUpsellServices: ServiceTemplate[];
   featureToggles: FeatureToggle[];
   aiPersona: AIPersona;
+  aiBehaviorRules?: AIBehaviorRuleTemplate[];
+  smsTemplates?: SmsTemplateConfig[];
+  faqEntries?: FaqEntryTemplate[];
 };
 
 // ---------------
