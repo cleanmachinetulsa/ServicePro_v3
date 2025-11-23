@@ -398,6 +398,20 @@ describe('Phase 13: Enhanced Weather Risk Assessment', () => {
       expect(result.actionText).toBeDefined();
     });
     
+    it('should provide severe alert-specific messaging when severeAlertActive is true', () => {
+      const ctx: WeatherRiskContext = {
+        precipitationChance: 30,  // Would normally be "medium"
+        severeAlertActive: true   // Forces "extreme" with special messaging
+      };
+      const result = evaluateWeatherRisk(ctx);
+      
+      // Severe alert always results in extreme level
+      expect(result.level).toBe('extreme');
+      // Special severe alert messaging
+      expect(result.severityText).toBe('A severe weather alert is in effect for this area.');
+      expect(result.actionText).toBe('Please reschedule immediately for safety. Dangerous weather conditions are expected.');
+    });
+    
     it('should handle empty context gracefully', () => {
       const ctx: WeatherRiskContext = {};
       const result = evaluateWeatherRisk(ctx);
