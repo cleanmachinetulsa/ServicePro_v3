@@ -1192,6 +1192,40 @@ export const smsTemplateVersions = pgTable("sms_template_versions", {
   createdBy: integer("created_by").references(() => users.id),
 });
 
+// AI Behavior Rules - Industry-specific AI personality and conversation rules
+export const aiBehaviorRules = pgTable("ai_behavior_rules", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  ruleKey: varchar("rule_key", { length: 100 }).notNull(), // e.g., 'system_prompt', 'conversation_style', 'topic_boundaries'
+  category: varchar("category", { length: 50 }).notNull(), // 'personality', 'boundaries', 'upsell', 'scheduling', etc.
+  name: text("name").notNull(), // Human-readable name
+  description: text("description"), // Description for dashboard
+  content: text("content").notNull(), // The actual rule text/prompt
+  priority: integer("priority").notNull().default(100), // For ordering rules (lower = higher priority)
+  enabled: boolean("enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+}, (table) => ({
+  // Composite unique constraint: rule_key must be unique PER TENANT
+  tenantRuleKeyUnique: uniqueIndex("ai_behavior_rules_tenant_id_rule_key_unique").on(table.tenantId, table.ruleKey),
+}));
+
+// FAQ Entries - Industry-specific frequently asked questions
+export const faqEntries = pgTable("faq_entries", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  category: varchar("category", { length: 50 }).notNull(), // 'pricing', 'services', 'policies', 'location', etc.
+  question: text("question").notNull(), // The FAQ question
+  answer: text("answer").notNull(), // The answer (can include markdown)
+  keywords: text("keywords").array(), // Search keywords for matching
+  displayOrder: integer("display_order").notNull().default(0), // For ordering in UI
+  enabled: boolean("enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: integer("updated_by").references(() => users.id),
+});
+
 // Push notification subscriptions for PWA
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
@@ -2680,6 +2714,12 @@ export type InsertSmsTemplate = z.infer<typeof insertSmsTemplateSchema>;
 export const insertSmsTemplateVersionSchema = createInsertSchema(smsTemplateVersions).omit({ id: true, createdAt: true });
 export type SmsTemplateVersion = typeof smsTemplateVersions.$inferSelect;
 export type InsertSmsTemplateVersion = z.infer<typeof insertSmsTemplateVersionSchema>;
+export const insertAiBehaviorRuleSchema = createInsertSchema(aiBehaviorRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type AiBehaviorRule = typeof aiBehaviorRules.$inferSelect;
+export type InsertAiBehaviorRule = z.infer<typeof insertAiBehaviorRuleSchema>;
+export const insertFaqEntrySchema = createInsertSchema(faqEntries).omit({ id: true, createdAt: true, updatedAt: true });
+export type FaqEntry = typeof faqEntries.$inferSelect;
+export type InsertFaqEntry = z.infer<typeof insertFaqEntrySchema>;
 export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({ id: true, createdAt: true, lastUsedAt: true });
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
