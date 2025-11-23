@@ -90,7 +90,7 @@ function Router() {
   return (
     <Switch>
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
-      <Route path="/admin/onboarding-industry" component={OnboardingIndustryPage} />
+      <Route path="/onboarding/industry" component={OnboardingIndustryPage} />
       
       {/* 🆕 ADMIN INDUSTRY IMAGE UPLOAD PAGE */}
       <Route path="/admin/industry-images">
