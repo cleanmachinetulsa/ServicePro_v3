@@ -187,15 +187,15 @@ Provision website starter
 
 Send onboarding links
 
-"Login as tenant" button (Phase 6 hook)
+“Login as tenant" button (Phase 6 hook)
 
 8. PHASE 6 – IMPERSONATE TENANT 📝
 
-Secure "Login as…":
+Secure “Login as…”:
 
 Audit logs
 
-Session shows "You are viewing as…"
+Session shows “You are viewing as…”
 
 Owner can help tenants directly
 
@@ -287,7 +287,7 @@ Helps configure automations
 
 Can fix common issues automatically
 
-Appears in "Need help?" sidebar
+Appears in “Need help?” sidebar
 
 13. PHASE 11 – DATA EXPORT & RETENTION 📝
 
@@ -375,7 +375,7 @@ Customer identity in database
 
 V2 (Magic Link):
 
-"Tap to login" URLs
+“Tap to login” URLs
 
 Auto-login for returning customers
 
@@ -413,7 +413,7 @@ Enables full white-label:
 
 Tenant branding (logo, color, name)
 
-Toggle "powered by ServicePro"
+Toggle “powered by ServicePro”
 
 Custom domain mapping
 
@@ -439,7 +439,7 @@ Can explain ANY page
 
 Can walk user through setup
 
-Answers "How do I…?" questions
+Answers “How do I…?” questions
 
 Helps configure:
 
@@ -485,7 +485,7 @@ AI booking contribution
 
 Churn prediction
 
-Public "showcase mode" for demos.
+Public “showcase mode” for demos.
 
 22. PHASE 20 – TEMPLATE / CLONE-A-TENANT FACTORY 📝
 
