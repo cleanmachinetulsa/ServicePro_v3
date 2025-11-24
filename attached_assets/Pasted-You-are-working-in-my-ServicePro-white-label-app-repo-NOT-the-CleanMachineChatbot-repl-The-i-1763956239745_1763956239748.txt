@@ -1,0 +1,92 @@
+You are working in my **ServicePro** white-label app repo (NOT the CleanMachineChatbot repl).
+
+The in-IDE Agent message says Phase 15 (Customer Portal + OTP login) is implemented, but the DB migration needs manual intervention for the `campaign_configs` table from Phase 14.
+
+I want you to COMPLETELY finish this for me.
+
+========================================
+GOAL
+========================================
+1. Make sure the Prisma schema and DB are fully in sync, including the `campaign_configs` table introduced in Phase 14.
+2. Run the DB migration (`npm run db:push`) and, if asked, choose to **create the `campaign_configs` table**.
+3. Verify the Phase 15 Customer Portal OTP login flow at `/portal/login` works end-to-end.
+4. Add/update brief documentation so I can see what was done (Phase 15 summary + any notes about `campaign_configs`).
+5. Leave the repo in a clean, working state (no pending migrations, no broken scripts).
+
+========================================
+PART 1 – CONFIRM PRISMA SCHEMA FOR `campaign_configs`
+========================================
+1. Open the Prisma schema file (usually `prisma/schema.prisma`).
+2. Find the `campaign_configs` model that was added in Phase 14.
+   - Make sure it’s defined there (do NOT delete or rename fields).
+   - If it’s missing for some reason, recover it from the existing Phase 14 code/migrations instead of inventing new fields.
+3. Do NOT make destructive changes to existing models; only ensure `campaign_configs` is correctly defined for the current code.
+
+========================================
+PART 2 – APPLY DB CHANGES (RUN MIGRATION)
+========================================
+1. In the project root, run:
+   - `npm run db:push`
+2. If Prisma asks a question about the `campaign_configs` table, answer exactly as follows:
+   - Choose the option that says **“+ campaign_configs create table”** (or equivalent wording).
+   - In other words, tell Prisma to **create** the `campaign_configs` table in the database.
+3. Let the command finish; make sure it exits successfully (no errors).
+4. Confirm that the table now exists by:
+   - Either checking the Prisma Studio view, or
+   - Running a quick DB query via our existing DB tooling (whatever is already in the repo).
+5. DO NOT use any destructive flags like `--accept-data-loss` unless there is absolutely no alternative, and even then, only if it’s clearly safe (no dropping of important tables).
+
+========================================
+PART 3 – VERIFY PHASE 15 CUSTOMER PORTAL + OTP
+========================================
+1. Start the dev server the normal way (e.g. `npm run dev` or whatever script is configured for this repo).
+2. In the Replit web preview, go to:
+   - `/portal/login`
+3. Test the OTP flow end-to-end:
+   - Enter a valid email/phone as required by the login form.
+   - Trigger the OTP send.
+   - Confirm the OTP verification works and you can reach the customer dashboard page.
+4. Make sure:
+   - Tenant isolation is respected (no cross-tenant data leaks).
+   - The customer context / dashboard loads without errors.
+   - No crashes or obvious UI bugs.
+
+If anything fails:
+   - Fix the issue in code (router, middleware, schema, or frontend) and re-run the necessary steps.
+   - Re-run `npm run db:push` if schema changes require it again.
+   - Re-test `/portal/login` until it works cleanly.
+
+========================================
+PART 4 – DOCUMENT WHAT YOU DID
+========================================
+1. Find or create a short doc/section for this phase, preferably in whatever doc file we’re already using, for example:
+   - `SERVICEPRO_MASTER_PLAN.md`
+   - `docs/phase-15-customer-portal.md`
+   (Use the existing pattern in the repo.)
+2. Add a concise Phase 15 summary that covers:
+   - Customer Portal with OTP auth at `/portal/login`
+   - `campaign_configs` table created and in sync with Prisma
+   - Tenant-safe customer context and dashboard
+   - Any relevant notes about how to re-run migrations in the future (`npm run db:push`).
+3. Note clearly that:
+   - When future schema changes touch `campaign_configs`, we should continue to use `npm run db:push` and accept the “create table / alter table” prompts as long as they are additive and non-destructive.
+
+========================================
+PART 5 – FINAL CHECKLIST
+========================================
+Before you stop, verify ALL of this:
+
+- [ ] `npm run db:push` completes successfully with the `campaign_configs` table created.
+- [ ] Prisma schema and DB are in sync (no pending migration errors).
+- [ ] `/portal/login` OTP flow works and leads to the customer dashboard.
+- [ ] No cross-tenant data leak issues (tenant filtering still enforced).
+- [ ] Documentation updated with a short Phase 15 summary + migration notes.
+- [ ] Repo builds and runs cleanly with no new TypeScript/compile/runtime errors.
+
+When you’re done, give me a short summary in the Agent reply:
+- What commands you ran
+- Whether any code changes were required
+- Confirmation that `/portal/login` works
+- Any TODOs or cautions I should know about.
+
+Do all of this now.
