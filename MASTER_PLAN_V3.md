@@ -1,4 +1,4 @@
-🌟 MASTER PLAN v3.3 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM
+🌟 MASTER PLAN v3.4 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM
 
 Canonical blueprint for:
 
@@ -103,35 +103,36 @@ Every write includes tenant_id
 
 Root tenant backfilled
 
-2. PHASE ROADMAP (0–22)
+2. PHASE ROADMAP (0–23)
 
 Legend:
 ✔️ complete • 🟡 in progress • 📝 designed / future
 
-Phase	Area	Status
-0	Canonicalization	✔️
-1	Tenant Isolation Core	✔️
-2	Telephony Spine	✔️
-3	Inbound Routing	✔️
-4	AI Voice Entry	✔️
-5	Concierge Setup Dashboard	📝
-6	Impersonate Tenant	📝
-7	SaaS Tiers + Feature Gating	✔️
-8	Industry Packs	📝
-9	Website Generator	📝
-10	AI Setup & Support Agent	📝
-11	Data Export & Retention	📝
-12	Keys & Integrations Checklist	📝
-13	Idea Parking Lot	✔️
-14	SMS Super-Agent Index	📝
-15	Customer Identity (OTP/Magic Link)	🟡
-16	Customer Master Backfill	📝
-17	White-Label Branding + Domains	📝
-18	ServicePro In-App Support Bot	📝
-19	Analytics + Showcase Dashboards	📝
-20	Template / Clone-a-Tenant Factory	📝
-21	Advanced Analytics & Intelligence	📝
-22	Agency Mode (Reseller White-Label)	📝
+Phase   Area    Status
+0       Canonicalization        ✔️
+1       Tenant Isolation Core   ✔️
+2       Telephony Spine ✔️
+3       Inbound Routing ✔️
+4       AI Voice Entry  ✔️
+5       Concierge Setup Dashboard       📝
+6       Impersonate Tenant      📝
+7       SaaS Tiers + Feature Gating     ✔️
+8       Industry Packs  📝
+9       Website Generator       📝
+10      AI Setup & Support Agent        📝
+11      Data Export & Retention 📝
+12      Keys & Integrations Checklist   📝
+13      Idea Parking Lot        ✔️
+14      SMS Super-Agent Index   📝
+15      Customer Identity (OTP/Magic Link)      🟡
+16      Customer Master Backfill        📝
+17      White-Label Branding + Domains  📝
+18      ServicePro In-App Support Bot   📝
+19      Analytics + Showcase Dashboards 📝
+20      Template / Clone-a-Tenant Factory       📝
+21      Advanced Analytics & Intelligence       📝
+22      Agency Mode (Reseller White-Label)      📝
+23      Free Tier Engine & Watermarked Sites    📝
 3. PHASE 1 – TENANT ISOLATION ✔️
 
 Fully implemented:
@@ -187,15 +188,15 @@ Provision website starter
 
 Send onboarding links
 
-"Login as tenant" button (Phase 6 hook)
+“Login as tenant" button (Phase 6 hook)
 
 8. PHASE 6 – IMPERSONATE TENANT 📝
 
-Secure "Login as…":
+Secure “Login as…”:
 
 Audit logs
 
-Session shows "You are viewing as…"
+Session shows “You are viewing as…”
 
 Owner can help tenants directly
 
@@ -287,7 +288,7 @@ Helps configure automations
 
 Can fix common issues automatically
 
-Appears in "Need help?" sidebar
+Appears in “Need help?” sidebar
 
 13. PHASE 11 – DATA EXPORT & RETENTION 📝
 
@@ -375,7 +376,7 @@ Customer identity in database
 
 V2 (Magic Link):
 
-"Tap to login" URLs
+“Tap to login” URLs
 
 Auto-login for returning customers
 
@@ -413,7 +414,7 @@ Enables full white-label:
 
 Tenant branding (logo, color, name)
 
-Toggle "powered by ServicePro"
+Toggle “powered by ServicePro”
 
 Custom domain mapping
 
@@ -439,7 +440,7 @@ Can explain ANY page
 
 Can walk user through setup
 
-Answers "How do I…?" questions
+Answers “How do I…?” questions
 
 Helps configure:
 
@@ -485,7 +486,7 @@ AI booking contribution
 
 Churn prediction
 
-Public "showcase mode" for demos.
+Public “showcase mode” for demos.
 
 22. PHASE 20 – TEMPLATE / CLONE-A-TENANT FACTORY 📝
 
@@ -541,7 +542,306 @@ You bill the agency
 
 This unlocks massive scale.
 
-🎯 CURRENT FOCUS (v3.3)
+25. PHASE 23 – FREE TIER ENGINE & WATERMARKED SITES 📝
+
+**Goal:**  
+Create a strategically powerful **Free Tier** that:
+
+- Costs ServicePro nearly nothing to run.
+- Gives real value to small service businesses.
+- Makes upgrading to paid plans feel natural and inevitable.
+- Never leaks paid-only costs (SMS, AI, telephony) into the Free tier.
+- Uses watermarked websites and locked features to constantly showcase Pro/Elite.
+
+This phase introduces the **Free tier mechanics**, **feature gating rules**, **UX for locked features**, and **watermarked website mode**.
+
+---
+
+### 25.1 Free Tier Positioning
+
+**Plan name example:**  
+- `free` or `starter_free` (internal code)
+- Public label: "Free", "Starter Free", or similar.
+
+**Core principles:**
+
+- Free tier is a **serious** starting point, not a demo.
+- Free tier never triggers **per-usage expenses** for us:
+  - No SMS sends.
+  - No AI tokens.
+  - No Twilio voice/IVR usage.
+- Free tier helps users:
+  - Organize their customers.
+  - Define their services.
+  - Launch a basic, watermarked website.
+  - Get comfortable inside ServicePro.
+- All automation, messaging, and AI are behind paid gates.
+
+---
+
+### 25.2 Free Tier – What's Included (Zero or Near-Zero Cost Features)
+
+These features are fully available on the Free plan because they rely mostly on database reads/writes and static hosting:
+
+1. **CRM / Customer Database (Manual-Only)**  
+   - Unlimited customers (within reason; can add soft caps later if needed).
+   - Customer profiles: name, phone, email, vehicles, notes.
+   - Basic tags and simple segmentation fields.
+   - Manual activity logging (notes, "had a call", "completed job").
+
+2. **Manual Booking & Job Tracking (No automated comms)**  
+   - Calendar view of jobs.
+   - Ability to create/edit/delete bookings manually.
+   - Manual status updates (scheduled / in progress / completed / cancelled).
+   - Fields for price, service, and notes.
+   - No automatic SMS/email reminders; all notifications remain manual or external.
+
+3. **Industry Pack Setup (Read-Only / Manual Apply)**  
+   - Choose an industry pack (detailing, lawn care, cleaning, photography, etc.).
+   - Auto-seed:
+     - Suggested services & add-ons.
+     - Suggested durations.
+     - Suggested base pricing (they can adjust).
+   - Preloaded FAQs and example copy visible in the UI.
+   - Free tier can use these to configure their CRM and services, but:
+     - Automated agent behavior stays locked.
+     - Campaigns & flows stay locked.
+
+4. **Website Generator – Free, Watermarked Site**  
+   - Free tier gets:
+     - A hosted website at a shared ServicePro domain, e.g.  
+       `tenantSlug.servicepro-sites.com` or equivalent.
+   - They can:
+     - Pick from 1–2 starter templates.
+     - Customize:
+       - Business name.
+       - About text.
+       - Services list.
+       - Hero text and CTAs.
+       - Colors (within reasonable bounds).
+   - Restrictions:
+     - **No custom domain** on free tier.
+     - **Watermark footer**: "Powered by ServicePro – Upgrade to remove this branding".
+     - Limit advanced layout features to Pro/Elite (locked but visible).
+   - Booking CTA can:
+     - Either open a simple intake form.
+     - Or just show a contact form (submit to email) on free tier.
+
+5. **Business Overview Dashboard (Lite Analytics)**  
+   - High-level stats from their manually entered data:
+     - Total customers.
+     - Total jobs logged.
+     - Basic revenue sum (from job entries).
+   - This is all computed from DB data; no external costs.
+
+6. **Settings & Branding (Basic)**  
+   - Business profile (name, city, contact email, etc.).
+   - Basic logo upload (within reasonable file limits).
+   - Color theme selection (applied to website + basic dashboard UI).
+   - Watermark is still visible on Free websites and optionally in footer.
+
+---
+
+### 25.3 Free Tier – What Is Explicitly Locked
+
+The Free tier **must not** allow operations that cost us Twilio/AI money or that define the premium value of ServicePro.
+
+These are **paid-only** (Pro/Elite/internal) features:
+
+1. **SMS & AI Messaging**
+   - Inbound and outbound SMS automation.
+   - AI SMS agent responses.
+   - Missed-call → text flows.
+   - SMS campaigns and broadcasts.
+   - Automated appointment reminders by SMS.
+   - Any OpenAI-token-consuming behavior.
+
+2. **Voice & IVR / AI Voice**
+   - IVR menus.
+   - AI voice receptionist.
+   - Phone call routing.
+   - Twilio voice usage (except maybe basic incoming mapping available only for paid tiers).
+
+3. **Automations & Workflows**
+   - Notification flows ("2 days before", "day-of", "follow-up").
+   - Auto-tagging or auto-status changes based on events.
+   - Customer lifecycle automations.
+
+4. **Loyalty & Referral Systems**
+   - Points accrual/redemption.
+   - Referral tracking.
+   - VIP tiers, rewards, and promo engines.
+
+5. **Customer Portal & Logins**
+   - Customer-facing portal.
+   - Customer OTP / magic-link login.
+   - Customer-visible loyalty balances.
+   - Self-service booking management.
+
+6. **Advanced Website Features**
+   - Custom domain connection.
+   - Additional templates library.
+   - Website sections generated by AI.
+   - Multi-language options (if offered).
+   - Upsell sections (e.g., "most popular packages" powered by analytics).
+
+7. **Bulk Actions & Campaigns**
+   - Bulk SMS/email sends.
+   - Campaign analytics dashboards.
+   - Automated drip sequences.
+
+8. **Multi-Tenant / Agency Features**
+   - Managing multiple child businesses under one account.
+   - Whitelabel / agency dashboards.
+
+All of the above features should **clearly exist in the UI**, but be marked as locked features with a consistent visual pattern.
+
+---
+
+### 25.4 Feature Gating Rules (Backend)
+
+Phase 23 extends the existing `planTier` + `hasFeature` mechanism:
+
+1. Add a new plan tier value:
+
+   - `planTier: 'free' | 'starter' | 'pro' | 'elite' | 'internal'`
+
+   Where:
+   - `free` = new Free tier.
+   - Existing tenants (including root) retain their current tiers.
+
+2. Update `TIER_FEATURES` to include a Free tier entry:
+
+   Example (conceptual, actual mapping lives in code):
+
+   - `free`:
+     - `canUseCrm`: true
+     - `canUseManualBookings`: true
+     - `canUseIndustryPackSetup`: true (manual-only)
+     - `canUseWebsiteGeneratorFree`: true
+     - `canUseCustomDomain`: false
+     - `canUseSms`: false
+     - `canUseAiSms`: false
+     - `canUseVoiceIvr`: false
+     - `canUseCampaigns`: false
+     - `canUseLoyalty`: false
+     - `canUseCustomerPortal`: false
+
+   - `starter`/`pro`/`elite`/`internal`:
+     - Keep existing or future mappings as defined in Phase 7.
+
+3. All backend routes that trigger cost or premium behavior should:
+
+   - Call `hasFeature(tenant, 'featureKey')`.
+   - Return 403 / 404 / controlled error for Free tier if feature is disallowed.
+   - Never silently allow Free tier tenants to use SMS, voice, or AI.
+
+---
+
+### 25.5 Locked Feature UX & Upgrade Tease
+
+The Free tier should clearly show what's possible, without being annoying.
+
+1. **Locked UI Pattern**
+   - For locked features, show:
+     - A blurred or dimmed preview of the UI.
+     - A small lock icon.
+     - A caption like:  
+       "Available on Pro and Elite plans – upgrade to unlock."
+   - Clicking on the locked area opens:
+     - An **Upgrade Modal** or navigates to the Pricing/Upgrade page.
+
+2. **Examples:**
+   - SMS page:
+     - Show the existing layout, but with a "Pro Only" overlay.
+   - Campaigns page:
+     - Show a nice empty state graphic with "Upgrade to run campaigns".
+   - Loyalty:
+     - Show potential reward tiers as a teaser, with "Unlock Loyalty with Pro".
+
+3. **Pricing & Upgrade Handoff**
+   - Clicking upgrade CTAs should:
+     - Take the tenant to a Pricing/Plans page, or
+     - Open a dedicated "Upgrade" dialog where they can choose a paid plan.
+   - When Stripe integration (Phase 7B) exists:
+     - The upgrade path will integrate with Stripe checkout.
+   - Before Stripe:
+     - Can route to a "Contact us to upgrade" flow or manual onboarding.
+
+---
+
+### 25.6 Watermarked Website Mode
+
+For Free tier websites:
+
+1. Always include a footer watermark, e.g.:
+
+   - "Powered by ServicePro – Upgrade to remove this branding."
+
+2. This watermark:
+   - Is rendered on all Free-tier booking/marketing pages.
+   - Uses the platform brand, not the tenant brand.
+   - Is removed automatically when tenant upgrades to Starter/Pro/Elite.
+
+3. No custom domains:
+   - Free tier is limited to `*.servicepro-sites.com` or similar.
+   - Custom domain settings UI should:
+     - Be visible but locked.
+     - Show a short explanation:
+       - "Connect your own domain on Pro or Elite plans."
+
+4. This acts as:
+   - A marketing engine for ServicePro (organic footprint).
+   - A constant upgrade nudge for tenants.
+
+---
+
+### 25.7 Onboarding Flow for Free Tier
+
+The Free tier onboarding should:
+
+1. Invite the user to:
+   - Choose their industry.
+   - Confirm business name and city.
+   - Pick a website template & color scheme.
+   - Add 3–5 core services.
+   - Add a logo (optional).
+
+2. At the end:
+   - Show their new website URL.
+   - Encourage them to:
+     - Add their first customers.
+     - Add their first manual jobs.
+   - Show a **"What you can unlock next"** panel with Pro/Elite features:
+     - Automated texts.
+     - AI assistant.
+     - Loyalty & referrals.
+     - Custom domain.
+
+---
+
+### 25.8 Interaction With Existing Phases
+
+Phase 23 builds on:
+
+- **Phase 7 – Tiers & Feature Gating**:
+  - Extends `planTier` and `TIER_FEATURES`.
+- **Phase 8 – Industry Packs**:
+  - Uses packs as initial content for Free tier.
+- **Phase 9 – Website Generator**:
+  - Introduces Free tier variant with watermark and limited features.
+- **Phase 10 – AI Setup & Support Agent**:
+  - The assistant should know:
+    - When a tenant is Free.
+    - Which features are locked.
+    - How to explain upgrades.
+- **Phase 19 – Analytics & Showcase Dashboards**:
+  - Can later show Free → Paid conversion metrics.
+
+Status: **DESIGNED (📝)**  
+Implementation will be handled by subsequent feature/build phases that hook into billing, feature gating, and website generation.
+
+🎯 CURRENT FOCUS (v3.4)
 
 Phase 5 – Concierge Dashboard
 
@@ -551,7 +851,7 @@ Phase 8 – Industry Packs
 
 Phase 14–16 – SMS Super-Agent + customer identity
 
-END OF MASTER PLAN v3.3
+END OF MASTER PLAN v3.4
 
 This is the canonical document.
 Everything else must follow it.
