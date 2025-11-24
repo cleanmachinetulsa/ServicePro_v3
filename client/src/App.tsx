@@ -95,9 +95,15 @@ import CustomerSettings from "./pages/CustomerSettings";
 // Phase 16.5: Portal Welcome Page
 import PortalWelcome from "./pages/PortalWelcome";
 
+// Phase 9: Public Website Generator
+import PublicSite from "./pages/PublicSite";
+
 function Router() {
   return (
     <Switch>
+      {/* Phase 9: Public Website Generator (PUBLIC ROUTE - NO AUTH) */}
+      <Route path="/site/:slug" component={PublicSite} />
+
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
       <Route path="/onboarding/industry" component={OnboardingIndustryPage} />
       
