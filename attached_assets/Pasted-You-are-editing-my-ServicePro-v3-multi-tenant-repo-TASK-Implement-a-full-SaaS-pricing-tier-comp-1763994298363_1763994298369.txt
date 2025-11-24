@@ -1,0 +1,512 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement a full SaaS pricing & tier comparison system on top of the existing `planTier` and `hasFeature` architecture, using the HYBRID approach:
+
+- Full multi-tenant pricing engine under the hood.
+- Clean Machine / root tenant gets the flagship, glassy, animated pricing page UI.
+- System is compatible with:
+  - Phase 7 (tiers & feature gating)
+  - Phase 23 (Free Tier engine & watermarking)
+  - Future Stripe billing (Phase 7B)
+- The pricing page is visually at least as polished as the Clean Machine /showcase page.
+
+Do NOT break existing tenant behavior. Do NOT remove existing TIER_FEATURES or hasFeature, only extend.
+
+====================================================
+STEP 0 – ALIGN WITH MASTER PLAN & CURRENT TIER MODEL
+====================================================
+
+1. Open MASTER_PLAN_V3.md and review:
+   - Phase 7 – Tiers, Billing & Internal Tier
+   - Phase 23 – Free Tier Engine & Watermarked Sites
+
+2. Confirm existing planTier values in the code (likely):
+   - 'starter' | 'pro' | 'elite' | 'internal'
+   - After Phase 23, we also want 'free'.
+
+3. Confirm `FEATURE_KEYS` and `TIER_FEATURES` live in a shared config (e.g. `shared/featureFlags.ts` or similar).
+   - We will extend, not overwrite.
+
+====================================================
+STEP 1 – EXTEND PLAN TIER ENUM TO INCLUDE FREE
+====================================================
+
+1. Locate the TypeScript definition for `planTier` in the tenants schema and types (e.g. `shared/schema.ts` + Drizzle schema + any `Tenant` TS interfaces).
+
+2. Ensure `planTier` includes:
+   - 'free' | 'starter' | 'pro' | 'elite' | 'internal'
+
+3. If DB already migrated from a previous phase, just verify. If not:
+   - Add a migration to allow 'free' as a valid enum value.
+   - Default for new tenants may remain 'starter' or 'trialing' according to your existing logic, we do NOT change defaults in this task.
+   - We will use 'free' primarily for Free-tier tenants created via Free Tier flows (Phase 23).
+
+====================================================
+STEP 2 – DEFINE PRICING TIERS CONFIG (GLOBAL)
+====================================================
+
+Create a shared pricing configuration that describes each plan in human and machine terms.
+
+1. Add a new config file, for example:
+
+   - `shared/pricingConfig.ts`  (or similar shared path accessible by server + client)
+
+2. Define types:
+
+   ```ts
+   export type PricingPlanId = 'free' | 'starter' | 'pro' | 'elite';
+
+   export interface PricingFeatureBadge {
+     key: string;                 // e.g. "ai_sms", "custom_domain"
+     label: string;               // human label: "AI SMS Assistant"
+     highlight?: boolean;         // visually emphasize big selling points
+     tooltip?: string;            // optional detail
+   }
+
+   export interface PricingPlanConfig {
+     id: PricingPlanId;
+     name: string;                // "Free", "Starter", "Pro", "Elite"
+     tagline: string;             // short emotional hook
+     monthlyPrice: number;        // e.g. 0, 39, 89, 199
+     priceSuffix?: string;        // "/month", "starting at", etc.
+     recommended?: boolean;       // mark Pro as "Most Popular"
+     highlight?: boolean;         // for UI pulsing/spotlight
+     bulletPoints: string[];      // 3–6 selling points
+     maxUsers?: number | null;
+     usageNotes?: string | null;  // "Best for solo operators", etc.
+   }
+Define an array of plans, something like:
+
+ts
+Copy code
+export const PRICING_PLANS: PricingPlanConfig[] = [
+  {
+    id: 'free',
+    name: 'Free',
+    tagline: 'Get organized and launch your first site.',
+    monthlyPrice: 0,
+    priceSuffix: '/month',
+    bulletPoints: [
+      'Basic CRM with unlimited contacts',
+      'Industry pack setup to get started fast',
+      'Hosted website with watermark',
+    ],
+    usageNotes: 'Perfect for testing the platform or solo side hustles.',
+  },
+  {
+    id: 'starter',
+    name: 'Starter',
+    tagline: 'Look professional with online booking.',
+    monthlyPrice: 39,
+    priceSuffix: '/month',
+    bulletPoints: [
+      'Remove watermark from your site',
+      'Basic booking form & confirmations',
+      'Email notifications & simple automations',
+    ],
+    usageNotes: 'Great for solo operators ready to go beyond manual texting.',
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    tagline: 'Run your business on autopilot.',
+    monthlyPrice: 89,
+    priceSuffix: '/month',
+    recommended: true,
+    highlight: true,
+    bulletPoints: [
+      'Full AI SMS assistant for 24/7 replies',
+      'Custom domain & advanced website sections',
+      'Automated reminders, follow-ups & campaigns',
+    ],
+    usageNotes: 'Best for growing teams that want fewer no-shows and more repeat customers.',
+  },
+  {
+    id: 'elite',
+    name: 'Elite',
+    tagline: 'Scale your team with AI voice & advanced tools.',
+    monthlyPrice: 199,
+    priceSuffix: '/month',
+    bulletPoints: [
+      'AI voice receptionist & advanced IVR',
+      'Multi-user support & technician routing',
+      'Priority support & early access features',
+    ],
+    usageNotes: 'For established businesses and agencies managing multiple jobs per day.',
+  },
+];
+Export a lookup map if useful:
+
+ts
+Copy code
+export const PRICING_PLAN_BY_ID: Record<PricingPlanId, PricingPlanConfig> = { ... };
+Note: Pricing numbers are placeholders; you can tweak later without touching architecture.
+
+====================================================
+STEP 3 – MAP PRICING PLANS TO FEATURES (TIER_FEATURES)
+Align PRICING_PLANS with TIER_FEATURES and hasFeature.
+
+Locate the file where FEATURE_KEYS and TIER_FEATURES are defined.
+
+Ensure FEATURE_KEYS includes meaningful keys you care about for pricing comparisons, for example:
+
+'crm_basic'
+
+'website_free'
+
+'website_custom_domain'
+
+'sms_basic'
+
+'sms_ai_assistant'
+
+'campaigns'
+
+'loyalty'
+
+'ai_voice'
+
+'multi_user'
+
+'priority_support'
+
+Extend TIER_FEATURES to include an entry for 'free' if not already:
+
+Example (conceptual):
+
+ts
+Copy code
+TIER_FEATURES.free = {
+  crm_basic: true,
+  website_free: true,
+  website_custom_domain: false,
+  sms_basic: false,
+  sms_ai_assistant: false,
+  campaigns: false,
+  loyalty: false,
+  ai_voice: false,
+  multi_user: false,
+  priority_support: false,
+  // etc...
+};
+For starter/pro/elite/internal, keep existing keys and only add missing ones as needed.
+
+We will use these feature flags later to power the visible checkmarks in the pricing comparison table.
+
+====================================================
+STEP 4 – BACKEND: PUBLIC PRICING ENDPOINT
+Create a backend endpoint that exposes:
+
+The global pricing plans.
+
+The feature comparison matrix.
+
+A flag indicating which tenant (if any) we are pricing for.
+
+Add a new route file, e.g.:
+
+server/routes.publicPricing.ts
+
+Implement endpoint:
+
+GET /api/public/pricing
+
+Response should look like:
+
+ts
+Copy code
+{
+  plans: PricingPlanConfig[];           // PRICING_PLANS
+  features: {
+    key: string;
+    label: string;
+    description?: string;
+    planAccess: {
+      [planId in PricingPlanId]: boolean;
+    };
+  }[];
+  marketing: {
+    // Optional text used by UI for hero section
+    headline: string;
+    subheadline: string;
+    finePrint?: string;
+  };
+}
+For features, you can define a static list in the same file or reuse FEATURE_KEYS with human labels:
+
+ts
+Copy code
+const PRICING_FEATURES = [
+  {
+    key: 'website_free',
+    label: 'Hosted website on ServicePro domain',
+    description: 'Get online fast with a polished site.',
+  },
+  {
+    key: 'website_custom_domain',
+    label: 'Use your own custom domain',
+    description: 'Look professional with your own URL.',
+  },
+  {
+    key: 'sms_ai_assistant',
+    label: 'AI SMS assistant for 24/7 replies',
+  },
+  // etc...
+];
+For each feature + plan, compute planAccess[planId] using hasFeature(tenantPlanTier, featureKey) logic conceptually, but since this is global marketing pricing:
+
+You can directly use TIER_FEATURES[planId][featureKey] instead of a real tenant.
+
+This gives a consistent marketing view of what each plan includes.
+
+marketing copy can be simple for now:
+
+ts
+Copy code
+{
+  headline: "Choose the plan that matches your business",
+  subheadline: "Start free, then upgrade when you're ready for AI automation and advanced tools.",
+  finePrint: "You can change plans any time. Trials and usage-based fees will be added later."
+}
+====================================================
+STEP 5 – FRONTEND: PRICING PAGE (ROOT / SERVICEPRO)
+Create a premium pricing page that will serve as:
+
+The main SaaS pricing for ServicePro.
+
+The template you can later white-label or adapt per-tenant as needed.
+
+Add a new React page component, e.g.:
+
+client/src/pages/PricingPage.tsx
+
+Add a route, e.g.:
+
+/pricing (for the ServicePro root marketing site context)
+
+If you have a separate marketing shell, ensure this route is accessible for non-auth users.
+
+On mount:
+
+Fetch /api/public/pricing.
+
+Show a loading state (skeleton or shimmer).
+
+On error, show a friendly message.
+
+Layout & style (GLASS, ANIMATION, NOT A TAKEOUT MENU):
+
+Full-width gradient background (e.g., top-right to bottom-left).
+
+Centered container with max-width (e.g., max-w-6xl).
+
+Glassmorphism cards for each tier:
+
+backdrop-blur
+
+Semi-transparent backgrounds (bg-white/10 or similar).
+
+Rounded corners (rounded-2xl).
+
+Soft shadow (shadow-xl).
+
+Use CSS grid or flex to show 4 columns on desktop (Free, Starter, Pro, Elite).
+
+On mobile, stack them with Pro highlighted and scrolled into view.
+
+MUST HAVE VISUAL & PSYCHOLOGICAL ELEMENTS:
+
+Highlight pro tier visually:
+
+“Most Popular” badge at the top.
+
+Slight vertical offset (raised card).
+
+Slightly larger scale.
+
+Glow/shadow on hover.
+
+Use animation (e.g. Framer Motion if available) for:
+
+Cards gently lifting into view.
+
+Hover scale & shadow transitions.
+
+Badge/CTA subtle pulsing.
+
+Tier cards contents:
+
+For each plan:
+
+Name (e.g. “Pro”).
+
+Tagline (emotional framing).
+
+Price (big typography), e.g. $89/mo.
+
+Bullet points (3–5 key benefits).
+
+Notes like “Best for growing teams”.
+
+CTA button:
+
+Free: “Start Free”
+
+Starter/Pro: “Start 14-day trial” or “Talk to us” for now.
+
+Elite: “Contact us” / “Book a demo” style.
+
+For now, clicking the buttons can:
+
+Route to a placeholder signup page (if exists), e.g. /signup?plan=pro.
+
+Or open a simple modal that says “Coming soon – we’ll connect this to checkout in Phase 7B”.
+
+Below the tier cards, render a feature comparison table:
+
+Left column: feature list (e.g., “Hosted website on ServicePro domain”, “Custom domain”, “AI SMS assistant”, etc.).
+
+Columns: Free, Starter, Pro, Elite.
+
+Cells:
+
+Show ✅ if planAccess[planId] is true.
+
+Show ❌ or a dimmed dash if false.
+
+Make the Pro column stand out subtly (slightly darker background or accent border).
+
+====================================================
+STEP 6 – HOOKS FOR UPGRADE FLOW (TENANT-IN-APP VIEW)
+The pricing page we just built is for public marketing (ServicePro root). Now add a light-weight in-app pricing/upgrade view for tenants.
+
+Add a smaller “Upgrade” modal or page, e.g.:
+
+client/src/components/UpgradeModal.tsx or
+
+client/src/pages/TenantPricing.tsx
+
+Behavior:
+
+Takes the current tenant’s planTier from auth/tenant context.
+
+Displays the same plans (Free/Starter/Pro/Elite) but:
+
+Highlights the current plan with “Your plan”.
+
+Grays out downgrade options where appropriate.
+
+Buttons:
+
+For now, just open a “Contact support to upgrade” message or a placeholder “Coming soon” banner.
+
+Later (Phase 7B), wire it to Stripe checkout + webhook.
+
+Add an “Upgrade” button to relevant parts of the in-app UI when features are locked:
+
+E.g., on the campaigns page when a tenant without campaigns feature lands there:
+
+Show a banner: “Want to send campaigns? Upgrade to Pro.”
+
+Button: “View Plans” → opens the Upgrade modal.
+
+====================================================
+STEP 7 – INTEGRATE WITH LOCKED FEATURE UX (LOSS AVERSION)
+Use pricing data + feature flags to create consistent upgrade prompts.
+
+Wherever you currently have hasFeature(tenant, 'X') checks and block a page:
+
+Replace bare “no access” messages with:
+
+A brief explanation (“This feature is available on Pro and Elite.”)
+
+A CTA: “View pricing” (opens the Upgrade modal or goes to /pricing).
+
+Optional but highly recommended:
+
+On pages that are fully blocked to Free tier:
+
+Show a preview state of the UI (blurred / dimmed).
+
+Use a translucent overlay with:
+
+“Unlock AI SMS assistant on the Pro plan.”
+
+A button: “See what’s included.”
+
+This taps into loss aversion: they see what they’re missing.
+
+====================================================
+STEP 8 – CLEAN MACHINE HYBRID TREATMENT
+We want Clean Machine (root tenant) to get the best of everything, without restricting its flexibility.
+
+Ensure root tenant (tenant_id = 'root'):
+
+Has planTier = 'elite' or 'internal' per your existing logic.
+
+Always has all features ON via internal or elite mapping.
+
+For the public Pricing page:
+
+It’s marketing for ServicePro — not Clean Machine’s car detail customers.
+
+No special casing required here, but keep in mind:
+
+Clean Machine itself can use the same TIER_FEATURES for internal “modes” if you want to simulate being on Pro/Starter when testing.
+
+In future, if you create a separate Clean Machine–specific pricing section (for detailing services, not SaaS tiers), do NOT mix that with these SaaS subscription tiers. They are different layers.
+
+====================================================
+STEP 9 – TESTING & SAFETY
+Backend:
+
+Add tests for /api/public/pricing:
+
+Returns correct plans.
+
+Features matrix matches TIER_FEATURES.
+
+Frontend:
+
+Smoke test the PricingPage:
+
+Renders all plans.
+
+Shows Pro as “Most Popular”.
+
+Shows feature comparison table.
+
+Manual UX check:
+
+Load /pricing on desktop and mobile.
+
+Confirm:
+
+It feels premium, modern, and at least as nice as your /showcase page.
+
+Cards have glass / gradient / hover motion.
+
+The value ladder (Free → Starter → Pro → Elite) is intuitively clear.
+
+====================================================
+STEP 10 – DO NOT CHANGE BILLING / STRIPE YET
+Do NOT add Stripe checkout in this task.
+
+Do NOT auto-change tenant planTier from this page yet.
+
+This block is about:
+
+UI
+
+Pricing config
+
+Feature-matrix logic
+
+Upgrade triggers
+
+Psychological flow
+
+Stripe and real billing flows will be added in Phase 7B.
+
+====================================================
+END OF PRICING & TIER COMPARISON SYSTEM BLOCK

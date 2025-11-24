@@ -224,7 +224,8 @@ export const platformSettings = pgTable("platform_settings", {
 });
 
 // Tenant tier enum for subscription levels
-export const tenantTierEnum = pgEnum('tenant_tier', ['starter', 'pro', 'elite', 'internal']);
+// Phase 7 + Phase 23: Free tier added for free tier users with watermarked sites
+export const tenantTierEnum = pgEnum('tenant_tier', ['free', 'starter', 'pro', 'elite', 'internal']);
 
 // Tenant status enum for subscription/account status
 export const tenantStatusEnum = pgEnum('tenant_status', ['trialing', 'active', 'past_due', 'suspended', 'cancelled']);
