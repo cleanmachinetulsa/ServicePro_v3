@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { isImpersonating } from './authHelpers';
 
 // Role hierarchy: owner > manager > employee
 const roleHierarchy: Record<string, number> = {
@@ -24,8 +25,13 @@ export function requireRole(...allowedRoles: string[]) {
         });
       }
 
+      // CRITICAL: When impersonating, owner users must be fetched from root DB
+      // because they exist in root tenant, not the impersonated tenant's DB
+      const impersonating = isImpersonating(req);
+      const db = impersonating ? (await import('./tenantDb')).getRootDb() : req.tenantDb!;
+
       // Get user from database
-      const [user] = await req.tenantDb!
+      const [user] = await db
         .select()
         .from(users)
         .where(eq(users.id, req.session.userId))
@@ -43,6 +49,16 @@ export function requireRole(...allowedRoles: string[]) {
         return res.status(403).json({
           success: false,
           message: 'User account is disabled',
+        });
+      }
+
+      // SECURITY: Block owner-only routes during impersonation to prevent privilege escalation
+      // Owner can impersonate tenants to view their data, but cannot perform owner actions
+      if (allowedRoles.includes('owner') && isImpersonating(req)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Owner actions are not available while impersonating. Exit impersonation first.',
+          code: 'IMPERSONATION_FORBIDDEN',
         });
       }
 
@@ -82,7 +98,11 @@ export async function checkPasswordChangeRequired(req: Request, res: Response, n
       return next();
     }
 
-    const [user] = await req.tenantDb!
+    // CRITICAL: When impersonating, owner users must be fetched from root DB
+    const impersonating = isImpersonating(req);
+    const db = impersonating ? (await import('./tenantDb')).getRootDb() : req.tenantDb!;
+
+    const [user] = await db
       .select()
       .from(users)
       .where(eq(users.id, req.session.userId))

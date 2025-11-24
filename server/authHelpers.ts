@@ -16,11 +16,13 @@ export function getEffectiveTenantId(req: Request): string {
 export function getImpersonationContext(req: Request): {
   isImpersonating: boolean;
   tenantId: string | null;
+  tenantName: string | null;
   startedAt: string | null;
 } {
   return {
     isImpersonating: isImpersonating(req),
     tenantId: req.session?.impersonatingTenantId || null,
+    tenantName: req.session?.impersonationTenantName || null,
     startedAt: req.session?.impersonationStartedAt || null,
   };
 }
