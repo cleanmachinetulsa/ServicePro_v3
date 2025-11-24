@@ -20,7 +20,7 @@ userThemeRouter.get('/api/user/theme', requireAuth, async (req, res) => {
     const userId = req.session.userId;
     
     const [user] = await db
-      .select({ dashboardTheme: users.dashboardTheme })
+      .select()
       .from(users)
       .where(eq(users.id, userId));
 
@@ -28,10 +28,11 @@ userThemeRouter.get('/api/user/theme', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const theme = dashboardThemes.find(t => t.id === user.dashboardTheme) || dashboardThemes[0];
+    const themeId = user.dashboardTheme || 'modern-dark';
+    const theme = dashboardThemes.find(t => t.id === themeId) || dashboardThemes[0];
 
     res.json({
-      currentTheme: user.dashboardTheme || 'modern-dark',
+      currentTheme: themeId,
       theme,
     });
   } catch (error) {
