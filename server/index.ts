@@ -4,6 +4,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import cookieParser from "cookie-parser";
 import { sessionMiddleware } from './sessionMiddleware';
 import { tenantMiddleware } from './tenantMiddleware';
 import { wrapTenantDb } from './tenantDb';
@@ -93,6 +94,9 @@ const limiter = rateLimit({
   }
 });
 app.use(limiter);
+
+// Cookie parser middleware (required for reading custom cookies like customer session)
+app.use(cookieParser());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
