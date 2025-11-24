@@ -34,14 +34,23 @@ const publicSiteLimiter = rateLimit({
  * - FAQ entries
  * - Feature flags (watermark, booking, advanced features)
  * 
- * This endpoint is PUBLIC and does not require authentication
- * Rate limited to 100 requests per 15 minutes per IP
+ * SECURITY NOTE: This endpoint is PUBLIC and does not require authentication.
+ * - Rate limited to 100 requests per 15 minutes per IP
+ * - Cached for 10 minutes (success) or 5 minutes (404/errors)
+ * - Initial tenant lookup uses global db (necessary to resolve subdomain → tenant ID)
+ * - Subdomain is globally unique (enforced by database constraint)
+ * - Suspended/cancelled tenants return 404 before exposing any data
+ * - All secondary queries (services/FAQs) use wrapTenantDb for proper isolation
  */
 router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Response) => {
   try {
     const { subdomain } = req.params;
 
-    // Lookup tenant by subdomain (globally unique identifier)
+    // SECURITY: Initial tenant lookup must use global db to resolve subdomain to tenant ID.
+    // This is safe because:
+    // 1. Subdomain is globally unique (database constraint)
+    // 2. We immediately filter out suspended/cancelled tenants (return 404)
+    // 3. All subsequent queries use wrapTenantDb for proper multi-tenant isolation
     const tenantRecords = await db
       .select({
         // Tenant basic info
