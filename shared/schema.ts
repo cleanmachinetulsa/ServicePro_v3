@@ -893,11 +893,15 @@ export const smsDeliveryStatus = pgTable("sms_delivery_status", {
 // Create the tables for gamification
 export const loyaltyPoints = pgTable("loyalty_points", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"), // Phase 14: Multi-tenant support
   customerId: integer("customer_id").notNull().references(() => customers.id),
   points: integer("points").notNull().default(0),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiryDate: timestamp("expiry_date"), // Points expire after 12 months
-});
+}, (table) => ({
+  // Phase 14: Composite unique constraint for multi-tenant loyalty balances
+  tenantCustomerUnique: uniqueIndex("loyalty_points_tenant_customer_unique").on(table.tenantId, table.customerId),
+}));
 
 export const loyaltyTiers = pgTable("loyalty_tiers", {
   id: serial("id").primaryKey(),
@@ -930,6 +934,7 @@ export const rewardServices = pgTable("reward_services", {
 
 export const pointsTransactions = pgTable("points_transactions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"), // Phase 14: Multi-tenant support
   loyaltyPointsId: integer("loyalty_points_id").notNull().references(() => loyaltyPoints.id),
   amount: integer("amount").notNull(),
   description: text("description").notNull(),
@@ -938,7 +943,28 @@ export const pointsTransactions = pgTable("points_transactions", {
   source: varchar("source", { length: 30 }).notNull(), // 'appointment', 'referral', 'review', etc.
   sourceId: integer("source_id"), // ID of the related entity (appointment, etc.)
   expiryDate: timestamp("expiry_date"), // When these points expire (12 months from earning)
-});
+}, (table) => ({
+  // Phase 14: Index for tenant-scoped queries
+  tenantCustomerIdx: index("points_transactions_tenant_customer_idx").on(table.tenantId, table.loyaltyPointsId),
+}));
+
+// Phase 14: Promo Engine - Loyalty transactions for promotional awards
+// This table tracks all promo-based point awards (welcome back, referrals, etc.) with anti-abuse tracking
+export const loyaltyTransactions = pgTable("loyalty_transactions", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  deltaPoints: integer("delta_points").notNull(), // positive = earn, negative = redeem
+  promoKey: varchar("promo_key", { length: 50 }), // e.g. 'welcome_back_v1', 'referral_v1'
+  source: varchar("source", { length: 50 }).notNull(), // 'campaign', 'manual', 'invoice', 'promo_pending_fulfilled', etc.
+  metadata: jsonb("metadata"), // Flexible storage for promo-specific data, pending status, etc.
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // Indexes for efficient anti-abuse queries
+  tenantCustomerIdx: index("loyalty_transactions_tenant_customer_idx").on(table.tenantId, table.customerId),
+  tenantPromoIdx: index("loyalty_transactions_tenant_promo_idx").on(table.tenantId, table.promoKey),
+  tenantCustomerPromoIdx: index("loyalty_transactions_tenant_customer_promo_idx").on(table.tenantId, table.customerId, table.promoKey),
+}));
 
 export const customerAchievements = pgTable("customer_achievements", {
   id: serial("id").primaryKey(),

@@ -1,0 +1,523 @@
+🔻 COPY–PASTE THIS INTO REPLIT AGENT (SERVICEPRO v3 REPL ONLY)
+
+You are updating my ServicePro v3 WHITE-LABEL multi-tenant platform (NOT the legacy single-tenant Clean Machine app).
+
+Your goal in this task is to implement PHASE 14 – Unified Loyalty & Promo Engine (Anti-Abuse) as described in the MASTER PLAN, with the following constraints:
+
+It must be multi-tenant, using tenantId and req.tenantDb.withTenantFilter(...) everywhere.
+
+It must be generic for all tenants (detailers, cleaners, etc.).
+
+It must not hard-code Clean Machine’s marketing copy.
+
+It must play nicely with Phase 16 (households & backfill) which is already implemented.
+
+It must not break existing loyalty or campaign behavior; instead it centralizes promo awards going forward.
+
+Implement everything below in this repo as clean, production-quality TypeScript.
+
+0. DISCOVERY (READ-ONLY FIRST)
+
+Locate existing loyalty-related tables and services:
+
+shared/schema.ts:
+
+Any tables with names like loyalty, loyaltyBalances, loyalty_transactions, rewards, etc.
+
+Server/service files:
+
+Anything like loyaltyService.ts, rewardsService.ts, invoiceLoyaltyService.ts, etc.
+
+Locate campaign-related logic:
+
+Any welcome back campaign service or equivalent in ServicePro v3 (not Clean Machine legacy), e.g.:
+
+server/services/campaignService.ts
+
+server/services/promoCampaignsService.ts
+
+or similar.
+
+Routes:
+
+/api/campaigns/..., /api/tenants/:id/campaigns/..., etc.
+
+Locate job/appointment completion logic:
+
+server/services/appointmentsService.ts or similar.
+
+Look for the function that marks jobs/appointments as completed, and any existing hooks that award points, send review requests, etc.
+
+Do NOT modify anything during discovery; just adapt the implementation to what actually exists.
+
+1. DATA MODEL – LOYALTY CORE TABLES
+
+Open shared/schema.ts and ensure we have tenant-scoped loyalty tables. If they already exist, extend them instead of duplicating.
+
+1.1 loyaltyBalances table
+
+If no such table exists, create it. If it exists but lacks tenantId or a composite key, adapt it.
+
+export const loyaltyBalances = pgTable('loyalty_balances', {
+  tenantId: varchar('tenant_id').notNull(),
+  customerId: varchar('customer_id').notNull(),
+  points: integer('points').notNull().default(0),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.tenantId, table.customerId] }),
+}));
+
+
+If you already have a points field or equivalent, reuse it.
+
+Make sure every query later uses tenantId and the Drizzle withTenantFilter pattern.
+
+1.2 loyaltyTransactions table
+
+Again, if a transactions table already exists, extend it. Otherwise create:
+
+export const loyaltyTransactions = pgTable('loyalty_transactions', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id').notNull(),
+  customerId: varchar('customer_id').notNull(),
+  deltaPoints: integer('delta_points').notNull(), // positive = earn, negative = redeem
+  promoKey: varchar('promo_key'),                 // e.g. 'welcome_back_v1', 'referral_v1'
+  source: varchar('source').notNull(),            // 'campaign', 'manual', 'invoice', etc.
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+
+If you already store some of this info, merge the schemas carefully.
+
+Ensure there is an index on {tenantId, customerId} and optionally {tenantId, promoKey}.
+
+1.3 Households & Customers (Phase 16 alignment)
+
+Phase 16 should already have:
+
+households table with tenantId, normalizedAddress, etc.
+
+customers table with householdId and importSource.
+
+If customers.householdId is not yet present, add:
+
+export const customers = pgTable('customers', {
+  // existing fields...
+  householdId: integer('household_id').references(() => households.id),
+  importSource: varchar('import_source'), // 'sheet', 'sms_history', 'portal', etc.
+  // ...
+});
+
+
+Do NOT repopulate households here; Phase 16 already covers backfill. We are just using householdId for anti-abuse limits.
+
+Run/align migrations as needed, but keep them compatible.
+
+2. CORE SERVICE: promoEngine.ts
+
+Create a new service file:
+
+server/services/promoEngine.ts
+
+This will be the single entry point for awarding promo points.
+
+2.1 Public API
+
+At the top of promoEngine.ts, define:
+
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { loyaltyBalances, loyaltyTransactions, customers, households, appointments } from '../shared/schema'; // adjust paths
+import { TenantDb } from '../tenantDb'; // or the correct tenantDb type
+
+export interface AwardPromoPointsArgs {
+  tenantId: string;
+  customerId: string;
+  promoKey: string;          // 'welcome_back_v1', 'referral_v1', etc.
+  basePoints: number;        // "headline" points for this promo
+  source: string;            // 'campaign', 'manual', 'invoice', etc.
+  metadata?: Record<string, any>;
+}
+
+export interface AwardPromoPointsResult {
+  awarded: boolean;
+  pointsGranted: number;
+  reason?: string;           // 'already_awarded', 'household_limit', 'not_eligible', 'no_rule', 'pending', etc.
+}
+
+export async function awardPromoPoints(
+  db: TenantDb,              // usually req.tenantDb
+  args: AwardPromoPointsArgs,
+): Promise<AwardPromoPointsResult> {
+  // Implemented in sections below
+}
+
+
+Adjust imports/types to your existing structure (e.g. if TenantDb lives elsewhere).
+
+2.2 PROMO_RULES configuration
+
+In the same file or a sibling config file server/config/promoRules.ts, define:
+
+export const PROMO_RULES = {
+  welcome_back_v1: {
+    perCustomerLifetimeMax: 1,
+    perCustomerPerYearMax: 1,
+    perHouseholdPerYearMax: 1,
+    requireExistingJob: true,
+    awardMode: 'pending_until_next_completed_job' as const, // 'immediate' | 'pending_until_next_completed_job'
+  },
+  referral_v1: {
+    perCustomerPerYearMax: 5,
+    awardMode: 'immediate' as const,
+  },
+  // more promo configs can be added later
+} as const;
+
+export type PromoKey = keyof typeof PROMO_RULES;
+type AwardMode = (typeof PROMO_RULES)[PromoKey]['awardMode'];
+
+
+This is tenant-agnostic logic; different tenants share the same rule shape, but the data is scoped by tenantId.
+
+We can later make rules configurable per tenant via DB if needed; for now, hard-coded config is fine.
+
+2.3 Anti-abuse logic inside awardPromoPoints
+
+Implement awardPromoPoints with these steps:
+
+Load rules:
+
+const rules = PROMO_RULES[args.promoKey as PromoKey];
+
+if (!rules) {
+  return { awarded: false, pointsGranted: 0, reason: 'no_rule' };
+}
+
+
+Compute time boundaries if needed:
+
+For annual limits, compute startOfYear and endOfYear (UTC):
+
+const now = new Date();
+const startOfYear = new Date(now.getFullYear(), 0, 1);
+const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+
+
+Check per-customer caps:
+
+Use loyaltyTransactions filtered by tenantId, customerId, and promoKey:
+
+perCustomerLifetimeMax: count all matching transactions.
+
+perCustomerPerYearMax: count only createdAt within the current year.
+
+If either threshold is met or exceeded, return:
+
+return { awarded: false, pointsGranted: 0, reason: 'already_awarded' };
+
+
+Check per-household caps (if householdId exists and rule has perHouseholdPerYearMax):
+
+First, get the customer row and grab householdId.
+
+If householdId is present:
+
+Find all customers in that household.
+
+Count loyaltyTransactions for that promoKey and tenantId where customerId in that household and createdAt within this year.
+
+If the count >= perHouseholdPerYearMax, return:
+
+return { awarded: false, pointsGranted: 0, reason: 'household_limit' };
+
+
+Check eligibility (e.g. require existing job):
+
+If rules.requireExistingJob === true:
+
+Query appointments for this {tenantId, customerId}.
+
+Only count jobs with status = completed or equivalent, and optionally only those before the promo award date or before a configured launch date.
+
+If no such appointment exists:
+
+return { awarded: false, pointsGranted: 0, reason: 'not_existing_customer' };
+
+
+Award mode – pending_until_next_completed_job:
+
+If rules.awardMode === 'pending_until_next_completed_job':
+
+Do NOT modify loyaltyBalances.points yet.
+
+Insert a loyaltyTransactions record with:
+
+deltaPoints = 0
+
+promoKey = args.promoKey
+
+source = args.source
+
+metadata containing:
+
+pendingBonusPoints: args.basePoints
+
+status: 'pending'
+
+any passed args.metadata
+
+Return:
+
+return {
+  awarded: true,
+  pointsGranted: 0,
+  reason: 'pending',
+};
+
+
+Award mode – immediate:
+
+If rules.awardMode === 'immediate':
+
+Wrap in a DB transaction using the tenantDb transaction helper.
+
+Inside the transaction:
+
+Insert a loyaltyTransactions row with deltaPoints = args.basePoints and the provided metadata.
+
+Upsert into loyaltyBalances:
+
+If row exists → increment points by basePoints.
+
+If no row → create with points = basePoints.
+
+Return:
+
+return {
+  awarded: true,
+  pointsGranted: args.basePoints,
+};
+
+
+Multi-tenant safety:
+
+For all of the above queries:
+
+Use db.withTenantFilter(table, condition) if available.
+
+Or always include eq(table.tenantId, args.tenantId) in the where clause.
+
+Never query across tenants.
+
+3. HOOK INTO EXISTING FLOWS
+3.1 Welcome Back campaign (ServicePro v3)
+
+Find the ServicePro v3 welcome-back campaign logic (not the legacy Clean Machine file). It might live in:
+
+server/services/welcomeBackCampaignService.ts
+
+or a generic campaignService.ts that has a welcome_back promo.
+
+Wherever it currently directly awards loyalty points, refactor that section to call:
+
+import { awardPromoPoints, PROMO_RULES } from '../services/promoEngine';
+
+const rules = PROMO_RULES.welcome_back_v1;
+const basePoints = isVip ? 500 : 100; // or pulled from tenant-specific settings later
+
+const result = await awardPromoPoints(req.tenantDb, {
+  tenantId: req.tenant.id,
+  customerId,
+  promoKey: 'welcome_back_v1',
+  basePoints,
+  source: 'campaign',
+  metadata: {
+    campaignKey: 'welcome_back_v1',
+    segment: isVip ? 'vip' : 'regular',
+    channel: sendChannel, // 'sms', 'email', etc.
+  },
+});
+
+
+Retain any existing campaign send logging in campaign_grants, campaign_sends, etc.
+
+The promo engine is only responsible for points awarding/anti-abuse, not sending SMS/email.
+
+3.2 Future promos
+
+Document (in code comments) that all future promo-based awards (e.g., referral bonuses, review bonuses, seasonal promos) must go through awardPromoPoints with appropriate promoKey and basePoints.
+
+You do NOT need to implement these other promos yet — just ensure the engine is flexible and generic.
+
+4. PENDING BONUS → REAL POINTS ON JOB COMPLETION
+
+Now wire the “pending until next job” behavior into the job completion flow.
+
+4.1 Locate job completion logic
+
+Find the function that marks an appointment/job as completed, e.g.:
+
+completeAppointment(...)
+
+markJobCompleted(...)
+
+in something like:
+
+server/services/appointmentsService.ts or similar.
+
+4.2 Convert pending promos into real points
+
+In the completion logic, after successfully marking the job as completed:
+
+Look up any pending loyaltyTransactions for this {tenantId, customerId} (for any promoKey where rules.awardMode === pending_until_next_completed_job):
+
+promoKey where PROMO_RULES[promoKey].awardMode === 'pending_until_next_completed_job'
+
+metadata.status = 'pending'
+
+For each such pending transaction:
+
+Read pendingBonusPoints from metadata.
+
+In a transaction:
+
+Update the existing record’s metadata to set status = 'fulfilled' (or similar).
+
+Insert a new loyaltyTransactions record with:
+
+deltaPoints = pendingBonusPoints
+
+promoKey same as original
+
+source = 'promo_pending_fulfilled'
+
+metadata referencing the original pending transaction id.
+
+Upsert/increment loyaltyBalances.points by pendingBonusPoints.
+
+If multiple pending promos exist for the same customer, you may:
+
+Either fulfill them all at once, or
+
+Fulfill only those tied to specific promos (e.g., welcome_back_v1).
+
+Start with fulfilling all pending promos that use pending_until_next_completed_job, since this is simpler and matches the Phase 14 spec.
+
+5. TESTS & QA – promoEngine SPEC
+
+Create a new test file:
+
+server/tests/promoEngine.test.ts
+
+Write unit tests that cover at least:
+
+Welcome Back first award:
+
+Customer with prior completed job.
+
+No prior promo transactions.
+
+awardPromoPoints with promoKey = 'welcome_back_v1':
+
+awarded === true
+
+pointsGranted === 0 (pending)
+
+A pending transaction is created.
+
+Welcome Back second attempt (same customer):
+
+Call again with same promoKey & tenantId & customerId.
+
+Should return:
+
+awarded === false
+
+reason === 'already_awarded'
+
+Household limit:
+
+Two customers in same household.
+
+First gets welcome_back_v1 and passes checks.
+
+Second call for welcome_back_v1 in same year:
+
+awarded === false
+
+reason === 'household_limit'
+
+Pending → fulfilled on job completion:
+
+Create a pending entry with metadata.status = 'pending' and metadata.pendingBonusPoints = 500.
+
+Simulate job completion by calling the job completion hook.
+
+Assert:
+
+pending record now status = 'fulfilled'.
+
+One new transaction with deltaPoints = 500.
+
+loyaltyBalances.points incremented by 500.
+
+Immediate award promo (e.g. referral_v1):
+
+awardMode = 'immediate'.
+
+First call should:
+
+awarded === true, pointsGranted > 0.
+
+Insert transaction with deltaPoints = basePoints.
+
+Increment loyaltyBalances.points.
+
+Ensure tests run with the same multi-tenant test helpers already in the repo.
+
+6. SAFETY & ROLLOUT
+
+Before declaring Phase 14 complete:
+
+Run the full test suite (npx vitest or equivalent).
+
+Start the dev server and ensure:
+
+No TypeScript errors.
+
+No runtime errors on campaign send or job completion.
+
+Manually test on a dev tenant:
+
+Create a test customer with a completed job.
+
+Trigger a Welcome Back campaign or directly call awardPromoPoints for welcome_back_v1.
+
+Then mark a new job completed and verify that:
+
+Pending promos are fulfilled.
+
+Points are added correctly.
+
+Verify tenant isolation:
+
+Use two tenants (e.g. root + another test tenant).
+
+Ensure a promo awarded under one tenant does not affect loyaltyBalances or transactions under another tenant.
+
+Do not change ServicePro’s existing marketing copy or per-tenant campaign messages here. This phase is purely about the loyalty/promo engine and anti-abuse rules, not tenant-facing content.
+
+When all steps above are done, add a short section to MASTER_PLAN_v3.3.md or the current master plan file under Phase 14 – Status: ✅ Implemented with a bullet list summarizing:
+
+loyaltyBalances + loyaltyTransactions in place.
+
+promoEngine.awardPromoPoints implemented.
+
+Pending → fulfilled pipeline wired to job completion.
+
+Welcome Back campaign now using promoEngine.
+
+Tests: promoEngine.test.ts covering core scenarios.
+
+Implement all of this cleanly, with careful TypeScript types, tenant isolation, and no breaking changes for existing tenants.
