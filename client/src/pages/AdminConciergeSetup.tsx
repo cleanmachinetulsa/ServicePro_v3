@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,6 +84,11 @@ export default function AdminConciergeSetup() {
   const [, navigate] = useLocation();
   const [createdTenant, setCreatedTenant] = useState<OnboardResponse['tenant'] | null>(null);
 
+  // Scroll to top when component mounts for better UX
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   const form = useForm<OnboardTenantForm>({
     resolver: zodResolver(onboardTenantSchema),
     defaultValues: {
@@ -109,12 +114,8 @@ export default function AdminConciergeSetup() {
 
   const onboardMutation = useMutation({
     mutationFn: async (data: OnboardTenantForm) => {
-      const response = await apiRequest<OnboardResponse>('/api/admin/concierge/onboard-tenant', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return response;
+      const response = await apiRequest('POST', '/api/admin/concierge/onboard-tenant', data);
+      return await response.json();
     },
     onSuccess: (data) => {
       setCreatedTenant(data.tenant);
@@ -144,11 +145,8 @@ export default function AdminConciergeSetup() {
 
   const impersonateMutation = useMutation({
     mutationFn: async (tenantId: string) => {
-      return await apiRequest('/api/admin/impersonate/start', {
-        method: 'POST',
-        body: JSON.stringify({ tenantId }),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const response = await apiRequest('POST', '/api/admin/impersonate/start', { tenantId });
+      return await response.json();
     },
     onSuccess: (data: any) => {
       toast({
@@ -716,14 +714,24 @@ export default function AdminConciergeSetup() {
                       <FormItem>
                         <FormLabel>Primary Color</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="#3b82f6"
-                            data-testid="input-primary-color"
-                          />
+                          <div className="flex gap-3">
+                            <input
+                              type="color"
+                              value={field.value || '#3b82f6'}
+                              onChange={(e) => field.onChange(e.target.value)}
+                              className="h-11 w-14 cursor-pointer rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                              data-testid="color-picker-primary"
+                            />
+                            <Input
+                              {...field}
+                              placeholder="#3b82f6"
+                              className="flex-1"
+                              data-testid="input-primary-color"
+                            />
+                          </div>
                         </FormControl>
                         <FormDescription>
-                          Hex color (e.g., #3b82f6)
+                          Primary brand color
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -737,11 +745,21 @@ export default function AdminConciergeSetup() {
                       <FormItem>
                         <FormLabel>Accent Color</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="#ec4899"
-                            data-testid="input-accent-color"
-                          />
+                          <div className="flex gap-3">
+                            <input
+                              type="color"
+                              value={field.value || '#ec4899'}
+                              onChange={(e) => field.onChange(e.target.value)}
+                              className="h-11 w-14 cursor-pointer rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                              data-testid="color-picker-accent"
+                            />
+                            <Input
+                              {...field}
+                              placeholder="#ec4899"
+                              className="flex-1"
+                              data-testid="input-accent-color"
+                            />
+                          </div>
                         </FormControl>
                         <FormDescription>
                           Secondary brand color
