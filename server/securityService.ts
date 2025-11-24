@@ -34,7 +34,7 @@ export async function setupTOTP(userId: number, email: string, appName: string =
   try {
     // Check if user already has TOTP setup
     const existing = await db
-      .select()
+      .select({ id: totpSecrets.id })
       .from(totpSecrets)
       .where(eq(totpSecrets.userId, userId))
       .limit(1);
@@ -90,7 +90,7 @@ export async function enableTOTP(userId: number, token: string): Promise<boolean
   try {
     // Get the secret
     const totpRecord = await db
-      .select()
+      .select({ enabled: totpSecrets.enabled, secret: totpSecrets.secret })
       .from(totpSecrets)
       .where(eq(totpSecrets.userId, userId))
       .limit(1);
@@ -138,7 +138,7 @@ export async function verifyTOTP(userId: number, token: string): Promise<boolean
   try {
     // Get the secret
     const totpRecord = await db
-      .select()
+      .select({ secret: totpSecrets.secret, backupCodes: totpSecrets.backupCodes })
       .from(totpSecrets)
       .where(and(
         eq(totpSecrets.userId, userId),
@@ -280,14 +280,14 @@ export async function checkLoginAttempts(
 
     // Check for existing active lockout
     const user = await db
-      .select()
+      .select({ id: users.id })
       .from(users)
       .where(eq(users.username, username))
       .limit(1);
 
     if (user && user.length > 0) {
       const activeLockout = await db
-        .select()
+        .select({ unlockAt: accountLockouts.unlockAt })
         .from(accountLockouts)
         .where(and(
           eq(accountLockouts.userId, user[0].id),
@@ -306,7 +306,7 @@ export async function checkLoginAttempts(
 
     // Count recent failed attempts
     const recentFailures = await db
-      .select()
+      .select({ id: loginAttempts.id })
       .from(loginAttempts)
       .where(and(
         eq(loginAttempts.username, username),
@@ -461,7 +461,18 @@ export async function getAuditLogs(filters?: {
     }
 
     const query = db
-      .select()
+      .select({
+        id: auditLogs.id,
+        userId: auditLogs.userId,
+        action: auditLogs.action,
+        resource: auditLogs.resource,
+        resourceId: auditLogs.resourceId,
+        changes: auditLogs.changes,
+        ipAddress: auditLogs.ipAddress,
+        userAgent: auditLogs.userAgent,
+        metadata: auditLogs.metadata,
+        createdAt: auditLogs.createdAt,
+      })
       .from(auditLogs)
       .orderBy(desc(auditLogs.createdAt))
       .limit(limit)
