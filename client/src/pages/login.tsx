@@ -70,7 +70,7 @@ export default function LoginPage() {
 
       if (data.success) {
         // Login complete (no 2FA required)
-        toast({ title: 'Login successful', description: 'Welcome back!' });
+        toast({ title: 'Login successful', description: 'Welcome back!', duration: 1000 });
         
         // Dismiss mobile keyboard
         if (document.activeElement instanceof HTMLElement) {
@@ -137,7 +137,7 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (data.success) {
-        toast({ title: 'Verification successful', description: 'Welcome back!' });
+        toast({ title: 'Verification successful', description: 'Welcome back!', duration: 1000 });
         
         // Dismiss mobile keyboard
         if (document.activeElement instanceof HTMLElement) {
@@ -268,7 +268,8 @@ export default function LoginPage() {
       if (verifyData.success) {
         toast({ 
           title: 'Biometric login successful', 
-          description: 'Welcome back!' 
+          description: 'Welcome back!',
+          duration: 1000
         });
         
         // Dismiss mobile keyboard
