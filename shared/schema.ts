@@ -174,6 +174,21 @@ export const errorLogs = pgTable("error_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Impersonation events audit log for tracking when owners login as tenants
+export const impersonationEvents = pgTable("impersonation_events", {
+  id: serial("id").primaryKey(),
+  realUserId: integer("real_user_id").notNull().references(() => users.id),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  action: varchar("action", { length: 10 }).notNull(), // 'start' | 'stop'
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+}, (table) => ({
+  realUserIdIdx: index("impersonation_events_real_user_id_idx").on(table.realUserId),
+  tenantIdIdx: index("impersonation_events_tenant_id_idx").on(table.tenantId),
+  timestampIdx: index("impersonation_events_timestamp_idx").on(table.timestamp),
+}));
+
 // Dashboard widget layouts for customizable user dashboards
 export const dashboardLayouts = pgTable("dashboard_layouts", {
   id: serial("id").primaryKey(),
