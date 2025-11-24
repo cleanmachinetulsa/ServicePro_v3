@@ -13,6 +13,7 @@ import { AlertCircle, Smartphone, Download, Maximize, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useLocation } from 'wouter';
 
 // Technician PWA Install Prompt
 function TechnicianInstallPrompt() {
@@ -138,6 +139,7 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
   const { selectedJob, updateJobStatus, jobs, queuedActions, isOnline, makeCall } = useTechnician();
   const { toast } = useToast();
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [, setLocation] = useLocation();
 
   // Detect device orientation
   useEffect(() => {
@@ -330,6 +332,10 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
     }
   };
 
+  const handleQuickBooking = () => {
+    setLocation('/quick-booking');
+  };
+
   return (
     <TechnicianLayout
       technicianName="Technician"
@@ -452,6 +458,7 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
         onEmergencyCall={handleEmergencyCall}
         onQuickPhoto={handleQuickPhoto}
         onNextJob={handleNextJob}
+        onQuickBooking={handleQuickBooking}
         disabled={!selectedJob || isUploadingPhoto}
       />
     </TechnicianLayout>
