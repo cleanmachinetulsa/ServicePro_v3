@@ -208,6 +208,7 @@ router.post('/verify-otp', async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      path: '/', // Make cookie available to all routes
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
