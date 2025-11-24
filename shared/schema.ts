@@ -251,6 +251,8 @@ export const tenantConfig = pgTable("tenant_config", {
   tier: tenantTierEnum("tier").default("starter").notNull(),
   // Concierge setup fields (Phase 5)
   industry: varchar("industry", { length: 100 }), // e.g., 'mobile-detailing', 'lawn-care', 'house-cleaning'
+  // Phase 8: Industry pack identifier for structured seed data
+  industryPackId: varchar("industry_pack_id", { length: 100 }), // e.g., 'auto_detailing', 'lawn_care', 'house_cleaning'
   industryConfig: jsonb("industry_config").$type<{
     featureFlags?: Record<string, boolean>;
     rawSelection?: any;
