@@ -102,7 +102,7 @@ function Router() {
   return (
     <Switch>
       {/* Phase 9: Public Website Generator (PUBLIC ROUTE - NO AUTH) */}
-      <Route path="/site/:slug" component={PublicSite} />
+      <Route path="/site/:subdomain" component={PublicSite} />
 
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
       <Route path="/onboarding/industry" component={OnboardingIndustryPage} />

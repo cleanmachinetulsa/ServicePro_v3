@@ -24,7 +24,7 @@ import {
 interface PublicSiteData {
   tenant: {
     id: string;
-    slug: string;
+    subdomain: string;
     businessName: string;
     city?: string | null;
     planTier: string;
@@ -66,13 +66,13 @@ interface PublicSiteData {
 }
 
 export default function PublicSite() {
-  const [match, params] = useRoute('/site/:slug');
-  const slug = params?.slug;
+  const [match, params] = useRoute('/site/:subdomain');
+  const subdomain = params?.subdomain;
 
   // Fetch public site data
   const { data, isLoading, error } = useQuery<{ success: boolean; data: PublicSiteData }>({
-    queryKey: ['/api/public/site', slug],
-    enabled: !!slug,
+    queryKey: ['/api/public/site', subdomain],
+    enabled: !!subdomain,
   });
 
   const [contactFormData, setContactFormData] = useState({
