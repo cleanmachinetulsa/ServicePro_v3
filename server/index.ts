@@ -32,6 +32,7 @@ import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
+import publicPricingRouter from "./routes.publicPricing";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -257,6 +258,8 @@ app.use(stripeWebhooksRouter);
 app.use(sendgridWebhookRouter);
 // Register public site routes (Phase 9 - Website Generator)
 app.use('/api/public', publicSiteRouter);
+// Register public pricing routes (Phase 7B - Pricing & Tier Comparison)
+app.use('/api/public', publicPricingRouter);
 // Register campaign management routes (requires auth)
 app.use('/api/campaigns', campaignsRouter);
 // Register Welcome Back Campaign routes (tenant admin, requires 'campaigns' feature)
