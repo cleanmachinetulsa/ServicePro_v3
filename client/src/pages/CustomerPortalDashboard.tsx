@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { Calendar, Trophy, LogOut, User, Phone, Mail, MapPin, Car } from 'lucide-react';
 import { format } from 'date-fns';
+import { InstallPromptBanner } from '@/components/PwaComponents';
 
 interface CustomerPortalData {
   customer: {
@@ -116,6 +117,7 @@ export default function CustomerPortalDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
+      <InstallPromptBanner />
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

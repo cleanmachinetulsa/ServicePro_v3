@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, Phone, KeyRound } from 'lucide-react';
+import { InstallPromptBanner } from '@/components/PwaComponents';
 
 export default function CustomerLogin() {
   const [, setLocation] = useLocation();
@@ -142,6 +143,7 @@ export default function CustomerLogin() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+      <InstallPromptBanner />
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center">
