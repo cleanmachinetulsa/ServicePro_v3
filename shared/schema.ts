@@ -238,6 +238,8 @@ export const tenants = pgTable("tenants", {
   isRoot: boolean("is_root").default(false).notNull(),
   planTier: tenantTierEnum("plan_tier").default("starter").notNull(),
   status: tenantStatusEnum("status").default("trialing").notNull(),
+  stripeCustomerId: text("stripe_customer_id"), // Phase 7C: Stripe customer ID for billing
+  stripeSubscriptionId: text("stripe_subscription_id"), // Phase 7C: Active Stripe subscription ID
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

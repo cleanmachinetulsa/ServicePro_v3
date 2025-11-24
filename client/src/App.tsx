@@ -101,6 +101,9 @@ import PublicSite from "./pages/PublicSite";
 // Phase 7B: Pricing & Tier Comparison
 import PricingPage from "./pages/PricingPage";
 
+// Phase 7C: Stripe Billing Integration
+import BillingSuccess from "./pages/BillingSuccess";
+
 function Router() {
   return (
     <Switch>
@@ -250,6 +253,13 @@ function Router() {
       <Route path="/billing">
         <AuthGuard>
           <Billing />
+        </AuthGuard>
+      </Route>
+
+      {/* Phase 7C: Billing Success (after Stripe checkout) */}
+      <Route path="/billing/success">
+        <AuthGuard>
+          <BillingSuccess />
         </AuthGuard>
       </Route>
       <Route path="/admin/employees">
