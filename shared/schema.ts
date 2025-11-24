@@ -226,6 +226,7 @@ export const tenantConfig = pgTable("tenant_config", {
   businessName: varchar("business_name", { length: 255 }).notNull(),
   logoUrl: text("logo_url"),
   primaryColor: varchar("primary_color", { length: 20 }).default("#3b82f6"),
+  accentColor: varchar("accent_color", { length: 20 }), // Phase 5: Secondary brand color
   tier: tenantTierEnum("tier").default("starter").notNull(),
   // Concierge setup fields (Phase 5)
   industry: varchar("industry", { length: 100 }), // e.g., 'mobile-detailing', 'lawn-care', 'house-cleaning'
@@ -235,8 +236,10 @@ export const tenantConfig = pgTable("tenant_config", {
     version?: string;
     updatedAt?: string;
   }>(), // Phase 8C: Industry-specific configuration (feature flags, sub-packs, etc.)
+  primaryContactName: varchar("primary_contact_name", { length: 255 }), // Phase 5: Contact person name
   primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
   primaryCity: varchar("primary_city", { length: 100 }),
+  websiteUrl: varchar("website_url", { length: 500 }), // Phase 5: Tenant's website
   internalNotes: text("internal_notes"), // Owner-only notes about this tenant
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
