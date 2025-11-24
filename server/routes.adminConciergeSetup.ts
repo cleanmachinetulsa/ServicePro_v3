@@ -85,6 +85,14 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
 
         let phoneConfigId: string | null = null;
 
+        // Auto-generate slug if not provided
+        const finalSlug = data.slug || 
+          data.businessName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 50);
+
         // Normalize phone number to E.164 format if needed
         let normalizedPhone = data.phoneNumber.trim();
         if (!normalizedPhone.startsWith('+')) {
@@ -100,7 +108,7 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
           await tx.insert(tenants).values({
             id: tenantId,
             name: data.businessName,
-            subdomain: data.slug || null,
+            subdomain: finalSlug,
             isRoot: false,
             planTier: data.planTier,
             status: data.status,
@@ -152,6 +160,7 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
           tenant: {
             tenantId,
             businessName: data.businessName,
+            slug: finalSlug,
             planTier: data.planTier,
             status: data.status,
             industry: data.industry || null,
