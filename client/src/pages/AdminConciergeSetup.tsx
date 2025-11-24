@@ -22,6 +22,8 @@ import { Sparkles, Building2, MapPin, Mail, Briefcase, FileText, CheckCircle2, A
 import { AppShell } from '@/components/AppShell';
 import { Link, useLocation } from 'wouter';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
+import { getIndustryPackOptions } from '../../shared/industryPacks';
 
 const onboardTenantSchema = z.object({
   businessName: z.string().min(1, 'Business name is required').max(255),
@@ -36,6 +38,9 @@ const onboardTenantSchema = z.object({
     required_error: 'Please select a status',
   }),
   industry: z.string().max(100).optional().or(z.literal('')),
+  // Phase 8: Industry pack selection
+  industryPackId: z.string().max(100).optional().or(z.literal('')),
+  applyIndustryPack: z.boolean().optional().default(true),
   phoneNumber: z.string().min(1, 'Phone number is required').max(50),
   messagingServiceSid: z.string().max(255).optional().or(z.literal('')),
   ivrMode: z.enum(['simple', 'ivr', 'ai-voice'], {
@@ -59,25 +64,19 @@ interface OnboardResponse {
     planTier: string;
     status: string;
     industry: string | null;
+    industryPackId: string | null;
     phoneNumber: string;
     ivrMode: string;
     hasPhoneConfig: boolean;
     websiteUrl: string | null;
+    industryPackApplied: boolean;
+    servicesCreated: number;
+    faqsCreated: number;
   };
 }
 
-const industryOptions = [
-  { value: 'mobile-detailing', label: 'Mobile Auto Detailing' },
-  { value: 'lawn-care', label: 'Lawn Care' },
-  { value: 'house-cleaning', label: 'House Cleaning' },
-  { value: 'window-washing', label: 'Window Washing' },
-  { value: 'pet-grooming', label: 'Pet Grooming' },
-  { value: 'hvac', label: 'HVAC Services' },
-  { value: 'plumbing', label: 'Plumbing' },
-  { value: 'electrical', label: 'Electrical Services' },
-  { value: 'landscaping', label: 'Landscaping' },
-  { value: 'other', label: 'Other' },
-];
+// Phase 8: Get industry pack options from shared config
+const industryPackOptions = getIndustryPackOptions();
 
 export default function AdminConciergeSetup() {
   const { toast } = useToast();
@@ -100,6 +99,8 @@ export default function AdminConciergeSetup() {
       planTier: 'starter',
       status: 'trialing',
       industry: '',
+      industryPackId: '',
+      applyIndustryPack: true,
       phoneNumber: '',
       messagingServiceSid: '',
       ivrMode: 'simple',
@@ -119,9 +120,12 @@ export default function AdminConciergeSetup() {
     },
     onSuccess: (data) => {
       setCreatedTenant(data.tenant);
+      const packMessage = data.tenant.industryPackApplied 
+        ? ` with ${data.tenant.servicesCreated} services and ${data.tenant.faqsCreated} FAQs`
+        : '';
       toast({
         title: 'Success',
-        description: `Tenant "${data.tenant.businessName}" created successfully`,
+        description: `Tenant "${data.tenant.businessName}" created successfully${packMessage}`,
       });
       form.reset();
     },
@@ -549,28 +553,58 @@ export default function AdminConciergeSetup() {
 
                 <FormField
                   control={form.control}
-                  name="industry"
+                  name="industryPackId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Industry</FormLabel>
+                      <FormLabel>Industry Pack</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-industry">
-                            <SelectValue placeholder="Select an industry" />
+                          <SelectTrigger data-testid="select-industry-pack">
+                            <SelectValue placeholder="Select an industry pack" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {industryOptions.map((option) => (
+                          {industryPackOptions.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
-                              {option.label}
+                              <div className="flex items-center gap-2">
+                                {option.icon && <span className="text-lg">{option.icon}</span>}
+                                <div>
+                                  <div className="font-medium">{option.label}</div>
+                                  <div className="text-xs text-muted-foreground">{option.description}</div>
+                                </div>
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Business type (helps with templates and defaults)
+                        We'll pre-fill services, FAQs, and starter website copy based on this industry.
                       </FormDescription>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="applyIndustryPack"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-apply-pack"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>
+                          Auto-apply recommended services and FAQs
+                        </FormLabel>
+                        <FormDescription>
+                          Automatically populate the tenant's database with industry-specific starter content. You can customize everything later.
+                        </FormDescription>
+                      </div>
                     </FormItem>
                   )}
                 />

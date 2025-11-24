@@ -6,6 +6,9 @@ import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { requireRole } from './rbacMiddleware';
 import { z } from 'zod';
+import { getTenantDb } from './tenantDb';
+import { applyIndustryPackToTenant } from './industryPackService';
+import type { IndustryPackId } from '../shared/industryPacks';
 
 /**
  * Concierge Setup Routes (Phase 5)
@@ -32,6 +35,9 @@ const onboardTenantSchema = z.object({
     required_error: 'Status is required',
   }),
   industry: z.string().max(100).optional().or(z.literal('')),
+  // Phase 8: Industry pack selection and auto-apply flag
+  industryPackId: z.string().max(100).optional().or(z.literal('')).nullable(),
+  applyIndustryPack: z.boolean().optional().default(true),
   phoneNumber: z.string().min(1, 'Phone number is required').max(50),
   messagingServiceSid: z.string().max(255).optional().or(z.literal('')).nullable(),
   ivrMode: z.enum(['simple', 'ivr', 'ai-voice'], {
@@ -146,6 +152,37 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
 
         console.log('[CONCIERGE SETUP] Successfully created tenant:', tenantId);
 
+        // Phase 8: Apply industry pack if selected
+        let packResult = null;
+        if (data.industryPackId && data.applyIndustryPack !== false) {
+          console.log(`[CONCIERGE SETUP] Applying industry pack: ${data.industryPackId}`);
+          
+          try {
+            const tenantDb = getTenantDb(tenantId);
+            packResult = await applyIndustryPackToTenant(tenantDb, {
+              tenantId,
+              packId: data.industryPackId as IndustryPackId,
+              overwriteExisting: false, // Only fill empty slots
+            });
+
+            if (packResult.success) {
+              console.log(`[CONCIERGE SETUP] Industry pack applied: ${packResult.servicesCreated} services, ${packResult.faqsCreated} FAQs`);
+            } else {
+              console.warn(`[CONCIERGE SETUP] Industry pack application failed: ${packResult.error}`);
+            }
+          } catch (error: any) {
+            console.error('[CONCIERGE SETUP] Error applying industry pack:', error);
+            // Don't fail the whole tenant creation if pack application fails
+            packResult = {
+              success: false,
+              error: error.message,
+              packApplied: '',
+              servicesCreated: 0,
+              faqsCreated: 0,
+            };
+          }
+        }
+
         // TODO: Phase 5 - Welcome messaging
         // if (data.sendWelcomeEmail && data.contactEmail) {
         //   await sendWelcomeEmail(data.contactEmail, data.businessName);
@@ -164,10 +201,14 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
             planTier: data.planTier,
             status: data.status,
             industry: data.industry || null,
+            industryPackId: data.industryPackId || null,
             phoneNumber: normalizedPhone,
             ivrMode: data.ivrMode,
             hasPhoneConfig: !!phoneConfigId,
             websiteUrl: data.websiteUrl || null,
+            industryPackApplied: packResult?.success || false,
+            servicesCreated: packResult?.servicesCreated || 0,
+            faqsCreated: packResult?.faqsCreated || 0,
           },
         });
       } catch (error: any) {
