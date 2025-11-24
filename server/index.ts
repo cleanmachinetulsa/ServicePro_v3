@@ -30,7 +30,6 @@ import smsTemplatesRouter from "./routes.smsTemplates";
 import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
-import { userThemeRouter } from "./routes.userTheme";
 import { setupGoogleOAuth } from "./googleOAuth";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
@@ -261,8 +260,6 @@ app.use('/api/campaigns', campaignsRouter);
 app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 // Register SMS templates routes (requires auth)
 app.use('/api/sms-templates', smsTemplatesRouter);
-// Register user theme preference routes (requires auth)
-app.use(userThemeRouter);
 // Register referral invoice routes (validation public, apply requires auth)
 registerReferralInvoiceRoutes(app);
 // Register industry onboarding routes (Phase 8B)
