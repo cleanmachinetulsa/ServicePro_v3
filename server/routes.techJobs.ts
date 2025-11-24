@@ -861,6 +861,22 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
         console.log(`[CUSTOMER INTELLIGENCE] Service history recorded for customer ${completedAppointment.customerId}`);
       }
 
+      // 3c. Phase 14: Fulfill any pending promo bonuses for this customer
+      try {
+        const { fulfillPendingPromos } = await import('../services/promoEngine');
+        const pointsGranted = await fulfillPendingPromos(
+          req.tenantDb!,
+          req.tenant!.id,
+          completedAppointment.customerId
+        );
+        if (pointsGranted > 0) {
+          console.log(`[PROMO ENGINE] ✅ Fulfilled pending promos: ${pointsGranted} points granted to customer ${completedAppointment.customerId}`);
+        }
+      } catch (promoError) {
+        // Don't fail job completion if promo fulfillment fails
+        console.error('[PROMO ENGINE] Error fulfilling pending promos:', promoError);
+      }
+
       // 4. Update or create today's deposit record (only for cash/check payments)
       let depositRecord = null;
       
