@@ -326,7 +326,37 @@ export const customers = pgTable("customers", {
   lastAppointmentAt: timestamp("last_appointment_at"),
   totalAppointments: integer("total_appointments").notNull().default(0),
   lifetimeValue: numeric("lifetime_value", { precision: 10, scale: 2 }).default("0.00"),
-});
+  
+  // Phase 16 - Customer Backfill fields
+  importSource: varchar("import_source", { length: 255 }), // Track where customer data came from (e.g., 'sheet,db', 'sms,db')
+  householdId: integer("household_id"), // Reference to households table for grouping customers by address
+}, (table) => ({
+  tenantPhoneIdx: index("customers_tenant_phone_idx").on(table.tenantId, table.phone),
+  tenantEmailIdx: index("customers_tenant_email_idx").on(table.tenantId, table.email),
+}));
+
+// Phase 16 - Households table for grouping customers by normalized address
+export const households = pgTable("households", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
+  normalizedAddress: text("normalized_address").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantAddressUnique: uniqueIndex("households_tenant_address_unique").on(table.tenantId, table.normalizedAddress),
+}));
+
+// Phase 16 - Migration log table to track backfill runs
+export const migrationLog = pgTable("migration_log", {
+  id: serial("id").primaryKey(),
+  type: varchar("type", { length: 100 }).notNull(), // e.g., 'customer_backfill'
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  notes: text("notes"),
+}, (table) => ({
+  typeIdx: index("migration_log_type_idx").on(table.type),
+  tenantIdx: index("migration_log_tenant_idx").on(table.tenantId),
+}));
 
 // Customer Vehicles - Track customer vehicle information for personalized service
 export const customerVehicles = pgTable("customer_vehicles", {

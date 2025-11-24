@@ -1,0 +1,610 @@
+🔻 COPY–PASTE INTO REPLIT AGENT (SERVICEPRO V3 REPL ONLY)
+
+You are updating my ServicePro v3 multi-tenant platform (NOT the legacy single-tenant Clean Machine app).
+ServicePro v3 already has tenant isolation with tenantDb and tenantConfig, and root tenant = my Clean Machine business.
+
+Your job in this task is to implement Phase 16 – Customer Master Backfill & Historical Merge, but limited to the root tenant for now.
+
+0. High-level goal (what you’re building)
+
+We want a one-time but repeatable “backfill engine” that:
+
+Reads customer data from my existing Google Sheet(s) used for Clean Machine.
+
+Merges that with:
+
+Existing customers rows in the DB.
+
+Existing appointments and invoices (or equivalent job/payment objects).
+
+Computes and stores, per customer:
+
+firstJobDate
+
+lastJobDate
+
+totalJobs
+
+totalLifetimeValue
+
+Assigns customers into households via normalized address.
+
+Writes all this into the multi-tenant DB correctly (scoped to tenantId='root' using tenantDb.withTenantFilter).
+
+Exposes admin-only endpoints so I can:
+
+Run a dry-run summary.
+
+Run the real backfill for root.
+
+This is backend-only for now; a UI card can be added later.
+
+This implements the core of PHASE 16 – CUSTOMER BACKFILL from my master plan.
+
+1. Step 1 – Discover existing structures
+
+Before changing anything, scan the repo and adapt to what exists.
+
+Find the ServicePro v3 master plan file (e.g. MASTER_PLAN_v3.3.md, or latest) and confirm that Phase 16 is documented there.
+
+You don’t need to edit it (I just updated it manually), but keep it in mind for naming consistency.
+
+Find the DB schema file:
+
+Likely shared/schema.ts (or similar).
+
+Identify:
+
+customers table.
+
+appointments / jobs / services table(s) that track completed work.
+
+invoices or any table storing monetary totals per job.
+
+Note (for yourself, in comments) how tenantId is represented and used in those tables.
+
+Find Google Sheets integration that we already use in this repo:
+
+Search for phrases like: google, sheets, GoogleSheets, sheetsService, etc.
+
+Identify:
+
+The helper service used to read from Sheets (e.g. googleSheetsService.ts).
+
+Any existing logic that reads the Clean Machine customer sheet or knowledge-base sheets.
+
+Find the tenantDb wrapper and its pattern:
+
+tenantDb.withTenantFilter(...)
+
+How to create a tenant-scoped DB handle for a given tenantId outside HTTP routes (if needed).
+
+Do not rename or break any existing logic. We are extending, not refactoring.
+
+2. Step 2 – Schema refresh for customers & households
+
+We want richer customer fields and a households table, but we must adapt to what already exists.
+
+2.1 Update customers table
+
+Open shared/schema.ts (or wherever customers is defined) and:
+
+If these fields do NOT already exist, add them to the customers table:
+
+firstJobDate: timestamp('first_job_date'),
+lastJobDate: timestamp('last_job_date'),
+totalJobs: integer('total_jobs').notNull().default(0),
+totalLifetimeValue: integer('total_lifetime_value').notNull().default(0),
+// Track source of initial creation / import:
+importSource: varchar('import_source'),
+// For anti-abuse & household grouping:
+householdId: integer('household_id'),
+
+
+If similar fields already exist under different names (e.g. first_service_at, lifetime_value), reuse those rather than duplicating. Map your logic accordingly.
+
+Add an index on (tenant_id, phone) and/or (tenant_id, email) if not present.
+
+Wire these fields into the existing Drizzle schema correctly.
+
+Create/update the appropriate migration so these columns exist in the DB. Make sure migrations are backward compatible (default values where needed).
+
+2.2 Households table
+
+If there is no households table yet, create one:
+
+export const households = pgTable('households', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id').notNull(),
+  normalizedAddress: text('normalized_address').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  tenantAddressUnique: uniqueIndex('households_tenant_address_unique')
+    .on(table.tenantId, table.normalizedAddress),
+}));
+
+
+The uniqueIndex ensures one household per {tenant, normalizedAddress}.
+
+Update customers.householdId to reference this table if your Drizzle version supports cross-table references in the same file.
+
+2.3 Migration log table (lightweight)
+
+Add a small log table to track backfill runs:
+
+export const migrationLog = pgTable('migration_log', {
+  id: serial('id').primaryKey(),
+  type: varchar('type').notNull(),    // e.g. 'customer_backfill'
+  tenantId: varchar('tenant_id').notNull(),
+  startedAt: timestamp('started_at').defaultNow(),
+  completedAt: timestamp('completed_at'),
+  notes: text('notes'),
+});
+
+
+We’ll use this to record when we ran the backfill for root.
+
+Run migrations / ensure everything compiles.
+
+3. Step 3 – Address normalization helper
+
+Create server/services/addressNormalization.ts with:
+
+export interface RawAddress {
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+}
+
+export function normalizeAddress(raw: RawAddress): string | null {
+  const parts: string[] = [];
+
+  const line1 = raw.addressLine1?.trim();
+  const line2 = raw.addressLine2?.trim();
+  const city = raw.city?.trim();
+  const state = raw.state?.trim();
+  const postal = raw.postalCode?.trim();
+  const country = raw.country?.trim() || 'USA';
+
+  if (!line1 && !city && !postal) {
+    // Not enough info to form a household key
+    return null;
+  }
+
+  function norm(s: string | undefined | null): string | null {
+    if (!s) return null;
+    return s
+      .toUpperCase()
+      .replace(/\./g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  const nLine1 = norm(line1);
+  const nLine2 = norm(line2);
+  const nCity = norm(city);
+  const nState = norm(state);
+  const nPostal = postal ? postal.replace(/\s+/g, '') : null;
+  const nCountry = norm(country);
+
+  if (nLine1) parts.push(nLine1);
+  if (nLine2) parts.push(nLine2);
+  if (nCity) parts.push(nCity);
+  if (nState) parts.push(nState);
+  if (nPostal) parts.push(nPostal);
+  if (nCountry) parts.push(nCountry);
+
+  if (parts.length === 0) return null;
+
+  return parts.join(' | ');
+}
+
+
+This is a simple normalization, not a full geocoder.
+
+It’s enough to group “same address with small variations” into a household.
+
+4. Step 4 – CustomerBackfill service
+
+Create server/services/customerBackfillService.ts.
+
+4.1 Types and API
+
+At the top, define:
+
+interface BackfillOptions {
+  tenantId: string;   // For now we'll only support 'root'
+  dryRun?: boolean;   // If true, no DB writes
+}
+
+interface BackfillStats {
+  tenantId: string;
+  dryRun: boolean;
+  customersExamined: number;
+  customersInserted: number;
+  customersUpdated: number;
+  householdsCreated: number;
+}
+
+
+Export a main function:
+
+export async function runCustomerBackfill(
+  db: BaseDbClientType,     // underlying db
+  options: BackfillOptions
+): Promise<BackfillStats>;
+
+
+Implementation guidelines below.
+
+4.2 Get tenantDb for this tenant
+
+Inside runCustomerBackfill:
+
+Validate tenantId:
+
+For now, only allow 'root'.
+
+If something else is passed, throw an error.
+
+Use whatever helper exists to get a tenant-scoped DB:
+
+If in services you already use wrapTenantDb(db, tenantId):
+
+Use that.
+
+Else, mirror the existing pattern from background jobs.
+
+Your goal: obtain a tenantDb which supports tenantDb.withTenantFilter and tenantDb.query.customers, etc.
+
+We’ll call runCustomerBackfill using the platform DB and tenantId 'root'.
+
+4.3 Read data from Google Sheets
+
+Use the existing Sheets integration for this repo.
+
+If there is a specific sheet ID and tab names for Clean Machine customers, re-use them.
+
+E.g. tabs like:
+
+Customer information
+
+Live Client Requests
+
+Customer_info_sheet
+
+If the names/IDs differ, adapt to what exists.
+
+Build an in-memory structure:
+
+interface IntermediateJob {
+  date?: Date;
+  value?: number;
+}
+
+interface IntermediateCustomer {
+  // identity
+  phone?: string;
+  email?: string;
+  name?: string;
+
+  // address
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+
+  // aggregated jobs
+  jobs: IntermediateJob[];
+
+  // meta
+  importSources: Set<string>;
+}
+
+
+Use a Map<string, IntermediateCustomer> keyed primarily by phone number (normalized):
+
+type CustomerKey = string; // e.g. normalized phone
+
+const customerMap = new Map<CustomerKey, IntermediateCustomer>();
+
+
+Where:
+
+normalizedPhone = digits only (e.g. strip non-digits and unify format).
+
+If a row doesn’t have a phone but has email, you can:
+
+Use email as a secondary key (email:<address>).
+
+But mark those for manual review later in notes.
+
+When reading each sheet row:
+
+Extract:
+
+Name
+
+Phone
+
+Email (if any)
+
+Address fields
+
+Any job date / job value fields present in that tab.
+
+Merge into the IntermediateCustomer for that phone key:
+
+Prefer non-empty values.
+
+Push job info into jobs[].
+
+Add the tab name or sheet name to importSources.
+
+This entire operation must work even if some tabs are missing or have slightly different column names; handle missing data gracefully.
+
+4.4 Merge with existing DB customers
+
+Using tenantDb:
+
+Fetch all existing customers for this tenant:
+
+const existingCustomers = await tenantDb.query.customers.findMany({
+  where: tenantDb.withTenantFilter(customers, sql`TRUE`),
+});
+
+
+For each existing customer:
+
+Normalize their phone and/or email to the same key format you used for customerMap.
+
+If a matching entry exists in customerMap:
+
+Merge DB data into the intermediate object (e.g. if DB has address and sheet doesn’t).
+
+If not:
+
+Create a new IntermediateCustomer entry using DB data, with:
+
+importSources containing 'db'.
+
+This ensures we don’t lose any DB-only customers.
+
+4.5 Augment with appointments & invoices
+
+For each intermediate record in customerMap:
+
+Identify the matching DB customer row (if any) by phone/email or by previously matched mapping.
+
+If that row exists and has id, use it to query:
+
+appointments (or the equivalent jobs table) for this customer and this tenant.
+
+Any invoices or billing objects tied to those jobs.
+
+Compute:
+
+firstJobDate = earliest completed job date.
+
+lastJobDate = latest completed job date.
+
+totalJobs = number of completed jobs.
+
+totalLifetimeValue = sum of invoice amounts (or estimated revenue per job if invoice data is not explicit).
+
+If there is no existing customer row yet (e.g. from Sheets-only data):
+
+You can still attach job history from Sheets-based “job rows” if the sheet contains job-level data.
+
+The function should be resilient:
+
+If there’s no jobs table or no invoices, it should still fill what it can, without throwing.
+
+4.6 Assign households
+
+Use normalizeAddress from addressNormalization.ts:
+
+For each IntermediateCustomer with some address:
+
+Build RawAddress and call normalizeAddress(raw).
+
+If result is null, skip household assignment.
+
+If non-null:
+
+Check if a households row already exists for {tenantId, normalizedAddress} using tenantDb.withTenantFilter.
+
+If yes, use that householdId.
+
+If not and dryRun === false, create a new households row:
+
+Increment householdsCreated stat.
+
+Store the householdId on the intermediate record.
+
+In dry run mode, you still compute how many households would be created but don’t insert them.
+
+4.7 Upsert into customers (respecting dryRun)
+
+The last step: for each IntermediateCustomer, produce an upsert operation into customers:
+
+Determine a matching existing customers row (if any).
+
+Create an object of fields to write:
+
+tenantId (always provided).
+
+phone / email / name.
+
+Address fields.
+
+householdId (if any).
+
+firstJobDate / lastJobDate / totalJobs / totalLifetimeValue.
+
+importSource (e.g. 'sheet,db', 'sheet,sms', etc. by joining importSources set).
+
+If no existing customer row:
+
+customersInserted++.
+
+If dryRun === false, perform insert.
+
+If an existing row is found:
+
+Compare to see if any fields are actually changing.
+
+customersUpdated++ if at least one field changes.
+
+If dryRun === false, perform an update.
+
+All DB writes should be scoped via tenantDb.withTenantFilter for safety.
+
+Make sure that in dry run:
+
+You perform no inserts/updates to customers or households.
+
+You still compute all the counts in BackfillStats.
+
+4.8 Migration log entry
+
+At the beginning of runCustomerBackfill:
+
+Insert a migrationLog row with:
+
+type = 'customer_backfill'
+
+tenantId = options.tenantId
+
+startedAt = now
+
+completedAt = null
+
+notes = 'dryRun: true/false'.
+
+At the end (even if partial errors occurred, as long as function completes):
+
+Update that log row to set completedAt = now and update notes with summary JSON (e.g. total counts) if convenient.
+
+If dryRun === true, you can still log it, but mark clearly in notes that it was a dry run.
+
+5. Step 5 – Admin endpoints for backfill
+
+Create a small admin routes file if one doesn’t exist yet for “ops” tasks, e.g.:
+
+server/routes.adminBackfill.ts
+
+Register it in the main server/routes.ts under a path like /api/admin/backfill.
+
+5.1 Auth & tenant constraints
+
+These endpoints must require owner/admin auth.
+
+They should internally force tenantId = 'root' for now; ignore any tenantId from the client.
+
+You can reuse the same auth guard used for /api/admin/tenants.
+
+5.2 Endpoint – summary (dry-run)
+
+POST /api/admin/backfill/customers/summary
+
+Body: optional { dryRun?: boolean } – default true.
+
+Behavior:
+
+Call runCustomerBackfill(db, { tenantId: 'root', dryRun: true }).
+
+Return the BackfillStats JSON.
+
+No data writes should occur here (enforced by dryRun).
+
+5.3 Endpoint – execute
+
+POST /api/admin/backfill/customers/run
+
+Body: { confirm: boolean } and require confirm === true.
+
+Behavior:
+
+Call runCustomerBackfill(db, { tenantId: 'root', dryRun: false }).
+
+Return BackfillStats.
+
+This should be guarded and not easily triggered by accident.
+
+5.4 Error handling
+
+If anything goes wrong, return 500 with a helpful message and log details server-side.
+
+The function should be robust enough that some individual row issues (bad data) don’t blow up the entire run; best effort is fine, but don’t overcomplicate.
+
+6. Step 6 – Docs in replit.md (or similar)
+
+Add a short section to replit.md or your main dev doc:
+
+Customer Backfill (Phase 16 – root tenant)
+
+Purpose: Merge 6+ years of Clean Machine history into a canonical customers table for tenant 'root'.
+
+Commands / endpoints:
+
+POST /api/admin/backfill/customers/summary – dry-run, owner-only.
+
+POST /api/admin/backfill/customers/run – real backfill, owner-only, requires {"confirm": true}.
+
+Internals:
+
+Reads from Google Sheets (customer tabs).
+
+Merges with DB customers + appointments + invoices.
+
+Computes firstJobDate, lastJobDate, totalJobs, totalLifetimeValue.
+
+Assigns householdId per normalized address.
+
+Logs to migration_log.
+
+7. Step 7 – Sanity checks
+
+When you’re done:
+
+Ensure TypeScript compiles and server starts cleanly.
+
+On a dev/staging environment:
+
+Call /api/admin/backfill/customers/summary:
+
+Confirm it returns plausible numbers.
+
+Confirm dryRun is true and no DB writes occur (spot-check DB).
+
+When I’m ready, I will run the real backfill:
+
+Call /api/admin/backfill/customers/run with { "confirm": true }.
+
+Then spot-check a few customers:
+
+Confirm firstJobDate / lastJobDate look right.
+
+totalJobs roughly matches reality.
+
+totalLifetimeValue is non-zero for regulars.
+
+8. Non-negotiable constraints
+
+✅ This work is for ServicePro v3 multi-tenant repo, not the legacy Clean Machine app.
+
+✅ All queries must respect tenant isolation (tenantDb.withTenantFilter).
+
+✅ For now, the backfill is hardcoded to tenantId='root'; do not expose multi-tenant options yet.
+
+✅ Do not break or rename existing core tables or features.
+
+✅ Be defensive around Google Sheets columns — handle missing data gracefully.
+
+Please now implement this Phase 16 customer backfill (backend + admin endpoints) end-to-end in the ServicePro v3 repo according to the steps above.

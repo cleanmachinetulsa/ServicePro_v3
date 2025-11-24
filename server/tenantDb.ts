@@ -26,7 +26,8 @@ import {
   creditTransactions, serviceAddons, customerAddonCredits,
   milestoneDefinitions, customerMilestoneProgress, reminderRules,
   reminderJobs, reminderEvents, reminderSnoozes, reminderOptOuts,
-  reminderConsent, customerVehicles, customerServiceHistory
+  reminderConsent, customerVehicles, customerServiceHistory, households, 
+  migrationLog
 } from '@shared/schema';
 
 const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
@@ -120,6 +121,8 @@ const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
   [customerServiceHistory, { tenantIdColumn: customerServiceHistory.tenantId }],
   [contacts, { tenantIdColumn: contacts.tenantId }],
   [auditLog, { tenantIdColumn: auditLog.tenantId }],
+  [households, { tenantIdColumn: households.tenantId }],
+  [migrationLog, { tenantIdColumn: migrationLog.tenantId }],
 ]);
 
 export interface TenantDb {
