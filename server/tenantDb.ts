@@ -27,7 +27,7 @@ import {
   milestoneDefinitions, customerMilestoneProgress, reminderRules,
   reminderJobs, reminderEvents, reminderSnoozes, reminderOptOuts,
   reminderConsent, customerVehicles, customerServiceHistory, households, 
-  migrationLog
+  migrationLog, customerIdentities, customerOtps, customerSessions
 } from '@shared/schema';
 
 const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
@@ -123,6 +123,9 @@ const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
   [contacts, { tenantIdColumn: contacts.tenantId }],
   [auditLog, { tenantIdColumn: auditLog.tenantId }],
   [households, { tenantIdColumn: households.tenantId }],
+  [customerIdentities, { tenantIdColumn: customerIdentities.tenantId }],
+  [customerOtps, { tenantIdColumn: customerOtps.tenantId }],
+  [customerSessions, { tenantIdColumn: customerSessions.tenantId }],
   [migrationLog, { tenantIdColumn: migrationLog.tenantId }],
 ]);
 
