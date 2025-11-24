@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from './authMiddleware';
 import { requireRole } from './rbacMiddleware';
-import { tenants } from '@shared/schema';
+import { tenants, impersonationEvents } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { getRootDb } from './tenantDb';
 
@@ -15,13 +15,6 @@ const startImpersonationSchema = z.object({
 router.post('/start', requireAuth, requireRole('owner'), async (req, res) => {
   try {
     const { tenantId } = startImpersonationSchema.parse(req.body);
-
-    if (tenantId === 'root') {
-      return res.status(400).json({
-        success: false,
-        message: 'Root tenant cannot be impersonated',
-      });
-    }
 
     const rootDb = getRootDb();
     const tenant = await rootDb
@@ -45,6 +38,15 @@ router.post('/start', requireAuth, requireRole('owner'), async (req, res) => {
         if (err) reject(err);
         else resolve();
       });
+    });
+
+    // Log to impersonation_events table
+    await rootDb.insert(impersonationEvents).values({
+      realUserId: req.session.userId!,
+      tenantId,
+      action: 'start',
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') || null,
     });
 
     const { logAuditEvent } = await import('./securityService');
@@ -100,7 +102,17 @@ router.post('/stop', requireAuth, async (req, res) => {
       });
     });
 
-    if (wasImpersonating) {
+    if (wasImpersonating && formerTenantId) {
+      // Log to impersonation_events table
+      const rootDb = getRootDb();
+      await rootDb.insert(impersonationEvents).values({
+        realUserId: req.session.userId!,
+        tenantId: formerTenantId,
+        action: 'stop',
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || null,
+      });
+
       const { logAuditEvent } = await import('./securityService');
       await logAuditEvent({
         userId: req.session.userId,

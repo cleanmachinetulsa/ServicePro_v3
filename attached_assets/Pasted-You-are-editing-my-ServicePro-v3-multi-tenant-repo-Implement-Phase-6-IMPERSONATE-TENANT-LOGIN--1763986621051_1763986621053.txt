@@ -1,0 +1,170 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+Implement Phase 6 – IMPERSONATE TENANT (“LOGIN AS…”) exactly as described in MASTER_PLAN_V3.md (v3.3). 
+
+GOALS:
+- Allow owner-level accounts to impersonate any tenant safely.
+- Let owner jump directly into a tenant’s dashboard as if they were that tenant.
+- Never overwrite or modify the tenant’s real owner/admin accounts.
+- Maintain full audit logs of impersonation start/stop.
+- Ensure all data access and UI rendering reflect the impersonated tenant_id.
+- Protect Clean Machine root tenant (tenant_id='root') unless explicitly chosen.
+
+====================================================
+STEP 0 — READ THE SPEC IN MASTER PLAN v3.3
+====================================================
+Search for “PHASE 6 – IMPERSONATE TENANT”.
+This is the authoritative behavior.
+
+====================================================
+STEP 1 — AUTH & TOKEN MODEL
+====================================================
+Add support for two layers of identity inside the session/jwt:
+
+1. REAL ACTOR:
+   - The logged-in user (owner).
+   - Stored as `realUserId`.
+
+2. EFFECTIVE CONTEXT:
+   - The tenant being impersonated.
+   - Stored as `impersonatedTenantId`.
+
+When NOT impersonating:
+- `realUserId === userId`
+- `impersonatedTenantId === null`
+
+When impersonating:
+- `realUserId` = owner account
+- `userId` remains owner account
+- `impersonatedTenantId` = target tenant_id
+
+DO NOT modify tenants’ own admin accounts.
+DO NOT log in as the tenant’s user — impersonation uses the owner’s session with overridden tenant context.
+
+====================================================
+STEP 2 — BACKEND API ENDPOINTS
+====================================================
+Create two new admin-only routes:
+
+1) POST /api/admin/impersonate/start
+Body:
+{
+  tenantId: string
+}
+
+Behavior:
+- Requires owner role.
+- Validates tenant exists.
+- Writes an impersonation state into session:
+    session.realUserId = owner.id
+    session.impersonatedTenantId = tenantId
+    session.startedAt = new Date()
+- Write audit log entry:
+    impersonation_events:
+      id, realUserId, tenantId, action='start', timestamp
+
+Returns: { ok: true, tenantId }
+
+2) POST /api/admin/impersonate/stop
+Behavior:
+- Clear impersonation fields:
+    session.impersonatedTenantId = null
+- Write audit log entry:
+    impersonation_events:
+      id, realUserId, tenantId, action='stop', timestamp
+
+Returns: { ok: true }
+
+====================================================
+STEP 3 — MIDDLEWARE
+====================================================
+Modify tenant resolution middleware so that:
+
+IF session.impersonatedTenantId is set:
+    req.tenantId = session.impersonatedTenantId
+    req.tenant = DB tenants table lookup
+    req.tenantDb = tenantDb(req.tenantId)
+ELSE:
+    normal behavior
+
+Add `req.impersonation` metadata:
+{
+   isImpersonating: true/false,
+   realUserId,
+   impersonatedTenantId
+}
+
+====================================================
+STEP 4 — AUDIT LOGGING
+====================================================
+Create new table (if not present):
+impersonation_events:
+- id (pk)
+- real_user_id (fk -> users)
+- tenant_id (fk -> tenants)
+- action ('start' | 'stop')
+- timestamp
+
+Never delete these logs.
+
+====================================================
+STEP 5 — FRONTEND (ADMIN DASHBOARD)
+====================================================
+Add a new admin page: /admin/impersonation-log (optional)
+- List recent impersonation events.
+- Filter by tenant or user.
+- Useful for debugging.
+
+Update AdminTenants list:
+- Next to each tenant row, add a button:
+   “Login as Tenant”
+- Only visible to owner users.
+- On click:
+   POST /api/admin/impersonate/start
+   Redirect to /dashboard (tenant dashboard)
+- Disable button for:
+   - already impersonated tenant
+   - maybe disable for root tenant unless explicitly desired
+
+Add “Exit Impersonation” banner:
+- Visible at the top of EVERY page when impersonating.
+- Shows:
+    “Viewing ServicePro as (tenant.businessName). Exit”
+- Clicking “Exit” triggers:
+   POST /api/admin/impersonate/stop
+   Redirect back to Admin Tenants page.
+
+====================================================
+STEP 6 — UI SAFE GUARDS
+====================================================
+When impersonating:
+- Hide sensitive owner-only admin links:
+    e.g. Admin Tenants, Admin Phone Config, Concierge Setup
+- Only show tenant features allowed to that tenant, not owner features.
+- Add visual banner around UI to prevent confusion.
+
+====================================================
+STEP 7 — TESTING
+====================================================
+Backend tests:
+- Starting impersonation sets session fields correctly.
+- Stopping impersonation clears them.
+- Tenant resolution respects impersonation override.
+- Non-owner: 403 for impersonate actions.
+
+Frontend manual tests:
+- Click “Login as Tenant” → Should jump into tenant dashboard.
+- Booking/calendar/etc should show tenant data.
+- Exit returns to admin context.
+- Clean Machine root tenant behaves normally unless impersonated explicitly.
+
+====================================================
+STEP 8 — NO CLEAN MACHINE MODIFICATIONS
+====================================================
+- Do NOT modify root tenant’s data.
+- Do NOT auto-generate phone configs.
+- Only impersonate root when intentionally chosen.
+
+====================================================
+END OF PHASE 6 IMPLEMENTATION BLOCK
+====================================================
