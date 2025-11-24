@@ -30,8 +30,14 @@ router.post('/start', requireAuth, requireRole('owner'), async (req, res) => {
       });
     }
 
+    // Generate unique session ID for this impersonation
+    const impersonationSessionId = `imp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const startedAt = new Date();
+
     req.session.impersonatingTenantId = tenantId;
-    req.session.impersonationStartedAt = new Date().toISOString();
+    req.session.impersonationTenantName = tenant[0].name;
+    req.session.impersonationStartedAt = startedAt.toISOString();
+    req.session.impersonationSessionId = impersonationSessionId;
 
     await new Promise<void>((resolve, reject) => {
       req.session.save((err) => {
@@ -42,9 +48,12 @@ router.post('/start', requireAuth, requireRole('owner'), async (req, res) => {
 
     // Log to impersonation_events table
     await rootDb.insert(impersonationEvents).values({
+      sessionId: impersonationSessionId,
       realUserId: req.session.userId!,
       tenantId,
+      tenantName: tenant[0].name,
       action: 'start',
+      startedAt,
       ipAddress: req.ip,
       userAgent: req.get('user-agent') || null,
     });
@@ -91,9 +100,20 @@ router.post('/stop', requireAuth, async (req, res) => {
   try {
     const wasImpersonating = !!req.session.impersonatingTenantId;
     const formerTenantId = req.session.impersonatingTenantId;
+    const impersonationSessionId = req.session.impersonationSessionId;
+    const startedAtStr = req.session.impersonationStartedAt;
+
+    const endedAt = new Date();
+    let durationSeconds = null;
+    if (startedAtStr) {
+      const startedAt = new Date(startedAtStr);
+      durationSeconds = Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000);
+    }
 
     req.session.impersonatingTenantId = null;
+    req.session.impersonationTenantName = null;
     req.session.impersonationStartedAt = null;
+    req.session.impersonationSessionId = null;
 
     await new Promise<void>((resolve, reject) => {
       req.session.save((err) => {
@@ -102,13 +122,26 @@ router.post('/stop', requireAuth, async (req, res) => {
       });
     });
 
-    if (wasImpersonating && formerTenantId) {
-      // Log to impersonation_events table
+    if (wasImpersonating && formerTenantId && impersonationSessionId) {
+      // Log to impersonation_events table with correlation
       const rootDb = getRootDb();
+      
+      // Get tenant name for audit trail
+      const [tenant] = await rootDb
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, formerTenantId))
+        .limit(1);
+
       await rootDb.insert(impersonationEvents).values({
+        sessionId: impersonationSessionId,
         realUserId: req.session.userId!,
         tenantId: formerTenantId,
+        tenantName: tenant?.name || formerTenantId,
         action: 'stop',
+        startedAt: startedAtStr ? new Date(startedAtStr) : endedAt,
+        endedAt,
+        durationSeconds,
         ipAddress: req.ip,
         userAgent: req.get('user-agent') || null,
       });

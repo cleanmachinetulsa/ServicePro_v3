@@ -916,21 +916,6 @@ export function registerAuthRoutes(app: Express) {
       const user = (req as any).user;
       const impersonationContext = getImpersonationContext(req);
 
-      let impersonatedTenantName: string | null = null;
-      if (impersonationContext.tenantId) {
-        const { getRootDb } = await import('./tenantDb');
-        const rootDb = getRootDb();
-        const tenant = await rootDb
-          .select()
-          .from(tenants)
-          .where(eq(tenants.id, impersonationContext.tenantId))
-          .limit(1);
-
-        if (tenant && tenant.length > 0) {
-          impersonatedTenantName = tenant[0].name;
-        }
-      }
-
       res.json({
         success: true,
         user: {
@@ -941,7 +926,7 @@ export function registerAuthRoutes(app: Express) {
         impersonation: {
           isActive: impersonationContext.isImpersonating,
           tenantId: impersonationContext.tenantId,
-          tenantName: impersonatedTenantName,
+          tenantName: impersonationContext.tenantName,
           startedAt: impersonationContext.startedAt,
         },
       });

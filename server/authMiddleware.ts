@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { isImpersonating } from './authHelpers';
 
 /**
  * Middleware to check if user is authenticated
@@ -18,8 +19,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       });
     }
 
+    // CRITICAL: When impersonating, owner users must be fetched from root DB
+    // because they exist in root tenant, not the impersonated tenant's DB
+    const impersonating = isImpersonating(req);
+    const db = impersonating ? (await import('./tenantDb')).getRootDb() : req.tenantDb!;
+
     // Get user from database
-    const userResult = await req.tenantDb!
+    const userResult = await db
       .select()
       .from(users)
       .where(eq(users.id, req.session.userId))
@@ -40,7 +46,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // This prevents privilege escalation if user enables 2FA after session creation
     // or if attacker intercepts session between password and 2FA steps
     const { isTOTPEnabled } = await import('./securityService');
-    const has2FA = await isTOTPEnabled(req.tenantDb!, user.id);
+    const has2FA = await isTOTPEnabled(db, user.id);
     
     if (has2FA && !req.session.twoFactorVerified) {
       console.warn(`[AUTH] User ${user.username} has 2FA enabled but session lacks verification. Rejecting request.`);

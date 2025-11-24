@@ -177,16 +177,21 @@ export const errorLogs = pgTable("error_logs", {
 // Impersonation events audit log for tracking when owners login as tenants
 export const impersonationEvents = pgTable("impersonation_events", {
   id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 50 }).notNull(), // Correlation ID linking start/stop events
   realUserId: integer("real_user_id").notNull().references(() => users.id),
   tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  tenantName: text("tenant_name"), // Snapshot of tenant name at impersonation time
   action: varchar("action", { length: 10 }).notNull(), // 'start' | 'stop'
+  startedAt: timestamp("started_at").notNull(), // When impersonation started
+  endedAt: timestamp("ended_at"), // When impersonation ended (only for 'stop' events)
+  durationSeconds: integer("duration_seconds"), // Duration in seconds (only for 'stop' events)
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
-  timestamp: timestamp("timestamp").defaultNow().notNull(),
 }, (table) => ({
+  sessionIdIdx: index("impersonation_events_session_id_idx").on(table.sessionId),
   realUserIdIdx: index("impersonation_events_real_user_id_idx").on(table.realUserId),
   tenantIdIdx: index("impersonation_events_tenant_id_idx").on(table.tenantId),
-  timestampIdx: index("impersonation_events_timestamp_idx").on(table.timestamp),
+  startedAtIdx: index("impersonation_events_started_at_idx").on(table.startedAt),
 }));
 
 // Dashboard widget layouts for customizable user dashboards

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +10,21 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { navigationItems } from '@/config/navigationItems';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+
+interface AuthContext {
+  success: boolean;
+  user: {
+    id: number;
+    username: string;
+    role: string;
+  };
+  impersonation: {
+    isActive: boolean;
+    tenantId: string | null;
+    tenantName: string | null;
+    startedAt: string | null;
+  };
+}
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -29,6 +45,12 @@ export function AppShell({
   const [location, navigate] = useLocation();
   const { isDark, toggleTheme } = useTheme();
 
+  const { data: authContext } = useQuery<AuthContext>({
+    queryKey: ['/api/auth/context'],
+    refetchOnWindowFocus: true,
+    refetchInterval: 30000,
+  });
+
   const handleNavigate = (path: string) => {
     navigate(path);
     setDrawerOpen(false);
@@ -42,9 +64,17 @@ export function AppShell({
   };
 
   const renderNavigationItems = (isMobile = false) => {
+    // Filter out owner-only items when impersonating
+    const ownerOnlyIds = ['concierge-setup', 'tenants', 'phone-config'];
+    const isImpersonating = authContext?.impersonation?.isActive || false;
+    
+    const filteredItems = isImpersonating
+      ? navigationItems.filter(item => !ownerOnlyIds.includes(item.id))
+      : navigationItems;
+
     return (
       <nav className="space-y-1" data-tour-id="sidebar-nav">
-        {navigationItems.map((item) => {
+        {filteredItems.map((item) => {
           if (item.separator) {
             return (
               <div key={item.id} className="my-3">
