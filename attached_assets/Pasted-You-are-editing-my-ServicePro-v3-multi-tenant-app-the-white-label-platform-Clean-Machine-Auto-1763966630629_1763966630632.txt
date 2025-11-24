@@ -1,0 +1,548 @@
+You are editing my **ServicePro v3** multi-tenant app (the white-label platform). Clean Machine Auto Detail is the **root tenant** running inside this system.
+
+We have:
+- Phase 15: Customer Portal + OTP login
+- Phase 16: Customer Portal Dashboard (appointments, history, reschedule/cancel requests)
+- Global loyalty system + Clean Machine–specific tiers and a one-time 500-point welcome bonus (from previous phases)
+
+Now implement **Phase 16.5 – Loyalty Welcome Funnel & Showcase++ Portal Landing**.
+
+This must:
+- Create a **beautiful, cinematic `/portal/welcome` page** that matches or exceeds the visual quality of my `cleanmachinetulsa.com/showcase` page.
+- Tie that page into the **loyalty welcome bonus** funnel (500-point one-time reward).
+- Use global, tenant-agnostic code with **Clean Machine–specific config** for the root tenant.
+- Update the **master plan / phases docs** to include Phase 16.5.
+
+Do everything in this prompt in a single pass.
+
+====================================================
+PHASE 16.5 – OVERVIEW (BEHAVIOR + UX)
+====================================================
+
+User story:
+
+- As a Clean Machine customer, when I tap the SMS link about the new loyalty system, I land on a **gorgeous welcome page**.
+- The page:
+  - Explains the new system (portal + loyalty).
+  - Shows how points work (1 point per $1).
+  - Shows reward tiers (500 / 1,000 / 2,000 / 3,000).
+  - Highlights the **500-point welcome bonus**.
+  - Lets me:
+    - Sign in & claim points (portal login).
+    - Book a service.
+    - Buy a gift card.
+- The look & feel should be **Showcase++**:
+  - Deep gradient background, “galaxy” feel.
+  - Glassmorphism cards with glow.
+  - Rounded pill badges.
+  - Gradient CTAs with icons & hover states.
+  - Smooth, lightweight animations.
+  - Fully responsive and mobile-first.
+
+Constraints:
+
+- All code must be **tenant-agnostic**.
+- Clean Machine–specific copy/URLs must come from **tenant config / seed**, not hardcoded conditionals.
+- Keep performance / accessibility in mind.
+
+====================================================
+PART 1 – BACKEND: PORTAL WELCOME CONFIG ENDPOINT
+====================================================
+
+1. Check whether we already have a backend endpoint for portal welcome config, something like:
+
+   - `GET /api/portal/welcome-config`
+   - or similar.
+
+   If it exists:
+   - Extend it to support the fields described below.
+   If it does NOT exist:
+   - Create a new route under the existing API structure (likely in a `portal` or `public` router).
+
+2. The response for **any tenant** should be a JSON object roughly like:
+
+   ```ts
+   {
+     heading: string;
+     subheading: string;
+     badge?: string;
+     bullets: string[];
+     tiers: {
+       points: number;
+       label: string;
+       description?: string;
+     }[];
+     welcomeOffer: {
+       points: number;
+       label: string;
+       finePrint: string;
+     };
+     ctas: {
+       primary: { label: string; href: string };     // Sign in / claim 500 points
+       secondary?: { label: string; href: string };  // Book a service
+       giftCard?: { label: string; href: string };   // Buy gift card
+       learnMore?: { label: string; href: string };  // Optional info page/anchor
+     };
+     trust: {
+       heading: string;
+       bullets: string[];
+     };
+   }
+Implement a helper like getPortalWelcomeConfig(tenantId) that:
+
+Pulls from tenant settings / config (as established in the loyalty phase):
+
+loyalty.pointsPerDollar
+
+loyalty.welcomeBonus.points
+
+reward tiers
+
+booking URL
+
+gift card URL
+
+Fills in sensible default copy per tenant.
+
+For the Clean Machine root tenant:
+
+Use the following semantics (copy can be slightly polished, but keep content):
+
+heading:
+
+"Welcome to Clean Machine Rewards"
+
+subheading:
+
+"Earn 1 point for every dollar you spend and redeem points for free detailing services and upgrades."
+
+badge:
+
+"New • Hassle-Free Booking & Rewards"
+
+bullets:
+
+"Book faster with our new hassle-free online portal."
+
+"Track your detailing history and upcoming appointments in one place."
+
+"Earn points automatically with every visit or gift card purchase."
+
+tiers:
+
+500 pts – "Free Leather/Upholstery Protector or Engine Bay Cleaning"
+
+1,000 pts – "Free Maintenance Detail"
+
+2,000 pts – "Free Paint Enhancement"
+
+3,000 pts – "Free 1-Year Ceramic Coating"
+
+welcomeOffer:
+
+points: 500
+
+label: "Get 500 bonus points when you sign in and book a service or buy a holiday gift card."
+
+finePrint:
+
+"One-time welcome bonus per customer. Bonus points are granted when your first service is completed or your gift card purchase is confirmed. You can redeem them for a free Leather Protector or Engine Bay Cleaning, or save them toward bigger rewards."
+
+ctas:
+
+primary:
+
+label: "Sign In & Claim 500 Points"
+
+href: "/portal/login" (Clean Machine’s OTP portal route)
+
+secondary:
+
+label: "Book a Service"
+
+href: <CLEAN_MACHINE_BOOKING_URL> (use the actual booking URL already configured for the tenant)
+
+giftCard:
+
+label: "Buy a Holiday Gift Card"
+
+href: <CLEAN_MACHINE_SQUARE_GIFT_CARD_URL> (use configured gift card URL)
+
+learnMore (optional):
+
+label: "See Full Rewards Breakdown"
+
+href: can be an anchor on the same page like "#rewards".
+
+trust:
+
+heading: "No spam. Just perks."
+
+bullets:
+
+"You can opt out of promotional messages any time by replying STOP."
+
+"You’ll still receive important updates about scheduled services."
+
+"Your points and booking history are stored securely in your customer portal."
+
+Ensure multi-tenant safety:
+
+All portal welcome config functions must take tenantId.
+
+No hardcoded “Clean Machine” checks inside route handler; use config from DB/tenant settings.
+
+====================================================
+PART 2 – FRONTEND ROUTE: /portal/welcome
+Create or refine a React page for /portal/welcome, e.g.:
+
+client/src/pages/portal/Welcome.tsx
+
+or the appropriate path under client/src/pages/portal/.
+
+Route integration:
+
+Ensure whatever router we use (React Router, file-based, etc.) maps /portal/welcome to this component.
+
+From the portal login and from SMS links, /portal/welcome must be reachable.
+
+Data fetching:
+
+On mount, call GET /api/portal/welcome-config.
+
+Manage states:
+
+loading – show skeleton or simple centered loader + “Loading your rewards…”
+
+error – show friendly message and a “Try again” button that re-fetches.
+
+data – render full layout.
+
+Use whatever fetch utility is standard in this codebase (e.g. useSWR, a custom hook, fetch, etc.).
+
+====================================================
+PART 3 – SHOWCASE++ VISUAL DESIGN
+Implement /portal/welcome using a Showcase++ aesthetic inspired by cleanmachinetulsa.com/showcase:
+
+Background & container:
+
+Full-screen background:
+
+Deep blue / navy gradient with purple and subtle teal hints, similar to showcase.
+
+Optional faint starfield / noise overlay if already supported.
+
+Content centered in a max-width container (e.g. max-w-5xl or max-w-6xl) with generous padding:
+
+px-4 md:px-6 lg:px-8
+
+py-10 md:py-16 lg:py-20
+
+Hero section:
+
+Top badge:
+
+A pill with gradient background (blue → purple), echoing the “Investor-Ready Marketing Platform” style.
+
+Text from badge in config.
+
+Main heading:
+
+Large, bold, white text (heading).
+
+Optionally emphasize key terms (“Rewards”, “Loyalty”, “Clean Machine”) with a gradient text span (blue → violet), similar to your “Detailing Business” gradient word.
+
+Subheading:
+
+Medium weight, softer white (text-slate-200 style), using subheading.
+
+CTAs:
+
+Primary button:
+
+Gradient background (blue → purple).
+
+Slight glass/blur effect if consistent with design system.
+
+Icon on the left (e.g. a star / sparkles / reward icon from existing icon set).
+
+Label from ctas.primary.label, link from ctas.primary.href.
+
+Secondary buttons:
+
+Book a Service and Buy a Holiday Gift Card.
+
+Use outline or “ghost” gradient style consistent with showcase CTAs.
+
+Layout:
+
+Stack vertically on small screens.
+
+Horizontal row with gap on larger screens.
+
+“How It Works” steps section:
+
+Section title: "How It Works".
+
+Subtitle: short explanation using bullets or custom copy.
+
+Three cards in a grid (1-column on mobile, 3-column on desktop):
+
+Step 1 – “Join the Portal”
+“Sign in with your phone number to create your account in a few taps.”
+
+Step 2 – “Book or Buy a Gift Card”
+“Schedule your next detail or purchase a holiday gift card — your spending earns points automatically.”
+
+Step 3 – “Earn & Redeem Points”
+“Use your points for free add-ons and full services, from Leather Protector to Ceramic Coating.”
+
+Style:
+
+Glassmorphism cards:
+
+Semi-transparent dark background.
+
+Soft border (1px) with subtle gradient.
+
+Rounded corners (e.g. rounded-2xl).
+
+Shadow consistent with showcase cards.
+
+Icons:
+
+Use existing icon library (no new dependencies) for a “user/phone”, “calendar/gift”, and “star/shield” style icons.
+
+Reward Tiers section:
+
+Anchor this section with id="rewards" so the Learn More CTA can jump here.
+
+Title: "Reward Tiers".
+
+Subtext: e.g. "Earn 1 point per dollar and unlock these rewards:".
+
+Grid of tier cards using tiers from API:
+
+Each card displays:
+
+Points label: e.g. "500 Points".
+
+Tier label: config label.
+
+Optional description or microcopy (we can derive small descriptions if not provided).
+
+Visually highlight the 500-point tier (welcome tier):
+
+Slightly brighter border.
+
+Maybe a small “Great starting point” badge.
+
+Layout:
+
+1-column on mobile, 2-column on tablets, possibly 4 in a row on large screens.
+
+Welcome Offer highlight card:
+
+A large, central glass card that strongly emphasizes the welcome bonus:
+
+Title: "Limited-Time Welcome Bonus".
+
+Description: from welcomeOffer.label.
+
+Show welcomeOffer.points (500) prominently in a badge.
+
+Fine print text from welcomeOffer.finePrint in smaller, low-contrast text at the bottom.
+
+Include another instance of the primary CTA:
+
+“Sign In & Claim 500 Points” button inside this card.
+
+Visual style:
+
+Slightly larger and brighter than the other cards.
+
+Gradient border accent.
+
+Soft inner glow or subtle animated gradient background (if we already have a lightweight pattern for that).
+
+Trust / consent section:
+
+Short section with trust.heading and trust.bullets.
+
+Present as a subtle 2-column layout or a single wide card:
+
+Icon (shield / check).
+
+Text bullets.
+
+This builds confidence about SMS usage and opt-out.
+
+Bottom CTA strip:
+
+Similar to “Ready to See Clean Machine in Action?” section on showcase:
+
+Title: e.g. "Ready to Start Earning Points?"
+
+Short line: "Join the portal, book your next detail, and claim your 500-point welcome bonus."
+
+Two buttons:
+
+Primary: “Sign In & Claim 500 Points” (portal login)
+
+Secondary: “Book a Service”
+
+Same call-to-action styling as hero for consistency.
+
+Animations / polish:
+
+Use existing animation utilities if present (e.g. framer-motion, CSS transitions).
+
+Guidelines:
+
+Fade-in / slight upward motion on section cards as they scroll into view.
+
+Hover lifts + soft shadow increase on cards.
+
+Buttons with subtle hover scale and gradient shift.
+
+Do NOT introduce heavy new dependencies if the project isn’t already using them. Reuse what exists or use lightweight CSS.
+
+Responsiveness:
+
+Ensure layout looks excellent on:
+
+Small smartphones (narrow width).
+
+Tablets.
+
+Large desktop monitors.
+
+Test cases:
+
+Long tier labels.
+
+Multiple bullets.
+
+No giftCard CTA (for future tenants).
+
+Accessibility:
+
+Use semantic headings (h1, h2, h3).
+
+Ensure color contrast is sufficient (text vs background).
+
+Buttons are keyboard-focusable with visible focus styles.
+
+Aria labels on main landmark containers if appropriate.
+
+====================================================
+PART 4 – LOYALTY / WELCOME FUNNEL INTEGRATION
+Make sure /portal/welcome uses the same tenant context as the rest of portal routes so the correct config is loaded.
+
+This page itself does NOT issue points; it’s the top of the funnel.
+
+The loyalty pipeline remains:
+
+Customer visits /portal/welcome.
+
+Clicks Sign In & Claim 500 Points → /portal/login (Phase 15 OTP).
+
+They log in, then:
+
+Book a service in the portal OR
+
+Use the gift card link (Square).
+
+When the first service is completed (or gift card confirmed), the loyalty service:
+
+Calls issueWelcomeBonusIfEligible({ tenantId, customerId, triggerType }).
+
+When the customer chooses to redeem on an appointment:
+
+redeemWelcomeBonusOnAppointment gives them:
+
+Leather Protector OR Engine Bay Cleaning (500-point tier) for free.
+
+All this logic was defined in previous phases; ensure /portal/welcome simply displays data from config and does not duplicate business rules.
+
+In the portal dashboard (Phase 16), consider adding a small note that links back to /portal/welcome when the customer has not yet used their welcome bonus, but this can be a TODO comment if not trivial.
+
+====================================================
+PART 5 – DOCS: ADD PHASE 16.5 TO MASTER PLAN
+Locate the main plan / phases docs, likely files such as:
+
+SERVICEPRO_MASTER_PLAN.md
+
+PHASES.md
+
+or similar project roadmap files.
+
+Add a new section for:
+
+Phase 16.5 – Loyalty Welcome Funnel & Showcase++ Portal Landing
+
+Include:
+
+Short description:
+
+“Adds a premium /portal/welcome landing page integrated with the loyalty system. This page introduces the new portal + rewards, explains reward tiers, and funnels customers into OTP login, booking, and gift card purchases.”
+
+Key features:
+
+Tenant-aware portal welcome config endpoint.
+
+Premium, showcase-level responsive UI.
+
+Clean Machine root tenant seeded with loyalty copy, CTAs, and tier descriptions.
+
+Deep integration with one-time 500-point welcome bonus.
+
+Dependencies:
+
+Phase 15 (OTP login).
+
+Loyalty schema + reward tiers + ledger (prior phase).
+
+Status:
+
+Mark as “Implemented” / “Complete” as appropriate for this repo once done.
+
+If you maintain any internal JSON/YAML registry of phases (e.g. used inside an admin UI), add/append Phase 16.5 there as well with the same description.
+
+====================================================
+PART 6 – FINAL CHECKLIST
+Before finishing, verify:
+
+ GET /api/portal/welcome-config returns correct data for the Clean Machine tenant (heading, copy, tiers, CTAs, trust text).
+
+ /portal/welcome route exists and uses that API.
+
+ The /portal/welcome page:
+
+ Uses the deep gradient + glassmorphism style aligned with cleanmachinetulsa.com/showcase.
+
+ Has a hero section with badge, heading, subheading, and main CTAs.
+
+ Shows a “How It Works” 3-step section.
+
+ Shows reward tiers in a polished grid.
+
+ Has a distinct welcome-offer highlight card with 500-point bonus.
+
+ Includes a trust / SMS consent section.
+
+ Ends with a strong bottom CTA strip similar to the showcase page’s sandbox/free-trial section.
+
+ Is fully responsive and looks premium on mobile and desktop.
+
+ No tenant-specific Clean Machine values are hardcoded; they come from tenant config / seed.
+
+ Loyalty funnel remains consistent:
+
+ /portal/welcome leads to /portal/login.
+
+ Reward issuance and redemption are still handled in the loyalty services and not duplicated here.
+
+ Master plan / phases docs include Phase 16.5 with accurate description and dependencies.
+
+Implement all of the above changes now as Phase 16.5 – Loyalty Welcome Funnel & Showcase++ Portal Landing.
