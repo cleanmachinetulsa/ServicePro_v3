@@ -229,8 +229,34 @@ export async function requestCustomerOtp(
 
   console.log(`[OTP] Generated OTP for ${maskedDestination}, expires at ${expiresAt.toISOString()}`);
 
+  // Detect dev mode or missing Twilio credentials
+  const isOtpDevMode =
+    process.env.OTP_DEV_MODE === '1' ||
+    !process.env.TWILIO_ACCOUNT_SID ||
+    !process.env.TWILIO_AUTH_TOKEN ||
+    !process.env.TWILIO_MESSAGING_SERVICE_SID;
+
   // Send OTP via appropriate channel
   if (destinationType === 'sms') {
+    if (isOtpDevMode) {
+      // DEV MODE: Log the OTP code to console instead of sending SMS
+      console.log('='.repeat(60));
+      console.log('[OTP DEV MODE] 🔐 VERIFICATION CODE');
+      console.log('='.repeat(60));
+      console.log(`Phone: ${maskedDestination}`);
+      console.log(`Code:  ${code}`);
+      console.log(`Expires: ${expiresAt.toISOString()}`);
+      console.log('='.repeat(60));
+      console.log('[OTP DEV MODE] Copy the code above to complete login');
+      console.log('='.repeat(60));
+      
+      return {
+        success: true,
+        maskedDestination,
+      };
+    }
+
+    // PRODUCTION: Send real SMS via Twilio
     const businessName = await getTenantBusinessName(db, tenantId);
     const message = `Your ${businessName} verification code is ${code}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`;
     
@@ -242,6 +268,24 @@ export async function requestCustomerOtp(
       return { success: false, reason: 'sms_send_failed' };
     }
   } else if (destinationType === 'email') {
+    if (isOtpDevMode) {
+      // DEV MODE: Log the OTP code to console instead of sending email
+      console.log('='.repeat(60));
+      console.log('[OTP DEV MODE] 🔐 VERIFICATION CODE');
+      console.log('='.repeat(60));
+      console.log(`Email: ${maskedDestination}`);
+      console.log(`Code:  ${code}`);
+      console.log(`Expires: ${expiresAt.toISOString()}`);
+      console.log('='.repeat(60));
+      console.log('[OTP DEV MODE] Copy the code above to complete login');
+      console.log('='.repeat(60));
+      
+      return {
+        success: true,
+        maskedDestination,
+      };
+    }
+
     // TODO (Phase X): Implement email OTP sending via SendGrid
     console.log(`[OTP] Email OTP not yet implemented for ${maskedDestination}`);
     return { success: false, reason: 'email_not_implemented' };
