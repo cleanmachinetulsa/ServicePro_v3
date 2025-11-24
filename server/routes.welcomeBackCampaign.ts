@@ -148,6 +148,7 @@ router.put('/welcome-back', async (req: Request, res: Response) => {
 const sendCampaignSchema = z.object({
   audience: z.enum(['vip', 'regular']),
   previewOnly: z.boolean().optional().default(false),
+  includeNonLoyalty: z.boolean().optional().default(false),
 });
 
 router.post('/welcome-back/send', async (req: Request, res: Response) => {
@@ -165,14 +166,15 @@ router.post('/welcome-back/send', async (req: Request, res: Response) => {
       });
     }
 
-    const { audience, previewOnly } = validation.data;
+    const { audience, previewOnly, includeNonLoyalty } = validation.data;
     
-    console.log(`[WELCOME_BACK] ${previewOnly ? 'Previewing' : 'Sending'} ${audience} campaign for tenant ${tenantId}`);
+    console.log(`[WELCOME_BACK] ${previewOnly ? 'Previewing' : 'Sending'} ${audience} campaign for tenant ${tenantId} ${includeNonLoyalty ? '(ALL customers)' : '(loyalty opt-ins only)'}`);
 
     const result = await sendTenantWelcomeBackCampaign(tenantDb, {
       tenantId,
       audience,
       previewOnly,
+      includeNonLoyalty,
     });
     
     res.json({

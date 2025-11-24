@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Mail, MessageSquare, Send, Calendar, Users, Gift, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Label } from '@/components/ui/label';
@@ -109,6 +110,7 @@ function WelcomeBackCampaign() {
   const { toast } = useToast();
   const [previewMode, setPreviewMode] = useState<'vip' | 'regular' | null>(null);
   const [sending, setSending] = useState(false);
+  const [includeNonLoyalty, setIncludeNonLoyalty] = useState(false);
 
   // Fetch campaign config
   const { data: configData, isLoading: configLoading } = useQuery({
@@ -134,8 +136,8 @@ function WelcomeBackCampaign() {
 
   // Send campaign mutation
   const sendCampaignMutation = useMutation({
-    mutationFn: async ({ audience, previewOnly }: { audience: 'vip' | 'regular'; previewOnly: boolean }) => {
-      const response = await apiRequest('POST', '/api/admin/campaigns/welcome-back/send', { audience, previewOnly });
+    mutationFn: async ({ audience, previewOnly, includeNonLoyalty }: { audience: 'vip' | 'regular'; previewOnly: boolean; includeNonLoyalty: boolean }) => {
+      const response = await apiRequest('POST', '/api/admin/campaigns/welcome-back/send', { audience, previewOnly, includeNonLoyalty });
       return response.json();
     },
     onSuccess: (data, variables) => {
@@ -163,15 +165,16 @@ function WelcomeBackCampaign() {
 
   const handlePreview = (audience: 'vip' | 'regular') => {
     setPreviewMode(audience);
-    sendCampaignMutation.mutate({ audience, previewOnly: true });
+    sendCampaignMutation.mutate({ audience, previewOnly: true, includeNonLoyalty });
   };
 
   const handleSend = (audience: 'vip' | 'regular') => {
-    if (!confirm(`Are you sure you want to send the ${audience.toUpperCase()} campaign? This will award points and send messages to customers.`)) {
+    const audienceDesc = includeNonLoyalty ? 'ALL customers' : 'loyalty opt-in customers only';
+    if (!confirm(`Are you sure you want to send the ${audience.toUpperCase()} campaign to ${audienceDesc}? This will award points and send messages.`)) {
       return;
     }
     setSending(true);
-    sendCampaignMutation.mutate({ audience, previewOnly: false });
+    sendCampaignMutation.mutate({ audience, previewOnly: false, includeNonLoyalty });
   };
 
   if (configLoading) {
@@ -194,6 +197,32 @@ function WelcomeBackCampaign() {
           </Badge>
         </div>
       </div>
+
+      {/* Audience Filter Option */}
+      <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+        <CardContent className="pt-4">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="include-non-loyalty"
+              checked={includeNonLoyalty}
+              onCheckedChange={(checked) => setIncludeNonLoyalty(checked === true)}
+              data-testid="checkbox-include-non-loyalty"
+            />
+            <div className="space-y-1">
+              <Label
+                htmlFor="include-non-loyalty"
+                className="text-sm font-medium cursor-pointer"
+              >
+                Send to ALL customers (not just loyalty program members)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                When checked, this campaign will be sent to all VIP or Regular customers, including those who haven't opted into the loyalty program yet. 
+                Bonus points will still be awarded to everyone who receives the campaign.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Configuration Preview */}
       <div className="grid md:grid-cols-2 gap-4">

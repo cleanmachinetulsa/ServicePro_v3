@@ -3200,3 +3200,41 @@ export type TenantConfig = typeof tenantConfig.$inferSelect;
 export type InsertTenantConfig = z.infer<typeof insertTenantConfigSchema>;
 export type TenantPhoneConfig = typeof tenantPhoneConfig.$inferSelect;
 export type InsertTenantPhoneConfig = z.infer<typeof insertTenantPhoneConfigSchema>;
+
+// ============================================================
+// PHASE 16.5 - PORTAL WELCOME CONFIG TYPES
+// ============================================================
+export interface WelcomeTier {
+  points: number;
+  label: string;
+  description?: string;
+}
+
+export interface WelcomeOffer {
+  points: number;
+  label: string;
+  finePrint: string;
+}
+
+export interface WelcomeCTAs {
+  primary: { label: string; href: string };
+  secondary?: { label: string; href: string };
+  giftCard?: { label: string; href: string };
+  learnMore?: { label: string; href: string };
+}
+
+export interface TrustSection {
+  heading: string;
+  bullets: string[];
+}
+
+export interface PortalWelcomeConfig {
+  heading: string;
+  subheading: string;
+  badge?: string;
+  bullets: string[];
+  tiers: WelcomeTier[];
+  welcomeOffer: WelcomeOffer;
+  ctas: WelcomeCTAs;
+  trust: TrustSection;
+}

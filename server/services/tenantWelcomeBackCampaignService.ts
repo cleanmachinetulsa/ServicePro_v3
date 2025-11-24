@@ -44,6 +44,7 @@ export interface TenantWelcomeBackSendOptions {
   tenantId: string;
   audience: CampaignAudience;
   previewOnly?: boolean;
+  includeNonLoyalty?: boolean; // Send to ALL customers, not just loyalty opt-ins
 }
 
 export interface TenantWelcomeBackSendResult {
@@ -348,7 +349,7 @@ export async function sendTenantWelcomeBackCampaign(
   tenantDb: TenantDb,
   options: TenantWelcomeBackSendOptions
 ): Promise<TenantWelcomeBackSendResult> {
-  const { tenantId, audience, previewOnly = false } = options;
+  const { tenantId, audience, previewOnly = false, includeNonLoyalty = false } = options;
 
   // Load tenant and verify feature access
   const [tenant] = await db
@@ -385,16 +386,21 @@ export async function sendTenantWelcomeBackCampaign(
   const qrUrl = audience === 'vip' ? config.qrUrlVip : config.qrUrlRegular;
 
   // Load target customers
+  // Build filter conditions
+  const filters = [
+    eq(customers.tenantId, tenantId),
+    eq(customers.isVip, audience === 'vip')
+  ];
+  
+  // Only filter by loyalty opt-in if includeNonLoyalty is false
+  if (!includeNonLoyalty) {
+    filters.push(eq(customers.loyaltyProgramOptIn, true));
+  }
+  
   const targetCustomers = await tenantDb
     .select()
     .from(customers)
-    .where(
-      and(
-        eq(customers.tenantId, tenantId),
-        eq(customers.loyaltyProgramOptIn, true),
-        eq(customers.isVip, audience === 'vip')
-      )
-    );
+    .where(and(...filters));
 
   const result: TenantWelcomeBackSendResult = {
     total: targetCustomers.length,

@@ -91,6 +91,9 @@ import CustomerLogin from "./pages/CustomerLogin";
 import CustomerPortalDashboard from "./pages/CustomerPortalDashboard";
 import CustomerSettings from "./pages/CustomerSettings";
 
+// Phase 16.5: Portal Welcome Page
+import PortalWelcome from "./pages/PortalWelcome";
+
 function Router() {
   return (
     <Switch>
@@ -364,7 +367,8 @@ function Router() {
       <Route path="/privacy-policy" component={PrivacyPolicyPage} />
       <Route path="/careers" component={Careers} />
 
-      {/* Phase 15: Customer Portal Routes */}
+      {/* Phase 15 & 16.5: Customer Portal Routes */}
+      <Route path="/portal/welcome" component={PortalWelcome} />
       <Route path="/portal/login" component={CustomerLogin} />
       <Route path="/portal/settings" component={CustomerSettings} />
       <Route path="/portal" component={CustomerPortalDashboard} />
