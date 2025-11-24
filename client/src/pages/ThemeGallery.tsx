@@ -23,6 +23,10 @@ export default function ThemeGallery() {
   const applyThemeMutation = useMutation({
     mutationFn: async (themeId: string) => {
       const response = await apiRequest('PUT', '/api/user/theme', { themeId });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to apply theme');
+      }
       return await response.json();
     },
     onSuccess: (data) => {
@@ -33,10 +37,11 @@ export default function ThemeGallery() {
       queryClient.invalidateQueries({ queryKey: ['/api/user/theme'] });
       applyThemeToDOM(data.theme);
     },
-    onError: () => {
+    onError: (error: Error) => {
+      console.error('Theme application error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to apply theme. Please try again.',
+        description: error.message || 'Failed to apply theme. Please try again.',
         variant: 'destructive',
       });
     },
