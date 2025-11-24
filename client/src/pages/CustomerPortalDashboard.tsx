@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import { Calendar, Trophy, LogOut, User, Phone, Mail, MapPin, Car } from 'lucide-react';
+import { Calendar, Trophy, LogOut, User, Phone, Mail, MapPin, Car, Settings } from 'lucide-react';
 import { format } from 'date-fns';
 import { InstallPromptBanner } from '@/components/PwaComponents';
 
@@ -129,10 +129,16 @@ export default function CustomerPortalDashboard() {
               Your customer portal
             </p>
           </div>
-          <Button variant="outline" onClick={handleLogout} data-testid="button-logout">
-            <LogOut className="mr-2 h-4 w-4" />
-            Log Out
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setLocation('/portal/settings')} data-testid="button-settings">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Button>
+            <Button variant="outline" onClick={handleLogout} data-testid="button-logout">
+              <LogOut className="mr-2 h-4 w-4" />
+              Log Out
+            </Button>
+          </div>
         </div>
 
         {/* Profile Card */}

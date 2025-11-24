@@ -5,10 +5,20 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 
 ## Recent Changes
 
-### Phase 15: Customer Identity & Login via OTP (November 24, 2025)
+### Phase 15: Customer Identity & Login via OTP + Profile Customization (November 24, 2025)
 **Status**: ✅ Implementation complete
 
-**Completed**:
+**Completed (Profile Customization)**:
+- ✅ Customer profile schema extensions: `profilePictureUrl`, `customerNotes`, `notifyViaEmail`, `notifyViaSms`, `notifyViaPush`
+- ✅ Profile picture upload endpoint: `POST /api/portal/upload-profile-picture` (2MB limit, images only, saved to `public/uploads/profile_pictures/`)
+- ✅ Profile update endpoint: `PUT /api/portal/profile` with Zod validation and tenant scoping
+- ✅ Customer settings page UI: `/portal/settings` with profile editing, notification preferences, and personal notes
+- ✅ PWA install prompt on customer portal for home screen access
+- ✅ Updated `insertCustomerSchema` to include new profile fields for validation
+- ✅ Secure file upload with multer (images only: JPEG, PNG, GIF, WebP)
+- ✅ Proper tenant isolation: all routes scope by both `customerId` and `tenantId`
+
+**Completed (OTP Authentication)**:
 - ✅ Backend schema tables: `customerIdentities`, `customerOtps`, `customerSessions`
 - ✅ Customer identity resolution service with phone/email normalization
 - ✅ OTP authentication service with 5/hour rate limiting
@@ -28,8 +38,11 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
   - Production always attempts real SMS and returns proper errors if Twilio fails
 
 **Architecture Notes**:
-- Customer authentication is completely separate from staff/owner authentication
+- Customer authentication is completely separate from staff/owner authentication  
 - Uses dedicated `customerPortalAuthMiddleware` vs `requireAuth` for staff
+- Customer profile updates use explicit field whitelisting to prevent malicious payload injection
+- Profile pictures are stored in `/public/uploads/profile_pictures/` with customer-scoped filenames
+- Notification preferences allow customers to opt-out of email/SMS/push notifications independently
 - All services enforce `tenantDb.withTenantFilter(tenantId)` for multi-tenant isolation
 - Phone normalization via `normalizePhoneE164()` from `contactUtils.ts`:
   - Accepts: `9185551234`, `19185551234`, `+19185551234`, `(918) 555-1234`
