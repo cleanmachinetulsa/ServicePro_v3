@@ -1,0 +1,356 @@
+You are editing my **ServicePro** white-label app repo (servicepro-v3-base). I am testing the new Customer Portal OTP login at `/portal/login` and seeing a red banner:
+
+“Error – Failed to send verification code. Please try again.”
+
+Even when I enter a phone like `+19182820103`, it still fails.
+
+I want you to FULLY FIX the OTP send flow:
+
+- Normalize phone numbers so users can type `9182820103` or `+19182820103` and both work.
+- Make the backend OTP send route robust and dev-friendly (simulate SMS if Twilio isn’t ready).
+- Make the frontend show the REAL error from the backend instead of a generic message.
+- Keep everything multi-tenant safe.
+- Do NOT break any existing features.
+
+========================================
+PART 1 – BACKEND: CREATE A SHARED PHONE NORMALIZER
+========================================
+
+1. Search the server code for any existing phone utilities:
+   - Look for files like `server/utils/phone.ts`, `phoneUtils.ts`, or similar.
+   - If there is already a normalize helper, reuse it and extend if needed; don’t create duplicates.
+
+2. If NO good helper exists, create one in a shared util file, for example:
+   - `server/utils/phone.ts` (or the closest matching path used in this repo).
+
+3. Implement a `normalizePhone` helper that:
+
+   - Strips non-digits.
+   - If we detect a US number:
+     - `9182820103` → `+19182820103`
+     - `19182820103` → `+19182820103`
+   - If the incoming string already starts with `+` and looks like E.164, keep it.
+   - Returns `null` if the result is clearly invalid (e.g., fewer than 10 digits).
+
+   Example (adjust to our actual type system / exports):
+
+   ```ts
+   export function normalizePhone(raw: string | undefined | null): string | null {
+     if (!raw) return null;
+
+     // Remove everything except digits and +
+     const cleaned = raw.toString().trim();
+
+     // If it already looks like +E.164, trust it (basic sanity check)
+     if (cleaned.startsWith('+') && cleaned.length >= 10) {
+       return cleaned;
+     }
+
+     const digits = cleaned.replace(/\D/g, '');
+
+     if (!digits) return null;
+
+     // Assume US if 10 or 11 digits
+     if (digits.length === 10) {
+       // e.g. 9182820103 -> +19182820103
+       return `+1${digits}`;
+     }
+
+     if (digits.length === 11 && digits.startsWith('1')) {
+       // e.g. 19182820103 -> +19182820103
+       return `+${digits}`;
+     }
+
+     // Fallback: add + if it looks vaguely reasonable
+     if (digits.length >= 10) {
+       return `+${digits}`;
+     }
+
+     return null;
+   }
+Export this helper from a central barrel file if the project uses them (e.g., server/utils/index.ts), so other modules can import it cleanly.
+
+========================================
+PART 2 – BACKEND: FIX / IMPROVE THE OTP SEND ROUTE
+Find the route / controller that handles “send verification code” for the customer portal. It will be the handler the /portal/login page calls. Look for:
+
+/api/portal/otp/send
+
+or strings like "sendVerificationCode", "customer portal otp", "sendOtp".
+
+It will likely:
+
+Accept a phone number in the body.
+
+Use Twilio or an SMS provider to send an OTP.
+
+Catch errors and return a generic error.
+
+Update this route to:
+
+Use normalizePhone from Part 1.
+
+Provide clearer error messages.
+
+Support a DEV MODE where it doesn’t require Twilio to be real.
+
+Implement logic roughly like this (adapt to our framework, types, and file structure):
+
+ts
+Copy code
+import { normalizePhone } from '../utils/phone';
+// also import whatever services we use: db, otpService, twilio client, etc.
+
+router.post('/portal/otp/send', async (req, res) => {
+  try {
+    const rawPhone = req.body.phone as string | undefined;
+    const normalized = normalizePhone(rawPhone);
+
+    if (!normalized) {
+      return res.status(400).json({
+        error: 'Please enter a valid phone number.',
+      });
+    }
+
+    // Tenant safety: if we use tenantId in the request, honor it
+    const tenantId = (req as any).tenantId ?? null;
+
+    // OPTIONAL but recommended: Only allow phones that belong to a known customer
+    // If the repo already has a "customer" table and a way to look up by phone, reuse it:
+    const customer = await db.customer.findFirst({
+      where: {
+        normalizedPhone: normalized,
+        ...(tenantId ? { tenantId } : {}),
+      },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        error:
+          'We could not find a customer with that phone number. Please contact support or check the number you entered.',
+      });
+    }
+
+    // Detect dev mode or missing Twilio creds
+    const isOtpDevMode =
+      process.env.OTP_DEV_MODE === '1' ||
+      !process.env.TWILIO_ACCOUNT_SID ||
+      !process.env.TWILIO_AUTH_TOKEN ||
+      !process.env.TWILIO_MESSAGING_SERVICE_SID;
+
+    let code: string;
+
+    if (isOtpDevMode) {
+      // generate a fake code and log it
+      code = Math.floor(100000 + Math.random() * 900000).toString();
+      console.log('[OTP DEV MODE] OTP for', normalized, 'is', code);
+
+      // store the OTP associated with this phone (and tenant) using existing OTP storage
+      // Use whatever mechanism we already have (e.g., redis, db table, etc.)
+      await otpService.storeCode({
+        tenantId,
+        phone: normalized,
+        code,
+      });
+
+      return res.json({
+        ok: true,
+        devMode: true,
+        message:
+          'Verification code generated in dev mode. Check server logs for the code.',
+      });
+    }
+
+    // PRODUCTION / REAL SMS
+    // Use the existing OTP service / Twilio integration; do NOT re-invent if we already have it.
+    code = await otpService.sendCode({
+      tenantId,
+      phone: normalized,
+    });
+
+    return res.json({
+      ok: true,
+      message: 'Verification code sent.',
+    });
+  } catch (err: any) {
+    console.error('Error sending OTP:', err);
+
+    // Try to surface a useful human-readable error if available
+    const msg =
+      err?.message ||
+      err?.toString() ||
+      'Failed to send verification code. Please try again.';
+
+    return res.status(500).json({
+      error: msg,
+    });
+  }
+});
+Make sure otpService.storeCode / otpService.sendCode match the actual names in this repo. If we don’t have an otpService yet, reuse whatever the Phase 15 scaffold already created, and just integrate the normalize + dev-mode behavior into that service instead of the route.
+
+Ensure tenant isolation is preserved: when storing OTP codes, include tenantId where appropriate so one tenant’s customer can’t use another tenant’s code.
+
+In the project’s environment variables (Replit “Secrets”), add:
+
+OTP_DEV_MODE=1 (for now, so we can test without real Twilio)
+
+If we HAVE real Twilio for ServicePro, ensure:
+
+TWILIO_ACCOUNT_SID
+
+TWILIO_AUTH_TOKEN
+
+TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER
+are correctly set and match the Twilio project you want ServicePro to use.
+
+========================================
+PART 3 – FRONTEND: SURFACE REAL ERROR MESSAGES
+Open the React page for the Customer Portal login, likely something like:
+
+client/src/pages/portal/CustomerLogin.tsx
+
+client/src/pages/portal/Login.tsx
+
+It is the component rendering “Customer Portal” and the phone number input, and it currently shows the generic red error banner: “Failed to send verification code. Please try again.”
+
+Find the function that submits the phone number, e.g.:
+
+ts
+Copy code
+const handleSendCode = async () => {
+  // ...
+}
+Ensure it calls the OTP send API like this:
+
+ts
+Copy code
+const res = await fetch('/api/portal/otp/send', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ phone }),
+});
+Update the error handling so it reads and displays the backend’s error field when present:
+
+ts
+Copy code
+setError(null);
+try {
+  const res = await fetch('/api/portal/otp/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const msg =
+      (data && data.error) ||
+      data.message ||
+      'Failed to send verification code. Please try again.';
+    setError(msg);
+    return;
+  }
+
+  // success
+  setError(null);
+  setStep('verify'); // or whatever the component uses to move to the OTP entry step
+} catch (err) {
+  console.error(err);
+  setError('Network error while sending verification code. Please try again.');
+}
+Ensure the red error banner at the top of the card uses error state directly, so if the backend says:
+
+“Please enter a valid phone number.”
+
+“We could not find a customer with that phone number.”
+
+“Twilio credentials missing…” (dev)
+
+the user actually sees that text instead of a generic message.
+
+Optionally, add client-side normalization / formatting for the input too:
+
+As the user types, allow 9182820103 etc.
+
+Do NOT require them to type +1.
+
+Let the backend be the source of truth; the frontend just passes the raw string.
+
+========================================
+PART 4 – TEST FLOW END-TO-END
+Make sure there is at least one customer in the database whose phone matches the number I’m testing with after normalization. For example:
+
+9182820103 stored as +19182820103 or equivalent.
+
+With OTP_DEV_MODE=1 set in Replit:
+
+Start the dev server.
+
+Go to /portal/login.
+
+Enter 9182820103 (or the number from the DB).
+
+Click “Send Verification Code”.
+
+Confirm:
+
+The request succeeds (no red error banner).
+
+The UI advances to the code entry step.
+
+In the server logs, you can see something like:
+
+[OTP DEV MODE] OTP for +19182820103 is 123456
+
+If you then enter that code on the verification screen, it should complete the login (assuming the verify route is implemented correctly in Phase 15).
+
+Once everything works in dev mode, we can later flip OTP_DEV_MODE to 0 and rely on real Twilio.
+
+========================================
+PART 5 – KEEP MASTER DOCS IN SYNC
+In the ServicePro master plan / phase docs file (e.g. PHASES.md, SERVICEPRO_MASTER_PLAN.md, or similar), add a short note under the Phase 15 Customer Portal section:
+
+OTP login supports:
+
+Phone normalization for US numbers.
+
+Tenant-safe customer lookup by normalized phone.
+
+Dev mode with in-console OTP codes when Twilio is not configured.
+
+Frontend surfaces backend errors (invalid phone, customer not found, Twilio issues) to the user instead of a generic failure.
+
+Do NOT over-explain; just capture the key behaviors so we remember how this works when we revisit later.
+
+========================================
+FINAL CHECKLIST
+Before you finish:
+
+ normalizePhone helper exists and is used by the OTP send route.
+
+ OTP send route correctly:
+
+normalizes phones,
+
+validates customers,
+
+supports dev mode,
+
+logs useful errors.
+
+ Environment supports OTP_DEV_MODE=1 for development.
+
+ /portal/login:
+
+accepts a plain 10-digit phone,
+
+sends OTP in dev mode,
+
+moves to the verification step.
+
+ The red banner shows specific error messages from the backend.
+
+ Master docs updated with a short note about OTP normalization & dev mode.
+
+Make all of these changes now
