@@ -261,4 +261,37 @@ router.post('/logout', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/public/customer-auth/welcome-config
+ * 
+ * Get portal welcome page configuration (public endpoint for pre-login page)
+ */
+router.get('/welcome-config', async (req, res) => {
+  try {
+    const tenantDb = req.tenantDb as TenantDb;
+    const tenant = req.tenant;
+
+    if (!tenantDb || !tenant) {
+      return res.status(500).json({
+        success: false,
+        error: 'Tenant context not found',
+      });
+    }
+
+    const { getPortalWelcomeConfig } = await import('./services/portalWelcomeConfigService');
+    const config = await getPortalWelcomeConfig(tenantDb, tenant.id);
+
+    return res.json({
+      success: true,
+      config,
+    });
+  } catch (error) {
+    console.error('[CustomerAuth] Welcome config error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to fetch welcome configuration',
+    });
+  }
+});
+
 export default router;
