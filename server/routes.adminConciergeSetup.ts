@@ -18,17 +18,31 @@ import { z } from 'zod';
  * This is an internal setup tool - no self-serve or Twilio provisioning yet.
  */
 
-// Validation schema for onboarding request
+// Validation schema for onboarding request (Phase 5 - Full Spec)
 const onboardTenantSchema = z.object({
   businessName: z.string().min(1, 'Business name is required').max(255),
+  slug: z.string().max(100).optional().or(z.literal('')),
+  contactName: z.string().max(255).optional().or(z.literal('')),
   contactEmail: z.string().email().optional().or(z.literal('')),
   primaryCity: z.string().max(100).optional().or(z.literal('')),
-  planTier: z.enum(['starter', 'pro', 'elite'], {
+  planTier: z.enum(['starter', 'pro', 'elite', 'internal'], {
     required_error: 'Plan tier is required',
   }),
+  status: z.enum(['trialing', 'active', 'past_due', 'suspended', 'cancelled'], {
+    required_error: 'Status is required',
+  }),
   industry: z.string().max(100).optional().or(z.literal('')),
+  phoneNumber: z.string().min(1, 'Phone number is required').max(50),
+  messagingServiceSid: z.string().max(255).optional().or(z.literal('')).nullable(),
+  ivrMode: z.enum(['simple', 'ivr', 'ai-voice'], {
+    required_error: 'IVR mode is required',
+  }),
+  websiteUrl: z.string().max(500).optional().or(z.literal('')).nullable(),
+  primaryColor: z.string().max(20).optional().or(z.literal('')).nullable(),
+  accentColor: z.string().max(20).optional().or(z.literal('')).nullable(),
   internalNotes: z.string().optional().or(z.literal('')),
-  createPhoneConfigStub: z.boolean().optional().default(false),
+  sendWelcomeEmail: z.boolean().optional().default(false),
+  sendWelcomeSms: z.boolean().optional().default(false),
 });
 
 type OnboardTenantRequest = z.infer<typeof onboardTenantSchema>;
@@ -71,56 +85,80 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
 
         let phoneConfigId: string | null = null;
 
-        // Create tenant + config in transaction
+        // Normalize phone number to E.164 format if needed
+        let normalizedPhone = data.phoneNumber.trim();
+        if (!normalizedPhone.startsWith('+')) {
+          // If it's a 10-digit US number, add +1
+          if (/^\d{10}$/.test(normalizedPhone)) {
+            normalizedPhone = `+1${normalizedPhone}`;
+          }
+        }
+
+        // Create tenant + config + phone in transaction
         await db.transaction(async (tx) => {
-          // Insert tenant
+          // Insert tenant with plan tier and status
           await tx.insert(tenants).values({
             id: tenantId,
             name: data.businessName,
-            subdomain: null,
+            subdomain: data.slug || null,
             isRoot: false,
+            planTier: data.planTier,
+            status: data.status,
           });
 
-          // Insert tenant config with concierge setup fields
+          // Insert tenant config with all concierge setup fields
           await tx.insert(tenantConfig).values({
             tenantId,
             businessName: data.businessName,
             logoUrl: null,
-            primaryColor: '#3b82f6', // Default blue
-            tier: data.planTier,
+            primaryColor: data.primaryColor || '#3b82f6', // Default blue
+            accentColor: data.accentColor || null,
+            tier: data.planTier, // Keep in sync with tenants.planTier
             industry: data.industry || null,
+            primaryContactName: data.contactName || null,
             primaryContactEmail: data.contactEmail || null,
             primaryCity: data.primaryCity || null,
+            websiteUrl: data.websiteUrl || null,
             internalNotes: data.internalNotes || null,
           });
 
-          // Optionally create stub phone config
-          if (data.createPhoneConfigStub) {
-            phoneConfigId = nanoid();
-            await tx.insert(tenantPhoneConfig).values({
-              id: phoneConfigId,
-              tenantId,
-              phoneNumber: `+1555${nanoid(7)}`, // Placeholder, will be updated in Phone Config admin
-              ivrMode: 'simple',
-              messagingServiceSid: null,
-              sipDomain: null,
-              sipUsername: null,
-              sipPasswordEncrypted: null,
-            });
-          }
+          // Create phone config with actual phone number and IVR mode
+          phoneConfigId = nanoid();
+          await tx.insert(tenantPhoneConfig).values({
+            id: phoneConfigId,
+            tenantId,
+            phoneNumber: normalizedPhone,
+            ivrMode: data.ivrMode,
+            messagingServiceSid: data.messagingServiceSid || null,
+            sipDomain: null, // Can be configured later
+            sipUsername: null,
+            sipPasswordEncrypted: null,
+          });
         });
 
         console.log('[CONCIERGE SETUP] Successfully created tenant:', tenantId);
 
-        // Return success response
+        // TODO: Phase 5 - Welcome messaging
+        // if (data.sendWelcomeEmail && data.contactEmail) {
+        //   await sendWelcomeEmail(data.contactEmail, data.businessName);
+        // }
+        // if (data.sendWelcomeSms && data.contactName) {
+        //   await sendWelcomeSms(normalizedPhone, data.contactName, data.businessName);
+        // }
+
+        // Return success response with full tenant details
         res.status(201).json({
           success: true,
           tenant: {
             tenantId,
             businessName: data.businessName,
             planTier: data.planTier,
+            status: data.status,
             industry: data.industry || null,
-            hasPhoneConfigStub: !!phoneConfigId,
+            phoneNumber: normalizedPhone,
+            ivrMode: data.ivrMode,
+            hasPhoneConfig: !!phoneConfigId,
+            websiteUrl: data.websiteUrl || null,
           },
         });
       } catch (error: any) {

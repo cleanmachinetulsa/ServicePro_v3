@@ -18,21 +18,35 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Building2, MapPin, Mail, Briefcase, FileText, CheckCircle2, ArrowRight, UserCircle } from 'lucide-react';
+import { Sparkles, Building2, MapPin, Mail, Briefcase, FileText, CheckCircle2, ArrowRight, UserCircle, Phone, Globe, Palette, Bell, User } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { Link, useLocation } from 'wouter';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 const onboardTenantSchema = z.object({
   businessName: z.string().min(1, 'Business name is required').max(255),
+  slug: z.string().max(100).optional().or(z.literal('')),
+  contactName: z.string().max(255).optional().or(z.literal('')),
   contactEmail: z.string().email('Invalid email address').optional().or(z.literal('')),
   primaryCity: z.string().max(100).optional().or(z.literal('')),
-  planTier: z.enum(['starter', 'pro', 'elite'], {
+  planTier: z.enum(['starter', 'pro', 'elite', 'internal'], {
     required_error: 'Please select a plan tier',
   }),
+  status: z.enum(['trialing', 'active', 'past_due', 'suspended', 'cancelled'], {
+    required_error: 'Please select a status',
+  }),
   industry: z.string().max(100).optional().or(z.literal('')),
+  phoneNumber: z.string().min(1, 'Phone number is required').max(50),
+  messagingServiceSid: z.string().max(255).optional().or(z.literal('')),
+  ivrMode: z.enum(['simple', 'ivr', 'ai-voice'], {
+    required_error: 'Please select an IVR mode',
+  }),
+  websiteUrl: z.string().max(500).optional().or(z.literal('')),
+  primaryColor: z.string().max(20).optional().or(z.literal('')),
+  accentColor: z.string().max(20).optional().or(z.literal('')),
   internalNotes: z.string().optional().or(z.literal('')),
-  createPhoneConfigStub: z.boolean().optional().default(false),
+  sendWelcomeEmail: z.boolean().optional().default(false),
+  sendWelcomeSms: z.boolean().optional().default(false),
 });
 
 type OnboardTenantForm = z.infer<typeof onboardTenantSchema>;
@@ -43,8 +57,12 @@ interface OnboardResponse {
     tenantId: string;
     businessName: string;
     planTier: string;
+    status: string;
     industry: string | null;
-    hasPhoneConfigStub: boolean;
+    phoneNumber: string;
+    ivrMode: string;
+    hasPhoneConfig: boolean;
+    websiteUrl: string | null;
   };
 }
 
@@ -70,12 +88,22 @@ export default function AdminConciergeSetup() {
     resolver: zodResolver(onboardTenantSchema),
     defaultValues: {
       businessName: '',
+      slug: '',
+      contactName: '',
       contactEmail: '',
       primaryCity: '',
       planTier: 'starter',
+      status: 'trialing',
       industry: '',
+      phoneNumber: '',
+      messagingServiceSid: '',
+      ivrMode: 'simple',
+      websiteUrl: '',
+      primaryColor: '',
+      accentColor: '',
       internalNotes: '',
-      createPhoneConfigStub: false,
+      sendWelcomeEmail: false,
+      sendWelcomeSms: false,
     },
   });
 
@@ -179,6 +207,12 @@ export default function AdminConciergeSetup() {
                       {createdTenant.planTier.charAt(0).toUpperCase() + createdTenant.planTier.slice(1)}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Status</p>
+                    <p className="text-gray-900 dark:text-gray-100" data-testid="text-status">
+                      {createdTenant.status.charAt(0).toUpperCase() + createdTenant.status.slice(1)}
+                    </p>
+                  </div>
                   {createdTenant.industry && (
                     <div>
                       <p className="text-sm text-gray-500 dark:text-gray-400">Industry</p>
@@ -188,9 +222,15 @@ export default function AdminConciergeSetup() {
                     </div>
                   )}
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Phone Config</p>
-                    <p className="text-gray-900 dark:text-gray-100">
-                      {createdTenant.hasPhoneConfigStub ? 'Stub created' : 'Not configured'}
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Phone Number</p>
+                    <p className="text-gray-900 dark:text-gray-100" data-testid="text-phone-number">
+                      {createdTenant.phoneNumber}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">IVR Mode</p>
+                    <p className="text-gray-900 dark:text-gray-100" data-testid="text-ivr-mode">
+                      {createdTenant.ivrMode}
                     </p>
                   </div>
                 </div>
@@ -288,6 +328,52 @@ export default function AdminConciergeSetup() {
 
                 <FormField
                   control={form.control}
+                  name="slug"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Slug (Subdomain)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="e.g., acme-detailing"
+                          data-testid="input-slug"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        URL-friendly identifier (optional, auto-generated if blank)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contactName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contact Name</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                          <Input
+                            {...field}
+                            placeholder="e.g., John Smith"
+                            className="pl-10"
+                            data-testid="input-contact-name"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        Primary contact person name (optional)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="contactEmail"
                   render={({ field }) => (
                     <FormItem>
@@ -358,7 +444,7 @@ export default function AdminConciergeSetup() {
                         <RadioGroup
                           onValueChange={field.onChange}
                           defaultValue={field.value}
-                          className="grid grid-cols-3 gap-4"
+                          className="grid grid-cols-4 gap-3"
                         >
                           <div>
                             <RadioGroupItem
@@ -368,12 +454,12 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="starter"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer"
                               data-testid="radio-tier-starter"
                             >
-                              <span className="text-lg font-semibold">Starter</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Basic features
+                              <span className="text-base font-semibold">Starter</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                                Basic
                               </span>
                             </Label>
                           </div>
@@ -385,12 +471,12 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="pro"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer"
                               data-testid="radio-tier-pro"
                             >
-                              <span className="text-lg font-semibold">Pro</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Advanced tools
+                              <span className="text-base font-semibold">Pro</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                                Advanced
                               </span>
                             </Label>
                           </div>
@@ -402,17 +488,62 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="elite"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-purple-500 [&:has([data-state=checked])]:border-purple-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-purple-500 [&:has([data-state=checked])]:border-purple-500 cursor-pointer"
                               data-testid="radio-tier-elite"
                             >
-                              <span className="text-lg font-semibold">Elite</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              <span className="text-base font-semibold">Elite</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
                                 Full suite
+                              </span>
+                            </Label>
+                          </div>
+                          <div>
+                            <RadioGroupItem
+                              value="internal"
+                              id="internal"
+                              className="peer sr-only"
+                            />
+                            <Label
+                              htmlFor="internal"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-green-500 [&:has([data-state=checked])]:border-green-500 cursor-pointer"
+                              data-testid="radio-tier-internal"
+                            >
+                              <span className="text-base font-semibold">Internal</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                                Owner use
                               </span>
                             </Label>
                           </div>
                         </RadioGroup>
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status *</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-status">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="trialing">Trialing</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="past_due">Past Due</SelectItem>
+                          <SelectItem value="suspended">Suspended</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        Account status for this tenant
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -446,6 +577,192 @@ export default function AdminConciergeSetup() {
                   )}
                 />
 
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                  <Phone className="w-5 h-5 text-green-500" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                    Telephony
+                  </h2>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="phoneNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number *</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                          <Input
+                            {...field}
+                            placeholder="+19185551234"
+                            className="pl-10"
+                            data-testid="input-phone-number"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        E.164 format (e.g., +19185551234) or 10-digit US number
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="messagingServiceSid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Messaging Service SID</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                          data-testid="input-messaging-service-sid"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Twilio Messaging Service SID (optional)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="ivrMode"
+                  render={({ field }) => (
+                    <FormItem className="space-y-3">
+                      <FormLabel>IVR Mode *</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          className="flex flex-col space-y-2"
+                        >
+                          <div className="flex items-center space-x-3 space-y-0">
+                            <RadioGroupItem value="simple" id="ivr-simple" data-testid="radio-ivr-simple" />
+                            <Label htmlFor="ivr-simple" className="font-normal cursor-pointer">
+                              <span className="font-semibold">Simple</span> - Forward to existing phone
+                            </Label>
+                          </div>
+                          <div className="flex items-center space-x-3 space-y-0">
+                            <RadioGroupItem value="ivr" id="ivr-menu" data-testid="radio-ivr-menu" />
+                            <Label htmlFor="ivr-menu" className="font-normal cursor-pointer">
+                              <span className="font-semibold">IVR</span> - Keypad menu system
+                            </Label>
+                          </div>
+                          <div className="flex items-center space-x-3 space-y-0">
+                            <RadioGroupItem value="ai-voice" id="ivr-ai" data-testid="radio-ivr-ai" />
+                            <Label htmlFor="ivr-ai" className="font-normal cursor-pointer">
+                              <span className="font-semibold">AI Voice</span> - AI receptionist (beta)
+                            </Label>
+                          </div>
+                        </RadioGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                  <Palette className="w-5 h-5 text-pink-500" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                    Website & Branding
+                  </h2>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="websiteUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Website URL</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Globe className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                          <Input
+                            {...field}
+                            placeholder="https://example.com"
+                            className="pl-10"
+                            data-testid="input-website-url"
+                          />
+                        </div>
+                      </FormControl>
+                      <FormDescription>
+                        Tenant's existing website (optional)
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="primaryColor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Primary Color</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="#3b82f6"
+                            data-testid="input-primary-color"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Hex color (e.g., #3b82f6)
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="accentColor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Accent Color</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="#ec4899"
+                            data-testid="input-accent-color"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Secondary brand color
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <div className="space-y-6">
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                  <FileText className="w-5 h-5 text-orange-500" />
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                    Additional Options
+                  </h2>
+                </div>
+
                 <FormField
                   control={form.control}
                   name="internalNotes"
@@ -453,15 +770,12 @@ export default function AdminConciergeSetup() {
                     <FormItem>
                       <FormLabel>Internal Notes</FormLabel>
                       <FormControl>
-                        <div className="relative">
-                          <FileText className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                          <Textarea
-                            {...field}
-                            placeholder="Owner-only notes about this tenant..."
-                            className="pl-10 min-h-[100px]"
-                            data-testid="textarea-internal-notes"
-                          />
-                        </div>
+                        <Textarea
+                          {...field}
+                          placeholder="Owner-only notes about this tenant..."
+                          className="min-h-[100px]"
+                          data-testid="textarea-internal-notes"
+                        />
                       </FormControl>
                       <FormDescription>
                         Private notes visible only to admins
@@ -470,6 +784,63 @@ export default function AdminConciergeSetup() {
                     </FormItem>
                   )}
                 />
+
+                <div className="space-y-4">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Onboarding Messaging
+                  </p>
+                  <FormField
+                    control={form.control}
+                    name="sendWelcomeEmail"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <input
+                            type="checkbox"
+                            checked={field.value}
+                            onChange={field.onChange}
+                            className="mt-1"
+                            data-testid="checkbox-send-welcome-email"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="cursor-pointer">
+                            Send welcome email to primary contact
+                          </FormLabel>
+                          <FormDescription>
+                            (Feature coming soon - not yet implemented)
+                          </FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="sendWelcomeSms"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                        <FormControl>
+                          <input
+                            type="checkbox"
+                            checked={field.value}
+                            onChange={field.onChange}
+                            className="mt-1"
+                            data-testid="checkbox-send-welcome-sms"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="cursor-pointer">
+                            Send welcome SMS to primary contact
+                          </FormLabel>
+                          <FormDescription>
+                            (Feature coming soon - not yet implemented)
+                          </FormDescription>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
             </Card>
 
