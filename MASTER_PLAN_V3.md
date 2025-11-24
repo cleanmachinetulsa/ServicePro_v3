@@ -117,7 +117,7 @@ Phase   Area    Status
 5       Concierge Setup Dashboard       📝
 6       Impersonate Tenant      📝
 7       SaaS Tiers + Feature Gating     ✔️
-8       Industry Packs  📝
+8       Industry Packs  ✔️
 9       Website Generator       📝
 10      AI Setup & Support Agent        📝
 11      Data Export & Retention 📝
@@ -216,43 +216,29 @@ Features gated using hasFeature(tenant, key).
 
 Stripe wiring will be Phase 7B.
 
-10. PHASE 8 – INDUSTRY PACKS 📝
+10. PHASE 8 – INDUSTRY PACKS ✔️
 
-Per-industry starter template:
+Per-industry starter template implemented with 17+ industry packs:
 
-Services
+**Implemented Features:**
+- ✔️ Industry pack configuration system (`shared/industryPacks.ts`)
+- ✔️ 17 industry packs: detailing, lawn care, house cleaning, pet grooming, photography, HVAC, plumbing, electrical, moving, pressure washing, window washing, pool service, landscaping, roofing, flooring, painting, pest control
+- ✔️ Automated service seeding with pricing, duration, descriptions
+- ✔️ FAQ seeding with categories and keywords
+- ✔️ AI style notes per industry (for Phase 10/14 integration)
+- ✔️ Website seed data for Phase 9 integration
+- ✔️ Backend service (`server/industryPackService.ts`)
+- ✔️ Concierge UI integration with pack selection dropdown
+- ✔️ Database field: `tenant_config.industry_pack_id`
+- ✔️ Idempotent pack application (no duplicates)
 
-Durations
+**Integration Hooks (TODO):**
+- 📝 Phase 9: Use `pack.websiteSeed` to pre-populate website templates
+- 📝 Phase 10/14: Use `pack.aiStyleNotes` to configure AI agent tone
+- 📝 Phase 23: Free tier uses industry packs as initial content
 
-Pricing suggestions
-
-FAQs
-
-Upsells
-
-Industry-specific tone for AI
-
-Add-on library
-
-Starter website content
-
-Supports:
-
-Detailing
-
-Lawn care
-
-House cleaning
-
-Pet grooming
-
-Photography
-
-Moving help
-
-Pressure washing
-
-+10 more (your target is 20 industries)
+**Supported Industries:**
+Auto detailing, lawn care, house cleaning, pet grooming, photography, HVAC, plumbing, electrical, moving, pressure washing, window washing, pool service, landscaping, roofing, flooring, painting, pest control
 
 11. PHASE 9 – WEBSITE GENERATOR 📝
 

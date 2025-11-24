@@ -5,6 +5,35 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 
 ## Recent Changes
 
+### Phase 8: Industry Packs (November 24, 2025)
+**Status**: ✅ Implementation complete
+
+**Implemented Features**:
+- ✅ Industry pack configuration system (`shared/industryPacks.ts`)
+- ✅ 17 industry packs: auto detailing, lawn care, house cleaning, pet grooming, photography, HVAC, plumbing, electrical, moving, pressure washing, window washing, pool service, landscaping, roofing, flooring, painting, pest control
+- ✅ Automated service seeding with pricing, duration, descriptions
+- ✅ FAQ seeding with categories and keywords
+- ✅ AI style notes per industry (for Phase 10/14 integration)
+- ✅ Website seed data for Phase 9 integration
+- ✅ Backend service (`server/industryPackService.ts`)
+- ✅ Concierge UI integration with industry pack dropdown and auto-apply checkbox
+- ✅ Database field: `tenant_config.industry_pack_id` (VARCHAR 100)
+- ✅ Idempotent pack application (no duplicates, safe to re-run)
+
+**Architecture Notes**:
+- Industry packs are applied during tenant onboarding via Concierge Setup UI
+- Pack data is stored in `shared/industryPacks.ts` with TypeScript types
+- Backend service uses transactions to ensure atomicity
+- Services and FAQs are checked for duplicates before insertion (by name/question)
+- `industryConfig` JSONB field stores pack metadata for future use
+- Integration hooks prepared for Phase 9 (Website Generator) and Phase 10/14 (AI tone)
+- Phase 23 (Free Tier) will use industry packs as initial content for free tenants
+
+**Future Integration Points**:
+- 📝 Phase 9: Use `pack.websiteSeed` to pre-populate website templates
+- 📝 Phase 10/14: Use `pack.aiStyleNotes` to configure AI agent tone per industry
+- 📝 Phase 23: Free tier uses industry packs as starter content with watermarked sites
+
 ### Phase 15: Customer Identity & Login via OTP + Profile Customization (November 24, 2025)
 **Status**: ✅ Implementation complete
 
