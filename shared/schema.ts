@@ -233,7 +233,7 @@ export const tenantStatusEnum = pgEnum('tenant_status', ['trialing', 'active', '
 export const tenants = pgTable("tenants", {
   id: varchar("id", { length: 50 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
-  subdomain: varchar("subdomain", { length: 100 }),
+  subdomain: varchar("subdomain", { length: 100 }).unique(), // Phase 9: Globally unique subdomain for public sites
   isRoot: boolean("is_root").default(false).notNull(),
   planTier: tenantTierEnum("plan_tier").default("starter").notNull(),
   status: tenantStatusEnum("status").default("trialing").notNull(),

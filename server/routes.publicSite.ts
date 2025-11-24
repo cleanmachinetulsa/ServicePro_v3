@@ -6,14 +6,25 @@
 
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 import { tenants, tenantConfig, services, faqEntries } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { getIndustryPack } from '@shared/industryPacks';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
 
+// Rate limiter for public site endpoint (100 requests per 15 minutes per IP)
+const publicSiteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per window
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
 /**
- * GET /api/public/site/:slug
+ * GET /api/public/site/:subdomain
  * 
  * Returns public website data for a given tenant
  * - Tenant metadata (business name, city, plan tier, status)
@@ -24,35 +35,39 @@ const router = Router();
  * - Feature flags (watermark, booking, advanced features)
  * 
  * This endpoint is PUBLIC and does not require authentication
+ * Rate limited to 100 requests per 15 minutes per IP
  */
-router.get('/site/:slug', async (req: Request, res: Response) => {
+router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Response) => {
   try {
-    const { slug } = req.params;
+    const { subdomain } = req.params;
 
-    // Lookup tenant by slug
+    // Lookup tenant by subdomain (globally unique identifier)
     const tenantRecords = await db
       .select({
         // Tenant basic info
         tenantId: tenants.id,
-        slug: tenants.slug,
-        businessName: tenants.businessName,
+        subdomain: tenants.subdomain,
+        businessName: tenants.name,
         status: tenants.status,
         planTier: tenants.planTier,
         // Config fields
         industry: tenantConfig.industry,
         industryPackId: tenantConfig.industryPackId,
-        city: tenantConfig.city,
+        city: tenantConfig.primaryCity,
         websiteUrl: tenantConfig.websiteUrl,
-        colorPrimary: tenantConfig.colorPrimary,
-        colorAccent: tenantConfig.colorAccent,
+        colorPrimary: tenantConfig.primaryColor,
+        colorAccent: tenantConfig.accentColor,
         logoUrl: tenantConfig.logoUrl,
+        businessNameFromConfig: tenantConfig.businessName,
       })
       .from(tenants)
       .leftJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
-      .where(eq(tenants.slug, slug))
+      .where(eq(tenants.subdomain, subdomain))
       .limit(1);
 
     if (!tenantRecords || tenantRecords.length === 0) {
+      // Set cache headers for 404s (cache for 5 minutes to reduce load)
+      res.set('Cache-Control', 'public, max-age=300');
       return res.status(404).json({
         success: false,
         message: 'Site not found',
@@ -63,14 +78,18 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
 
     // Block suspended or cancelled tenants from showing public sites
     if (tenant.status === 'suspended' || tenant.status === 'cancelled') {
+      res.set('Cache-Control', 'public, max-age=300');
       return res.status(404).json({
         success: false,
         message: 'Site not available',
       });
     }
 
-    // Fetch services for this tenant
-    const tenantServices = await db
+    // Use wrapTenantDb for proper tenant isolation
+    const tenantDb = wrapTenantDb(db, tenant.tenantId);
+
+    // Fetch services for this tenant (with tenant isolation)
+    const tenantServices = await tenantDb.db
       .select({
         id: services.id,
         name: services.name,
@@ -82,21 +101,24 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
         highlight: services.highlight,
       })
       .from(services)
-      .where(eq(services.tenantId, tenant.tenantId));
+      .where(tenantDb.filter(services));
 
-    // Fetch FAQs for this tenant
-    const tenantFaqs = await db
+    // Fetch FAQs for this tenant (with tenant isolation)
+    const tenantFaqs = await tenantDb.db
       .select({
         question: faqEntries.question,
         answer: faqEntries.answer,
       })
       .from(faqEntries)
-      .where(eq(faqEntries.tenantId, tenant.tenantId));
+      .where(tenantDb.filter(faqEntries));
 
     // Get Industry Pack content if available
     const industryPack = tenant.industryPackId 
       ? getIndustryPack(tenant.industryPackId)
       : null;
+
+    // Use business name from config if available, otherwise from tenant table
+    const displayBusinessName = tenant.businessNameFromConfig || tenant.businessName;
 
     // Build website content with merge logic:
     // TODO Phase 23: Add website_config table for tenant-specific overrides
@@ -104,7 +126,7 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
     const websiteContent = {
       heroHeadline: 
         industryPack?.websiteSeed?.heroHeadline 
-        ?? `Welcome to ${tenant.businessName}`,
+        ?? `Welcome to ${displayBusinessName}`,
       heroSubheadline: 
         industryPack?.websiteSeed?.heroSubheadline 
         ?? `Professional ${tenant.industry || 'service'} you can trust`,
@@ -116,7 +138,7 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
         ?? 'View Services',
       aboutBlurb: 
         industryPack?.websiteSeed?.aboutBlurb 
-        ?? `${tenant.businessName} provides high-quality ${tenant.industry || 'services'} ${tenant.city ? `in ${tenant.city}` : ''}.`,
+        ?? `${displayBusinessName} provides high-quality ${tenant.industry || 'services'} ${tenant.city ? `in ${tenant.city}` : ''}.`,
     };
 
     // Feature flags based on plan tier
@@ -134,8 +156,8 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
     const siteData = {
       tenant: {
         id: tenant.tenantId,
-        slug: tenant.slug || '',
-        businessName: tenant.businessName,
+        subdomain: tenant.subdomain || '',
+        businessName: displayBusinessName,
         city: tenant.city,
         planTier: tenant.planTier,
         status: tenant.status,
@@ -153,6 +175,9 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
       featureFlags,
     };
 
+    // Set cache headers (cache for 10 minutes for public sites)
+    res.set('Cache-Control', 'public, max-age=600');
+    
     return res.json({
       success: true,
       data: siteData,
