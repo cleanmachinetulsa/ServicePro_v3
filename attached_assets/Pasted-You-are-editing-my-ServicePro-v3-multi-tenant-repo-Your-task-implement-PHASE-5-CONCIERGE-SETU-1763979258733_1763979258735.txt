@@ -1,0 +1,488 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+Your task: **implement PHASE 5 – CONCIERGE SETUP DASHBOARD (OWNER-ONLY)** as described in MASTER_PLAN_V3.md (v3.3), in a way that:
+
+- Uses existing admin/auth patterns.
+- Is multi-tenant safe.
+- DOES NOT modify the behavior or data of the Clean Machine root tenant (`tenant_id = 'root'`), except for reading its schema/types.
+- Adds a new owner-only admin screen to create & configure new tenants in one flow.
+
+Follow this plan step-by-step.
+
+====================================================
+STEP 0 – READ THE MASTER PLAN PHASE 5 SPEC
+====================================================
+
+1. Open `MASTER_PLAN_V3.md` and locate **Phase 5 – Concierge Setup Dashboard**.
+2. Use that as the authoritative functional spec.
+3. Do not contradict it; if there’s a tiny mismatch, adhere to the spirit:
+   - Owner-only dashboard for creating/configuring tenants in one flow.
+   - Creates tenant + tenant_config + tenant_phone_config records in a single transactional operation.
+   - Does NOT alter existing tenants (especially root) except via explicit API calls.
+
+====================================================
+STEP 1 – DISCOVER EXISTING ADMIN & AUTH PATTERNS
+====================================================
+
+1. Find:
+   - The **Admin Tenants page** (where planTier/status are managed).
+   - The **Admin Phone/IVR Config page**.
+   - The existing **admin-only auth guard** on backend routes.
+
+2. Identify:
+   - How “owner-level” is represented (e.g. `role === 'owner'` or similar).
+   - How admin React pages are routed (e.g. `/admin/tenants`, `/admin/phone-config`).
+   - The existing **admin API routes** (e.g. `/api/admin/...`).
+
+3. You must:
+   - Reuse the existing **owner-only** auth guard for the new Concierge routes.
+   - Reuse the existing **admin layout / nav** pattern.
+
+**IMPORTANT:**  
+Do NOT change how Clean Machine root tenant behaves. You may read `tenants` and `tenant_phone_config` schemas, but do not modify root records unless explicitly requested by an admin action.
+
+====================================================
+STEP 2 – DATA MODEL & SERVICE LAYER
+====================================================
+
+We want a single service that can create a tenant + config + phone config in **one transaction**.
+
+1. Check if there is a `tenant_config` (or similarly named) table/model:
+   - If it exists, use it.
+   - If it does NOT exist, create a **minimal** one, backwards compatible:
+
+   Suggested `tenant_config` (adjust naming to match repo conventions):
+
+   - `tenant_id` (PK, FK to tenants)
+   - `industry` (string)
+   - `primaryContactName` (string, nullable)
+   - `primaryContactEmail` (string, nullable)
+   - `city` (string, nullable)
+   - `websiteUrl` (string, nullable)
+   - `colorPrimary` (string, nullable)
+   - `colorAccent` (string, nullable)
+   - `notesInternal` (text, nullable)
+
+   Only apply migrations required for this; do not touch root tenant values beyond setting defaults/NULL.
+
+2. Create a backend service module (or extend an existing one), e.g.:
+
+   - `server/services/conciergeTenantSetup.ts` (or similar)
+
+   Implement a function like:
+
+   ```ts
+   type ConciergeTenantInput = {
+     businessName: string;
+     slug?: string;
+     city?: string;
+     primaryContactName?: string;
+     primaryContactEmail?: string;
+     planTier: 'starter' | 'pro' | 'elite' | 'internal';
+     status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+     industry: string;
+     phoneNumber: string;          // E.164
+     messagingServiceSid?: string | null;
+     ivrMode: 'simple' | 'ivr' | 'ai-voice';
+     websiteUrl?: string | null;
+     colorPrimary?: string | null;
+     colorAccent?: string | null;
+     notesInternal?: string | null;
+   };
+
+   type ConciergeTenantResult = {
+     tenant: /* tenant type */;
+     phoneConfig: /* tenant_phone_config type */;
+     config: /* tenant_config type */;
+   };
+
+   export async function createTenantWithConciergeSetup(
+     input: ConciergeTenantInput,
+   ): Promise<ConciergeTenantResult> {
+     // Use a single DB transaction via Drizzle.
+   }
+Behavior:
+
+Normalize phoneNumber to E.164 and trim whitespace.
+
+Create:
+
+A new tenant row with:
+
+businessName (or equivalent)
+
+slug (if applicable)
+
+planTier
+
+status
+
+A new tenant_config row:
+
+tenant_id
+
+industry
+
+primaryContactName
+
+primaryContactEmail
+
+city
+
+websiteUrl
+
+colorPrimary
+
+colorAccent
+
+notesInternal
+
+A new tenant_phone_config row:
+
+tenant_id
+
+phone_number (E.164)
+
+messaging_service_sid
+
+ivr_mode
+
+SIP fields left NULL by default (unless provided)
+
+Wrap all of this in a single transaction:
+
+If any step fails, the whole operation is rolled back.
+
+DO NOT:
+
+Update or delete any existing root tenant entries.
+
+Change the meaning of any existing tenant fields.
+
+Modify tenant_phone_config rows for root.
+
+====================================================
+STEP 3 – ADMIN API: CONCIERGE TENANT CREATE
+Create a new owner-only endpoint:
+
+POST /api/admin/concierge/tenants
+
+Location: follow existing admin API file structure. For example:
+
+server/routes.adminConcierge.ts (or similar).
+
+Auth:
+
+Use the same owner-only guard used for Admin Tenants and Admin Phone Config.
+
+If non-owner, respond with 403.
+
+Input validation:
+
+Use the same pattern as other APIs (zod schema or existing validation helper).
+
+The body should roughly be:
+
+ts
+Copy code
+{
+  businessName: string;
+  slug?: string;
+  city?: string;
+  primaryContactName?: string;
+  primaryContactEmail?: string;
+  planTier: 'starter' | 'pro' | 'elite' | 'internal';
+  status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+  industry: string;
+  phoneNumber: string;
+  messagingServiceSid?: string | null;
+  ivrMode: 'simple' | 'ivr' | 'ai-voice';
+  websiteUrl?: string | null;
+  colorPrimary?: string | null;
+  colorAccent?: string | null;
+  notesInternal?: string | null;
+  sendWelcomeEmail?: boolean;
+  sendWelcomeSms?: boolean;
+}
+Behavior:
+
+Validate input.
+
+Call createTenantWithConciergeSetup(input).
+
+For welcome messaging:
+
+If you already have email/SMS helpers wired (e.g. SendGrid + Twilio wrappers), you may:
+
+Enqueue a welcome email.
+
+Enqueue a welcome SMS to the primary contact (if a phone is available).
+
+If not, leave TODO comments and no-op for now, but keep the fields in the API for future use.
+
+Response:
+
+Return 201 with something like:
+
+ts
+Copy code
+{
+  tenant: { id, tenantId, businessName, planTier, status, ... },
+  phoneConfig: { id, phone_number, ivr_mode, ... },
+  config: { industry, city, primaryContactName, ... }
+}
+====================================================
+STEP 4 – FRONTEND: /admin/concierge-setup PAGE
+Create a new admin React page in the same style as the existing admin UI.
+
+NEW PAGE:
+
+File: follow existing patterns, e.g. client/src/pages/AdminConciergeSetup.tsx.
+
+Route: /admin/concierge-setup.
+
+Add to admin navigation under “Admin” or similar:
+
+Label: “Concierge Setup”
+
+Auth:
+
+Use the existing admin/owner route guard to ensure only owner-level users can access this page.
+
+UI LAYOUT:
+
+Use the same layout components as Admin Tenants / Admin Phone Config:
+
+Top-level heading:
+“Concierge Setup – New Tenant”
+
+Subheading:
+“Create and fully configure a new tenant (plan, phone, industry, branding) in one flow.”
+
+FORM SECTIONS:
+
+Use React Hook Form + existing UI components (inputs/selects/buttons).
+
+Group fields into cards:
+
+A) Tenant Basics
+
+Business Name (required)
+
+Slug (optional, auto-suggest from businessName if left blank)
+
+City
+
+Primary Contact Name
+
+Primary Contact Email
+
+B) Plan & Status
+
+Plan Tier: select:
+
+starter
+
+pro
+
+elite
+
+internal
+
+Status: select:
+
+trialing
+
+active
+
+past_due
+
+suspended
+
+cancelled
+
+Show helper text for each tier (pull from TIER_FEATURES or hard-coded descriptions).
+
+C) Industry
+
+Industry: select with curated options:
+
+Auto Detailing
+
+Lawn Care
+
+House Cleaning
+
+Mobile Pet Grooming
+
+Photography
+
+Generic Home Services
+
+(and leave room to expand)
+
+Save as industry in tenant_config.
+
+D) Telephony
+
+Phone Number (required, E.164)
+
+Messaging Service SID (optional)
+
+IVR Mode (required):
+
+simple
+
+ivr
+
+ai-voice
+
+Include small descriptions:
+
+simple = forward to existing phone
+
+ivr = keypad menu
+
+ai-voice = AI receptionist (beta)
+
+E) Website & Branding (Optional)
+
+Website URL
+
+Primary Color
+
+Accent Color
+
+Internal Notes (textarea)
+
+F) Onboarding Messaging (Optional)
+
+Checkbox: “Send welcome email to primary contact”
+
+Checkbox: “Send welcome SMS to primary contact”
+
+Show a small description of what the messages say (static for now).
+
+FORM BEHAVIOR:
+
+Use existing form patterns (React Hook Form, zod resolver, etc.).
+
+Show per-field validation errors.
+
+On submit:
+
+Disable submit button.
+
+Show loading state.
+
+POST to /api/admin/concierge/tenants.
+
+On success:
+
+Show success toast/notification.
+
+Show a summary panel with the created tenant.
+
+SUCCESS SUMMARY:
+
+After successful creation, show:
+
+Business Name.
+
+Plan Tier & Status.
+
+Industry.
+
+Phone Number + IVR Mode.
+
+Buttons:
+
+“Open tenant in impersonate mode”
+
+If Impersonation (Phase 6) already exists:
+
+Wire to the correct URL/action.
+
+If not implemented yet:
+
+Show the button disabled with tooltip: “Coming in Phase 6 – Impersonate Tenant”.
+
+“Create another tenant”
+
+Resets the form.
+
+====================================================
+STEP 5 – TESTS
+Backend tests:
+
+Unit tests for createTenantWithConciergeSetup:
+
+Creates tenant, config, and phoneConfig in one transaction.
+
+Fails cleanly with rollback on invalid input.
+
+Integration tests for POST /api/admin/concierge/tenants:
+
+Owner can create tenant (201, correct data).
+
+Non-owner gets 403.
+
+Invalid inputs (missing businessName, bad phone) return 400.
+
+Frontend tests (if React tests exist in the repo):
+
+Basic render test for AdminConciergeSetup page.
+
+Happy-path form fill + submit + success state (if you have Playwright/Cypress).
+
+If frontend test infra is not present, prioritize backend tests and ensure the UI works manually.
+
+====================================================
+STEP 6 – MANUAL SANITY CHECK
+After implementing all of the above:
+
+Log in as owner/admin in the app.
+
+Navigate to /admin/concierge-setup.
+
+Create a non-root test tenant:
+
+Business: “Test Lawn Care Co”
+
+Plan: pro
+
+Status: active
+
+Industry: Lawn Care
+
+Phone: your Twilio test number (not your Clean Machine root number)
+
+Confirm:
+
+New tenant appears on Admin Tenants page with correct tier/status.
+
+New phone config appears on Admin Phone Config page.
+
+tenant_config row saved with industry + city, etc.
+
+Clean Machine root tenant data has NOT changed.
+
+====================================================
+STEP 7 – DO NOT TOUCH CLEAN MACHINE ROOT TENANT
+Throughout this task:
+
+Do NOT modify the root tenant’s:
+
+services
+
+pricing
+
+SMS behavior
+
+phone config
+
+branding
+
+Only add new functionality to create and manage additional tenants.
+
+This completes PHASE 5 – CONCIERGE SETUP DASHBOARD (OWNER-ONLY) as defined in MASTER_PLAN_V3 v3.3
