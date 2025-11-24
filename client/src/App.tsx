@@ -86,6 +86,10 @@ import LaunchPage from "./pages/launch";
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
 import AdminIndustryImages from "./pages/AdminIndustryImages";
 
+// Phase 15: Customer Portal (OTP Authentication)
+import CustomerLogin from "./pages/CustomerLogin";
+import CustomerPortalDashboard from "./pages/CustomerPortalDashboard";
+
 function Router() {
   return (
     <Switch>
@@ -358,6 +362,10 @@ function Router() {
       <Route path="/sms-consent" component={SMSConsentPage} />
       <Route path="/privacy-policy" component={PrivacyPolicyPage} />
       <Route path="/careers" component={Careers} />
+
+      {/* Phase 15: Customer Portal Routes */}
+      <Route path="/portal/login" component={CustomerLogin} />
+      <Route path="/portal" component={CustomerPortalDashboard} />
 
       <Route path="/" component={HomePage} />
       <Route component={NotFound} />

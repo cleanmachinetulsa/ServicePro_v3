@@ -1,0 +1,636 @@
+🔻 PHASE 15 – CUSTOMER IDENTITY & LOGIN (OTP + FUTURE MAGIC LINK)
+
+You are updating my ServicePro v3 WHITE-LABEL multi-tenant platform (NOT the legacy Clean Machine-only app).
+
+Your goal in this task:
+
+Build a tenant-aware customer identity layer with:
+
+OTP login via SMS (and pluggable email later)
+
+Basic “customer portal” session handling
+
+Identity records linked to customers (with backfilled data from Phase 16)
+
+Clean, secure, rate-limited OTP pipeline
+
+A future-ready shape for magic-link login (but not fully implemented yet)
+
+This must:
+
+Respect multi-tenant isolation (tenantId, req.tenantDb.withTenantFilter(...))
+
+Work for all tenants (Clean Machine root + future tenants)
+
+Use existing telephony/email infrastructure where possible (Twilio SMS, SendGrid, etc.)
+
+NOT break existing owner/staff auth flows
+
+Implement everything below in this repo, in TypeScript, production quality.
+
+0. DISCOVERY (READ FIRST, CHANGE LATER)
+
+Find customer + contact model:
+
+In shared/schema.ts:
+
+customers table
+
+Any vehicles, appointments, loyaltyBalances, etc.
+
+Find tenant + phone config:
+
+tenants, tenantConfig, tenantPhoneConfig
+
+How we send SMS today (likely a smsService, notificationsService, or Twilio wrapper):
+
+Reuse this for OTP delivery.
+
+Find auth/session infrastructure:
+
+Where do we authenticate owners/staff today?
+
+server/authMiddleware.ts, server/sessionService.ts, server/routes.auth.ts, etc.
+
+Identify:
+
+How JWT or sessions are stored (cookies, headers, etc.).
+
+Any userSessions or authTokens tables.
+
+We will reuse patterns (e.g. session tables, crypto helpers) to avoid a second ad-hoc auth system.
+
+Do not refactor existing auth — only extend it with a parallel “customerAuth” lane.
+
+1. DATA MODEL – CUSTOMER IDENTITY & SESSIONS
+
+Open shared/schema.ts and add the following tables (or extend existing equivalents carefully).
+
+1.1 Customer Identity Table
+
+Create a table to store identity-level info for customers (by tenant):
+
+export const customerIdentities = pgTable('customer_identities', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id').notNull(),
+  customerId: varchar('customer_id').notNull(), // FK to customers.id (check your type)
+  primaryPhone: varchar('primary_phone'),
+  primaryEmail: varchar('primary_email'),
+  lastLoginAt: timestamp('last_login_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  tenantCustomerUnique: uniqueIndex('customer_identities_tenant_customer_uid')
+    .on(table.tenantId, table.customerId),
+}));
+
+
+This is the identity record, not the full CRM record.
+
+It will be used by OTP and (later) magic-link.
+
+1.2 Customer OTP Table
+
+A table to store OTP codes and enforce rate limits:
+
+export const customerOtps = pgTable('customer_otps', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id').notNull(),
+  customerId: varchar('customer_id').notNull(),
+  channel: varchar('channel').notNull(), // 'sms' | 'email'
+  destination: varchar('destination').notNull(), // phone/e-mail used
+  codeHash: varchar('code_hash').notNull(),      // hashed OTP, never store plain
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  consumedAt: timestamp('consumed_at'),
+  attempts: integer('attempts').notNull().default(0),
+});
+
+
+We’ll limit OTP requests and verification attempts using this table.
+
+1.3 Customer Sessions Table (Portal)
+
+If you already have a generic sessions table that can be reused for customers, extend it. If not, create:
+
+export const customerSessions = pgTable('customer_sessions', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id').notNull(),
+  customerId: varchar('customer_id').notNull(),
+  sessionToken: varchar('session_token').notNull(), // random opaque token
+  userAgent: varchar('user_agent'),
+  ipAddress: varchar('ip_address'),
+  createdAt: timestamp('created_at').defaultNow(),
+  expiresAt: timestamp('expires_at').notNull(),
+  revokedAt: timestamp('revoked_at'),
+}, (table) => ({
+  sessionTokenIdx: uniqueIndex('customer_sessions_token_uid').on(table.sessionToken),
+}));
+
+
+This is a simple opaque-token session store for customer portal authentication.
+
+We will set a cookie or header based on this.
+
+Run or align migrations with existing system — keep schema consistent with your Drizzle setup.
+
+2. BACKEND SERVICES – IDENTITY & OTP
+
+Create two new services:
+
+server/services/customerIdentityService.ts
+
+server/services/customerOtpService.ts
+
+2.1 customerIdentityService.ts
+
+Responsibilities:
+
+Find or create a customerIdentities row for a given tenant + phone/email.
+
+Link to an existing customers row if possible (via Phase 16 backfill and existing CRM data).
+
+Create a temporary customers record if absolutely no match exists (for brand new leads).
+
+Define:
+
+export interface ResolveCustomerIdentityArgs {
+  tenantId: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface ResolvedCustomerIdentity {
+  tenantId: string;
+  customerId: string;
+  identityId: number;
+  primaryPhone?: string;
+  primaryEmail?: string;
+}
+
+export async function resolveCustomerIdentity(
+  db: TenantDb,
+  args: ResolveCustomerIdentityArgs,
+): Promise<ResolvedCustomerIdentity> {
+  // Implementation below
+}
+
+
+Implementation outline:
+
+Normalize phone and/or email formats.
+
+Try to find an existing customer by:
+
+phone or email in customers table for this tenantId.
+
+If found:
+
+Ensure there is a customerIdentities row → upsert identity record, update primaryPhone/primaryEmail.
+
+If not found:
+
+Create a minimal customers record (name optional).
+
+Then create a customerIdentities row pointing to it.
+
+Return ResolvedCustomerIdentity.
+
+2.2 customerOtpService.ts
+
+Responsibilities:
+
+Generate OTP codes.
+
+Enforce rate limits.
+
+Hash and store OTP.
+
+Verify OTP and create a customer session.
+
+Define:
+
+export interface RequestCustomerOtpArgs {
+  tenantId: string;
+  destinationType: 'sms' | 'email';
+  phone?: string;
+  email?: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+export interface RequestCustomerOtpResult {
+  success: boolean;
+  maskedDestination?: string;
+  reason?: string; // 'rate_limited', 'invalid', etc.
+}
+
+export interface VerifyCustomerOtpArgs {
+  tenantId: string;
+  destinationType: 'sms' | 'email';
+  phone?: string;
+  email?: string;
+  code: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+export interface VerifyCustomerOtpResult {
+  success: boolean;
+  sessionToken?: string;
+  customerId?: string;
+  reason?: string; // 'invalid_code', 'expired', 'too_many_attempts', etc.
+}
+
+
+Implement:
+
+2.2.1 Request OTP
+
+Normalize phone/email.
+
+Rate limiting:
+
+Count OTPs in customerOtps for this tenant + destination within last X minutes and last 24h.
+
+Config (hard-coded is fine for now):
+
+Max 5 OTPs / hour / destination.
+
+Max 10 OTPs / day / destination.
+
+If exceeded → return { success: false, reason: 'rate_limited' }.
+
+Generate OTP:
+
+6-digit numeric code (e.g. Math.floor(100000 + Math.random() * 900000)).
+
+Hash it with a secure hash (e.g. crypto.createHash('sha256')).
+
+expiresAt = now + 10 minutes.
+
+Insert into customerOtps with:
+
+tenantId, destination, channel, codeHash, expiresAt.
+
+Use existing SMS sending service to send OTP if destinationType === 'sms':
+
+Reuse the Twilio wrapper already used for other SMS.
+
+Template like:
+
+“Your {BUSINESS_NAME} verification code is 123456. It expires in 10 minutes.”
+
+Return { success: true, maskedDestination: '+1 ***-***-5304' }.
+
+2.2.2 Verify OTP
+
+Normalize phone/email.
+
+Look up the most recent, unconsumed OTP for this {tenantId, destination, channel}.
+
+If none → reason: 'invalid_code'.
+
+If expired → reason: 'expired'.
+
+If attempts >= 5 → reason: 'too_many_attempts'.
+
+Hash the provided code and compare with codeHash.
+
+If mismatch:
+
+Increment attempts.
+
+Return { success: false, reason: 'invalid_code' }.
+
+If match:
+
+Mark consumedAt = now.
+
+Use resolveCustomerIdentity to get customerId and identityId.
+
+Create a new customerSessions row with:
+
+tenantId, customerId, generated sessionToken (secure random), userAgent, ipAddress, expiresAt = now + 30 days (for example).
+
+Update customerIdentities.lastLoginAt.
+
+Return:
+
+{
+  success: true,
+  sessionToken,
+  customerId,
+}
+
+3. PUBLIC ROUTES – CUSTOMER LOGIN (OTP)
+
+Create new routes file:
+
+server/routes.customerAuth.ts
+
+Register it in server/routes.ts under something like /api/public/customer-auth.
+
+3.1 POST /api/public/customer-auth/request-otp
+
+Body:
+
+{
+  "channel": "sms",
+  "phone": "+19188565304",
+  "tenantSlug": "clean-machine"   // or tenantId, use whatever your system uses
+}
+
+
+Or for email later:
+
+{
+  "channel": "email",
+  "email": "someone@example.com",
+  "tenantSlug": "my-tenant"
+}
+
+
+Steps:
+
+Resolve tenant via tenantSlug → tenantId.
+
+Use tenantMiddleware to get req.tenant and req.tenantDb.
+
+Call requestCustomerOtp(...).
+
+Return JSON:
+
+{
+  "success": true,
+  "maskedDestination": "+1 ***-***-5304"
+}
+
+
+or:
+
+{
+  "success": false,
+  "reason": "rate_limited"
+}
+
+3.2 POST /api/public/customer-auth/verify-otp
+
+Body:
+
+{
+  "channel": "sms",
+  "phone": "+19188565304",
+  "code": "123456",
+  "tenantSlug": "clean-machine"
+}
+
+
+Steps:
+
+Resolve tenant + tenantDb.
+
+Call verifyCustomerOtp(...).
+
+If failure → return { success: false, reason }.
+
+If success → set a customer session cookie or token:
+
+If you already have auth token helpers for owner/staff, reuse the same cookie pattern but with a different cookie name, e.g. sp_customer_session.
+
+Cookie should be:
+
+HttpOnly
+
+Secure (in prod)
+
+SameSite=Lax
+
+Value = sessionToken.
+
+Return:
+
+{
+  "success": true,
+  "customerId": "123",
+  "expiresAt": "2025-01-01T00:00:00.000Z"
+}
+
+3.3 GET /api/portal/me
+
+Authenticated using the customer session cookie/token.
+
+Create a customerPortalAuthMiddleware that:
+
+Reads the sp_customer_session cookie (or header).
+
+Looks up customerSessions for a valid, non-expired, non-revoked sessionToken.
+
+Attaches req.customer and req.customerIdentity.
+
+Fails with 401 if invalid/expired.
+
+GET /api/portal/me then returns:
+
+customerId
+
+Basic CRM data:
+
+name, phone, email
+
+address/household info
+
+upcoming appointments
+
+recent appointments
+
+loyalty balance & recent transactions
+
+Use req.tenantDb and existing tables to load this.
+
+4. FRONTEND – CUSTOMER PORTAL LOGIN FLOW
+
+In the client app:
+
+Add a new public page for customers to log in.
+
+4.1 Route
+
+Create something like:
+
+client/src/pages/CustomerLogin.tsx
+
+Add route:
+
+/portal/login (and optionally /portal/:tenantSlug/login if you support vanity domains later).
+
+4.2 UI Flow
+
+Single-page flow:
+
+Step 1 – Enter phone (or email):
+
+Input for phone (first) – we can add email later.
+
+Button “Send code”.
+
+On submit → POST /api/public/customer-auth/request-otp.
+
+Handle response:
+
+If success → show message “We’ve sent a code to ***-5304.”
+
+If rate_limited → show human-friendly message.
+
+Step 2 – Enter OTP code:
+
+6-digit input.
+
+On submit → POST /api/public/customer-auth/verify-otp.
+
+On success:
+
+The backend sets the sp_customer_session cookie.
+
+Frontend then redirects to /portal or /portal/dashboard.
+
+4.3 Customer Portal Shell (Minimal)
+
+Create:
+
+client/src/pages/CustomerPortalDashboard.tsx
+
+Uses /api/portal/me to show:
+
+Welcome text: “Hi {firstName or 'there'}”
+
+Next appointment (if any)
+
+“Book another appointment” button linking to the existing booking form/page.
+
+“View your reward points” showing loyaltyBalances.points and a small recent transactions list (last 5 from loyaltyTransactions).
+
+This can be very minimal for Phase 15 — main goal is: identity + session + basic overview.
+
+5. MAGIC-LINK READY (ARCHITECTURE ONLY)
+
+We are not implementing full magic-link sending now, but we need the shape ready.
+
+In customerIdentities and customerSessions, ensure we’re ready to support:
+
+A separate magicLinkToken table later, or reuse customerOtps with channel='magic_link'.
+
+For now, just:
+
+Make sure primaryEmail is present in identity.
+
+In customerOtpService, leave a TODO section like:
+
+// TODO (Phase X): add 'magic_link' as a channel using email links instead of numeric codes.
+
+
+No actual magic-link emails need to be implemented in this phase — just don’t block that path.
+
+6. AI / AGENT CONTEXT HOOKS (LIGHT SCaffolding)
+
+We won’t fully wire AI in this phase, but we should:
+
+Add a helper that can get identity context from customerId:
+
+In some server/services/customerContextService.ts, add:
+
+export async function getCustomerContextForAgent(
+  db: TenantDb,
+  customerId: string,
+) {
+  // Load customer, identity, loyalty balance, last appointment, etc.
+}
+
+
+Note in comments that:
+
+When an SMS/web chat is associated with a known phone/email, we can map that to customerId and use this context in AI prompts (future phase).
+
+No major AI changes are required now — just the helper and comment.
+
+7. TESTS & QA
+
+Create a new test file:
+
+server/tests/customerOtpService.test.ts
+
+server/tests/customerPortalAuth.test.ts (optional but ideal)
+
+Test cases:
+
+Request OTP happy path:
+
+For a test tenant + phone.
+
+Asserts: record created, SMS send stub called, not rate-limited.
+
+Request OTP rate limit:
+
+Request >5 codes/hour.
+
+Last one returns success=false, reason='rate_limited'.
+
+Verify OTP success:
+
+Insert OTP with known hash.
+
+Verify with correct code.
+
+Asserts: consumedAt set, attempts not incremented, session created.
+
+Verify OTP invalid code:
+
+Wrong code increments attempts.
+
+After 5 bad attempts → reason 'too_many_attempts'.
+
+Portal /me endpoint:
+
+Simulate a valid sessionToken.
+
+Asserts 200 + correct customerId & basic data.
+
+Invalid/expired session → 401.
+
+Ensure tests use the same tenantDb + isolation patterns as existing tests.
+
+8. SAFETY & ROLLOUT
+
+Before declaring Phase 15 complete:
+
+Run all tests, including the new ones.
+
+Start dev server; verify:
+
+/portal/login loads.
+
+OTP request and verify flows work.
+
+sp_customer_session cookie set.
+
+/api/portal/me returns data when logged in.
+
+Confirm:
+
+No impact on existing owner/staff login.
+
+No cross-tenant leak (one tenant’s sessions don’t see another’s customers).
+
+When done, update the master plan (MASTER_PLAN_v3.x.md) under Phase 15 – Status: ✅ Implemented with:
+
+customerIdentities, customerOtps, customerSessions created.
+
+OTP login for customers via SMS.
+
+Customer portal login page + basic dashboard.
+
+Ready for future magic-link implementation.
+
+Identity context hook for AI agents scaffolded.
+
+Implement all of the above in the ServicePro v3 repo only, preserve multi-tenant safety, and don’t regress existing behavior.

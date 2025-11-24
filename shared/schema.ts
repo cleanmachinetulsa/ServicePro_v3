@@ -358,6 +358,57 @@ export const migrationLog = pgTable("migration_log", {
   tenantIdx: index("migration_log_tenant_idx").on(table.tenantId),
 }));
 
+// Phase 15 - Customer Identity table for customer portal authentication
+export const customerIdentities = pgTable("customer_identities", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  customerId: integer("customer_id").notNull(),
+  primaryPhone: text("primary_phone"),
+  primaryEmail: text("primary_email"),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantCustomerUnique: uniqueIndex("customer_identities_tenant_customer_uid")
+    .on(table.tenantId, table.customerId),
+  tenantPhoneIdx: index("customer_identities_tenant_phone_idx").on(table.tenantId, table.primaryPhone),
+  tenantEmailIdx: index("customer_identities_tenant_email_idx").on(table.tenantId, table.primaryEmail),
+}));
+
+// Phase 15 - Customer OTP table for one-time password authentication
+export const customerOtps = pgTable("customer_otps", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  customerId: integer("customer_id"),
+  channel: varchar("channel", { length: 20 }).notNull(),
+  destination: text("destination").notNull(),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  consumedAt: timestamp("consumed_at"),
+  attempts: integer("attempts").notNull().default(0),
+}, (table) => ({
+  tenantDestinationIdx: index("customer_otps_tenant_destination_idx").on(table.tenantId, table.destination, table.channel),
+  expiresAtIdx: index("customer_otps_expires_at_idx").on(table.expiresAt),
+}));
+
+// Phase 15 - Customer Sessions table for customer portal session management
+export const customerSessions = pgTable("customer_sessions", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  customerId: integer("customer_id").notNull(),
+  sessionToken: text("session_token").notNull(),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+}, (table) => ({
+  sessionTokenUnique: uniqueIndex("customer_sessions_token_uid").on(table.sessionToken),
+  tenantCustomerIdx: index("customer_sessions_tenant_customer_idx").on(table.tenantId, table.customerId),
+  expiresAtIdx: index("customer_sessions_expires_at_idx").on(table.expiresAt),
+}));
+
 // Customer Vehicles - Track customer vehicle information for personalized service
 export const customerVehicles = pgTable("customer_vehicles", {
   id: serial("id").primaryKey(),
@@ -3097,6 +3148,32 @@ export const updatePlatformSettingsSchema = z.object({
 export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type InsertPlatformSettings = z.infer<typeof insertPlatformSettingsSchema>;
 export type UpdatePlatformSettings = z.infer<typeof updatePlatformSettingsSchema>;
+
+// ============================================================
+// PHASE 15 - CUSTOMER IDENTITY & OTP SCHEMAS
+// ============================================================
+export const insertCustomerIdentitySchema = createInsertSchema(customerIdentities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCustomerOtpSchema = createInsertSchema(customerOtps).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCustomerSessionSchema = createInsertSchema(customerSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CustomerIdentity = typeof customerIdentities.$inferSelect;
+export type InsertCustomerIdentity = z.infer<typeof insertCustomerIdentitySchema>;
+export type CustomerOtp = typeof customerOtps.$inferSelect;
+export type InsertCustomerOtp = z.infer<typeof insertCustomerOtpSchema>;
+export type CustomerSession = typeof customerSessions.$inferSelect;
+export type InsertCustomerSession = z.infer<typeof insertCustomerSessionSchema>;
 
 // ============================================================
 // TENANT SCHEMAS

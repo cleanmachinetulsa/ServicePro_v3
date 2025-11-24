@@ -122,6 +122,8 @@ import { registerTechDepositRoutes } from './routes.techDeposits';
 import { registerCallEventsRoutes } from './routes.callEvents';
 import { registerCustomerIntelligenceRoutes } from './routes.customerIntelligence';
 import { registerEscalationRoutes } from './routes.escalations';
+import customerAuthRoutes from './routes.customerAuth';
+import customerPortalRoutes from './routes.customerPortal';
 import { blockDemoSMS, blockDemoEmail, blockDemoPayments, blockDemoVoice, blockDemoGoogleAPI, blockDemoFileUpload, isDemoSession, logDemoActivity } from './demoGuard';
 
 // QR Code Signing Utilities
@@ -319,6 +321,12 @@ export async function registerRoutes(app: Express) {
   // Register password change routes (must be accessible even when password change is required)
   app.use('/api/auth', passwordRoutes);
 
+  // Phase 15: Register customer portal authentication routes (public, no auth required)
+  app.use('/api/public/customer-auth', customerAuthRoutes);
+  
+  // Phase 15: Register customer portal routes (protected by customer session)
+  app.use('/api/portal', customerPortalRoutes);
+
   // CRITICAL: Apply password change requirement check BEFORE all protected routes
   // This ensures users with temporary passwords cannot access sensitive endpoints
   app.use(checkPasswordChangeRequired);
@@ -329,6 +337,7 @@ export async function registerRoutes(app: Express) {
   app.use('/api', (req, res, next) => {
     const publicPaths = [
       '/api/auth',              // Authentication endpoints
+      '/api/public/customer-auth', // Phase 15: Customer portal OTP authentication
       '/api/health',            // Health check endpoint (for monitoring)
       '/api/webhooks',          // Twilio/Stripe webhooks (verified via signatures)
       '/api/voice',             // Twilio voice webhooks
