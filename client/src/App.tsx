@@ -98,11 +98,17 @@ import PortalWelcome from "./pages/PortalWelcome";
 // Phase 9: Public Website Generator
 import PublicSite from "./pages/PublicSite";
 
+// Phase 7B: Pricing & Tier Comparison
+import PricingPage from "./pages/PricingPage";
+
 function Router() {
   return (
     <Switch>
       {/* Phase 9: Public Website Generator (PUBLIC ROUTE - NO AUTH) */}
       <Route path="/site/:subdomain" component={PublicSite} />
+
+      {/* Phase 7B: Pricing & Tier Comparison (PUBLIC ROUTE - NO AUTH) */}
+      <Route path="/pricing" component={PricingPage} />
 
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
       <Route path="/onboarding/industry" component={OnboardingIndustryPage} />
