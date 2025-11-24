@@ -3,6 +3,37 @@
 ## Overview
 ServicePro is a multi-tenant, white-label SaaS platform designed to transform service businesses into AI-powered web applications. Its core purpose is to streamline operations by providing comprehensive management for customers, appointments, loyalty programs, and payments. The platform integrates multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs) and leverages AI (OpenAI) and Google Workspace APIs for intelligent automation, aiming to enhance efficiency and customer engagement. The business vision is to provide a highly automated and scalable solution for service businesses, starting with Clean Machine Auto Detail.
 
+## Recent Changes
+
+### Phase 15: Customer Identity & Login via OTP (November 24, 2025)
+**Status**: Implementation complete, awaiting database migration
+
+**Completed**:
+- ✅ Backend schema tables: `customerIdentities`, `customerOtps`, `customerSessions`
+- ✅ Customer identity resolution service with phone/email normalization
+- ✅ OTP authentication service with 5/hour rate limiting
+- ✅ Customer portal authentication middleware (separate from staff auth)
+- ✅ Public authentication routes: `/api/public/customer-auth/*`
+- ✅ Protected customer portal routes: `/api/portal/me`
+- ✅ Frontend OTP login page: `/portal/login`
+- ✅ Customer portal dashboard: `/portal`
+- ✅ Customer context service scaffold for AI integration
+- ✅ Multi-tenant isolation with explicit tenant filtering
+- ✅ Security: OTP expiration (10min), rate limiting (5/hour), session management (30 days)
+
+**Pending**:
+- ⏳ Database migration blocked by interactive `campaign_configs` prompt from Phase 14
+- ⏳ Manual intervention needed: Run `npm run db:push` and select "+ campaign_configs create table"
+- ⏳ End-to-end testing of OTP flow after migration completes
+
+**Architecture Notes**:
+- Customer authentication is completely separate from staff/owner authentication
+- Uses dedicated `customerPortalAuthMiddleware` vs `requireAuth` for staff
+- All services enforce `tenantDb.withTenantFilter(tenantId)` for multi-tenant isolation
+- Phone normalization via `normalizePhoneE164()` and email via `canonicalizeEmail()`
+- OTP codes are SHA-256 hashed in database, never stored in plaintext
+- Session tokens are cryptographically random (32 bytes hex)
+
 ## User Preferences
 - Preferred communication style: Simple, everyday language
 - AI Agent Behavior: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
