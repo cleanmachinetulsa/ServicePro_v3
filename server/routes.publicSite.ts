@@ -6,7 +6,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
-import { tenants, tenantConfig, services, faq } from '@shared/schema';
+import { tenants, tenantConfig, services, faqEntries } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { getIndustryPack } from '@shared/industryPacks';
 
@@ -87,11 +87,11 @@ router.get('/site/:slug', async (req: Request, res: Response) => {
     // Fetch FAQs for this tenant
     const tenantFaqs = await db
       .select({
-        question: faq.question,
-        answer: faq.answer,
+        question: faqEntries.question,
+        answer: faqEntries.answer,
       })
-      .from(faq)
-      .where(eq(faq.tenantId, tenant.tenantId));
+      .from(faqEntries)
+      .where(eq(faqEntries.tenantId, tenant.tenantId));
 
     // Get Industry Pack content if available
     const industryPack = tenant.industryPackId 
