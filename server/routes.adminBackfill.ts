@@ -17,10 +17,10 @@ import { z } from 'zod';
 const router = Router();
 
 // ============================================================
-// MIDDLEWARE: Require owner/admin role
+// MIDDLEWARE: Require owner role AND root tenant
 // ============================================================
 
-function requireOwnerOrAdmin(req: Request, res: Response, next: Function) {
+function requireRootOwner(req: Request, res: Response, next: Function) {
   if (!req.session?.userId) {
     return res.status(401).json({ 
       success: false, 
@@ -28,20 +28,29 @@ function requireOwnerOrAdmin(req: Request, res: Response, next: Function) {
     });
   }
 
-  // Check if user has owner or manager role
+  // Check if user has owner role (NOT manager - managers shouldn't run backfills)
   const userRole = (req as any).user?.role;
-  if (userRole !== 'owner' && userRole !== 'manager') {
+  if (userRole !== 'owner') {
     return res.status(403).json({ 
       success: false, 
-      message: 'Owner or manager role required for backfill operations' 
+      message: 'Owner role required for backfill operations' 
+    });
+  }
+
+  // Verify user belongs to root tenant
+  const tenantId = (req as any).tenantId || req.session.tenantId;
+  if (tenantId !== 'root') {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Backfill operations are only available for root tenant (Clean Machine)' 
     });
   }
 
   next();
 }
 
-// Apply auth middleware to all routes
-router.use(requireOwnerOrAdmin);
+// Apply auth middleware to all routes (requires owner role + root tenant)
+router.use(requireRootOwner);
 
 // ============================================================
 // ROUTES
@@ -139,13 +148,18 @@ router.post('/customers/run', async (req: Request, res: Response) => {
 router.get('/customers/history', async (req: Request, res: Response) => {
   try {
     const { migrationLog } = await import('@shared/schema');
-    const { eq, desc } = await import('drizzle-orm');
+    const { eq, desc, and } = await import('drizzle-orm');
 
-    // Fetch migration log entries for customer backfill
+    // Fetch migration log entries for customer backfill (tenant-scoped to 'root')
     const history = await db
       .select()
       .from(migrationLog)
-      .where(eq(migrationLog.type, 'customer_backfill'))
+      .where(
+        and(
+          eq(migrationLog.tenantId, 'root'),
+          eq(migrationLog.type, 'customer_backfill')
+        )
+      )
       .orderBy(desc(migrationLog.startedAt))
       .limit(20);
 
