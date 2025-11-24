@@ -23,7 +23,7 @@ import { eq, and, desc, sql, min, max, count, sum } from 'drizzle-orm';
 import { normalizeAddress, parseAddress, type RawAddress } from './addressNormalization';
 
 // Google Sheets integration
-import { getReadOnlyClient } from '../googleIntegration';
+import { getGoogleSheetsReadClient } from '../googleIntegration';
 
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID || '1-xeX82TPoxxeyWXoCEXh-TdMkBHuJSXjoUSaiFjfv9g';
 
@@ -223,7 +223,7 @@ async function readFromGoogleSheets(
   console.log(`[BACKFILL] Reading customer data from Google Sheets...`);
 
   try {
-    const sheets = await getReadOnlyClient();
+    const sheets = await getGoogleSheetsReadClient();
     if (!sheets) {
       console.warn('[BACKFILL] Google Sheets client not available, skipping sheet import');
       stats.errors.push('Google Sheets client not available');
