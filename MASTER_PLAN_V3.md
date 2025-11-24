@@ -1,126 +1,163 @@
-# MASTER PLAN v3.2 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM
-Deprecated – see MASTER_PLAN_v3.2.md for the latest master plan.
-> Canonical master plan for:
-> - You (Jody)
-> - Your partner
-> - Replit AI agents
-> - Future contributors  
->
-> This file is the **source of truth**. All major changes to architecture, features, or roadmap get reflected here.
+🔽 MASTER PLAN v3.3 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM
 
----
+This supersedes v3.2.
+Canonical roadmap for you, your partner, Replit agents, and future contributors.
 
-## 0. HIGH-LEVEL NORTH STAR
+0. HIGH-LEVEL NORTH STAR
 
-**Product:** Turn the existing Clean Machine app into **ServicePro** – a multi-tenant, white-label, AI-powered service business OS.
+Product: Turn the existing Clean Machine app into ServicePro – a multi-tenant, white-label, AI-powered service business OS.
 
-- **Clean Machine** = **root tenant** (your business, flagship instance).
-- Other businesses (detailers, lawn care, cleaners, pet groomers, etc.) = **child tenants**.
+Clean Machine = root tenant (your flagship business)
+
+Other businesses (detailers, lawn care, cleaners, pet groomers, photographers, etc.) = child tenants.
 
 All share:
 
-- One codebase  
-- One Twilio **super-tenant** architecture  
-- One AI brain (general framework) customized per industry & per tenant  
+One codebase
+
+One Twilio “super-tenant” telephony backbone
+
+One AI brain framework, customized per industry and per tenant
 
 Each tenant gets:
 
-- Their **own phone number(s)**
-- Their **own SMS/voice/IVR experience**
-- Their **own branding, services, pricing, and website**
-- Their **own AI agents**:
-  - Onboarding/setup agent  
-  - Customer booking agent  
-  - Customer support / help agent  
+Their own phone number(s)
 
-**MASTER PLAN v3.x** = Take your current **Clean Machine** codebase and layer on:
+Their own SMS/voice/IVR experience
 
-1. True tenant isolation (Phase 1A–1H – ✅ DONE for root; ready for more tenants).
-2. Super-tenant telephony (Twilio, SIP, IVR, AI voice) with **single-number IVR flows** that are easy for tenants.
-3. Tiered SaaS product (3 tiers) + trials.
-4. White-label onboarding + industry packs + website generator.
-5. Built-in AI agents (onboarding, booking, support) per tenant.
-6. Automated provisioning & billing with Stripe.
-7. Root “super-tenant” dashboard + tenant registry admin UI.
-8. Safe suspension / data retention / export so no one loses their business data.
-9. A consistent, **premium PWA call & app experience** so tenants don’t suffer Twilio/dialer hell.
-10. Optional **premium voice models** (OpenAI / ElevenLabs) on top of included free Polly voices.
+Their own branding, services, pricing, and website
 
----
+Their own AI agents:
 
-## 1. CURRENT STATE SNAPSHOT (BASED ON REPO)
+Onboarding/setup agent
 
-### 1.1 Clean Machine Repo (Current Reality)
+Customer booking agent
 
-From the exported repo:
+Customer support/help agent
 
-**Backend**
+MASTER PLAN v3.3 = Take your current Clean Machine codebase and layer on:
 
-- `server/index.ts` – Express + TypeScript  
-- Drizzle ORM + Neon/Postgres  
-- Many route files: calls, appointments, loyalty, campaigns, etc.
+✅ True tenant isolation (done for root; ready for more tenants)
 
-**Schema**
+✅ Telephony spine (canonical voice entry + tenant phone config)
 
-- `shared/schema.ts` – tables for customers, appointments, invoices, loyalty, etc.
+✅ Tenant registry & admin UI
 
-**Frontend**
+🔄 AI messaging brain + conversation management
 
-- Vite/React app  
-- Pages & components for scheduling, SMS, dashboards, settings, etc.
+🆕 Unified loyalty & promo engine with anti-abuse
 
-**Docs & Guides**
+🆕 Customer identity & login (OTP + magic links)
 
-- `WHITE_LABEL_GUIDE.md` – feature inventory & white-label thinking  
-- `TWILIO_SETUP_GUIDE.md`, `TWILIO_WEBHOOK_SETUP.md`, `TWILIO_VOICE_SETUP.md`, `VOICE_WEBHOOK_SETUP.md`  
-- Various deployment & QA docs under `docs/`
+🆕 Customer master backfill (6+ years of your data → clean CRM)
 
-**Telephony / comm routes**
+White-label onboarding, industry packs, website generator
 
-- `server/routes.twilioVoice.ts`
-- `server/routes.voiceWebhook.ts`
-- `server/routes.smsFallback.ts`
-- `server/routes.calls.ts`
-- `server/routes.phoneSettings.ts`
-- `server/routes.twilioStatusCallback.ts`
-- Plus SMS consent, campaigns, appointments, notifications, etc.
+SaaS tiers, trials, provisioning & billing (Stripe)
 
-**Business logic routes**
+Root “super-tenant” dashboard for you
 
-- Appointments, quick booking, quotes, cancellations, refunds, subscriptions  
-- Loyalty & rewards: `routes.loyalty.ts`, `routes.invoice.loyalty.ts`, `loyaltyService`, `googleLoyaltyIntegration`, etc.  
-- Tags, tech profiles, contacts, gallery, recurring services, calendars, etc.
+AI setup/support agents for tenants
 
-**AI / automation bits already present**
+Data export & retention
 
-- `conversationClassifier.ts`
-- `conversationState.ts`
-- `aiSuggestionService.ts`
-- `damageAssessment*`, `roleAwareNotifications.ts`, etc.
+1. CURRENT STATE SNAPSHOT
+1.1 Clean Machine / ServicePro Repo (Reality Today)
 
-**Knowledge base / admin artifacts**
+Backend:
 
-- `Master_CleanMachine_AgentKnowledgeBase_AutoReady.xlsx`
-- `HOMEPAGE_FEATURE_INVENTORY.md`
-- PWA docs
-- Deployment checklists & improvement plans
+server/index.ts – Express + TypeScript
 
-➡️ **Key point:** Clean Machine is now a **seriously feature-rich single-tenant system** with Twilio, SendGrid, Stripe, loyalty, PWA, etc.
+Drizzle + Neon/Postgres
 
----
+Route files for calls, appointments, loyalty, campaigns, etc.
 
-### 1.2 Tenant Isolation Package (ServicePro Backbone)
+Schema:
 
-The tenant isolation / ServicePro backbone introduces:
+shared/schema.ts – customers, appointments, invoices, loyalty, campaigns, conversations, etc.
 
-- `tenantDb` wrapper (Drizzle wrapper that injects `tenant_id`)
-- `tenantMiddleware` that attaches `req.tenant` and `req.tenantDb`
-- Tenant isolation tests (11 tests)
-- A migration plan to move routes from `db` → `req.tenantDb`
+Frontend:
+
+Vite/React app
+
+Pages & components for:
+
+Scheduling
+
+SMS conversations
+
+Dashboards
+
+Settings
+
+Loyalty, campaigns, etc.
+
+Docs:
+
+WHITE_LABEL_GUIDE.md
+
+TWILIO_* setup guides
+
+PWA docs
+
+Deployment notes
+
+Telephony routes:
+
+server/routes.twilioVoice.ts
+
+server/routes.voiceWebhook.ts
+
+server/routes.smsFallback.ts
+
+server/routes.calls.ts
+
+server/routes.twilioStatusCallback.ts
+
+SMS consent, campaigns, appointments, notifications
+
+Business logic routes:
+
+Appointments / quick booking / cancellations
+
+Loyalty & rewards (routes.loyalty.ts, invoice loyalty, loyaltyService etc.)
+
+Tags, tech profiles, contacts, gallery, recurring services, calendars…
+
+AI bits already present:
+
+conversationClassifier.ts
+
+conversationState.ts
+
+aiSuggestionService.ts
+
+Damage assessment helpers
+
+Role-aware notifications, etc.
+
+Knowledge base artifacts:
+
+Master_CleanMachine_AgentKnowledgeBase_AutoReady.xlsx
+
+HOMEPAGE_FEATURE_INVENTORY.md
+
+PWA docs
+
+➡️ Clean Machine has evolved into a feature-rich single-tenant system. v3.3 continues the migration into ServicePro multi-tenant without losing functionality.
+
+1.2 Tenant Isolation Backbone (ServicePro Core)
+
+Tenant isolation / ServicePro backbone introduces:
+
+tenantDb wrapper (Drizzle wrapper injecting tenant_id)
+
+tenantMiddleware attaching req.tenant and req.tenantDb
+
+Tenant isolation tests
 
 Pattern:
 
-```ts
 // BEFORE
 await db.query.customers.findFirst({
   where: eq(customers.id, id),
@@ -130,13 +167,29 @@ await db.query.customers.findFirst({
 await req.tenantDb.query.customers.findFirst({
   where: req.tenantDb.withTenantFilter(customers, eq(customers.id, id)),
 })
-➡️ This package is now applied directly to Clean Machine (no separate ServicePro repo).
 
-Phase 1A–1H migrated ~800+ DB operations across ~86 files.
-All tenant isolation tests pass. Root tenant (tenant_id = 'root') is fully working.
 
-2. PHASE STRUCTURE (MASTER ROADMAP)
-Clear phase structure so you + partner + Replit agents can collaborate:
+Status:
+
+Phase 1A–1H migrated ~800+ DB ops across ~86 files
+
+Tenant isolation tests: ✅ all passing
+
+Root tenant (tenant_id = 'root') fully working
+
+New tenants & tenant_config tables in place
+
+2. PHASE STRUCTURE (ROADMAP)
+
+We keep the original skeleton but now extend it with new phases for:
+
+Unified promo/loyalty engine (anti-abuse)
+
+Customer identity & login (OTP + magic links)
+
+Customer master backfill & historical merge
+
+Phase overview:
 
 Phase 0 – Canonicalization & Docs
 
@@ -144,17 +197,11 @@ Phase 1 – Tenant Isolation & Multi-Tenant Core
 
 Phase 2 – Telephony Spine (SMS, Voice, SIP, IVR)
 
-Phase 2.1 – Canonical Voice Entry-Point ✅ DONE
-
-Phase 2.2–2.4 – IVR / AI routing
-
-Phase 2.5 – Call handling & PWA experience
-
-Phase 2A – Tenant Registry & Admin UI ✅ DONE
+Phase 2A – Tenant Registry & Admin UI ✅
 
 Phase 3 – AI Messaging Brain & Knowledge Base
 
-Phase 4 – AI Voice Receptionist & Call Handling
+Phase 4 – AI Voice Receptionist (OpenAI Realtime)
 
 Phase 5 – SaaS Tiers, Onboarding Agents, Website Generator
 
@@ -162,11 +209,11 @@ Phase 6 – Industry Packs & Auto-Setup
 
 Phase 7 – Super-Tenant Ops (Billing, Monitoring, Scaling)
 
-Phase 8 – Tiers, Upgrades, Usage Billing (details)
+Phase 8 – Plan Tiers, Upgrades, Usage Billing
 
-Phase 9 – Telephony Model & Twilio UX (details)
+Phase 9 – Telephony Model & Twilio UX
 
-Phase 10 – AI Setup & Support Agents (product-aware copilot)
+Phase 10 – AI Setup & Support Agents (Product-Aware Copilots)
 
 Phase 11 – Data Export & Retention
 
@@ -174,555 +221,78 @@ Phase 12 – Integrations & Keys Checklist
 
 Phase 13 – Idea Parking Lot / Future Enhancements
 
-Each phase has:
+Phase 14 – Unified Loyalty & Promo Engine (Anti-Abuse) 🆕
 
-Goals
+Phase 15 – Customer Identity & Login (OTP + Magic Links) 🆕
 
-What’s already done (if applicable)
+Phase 16 – Customer Master Backfill & Historical Merge 🆕
 
-Concrete tasks Replit can execute
+You don’t have to execute these strictly in order; the doc just gives a consistent map Replit and you can follow.
 
-Where the new features plug in (agents, website generator, tiers, telephony)
+PHASE 0 – CANONICALIZE & ORGANIZE
 
-PHASE 0 – CANONICALIZE & ORGANIZE (NOW)
-0.1 MASTER_PLAN_V3.md (THIS FILE)
-Lives at repo root.
+(As before; v3.3 just reaffirms this.)
 
-Canonical reference for:
+MASTER_PLAN_v3.3.md lives at repo root.
 
-You & partner
+Any major feature (telephony, AI agents, loyalty engine, identity, onboarding) gets reflected here.
 
-Replit agents
-
-Future devs
-
-Rule: Whenever a major architecture decision is made (new tier logic, new agent type, website generator spec, billing behavior, telephony UX, voice model options), update this file.
-
-0.2 ServicePro Backbone as Migration Package
-Treat tenant isolation docs (servicepro-backbone.md, TENANT_ISOLATION_IMPORT.md, etc.) as inputs to Phase 1, not a second codebase.
-
-No separate ServicePro repo.
-
-Clean Machine becomes ServicePro over time.
-
-Tenant isolation steps & tests are applied directly here.
+Replit agents are instructed: read this file first and obey its conventions.
 
 PHASE 1 – TENANT ISOLATION & MULTI-TENANT CORE
-1.1 Tenant Infrastructure ✅ DONE
-Implemented in server/:
 
-server/tenantDb.ts
+(As in v3.2, but now considered complete for current scope.)
 
-Wraps base Drizzle client (db).
+tenantDb and tenantMiddleware in place
 
-Injects tenant_id on inserts.
+Most routes migrated to req.tenantDb + withTenantFilter
 
-Provides withTenantFilter(table, condition) for selects/updates/deletes.
+Root tenant seeded
 
-server/tenantMiddleware.ts
+Tenant isolation tests ✅
 
-Resolves tenantId:
-
-For now: hardcode 'root' for all Clean Machine traffic.
-
-Later: use domain/subdomain/headers to map to tenant.
-
-Attaches req.tenant and req.tenantDb.
-
-Test infra
-
-server/tests/setupTenantDb.ts
-
-server/tests/tenantIsolation/tenantDb.test.ts
-
-vitest.config.ts updated to include tests.
-
-Verification:
-
-bash
-Copy code
-npx vitest run server/tests/tenantIsolation/tenantDb.test.ts
-✅ 11/11 tests passing.
-
-1.2 Route Migration to req.tenantDb ✅ DONE (CURRENT SCOPE)
-For each server/routes.*.ts:
-
-Removed import { db } from './db' (or ../db) where not explicitly allowed.
-
-Replaced db. usage with req.tenantDb..
-
-Wrapped conditions with withTenantFilter for SELECTs:
-
-ts
-Copy code
-await req.tenantDb.query.customers.findFirst({
-  where: req.tenantDb.withTenantFilter(customers, eq(customers.id, id)),
-});
-Core routes migrated across Phases 1A–1H:
-
-routes.appointments.ts
-
-routes.quickbooking.ts
-
-routes.calls.ts
-
-routes.twilioVoice.ts
-
-routes.smsFallback.ts
-
-routes.contacts.ts
-
-routes.notifications.ts
-
-Loyalty, invoices, campaigns, and many others.
-
-Background jobs use:
-
-ts
-Copy code
-const tenantDb = wrapTenantDb(db, 'root');
-and tenant enumeration where needed.
-
-1.3 DB Schema & Tenants
-In shared/schema.ts:
-
-Core tables have tenantId (NOT NULL, default 'root' where needed):
-
-customers, appointments, vehicles, invoices, campaigns, conversations, sms_templates, banners, etc.
-
-tenants table:
-
-ts
-Copy code
-export const tenants = pgTable('tenants', {
-  id: varchar('id').primaryKey(),   // 'root', 'tenant-xxxx'
-  name: varchar('name').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  // later: domain, plan, branding, etc.
-});
-sms_templates unique constraint is composite per tenant:
-
-sql
-Copy code
-UNIQUE (tenant_id, template_key)
-Root tenant (Clean Machine):
-
-Has tenant_id = 'root' for all existing data.
-
-Background jobs enumerate all tenants but currently only find 'root'.
-
-1.4 Phase 2A – Tenant Registry & Admin UI ✅ DONE
-This sits conceptually between Phase 1 (multi-tenant core) and later phases.
-
-DB Changes
-
-New enum type: tenant_tier: 'starter' | 'pro' | 'elite'
-
-New table: tenant_config
-
-ts
-Copy code
-export const tenantConfig = pgTable('tenant_config', {
-  tenantId: varchar('tenant_id')
-    .references(() => tenants.id)
-    .primaryKey(),
-  businessName: varchar('business_name').notNull(),
-  logoUrl: text('logo_url'),
-  primaryColor: varchar('primary_color').default('#3b82f6'),
-  tier: tenantTierEnum('tier').default('starter').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-});
-Seeded root tenant config:
-
-tenantId = 'root'
-
-businessName = 'Clean Machine Auto Detail'
-
-tier = 'elite'
-
-Backend
-
-New file: server/routes.adminTenants.ts
-
-Admin endpoints (owner role required):
-
-GET /api/admin/tenants – list all tenants with config
-
-GET /api/admin/tenants/:id – single tenant details
-
-POST /api/admin/tenants – create tenant + config (transactional)
-
-PATCH /api/admin/tenants/:id – partial updates (only provided fields)
-
-DELETE /api/admin/tenants/:id – delete tenant (root protected)
-
-Security:
-
-All routes require auth + owner role.
-
-Root tenant cannot be modified or deleted.
-
-Zod validation.
-
-Transactions for create.
-
-Frontend
-
-New page: client/src/pages/AdminTenants.tsx
-
-Features:
-
-Grid layout of tenant cards with tier badges (color-coded).
-
-“Create tenant” dialog with validation.
-
-Displays tenant id, business name, subdomain (if present), tier, created date.
-
-Visual indicators for root tenant (shield icon + “Root/Flagship” badge).
-
-Responsive layout + loading/empty states.
-
-Uses TanStack Query + shadcn/ui components.
-
-Wiring:
-
-server/routes.ts – registerAdminTenantRoutes(app)
-
-client/src/App.tsx – route /admin/tenants guarded by <AuthGuard>.
-
-Status:
-
-✅ All tasks completed and architect-reviewed.
-
-✅ Server running clean.
-
-✅ All tenant isolation tests still passing.
+This phase is your safety net: every new feature must respect tenantId.
 
 PHASE 2 – TELEPHONY SPINE (SMS, VOICE, SIP, IVR)
-Goal: A clean, unified telephony core that supports:
 
-SMS automations (existing)
+Same as v3.2 with:
 
-Voice / IVR
+2.1 Canonical voice entry-point ✅
 
-SIP → Groundwire / in-app call handling
+2.2 tenantPhoneConfig ✅
 
-Future per-tenant phone configs
+2.3 Single-number IVR pattern (Press 1 info/SMS, Press 2 talk, Press 3 VM, Press 7 easter egg) – design complete, implementation in progress
 
-Single-number experience for tenants (no Twilio hell).
+2.4 SIP → Groundwire for root tenant
 
-2.1 Canonical Voice Entry-Point ✅ DONE
-Endpoint:
+2.5 Call handling & PWA console roadmap
 
-POST /twilio/voice/incoming
+2.6 Voice models & providers (Polly/OpenAI/ElevenLabs) design
 
-Implemented in: server/routes.twilioVoiceCanonical.ts
+(No major changes here; just reaffirmed.)
 
-This is now the single canonical entry-point for inbound voice calls.
+PHASE 2A – TENANT REGISTRY & ADMIN UI ✅
 
-Current behavior:
+As previously documented:
 
-Verifies Twilio signatures for security.
+tenants + tenant_config
 
-Resolves tenant (for now, still 'root').
+Admin endpoints: /api/admin/tenants etc.
 
-Performs simple SIP forwarding to:
+React page: AdminTenants with cards, tiers, root highlight
 
-xml
-Copy code
-<Response>
-  <Dial callerId="{From}">
-    <Sip>jody@cleanmachinetulsa.sip.twilio.com</Sip>
-  </Dial>
-</Response>
-Caller ID is passed through.
+Role-based access
 
-Tests:
-
-server/tests/twilioVoiceCanonical.test.ts – ✅ all tests passing.
-
-Scenarios: valid/invalid signatures, missing fields, SIP forwarding behavior, error handling.
-
-Docs:
-
-PHASE_2_1_CANONICAL_VOICE.md – implementation details + migration notes.
-
-replit.md – updated overview & how to hit /twilio/voice/incoming.
-
-Status:
-
-✅ Canonical voice route live and ready for root tenant.
-
-✅ Twilio can be pointed directly at this now.
-
-2.2 tenantPhoneConfig Table ✅ DONE
-In shared/schema.ts:
-
-ts
-Copy code
-export const tenantPhoneConfig = pgTable('tenant_phone_config', {
-  id: varchar('id').primaryKey(),
-  tenantId: varchar('tenant_id')
-    .references(() => tenants.id)
-    .notNull(),
-  phoneNumber: varchar('phone_number').notNull(),      // Twilio number (E.164)
-  messagingServiceSid: varchar('messaging_service_sid'),
-  sipDomain: varchar('sip_domain'),
-  sipUsername: varchar('sip_username'),
-  sipPasswordEncrypted: varchar('sip_password_encrypted'),
-  ivrMode: varchar('ivr_mode').default('simple'),      // 'simple' | 'ivr' | 'ai-voice'
-  createdAt: timestamp('created_at').defaultNow(),
-});
-Root tenant row:
-
-tenantId = 'root'
-
-phoneNumber = <your 918 number>
-
-sipDomain, sipUsername set for Groundwire.
-
-ivrMode = 'simple' initially.
-
-Future tenants:
-
-Each gets their own row with their own number + IVR mode.
-
-2.3 Single-Number IVR Pattern (Design + Implementation Target)
-Key principle: Each tenant should be able to do everything with one business number:
-
-IVR menu:
-
-“Press 1 for info”
-
-“Press 2 to talk”
-
-“Press 3 for voicemail”
-
-“Press 7 for a joke / easter egg”
-
-SMS follow-up:
-
-Press 1 sends link/pricing.
-
-Forward to a cell/SIP:
-
-Press 2 forwards to their chosen phone.
-
-Voicemail capture:
-
-Press 3 records a message.
-
-Twilio does not require separate numbers for these actions.
-
-Recommended default IVR pattern for ServicePro tenants:
-
-Press 1 – “Tell me about your services”
-
-Play a short info message.
-
-Send SMS with price sheet / website link / booking form.
-
-Press 2 – “Talk to a person”
-
-Forward to their primary business phone (or SIP endpoint).
-
-Same number handles IVR and live call.
-
-Press 3 – “Leave a message”
-
-Record voicemail.
-
-Email or SMS the tenant/owner a link to the recording.
-
-Press 7 – “Easter egg / joke” (optional)
-
-Fun differentiator (Clean Machine-style) they can turn on/off.
-
-For root tenant, this mirrors your current usage but cleans it up and removes the need for a second number (like the 5711 scenario).
-
-Implementation idea:
-
-Extend canonical endpoint so it:
-
-Reads tenantPhoneConfig.ivrMode.
-
-If 'simple': direct SIP forwarding (as now).
-
-If 'ivr': IVR logic (Press 1/2/3/7).
-
-If 'ai-voice': hand off to AI voice gateway (Phase 4).
-
-2.4 SIP → Groundwire Flow (Your Own Calls)
-For your business (root tenant):
-
-Twilio number → /twilio/voice/incoming → TwiML:
-
-xml
-Copy code
-<Response>
-  <Dial callerId="{From}">
-    <Sip>jody@cleanmachinetulsa.sip.twilio.com</Sip>
-  </Dial>
-</Response>
-Groundwire setup:
-
-SIP domain: cleanmachinetulsa.sip.twilio.com
-
-Username: jody
-
-Custom ringtone to mark business calls.
-
-Goal:
-
-You answer calls like a human, with proper caller ID and custom ringtone.
-
-Over time, you can blend:
-
-Live answering
-
-AI voice receptionist
-
-SMS follow-ups
-
-2.5 Call Handling & PWA Experience (Roadmap)
-Problem (current reality):
-
-Right now you have to use a third-party dialer and manual SIP setup to get:
-
-Caller ID passthrough
-
-Custom ringer
-
-This is friction and feels non-premium.
-
-ServicePro objective:
-
-Make call handling feel like a real product, not a wiring project.
-
-Short-term “good” (v1)
-Platform-managed Twilio number per Pro/Elite tenant.
-
-Default IVR pattern (Press 1 info/SMS, Press 2 talk, Press 3 voicemail).
-
-Forward-to-cell as default for “Press 2”:
-
-No SIP config required for most tenants.
-
-Caller ID passthrough via Twilio <Dial> with proper callerId.
-
-Admin UI to set:
-
-Primary call forwarding number.
-
-Business hours (after-hours → voicemail).
-
-Toggle IVR vs direct dial.
-
-Medium-term “better”
-Offer optional SIP/softphone mode for advanced tenants:
-
-Generate SIP credentials for them.
-
-Provide step-by-step guided setup for a recommended softphone app (like Groundwire) but:
-
-No Twilio console.
-
-All info in a single “Connect Your SIP App” page.
-
-QR-code or simple copy-paste config.
-
-Tenants never log into Twilio; ServicePro acts like the carrier.
-
-Long-term “best” – ServicePro PWA Call Console
-Build a ServicePro PWA call console with:
-
-Full-screen PWA with:
-
-Incoming call UI (caller name from CRM).
-
-Custom ringtone.
-
-Accept / decline / send-to-voicemail buttons.
-
-“Open customer record” quick action.
-
-Uses:
-
-WebRTC (or similar) for in-browser/iPad audio.
-
-Your telephony backend as signaling/origin.
-
-PWA behaviors:
-
-“Add to Home Screen” prompts with branded icon.
-
-Fullscreen mode on launch / long-press.
-
-Persistent login for techs/owners.
-
-Clean offline states.
-
-Ladder:
-
-Phase 2: “Works great with phone forwarding”
-
-Phase 2.5+: “Optional SIP app with guided setup”
-
-Phase X: “Native-feeling PWA call console”
-
-All aligned with the white-label, premium ServicePro story.
-
-2.6 Voice Models & Providers (Polly, OpenAI, ElevenLabs)
-Goal: Give tenants a simple voice tier ladder:
-
-Included: solid free voices (Polly / Twilio default).
-
-Premium optional: higher-end voices (OpenAI / ElevenLabs) as add-ons.
-
-Architecture:
-
-Central voiceProviderConfig (later table or JSON) per tenant:
-
-ts
-Copy code
-interface TenantVoiceConfig {
-  provider: 'polly' | 'openai' | 'elevenlabs';
-  voiceId: string; // e.g. 'Joanna', 'gpt-voice-1', 'elevenlab-xyz'
-  billingTier: 'included' | 'premium';
-}
-Phase 4 (AI Voice) & IVR TTS both use:
-
-getVoiceConfig(tenantId) → returns:
-
-TTS API to call (Polly / OpenAI / ElevenLabs).
-
-Specific voice ID.
-
-Whether it’s included or billable/premium.
-
-Product stance:
-
-Base tiers (Starter/Pro):
-
-Use included Twilio/Polly-level voices (no extra cost).
-
-Elite / add-on:
-
-Unlock OpenAI / ElevenLabs voices.
-
-Potentially small per-tenant surcharge or usage-based fee.
-
-Tenants never see the wiring – they just pick “Standard” vs “Premium natural voice” in settings; you manage actual providers.
+This is your ServicePro admin dashboard for managing tenants.
 
 PHASE 3 – AI MESSAGING BRAIN & KNOWLEDGE BASE
-(Concept unchanged; restated cleanly.)
 
-3.1 Core “Agent Brain” Service
-Create server/aiAgent.ts with a single main entry:
+Now updated to reflect what we’ve done and what’s next.
 
-ts
-Copy code
+3.1 Core Agent Service
+
+server/aiAgent.ts (or equivalent) with:
+
 type AgentChannel = 'sms' | 'web' | 'voice';
 
 interface AgentRequest {
@@ -732,1129 +302,773 @@ interface AgentRequest {
   messageText: string;
   conversationId?: number;
   phoneNumber?: string;
-  context?: Record<string, any>; // current route, last action, etc.
+  context?: Record<string, any>;
 }
 
 interface AgentResponse {
   replyText: string;
-  nextActions?: Array<{
+  nextActions?: {
     type: 'book' | 'reschedule' | 'collect_info' | 'handoff' | 'confirm';
     payload?: any;
-  }>;
+  }[];
 }
 
-export async function handleAgentMessage(
-  req: AgentRequest
-): Promise<AgentResponse> {
-  // Look up tenant config, KB, services, policies, etc.
-}
-All SMS / web chat / (later voice) routes call this instead of embedding logic.
+
+All SMS + web chat (and later voice) eventually route through handleAgentMessage.
 
 3.2 Knowledge Base Integration
-Seed from:
 
-Master_CleanMachine_AgentKnowledgeBase_AutoReady.xlsx
+Global base knowledge (common actions, generic policies)
 
-WHITE_LABEL_GUIDE.md
+Industry pack layer (detailing, lawn care, house cleaning, etc.)
 
-FAQ content
+Tenant-specific overrides (services, prices, rain policy, etc.)
 
-Service definitions
+Data sources:
 
-Policies (rain, cancellations, deposits, etc.)
+Master KB spreadsheet
 
-Design:
-
-Global base knowledge (for all tenants).
-
-Tenant-specific overrides (services, prices, policies).
-
-Later: industry pack overlays (detailing vs lawn care vs house cleaning, etc.).
-
-3.3 Customer Booking Agent (Per Tenant, Customer-Facing)
-Responsibilities:
-
-Answer:
-
-“What do you offer?”
-
-“How much?”
-
-“How long?”
-
-“Do you travel to X?”
-
-Drive toward bookings:
-
-Vehicle/job details
-
-Service type
-
-Location & service area checks
-
-Scheduling
-
-Upsells (protectant, coating, maintenance plans, etc.)
-
-Channels:
-
-SMS (Twilio)
-
-Web chat widget
-
-Future: voice calls (Phase 4)
-
-Relies on:
-
-Tenant services & pricing from DB
-
-Tenant preferences (upsell config, policies)
-
-Availability engine (calendar/appointments)
-
-PHASE 4 – AI VOICE RECEPTIONIST (OPENAI REALTIME)
-Goal: Take the AI messaging brain and surface it as a real voice receptionist.
-
-4.1 Voice Gateway Service
-Implement server/voiceGateway.ts:
-
-Handles Twilio <Stream> WebSocket.
-
-Connects to OpenAI Realtime API.
-
-Streams audio → text → handleAgentMessage.
-
-Streams text → TTS audio → Twilio.
-
-Call flow:
-
-Caller dials tenant’s number.
-
-Twilio hits /twilio/voice/incoming.
-
-If ivrMode = 'ai-voice':
-
-TwiML <Connect><Stream> → wss://your-server/voice-gateway.
-
-Voice gateway:
-
-Connects to OpenAI Realtime.
-
-Feeds transcripts into handleAgentMessage.
-
-Speaks replies back using chosen voice provider (Polly/OpenAI/ElevenLabs via TenantVoiceConfig).
-
-4.2 Reuse Booking Flow Logic
-Voice agent uses the same steps as SMS booking:
-
-Greet
-
-Service type
-
-Vehicle/job & condition
-
-Water/power (if relevant)
-
-Address & service area check
-
-Offer slots
-
-Confirm & book
-
-SMS confirmation
-
-No duplicated logic – just different channel.
-
-PHASE 5 – SAAS TIERS, ONBOARDING AGENTS, WEBSITE GENERATOR
-(Same core as v3.1, with tenant_config already in place.)
-
-5.1 Tier Model (3 Tiers)
-tenants table gains plan + status:
-
-ts
-Copy code
-export const tenants = pgTable('tenants', {
-  id: varchar('id').primaryKey(),
-  name: varchar('name').notNull(),
-  planTier: varchar('plan_tier').default('starter'),
-  status: varchar('status').default('trialing'), // 'active' | 'trialing' | 'past_due' | 'suspended' | 'cancelled'
-  // later: trialEndsAt, etc.
-});
-Billing metadata:
-
-ts
-Copy code
-export const tenantBilling = pgTable('tenant_billing', {
-  tenantId: varchar('tenant_id').references(() => tenants.id).primaryKey(),
-  stripeCustomerId: varchar('stripe_customer_id'),
-  stripeSubscriptionId: varchar('stripe_subscription_id'),
-  subscriptionStatus: varchar('subscription_status'),
-  latestInvoiceStatus: varchar('latest_invoice_status'),
-  lastPaymentAt: timestamp('last_payment_at'),
-});
-Feature gates (example):
-
-ts
-Copy code
-export const TIER_FEATURES = {
-  starter: {
-    aiSmsAgent: false,
-    aiVoiceAgent: false,
-    dedicatedNumber: false,
-    campaigns: false,
-    dataExport: true,
-    websiteGenerator: true, // maybe limited templates
-  },
-  pro: {
-    aiSmsAgent: true,
-    aiVoiceAgent: false,
-    dedicatedNumber: true,
-    campaigns: true,
-    dataExport: true,
-    websiteGenerator: true,
-  },
-  elite: {
-    aiSmsAgent: true,
-    aiVoiceAgent: true,
-    dedicatedNumber: true,
-    campaigns: true,
-    dataExport: true,
-    websiteGenerator: true,
-  },
-} as const;
-Helper:
-
-ts
-Copy code
-function hasFeature(
-  tenant: TenantRow,
-  key: keyof typeof TIER_FEATURES['starter']
-) { ... }
-Used everywhere to gate features in UI & backend.
-
-5.2 Onboarding Agents (Tenant Setup Agents)
-Starter Tier Onboarding Agent (more DIY/BYO)
-
-Helps with:
-
-Basic services & pricing setup.
-
-Service area definition.
-
-Basic booking rules.
-
-Optional BYO Twilio/SendGrid (advanced).
-
-Tone:
-
-Slightly more technical is OK.
-
-Explains why each setting matters.
-
-Pro / Elite Onboarding Agent (Hosted – main flow)
-
-“Shopify-like” experience:
-
-Asks:
-
-Business name, logo, colors, vibe.
-
-Services offered.
-
-Typical job length.
-
-Service area (zips / radius).
-
-Deposits, reminders, review requests?
-
-Under the hood:
-
-Provisions Twilio number (via platform account).
-
-Sets default automations.
-
-Seeds services & pricing (via industry pack).
-
-Generates website (see 5.4).
-
-Configures AI booking agent for that tenant.
-
-UX:
-
-Embedded in dashboard as wizard.
-
-Uses aiAgent in admin mode with checklists.
-
-5.3 Tenant Support Agent (In-App Support / Tech Help)
-Product-aware copilot (see Phase 10), but specifically for tenant admins.
-
-Lives inside:
-
-Dashboard (help widget / dock).
-
-Setup pages (“Need help?” buttons).
-
-Knows:
-
-Current route (e.g., /settings/notifications).
-
-Tenant tier & enabled features.
-
-Tenant configuration (services, calendars, numbers, etc.).
-
-Can:
-
-Explain features in context.
-
-Walk through multi-step setup.
-
-Perform safe actions (update a setting, trigger a test message).
-
-Open a support ticket to you + partner if needed.
-
-5.4 Website Generator (High-End, Limited Presets)
-Key requirement: Not generic “meh” generators. You want ~10 high-end templates:
-
-Modern, premium SaaS / studio look.
-
-Use:
-
-Clean layouts
-
-Hover effects
-
-Smooth transitions / micro-animations
-
-“App-like” feel
-
-But constrained so:
-
-Booking buttons/links always work.
-
-Analytics & tracking stay connected.
-
-Layout changes don’t break logic.
-
-Implementation:
-
-Templates implemented in React + Tailwind under web-templates/:
-
-LuminousConcierge
-
-NightDriveNeon
-
-PrestigeGrid
-
-LocalHero
-
-StudioMinimal
-
-etc. (up to ~10 curated designs)
-
-Data:
-
-ts
-Copy code
-interface WebsiteSeed {
-  businessName: string;
-  tagline: string;
-  tone: 'modern' | 'luxury' | 'local' | 'bold';
-  primaryColor?: string;
-  logoUrl?: string;
-  services: ServiceSeed[];
-  aboutBlurb: string;
-  city: string;
-  phoneNumber: string;
-  bookingUrl: string; // tenant’s booking / request form
-}
-Generator:
-
-Chooses a template (or user picks).
-
-Fills in hero, services, FAQs, testimonials, CTAs.
-
-Users can:
-
-Preview templates on subdomain/dev URL.
-
-Switch templates without breaking functionality.
-
-Make shallow edits (copy, images, brand colors).
-
-Partner integration:
-
-Same WebsiteSeed object can be sent to external partner generator.
-
-Config:
-
-ts
-Copy code
-tenantConfig.websiteGeneratorMode = 'built-in' | 'partner';
-tenantConfig.partnerGeneratorEndpoint = 'https://...';
-Performance:
-
-Use SSR/SSG where possible.
-
-Lazy-load heavy images.
-
-Keep animations tasteful & light.
-
-5.5 Free Trial Flow (14-Day, No Credit Card)
-Standard flow:
-
-Landing page (Clean Machine / ServicePro showcase) has “Start 14-day free trial”.
-
-Trial signup:
-
-Name, email, business name, industry, city.
-
-Choose plan tier (default Pro during trial).
-
-Backend:
-
-Creates tenant with status = 'trialing', planTier = 'pro', trialEndsAt.
-
-Provisions default phone number (for Pro+).
-
-Kicks off onboarding agent.
-
-During trial:
-
-Soft limits on SMS/calls to avoid abuse.
-
-“Trial” badge in app.
-
-Upsell content about full Pro benefits.
-
-End of trial:
-
-Stripe webhook OR internal cron.
-
-If not upgraded:
-
-status = 'past_due' or trial_expired.
-
-Soft-lock functionality (see 8.3).
-
-Data intact for easy reactivation.
-
-PHASE 6 – INDUSTRY PACKS & AUTO-SETUP
-Goal: No one should feel like they’re “setting up everything from scratch.”
-
-6.1 Industry Packs
-Implement server/industryPacks.ts:
-
-ts
-Copy code
-export const industryPacks = {
-  'mobile-detailing': {
-    name: 'Mobile Auto Detailing',
-    defaultServices: [...],
-    defaultAddons: [...],
-    defaultDurations: {...},
-    defaultReminderRules: {...},
-    faqs: [...],
-    ivrScriptTemplate: 'Thanks for calling [BUSINESS_NAME]...',
-    smsTemplates: {...},
-    agentInstructions: [...],
-  },
-  'lawn-care': { ... },
-  'house-cleaning': { ... },
-  'window-washing': { ... },
-  // etc.
-};
-On onboarding:
-
-Tenant chooses industry.
-
-System seeds:
-
-Services & pricing.
-
-Add-ons.
-
-Example SMS templates.
-
-IVR script / call routing defaults.
-
-FAQ entries.
-
-Website content skeleton.
-
-6.2 Agent Configuration Per Industry
-Agents adjust tone & vocabulary:
-
-Detailing:
-
-“paint correction”, “ceramic coating”, “interior steam extraction”.
-
-Cleaning:
-
-“deep clean”, “move-out clean”, “recurring weekly/bi-weekly”.
-
-etc.
-
-Tenant AI knowledge:
-
-Base + industry pack + tenant overrides.
-
-PHASE 7 – SUPER-TENANT OPS (BILLING, MONITORING, SCALING)
-7.1 Billing & Plans (Stripe)
-Use Stripe for subscriptions.
-
-Map planTier to Stripe price IDs.
-
-Stripe webhooks:
-
-customer.subscription.created
-
-customer.subscription.updated
-
-invoice.payment_succeeded
-
-invoice.payment_failed
-
-customer.subscription.deleted
-
-Webhook handler:
-
-Updates tenantBilling and tenants.status.
-
-Triggers enable/disable of features (see Phase 8).
-
-Root dashboard:
-
-List tenants with:
-
-Tier
-
-Status
-
-Next billing date
-
-Usage stats (messages, calls, bookings)
-
-7.2 Monitoring & Health
-Per tenant:
-
-SMS volume
-
-Call volume
-
-Booking conversions
-
-Agent conversations
-
-Error rates
-
-Use existing:
-
-Health checks
-
-Logging
-
-Super-tenant dashboard:
-
-“Tenant health” view.
-
-Drill-down into a tenant’s logs/events.
-
-7.3 Scaling & Performance
-When needed:
-
-Introduce caching for:
+Industry packs (Phase 6)
 
 Tenant config
 
-Industry packs
+3.3 Customer Booking Agent (Per Tenant)
 
-Queue jobs for:
+Channel-aware: SMS, web widget, later voice
 
-Campaign sends
+Goals:
 
-Heavy AI tasks
+Answer what/where/how much
 
-For large tenants:
+Drive to confirmed appointments
 
-Optionally move them to their own DB instance/schema using same codebase.
+Use tenant services & calendars
 
-PHASE 8 – PLAN TIERS, UPGRADES, AND USAGE BILLING (v3.2)
-8.1 Plan & Status Fields
-Covered in 5.1 & 7.1; main fields:
+Apply upsells intelligently
 
-tenants.planTier – 'starter' | 'pro' | 'elite'
+3.4 SMS Agent Prompt Builder v2 (Tenant & Industry Aware) ✅
 
-tenants.status – 'active' | 'trialing' | 'past_due' | 'suspended' | 'cancelled'
+This is the work you just completed:
 
-tenantBilling.* – Stripe metadata
+server/ai/smsAgentPromptBuilder.ts:
 
-Also aligns with tenant_config.tier.
+Uses tenant-specific business name, industry type, services/pricing.
 
-8.2 Upgrade Flow (Starter → Pro → Elite, No Re-Setup)
-Flow:
+Enforces key rules:
 
-Tenant clicks “Upgrade to Pro/Elite”.
+Don’t invent prices; use DB.
 
-Frontend calls /api/billing/upgrade with targetTier.
+Ask for photos when needed.
 
-Backend:
+Use booking link when appropriate.
 
-Uses tenantBilling to find Stripe subscription.
+Keep responses SMS-sized (≤ 160/320 chars when possible).
 
-Updates subscription to new price.
+Integrates plan tiers + industry packs.
 
-On success:
+server/openai.ts:
 
-planTier = 'pro' | 'elite'.
+When platform === 'sms' and tenantId is provided:
 
-Trigger provisioning (e.g., dedicated number, AI features).
+Uses SMS-specific prompt builder.
 
-Features unlock immediately via hasFeature.
+Has graceful fallback to generic prompts.
 
-No new tenant, no migration. Same data, same charts.
+This maps to what we previously called “Phase 11”; now it’s explicitly part of Phase 3.
 
-8.3 Handling Non-Payment (Suspend but Don’t Delete)
-Principles:
+3.5 Professional Conversation Management – Smart Hand-Off & Smart Schedule ✅
 
-Never delete tenant data just for card failure.
+What you called Phase 12 is now explicitly documented here:
 
-Suspend access, not information.
+server/smartConversationParser.ts:
 
-Make reactivation easy.
+AI-powered extraction of:
 
-Policy:
+Schedule intent
 
-On invoice.payment_failed:
+Dates, times, windows
 
-Mark status = 'past_due'.
+Services requested
 
-Show banner:
+Address/service area hints
 
-“There was a problem with your payment. Please update your card.”
+Handback readiness analysis (is this safe for AI again?)
 
-Optionally:
+server/enhancedHandoffService.ts:
 
-Block new campaigns & scheduled outbound.
+Human takeover with agent assignment
 
-Allow read-only access + 1:1 bookings.
+Smart scheduling from messy threads → structured bookings
 
-On long-term non-payment or subscription cancelled:
+Intelligent handback to AI with context and mode switching
 
-status = 'suspended'.
+Multi-tenant safe (tenantDb.withTenantFilter everywhere)
 
-Allow:
+Endpoints in server/routes.conversations.ts:
 
-Login (if you want).
+POST /api/conversations/:id/smart-schedule
 
-Read-only dashboard.
+POST /api/conversations/:id/smart-handback
 
-Billing page.
+GET /api/conversations/:id/handback-analysis
 
-Data export (see Phase 11).
+Frontend:
 
-Block:
+ConversationMetaBar
 
-New bookings (optional).
+SmartSchedulePanel
 
-SMS/voice automations.
+HandoffControls
 
-Campaigns.
+HandbackAnalysisPanel
 
-Data retention:
+This is done and secure, and is now the canonical “Phase 3.5”.
 
-Keep data for a configurable window (e.g., 6–12 months).
+3.6 Campaign-Aware Agents (Welcome Back & Future Promos) (Design complete; partial implementation)
 
-Later: archival / cold storage if needed.
+Shared campaignContextService:
 
-8.4 Built-in Upgrade Nudges
-To push Starter → Pro:
+Given { tenantId, customerId } returns:
 
-In-app plan card:
+hasRecentCampaign
 
-“Current Plan: Starter” with compare table.
+campaignKey
 
-Feature wall:
+campaignName
 
-When they try Pro-only feature:
+lastSentAt
 
-Modal explaining benefit and that existing setup remains intact.
+bonusPointsFromCampaign
 
-Usage-based prompt:
+currentPoints
 
-“You’ve sent 180 SMS manually this month. Pro can automate follow-ups and reminders. [See Pro benefits]”
+SMS + web-chat prompt builders:
 
-PHASE 9 – TELEPHONY MODEL & TWILIO UX (v3.2)
-This ties together:
+Inject CAMPAIGN CONTEXT when present:
 
-Canonical voice entry-point (2.1 ✅).
+“This customer recently received the ‘Welcome Back: New System Launch’ campaign…”
 
-tenantPhoneConfig (2.2 ✅).
+Behavior rules:
 
-Single-number IVR pattern (2.3).
+If customer mentions “your message/text”, “points”, “welcome back”, “new system”:
 
-Forwarding/SIP/PWA flow (2.5).
+Assume they mean the latest campaign.
 
-Voice model options (2.6).
+Confirm and explain the offer.
 
-9.1 Core Principle: Platform-Managed by Default
-For Pro / Elite tenants:
+Drive toward booking or using points.
 
-They never see Twilio.
+Never respond “I don’t know what you’re referring to” as first answer.
 
-You act as carrier:
+This design is generalized so future promos (referral, review bonus, seasonal campaigns) can reuse the same pattern via Phase 14’s promo engine.
 
-Own Twilio account.
+PHASE 4 – AI VOICE RECEPTIONIST (OPENAI REALTIME)
 
-Provision numbers.
+No major change from v3.2 — this phase reuses:
 
-Handle A2P registration.
+The agent brain from Phase 3
 
-Maintain webhooks.
+Telephony spine from Phase 2
 
-They see:
+Voice provider config from 2.6
 
-“Your business number: (XXX) XXX-XXXX”
+Goal: a true AI voice receptionist per tenant with the same intelligence as SMS/web.
 
-Call + SMS stats.
+PHASE 5 – SAAS TIERS, ONBOARDING AGENTS, WEBSITE GENERATOR
 
-Simple routing settings (hours, voicemail vs AI, etc.).
+Same as v3.2, but now tightly coupled with later identity/promo phases.
 
-Starter tenants:
+Tier model (starter/pro/elite)
 
-Optional BYO Twilio (advanced) or shared/generic number.
+Onboarding agents (different flows by tier)
 
-9.2 Provisioning Numbers for Tenants
-Provisioning service provisionTenantNumber(tenantId):
+Tenant support agent (in-app copilot)
 
-Look up tenant’s location (city/area/country).
+Website generator with curated premium templates
 
-Use platform Twilio keys to:
+PHASE 6 – INDUSTRY PACKS & AUTO-SETUP
 
-Search for local or toll-free number.
+Same core idea:
 
-Purchase it.
-
-Attach webhooks:
-
-Voice: /twilio/voice/incoming
-
-SMS: /twilio/sms/incoming
-
-Create/update tenantPhoneConfig row:
-
-phoneNumber, messagingServiceSid, ivrMode = 'simple', etc.
-
-On failure:
-
-Log + show UI:
-
-“We couldn’t automatically get a number in your preferred area. We’ll reach out with options.”
-
-9.3 BYO Twilio (Advanced)
-Hidden behind “Advanced” toggle in settings.
-
-Collect:
-
-accountSid
-
-authToken
-
-Optional messagingServiceSid
-
-Validate with test calls.
-
-Mark tenant as BYO Twilio.
-
-All telephony flows for that tenant use their creds instead of platform’s.
-
-Most users stay on platform-managed Twilio.
-
-9.4 Suspension Behavior for Telephony
-Based on tenants.status:
-
-active or trialing:
-
-Full telephony flows.
-
-past_due:
-
-Option A: allow inbound, block campaigns & scheduled outbound.
-
-Option B: gradually limit usage + warnings.
-
-suspended:
-
-Stop automations & new outbound.
-
-Optional inbound:
-
-Play “account paused” message.
-
-Keep number & config intact during retention window.
-
-PHASE 10 – AI SETUP & SUPPORT AGENTS (PRODUCT-AWARE COPILOTS)
-10.1 Concept: Product-Aware Copilot
-Three layers:
-
-Knowledge layer – product docs, screen map, feature specs, FAQs, tenant config.
-
-Tool layer – safe actions (update settings, trigger tests, create tickets).
-
-UX layer – embedded where needed (setup wizard, help dock, chat bubble).
-
-10.2 Knowledge Layer
-Sources:
-
-Existing docs (WHITE_LABEL_GUIDE.md, KB sheets, etc.).
-
-DB schema + route map.
-
-Industry packs.
-
-Tenant config (services, hours, numbers, tier).
-
-We model:
-
-Feature specs.
-
-Screen map / UI flow.
-
-Setup playbooks:
-
-“Onboard solo detailer”
-
-“Onboard cleaning business”
-
-“Connect calendar”
-
-Troubleshooting trees:
-
-“My SMS aren’t sending”
-
-“Appointments aren’t showing on technician iPad”
-
-“My calls don’t ring in the app”
-
-Stored as:
-
-Structured JSON/DB for tools.
-
-Vector store for free-text search.
-
-10.3 Tool Layer (Safe Actions)
-Examples:
-
-Read-only:
-
-get_tenant_profile(tenantId)
-
-get_enabled_features(tenantId)
-
-get_error_logs(tenantId, timeframe)
-
-search_docs(query)
-
-Actions:
-
-update_setting(tenantId, key, value)
-
-enable_feature(tenantId, featureKey) (if tier allows)
-
-trigger_onboarding_flow(tenantId, flowType)
-
-create_support_ticket(tenantId, userId, summary, details)
-
-Rules:
-
-Write actions are narrow and whitelisted.
-
-Risky stuff (deletions, downgrades):
-
-Ask explicit confirmation, or
-
-Escalate to human via ticket.
-
-10.4 UX Layer: Where Agents Live
-Owner/Admin Setup Agent
-
-Appears during onboarding.
-
-Guides through:
-
-Business info
+industryPacks describing defaults for:
 
 Services
 
-Service area
+Add-ons
 
-Telephony choices
+Durations
 
-Website template selection
+SMS templates
 
-Tier-aware:
+IVR patterns
 
-Starter: can explain BYO Twilio, more DIY.
+FAQ seeds
 
-Pro/Elite: hides complexity, uses platform-managed defaults.
+AI instructions / jargon
 
-In-App Support Agent
+These feed:
 
-Help dock on every page.
+Onboarding
 
-Knows current route (e.g., /settings/notifications, /settings/phone).
+AI agents
 
-Can say:
+Website generator
 
-“I see you’re editing notification settings. Want help testing a reminder?”
+Promo engine defaults (Phase 14)
 
-“I see your IVR is in simple mode. Want to enable Press-1 info + SMS?”
+PHASE 7 – SUPER-TENANT OPS (BILLING, MONITORING, SCALING)
 
-Customer-Facing Agent (Booking / FAQs)
+No major changes vs v3.2:
 
-On website widget + SMS.
+Stripe-based billing
 
-Tone: friendly, non-technical.
+Tenant health & usage stats
 
-Uses tenant services + policies.
+Monitoring & logs per tenant
 
-10.5 Context Passing
-Frontend should pass:
+Scaling strategies for heavy tenants
+
+PHASE 8 – PLAN TIERS, UPGRADES, AND USAGE BILLING
+
+As before:
+
+planTier and status on tenants
+
+tenantBilling for Stripe linkage
+
+TIER_FEATURES / hasFeature() gating
+
+Upgrade/downgrade flows
+
+Suspension behavior that never deletes data
+
+PHASE 9 – TELEPHONY MODEL & TWILIO UX
+
+As before:
+
+Platform-managed Twilio for Pro/Elite
+
+Optional BYO Twilio for advanced tenants
+
+Number provisioning service
+
+Telephony behavior tied to tenant status (active/trial/past_due/suspended)
+
+PHASE 10 – AI SETUP & SUPPORT AGENTS (PRODUCT-AWARE COPILOTS)
+
+As before, but note:
+
+These support agents will also understand:
+
+Loyalty/promo engine (Phase 14)
+
+Identity/login flows (Phase 15)
+
+Backfill status (Phase 16)
+
+So tenants can get help like:
+
+“Why didn’t this customer get the Welcome Back bonus?”
+“How does the OTP login work for customers?”
+
+PHASE 11 – DATA EXPORT & RETENTION
+
+As before:
+
+Per-tenant export (customers, jobs, invoices, messages, loyalty, etc.)
+
+Retention policies for past_due/suspended/cancelled
+
+PHASE 12 – INTEGRATIONS & KEYS CHECKLIST
+
+As before:
+
+Platform env vars:
+
+DB, OpenAI, Twilio, Stripe, SendGrid, Google, voice providers
+
+Per-tenant config in DB:
+
+tenant_config, tenantPhoneConfig, voice config, BYO creds, etc.
+
+PHASE 13 – IDEA PARKING LOT / FUTURE ENHANCEMENTS
+
+Same idea: a live bucket for future big ideas (more site templates, PWA console, review widgets, etc.) that we’ll hydrate into real phases later.
+
+🆕 PHASE 14 – UNIFIED LOYALTY & PROMO ENGINE (ANTI-ABUSE)
+
+Goal: Replace “one-off campaign logic” with a single, central promo/loyalty engine that:
+
+Awards points safely
+
+Enforces anti-abuse rules
+
+Works across all promo types (Welcome Back, referrals, review bonuses, seasonal campaigns)
+
+Is multi-tenant and plan-aware
+
+14.1 Central API: awardPromoPoints
+
+Design a server-level service:
+
+interface AwardPromoPointsArgs {
+  tenantId: string;
+  customerId: string;
+  promoKey: string;       // 'welcome_back_v1', 'referral_v1', 'review_bonus_v1', etc.
+  basePoints: number;     // proposed number of points
+  metadata?: Record<string, any>;
+}
+
+interface AwardPromoPointsResult {
+  awarded: boolean;
+  pointsGranted: number;
+  reason?: string;        // e.g. 'already_awarded', 'household_limit', etc.
+}
+
+
+All campaigns call this, not raw “add points” methods.
+
+14.2 Anti-Abuse Rules (Configurable, Defaults for You)
+
+Central rules implemented inside awardPromoPoints:
+
+Per-customer + per-promo cap
+
+Only one welcome_back_v1 per customerId ever (or per 12 months).
+
+Per-household cap (using address/household ID, see Phase 16)
+
+Only X bonuses from the same normalized address per year.
+
+Eligibility rules per promo
+
+Example for Welcome Back:
+
+Must have at least 1 completed job before promo launched, or
+
+Customer created before WELCOME_BACK_LAUNCH_DATE.
+
+Global promo caps (optional)
+
+Max total redemptions of a given promo if you ever want to limit.
+
+Pending vs “live” points
+
+For large bonuses (like 500 pts), you can:
+
+Mark them as pendingPromoBonus
+
+Only convert to active points after next completed job.
+
+All of this is driven by a PROMO_RULES config:
+
+const PROMO_RULES = {
+  welcome_back_v1: {
+    perCustomerLifetimeMax: 1,
+    perHouseholdPerYearMax: 1,
+    requireExistingJob: true,
+    awardMode: 'pending_until_next_completed_job',
+    basePointsVip: 500,
+    basePointsRegular: 100,
+  },
+  referral_v1: {
+    perCustomerPerYearMax: 5,
+    awardMode: 'immediate_on_completed_job',
+    // ...
+  },
+  // ...
+} as const;
+
+14.3 Loyalty Storage & Audit
+
+Under the hood:
+
+loyalty_balances (per {tenantId, customerId})
+
+loyalty_transactions table:
 
 tenantId
 
-userId
+customerId
 
-route (for dashboard)
+deltaPoints
 
-Optional: lastErrorCode, recentAction
+promoKey (nullable)
 
-Agent uses this to feel “psychic” and specific.
+source (e.g. 'campaign', 'manual_adjustment', 'redemption')
 
-PHASE 11 – DATA EXPORT & RETENTION
-You want:
+metadata (JSON)
 
-No data-loss on non-payment.
+createdAt
 
-Tenants able to download their whole dataset.
+The promo engine only writes via a trusted “award points” function, so later audits are easy.
 
-11.1 Export
-Data Export feature gated by hasFeature(tenant, 'dataExport'):
+14.4 Household Awareness
 
-Accessible even when status = 'suspended' (if you allow).
+To block “same house, 5 phone numbers” abuse:
 
-Exports:
+Introduce a household abstraction:
 
-CSV/JSON for:
+Either:
 
-Customers
+households table with normalized address → householdId
 
-Vehicles / assets
+Or an internal mapping tied to customer records.
 
-Appointments
+For promos that should be per-household (Welcome Back), awardPromoPoints looks at:
 
-Invoices / payments
+Other customers with same householdId who already received that promoKey.
 
-Messages (SMS logs, notes)
+If found:
+
+You can:
+
+Deny bonus, or
+
+Give a smaller “secondary” bonus.
+
+14.5 Simple Abuse Monitoring View (Later UI)
+
+Add an admin-only table in the ServicePro admin dashboard:
+
+“Potential Abuse” list:
+
+Customers/households hitting promo caps
+
+Suspicious clusters (multiple customers at same address, many promo triggers in short window)
+
+You don’t have to act on it, but it gives you visibility.
+
+🆕 PHASE 15 – CUSTOMER IDENTITY & LOGIN (OTP + MAGIC LINKS)
+
+Goal: Move from “phone number only” to a real identity system that’s still super smooth for customers:
+
+Under the hood: everything keyed by customerId
+
+For customers: login feels like Uber/Doordash:
+
+Enter phone → OTP or magic link → you’re in.
+
+15.1 Internal Identity Model
+
+Canonical model:
+
+customers table extended with:
+
+id (primary key)
+
+tenantId
+
+name
+
+phone
+
+email (optional)
+
+address (structured)
+
+firstJobDate
+
+lastJobDate
+
+totalJobs
+
+totalLifetimeValue
+
+householdId (optional, from Phase 16)
+
+source / importSource (sheet, sms_history, portal, etc.)
+
+isVip flag(s)
+
+Points, promos, bookings all key off {tenantId, customerId}.
+
+Phone and email are identifiers, not the primary key.
+
+15.2 Customer Portal Concepts
+
+Per tenant, customers will eventually have a portal where they can:
+
+See:
+
+Points balance
+
+Recent jobs
+
+Upcoming appointments
+
+Book new services (with info prefilled)
+
+Use points at checkout
+
+Portal authentication uses OTP and magic links.
+
+15.3 OTP Login (v1 – Simpler, Ship Sooner)
 
 Flow:
 
-Tenant clicks “Export My Data”.
+Customer goes to “Sign in” or “Check my points” on the tenant’s site.
 
-Backend triggers background job.
+Enters phone number.
 
-When ready:
+Server:
 
-Download link (time-limited signed URL).
+Looks up {tenantId, phone} → customerId (or offers “create account” if allowed).
 
-Or email.
+Generates a short-lived OTP code (e.g. 6 digits), stores in login_tokens table.
 
-11.2 Retention Policy
-For past_due / suspended:
+Sends SMS via tenant’s Twilio number.
 
-Keep all data at least N months (e.g., 6–12).
+Customer enters code → POST /api/customer/verify-otp:
 
-For manual cancellation:
+Validate code & expiry.
 
-Let them export before final closure.
+Mark token as used.
 
-Later:
+Create a customer session (cookie or JWT) tied to customerId.
 
-Add archival / anonymization if needed.
+Redirect to portal (points + history).
 
-PHASE 12 – INTEGRATIONS & KEYS CHECKLIST
-You asked: “What all new integration keys do I need?”
+This preserves your “phone-first” experience but makes it actually secure and private.
 
-12.1 Core Platform Keys (You / Root Tenant)
-Env vars for platform (not per-tenant):
+15.4 Magic Links (v2 – Magical Feel)
 
-Database
+On top of OTP, we add magic links (primarily for email, but can work with SMS too).
 
-DATABASE_URL
+Flow:
 
-OpenAI
+Customer enters phone or email.
 
-OPENAI_API_KEY (SMS agent, support agent, voice agent, etc.)
+System resolves or creates a customer record.
 
-Twilio (platform-managed)
+System generates a signed token stored in login_tokens (type: 'magic_link'), with:
 
-TWILIO_ACCOUNT_SID
+tenantId
 
-TWILIO_AUTH_TOKEN
+customerId
 
-TWILIO_MESSAGING_SERVICE_SID (if used)
+expiresAt
 
-Stripe
+usedAt (null)
 
-STRIPE_SECRET_KEY
+System sends:
 
-STRIPE_WEBHOOK_SECRET
+Email: “Click to access your Clean Machine/ServicePro portal” with link:
 
-SendGrid
+https://tenant-domain.com/magic-login?token=XYZ
 
-SENDGRID_API_KEY
+Or SMS version if you want.
 
-Default from email like info@cleanmachinetulsa.com
+Customer clicks link:
 
-Google
+GET /magic-login?token=XYZ
 
-GOOGLE_MAPS_API_KEY
+Backend validates token:
 
-GOOGLE_API_KEY
+Not expired
 
-Calendar credentials (service account / OAuth).
+Not used
 
-PWA / Push
+Marks as used.
 
-VAPID keys
+Creates session.
 
-Voice providers (when added):
+Redirects into portal.
 
-Polly:
+This is a bit more wiring than OTP (sessions + token DB + redirect flows), which is why it’s “later” — but it’s absolutely in-scope for ServicePro v3 and you’ll ultimately have both.
 
-AWS access keys
+15.5 Tenant Isolation & Plan Gating
 
-ElevenLabs:
+Starter tenants may only get barebones OTP or nothing (manual booking only).
 
-ELEVENLABS_API_KEY
+Pro/Elite get full customer portal + OTP.
 
-OpenAI voice:
+Magic links might be gated to Pro/Elite (or just default for everyone, up to you).
 
-Same as OPENAI_API_KEY + model/voice settings.
+🆕 PHASE 16 – CUSTOMER MASTER BACKFILL & HISTORICAL MERGE
 
-12.2 Per-Tenant Config (DB, Not Env)
-tenantConfig:
+Goal: Take your 6+ years of customers (Sheets + SMS + current DB) and merge them into a clean, canonical customer database for the root tenant (Clean Machine), and later for other tenants.
 
-businessName, branding, tier, hours, service area, website mode.
+This prevents your real customers from being treated as “new” when loyalty, promos, and AI go live.
 
-tenantPhoneConfig:
+16.1 Canonical Customer Schema
 
-phoneNumber, messagingServiceSid, sipDomain, sipUsername, ivrMode.
+For {tenantId, customerId} (starting with tenantId='root'):
 
-TenantVoiceConfig (future):
+Fields as described in Phase 15.1.
 
-provider, voiceId, billingTier.
+This schema is already mostly there; we’ll extend it and enforce it.
 
-Optional BYO credentials:
+16.2 Sources of Truth to Merge
 
-Twilio SID/Auth Token (for advanced tenants).
+Google Sheets tabs:
 
-Later: BYO email provider, etc.
+Customer information
 
-12.3 Email for Tenants (Mid/Upper Tier)
-For now:
+Live Client Requests
 
-Use your SendGrid + domain as sender infra.
+Customer_info_sheet
 
-Tenants:
+Any others used in your current pipeline
 
-For root only: real @cleanmachinetulsa.com addresses.
+SMS history:
 
-For other tenants:
+Exported SMS HTML now being transformed for knowledge base.
 
-Use neutral domain like no-reply@servicepro.app.
+We extend the pipeline to:
 
-You:
+Extract phone numbers
 
-Already use Microsoft 365/Outlook for @cleanmachinetulsa.com.
+Extract names/addresses from conversation when possible
 
-Automated app emails:
+Existing DB:
 
-info@cleanmachinetulsa.com (SendGrid verified).
+customers table
 
-Or no-reply@cleanmachinetulsa.com.
+appointments, invoices, etc. used to compute firstJob/lastJob totals.
 
-PHASE 13 – IDEA PARKING LOT / FUTURE ENHANCEMENTS
-Keep this short but live:
+16.3 Backfill Pipeline (Root Tenant First)
 
-More website templates + template marketplace.
+Implement a one-time (and rerunnable) backfill job:
 
-Tenant-specific review funnels & Google Review widgets.
+Extract & normalize from Sheets
 
-Technician iPad mode – deeper multi-tenant integration.
+Normalize phone formats.
 
-Referral tracking & loyalty as generic feature for all tenants.
+Normalize addresses.
 
-Agent analytics – show how much the AI booking agent earns them.
+Extract vehicles (year/make/model) into customer_vehicles if present.
 
-Investor-ready deck / PDF:
+Build an in-memory dictionary keyed by (tenantId='root', phone).
 
-Visual architecture diagrams
+Extract from DB
 
-Market positioning
+For existing customers rows:
 
-Pricing models & LTV
+Merge onto the same (tenantId, phone) records:
 
-“White-label of a white-label”:
+Fill missing fields.
 
-Agencies resell ServicePro to multiple clients under their own brand.
+Calculate:
 
-PWA Call Console:
+firstJobDate
 
-Full-screen mode, long-press / home-screen install.
+lastJobDate
 
-Custom branding per tenant.
+totalJobs
 
-Auto SIP credential provisioning & QR-code setup.
+totalLifetimeValue
 
-Extended voice options:
+Extract from SMS (optional v1, v2 later)
 
-More curated voice packs mapped to plan tiers.
+As we parse SMS threads, any number not yet in the DB:
 
-TL;DR – IMMEDIATE NEXT STEPS
-For you & Replit agent, in order:
+Create a new customer entry with:
 
-Phase 2.3 – IVR branching:
+phone
 
-Make /twilio/voice/incoming branch on ivrMode:
+name if we find patterns (“Hi, this is John…”)
 
-simple → SIP forward (current).
+importSource = 'sms_history'
 
-ivr → Press 1/2/3/7 menu.
+Dedup & merge
 
-ai-voice → placeholder until Phase 4.
+Rules:
 
-Phase 2.5 – Call handling UX:
+Same phone → same customer (primary)
 
-Add admin settings for forward-to-cell, hours, IVR vs direct.
+Same normalized address + similar name → candidate for merge
 
-Start Phase 3 – AI messaging:
+For auto merges: do them safely.
 
-Implement aiAgent.handleAgentMessage.
+For ambiguous cases: mark with needsReview = true and surface in admin UI.
 
-Route SMS + future web chat into it.
+Write into DB
 
-Prep Phase 5/8 – Tier fields & feature gating:
+Upsert into customers table.
 
-planTier, status, tenantBilling.
+Populate household IDs based on address (for Phase 14).
 
-TIER_FEATURES + hasFeature.
+16.4 Existing vs New Customer Flags
 
-Wire upgrade / suspend / export behavior:
+Once backfill is done:
 
-Stripe webhooks set status.
+For each customer, set:
 
-Upgrade endpoint changes tiers.
+firstJobDate
 
-Data export endpoint scaffolded.
+isExistingCustomer = firstJobDate < promoLaunchDate (for Welcome Back, etc.)
 
-When you have a new “we HAVE to have this” idea, put it here, then we’ll hydrate it into real code in the next phase.
+Promo engine (Phase 14) and AI agents can then:
+
+Treat them correctly:
+
+Welcome Back = existing only
+
+New Customer promos = firstJobDate >= some threshold
+
+16.5 Extending to Other Tenants
+
+For future ServicePro tenants:
+
+They might onboard with:
+
+CSV imports
+
+Google Sheets
+
+Manual entry
+
+We will:
+
+Reuse the same mastering strategy:
+
+A “Customer Import & Merge” tool per tenant:
+
+Upload data
+
+Map columns
+
+Deduplicate by phone/address
+
+Backfill firstJob/lastJob where possible
+
+TL;DR – WHAT’S NEW IN v3.3 (BIG PICTURE)
+
+New things we’ve now formally baked into the plan:
+
+Unified Promo & Loyalty Engine (Phase 14)
+
+One awardPromoPoints function for all promos
+
+Anti-abuse (per customer, per household, per year, pending bonuses)
+
+Multi-tenant & plan-aware
+
+Customer Identity & Login (Phase 15)
+
+Everything keyed by customerId inside
+
+Customer portal with:
+
+SMS OTP now
+
+Magic links later
+
+Smooth, modern login that feels “magical” but is secure & private.
+
+Customer Master Backfill (Phase 16)
+
+Merge 6+ years of your real customers into a clean DB
+
+Use Google Sheets + SMS + DB
+
+Deduplicate + compute history
+
+Power promos, loyalty, AI, and “existing vs new customer” logic correctly.
+
+Campaign-Aware Agents formally recognized (Phase 3.6)
+
+Agents know about Welcome Back + future promos
+
+Never act confused when a customer references “your message” or “points”.
