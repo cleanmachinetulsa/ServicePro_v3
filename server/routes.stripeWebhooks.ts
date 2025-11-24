@@ -11,9 +11,13 @@
 
 import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
-import { appointments, paymentLinks, auditLog, invoices } from '@shared/schema';
+import { appointments, paymentLinks, auditLog, invoices, tenants } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { markDepositPaid } from './depositManager';
+import { getTierForPriceId } from './services/stripeService';
+import { createTenantDb, type TenantDb } from './tenantDb';
+import { db } from './db';
+import type { TenantInfo } from './tenantMiddleware';
 
 const router = Router();
 
@@ -30,6 +34,44 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
 // Store processed event IDs to prevent duplicate processing
 const processedEvents = new Set<string>();
+
+/**
+ * Resolve tenant context from webhook metadata
+ * CRITICAL: Webhooks bypass tenant middleware, so we must explicitly resolve tenant
+ * 
+ * @param tenantId - Tenant ID from webhook metadata
+ * @returns {tenant, tenantDb} or null if tenant not found
+ */
+async function resolveTenantContext(tenantId: string | null | undefined): Promise<{tenant: TenantInfo, tenantDb: TenantDb} | null> {
+  if (!tenantId) {
+    return null;
+  }
+
+  // Look up tenant record
+  const [tenantRecord] = await db
+    .select()
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+
+  if (!tenantRecord) {
+    console.error(`[CRITICAL] [WEBHOOK] Tenant ${tenantId} not found in database`);
+    return null;
+  }
+
+  // Create tenant info object
+  const tenant: TenantInfo = {
+    id: tenantRecord.id,
+    name: tenantRecord.name,
+    subdomain: tenantRecord.subdomain,
+    isRoot: tenantRecord.isRoot,
+  };
+
+  // Create tenant-scoped DB
+  const tenantDb = createTenantDb(tenant);
+
+  return { tenant, tenantDb };
+}
 
 /**
  * POST /api/webhooks/stripe
@@ -96,20 +138,33 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
         await handleChargeRefunded(req, event.data.object as Stripe.Charge);
         break;
 
+      // Phase 7C: Subscription events for billing
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await handleSubscriptionChange(req, event.data.object as Stripe.Subscription);
+        break;
+
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(req, event.data.object as Stripe.Subscription);
+        break;
+
       default:
         console.log(`[STRIPE WEBHOOK] Unhandled event type: ${event.type}`);
     }
 
-    // Log webhook event
-    await req.tenantDb!.insert(auditLog).values({
-      actionType: 'stripe_webhook_received',
-      entityType: 'payment',
-      details: {
-        eventId: event.id,
-        eventType: event.type,
-        livemode: event.livemode,
-      },
-    });
+    // Log webhook event (only for tenant-scoped events)
+    // Subscription events already log via their handlers using createTenantDb()
+    if (req.tenantDb) {
+      await req.tenantDb.insert(auditLog).values({
+        actionType: 'stripe_webhook_received',
+        entityType: 'payment',
+        details: {
+          eventId: event.id,
+          eventType: event.type,
+          livemode: event.livemode,
+        },
+      });
+    }
 
     res.status(200).json({ received: true });
   } catch (error: any) {
@@ -258,15 +313,15 @@ async function handleChargeRefunded(req: Request, charge: Stripe.Charge) {
  * Mark invoice as paid
  */
 async function markInvoicePaid(
-  req: Request,
+  tenantDb: TenantDb,
   appointmentId: number,
   stripePaymentIntentId: string
 ): Promise<void> {
   try {
-    const [invoice] = await req.tenantDb!
+    const [invoice] = await tenantDb
       .select()
       .from(invoices)
-      .where(req.tenantDb!.withTenantFilter(invoices, eq(invoices.appointmentId, appointmentId)));
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.appointmentId, appointmentId)));
 
     if (!invoice) {
       console.warn(`[STRIPE WEBHOOK] Invoice not found for appointment ${appointmentId}`);
@@ -274,7 +329,7 @@ async function markInvoicePaid(
     }
 
     // Update invoice with both legacy and new payment status fields
-    await req.tenantDb!
+    await tenantDb
       .update(invoices)
       .set({
         status: 'paid',                    // Legacy field - backward compatibility
@@ -283,10 +338,10 @@ async function markInvoicePaid(
         paidAt: new Date(),                // Payment timestamp
         stripePaymentIntentId,             // Stripe payment intent ID
       })
-      .where(req.tenantDb!.withTenantFilter(invoices, eq(invoices.id, invoice.id)));
+      .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, invoice.id)));
 
     // Log payment
-    await req.tenantDb!.insert(auditLog).values({
+    await tenantDb.insert(auditLog).values({
       actionType: 'invoice_paid',
       entityType: 'invoice',
       entityId: invoice.id,
@@ -301,6 +356,187 @@ async function markInvoicePaid(
     console.log(`[STRIPE WEBHOOK] Invoice ${invoice.id} marked as paid via Stripe`);
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error marking invoice paid:', error);
+  }
+}
+
+/**
+ * Handle subscription created/updated (Phase 7C)
+ * Updates tenant planTier based on active subscription
+ */
+async function handleSubscriptionChange(req: Request, subscription: Stripe.Subscription) {
+  console.log('[STRIPE WEBHOOK] Subscription change:', subscription.id);
+
+  try {
+    // Get tenant ID from subscription metadata
+    const tenantId = subscription.metadata?.tenantId;
+    if (!tenantId) {
+      console.warn('[STRIPE WEBHOOK] No tenantId in subscription metadata');
+      return;
+    }
+
+    // Look up tenant record to validate it exists
+    const [tenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    if (!tenant) {
+      console.error(`[CRITICAL] [STRIPE WEBHOOK] Tenant ${tenantId} not found - aborting subscription update for ${subscription.id}. ALERT: Billing state will be inconsistent!`);
+      // TODO: Send alert to operations/support team
+      return;
+    }
+
+    // Determine target tier from subscription price
+    const priceId = subscription.items.data[0]?.price.id;
+    if (!priceId) {
+      console.warn('[STRIPE WEBHOOK] No price ID in subscription');
+      return;
+    }
+
+    const targetTier = getTierForPriceId(priceId);
+    if (!targetTier) {
+      console.warn(`[STRIPE WEBHOOK] Unknown price ID: ${priceId}`);
+      return;
+    }
+
+    // Determine subscription status
+    let status: 'active' | 'past_due' | 'cancelled' | 'trialing' = 'active';
+    if (subscription.status === 'trialing') {
+      status = 'trialing';
+    } else if (subscription.status === 'past_due') {
+      status = 'past_due';
+    } else if (subscription.status === 'canceled' || subscription.status === 'unpaid') {
+      status = 'cancelled';
+    }
+
+    // Update tenant with new tier and subscription info (GLOBAL table)
+    const result = await db.update(tenants)
+      .set({
+        planTier: targetTier,
+        status: status,
+        stripeCustomerId: subscription.customer as string,
+        stripeSubscriptionId: subscription.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, tenantId));
+
+    // Verify update succeeded
+    if (result.rowCount === 0) {
+      console.error(`[CRITICAL] [STRIPE WEBHOOK] Failed to update tenant ${tenantId} - row not found. ALERT: Stripe subscription ${subscription.id} active but planTier not upgraded!`);
+      // TODO: Send alert to operations/support team
+      return;
+    }
+
+    // Create tenant-scoped DB for audit logging
+    const tenantDb = createTenantDb({
+      id: tenant.id,
+      name: tenant.name,
+      subdomain: tenant.subdomain,
+      isRoot: tenant.isRoot,
+    });
+
+    // Log the upgrade (TENANT-SCOPED table)
+    await tenantDb.insert(auditLog).values({
+      actionType: 'subscription_updated',
+      entityType: 'tenant',
+      entityId: null,
+      details: {
+        tenantId,
+        subscriptionId: subscription.id,
+        tier: targetTier,
+        status: status,
+        priceId: priceId,
+      },
+    });
+
+    console.log(`[STRIPE WEBHOOK] Tenant ${tenantId} upgraded to ${targetTier} (subscription ${subscription.id})`);
+  } catch (error) {
+    console.error('[STRIPE WEBHOOK] Error handling subscription change:', error);
+  }
+}
+
+/**
+ * Handle subscription deleted/cancelled (Phase 7C)
+ * Downgrades tenant to free tier
+ */
+async function handleSubscriptionDeleted(req: Request, subscription: Stripe.Subscription) {
+  console.log('[STRIPE WEBHOOK] Subscription deleted:', subscription.id);
+
+  try {
+    // Get tenant ID from subscription metadata (primary)
+    let tenantId = subscription.metadata?.tenantId;
+    let tenant = null;
+
+    if (tenantId) {
+      // Look up tenant record to validate it exists
+      [tenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+    }
+
+    // Fallback: Try to find tenant by subscription ID
+    if (!tenant) {
+      [tenant] = await db
+        .select()
+        .from(tenants)
+        .where(eq(tenants.stripeSubscriptionId, subscription.id))
+        .limit(1);
+      
+      if (tenant) {
+        tenantId = tenant.id;
+      }
+    }
+
+    if (!tenant || !tenantId) {
+      console.error(`[CRITICAL] [STRIPE WEBHOOK] Cannot find tenant for subscription ${subscription.id} - aborting cancellation. ALERT: Stripe subscription cancelled but tenant planTier not downgraded!`);
+      // TODO: Send alert to operations/support team
+      return;
+    }
+
+    // Update tenant to free tier and clear Stripe identifiers (GLOBAL table)
+    const result = await db.update(tenants)
+      .set({
+        planTier: 'free',
+        status: 'cancelled',
+        stripeSubscriptionId: null,
+        stripeCustomerId: null, // Clear customer ID to allow fresh upgrades
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.id, tenantId));
+
+    // Verify update succeeded
+    if (result.rowCount === 0) {
+      console.error(`[CRITICAL] [STRIPE WEBHOOK] Failed to downgrade tenant ${tenantId} - row not found. ALERT: Stripe subscription ${subscription.id} cancelled but planTier not downgraded!`);
+      // TODO: Send alert to operations/support team
+      return;
+    }
+
+    // Create tenant-scoped DB for audit logging
+    const tenantDb = createTenantDb({
+      id: tenant.id,
+      name: tenant.name,
+      subdomain: tenant.subdomain,
+      isRoot: tenant.isRoot,
+    });
+
+    // Log the downgrade (TENANT-SCOPED table)
+    await tenantDb.insert(auditLog).values({
+      actionType: 'subscription_cancelled',
+      entityType: 'tenant',
+      entityId: null,
+      details: {
+        tenantId,
+        subscriptionId: subscription.id,
+        downgradedTo: 'free',
+      },
+    });
+
+    console.log(`[STRIPE WEBHOOK] Tenant ${tenantId} downgraded to free tier (subscription cancelled)`);
+  } catch (error) {
+    console.error('[STRIPE WEBHOOK] Error handling subscription deletion:', error);
   }
 }
 

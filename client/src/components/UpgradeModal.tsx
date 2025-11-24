@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Check, Sparkles, Zap, Crown, ArrowRight } from 'lucide-react';
+import { Check, Sparkles, Zap, Crown, ArrowRight, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface UpgradeModalProps {
   open: boolean;
@@ -23,10 +26,23 @@ interface PricingPlan {
 }
 
 export function UpgradeModal({ open, onOpenChange, currentTier = 'free', lockedFeature }: UpgradeModalProps) {
+  const [upgradingTo, setUpgradingTo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
   const { data, isLoading } = useQuery({
     queryKey: ['/api/public/pricing'],
     enabled: open,
   });
+
+  // Reset state when modal closes
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setUpgradingTo(null);
+      setError(null);
+    }
+    onOpenChange(newOpen);
+  };
 
   const plans = data?.plans || [];
   const currentIndex = plans.findIndex((p: PricingPlan) => p.id === currentTier);
@@ -40,14 +56,42 @@ export function UpgradeModal({ open, onOpenChange, currentTier = 'free', lockedF
     elite: Crown,
   };
 
-  const handleContactSupport = (planId: string) => {
-    // Placeholder for now - will connect to Stripe in Phase 7B
-    onOpenChange(false);
-    alert(`Upgrade to ${planId} will be available soon! For now, please contact support@servicepro.com`);
+  const handleUpgrade = async (targetTier: string) => {
+    setUpgradingTo(targetTier);
+    setError(null);
+
+    try {
+      // Call the checkout session API
+      const response = await apiRequest<{ checkoutUrl: string }>(
+        '/api/tenant/billing/checkout-session',
+        {
+          method: 'POST',
+          body: JSON.stringify({ targetTier }),
+        }
+      );
+
+      // Redirect to Stripe Checkout
+      if (response.checkoutUrl) {
+        window.location.href = response.checkoutUrl;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (err: any) {
+      console.error('[UPGRADE] Error creating checkout session:', err);
+      
+      setError(err.message || 'Failed to start upgrade process');
+      setUpgradingTo(null);
+
+      toast({
+        title: 'Upgrade Failed',
+        description: err.message || 'Could not create checkout session. Please try again or contact support.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-gradient-to-br from-slate-900 to-purple-900 border-purple-500/50 text-white">
         <DialogHeader>
           <DialogTitle className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-purple-200">
@@ -118,7 +162,8 @@ export function UpgradeModal({ open, onOpenChange, currentTier = 'free', lockedF
                   </div>
 
                   <Button
-                    onClick={() => handleContactSupport(plan.id)}
+                    onClick={() => handleUpgrade(plan.id)}
+                    disabled={upgradingTo !== null}
                     className={`
                       w-full font-semibold
                       ${isRecommended
@@ -127,12 +172,29 @@ export function UpgradeModal({ open, onOpenChange, currentTier = 'free', lockedF
                     `}
                     data-testid={`button-upgrade-${plan.id}`}
                   >
-                    Upgrade to {plan.name}
-                    <ArrowRight className="w-4 h-4 ml-2" />
+                    {upgradingTo === plan.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Redirecting to checkout...
+                      </>
+                    ) : (
+                      <>
+                        Upgrade to {plan.name}
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </>
+                    )}
                   </Button>
                 </Card>
               );
             })}
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-4 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
+            <p className="text-sm text-red-200">
+              <strong>Error:</strong> {error}
+            </p>
           </div>
         )}
 
@@ -141,7 +203,7 @@ export function UpgradeModal({ open, onOpenChange, currentTier = 'free', lockedF
             <strong>Current plan:</strong> {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
           </p>
           <p className="text-xs text-gray-400 mt-2">
-            Questions? Contact our sales team at sales@servicepro.com or schedule a demo to learn more.
+            Secure payment processing powered by Stripe. Questions? Contact sales@servicepro.com
           </p>
         </div>
       </DialogContent>

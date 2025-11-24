@@ -18,6 +18,7 @@ import jobApplicationsRouter from "./routes.jobApplications";
 import payerApprovalRouter from "./routes.payerApproval";
 import { registerContactsRoutes } from "./routes.contacts";
 import stripeWebhooksRouter from "./routes.stripeWebhooks";
+import billingRouter from "./routes.billing";
 import pushNotificationsRouter from "./routes.pushNotifications";
 import { registerCallRoutes } from "./routes.calls";
 import { registerBackupBookingRoutes } from "./routes.backupBookings";
@@ -260,6 +261,8 @@ app.use(sendgridWebhookRouter);
 app.use('/api/public', publicSiteRouter);
 // Register public pricing routes (Phase 7B - Pricing & Tier Comparison)
 app.use('/api/public', publicPricingRouter);
+// Register billing routes (Phase 7C - Stripe Billing & Subscriptions, requires tenant auth)
+app.use(billingRouter);
 // Register campaign management routes (requires auth)
 app.use('/api/campaigns', campaignsRouter);
 // Register Welcome Back Campaign routes (tenant admin, requires 'campaigns' feature)

@@ -1,0 +1,357 @@
+You are an expert TypeScript/Node/Postgres/React engineer working on my multi-tenant SaaS monorepo called **ServicePro**.
+
+Context:
+- We already have a complete **Pricing & Tier Comparison System (Phase 7B)**:
+  - `shared/pricingConfig.ts`
+  - `shared/features.ts`
+  - `server/routes.publicPricing.ts`
+  - `client/src/pages/PricingPage.tsx`
+  - `client/src/components/UpgradeModal.tsx`
+  - `client/src/components/LockedFeature.tsx`
+- Tiers: `'free' | 'starter' | 'pro' | 'elite' | 'internal'` (planTier enum).
+- The UX is done; **Stripe billing & real plan upgrades are NOT**.
+
+Your task now: implement **Phase 7C – Stripe Billing & Subscription Management** so that:
+
+- Tenants can **upgrade** from their current tier to a higher tier using Stripe Checkout.
+- Stripe webhooks will **update `planTier` in the DB** based on active subscriptions.
+- Upgrade flows replace the placeholder `alert()`s.
+- System is **multi-tenant safe** and white-label friendly.
+
+DO NOT:
+- Implement the pricing page UI again (it already exists).
+- Do A/B testing, analytics events, FAQs, or social proof – those belong to a later “REVISIT LIST” phase.
+- Break existing behavior for non-billing parts.
+
+Follow the existing patterns in this repo. Reuse existing Stripe or billing code if it already exists.
+
+======================================================================
+STEP 0 — DISCOVERY
+======================================================================
+
+1. Scan the codebase for any existing Stripe integration:
+   - Look for files like: `stripe.ts`, `billingService.ts`, `routes.billing.ts`, etc.
+   - Look for env variables: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, etc.
+   - If Stripe already exists, **reuse that setup** and extend it.
+   - If not, create a minimal Stripe integration following the patterns below.
+
+2. Locate:
+   - Tenant model / table where `planTier` is stored.
+   - The admin/tenant settings where `planTier` is selected or displayed.
+   - Existing auth helpers (e.g. getting current tenant / user from session/token).
+
+======================================================================
+STEP 1 — STRIPE CONFIG & ENV
+======================================================================
+
+1. Create or extend a Stripe config/helper module, e.g.:
+
+   - `server/services/stripeService.ts`
+   OR reuse any existing Stripe file you find.
+
+2. It should:
+
+   - Read environment variables:
+     - `STRIPE_SECRET_KEY`
+     - `STRIPE_WEBHOOK_SECRET` (if not present, still wire code with TODO)
+     - Optionally `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ELITE`
+       OR map price IDs in a config object.
+
+   - Initialize Stripe once and export a reusable client:
+
+     ```ts
+     import Stripe from 'stripe';
+
+     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+       apiVersion: '2025-01-27', // or whatever current apiVersion the repo uses
+     });
+
+     export { stripe };
+     ```
+
+   - Define a helper mapping **planTier → Stripe price/product**:
+
+     ```ts
+     const PLAN_TO_PRICE_ID: Record<'starter' | 'pro' | 'elite', string> = {
+       starter: process.env.STRIPE_PRICE_STARTER!,
+       pro: process.env.STRIPE_PRICE_PRO!,
+       elite: process.env.STRIPE_PRICE_ELITE!,
+     };
+
+     export function getPriceIdForTier(tier: 'starter' | 'pro' | 'elite'): string {
+       const priceId = PLAN_TO_PRICE_ID[tier];
+       if (!priceId) throw new Error(`No Stripe price configured for tier: ${tier}`);
+       return priceId;
+     }
+     ```
+
+   - Include clear TODO comments if any env vars are missing, but do NOT crash at server boot – fail only when the feature is used.
+
+======================================================================
+STEP 2 — BACKEND: UPGRADE CHECKOUT SESSION ENDPOINT
+======================================================================
+
+Create a **tenant-authenticated** endpoint that:
+
+- Creates a Stripe Checkout Session for upgrading the current tenant to a **target tier**.
+- Records enough metadata to update `planTier` after webhook events.
+
+Routing:
+
+- Use the existing pattern for tenant routes, e.g.:
+
+  - `POST /api/tenant/billing/checkout-session`
+
+Implementation details:
+
+1. Request body:
+
+   ```ts
+   interface CreateCheckoutSessionBody {
+     targetTier: 'starter' | 'pro' | 'elite';
+   }
+Logic:
+
+Get the current tenant and current planTier from auth/session.
+
+Validate:
+
+targetTier is one of 'starter' | 'pro' | 'elite'.
+
+targetTier is higher than the current tier (based on index order: free < starter < pro < elite).
+
+If not higher, return 400 with error { error: 'Cannot downgrade or lateral-move via upgrade flow.' }.
+
+Determine the Stripe price:
+
+ts
+Copy code
+const priceId = getPriceIdForTier(targetTier);
+Create a Checkout Session:
+
+Mode: subscription
+
+Customer: use existing customer ID for this tenant if present, otherwise allow Stripe to create one.
+
+If you have tenant.stripeCustomerId, reuse it.
+
+If not, set metadata so you can later link Stripe customer → tenant.
+
+Success URL: a route in your app, e.g. ${APP_URL}/app/billing/success?session_id={CHECKOUT_SESSION_ID}
+
+Cancel URL: ${APP_URL}/app/billing/cancel
+
+Metadata:
+
+tenantId (internal ID for tenant)
+
+targetTier (starter/pro/elite)
+
+Anything else needed to debug later.
+
+Return:
+
+json
+Copy code
+{ "checkoutUrl": "https://checkout.stripe.com/..." }
+Security:
+
+Only an authenticated tenant owner/admin can hit this endpoint.
+
+Follow existing middleware patterns (e.g. requireTenantAuth or similar).
+
+======================================================================
+STEP 3 — BACKEND: STRIPE WEBHOOK HANDLER
+Implement a webhook route for Stripe to notify the app of subscription changes.
+
+Route:
+
+POST /api/webhooks/stripe (or use existing if present).
+
+It must:
+
+Use the raw request body (Stripe requires raw body for signature verification).
+
+Verify signature with STRIPE_WEBHOOK_SECRET.
+
+Handle at least these events:
+
+checkout.session.completed
+
+customer.subscription.created
+
+customer.subscription.updated
+
+customer.subscription.deleted (or canceled → potential downgrade logic later).
+
+Data associations:
+
+When a subscription is created/updated, get:
+
+Stripe customer ID
+
+Stripe subscription ID
+
+Active price ID(s)
+
+Determine which plan tier the subscription corresponds to:
+
+Use the inverse of PLAN_TO_PRICE_ID mapping:
+
+ts
+Copy code
+function getTierForPriceId(priceId: string): 'starter' | 'pro' | 'elite' | null { ... }
+Determine which tenant to update:
+
+Priorities:
+
+Metadata on the Checkout Session (tenantId set when creating session).
+
+Or existing stripeCustomerId stored on the tenant record.
+
+Once tenant + new tier are determined:
+
+Update the tenant’s planTier in the DB.
+
+Store stripeCustomerId and stripeSubscriptionId on the tenant if not already stored.
+
+Optionally log an audit event (if you have an audit/log table).
+
+Implementation hygiene:
+
+Use try/catch and log but don’t crash the process on webhook errors.
+
+Respond with 200 for handled events and 400 or 500 for invalid signatures / bodies.
+
+Add comments describing how to configure Stripe’s webhook endpoint URL in the Dashboard.
+
+======================================================================
+STEP 4 — BACKEND: “MANAGE BILLING” PORTAL (OPTIONAL BUT NICE)
+If this repo doesn’t already have it, add a route:
+
+POST /api/tenant/billing/portal-session
+
+This should:
+
+Take no body (just uses current tenant).
+
+Use Stripe’s Billing Portal API:
+
+ts
+Copy code
+const portalSession = await stripe.billingPortal.sessions.create({
+  customer: tenant.stripeCustomerId,
+  return_url: `${APP_URL}/app/billing`,
+});
+Return { portalUrl: portalSession.url }.
+
+This gives tenants a way to manage payment methods, invoices, etc., without you building custom UI.
+
+======================================================================
+STEP 5 — FRONTEND: UPGRADEMODAL HOOKUP
+Now wire the UpgradeModal to use the new backend.
+
+In client/src/components/UpgradeModal.tsx:
+
+Replace the alert("Upgrade to X will be available soon!") with:
+
+A call to your new /api/tenant/billing/checkout-session endpoint.
+
+Pass the chosen targetTier.
+
+On success, redirect the browser to the returned checkoutUrl:
+
+ts
+Copy code
+window.location.href = data.checkoutUrl;
+Add loading state and basic error handling:
+
+Disable the Upgrade button while the request is in flight.
+
+Show a small error message if the API returns an error.
+
+Preserve:
+
+Existing data-testid attributes.
+
+Existing layout and animation styling.
+
+Ensure:
+
+Only plans above the current tier have an active “Upgrade” button.
+
+If the endpoint returns 400 (trying to downgrade), show a user-friendly message.
+
+======================================================================
+STEP 6 — FRONTEND: OPTIONAL “MANAGE BILLING” ENTRY POINT
+Create or update a simple billing/settings page for tenants (if one already exists, extend it):
+
+Path: /app/billing or /app/settings/billing.
+
+Features:
+
+Show current plan tier (Free / Starter / Pro / Elite).
+
+Short explanation of what’s included (reuse text from pricingConfig if convenient).
+
+Button: “Manage Billing” (if stripeCustomerId is set).
+
+Clicking it calls /api/tenant/billing/portal-session and redirects to portalUrl.
+
+Link this page from:
+
+The app sidebar or settings menu.
+
+Any place where plan info is surfaced.
+
+======================================================================
+STEP 7 — SAFETY & QA
+Multi-tenant safety:
+
+Ensure Stripe metadata & webhook logic correctly map Stripe → Tenant using:
+
+tenantId in metadata OR
+
+stripeCustomerId stored on tenant.
+
+Downgrades:
+
+For now, do not auto-downgrade feature access on subscription cancel or downgrade unless it’s easy:
+
+If you do, make it simple: when subscription is canceled/expired, set planTier back to 'free'.
+
+Add TODO comments if logic is intentionally simplistic.
+
+Manual QA (add as comments):
+
+ Start as Free tier tenant.
+
+ Open a locked feature; click “View Pricing”.
+
+ UpgradeModal opens with higher tiers.
+
+ Click “Upgrade to Pro”:
+
+Redirects to Stripe checkout.
+
+ Complete test payment in Stripe test mode.
+
+ After webhook fires:
+
+Tenant’s planTier becomes 'pro'.
+
+Locked feature is now accessible.
+
+ “Manage Billing” button opens Stripe billing portal (if implemented).
+
+======================================================================
+FINAL NOTES
+Reuse existing abstractions as much as possible (API client hooks, error handling, auth guards, logging).
+
+Keep everything strongly typed in TypeScript.
+
+Don’t introduce breaking changes to the existing pricing UI or feature gating.
+
+Add clear TODO comments where environment variables, Stripe Dashboard setup, or production URLs must be configured manually.
+
+Implement all of the above in this repo in a way that is consistent with the existing architecture, coding style, and multi-tenant design.
