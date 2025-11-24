@@ -1,3 +1,33 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+Your task: 
+1) Find the existing master plan document. 
+2) Overwrite its contents with the exact MASTER PLAN v3.3 text below.
+3) Do NOT create duplicate master-plan files.
+
+====================================================
+STEP 1 – LOCATE EXISTING MASTER PLAN FILE
+====================================================
+
+1. Search for a file that contains a heading similar to:
+   - "MASTER PLAN v3." 
+   - Or "MASTER PLAN – SERVICEPRO MULTI-TENANT SUPER-SYSTEM"
+
+2. This file might be:
+   - At repo root (e.g. `MASTER_PLAN.md`)
+   - Under `docs/` or similar
+
+3. Once found, treat that file as the canonical master plan file.
+   - Do NOT create a second file.
+   - Overwrite that file’s contents completely with the v3.3 text below.
+
+====================================================
+STEP 2 – OVERWRITE CONTENTS WITH MASTER PLAN v3.3
+====================================================
+
+Replace the file contents with EXACTLY this markdown:
+
+----------------------------------------------------------------
 # MASTER PLAN v3.3 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM
 
 Canonical blueprint for:
@@ -45,7 +75,7 @@ Other businesses are **child tenants**, each with:
 Shared across all tenants:
 
 - One codebase
-- One telephony "super-tenant" architecture
+- One telephony “super-tenant” architecture
 - One AI framework, customized per industry and per tenant
 
 ---
@@ -106,7 +136,7 @@ Shared across all tenants:
 - Foundations laid for:
   - AI SMS agent
   - AI voice concierge
-  - Admin "copilot" assistant
+  - Admin “copilot” assistant
 
 ---
 
@@ -125,7 +155,7 @@ Legend:
 | 3     | Tenant Communication Router                    | ✅     |
 | 4     | AI Voice Concierge Entry Point                 | ✅     |
 | 5     | Concierge Setup Dashboard (Owner-only)         | 📝     |
-| 6     | Impersonate Tenant ("Login as…")               | 📝     |
+| 6     | Impersonate Tenant (“Login as…”)               | 📝     |
 | 7     | Tiers, Billing & Plan Features (core gating)   | ✅     |
 | 8     | Industry Packs & Auto-Setup                    | 📝     |
 | 9     | Website Generator (Templates + White-Label)    | 📝     |
@@ -241,7 +271,7 @@ Components:
 - `aiVoiceSession.handleAiVoiceRequest`:
   - Returns TwiML `<Say>`:
     - Greets caller by business name
-    - Explains "AI-style receptionist (beta)"
+    - Explains “AI-style receptionist (beta)”
     - Asks caller what they need
 - Integration:
   - `/twilio/voice/incoming` routes AI calls here if `ivrMode = 'ai-voice'`
@@ -274,16 +304,16 @@ Key features:
 - After creation:
   - Show summary card
   - Provide:
-    - "Open tenant in impersonate mode" (Phase 6 integration)
-    - "Create another tenant"
+    - “Open tenant in impersonate mode” (Phase 6 integration)
+    - “Create another tenant”
 
 Status: DESIGNED, not implemented.
 
 ---
 
-## 8. PHASE 6 – IMPERSONATE TENANT ("LOGIN AS…") 📝
+## 8. PHASE 6 – IMPERSONATE TENANT (“LOGIN AS…”) 📝
 
-**Goal:** Owner-only "God Mode" to view and fix things as a tenant.
+**Goal:** Owner-only “God Mode” to view and fix things as a tenant.
 
 Key ideas:
 
@@ -293,9 +323,9 @@ Key ideas:
     - Effective tenant & role
 - UI:
   - From Admin Tenants / Concierge pages:
-    - "Login as [Tenant Name]"
+    - “Login as [Tenant Name]”
   - Show a banner in the tenant dashboard:
-    - "Viewing as [Tenant], click here to exit impersonation"
+    - “Viewing as [Tenant], click here to exit impersonation”
 - Logging:
   - Log impersonation start/stop events
   - Tag changes made during impersonation
@@ -335,7 +365,7 @@ Stripe subscription flows will be tackled in Phase 7B later.
 
 ## 10. PHASE 8 – INDUSTRY PACKS & AUTO-SETUP 📝
 
-**Goal:** Remove "blank slate" paralysis. New tenants get a smart default setup.
+**Goal:** Remove “blank slate” paralysis. New tenants get a smart default setup.
 
 - Per-industry packs:
   - Services + durations + base prices
@@ -354,7 +384,7 @@ Status: DESIGNED.
 
 ## 11. PHASE 9 – WEBSITE GENERATOR (TEMPLATES + WHITE-LABEL) 📝
 
-**Goal:** Let tenants spin up a high-end website that's fueled by their ServicePro data.
+**Goal:** Let tenants spin up a high-end website that’s fueled by their ServicePro data.
 
 - 6–10 curated React/Tailwind templates
 - Driven by a `WebsiteSeed` object (name, city, services, photos)
@@ -372,7 +402,7 @@ Status: DESIGNED.
 
 ## 12. PHASE 10 – AI SETUP & SUPPORT AGENTS (ADMIN COPILOT) 📝
 
-**Goal:** An in-dashboard "copilot" that understands the product and config.
+**Goal:** An in-dashboard “copilot” that understands the product and config.
 
 Capabilities:
 
@@ -391,7 +421,7 @@ Integration:
 - Backend:
   - `/api/ai/admin-assistant`
 - Frontend:
-  - Docked "Need help?" chat bubble
+  - Docked “Need help?” chat bubble
   - Opens assistant pane with context: current route + tenant
 
 Status: DESIGNED.
@@ -446,7 +476,7 @@ Status: Checklist / design only.
 
 ## 15. PHASE 13 – IDEA PARKING LOT 📝
 
-Collection of future "nice to have" features:
+Collection of future “nice to have” features:
 
 - PWA call console (web softphone)
 - Technician iPad advanced mode
@@ -460,7 +490,7 @@ Status: Ongoing idea bin.
 
 ## 16. PHASE 14 – SMS SUPER-AGENT ROADMAP INDEX 📝
 
-**Goal:** Document the SMS agent's multi-phase roadmap and link it to this master plan.
+**Goal:** Document the SMS agent’s multi-phase roadmap and link it to this master plan.
 
 Deliverable:
 
@@ -478,7 +508,7 @@ Status: DOCUMENTATION ONLY.
 
 ## 17. PHASE 15 – SMS INBOUND BRAIN & CONTEXT ROUTER 📝
 
-**Goal:** Turn `/sms` into a smart "agent brain" instead of simple keyword logic.
+**Goal:** Turn `/sms` into a smart “agent brain” instead of simple keyword logic.
 
 Key components:
 
@@ -491,7 +521,7 @@ Key components:
   - Change/cancel booking
   - Price/services questions
   - Loyalty/points questions
-  - Generic "what do you do?"
+  - Generic “what do you do?”
   - Spam/unknown
 - Handlers:
   - Booking handler
@@ -515,7 +545,7 @@ Hookups:
 - FAQ handler:
   - Searches pack FAQs + services
 - Response tone:
-  - Uses pack's tone guidelines (e.g., relaxed vs. premium, etc.)
+  - Uses pack’s tone guidelines (e.g., relaxed vs. premium, etc.)
 
 Status: DESIGNED.
 
@@ -523,12 +553,12 @@ Status: DESIGNED.
 
 ## 19. PHASE 17 – WHITE-LABEL / BRANDING + CUSTOM DOMAINS 📝
 
-**Goal:** Make each tenant's experience feel like "their own" platform.
+**Goal:** Make each tenant’s experience feel like “their own” platform.
 
 Branding:
 
 - Per-tenant logo, colors, business name override
-- Option to show/hide "Powered by ServicePro":
+- Option to show/hide “Powered by ServicePro”:
   - Auto-on for starter tier
   - Off for elite/internal
 - Overrides for:
@@ -559,7 +589,7 @@ Status: DESIGNED.
 Features:
 
 - Lives in admin dashboard:
-  - "Ask ServicePro Assistant" dock
+  - “Ask ServicePro Assistant” dock
 - Knows:
   - Tenant plan & industry
   - Current page / route
@@ -620,8 +650,8 @@ Status: DESIGNED.
 Template system:
 
 - Mark a tenant as a template:
-  - "Photography – Premium"
-  - "Detailer – Tulsa Elite"
+  - “Photography – Premium”
+  - “Detailer – Tulsa Elite”
 - Clone:
   - Services and pricing
   - Add-ons and upsells
@@ -634,7 +664,7 @@ Template system:
 Integration:
 
 - Concierge Setup (Phase 5):
-  - "Create from template" option
+  - “Create from template” option
 
 Status: DESIGNED.
 
@@ -702,3 +732,15 @@ Status: CONCEPTUAL, long-term roadmap.
   - Phase 8 – Industry Packs
   - Phase 14–16 – SMS Super-Agent brain + industry integration
   - Phase 17–20 – White-label, analytics, templates
+
+----------------------------------------------------------------
+
+====================================================
+STEP 3 – FINALIZE
+====================================================
+
+After overwriting the master plan file with the v3.3 text above:
+
+- Ensure there is ONLY ONE master plan file in the repo.
+- Do NOT leave older v3.0/v3.1/v3.2 duplicates around.
+- From now on, treat this MASTER PLAN v3.3 file as the canonical roadmap for all future changes.
