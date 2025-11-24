@@ -275,16 +275,148 @@ export default function PortalWelcome() {
             initial={{ opacity: 0, y: 20 }}
             animate={isHeroInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
             transition={{ duration: 0.8, delay: 0.4 }}
-            className="text-lg sm:text-xl md:text-2xl text-slate-300 max-w-4xl mx-auto mb-10 leading-relaxed"
+            className="text-lg sm:text-xl md:text-2xl text-slate-300 max-w-4xl mx-auto mb-12 leading-relaxed"
           >
             {config.subheading}
           </motion.p>
+
+          {/* Eye-Catching Stat Cards - Floating */}
+          <div className="max-w-5xl mx-auto mb-12">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+              {/* Stat 1: Welcome Bonus */}
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.9 }}
+                animate={isHeroInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.9 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+              >
+                <div className="
+                  relative group
+                  bg-gradient-to-br from-amber-500/20 to-orange-500/20
+                  backdrop-blur-xl border border-amber-400/30
+                  rounded-2xl p-6
+                  shadow-xl shadow-amber-500/20
+                  transition-all duration-300
+                  hover:scale-105 hover:shadow-2xl hover:shadow-amber-500/30
+                  hover:border-amber-400/50
+                ">
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 to-orange-400/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative z-10">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                      <Gift className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="text-4xl font-black bg-gradient-to-r from-amber-300 to-yellow-300 bg-clip-text text-transparent mb-1">
+                      {config.welcomeOffer.points}
+                    </div>
+                    <div className="text-sm font-semibold text-amber-200">Welcome Bonus</div>
+                    <div className="text-xs text-slate-400 mt-1">Sign in today!</div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Stat 2: Earn Rate */}
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.9 }}
+                animate={isHeroInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.9 }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+              >
+                <div className="
+                  relative group
+                  bg-gradient-to-br from-blue-500/20 to-purple-500/20
+                  backdrop-blur-xl border border-blue-400/30
+                  rounded-2xl p-6
+                  shadow-xl shadow-blue-500/20
+                  transition-all duration-300
+                  hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/30
+                  hover:border-blue-400/50
+                ">
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-400/10 to-purple-400/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative z-10">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                      <TrendingUp className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="text-4xl font-black bg-gradient-to-r from-blue-300 to-purple-300 bg-clip-text text-transparent mb-1">
+                      1pt/$1
+                    </div>
+                    <div className="text-sm font-semibold text-blue-200">Earn on Every $</div>
+                    <div className="text-xs text-slate-400 mt-1">Automatic points</div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Stat 3: Redeem */}
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.9 }}
+                animate={isHeroInView ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 30, scale: 0.9 }}
+                transition={{ duration: 0.6, delay: 0.7 }}
+              >
+                <div className="
+                  relative group
+                  bg-gradient-to-br from-green-500/20 to-emerald-500/20
+                  backdrop-blur-xl border border-green-400/30
+                  rounded-2xl p-6
+                  shadow-xl shadow-green-500/20
+                  transition-all duration-300
+                  hover:scale-105 hover:shadow-2xl hover:shadow-green-500/30
+                  hover:border-green-400/50
+                ">
+                  <div className="absolute inset-0 bg-gradient-to-br from-green-400/10 to-emerald-400/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative z-10">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                      <Award className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="text-4xl font-black bg-gradient-to-r from-green-300 to-emerald-300 bg-clip-text text-transparent mb-1">
+                      {config.tiers.length}
+                    </div>
+                    <div className="text-sm font-semibold text-green-200">Reward Tiers</div>
+                    <div className="text-xs text-slate-400 mt-1">Unlock services</div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Social Proof / Trust Badge */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={isHeroInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.6, delay: 0.8 }}
+            className="flex flex-wrap items-center justify-center gap-6 mb-10"
+          >
+            <div className="flex items-center gap-2 text-slate-400">
+              <div className="flex -space-x-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 border-2 border-slate-950 flex items-center justify-center">
+                  <Star className="h-4 w-4 text-white fill-white" />
+                </div>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 border-2 border-slate-950 flex items-center justify-center">
+                  <Star className="h-4 w-4 text-white fill-white" />
+                </div>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-red-500 border-2 border-slate-950 flex items-center justify-center">
+                  <Star className="h-4 w-4 text-white fill-white" />
+                </div>
+              </div>
+              <span className="text-sm font-medium text-slate-300">Join hundreds earning rewards</span>
+            </div>
+            
+            <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+            
+            <div className="flex items-center gap-2 text-slate-400">
+              <Shield className="h-5 w-5 text-green-400" />
+              <span className="text-sm font-medium text-slate-300">Secure & Easy</span>
+            </div>
+
+            <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+            
+            <div className="flex items-center gap-2 text-slate-400">
+              <Zap className="h-5 w-5 text-yellow-400" />
+              <span className="text-sm font-medium text-slate-300">Instant Access</span>
+            </div>
+          </motion.div>
 
           {/* Premium CTAs */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={isHeroInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
+            transition={{ duration: 0.8, delay: 0.9 }}
             className="flex flex-col sm:flex-row gap-4 justify-center items-center"
           >
             {/* PRIMARY CTA - Glowing Gradient Button */}
