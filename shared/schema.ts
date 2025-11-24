@@ -330,6 +330,13 @@ export const customers = pgTable("customers", {
   // Phase 16 - Customer Backfill fields
   importSource: varchar("import_source", { length: 255 }), // Track where customer data came from (e.g., 'sheet,db', 'sms,db')
   householdId: integer("household_id"), // Reference to households table for grouping customers by address
+  
+  // Phase 15 - Customer Portal Profile Customization
+  profilePictureUrl: text("profile_picture_url"), // URL to uploaded profile picture
+  customerNotes: text("customer_notes"), // Personal notes/preferences entered by customer (different from business notes)
+  notifyViaEmail: boolean("notify_via_email").default(true), // Email notification preference
+  notifyViaSms: boolean("notify_via_sms").default(true), // SMS notification preference
+  notifyViaPush: boolean("notify_via_push").default(false), // Push notification preference
 }, (table) => ({
   tenantPhoneIdx: index("customers_tenant_phone_idx").on(table.tenantId, table.phone),
   tenantEmailIdx: index("customers_tenant_email_idx").on(table.tenantId, table.email),
@@ -2266,6 +2273,11 @@ export const insertCustomerSchema = createInsertSchema(customers).pick({
   vehicleInfo: true,
   notes: true,
   loyaltyProgramOptIn: true,
+  profilePictureUrl: true,
+  customerNotes: true,
+  notifyViaEmail: true,
+  notifyViaSms: true,
+  notifyViaPush: true,
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).pick({
