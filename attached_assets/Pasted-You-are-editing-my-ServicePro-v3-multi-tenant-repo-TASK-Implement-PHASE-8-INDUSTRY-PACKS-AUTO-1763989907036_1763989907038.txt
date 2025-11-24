@@ -1,0 +1,350 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement PHASE 8 – INDUSTRY PACKS & AUTO-SETUP per MASTER_PLAN_V3 v3.4, in a way that:
+
+- Introduces a structured Industry Pack system (config-driven, no DB bloat).
+- Allows concierge (Phase 5) to apply an industry pack when creating a tenant.
+- Persists which pack a tenant is using for later use (AI, website, etc.).
+- Is multi-tenant safe and DOES NOT overwrite root/Clean Machine data unless explicitly requested.
+- Prepares the system for Free Tier onboarding (Phase 23) and Website Generator (Phase 9).
+
+Do NOT change any behavior for existing tenants (especially root) unless a specific pack apply action is triggered.
+
+====================================================
+STEP 0 – READ MASTER PLAN PHASE 8
+====================================================
+
+1. Open MASTER_PLAN_V3.md.
+2. Search for “PHASE 8 – INDUSTRY PACKS”.
+3. Use that section as the functional spec: industry packs contain:
+   - Services, durations, upsells.
+   - Default FAQ seeds.
+   - Copy suggestions / tone for AI.
+   - Website seed content for later phases.
+4. Implementation should align with that description, even if the names differ slightly.
+
+====================================================
+STEP 1 – DEFINE INDUSTRY PACK TYPES (CONFIG-ONLY)
+====================================================
+
+We will represent industry packs as a **TypeScript config file**, not a DB table (at least for v1). This keeps it easy to version and cheap to load.
+
+1. Create a new file in the shared config area, for example:
+
+   - `client/src/config/industryPacks.ts`
+   - If there is an existing industry config, extend that instead of duplicating.
+
+2. Define types like:
+
+   ```ts
+   export type IndustryPackId =
+     | 'auto_detailing'
+     | 'lawn_care'
+     | 'house_cleaning'
+     | 'mobile_pet_grooming'
+     | 'photography'
+     | 'pressure_washing'
+     | 'generic_home_services';
+
+   export interface IndustryServiceSeed {
+     id: string;                     // e.g. "full_detail"
+     name: string;                   // Display name
+     description?: string;
+     category?: string;              // "Interior", "Exterior", etc.
+     defaultPrice?: number | null;
+     defaultDurationMinutes?: number | null;
+     isAddon?: boolean;
+   }
+
+   export interface IndustryFaqSeed {
+     question: string;
+     answer: string;
+   }
+
+   export interface IndustryWebsiteSeed {
+     heroHeadline: string;
+     heroSubheadline: string;
+     primaryCtaLabel: string;
+     secondaryCtaLabel?: string;
+     aboutBlurb?: string;
+   }
+
+   export interface IndustryPack {
+     id: IndustryPackId;
+     name: string;                  // e.g. "Auto Detailing"
+     shortLabel: string;            // For dropdowns
+     description: string;           // One-line overview
+     recommendedPlanTier?: 'starter' | 'pro' | 'elite';
+     services: IndustryServiceSeed[];
+     faqs: IndustryFaqSeed[];
+     websiteSeed?: IndustryWebsiteSeed;
+     aiStyleNotes?: {
+       toneDescription?: string;    // "Friendly, expert, down-to-earth"
+       avoidPhrases?: string[];
+       preferredTerms?: string[];
+     };
+   }
+Export an array/map of packs, e.g.:
+
+ts
+Copy code
+export const INDUSTRY_PACKS: IndustryPack[] = [/* ... */];
+
+export const INDUSTRY_PACK_BY_ID: Record<IndustryPackId, IndustryPack> = { /* ... */ };
+Populate at least the following packs with sane starter content (can be fairly minimal at first):
+
+auto_detailing (this will roughly mirror Clean Machine’s world, but DO NOT bind it directly to root data).
+
+lawn_care
+
+house_cleaning
+
+mobile_pet_grooming
+
+photography
+
+pressure_washing
+
+generic_home_services
+
+IMPORTANT:
+
+These are seeds, not live data. Applying a pack will COPY the seed into tenant-specific tables later.
+
+This file is used on both frontend (for dropdowns) and backend (for pack application), so ensure it is accessible to server code (either by sharing or duplicating types cleanly server-side).
+
+====================================================
+STEP 2 – PERSIST SELECTED INDUSTRY PACK PER TENANT
+We must know which pack a tenant is using.
+
+Check for tenant_config (or equivalent) table/structure:
+
+If it already has an industry field only:
+
+Add a new field industryPackId (nullable, string).
+
+If it doesn’t exist yet, update the schema as needed to include both:
+
+industry: string | null
+
+industryPackId: string | null
+
+Update the Drizzle schema & migrations accordingly:
+
+Make sure industryPackId is optional and does NOT break existing tenants.
+
+Do NOT auto-assign a pack to existing tenants in this phase (we can do a later “backfill industry packs” tool).
+
+Update any relevant TypeScript types to include industryPackId.
+
+====================================================
+STEP 3 – BACKEND SERVICE: APPLY INDUSTRY PACK TO TENANT
+We want a single backend function that:
+
+Given a tenantId and an IndustryPackId,
+
+Inserts/updates tenant-specific data (services, FAQs, etc.)
+
+Does NOT touch existing data unless explicitly allowed.
+
+Create or extend a backend service module, e.g.:
+
+server/services/industryPackService.ts
+
+Implement a function like:
+
+ts
+Copy code
+import { IndustryPackId } from '.../industryPacks'; // adjust path
+
+interface ApplyPackOptions {
+  tenantId: string;
+  packId: IndustryPackId;
+  overwriteExisting?: boolean; // default false
+}
+
+export async function applyIndustryPackToTenant(db: TenantDb, options: ApplyPackOptions) {
+  const { tenantId, packId, overwriteExisting = false } = options;
+  const pack = INDUSTRY_PACK_BY_ID[packId];
+  if (!pack) throw new Error(`Unknown industry pack: ${packId}`);
+
+  // 1) Update tenant_config.industry & industryPackId
+  // 2) Seed services into tenant-specific services table
+  // 3) Seed FAQs into tenant-specific FAQ table
+  // (4) Optionally seed website-related defaults (but do not break existing)
+}
+Behavior details:
+
+Tenant config:
+
+Set industry to pack.name (if not already set).
+
+Set industryPackId to the pack id.
+
+Services seeding:
+
+Insert new service rows into the tenant’s services table (whatever you use: services, service_catalog, etc.).
+
+When overwriteExisting=false:
+
+Only insert services that do not conflict by some key (e.g., where no service with the same name or id exists yet).
+
+When overwriteExisting=true:
+
+You MAY update matching services, but be conservative in v1 (e.g., don’t delete or null out fields with tenant customizations).
+
+FAQ seeding:
+
+Insert new FAQ rows into the tenant’s FAQ table (if exists).
+
+Same merge rules: don’t duplicate obvious existing questions, unless allowed.
+
+Website seeds:
+
+If a websiteSeed exists, update a website_config or similar table:
+
+Only fill fields that are null/not set yet (heroHeadline, heroSubheadline, etc.).
+
+Do NOT override tenant custom text in v1.
+
+Ensure the function runs using req.tenantDb or an equivalent tenant-scoped DB handle, not the root DB.
+
+====================================================
+STEP 4 – ADMIN/CONCIERGE INTEGRATION (PHASE 5 HOOK)
+Now wire industry packs into the Concierge Setup Dashboard you already built in Phase 5.
+
+On the backend:
+
+In your concierge tenant creation route (e.g. POST /api/admin/concierge/tenants):
+
+Accept an optional industryPackId in the request body:
+
+ts
+Copy code
+{
+  // existing fields ...
+  industryPackId?: IndustryPackId | null;
+  applyIndustryPack?: boolean; // default true if pack selected
+}
+After creating the tenant + tenant_config + tenant_phone_config:
+
+If industryPackId is provided AND applyIndustryPack !== false:
+
+Call applyIndustryPackToTenant with the tenant’s tenantId and the packId.
+
+Ensure this logic:
+
+Runs inside the same transaction if possible, or
+
+Runs immediately after in a safe way (with proper error handling and rollback semantics as needed).
+
+On the frontend (Admin Concierge Setup page):
+
+Replace the existing “Industry” simple text/select field with:
+
+A dropdown bound to Industry Packs:
+
+Label: “Industry”
+
+Options from INDUSTRY_PACKS (shortLabel + description).
+
+Store selected industryPackId as part of the form.
+
+Add a checkbox:
+
+Label: “Auto-apply recommended services and FAQs for this industry”
+
+Bound to applyIndustryPack (default checked).
+
+On submit:
+
+Send industryPackId and applyIndustryPack along with the rest of the concierge payload.
+
+UI note:
+
+Show a small helper text under the Industry dropdown like:
+
+“We’ll pre-fill services, FAQs, and starter website copy based on this industry. You can customize everything later.”
+
+====================================================
+STEP 5 – PREPARING FOR FREE TIER & WEBSITE GENERATOR
+We’re not fully implementing Phase 9 or 23 here, but we want hooks ready.
+
+Ensure that tenant_config.industryPackId and industry are easily accessible in:
+
+The website generator/internal site config.
+
+The AI agent config (even if just as future TODO comments).
+
+The Free tier onboarding logic later.
+
+Add safe TODO comments (no dead-code):
+
+In industryPackService:
+
+// TODO Phase 9: Use websiteSeed to pre-populate website templates.
+
+In any AI config or agent brain service:
+
+// TODO Phase 14/10: Use aiStyleNotes and industryPackId to adjust tone and vocabulary.
+
+Do NOT add heavy AI logic here; just prepare structural hooks.
+
+====================================================
+STEP 6 – TESTING & SAFETY CHECKS
+Add backend unit tests for applyIndustryPackToTenant:
+
+Happy path:
+
+Creates services & FAQs for a fresh tenant.
+
+Idempotent-ish behavior:
+
+Calling it twice doesn’t duplicate services with the same ID/name.
+
+Tenant config updated with industry and industryPackId.
+
+Add integration test for concierge route:
+
+POST /api/admin/concierge/tenants with:
+
+industryPackId set to a known pack id.
+
+applyIndustryPack true.
+
+Assert:
+
+Tenant created.
+
+tenant_config.industryPackId matches.
+
+At least one pack service inserted for that tenant.
+
+Manual sanity check via UI:
+
+As owner/admin:
+
+Open Concierge Setup.
+
+Create a test tenant with industry = “Auto Detailing”.
+
+Confirm:
+
+Tenant’s services table has seeded services.
+
+Tenant config has industry & industryPackId.
+
+No changes to the root/Clean Machine tenant unless explicitly created.
+
+====================================================
+STEP 7 – DO NOT TOUCH ROOT CLEAN MACHINE CONFIG
+Throughout this phase:
+
+Do NOT automatically apply any industry pack to the root (Clean Machine) tenant.
+
+Do NOT change existing root services, FAQs, or website settings.
+
+Root may later choose to opt into an industry pack (explicit action), but Phase 8 must not auto-mutate it.
+
+====================================================
+END OF PHASE 8 – INDUSTRY PACKS & AUTO-SETUP IMPLEMENTATION BLOCK
