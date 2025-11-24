@@ -1,0 +1,81 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+Your MOST IMPORTANT source of truth for architecture and feature roadmap is the **MASTER PLAN v3.3 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM** document.
+
+Your job in this task is NOT to change any code yet, but to align your internal model with the master plan and understand how to use it going forward.
+
+DO NOT modify any files in this step. This is orientation only.
+
+====================================================
+STEP 1 – FIND THE MASTER PLAN FILE
+====================================================
+
+1. Search the repo for the current master plan document. It may be named something like:
+   - `MASTER_PLAN.md`
+   - `MASTER PLAN v3.2 – SERVICEPRO MULTI-TENANT SUPER-SYSTEM.md`
+   - Or live under `docs/` or a similar folder.
+
+2. Identify the file that contains the heading:
+   - “MASTER PLAN v3.” or similar text.
+
+3. Remember this file’s path. Going forward, this is the canonical plan file you should read before implementing any new “phase”.
+
+IMPORTANT:
+- Do NOT create a second master plan file.
+- Do NOT leave multiple versions of the master plan in different files.
+
+====================================================
+STEP 2 – HOW TO USE THE MASTER PLAN FROM NOW ON
+====================================================
+
+From this point on, you must follow these rules:
+
+1. Before implementing ANY phase (Phase 4, 5, 7, 15, etc.):
+   - Open the master plan file.
+   - Find the section for that phase number.
+   - Read the description carefully.
+   - Use that as the authoritative spec.
+
+2. When the user says things like:
+   - “Implement Phase 5”
+   - “Phase 17 block now”
+   - “Upgrade the SMS agent according to the plan”
+   You must:
+   - Map that request to the corresponding phase in **MASTER PLAN v3.3**.
+   - Follow the guidance in that section.
+
+3. If older comments, TODOs, or docs conflict with v3.3:
+   - Prefer the v3.3 master plan.
+   - Treat older plans (v3.0, v3.1, v3.2) as outdated unless explicitly referenced as historical.
+
+4. When you are asked to change the master plan in the future:
+   - Modify THIS file only.
+   - Keep the version heading up to date (e.g. v3.4 if we evolve it).
+   - Make sure the phase list (0–22) stays consistent and in order.
+
+5. Never silently ignore the master plan:
+   - For any big feature, phase, or refactor, you must at least check the master plan section before changing code.
+
+====================================================
+STEP 3 – SUMMARY OF WHAT YOU NOW BELIEVE
+====================================================
+
+From now on, you should internally understand that:
+
+- ServicePro v3.3 has phases 0–22.
+- The master plan file describes:
+  - Telephony spine
+  - Tenant isolation
+  - Tiered billing
+  - Industry packs
+  - Website generator
+  - SMS super-agent roadmap
+  - AI voice & admin helpers
+  - Analytics
+  - White-label & agency mode
+
+- Any future “phase” work must:
+  - Be aligned with this document.
+  - Update the master plan’s status (✅ / 🟡 / 📝) when phases are implemented or changed.
+
+DO NOT modify any files during this run. This is conceptual alignment only so that you treat the MASTER PLAN v3.3 document as the single source of truth in all future tasks.
