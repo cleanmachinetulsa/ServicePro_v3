@@ -262,6 +262,12 @@ export const navigationItems: NavigationItem[] = [
     path: '/admin/phone-config',
     badge: 'Owner',
   },
+  {
+    id: 'theme-gallery',
+    label: 'Theme Gallery',
+    icon: Palette,
+    path: '/admin/theme-gallery',
+  },
 
   // WORKFORCE MANAGEMENT
   {
