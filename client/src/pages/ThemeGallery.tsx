@@ -1,51 +1,27 @@
-import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AppShell } from '@/components/AppShell';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Check, Palette, Sparkles } from 'lucide-react';
-import { DashboardTheme } from '@shared/themes';
+import { dashboardThemes, DashboardTheme } from '@shared/themes';
 
 export default function ThemeGallery() {
   const { toast } = useToast();
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
+  const [currentThemeId, setCurrentThemeId] = useState<string>('modern-dark');
+  const [isApplying, setIsApplying] = useState(false);
 
-  const { data: themesData, isLoading: themesLoading } = useQuery({
-    queryKey: ['/api/themes'],
-  });
-
-  const { data: currentThemeData, isLoading: currentThemeLoading } = useQuery({
-    queryKey: ['/api/user/theme'],
-  });
-
-  const applyThemeMutation = useMutation({
-    mutationFn: async (themeId: string) => {
-      const response = await apiRequest('PUT', '/api/user/theme', { themeId });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to apply theme');
+  useEffect(() => {
+    const saved = localStorage.getItem('dashboard-theme');
+    if (saved) {
+      setCurrentThemeId(saved);
+      const theme = dashboardThemes.find(t => t.id === saved);
+      if (theme) {
+        applyThemeToDOM(theme);
       }
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: 'Theme Applied',
-        description: `Your dashboard is now using the ${data.theme.name} theme.`,
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/user/theme'] });
-      applyThemeToDOM(data.theme);
-    },
-    onError: (error: Error) => {
-      console.error('Theme application error:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to apply theme. Please try again.',
-        variant: 'destructive',
-      });
-    },
-  });
+    }
+  }, []);
 
   const applyThemeToDOM = (theme: DashboardTheme) => {
     const root = document.documentElement;
@@ -56,7 +32,7 @@ export default function ThemeGallery() {
 
   const handleSelectTheme = (themeId: string) => {
     setSelectedTheme(themeId);
-    const theme = themesData?.themes.find((t: DashboardTheme) => t.id === themeId);
+    const theme = dashboardThemes.find(t => t.id === themeId);
     if (theme) {
       applyThemeToDOM(theme);
     }
@@ -64,25 +40,23 @@ export default function ThemeGallery() {
 
   const handleApplyTheme = () => {
     if (selectedTheme) {
-      applyThemeMutation.mutate(selectedTheme);
+      setIsApplying(true);
+      const theme = dashboardThemes.find(t => t.id === selectedTheme);
+      if (theme) {
+        localStorage.setItem('dashboard-theme', selectedTheme);
+        setCurrentThemeId(selectedTheme);
+        applyThemeToDOM(theme);
+        toast({
+          title: 'Theme Applied',
+          description: `Your dashboard is now using the ${theme.name} theme.`,
+        });
+        setSelectedTheme(null);
+      }
+      setIsApplying(false);
     }
   };
 
-  const currentThemeId = currentThemeData?.currentTheme || 'modern-dark';
   const activeTheme = selectedTheme || currentThemeId;
-
-  if (themesLoading || currentThemeLoading) {
-    return (
-      <AppShell>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading themes...</p>
-          </div>
-        </div>
-      </AppShell>
-    );
-  }
 
   return (
     <AppShell>
@@ -104,12 +78,12 @@ export default function ThemeGallery() {
           {selectedTheme && selectedTheme !== currentThemeId && (
             <Button
               onClick={handleApplyTheme}
-              disabled={applyThemeMutation.isPending}
+              disabled={isApplying}
               size="lg"
               className="gap-2"
               data-testid="button-apply-theme"
             >
-              {applyThemeMutation.isPending ? (
+              {isApplying ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   Applying...
@@ -125,7 +99,7 @@ export default function ThemeGallery() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {themesData?.themes.map((theme: DashboardTheme) => (
+          {dashboardThemes.map((theme: DashboardTheme) => (
             <Card
               key={theme.id}
               className={`
@@ -217,7 +191,7 @@ export default function ThemeGallery() {
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   You're currently using the{' '}
                   <span className="font-medium text-gray-900 dark:text-gray-100">
-                    {themesData?.themes.find((t: DashboardTheme) => t.id === currentThemeId)?.name}
+                    {dashboardThemes.find(t => t.id === currentThemeId)?.name}
                   </span>{' '}
                   theme. Select a different theme above to preview it, then click "Apply Theme" to save your choice.
                 </p>
