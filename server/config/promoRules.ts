@@ -10,9 +10,9 @@
 export const PROMO_RULES = {
   welcome_back_v1: {
     perCustomerLifetimeMax: 1,      // Customer can only get welcome back bonus once ever
-    perCustomerPerYearMax: 1,       // Additional annual cap (redundant with lifetime for v1)
+    perCustomerPerYearMax: 1,       // Annual cap (redundant with lifetime but enforces calendar year tracking)
     perHouseholdPerYearMax: 1,      // Only 1 person per household can claim per year
-    requireExistingJob: true,       // Must have completed at least 1 job before claiming
+    requireExistingJob: false,      // TODO Phase 14: Set to true once job-based eligibility is implemented
     awardMode: 'pending_until_next_completed_job' as const, // Points pending until next job completion
   },
   referral_v1: {

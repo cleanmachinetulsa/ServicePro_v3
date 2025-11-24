@@ -957,13 +957,17 @@ export const loyaltyTransactions = pgTable("loyalty_transactions", {
   deltaPoints: integer("delta_points").notNull(), // positive = earn, negative = redeem
   promoKey: varchar("promo_key", { length: 50 }), // e.g. 'welcome_back_v1', 'referral_v1'
   source: varchar("source", { length: 50 }).notNull(), // 'campaign', 'manual', 'invoice', 'promo_pending_fulfilled', etc.
-  metadata: jsonb("metadata"), // Flexible storage for promo-specific data, pending status, etc.
+  metadata: jsonb("metadata"), // Flexible storage for promo-specific data
+  status: varchar("status", { length: 50 }).default('pending'), // 'pending', 'fulfilled', 'cancelled'
+  pointsAwarded: integer("points_awarded"), // Headline points for this promo (may differ from deltaPoints if multipliers applied)
+  fulfilledAt: timestamp("fulfilled_at"), // When pending promo was fulfilled
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   // Indexes for efficient anti-abuse queries
   tenantCustomerIdx: index("loyalty_transactions_tenant_customer_idx").on(table.tenantId, table.customerId),
   tenantPromoIdx: index("loyalty_transactions_tenant_promo_idx").on(table.tenantId, table.promoKey),
   tenantCustomerPromoIdx: index("loyalty_transactions_tenant_customer_promo_idx").on(table.tenantId, table.customerId, table.promoKey),
+  tenantStatusIdx: index("loyalty_transactions_tenant_status_idx").on(table.tenantId, table.status),
 }));
 
 export const customerAchievements = pgTable("customer_achievements", {

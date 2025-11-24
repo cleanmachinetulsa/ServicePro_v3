@@ -15,6 +15,7 @@ import { and, eq, gte, lte, sql, count, inArray } from 'drizzle-orm';
 import { 
   loyaltyPoints, 
   loyaltyTransactions, 
+  pointsTransactions,
   customers, 
   households, 
   appointments 
@@ -63,7 +64,26 @@ export async function awardPromoPoints(
 
   console.log(`[PROMO ENGINE] Evaluating ${promoKey} for customer ${customerId} in tenant ${tenantId}`);
 
-  // 2. Compute time boundaries for annual limits
+  // 1a. Expire stale pending promos before checking limits (prevents permanent household blocking)
+  await expireStalePendingPromos(db, tenantId);
+
+  // 2. Validate customer exists and is opted into loyalty program
+  const customer = await db.query.customers.findFirst({
+    where: db.withTenantFilter(customers, eq(customers.id, customerId)),
+    columns: { id: true, loyaltyProgramOptIn: true, householdId: true },
+  });
+
+  if (!customer) {
+    console.log(`[PROMO ENGINE] Customer ${customerId} not found`);
+    return { awarded: false, pointsGranted: 0, reason: 'customer_not_found' };
+  }
+
+  if (!customer.loyaltyProgramOptIn) {
+    console.log(`[PROMO ENGINE] Customer ${customerId} not opted into loyalty program`);
+    return { awarded: false, pointsGranted: 0, reason: 'not_opted_in_to_loyalty' };
+  }
+
+  // 3. Compute time boundaries for annual limits
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1);
   const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
@@ -79,7 +99,8 @@ export async function awardPromoPoints(
           and(
             eq(loyaltyTransactions.customerId, customerId),
             eq(loyaltyTransactions.promoKey, promoKey),
-            sql`${loyaltyTransactions.deltaPoints} > 0` // Only count actual awards, not pending
+            // Count both pending and fulfilled promos against the limit
+            sql`${loyaltyTransactions.pointsAwarded} > 0`
           )
         )
       );
@@ -87,7 +108,7 @@ export async function awardPromoPoints(
     const lifetimeUsage = lifetimeCount[0]?.count || 0;
     if (lifetimeUsage >= rules.perCustomerLifetimeMax) {
       console.log(`[PROMO ENGINE] Customer ${customerId} already used ${promoKey} ${lifetimeUsage} times (lifetime limit: ${rules.perCustomerLifetimeMax})`);
-      return { awarded: false, pointsGranted: 0, reason: 'already_awarded' };
+      return { awarded: false, pointsGranted: 0, reason: 'customer_limit' };
     }
   }
 
@@ -104,7 +125,8 @@ export async function awardPromoPoints(
             eq(loyaltyTransactions.promoKey, promoKey),
             gte(loyaltyTransactions.createdAt, startOfYear),
             lte(loyaltyTransactions.createdAt, endOfYear),
-            sql`${loyaltyTransactions.deltaPoints} > 0`
+            // Count both pending and fulfilled promos against the limit
+            sql`${loyaltyTransactions.pointsAwarded} > 0`
           )
         )
       );
@@ -112,19 +134,14 @@ export async function awardPromoPoints(
     const annualUsage = annualCount[0]?.count || 0;
     if (annualUsage >= rules.perCustomerPerYearMax) {
       console.log(`[PROMO ENGINE] Customer ${customerId} already used ${promoKey} ${annualUsage} times this year (annual limit: ${rules.perCustomerPerYearMax})`);
-      return { awarded: false, pointsGranted: 0, reason: 'already_awarded' };
+      return { awarded: false, pointsGranted: 0, reason: 'customer_limit' };
     }
   }
 
   // 5. Check per-household annual cap (if household limits exist)
   if (rules.perHouseholdPerYearMax !== undefined) {
-    // Get customer's household
-    const customer = await db.query.customers.findFirst({
-      where: db.withTenantFilter(customers, eq(customers.id, customerId)),
-      columns: { id: true, householdId: true },
-    });
-
-    if (customer?.householdId) {
+    // Use customer's household from earlier validation
+    if (customer.householdId) {
       // Find all customers in this household
       const householdCustomers = await db
         .select({ id: customers.id })
@@ -151,7 +168,9 @@ export async function awardPromoPoints(
                 eq(loyaltyTransactions.promoKey, promoKey),
                 gte(loyaltyTransactions.createdAt, startOfYear),
                 lte(loyaltyTransactions.createdAt, endOfYear),
-                sql`${loyaltyTransactions.deltaPoints} > 0`
+                // Count pending and fulfilled promos (exclude expired to prevent permanent blocking)
+                sql`${loyaltyTransactions.status} IN ('pending', 'fulfilled')`,
+                sql`${loyaltyTransactions.pointsAwarded} > 0`
               )
             )
           );
@@ -183,23 +202,25 @@ export async function awardPromoPoints(
     const hasCompletedJob = (completedJobCount[0]?.count || 0) > 0;
     if (!hasCompletedJob) {
       console.log(`[PROMO ENGINE] Customer ${customerId} has no completed jobs (required for ${promoKey})`);
-      return { awarded: false, pointsGranted: 0, reason: 'not_existing_customer' };
+      return { awarded: false, pointsGranted: 0, reason: 'no_completed_jobs' };
     }
   }
 
   // 7. Award points based on mode
   if (rules.awardMode === 'pending_until_next_completed_job') {
-    // Create pending transaction (deltaPoints = 0, points stored in metadata)
+    // Create pending transaction (deltaPoints = 0, points stored for later fulfillment)
     await db.insert(loyaltyTransactions).values({
       tenantId,
       customerId,
       deltaPoints: 0, // No immediate points
       promoKey,
-      source,
+      source: 'campaign', // Canonical source for consistency
+      status: 'pending',
+      pointsAwarded: basePoints, // Store the points to be awarded later
       metadata: {
         ...metadata,
-        status: 'pending',
         pendingBonusPoints: basePoints,
+        originalSource: source,
       },
     });
 
@@ -218,8 +239,11 @@ export async function awardPromoPoints(
         customerId,
         deltaPoints: basePoints,
         promoKey,
-        source,
-        metadata,
+        source: 'campaign', // Canonical source for consistency
+        status: 'fulfilled', // Immediately fulfilled
+        pointsAwarded: basePoints,
+        fulfilledAt: new Date(),
+        metadata: { ...metadata, originalSource: source }, // Preserve original source in metadata
       });
 
       // Upsert loyalty points balance
@@ -254,10 +278,32 @@ export async function awardPromoPoints(
         });
       }
 
+      // Create pointsTransactions entry for ledger history
+      const loyaltyPointsRecord = existing || (await tx.query.loyaltyPoints.findFirst({
+        where: and(
+          eq(loyaltyPoints.tenantId, tenantId),
+          eq(loyaltyPoints.customerId, customerId)
+        ),
+      }));
+
+      if (loyaltyPointsRecord) {
+        await tx.insert(pointsTransactions).values({
+          tenantId,
+          loyaltyPointsId: loyaltyPointsRecord.id,
+          amount: basePoints,
+          description: `Promo: ${promoKey}`,
+          transactionType: 'earn',
+          source: 'campaign', // Canonical source for analytics (promo awards are always campaigns)
+          sourceId: customerId, // Use customerId as sourceId for promos
+          expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        });
+      }
+
       console.log(`[PROMO ENGINE] ✅ Immediate award: ${basePoints} points granted for ${promoKey}`);
       return {
         awarded: true,
         pointsGranted: basePoints,
+        reason: 'immediate', // Architect review requested this
       };
     });
   }
@@ -265,6 +311,43 @@ export async function awardPromoPoints(
   // Fallback (should never reach here)
   console.warn(`[PROMO ENGINE] Unknown award mode for ${promoKey}`);
   return { awarded: false, pointsGranted: 0, reason: 'unknown_mode' };
+}
+
+// ============================================================
+// PENDING PROMO EXPIRY
+// ============================================================
+
+/**
+ * Expire old pending promos that haven't been fulfilled within 90 days
+ * This prevents stale pending promos from permanently blocking household capacity
+ * 
+ * @param db - Tenant-scoped database instance
+ * @param tenantId - Tenant ID
+ * @returns Number of expired promos
+ */
+export async function expireStalePendingPromos(
+  db: TenantDb,
+  tenantId: string,
+): Promise<number> {
+  const EXPIRY_DAYS = 90;
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() - EXPIRY_DAYS);
+
+  const result = await db
+    .update(loyaltyTransactions)
+    .set({ status: 'expired' })
+    .where(
+      db.withTenantFilter(
+        loyaltyTransactions,
+        and(
+          eq(loyaltyTransactions.status, 'pending'),
+          lte(loyaltyTransactions.createdAt, expiryDate)
+        )
+      )
+    );
+
+  console.log(`[PROMO ENGINE] Expired ${result.rowCount || 0} stale pending promo(s) older than ${EXPIRY_DAYS} days`);
+  return result.rowCount || 0;
 }
 
 // ============================================================
@@ -296,8 +379,8 @@ export async function fulfillPendingPromos(
         loyaltyTransactions,
         and(
           eq(loyaltyTransactions.customerId, customerId),
-          eq(loyaltyTransactions.deltaPoints, 0),
-          sql`${loyaltyTransactions.metadata}->>'status' = 'pending'`
+          eq(loyaltyTransactions.status, 'pending'),
+          eq(loyaltyTransactions.deltaPoints, 0)
         )
       )
     );
@@ -325,11 +408,8 @@ export async function fulfillPendingPromos(
       await tx
         .update(loyaltyTransactions)
         .set({
-          metadata: {
-            ...(pendingPromo.metadata as any),
-            status: 'fulfilled',
-            fulfilledAt: new Date().toISOString(),
-          },
+          status: 'fulfilled',
+          fulfilledAt: new Date(),
         })
         .where(eq(loyaltyTransactions.id, pendingPromo.id));
 
@@ -339,11 +419,15 @@ export async function fulfillPendingPromos(
         customerId,
         deltaPoints: pendingBonusPoints,
         promoKey: pendingPromo.promoKey,
-        source: 'promo_pending_fulfilled',
+        source: 'campaign', // Canonical source for consistency
+        status: 'fulfilled',
+        pointsAwarded: pendingBonusPoints,
+        fulfilledAt: new Date(),
         metadata: {
           originalPendingTransactionId: pendingPromo.id,
           originalPromoKey: pendingPromo.promoKey,
           fulfilledFromPending: true,
+          originalSource: pendingPromo.source,
         },
       });
 
@@ -354,6 +438,27 @@ export async function fulfillPendingPromos(
           eq(loyaltyPoints.customerId, customerId)
         ),
       });
+
+      // Create pointsTransactions entry for ledger
+      const loyaltyPointsRecord = existing || (await tx.query.loyaltyPoints.findFirst({
+        where: and(
+          eq(loyaltyPoints.tenantId, tenantId),
+          eq(loyaltyPoints.customerId, customerId)
+        ),
+      }));
+
+      if (loyaltyPointsRecord) {
+        await tx.insert(pointsTransactions).values({
+          tenantId,
+          loyaltyPointsId: loyaltyPointsRecord.id,
+          amount: pendingBonusPoints,
+          description: `Promo (fulfilled): ${pendingPromo.promoKey}`,
+          transactionType: 'earn',
+          source: 'campaign', // Canonical source for analytics (promo awards are always campaigns)
+          sourceId: customerId, // Canonical sourceId for analytics consistency (use customerId for all promo awards)
+          expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        });
+      }
 
       if (existing) {
         await tx
