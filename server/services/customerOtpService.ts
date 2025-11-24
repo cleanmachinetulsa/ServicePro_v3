@@ -229,12 +229,11 @@ export async function requestCustomerOtp(
 
   console.log(`[OTP] Generated OTP for ${maskedDestination}, expires at ${expiresAt.toISOString()}`);
 
-  // Detect dev mode or missing Twilio credentials
+  // SECURITY: Dev mode ONLY activates when explicitly enabled AND not in production
+  // This prevents accidental code leakage when Twilio credentials are missing in prod
   const isOtpDevMode =
-    process.env.OTP_DEV_MODE === '1' ||
-    !process.env.TWILIO_ACCOUNT_SID ||
-    !process.env.TWILIO_AUTH_TOKEN ||
-    !process.env.TWILIO_MESSAGING_SERVICE_SID;
+    process.env.OTP_DEV_MODE === '1' &&
+    process.env.NODE_ENV !== 'production';
 
   // Send OTP via appropriate channel
   if (destinationType === 'sms') {
@@ -256,15 +255,30 @@ export async function requestCustomerOtp(
       };
     }
 
-    // PRODUCTION: Send real SMS via Twilio
+    // PRODUCTION/NON-DEV: Always attempt to send real SMS via Twilio
     const businessName = await getTenantBusinessName(db, tenantId);
     const message = `Your ${businessName} verification code is ${code}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`;
     
+    // Warn if Twilio credentials are missing (but still attempt send)
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      console.error('[OTP] ⚠️ CRITICAL: Twilio credentials missing - SMS will fail!');
+      console.error('[OTP] Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN or enable OTP_DEV_MODE=1 for development');
+    }
+    
     try {
-      await sendSMS(db, destination, message);
-      console.log(`[OTP] SMS sent to ${maskedDestination}`);
+      const smsResult = await sendSMS(db, destination, message);
+      
+      // sendSMS returns {success: boolean, error?: any} without throwing
+      // We must check the success field and handle failure explicitly
+      if (!smsResult.success) {
+        console.error('[OTP] SMS send failed:', smsResult.error || 'Unknown error');
+        return { success: false, reason: 'sms_send_failed' };
+      }
+      
+      console.log(`[OTP] SMS sent successfully to ${maskedDestination}`);
     } catch (error) {
-      console.error('[OTP] Failed to send SMS:', error);
+      // Catch any unexpected exceptions from sendSMS
+      console.error('[OTP] Failed to send SMS (exception):', error);
       return { success: false, reason: 'sms_send_failed' };
     }
   } else if (destinationType === 'email') {
@@ -287,6 +301,7 @@ export async function requestCustomerOtp(
     }
 
     // TODO (Phase X): Implement email OTP sending via SendGrid
+    // For now, email OTP is not implemented regardless of dev mode
     console.log(`[OTP] Email OTP not yet implemented for ${maskedDestination}`);
     return { success: false, reason: 'email_not_implemented' };
   }

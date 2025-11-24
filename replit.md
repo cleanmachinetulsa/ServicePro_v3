@@ -6,7 +6,7 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 ## Recent Changes
 
 ### Phase 15: Customer Identity & Login via OTP (November 24, 2025)
-**Status**: Implementation complete, awaiting database migration
+**Status**: ✅ Implementation complete
 
 **Completed**:
 - ✅ Backend schema tables: `customerIdentities`, `customerOtps`, `customerSessions`
@@ -20,19 +20,27 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 - ✅ Customer context service scaffold for AI integration
 - ✅ Multi-tenant isolation with explicit tenant filtering
 - ✅ Security: OTP expiration (10min), rate limiting (5/hour), session management (30 days)
-
-**Pending**:
-- ⏳ Database migration blocked by interactive `campaign_configs` prompt from Phase 14
-- ⏳ Manual intervention needed: Run `npm run db:push` and select "+ campaign_configs create table"
-- ⏳ End-to-end testing of OTP flow after migration completes
+- ✅ **OTP Dev Mode**: Development-only mode for testing without Twilio
+  - Logs verification codes to server console in development
+  - Accepts plain phone numbers (9182820103) or E.164 format (+19182820103)
+  - Enable via `OTP_DEV_MODE=1` environment variable (set in development)
+  - **SECURITY**: Only activates when `OTP_DEV_MODE=1` AND `NODE_ENV !== 'production'`
+  - Production always attempts real SMS and returns proper errors if Twilio fails
 
 **Architecture Notes**:
 - Customer authentication is completely separate from staff/owner authentication
 - Uses dedicated `customerPortalAuthMiddleware` vs `requireAuth` for staff
 - All services enforce `tenantDb.withTenantFilter(tenantId)` for multi-tenant isolation
-- Phone normalization via `normalizePhoneE164()` and email via `canonicalizeEmail()`
+- Phone normalization via `normalizePhoneE164()` from `contactUtils.ts`:
+  - Accepts: `9185551234`, `19185551234`, `+19185551234`, `(918) 555-1234`
+  - Normalizes to: `+19185551234` (E.164 format)
 - OTP codes are SHA-256 hashed in database, never stored in plaintext
 - Session tokens are cryptographically random (32 bytes hex)
+- **Dev Mode Behavior**: 
+  - **Development**: When `OTP_DEV_MODE=1` AND `NODE_ENV !== 'production'` → logs OTP to console
+  - **Production**: Always sends real SMS via Twilio, never logs codes
+  - Missing Twilio credentials in production → loud warning + `sms_send_failed` error
+  - Check server logs for: `[OTP DEV MODE] 🔐 VERIFICATION CODE`
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
