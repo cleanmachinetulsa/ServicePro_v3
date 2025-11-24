@@ -5,6 +5,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { sendSMS, sendEmail } from '../notifications';
 import { addMonths } from 'date-fns';
 import { hasFeature } from '@shared/features';
+import { awardPromoPoints } from './promoEngine'; // Phase 14: Unified promo engine
 
 /**
  * ServicePro v3 - Multi-Tenant Welcome Back Campaign System
@@ -12,10 +13,15 @@ import { hasFeature } from '@shared/features';
  * Allows each tenant to configure and send VIP/Regular customer campaigns
  * with bonus loyalty points. Features:
  * - Per-tenant configuration (points, templates, URLs)
- * - Idempotent points grants (won't double-award same customer)
+ * - Idempotent points grants via Phase 14 Promo Engine (anti-abuse checks)
  * - Multi-channel delivery (SMS + Email)
  * - Preview mode before sending
  * - Plan tier enforcement (requires 'campaigns' feature)
+ * 
+ * Phase 14 Integration:
+ * - Uses promoEngine.awardPromoPoints() for all point awards
+ * - Enforces per-customer, per-household limits
+ * - Supports pending points (granted on next job completion)
  */
 
 export type CampaignAudience = 'vip' | 'regular';
@@ -416,20 +422,36 @@ export async function sendTenantWelcomeBackCampaign(
   // Send campaign to each customer
   for (const customer of targetCustomers) {
     try {
-      // Check if already received this campaign
-      if (await hasReceivedCampaign(tenantDb, customer.id, config.campaignKey, audience)) {
-        console.log(`[Campaign] Skipping customer ${customer.id} - already received campaign`);
+      // Phase 14: Award promo points via unified engine (handles anti-abuse checks)
+      const promoResult = await awardPromoPoints(tenantDb, {
+        tenantId,
+        customerId: customer.id,
+        promoKey: 'welcome_back_v1',
+        basePoints: pointsBonus,
+        source: 'campaign',
+        metadata: {
+          campaignKey: config.campaignKey,
+          segment: audience,
+        },
+      });
+
+      if (!promoResult.awarded) {
+        console.log(`[Campaign] Promo award blocked for customer ${customer.id}: ${promoResult.reason}`);
         result.failed++;
         result.errors.push({
           customerId: customer.id,
           customerName: customer.name,
-          reason: 'Already received this campaign',
+          reason: promoResult.reason || 'Promo eligibility check failed',
         });
         continue;
       }
 
-      // Grant points
-      await grantCampaignPoints(tenantDb, customer.id, pointsBonus, config.campaignKey, audience);
+      // Log award status (pending or immediate)
+      if (promoResult.reason === 'pending') {
+        console.log(`[Campaign] ${pointsBonus} points PENDING for customer ${customer.id} (will be granted on next job completion)`);
+      } else {
+        console.log(`[Campaign] ${promoResult.pointsGranted} points GRANTED immediately to customer ${customer.id}`);
+      }
 
       // Build message
       const templateVars = {

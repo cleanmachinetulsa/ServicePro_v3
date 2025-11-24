@@ -8,7 +8,7 @@ import {
   messageEditHistory, scheduledMessages, humanEscalationRequests,
   callEvents, phoneLines, phoneSchedules, recurringServices,
   smsDeliveryStatus, loyaltyPoints, loyaltyTiers, achievements,
-  rewardServices, pointsTransactions, customerAchievements,
+  rewardServices, pointsTransactions, loyaltyTransactions, customerAchievements,
   redeemedRewards, referrals, referralProgramConfig, rewardAudit,
   qrCodeActions, upsellOffers, appointmentUpsells, emailCampaigns,
   campaignRecipients, emailSuppressionList, smsCampaigns,
@@ -54,6 +54,7 @@ const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
   [achievements, { tenantIdColumn: achievements.tenantId }],
   [rewardServices, { tenantIdColumn: rewardServices.tenantId }],
   [pointsTransactions, { tenantIdColumn: pointsTransactions.tenantId }],
+  [loyaltyTransactions, { tenantIdColumn: loyaltyTransactions.tenantId }], // Phase 14: Promo engine
   [customerAchievements, { tenantIdColumn: customerAchievements.tenantId }],
   [redeemedRewards, { tenantIdColumn: redeemedRewards.tenantId }],
   [referrals, { tenantIdColumn: referrals.tenantId }],
