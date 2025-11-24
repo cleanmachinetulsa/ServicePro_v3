@@ -225,7 +225,7 @@ export async function disableTOTP(userId: number, token: string): Promise<boolea
 export async function isTOTPEnabled(userId: number): Promise<boolean> {
   try {
     const totpRecord = await db
-      .select()
+      .select({ enabled: totpSecrets.enabled })
       .from(totpSecrets)
       .where(and(
         eq(totpSecrets.userId, userId),

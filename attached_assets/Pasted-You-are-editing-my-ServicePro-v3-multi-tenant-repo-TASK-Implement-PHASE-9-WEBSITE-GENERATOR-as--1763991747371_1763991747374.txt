@@ -1,0 +1,319 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement PHASE 9 – WEBSITE GENERATOR as described in MASTER_PLAN_V3 v3.4, with a focus on:
+
+- High-end visual design (at least as polished as my Clean Machine showcase page).
+- Multi-tenant public sites, one per tenant.
+- Integration with Industry Packs (Phase 8) for content seeds.
+- Hooks for Free Tier watermarking & custom domains (Phase 23), but no billing logic yet.
+- Respecting plan tiers and not leaking paid-only features.
+
+This is a PUBLIC-FACING website/booking experience, not an internal dashboard. It must feel like a premium, modern SaaS front-end.
+
+Do NOT change how the existing internal dashboard works. Add a new public site surface.
+
+====================================================
+STEP 0 – ARCHITECTURE CHOICES (SPA-BASED PUBLIC SITE)
+====================================================
+
+We will implement a **SPA-style public website**:
+
+- A React route like `/site/:tenantSlug` for now.
+- Later we may map hostnames to tenant (Phase 23), but v1 uses path-based routing.
+- Public data is fetched via a read-only API: `/api/public/sites/:slug` (or similar).
+- Public site is fully responsive, mobile-first, and visually premium.
+
+NO Next.js, no major framework swaps – work within the existing Vite/React stack.
+
+====================================================
+STEP 1 – PUBLIC SITE BACKEND ENDPOINT
+====================================================
+
+Create a backend route that provides public website data for a given tenant:
+
+1. New route file (or extend a public routes module), e.g.:
+
+   - `server/routes.publicSite.ts`
+
+2. Add endpoint:
+
+   - `GET /api/public/site/:slug`
+
+3. Behavior:
+
+   - Look up tenant by `slug` (or whatever field you use for URL-friendly tenant identifiers).
+   - Ensure tenant exists and `status` is not `suspended` or `cancelled`.
+   - Read from:
+     - `tenants` (businessName, slug, planTier, status).
+     - `tenant_config` (industry, industryPackId, city, websiteUrl, colorPrimary, colorAccent, etc.).
+     - `services` (or equivalent tenant-specific service catalog).
+     - `faq` table (if present).
+     - Any existing `website_config` table if you have one.
+   - Compose and return a JSON payload like:
+
+     ```ts
+     {
+       tenant: {
+         id: string;
+         slug: string;
+         businessName: string;
+         city?: string | null;
+         planTier: 'free' | 'starter' | 'pro' | 'elite' | 'internal';
+         status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+         industry?: string | null;
+         industryPackId?: string | null;
+       };
+       branding: {
+         primaryColor?: string | null;
+         accentColor?: string | null;
+         logoUrl?: string | null;
+       };
+       websiteContent: {
+         heroHeadline?: string;
+         heroSubheadline?: string;
+         primaryCtaLabel?: string;
+         secondaryCtaLabel?: string;
+         aboutBlurb?: string;
+       };
+       services: {
+         id: string;
+         name: string;
+         description?: string;
+         category?: string | null;
+         startingPrice?: number | null;
+         durationMinutes?: number | null;
+         isAddon?: boolean;
+         highlight?: boolean;
+       }[];
+       faqs: {
+         question: string;
+         answer: string;
+       }[];
+       featureFlags: {
+         showWatermark: boolean;
+         canShowBookingForm: boolean;
+         canShowAdvancedSections: boolean;
+       };
+     }
+     ```
+
+   - **Feature flag logic (no billing yet)**:
+     - `showWatermark`:
+       - true if `planTier === 'free'`.
+       - false otherwise.
+     - `canShowBookingForm`:
+       - true for non-free tiers by default (`starter`, `pro`, `elite`, `internal`).
+       - false for `free` (Free tier gets lead/contact form only).
+     - `canShowAdvancedSections`:
+       - true for `pro`, `elite`, `internal`.
+       - false for `free` or maybe `starter` depending on your plan.
+
+4. Do not expose sensitive data (no internal notes, no phone configs, etc.).
+
+====================================================
+STEP 2 – USE INDUSTRY PACK WEBSITE SEEDS (IF PRESENT)
+====================================================
+
+Connect Phase 8 Industry Packs to the website generator:
+
+1. Import `INDUSTRY_PACK_BY_ID` (or equivalent) on the server side.
+
+2. When building `websiteContent` in the public site endpoint:
+
+   - If `website_config` table has specific values (heroHeadline, etc.), prefer those.
+   - Else, if `industryPackId` is set:
+     - Load `websiteSeed` from the matching Industry Pack.
+   - Else:
+     - Use very safe defaults based on businessName + industry.
+
+3. Merge logic:
+
+   - Use a simple “first non-null wins” merge:
+
+     ```ts
+     heroHeadline = website_config.heroHeadline ?? pack.websiteSeed?.heroHeadline ?? defaultHeadline;
+     ```
+
+   - This ensures:
+     - Pack seeds are the starting point.
+     - Tenant customizations override pack-based defaults.
+
+====================================================
+STEP 3 – FRONTEND: PUBLIC SITE ROUTE
+====================================================
+
+On the frontend, create a **public website page** that strongly matches a high-end, modern SaaS marketing site.
+
+1. New React route, e.g.:
+
+   - `client/src/pages/PublicSite.tsx`
+
+2. Routing:
+
+   - Add a route like: `/site/:slug`.
+   - On mount:
+     - Call `/api/public/site/:slug`.
+     - Show a loading skeleton while fetching.
+     - Handle 404 gracefully with a nice “Site not found” page.
+
+3. Layout requirements (THIS IS IMPORTANT – NO TAKEOUT MENU LOOK):
+
+   - Use Tailwind (assuming already present) and, if available, Framer Motion.
+   - Design style:
+     - Glassmorphism cards (backdrop-blur, semi-transparent layers).
+     - Soft gradients in the background (top-right → bottom-left).
+     - Rounded corners (xl–2xl).
+     - Drop shadows, but subtle and clean.
+     - Generous padding and spacing.
+     - Responsive grid layout for services and FAQs.
+     - Sticky or smart header with logo + business name + CTA.
+
+4. Sections to include:
+
+   **A) Hero Section**
+   - Full-width, full-height-ish hero.
+   - Contains:
+     - Business name.
+     - Hero headline from `websiteContent.heroHeadline`.
+     - Subheadline from `websiteContent.heroSubheadline`.
+     - Primary CTA button (e.g., “Request a Quote” / “Check Availability”).
+     - Secondary CTA (e.g., “View Services”).
+   - Supports background:
+     - Gradient + light pattern or shapes.
+     - Optional logo on the left/top.
+
+   **B) Services Highlight**
+   - Card grid of services (3–6).
+   - Each card:
+     - Service name.
+     - Short description.
+     - “From $X” if price is set.
+     - Approximate duration (“~90 min”).
+     - Hover elevation + slight scale + glow.
+   - Highlight certain services (e.g., recommended) with subtle badge.
+
+   **C) About Section**
+   - Uses `websiteContent.aboutBlurb` or a composed default.
+   - Tone: friendly, expert, local-service vibe.
+   - Could include city + years in business if available.
+
+   **D) FAQ Section**
+   - Accordion or simple Q&A list from `faqs`.
+   - Good for SEO and trust.
+
+   **E) Call-to-Action / Booking Strip**
+   - For paid tiers (`canShowBookingForm === true`):
+     - Show a simple booking CTA block:
+       - “Tell us about your vehicle/home/project”
+       - Minimal form (name, phone, message), OR a button that deep-links to your booking flow (if it exists).
+   - For Free tier:
+     - Show a “Request a Callback / Quote” contact form instead of a booking widget.
+
+   **F) Footer**
+   - Display:
+     - Business name.
+     - City.
+     - Basic contact info (if you want to expose email/phone).
+   - Watermark:
+     - If `featureFlags.showWatermark` is true:
+       - Footer contains a subtle but visible line:
+         - “Powered by ServicePro – Upgrade to remove this.”
+       - Style it with a tasteful logo/text, not obnoxious.
+
+5. Animations:
+
+   - Use Framer Motion or equivalent (if available) for:
+     - Hero text fade-in / slide-up.
+     - Cards staggered entrance on scroll.
+     - Button hover interactions (scale + subtle shadow).
+   - Be tasteful but clearly modern – this should feel like a premium SaaS template, not a static Bootstrap page.
+
+====================================================
+STEP 4 – DESIGN SYSTEM HOOKS (COLORS, BRANDING)
+====================================================
+
+Make the public site respond to tenant branding:
+
+1. Use `branding.primaryColor` and `branding.accentColor` (if set) to:
+
+   - Tint button backgrounds / hover.
+   - Accent headers / underline elements.
+   - Color small chips or section markers.
+
+2. If branding colors are missing:
+
+   - Fall back to a nice default gradient (e.g., teal/purple/indigo).
+
+3. If logoUrl is present:
+
+   - Render it in the header (left side).
+   - Provide a fallback monogram avatar (e.g., first letter of business name) if logo is missing.
+
+====================================================
+STEP 5 – HOOKS FOR FREE TIER & FUTURE CUSTOM DOMAINS
+====================================================
+
+Phase 9 should include structural hooks but not implement all of Phase 23 logic yet.
+
+1. **Free Tier Watermark**:
+
+   - Public site already gets `featureFlags.showWatermark` and uses it.
+   - That is enough for Phase 23 to fully define free-tier behavior.
+
+2. **Custom Domains (future)**:
+
+   - For now, the route is `/site/:slug`.
+   - Add a clear TODO near the public site route:
+
+     ```ts
+     // TODO Phase 23: Support host-based tenant resolution for custom domains and subdomains.
+     ```
+
+   - Ensure the public site can handle being served at the root of a domain later with minimal changes (e.g., don’t hard-code `/site/` in all internal links – abstract it into a base path helper if needed).
+
+====================================================
+STEP 6 – TESTING & QA
+====================================================
+
+1. Backend tests:
+
+   - Unit test for `/api/public/site/:slug`:
+     - Returns correct structure for an active tenant.
+     - Returns 404 or appropriate error for non-existent or suspended tenants.
+     - Applies `showWatermark` based on planTier.
+
+2. Frontend tests (if you have framework configured):
+
+   - Rendering test for `PublicSite`:
+     - Shows hero text.
+     - Renders a service grid.
+     - Renders FAQ items.
+   - Responsive manual tests:
+     - Mobile viewport: menu and layout still look great.
+     - Tablet and desktop: cards and hero scale nicely.
+
+3. Manual “CLEAN MACHINE STYLE” check:
+
+   - Spin up a test tenant with:
+     - Industry pack.
+     - Some branding colors.
+   - Visit `/site/:slug`.
+   - Confirm:
+     - It looks like a premium marketing site, not a basic “menu”.
+     - There are layered cards, gradients, animation.
+     - Hero has real presence and emotional impact.
+     - Service cards feel like something you’d show an investor or customer without embarrassment.
+
+====================================================
+STEP 7 – DO NOT BREAK EXISTING DASHBOARD / CLEAN MACHINE
+====================================================
+
+Throughout this Phase 9 implementation:
+
+- Do NOT change or remove any existing dashboard pages.
+- Do NOT change root/Clean Machine internal flows or SMS logic.
+- This is an **additional public surface**, not a replacement.
+
+====================================================
+END OF PHASE 9 – WEBSITE GENERATOR IMPLEMENTATION BLOCK
+====================================================
