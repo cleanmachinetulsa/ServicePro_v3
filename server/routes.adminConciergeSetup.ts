@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { requireRole } from './rbacMiddleware';
 import { z } from 'zod';
-import { getTenantDb } from './tenantDb';
+import { wrapTenantDb } from './tenantDb';
 import { applyIndustryPackToTenant } from './industryPackService';
 import type { IndustryPackId } from '../shared/industryPacks';
 
@@ -158,7 +158,7 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
           console.log(`[CONCIERGE SETUP] Applying industry pack: ${data.industryPackId}`);
           
           try {
-            const tenantDb = getTenantDb(tenantId);
+            const tenantDb = wrapTenantDb(db, tenantId);
             packResult = await applyIndustryPackToTenant(tenantDb, {
               tenantId,
               packId: data.industryPackId as IndustryPackId,

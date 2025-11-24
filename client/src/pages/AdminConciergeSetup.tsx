@@ -23,7 +23,7 @@ import { AppShell } from '@/components/AppShell';
 import { Link, useLocation } from 'wouter';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
-import { getIndustryPackOptions } from '../../shared/industryPacks';
+import { getIndustryPackOptions } from '@shared/industryPacks';
 
 const onboardTenantSchema = z.object({
   businessName: z.string().min(1, 'Business name is required').max(255),
