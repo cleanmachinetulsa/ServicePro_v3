@@ -10,9 +10,9 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 
 **Implemented Features**:
 - ✅ Industry pack configuration system (`shared/industryPacks.ts`)
-- ✅ 17 industry packs: auto detailing, lawn care, house cleaning, pet grooming, photography, HVAC, plumbing, electrical, moving, pressure washing, window washing, pool service, landscaping, roofing, flooring, painting, pest control
-- ✅ Automated service seeding with pricing, duration, descriptions
-- ✅ FAQ seeding with categories and keywords
+- ✅ **22 industry packs**: auto detailing, lawn care, house cleaning, mobile pet grooming, photography, pressure washing, window washing, pool service, landscaping, roofing, flooring, painting, pest control, moving help, personal training, massage therapy, mobile car wash, HVAC, plumbing, electrical, handyman, generic home services
+- ✅ Automated service seeding with pricing, duration, descriptions (3-4 services per pack)
+- ✅ FAQ seeding with categories and keywords (2-4 FAQs per pack)
 - ✅ AI style notes per industry (for Phase 10/14 integration)
 - ✅ Website seed data for Phase 9 integration
 - ✅ Backend service (`server/industryPackService.ts`)
