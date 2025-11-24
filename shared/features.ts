@@ -6,6 +6,7 @@
  */
 
 // Feature keys that can be gated by plan tier
+// Extended for pricing comparison table (Phase 7B)
 export const FEATURE_KEYS = [
   'aiSmsAgent',
   'aiVoiceAgent',
@@ -13,6 +14,12 @@ export const FEATURE_KEYS = [
   'campaigns',
   'dataExport',
   'websiteGenerator',
+  'customDomain',
+  'crmBasic',
+  'loyalty',
+  'multiUser',
+  'advancedAnalytics',
+  'prioritySupport',
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -21,35 +28,72 @@ export type FeatureKey = (typeof FEATURE_KEYS)[number];
  * Feature availability matrix for each plan tier
  * 
  * Tiers:
- * - starter: Entry level, basic features only
- * - pro: Professional tier with AI SMS and campaigns
+ * - free: Limited features, watermarked website, perfect for testing (Phase 23)
+ * - starter: Entry level, professional features, no watermark
+ * - pro: Professional tier with AI SMS and campaigns (RECOMMENDED)
  * - elite: Full feature set including AI voice
  * - internal: Family/friends at-cost tier - all features enabled, no SaaS markup
  */
 export const TIER_FEATURES: Record<string, Record<FeatureKey, boolean>> = {
+  free: {
+    // Free tier: Basic CRM and website with watermark
+    aiSmsAgent: false,
+    aiVoiceAgent: false,
+    dedicatedNumber: false,
+    campaigns: false,
+    dataExport: false,
+    websiteGenerator: true, // With watermark
+    customDomain: false,
+    crmBasic: true,
+    loyalty: false,
+    multiUser: false,
+    advancedAnalytics: false,
+    prioritySupport: false,
+  },
   starter: {
+    // Starter: Remove watermark, add custom domain and basic automation
     aiSmsAgent: false,
     aiVoiceAgent: false,
     dedicatedNumber: false,
     campaigns: false,
     dataExport: true,
-    websiteGenerator: true,
+    websiteGenerator: true, // No watermark
+    customDomain: true,
+    crmBasic: true,
+    loyalty: false,
+    multiUser: false,
+    advancedAnalytics: false,
+    prioritySupport: false,
   },
   pro: {
+    // Pro: AI SMS, campaigns, loyalty - RECOMMENDED
     aiSmsAgent: true,
     aiVoiceAgent: false,
     dedicatedNumber: true,
     campaigns: true,
     dataExport: true,
     websiteGenerator: true,
+    customDomain: true,
+    crmBasic: true,
+    loyalty: true,
+    multiUser: true,
+    advancedAnalytics: false,
+    prioritySupport: true,
   },
   elite: {
+    // Elite: Full feature set including AI voice
     aiSmsAgent: true,
     aiVoiceAgent: true,
     dedicatedNumber: true,
     campaigns: true,
     dataExport: true,
     websiteGenerator: true,
+    customDomain: true,
+    crmBasic: true,
+    loyalty: true,
+    multiUser: true,
+    advancedAnalytics: true,
+    prioritySupport: true,
   },
   internal: {
     // Internal = "family / friends at-cost" → all features ON, no SaaS markup
@@ -59,6 +103,12 @@ export const TIER_FEATURES: Record<string, Record<FeatureKey, boolean>> = {
     campaigns: true,
     dataExport: true,
     websiteGenerator: true,
+    customDomain: true,
+    crmBasic: true,
+    loyalty: true,
+    multiUser: true,
+    advancedAnalytics: true,
+    prioritySupport: true,
   },
 };
 
