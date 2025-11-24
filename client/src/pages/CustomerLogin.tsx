@@ -32,19 +32,22 @@ export default function CustomerLogin() {
     setIsLoading(true);
 
     try {
-      const response = await apiRequest<{
+      const res = await apiRequest(
+        'POST',
+        '/api/public/customer-auth/request-otp',
+        {
+          channel: 'sms',
+          phone: phone.trim(),
+        }
+      );
+
+      const response = await res.json() as {
         success: boolean;
         maskedDestination?: string;
         message?: string;
         error?: string;
         reason?: string;
-      }>('/api/public/customer-auth/request-otp', {
-        method: 'POST',
-        body: JSON.stringify({
-          channel: 'sms',
-          phone: phone.trim(),
-        }),
-      });
+      };
 
       if (response.success && response.maskedDestination) {
         setMaskedPhone(response.maskedDestination);
@@ -87,21 +90,24 @@ export default function CustomerLogin() {
     setIsLoading(true);
 
     try {
-      const response = await apiRequest<{
+      const res = await apiRequest(
+        'POST',
+        '/api/public/customer-auth/verify-otp',
+        {
+          channel: 'sms',
+          phone: phone.trim(),
+          code: code.trim(),
+        }
+      );
+
+      const response = await res.json() as {
         success: boolean;
         customerId?: number;
         expiresAt?: string;
         message?: string;
         error?: string;
         reason?: string;
-      }>('/api/public/customer-auth/verify-otp', {
-        method: 'POST',
-        body: JSON.stringify({
-          channel: 'sms',
-          phone: phone.trim(),
-          code: code.trim(),
-        }),
-      });
+      };
 
       if (response.success) {
         toast({
