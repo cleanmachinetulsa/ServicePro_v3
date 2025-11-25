@@ -1,0 +1,351 @@
+🔧 ONE BIG DROP-IN PROMPT FOR REPLIT AGENT
+
+Goal:
+
+Verify env usage
+
+Harden Twilio client
+
+Add crystal-clear logs
+
+Add a /api/twilio/sms/debug-send endpoint so you can prove outbound works
+
+Confirm routes + body parsing are correct
+
+👉 Copy everything in the box below into your Replit AI agent:
+
+You are editing the Servicepro-v3-base repo.
+
+Objective:
+Stabilize and debug Twilio test number behavior by:
+- Verifying our Twilio client + env variable wiring
+- Adding strong logging for inbound Voice/SMS
+- Adding a simple outbound SMS debug route
+- Ensuring Express body parsing and route mounting are correct
+
+Do NOT touch any legacy Clean Machine TwiML app in other projects or any production number logic. Only adjust the current Servicepro-v3-base repo.
+
+==================================================
+STEP 1 – Harden server/twilioClient.ts
+==================================================
+
+1. Open server/twilioClient.ts (create it if it does not exist).
+2. Update it so it looks like this (merging with any existing exports if needed):
+
+```ts
+// server/twilioClient.ts
+import Twilio from "twilio";
+
+const {
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_TEST_SMS_NUMBER: TWILIO_TEST_SMS_NUMBER_ENV,
+} = process.env;
+
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+  console.warn(
+    "[TWILIO CLIENT] TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN missing. Twilio client will be null."
+  );
+}
+
+if (!TWILIO_TEST_SMS_NUMBER_ENV) {
+  console.warn(
+    "[TWILIO CLIENT] TWILIO_TEST_SMS_NUMBER is NOT set. Outbound test SMS will fail until this is configured."
+  );
+}
+
+export const twilioClient =
+  TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN
+    ? Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    : null;
+
+export const TWILIO_TEST_SMS_NUMBER = TWILIO_TEST_SMS_NUMBER_ENV
+  ? TWILIO_TEST_SMS_NUMBER_ENV.trim()
+  : null;
+
+export function assertTwilioReady() {
+  if (!twilioClient) {
+    throw new Error(
+      "[TWILIO CLIENT] Twilio client not initialized – check TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN."
+    );
+  }
+  if (!TWILIO_TEST_SMS_NUMBER) {
+    throw new Error(
+      "[TWILIO CLIENT] TWILIO_TEST_SMS_NUMBER is not set. Configure it in Replit secrets as your test number in E.164 format, e.g. +1918..."
+    );
+  }
+}
+
+
+If there are already exports here, preserve them and just integrate these exports.
+
+Make sure this file is the single source of truth for twilioClient and TWILIO_TEST_SMS_NUMBER.
+
+==================================================
+STEP 2 – Add an env debug route
+
+Open server/routes/debugEnv.ts (create this file).
+
+Add the following:
+
+// server/routes/debugEnv.ts
+import { Router } from "express";
+
+const debugEnvRouter = Router();
+
+debugEnvRouter.get("/twilio", (req, res) => {
+  const {
+    TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN,
+    TWILIO_TEST_SMS_NUMBER,
+  } = process.env;
+
+  res.json({
+    ok: true,
+    TWILIO_ACCOUNT_SID_present: !!TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN_present: !!TWILIO_AUTH_TOKEN,
+    TWILIO_TEST_SMS_NUMBER_value: TWILIO_TEST_SMS_NUMBER || null,
+  });
+});
+
+export { debugEnvRouter };
+
+==================================================
+STEP 3 – Add a debug outbound SMS route
+
+Open or create server/routes/twilioDebugSms.ts.
+
+Implement it like this:
+
+// server/routes/twilioDebugSms.ts
+import { Router } from "express";
+import { twilioClient, TWILIO_TEST_SMS_NUMBER, assertTwilioReady } from "../twilioClient";
+
+const twilioDebugSmsRouter = Router();
+
+/**
+ * GET /api/twilio/sms/debug-send?to=+1XXXXXXXXXX
+ * Sends a simple test SMS using TWILIO_TEST_SMS_NUMBER as the from number.
+ */
+twilioDebugSmsRouter.get("/debug-send", async (req, res) => {
+  try {
+    console.log("[TWILIO DEBUG SMS] Incoming debug-send request", {
+      query: req.query,
+    });
+
+    const to = req.query.to as string | undefined;
+
+    if (!to) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing 'to' query param, e.g. /debug-send?to=+1918XXXXXXX",
+      });
+    }
+
+    assertTwilioReady();
+
+    if (!twilioClient) {
+      throw new Error("[TWILIO DEBUG SMS] twilioClient is null after assert – unexpected.");
+    }
+
+    console.log("[TWILIO DEBUG SMS] Sending test SMS", {
+      from: TWILIO_TEST_SMS_NUMBER,
+      to,
+    });
+
+    const result = await twilioClient.messages.create({
+      from: TWILIO_TEST_SMS_NUMBER as string,
+      to,
+      body: "ServicePro Twilio test: outbound SMS is working. 🎉",
+    });
+
+    console.log("[TWILIO DEBUG SMS] Twilio response", {
+      sid: result.sid,
+      status: result.status,
+    });
+
+    res.json({
+      ok: true,
+      sid: result.sid,
+      status: result.status,
+    });
+  } catch (err: any) {
+    console.error("[TWILIO DEBUG SMS] Error sending test SMS:", err);
+    res.status(500).json({
+      ok: false,
+      error: err?.message || String(err),
+    });
+  }
+});
+
+export { twilioDebugSmsRouter };
+
+==================================================
+STEP 4 – Beef up inbound SMS logging
+
+Locate the Twilio inbound SMS route file (likely server/routes/twilioTestSms.ts or similar).
+
+It should be mounted under /api/twilio/sms.
+
+In the main inbound handler (e.g. POST /inbound), add logs at the very top:
+
+console.log("[TWILIO TEST SMS INBOUND] Raw body:", req.body);
+console.log("[TWILIO TEST SMS INBOUND] Parsed fields:", {
+  From: (req.body as any).From,
+  To: (req.body as any).To,
+  Body: (req.body as any).Body,
+});
+
+
+Make sure that when you build the TwiML response, you log it:
+
+console.log("[TWILIO TEST SMS INBOUND] Responding with TwiML:", twiml.toString());
+
+
+Do NOT change the core AI logic. Only add these logs.
+
+==================================================
+STEP 5 – Beef up inbound Voice logging
+
+Locate the Twilio inbound Voice route file(s):
+
+server/routes/twilioTestVoice.ts
+
+or any file that handles /api/twilio/voice/inbound and /handle-key.
+
+At the top of the inbound voice handler (POST /inbound), add:
+
+console.log("[TWILIO TEST VOICE INBOUND] Raw body:", req.body);
+console.log("[TWILIO TEST VOICE INBOUND] Parsed fields:", {
+  From: (req.body as any).From,
+  To: (req.body as any).To,
+  CallSid: (req.body as any).CallSid,
+  Digits: (req.body as any).Digits,
+});
+
+
+In the /handle-key route where you process Gather digits, also log:
+
+console.log("[TWILIO TEST VOICE HANDLE-KEY] Body:", req.body);
+
+
+Ensure all Voice handlers only use valid Voice TwiML verbs:
+
+<Say>, <Gather>, <Record>, <Redirect>, <Hangup>, etc.
+
+There must be NO <Message> tags in voice responses.
+
+==================================================
+STEP 6 – Ensure Express body parsing & route mounting
+
+Open server/routes.ts (or the main Express app setup file, often server/index.ts or server/app.ts).
+
+Ensure the following, IN THIS ORDER:
+
+Before mounting Twilio routes:
+
+import express from "express";
+import { debugEnvRouter } from "./routes/debugEnv";
+import { twilioDebugSmsRouter } from "./routes/twilioDebugSms";
+// also import twilioTestSmsRouter, twilioTestVoiceRouter as they exist
+
+const app = express();
+
+// Body parsers MUST come before Twilio routes
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
+
+// Debug env route
+app.use("/api/debug/env", debugEnvRouter);
+
+// Twilio debug SMS route
+app.use("/api/twilio/sms", twilioDebugSmsRouter);
+
+// Existing Twilio test routes (do NOT remove, just ensure they stay mounted)
+app.use("/api/twilio/sms", twilioTestSmsRouter);
+app.use("/api/twilio/voice", twilioTestVoiceRouter);
+
+// ... rest of routes
+
+
+If you already have some of these lines, just integrate the new routers and ensure urlencoded/json middlewares are before ALL Twilio routes.
+
+Ensure there is NO duplicate body-parser configuration after Twilio routes that could interfere.
+
+==================================================
+STEP 7 – Sanity check Twilio “from” usages
+
+In any file where twilioClient.messages.create is called:
+
+Confirm that the from field is TWILIO_TEST_SMS_NUMBER (imported from "../twilioClient").
+
+If any fallback literal +19188565304 or other number is still used as from, replace it with TWILIO_TEST_SMS_NUMBER and add a guard:
+
+if (!TWILIO_TEST_SMS_NUMBER) {
+  throw new Error("[TWILIO OUTBOUND SMS] TWILIO_TEST_SMS_NUMBER is not set.");
+}
+
+
+DO NOT touch:
+
+Email templates that just display the phone number.
+
+Test fixtures.
+
+Comments/docstrings.
+
+Seed data that sets a number in the DB but doesn’t use it as a Twilio from value.
+
+==================================================
+END OF INSTRUCTIONS
+
+---
+
+## 🧪 What to do after the agent finishes
+
+1. **In Replit Secrets**, make sure:
+
+- `TWILIO_TEST_SMS_NUMBER` is set to your Twilio test number **in E.164 format**, like:
+  - `+1918XXXXXXX` (must start with `+1`).
+
+2. **In your browser**, hit:
+
+- `https://servicepro-v3-base.cleanmachinetul.repl.co/api/debug/env/twilio`  
+
+You should see:
+
+```json
+{
+  "ok": true,
+  "TWILIO_ACCOUNT_SID_present": true,
+  "TWILIO_AUTH_TOKEN_present": true,
+  "TWILIO_TEST_SMS_NUMBER_value": "+1918...."
+}
+
+
+If any of those are false/null, that’s the problem.
+
+Test outbound SMS directly (no Twilio webhook yet):
+
+Open:
+
+https://servicepro-v3-base.cleanmachinetul.repl.co/api/twilio/sms/debug-send?to=+1YOURCELLPHONE
+
+
+Check Replit logs for [TWILIO DEBUG SMS].
+
+You should receive a text: “ServicePro Twilio test: outbound SMS is working. 🎉”
+
+Then test real inbound from Twilio:
+
+In Twilio console, confirm:
+
+Messaging → “A message comes in” →
+https://servicepro-v3-base.cleanmachinetul.repl.co/api/twilio/sms/inbound (POST)
+
+Voice → “A call comes in” →
+https://servicepro-v3-base.cleanmachinetul.repl.co/api/twilio/voice/inbound (POST)
+
+Text your test number and watch Replit logs for:
+
+[TWILIO TEST SMS INBOUND] Raw body: ...

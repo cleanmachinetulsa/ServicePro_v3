@@ -11,8 +11,15 @@ twilioTestVoiceRouter.post("/inbound", (req, res) => {
   const vr = new VoiceResponse();
 
   try {
+    console.log("[TWILIO TEST VOICE INBOUND] Raw body:", req.body);
+    console.log("[TWILIO TEST VOICE INBOUND] Parsed fields:", {
+      From: (req.body as any)?.From,
+      To: (req.body as any)?.To,
+      CallSid: (req.body as any)?.CallSid,
+      Digits: (req.body as any)?.Digits,
+    });
+    
     const { From, To } = req.body || {};
-    console.log("[TWILIO TEST VOICE INBOUND]", { From, To });
 
     const gather = vr.gather({
       input: ["dtmf"],
@@ -48,10 +55,12 @@ twilioTestVoiceRouter.post("/inbound", (req, res) => {
 });
 
 twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
+  console.log("[TWILIO TEST VOICE HANDLE-KEY] Body:", req.body);
+  
   const { Digits, From } = req.body || {};
   const vr = new VoiceResponse();
 
-  console.log("[TWILIO TEST VOICE HANDLE KEY]", { Digits, From });
+  console.log("[TWILIO TEST VOICE HANDLE KEY] Parsed:", { Digits, From });
 
   try {
     switch (Digits) {
