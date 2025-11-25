@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { wrapTenantDb } from '../tenantDb';
 import { db } from '../db';
 import { suggestions, tenants } from '@shared/schema';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, or } from 'drizzle-orm';
 import { requireAuth } from '../authMiddleware';
 import { requireRole } from '../rbacMiddleware';
 
@@ -10,10 +9,15 @@ export const suggestionsRouter = Router();
 
 /**
  * Platform-level suggestions: for ServicePro itself.
- * Requires platform admin auth.
+ * Only accessible by root tenant admins (platform operators).
  */
-suggestionsRouter.get('/platform', requireAuth, requireRole(['owner']), async (req: Request, res: Response) => {
+suggestionsRouter.get('/platform', requireAuth, requireRole(['owner']), async (req: any, res: Response) => {
   try {
+    // Only root tenant can view platform suggestions
+    if (req.tenantId !== 'root') {
+      return res.status(403).json({ success: false, error: 'Platform suggestions are only accessible to platform admins' });
+    }
+
     const rows = await db
       .select()
       .from(suggestions)
@@ -59,7 +63,7 @@ suggestionsRouter.post('/platform', async (req: Request, res: Response) => {
 
 /**
  * Tenant-scoped suggestions: internal (tenant owner/staff).
- * Uses tenantId from req.tenantId.
+ * Uses tenantId from req.tenantId to filter suggestions for this tenant only.
  */
 suggestionsRouter.get('/tenant', requireAuth, async (req: any, res: Response) => {
   try {
@@ -67,10 +71,9 @@ suggestionsRouter.get('/tenant', requireAuth, async (req: any, res: Response) =>
     if (!tenantId) {
       return res.status(400).json({ success: false, error: 'Tenant context required' });
     }
-    
-    const tenantDb = wrapTenantDb(db, tenantId);
 
-    const rows = await tenantDb
+    // Query suggestions table filtering by tenantId (shared table, explicit filter)
+    const rows = await db
       .select()
       .from(suggestions)
       .where(eq(suggestions.tenantId, tenantId))
@@ -93,15 +96,13 @@ suggestionsRouter.post('/tenant', requireAuth, async (req: any, res: Response) =
     if (!tenantId) {
       return res.status(400).json({ success: false, error: 'Tenant context required' });
     }
-    
+
     const { message, context, name, contact } = req.body ?? {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ success: false, error: 'Message is required' });
     }
 
-    const tenantDb = wrapTenantDb(db, tenantId);
-
-    const [row] = await tenantDb
+    const [row] = await db
       .insert(suggestions)
       .values({
         tenantId,
@@ -128,7 +129,7 @@ suggestionsRouter.post('/public/:subdomain', async (req: Request, res: Response)
   try {
     const subdomain = req.params.subdomain as string;
     const { message, context, name, contact } = req.body ?? {};
-    
+
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ success: false, error: 'Message is required' });
     }
@@ -139,15 +140,14 @@ suggestionsRouter.post('/public/:subdomain', async (req: Request, res: Response)
       .from(tenants)
       .where(eq(tenants.subdomain, subdomain))
       .limit(1);
-    
+
     if (!tenant) {
       return res.status(404).json({ success: false, error: 'Tenant not found' });
     }
 
     const tenantId = tenant.id;
-    const tenantDb = wrapTenantDb(db, tenantId);
 
-    const [row] = await tenantDb
+    const [row] = await db
       .insert(suggestions)
       .values({
         tenantId,
@@ -168,11 +168,35 @@ suggestionsRouter.post('/public/:subdomain', async (req: Request, res: Response)
 
 /**
  * Mark suggestion handled / add notes
+ * Tenant-scoped: can only update suggestions belonging to the user's tenant
+ * Platform admins (root tenant) can update platform suggestions (tenantId = null)
  */
 suggestionsRouter.patch('/:id', requireAuth, async (req: any, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ success: false, error: 'Invalid id' });
+
+    const tenantId = req.tenantId as string;
+
+    // First, verify the suggestion belongs to this tenant (or is platform-level for root tenant)
+    const [existing] = await db
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.id, id))
+      .limit(1);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Suggestion not found' });
+    }
+
+    // Authorization check: tenant can only update their own suggestions
+    // Root tenant can update platform suggestions (tenantId = null) or their own
+    if (existing.tenantId !== null && existing.tenantId !== tenantId) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    if (existing.tenantId === null && tenantId !== 'root') {
+      return res.status(403).json({ success: false, error: 'Platform suggestions can only be updated by platform admins' });
+    }
 
     const { handled, notes } = req.body ?? {};
     const updates: any = {};
@@ -205,12 +229,35 @@ suggestionsRouter.patch('/:id', requireAuth, async (req: any, res: Response) => 
 });
 
 /**
- * Delete a suggestion (admin only)
+ * Delete a suggestion
+ * Tenant-scoped: can only delete suggestions belonging to the user's tenant
+ * Platform admins (root tenant) can delete platform suggestions (tenantId = null)
  */
 suggestionsRouter.delete('/:id', requireAuth, requireRole(['owner', 'manager']), async (req: any, res: Response) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ success: false, error: 'Invalid id' });
+
+    const tenantId = req.tenantId as string;
+
+    // First, verify the suggestion belongs to this tenant
+    const [existing] = await db
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.id, id))
+      .limit(1);
+
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Suggestion not found' });
+    }
+
+    // Authorization check
+    if (existing.tenantId !== null && existing.tenantId !== tenantId) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    if (existing.tenantId === null && tenantId !== 'root') {
+      return res.status(403).json({ success: false, error: 'Platform suggestions can only be deleted by platform admins' });
+    }
 
     await db
       .delete(suggestions)
