@@ -267,6 +267,9 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       .map(req => req.trim())
       .filter(req => req.length > 0);
 
+    // Determine if manual approval is required (outside service area with override)
+    const requiresManualApproval = bookingDraft?.inServiceArea === false && override;
+    
     saveAppointmentMutation.mutate({
       customerId: customerId,
       serviceId: formData.serviceId,
@@ -276,7 +279,17 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       addressLng: formData.addressLng,
       additionalRequests: additionalRequestsArray,
       addOns: appointment?.addOns || null,
+      requiresManualApproval,
     });
+  };
+  
+  // Helper to determine save button text based on approval status
+  const getCreateButtonText = () => {
+    if (saveAppointmentMutation.isPending) return 'Creating...';
+    if (bookingDraft?.inServiceArea === false && override) {
+      return 'Submit for Manual Approval';
+    }
+    return 'Create Appointment';
   };
 
   const handleDelete = () => {
@@ -450,12 +463,12 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                 <Button
                   onClick={handleSave}
                   size="sm"
-                  className="flex-1"
-                  disabled={saveAppointmentMutation.isPending}
+                  className={`flex-1 ${bookingDraft?.inServiceArea === false && override ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+                  disabled={saveAppointmentMutation.isPending || (bookingDraft?.inServiceArea === false && !override)}
                   data-testid="button-save-appointment"
                 >
                   <Save className="h-3 w-3 mr-1" />
-                  {saveAppointmentMutation.isPending ? 'Creating...' : 'Create Appointment'}
+                  {getCreateButtonText()}
                 </Button>
                 <Button
                   onClick={() => setIsEditing(false)}
