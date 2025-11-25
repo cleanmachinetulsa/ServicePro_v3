@@ -1,0 +1,70 @@
+You are editing my ServicePro / Clean Machine backend. I want to upgrade my SMS AI agent to use GPT-5.1 instead of the older GPT-4.x models.
+
+Goals:
+
+All production SMS / messaging agent calls to OpenAI should now use gpt-5.1 as the model ID.
+
+Do not break any other parts of the app.
+
+If there is a central config for the model name, use that instead of hard-coding it in multiple places.
+
+Steps (do these for me automatically):
+
+Search the entire repo for OpenAI calls, including both the older Chat Completions and the new Responses API. Look specifically for things like:
+
+openai.chat.completions.create({ ... model: "gpt-4
+
+openai.responses.create({ ... model: "gpt-4
+
+Any string constants like const DEFAULT_MODEL = "gpt-4.1-mini".
+
+Identify which call(s) are used by my SMS AI agent / messaging system. These will be in files like:
+
+server/openai.ts
+
+server/ai/smsAgentPromptBuilder.ts
+
+or whichever file is the central “generateAIResponse” for conversations.
+
+Create or reuse a single config constant for the primary agent model, for example in server/openai.ts or a config file:
+
+export const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL ?? "gpt-5.1";
+
+
+Update the SMS agent OpenAI calls to use that constant:
+
+const response = await openai.responses.create({
+  model: SMS_AGENT_MODEL,
+  ...
+});
+
+
+or, if using Chat Completions:
+
+const response = await openai.chat.completions.create({
+  model: SMS_AGENT_MODEL,
+  ...
+});
+
+
+If there are any other OpenAI calls that are clearly for different purposes (e.g. quick summaries, cheap background tasks), do not automatically change those. Only change the main SMS / messaging / conversation agent model.
+
+Make sure TypeScript compiles and the dev server runs after the change. Fix any type errors caused by the refactor.
+
+At the end, log in the console when the server boots something like:
+
+console.log("[AI] SMS agent model:", SMS_AGENT_MODEL);
+
+
+so I can see at runtime that it’s using gpt-5.1.
+
+After you finish, tell me which files you edited and what the final model config is.
+
+Optional: set via environment variable
+
+If you want to be extra slick, also set in your .env (or Replit Secrets):
+
+SMS_AGENT_MODEL=gpt-5.1
+
+
+Then if we ever want to test gpt-5-mini or something later, we can flip it without touching code.
