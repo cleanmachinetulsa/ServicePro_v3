@@ -11,6 +11,7 @@ import { Calendar, ChevronDown, ChevronUp, Clock, MapPin, Save, Trash2, Wrench }
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { BookingDraft } from '@shared/bookingDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 
 interface Service {
   id: number;
@@ -95,6 +96,8 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     serviceId: 0,
     scheduledTime: '',
     address: '',
+    addressLat: null as number | null,
+    addressLng: null as number | null,
     additionalRequests: '',
   });
 
@@ -105,6 +108,8 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
         serviceId: appointment.serviceId,
         scheduledTime: appointment.scheduledTime,
         address: appointment.address,
+        addressLat: null,
+        addressLng: null,
         additionalRequests: appointment.additionalRequests?.join(', ') || '',
       });
     }
@@ -155,7 +160,9 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       setFormData(prev => ({
         serviceId: prev.serviceId || serviceId,
         scheduledTime: prev.scheduledTime || scheduledTime,
-        address: prev.address || bookingDraft.address || '',
+        address: prev.address || bookingDraft.formattedAddress || bookingDraft.address || '',
+        addressLat: prev.addressLat || bookingDraft.addressLat || null,
+        addressLng: prev.addressLng || bookingDraft.addressLng || null,
         additionalRequests: prev.additionalRequests || additionalRequests,
       }));
     }
@@ -354,14 +361,19 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
               </div>
 
               <div>
-                <Label htmlFor="address-create" className="text-xs">Address</Label>
-                <Input
-                  id="address-create"
+                <AddressAutocomplete
+                  label="Service Address"
                   value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Enter service address"
-                  className="mt-1"
-                  data-testid="input-address"
+                  placeholder="Start typing an address..."
+                  testId="input-address-create"
+                  onSelect={(result) => {
+                    setFormData({
+                      ...formData,
+                      address: result.formatted,
+                      addressLat: result.lat,
+                      addressLng: result.lng,
+                    });
+                  }}
                 />
               </div>
 
@@ -513,14 +525,19 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                     </div>
 
                     <div>
-                      <Label htmlFor="address" className="text-xs">Address</Label>
-                      <Input
-                        id="address"
+                      <AddressAutocomplete
+                        label="Service Address"
                         value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        placeholder="Enter service address"
-                        className="mt-1"
-                        data-testid="input-address"
+                        placeholder="Start typing an address..."
+                        testId="input-address"
+                        onSelect={(result) => {
+                          setFormData({
+                            ...formData,
+                            address: result.formatted,
+                            addressLat: result.lat,
+                            addressLng: result.lng,
+                          });
+                        }}
                       />
                     </div>
 
