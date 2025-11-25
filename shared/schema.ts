@@ -273,6 +273,10 @@ export const tenantConfig = pgTable("tenant_config", {
   homeBaseLat: numeric("home_base_lat", { precision: 10, scale: 7 }),
   homeBaseLng: numeric("home_base_lng", { precision: 10, scale: 7 }),
   
+  // Service area validation settings
+  serviceAreaMaxMinutes: integer("service_area_max_minutes").default(25), // Max allowed travel time from home base
+  serviceAreaSoftDeclineMessage: text("service_area_soft_decline_message"), // Custom message for out-of-area requests
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
