@@ -448,6 +448,7 @@ export const customerSessions = pgTable("customer_sessions", {
 // Customer Vehicles - Track customer vehicle information for personalized service
 export const customerVehicles = pgTable("customer_vehicles", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
   year: varchar("year", { length: 4 }),
   make: varchar("make", { length: 100 }),

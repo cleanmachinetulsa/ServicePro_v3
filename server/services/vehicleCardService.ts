@@ -1,11 +1,11 @@
 import { wrapTenantDb } from '../tenantDb';
 import { db } from '../db';
-import { customerVehicles, customers } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { customerVehicles } from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
 
 /**
  * Finds or creates a vehicle card for a customer.
- * Uses tenant isolation through customer relationship.
+ * Uses direct tenant isolation via wrapTenantDb.
  * 
  * @param tenantId - Tenant identifier for isolation
  * @param customerId - Customer ID who owns the vehicle
@@ -24,17 +24,6 @@ export async function findOrCreateVehicleCard(
   color?: string | null
 ) {
   const tenantDb = wrapTenantDb(db, tenantId);
-
-  // First verify customer belongs to this tenant (security check)
-  const [customer] = await tenantDb
-    .select()
-    .from(customers)
-    .where(eq(customers.id, customerId))
-    .limit(1);
-
-  if (!customer) {
-    throw new Error(`Customer ${customerId} not found in tenant ${tenantId}`);
-  }
 
   // Try to find a matching vehicle already
   // Match on all provided fields to avoid duplicates
@@ -100,20 +89,9 @@ export async function findOrCreateVehicleCard(
 export async function getCustomerVehicles(tenantId: string, customerId: number) {
   const tenantDb = wrapTenantDb(db, tenantId);
 
-  // Verify customer belongs to tenant
-  const [customer] = await tenantDb
-    .select()
-    .from(customers)
-    .where(eq(customers.id, customerId))
-    .limit(1);
-
-  if (!customer) {
-    return [];
-  }
-
   return await tenantDb
     .select()
     .from(customerVehicles)
     .where(eq(customerVehicles.customerId, customerId))
-    .orderBy(customerVehicles.isPrimary); // Primary vehicle first
+    .orderBy(desc(customerVehicles.isPrimary)); // Primary vehicle first
 }
