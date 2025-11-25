@@ -1,0 +1,207 @@
+🧩 DROP-IN L — Legacy Cleanup & Consolidation Pass (Safe Mode)
+
+This one is more “meta” — it doesn’t add new features, it tightens the codebase so future phases + migration are clean.
+
+Paste this into Replit for Servicepro-v3 AFTER K.
+It will instruct the agent to:
+
+isolate old flows into legacy/ instead of deleting things blindly
+
+remove obviously unused imports / dead code
+
+standardize on the new Booking + Messaging engine
+
+GOAL OF L
+
+No duplicate booking flows
+
+No duplicate SMS engines
+
+Legacy stuff is quarantined (not scattered)
+
+TypeScript is clean (no obvious unused vars/imports)
+
+New engine is the only active one
+
+We’re going to do this in a conservative way:
+
+Move truly old/unused files into legacy/
+
+Remove only obviously unused imports & functions
+
+Do not change behavior of the new flows
+
+STEP L1 – Identify Legacy Booking / Messaging Code
+
+In the repo, search for older versions of:
+
+booking
+
+appointments
+
+smsAgent or sms
+
+conversation flows that clearly predate AI Behavior V2
+
+For example (the agent will adapt names):
+
+server/legacyBooking*
+
+server/oldSmsAgent*
+
+client/src/pages/OldBookingsPage.tsx
+
+client/src/components/OldMessages*
+
+Instruction to Replit agent:
+
+For each file or folder clearly marked as old (e.g. old*, v1, legacy, __old__, comments like // TODO: remove once v2 is live):
+
+Move it under legacy/ at the root:
+
+legacy/server/...
+
+legacy/client/...
+
+Update tsconfig / build ignores if necessary so legacy/ doesn’t affect builds or bundling.
+
+Do NOT move or touch any of the new engine files:
+
+server/services/bookingDraftService.ts
+
+shared/bookingDraft.ts
+
+server/ai/smsAgentPromptBuilder.ts
+
+server/openai.ts (new path)
+
+client/src/components/BookingPanel.tsx
+
+client/src/components/messages/* (new 3-pane UI)
+
+STEP L2 – Remove Unused Imports & Obvious Dead Code
+
+Ask the agent to:
+
+Run a TypeScript build / check (or use the language server) to identify:
+
+unused imports
+
+unused local variables
+
+unreachable code blocks
+
+For each file in:
+
+server/
+
+client/src/
+
+shared/
+
+perform minimal edits:
+
+Remove imports that are never referenced in that file.
+
+Remove // eslint-disable-next-line @typescript-eslint/no-unused-vars that are suppressing truly unused stuff, if code can be safely pruned.
+
+Do not change function signatures that are exported and might be used elsewhere unless confirmed unused across the project.
+
+This is mostly "lint cleanup", not refactor.
+
+STEP L3 – Standardize on the New Booking Flow
+
+Search for:
+
+Old endpoints like /api/bookings/create or /api/bookings/manual that might be duplicates of the new canonical route.
+
+Old components like ManualBookingModal that bypass the new BookingPanel.
+
+Instruction:
+
+If there are two or more booking entry points, ensure:
+
+The new one is wired in the UI:
+
+Messaging Cockpit “Create Appointment”
+
+Any “New Booking” button in admin
+
+Old ones are:
+
+either moved to legacy/
+
+or clearly marked as deprecated (comment at top: // DEPRECATED: use BookingPanel + bookingDraftService).
+
+Do NOT delete DB migrations, old schemas, or anything that would break data, only code paths.
+
+STEP L4 – Standardize on the New SMS AI Engine
+
+Search for:
+
+any smsAgentV1, basicSmsAgent, oldOpenAIClient, etc.
+
+Instruction:
+
+If there is an old “simple” SMS agent:
+
+Move its files under legacy/ai/
+
+Ensure all active SMS reply routes use:
+
+server/openai.ts
+
+server/ai/smsAgentPromptBuilder.ts
+
+new Behavior V2 config in shared/ai/smsAgentConfig.ts
+
+If there are duplicate Twilio webhook handlers:
+
+Keep the one that:
+
+reads from conversations table
+
+calls the new AI Behavior V2
+
+records messages into the current Message model
+
+Move any divergent or experimental handler under legacy/twilio/.
+
+STEP L5 – Add a legacy/README.md Explaining What’s There
+
+Create legacy/README.md:
+
+# Legacy Code (Quarantined)
+
+This folder contains older or experimental implementations that have been superseded by the v3 Messaging + Booking engine.
+
+- Do NOT delete this folder until the ServicePro v3 → Clean Machine migration is fully complete and stable.
+- Nothing in this folder is referenced by the active app code; it is kept for reference only.
+- New development should use:
+  - server/services/bookingDraftService.ts
+  - server/ai/smsAgentPromptBuilder.ts
+  - server/openai.ts
+  - client/src/components/BookingPanel.tsx
+  - client/src/components/messages/*
+
+STEP L6 – Final Sanity Check
+
+Have the agent:
+
+Run TypeScript build
+
+Run whatever test/health check you normally use (if any)
+
+Confirm:
+
+No imports fail due to moved files
+
+No references to old functions remain in active code
+
+The app still starts and the messaging + booking flows work as before
+
+If any breakage appears, the agent should:
+
+Undo the last move for that file
+
+Keep it in its original place (so we err on the side of safety)

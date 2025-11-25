@@ -74,6 +74,7 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
       addressLng: z.number().nullable().optional(),
       additionalRequests: z.array(z.string()).optional(),
       addOns: z.any().optional(),
+      requiresManualApproval: z.boolean().optional(),
     });
     
     const data = schema.parse(req.body);
@@ -131,6 +132,22 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
           .where(eq(conversations.id, conversationId));
       });
     }
+    
+    // Update behaviorSettings.booking on every save to track manual approval status
+    // This ensures the flag is cleared when subsequent standard bookings are made
+    const existingSettings = (conversation.behaviorSettings as Record<string, any>) || {};
+    await req.tenantDb!.update(conversations)
+      .set({
+        behaviorSettings: {
+          ...existingSettings,
+          booking: {
+            ...(existingSettings.booking || {}),
+            requiresManualApproval: data.requiresManualApproval || false,
+            inServiceArea: data.requiresManualApproval ? false : true,
+          },
+        },
+      })
+      .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)));
     
     // Fetch updated appointment
     const [appointment] = await req.tenantDb!.select()

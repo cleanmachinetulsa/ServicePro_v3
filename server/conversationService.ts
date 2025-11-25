@@ -154,10 +154,15 @@ export async function getConversationById(
     let bookingStatus: BookingStatus = 'not_ready';
     const conv = conversation[0];
     
+    // Also check behaviorSettings for manual approval flags (set when booking with service area override)
+    const behaviorSettings = (conv.behaviorSettings as Record<string, any>) || {};
+    const bookingFlags = behaviorSettings.booking || {};
+    
     if (conv.customerPhone) {
       try {
         const state = conversationState.getState(conv.customerPhone);
         // Map conversation state to booking status helper format
+        // Merge behaviorSettings.booking flags with conversation state
         bookingStatus = getBookingStatusFromState({
           customerName: state.customerName,
           service: state.service,
@@ -166,12 +171,15 @@ export async function getConversationById(
           selectedTimeSlot: state.selectedTimeSlot,
           preferredDate: null,
           preferredTimeWindow: null,
-          requiresManualApproval: state.damageAssessmentRequested || false,
-          inServiceArea: state.isInServiceArea !== false,
+          requiresManualApproval: state.damageAssessmentRequested || bookingFlags.requiresManualApproval || false,
+          inServiceArea: bookingFlags.inServiceArea !== undefined ? bookingFlags.inServiceArea : (state.isInServiceArea !== false),
         });
       } catch (stateError) {
         console.error('[BOOKING STATUS] Error computing booking status:', stateError);
       }
+    } else if (bookingFlags.requiresManualApproval) {
+      // No phone but we have booking flags from service area override
+      bookingStatus = 'ready_for_human_review';
     }
 
     return {
