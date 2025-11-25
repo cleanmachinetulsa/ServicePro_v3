@@ -45,4 +45,10 @@ export interface BookingDraft {
    * These are optional and fully editable in BookingPanel.
    */
   aiSuggestedNotes?: string | null;
+
+  /**
+   * Route-optimized booking suggestion based on location and nearby jobs
+   * Helps minimize travel time and maximize efficiency
+   */
+  routeSuggestion?: import('@shared/routeOptimization').RouteSuggestion | null;
 }
