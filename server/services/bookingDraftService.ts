@@ -7,6 +7,7 @@ import { conversationState } from '../conversationState';
 import { normalizeTimePreference } from './timePreferenceParser';
 import { resolveServiceFromNaturalText } from './serviceNameResolver';
 import { findOrCreateVehicleCard } from './vehicleCardService';
+import { extractNotesFromConversationState } from './notesExtractor';
 
 export async function buildBookingDraftFromConversation(
   tenantId: string,
@@ -128,6 +129,9 @@ export async function buildBookingDraftFromConversation(
     }
   }
 
+  // 5) Smart Notes Injection: Extract AI-suggested notes from conversation context
+  const aiSuggestedNotes = extractNotesFromConversationState(state);
+
   // Build draft with data from conversation state, customer record, and conversation
   const draft: BookingDraft = {
     conversationId: conversation.id,
@@ -148,6 +152,7 @@ export async function buildBookingDraftFromConversation(
 
     vehicleSummary,
     notes: null,
+    aiSuggestedNotes,
   };
 
   return draft;
