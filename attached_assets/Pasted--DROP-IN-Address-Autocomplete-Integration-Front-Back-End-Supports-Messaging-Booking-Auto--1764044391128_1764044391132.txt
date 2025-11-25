@@ -1,0 +1,230 @@
+🚀 DROP-IN: Address Autocomplete Integration (Front + Back End)
+Supports:
+
+✔ Messaging Booking Auto-Fill
+✔ New Conversation → Booking
+✔ Tenant Admin Home Base Address
+✔ Customer-facing address entry (later in public site v3)
+✔ Google Places Autocomplete
+✔ Auto-geocode + lat/lng injection
+✔ Multi-tenant isolation
+✔ AI Behavior V2 aware of formatted addresses
+
+🧩 STEP 1 — Add new backend endpoint: Google Places Proxy
+
+Create:
+
+server/routes/places.ts
+// server/routes/places.ts
+import { Router } from "express";
+import fetch from "node-fetch";
+
+export const placesRouter = Router();
+
+/**
+ * /api/places/autocomplete?input=123 ma
+ * Proxies Google Places API to avoid exposing client-key.
+ * Multi-tenant safe (no tenant data)
+ */
+placesRouter.get("/autocomplete", async (req, res) => {
+  try {
+    const input = req.query.input?.toString() ?? "";
+    if (!input.trim()) {
+      return res.json({ predictions: [] });
+    }
+
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.warn("⚠ GOOGLE_MAPS_API_KEY not configured.");
+      return res.json({ predictions: [] });
+    }
+
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+      input
+    )}&types=address&components=country:us&key=${apiKey}`;
+
+    const r = await fetch(url);
+    const json = await r.json();
+
+    // Never leak Google error messages
+    return res.json({
+      predictions: json.predictions ?? [],
+    });
+  } catch (err) {
+    console.error("[PLACES AUTOCOMPLETE ERROR]", err);
+    return res.json({ predictions: [] });
+  }
+});
+
+/**
+ * For resolving a prediction → place details → lat/lng + formatted address
+ */
+placesRouter.get("/details", async (req, res) => {
+  try {
+    const placeId = req.query.placeId?.toString() ?? "";
+    if (!placeId) return res.json(null);
+
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) return res.json(null);
+
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&key=${apiKey}`;
+
+    const r = await fetch(url);
+    const json = await r.json();
+
+    const result = json?.result;
+    if (!result) return res.json(null);
+
+    const lat = result.geometry?.location?.lat ?? null;
+    const lng = result.geometry?.location?.lng ?? null;
+    const formatted = result.formatted_address ?? null;
+
+    return res.json({
+      lat,
+      lng,
+      formatted,
+    });
+  } catch (err) {
+    console.error("[PLACES DETAILS ERROR]", err);
+    return res.json(null);
+  }
+});
+
+🧩 STEP 2 — Register router
+
+In server/routes.ts, add:
+
+import { placesRouter } from "./routes/places";
+app.use("/api/places", placesRouter);
+
+🧩 STEP 3 — Create Shared Autocomplete Interface
+shared/places.ts
+export interface AddressSuggestion {
+  description: string;
+  placeId: string;
+}
+
+🧩 STEP 4 — Create React Autocomplete Component
+
+Create:
+
+client/src/components/AddressAutocomplete.tsx
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+export default function AddressAutocomplete({
+  value,
+  onSelect,
+  label = "Address",
+}) {
+  const [input, setInput] = useState(value ?? "");
+  const [open, setOpen] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ["places-autocomplete", input],
+    queryFn: async () => {
+      if (!input || input.length < 3) return [];
+      const r = await fetch(`/api/places/autocomplete?input=${encodeURIComponent(input)}`);
+      const json = await r.json();
+      return json.predictions?.map((p) => ({
+        description: p.description,
+        placeId: p.place_id,
+      })) ?? [];
+    },
+    enabled: input.length >= 3,
+  });
+
+  async function handleSelect(item) {
+    setInput(item.description);
+    setOpen(false);
+
+    // fetch place details
+    const r = await fetch(`/api/places/details?placeId=${item.placeId}`);
+    const details = await r.json();
+
+    onSelect({
+      address: item.description,
+      lat: details?.lat ?? null,
+      lng: details?.lng ?? null,
+      formatted: details?.formatted ?? item.description,
+    });
+  }
+
+  return (
+    <div className="relative w-full">
+      <label className="block text-sm mb-1">{label}</label>
+      <input
+        className="border w-full rounded px-3 py-2"
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setOpen(true);
+        }}
+      />
+
+      {open && data?.length > 0 && (
+        <div className="absolute z-10 bg-white dark:bg-neutral-900 border rounded w-full shadow-lg max-h-60 overflow-auto">
+          {data.map((item) => (
+            <div
+              key={item.placeId}
+              className="px-3 py-2 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              onClick={() => handleSelect(item)}
+            >
+              {item.description}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+🧩 STEP 5 — Upgrade BookingPanel to use Autocomplete
+
+In client/src/components/BookingPanel.tsx:
+
+Import the component:
+
+import AddressAutocomplete from "./AddressAutocomplete";
+
+
+Replace your address <input /> with:
+
+<AddressAutocomplete
+  label="Service Address"
+  value={form.address}
+  onSelect={(result) => {
+    setForm((f) => ({
+      ...f,
+      address: result.formatted,
+      addressLat: result.lat,
+      addressLng: result.lng,
+    }));
+  }}
+/>
+
+🧩 STEP 6 — Update Tenant Admin: Home Base Settings
+
+In client/src/pages/admin/TenantSettings.tsx, replace home base address field:
+
+<AddressAutocomplete
+  label="Home Base Address"
+  value={form.homeBaseAddress}
+  onSelect={(r) => {
+    setForm((f) => ({
+      ...f,
+      homeBaseAddress: r.formatted,
+      homeBaseLat: r.lat,
+      homeBaseLng: r.lng,
+    }));
+  }}
+/>
+
+🧩 STEP 7 — AI Behavior V2 Awareness of Autocomplete
+
+In smsAgentPromptBuilder.ts, append after the KNOWN_CONTEXT block:
+
+if (conversationState?.address && conversationState?.addressValidated) {
+  SYSTEM_PROMPT += `
+When addressing the customer's location, always rely on the fully formatted address returned by Google Places Autocomplete. Avoid re-asking for address if already geocoded.`;
+}
