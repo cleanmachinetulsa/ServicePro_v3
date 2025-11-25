@@ -32,6 +32,8 @@ interface Appointment {
   serviceId: number;
   scheduledTime: string;
   address: string;
+  addressLat?: number | string | null;
+  addressLng?: number | string | null;
   additionalRequests: string[] | null;
   addOns: any;
   service?: Service;
@@ -108,8 +110,8 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
         serviceId: appointment.serviceId,
         scheduledTime: appointment.scheduledTime,
         address: appointment.address,
-        addressLat: null,
-        addressLng: null,
+        addressLat: appointment.addressLat ? Number(appointment.addressLat) : null,
+        addressLng: appointment.addressLng ? Number(appointment.addressLng) : null,
         additionalRequests: appointment.additionalRequests?.join(', ') || '',
       });
     }
