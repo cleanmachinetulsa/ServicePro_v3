@@ -1,0 +1,392 @@
+REPLIT DROP-IN — “Time Window Intelligence for Booking Auto-Fill”
+
+You are editing the Servicepro-v3 repo.
+Goal: Upgrade the Booking Modal Auto-Fill so natural-language time phrases from the AI (“tomorrow morning”, “Friday after 3”, etc.) are normalized into a concrete date + time window and used to auto-fill the booking form.
+We already have:
+
+shared/bookingDraft.ts
+
+server/services/bookingDraftService.ts
+
+server/routes.conversations.ts with /api/conversations/:id/booking-draft
+
+client/src/components/BookingPanel.tsx using the BookingDraft
+
+This micro-stage is about:
+
+Adding a safe, simple time preference parser
+
+Normalizing conversational phrases → { date, window, start, end }
+
+Filling date/time fields in the Booking Panel more intelligently
+
+Never blocking booking if parsing fails.
+
+STEP 1 – Extend BookingDraft with time preference details
+
+Open shared/bookingDraft.ts.
+
+You should already have something like:
+
+export interface BookingDraft {
+  conversationId: number;
+  customerId: number | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  address: string | null;
+  serviceName: string | null;
+  serviceId: number | null;
+  preferredDate: string | null;
+  preferredTimeWindow: string | null;
+  vehicleSummary: string | null;
+  notes: string | null;
+}
+
+
+Extend it to add raw + normalized fields for time preferences while keeping backward compatibility:
+
+export interface BookingDraft {
+  conversationId: number;
+  customerId: number | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  address: string | null;
+  serviceName: string | null;
+  serviceId: number | null;
+
+  /**
+   * Normalized date string in ISO format: "YYYY-MM-DD"
+   * e.g. 2025-11-24
+   */
+  preferredDate: string | null;
+
+  /**
+   * Human-friendly label for the time window
+   * e.g. "morning", "afternoon", "evening", "anytime", or null
+   */
+  preferredTimeWindow: string | null;
+
+  /**
+   * Raw time preference text from the conversation
+   * e.g. "tomorrow morning", "next Friday after 3"
+   */
+  rawTimePreference?: string | null;
+
+  /**
+   * Optional normalized start/end time (local time, 24h "HH:MM" format)
+   * e.g. "09:00", "12:00", etc.
+   */
+  normalizedStartTime?: string | null;
+  normalizedEndTime?: string | null;
+
+  vehicleSummary: string | null;
+  notes: string | null;
+}
+
+
+Ensure the interface is still exported the same way and any barrel file (like shared/index.ts if present) is updated to re-export BookingDraft.
+
+STEP 2 – Add a time preference parser (server utility)
+
+Create a new file:
+
+server/services/timePreferenceParser.ts
+
+Implement a lightweight, dependency-free parser:
+
+// server/services/timePreferenceParser.ts
+
+export interface NormalizedTimePreference {
+  date: string | null;               // "YYYY-MM-DD"
+  windowLabel: string | null;        // "morning" | "afternoon" | "evening" | "anytime" | null
+  startTime: string | null;          // "HH:MM" 24h local
+  endTime: string | null;            // "HH:MM" 24h local
+}
+
+/**
+ * Normalize a conversational time preference like:
+ * - "today"
+ * - "tomorrow morning"
+ * - "friday after 3"
+ * - "next tuesday afternoon"
+ *
+ * into a concrete date + time window using a simple rule-based approach.
+ *
+ * Assumes local time zone; does not use external libraries.
+ */
+export function normalizeTimePreference(text: string, now: Date = new Date()): NormalizedTimePreference {
+  if (!text) {
+    return { date: null, windowLabel: null, startTime: null, endTime: null };
+  }
+
+  const raw = text.toLowerCase().trim();
+
+  // Basic windows
+  // You can fine-tune these time ranges later if needed.
+  const WINDOWS = {
+    morning: { start: '08:00', end: '12:00' },
+    afternoon: { start: '12:00', end: '16:00' },
+    evening: { start: '16:00', end: '19:00' },
+    anytime: { start: '08:00', end: '17:00' },
+  } as const;
+
+  // Helper to format date as YYYY-MM-DD
+  const formatDate = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Basic date resolution
+  let target = new Date(now.getTime());
+  let matchedDate = false;
+
+  if (raw.includes('today')) {
+    matchedDate = true;
+  } else if (raw.includes('tomorrow')) {
+    target.setDate(target.getDate() + 1);
+    matchedDate = true;
+  } else {
+    // Check weekday names within the next 14 days
+    const weekdays = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+    const foundIndex = weekdays.findIndex((day) => raw.includes(day));
+    if (foundIndex !== -1) {
+      // Move forward until we hit that weekday, within a reasonable window
+      const searchLimitDays = 14;
+      const probe = new Date(now.getTime());
+      for (let i = 0; i < searchLimitDays; i++) {
+        if (probe.getDay() === foundIndex) {
+          target = probe;
+          matchedDate = true;
+          break;
+        }
+        probe.setDate(probe.getDate() + 1);
+      }
+    }
+  }
+
+  const date = matchedDate ? formatDate(target) : null;
+
+  // Time window resolution
+  let windowLabel: string | null = null;
+  if (raw.includes('morning')) windowLabel = 'morning';
+  else if (raw.includes('afternoon')) windowLabel = 'afternoon';
+  else if (raw.includes('evening')) windowLabel = 'evening';
+  else if (raw.includes('any') || raw.includes('whenever') || raw.includes('no preference')) {
+    windowLabel = 'anytime';
+  }
+
+  // If they mention "before" or "after" a certain hour, you could expand this later.
+  // For now we keep it simple and only use coarse windows.
+
+  let startTime: string | null = null;
+  let endTime: string | null = null;
+
+  if (windowLabel && windowLabel in WINDOWS) {
+    startTime = WINDOWS[windowLabel as keyof typeof WINDOWS].start;
+    endTime = WINDOWS[windowLabel as keyof typeof WINDOWS].end;
+  }
+
+  // If we got a date but no explicit window, default to "anytime" business hours
+  if (date && !windowLabel) {
+    windowLabel = 'anytime';
+    startTime = WINDOWS.anytime.start;
+    endTime = WINDOWS.anytime.end;
+  }
+
+  return {
+    date,
+    windowLabel,
+    startTime,
+    endTime,
+  };
+}
+
+
+Keep this parser intentionally simple and robust; it’s okay if it only handles “today / tomorrow / weekdays + morning/afternoon/evening/anytime” for now. We can extend later.
+
+STEP 3 – Use the parser in bookingDraftService.ts
+
+Open server/services/bookingDraftService.ts.
+
+At the top, import the parser and type:
+
+import { normalizeTimePreference } from './timePreferenceParser';
+
+
+Find where you build the BookingDraft object. You currently set something like:
+
+const draft: BookingDraft = {
+  conversationId: conversation.id,
+  customerId: conversation.customerId ?? null,
+  customerName: state?.customerName ?? customer?.name ?? null,
+  customerPhone: conversation.customerPhone ?? customer?.phone ?? null,
+  customerEmail: state?.customerEmail ?? customer?.email ?? null,
+  address: state?.address ?? customer?.address ?? null,
+  serviceName: state?.service ?? null,
+  serviceId: inferredServiceId,
+  preferredDate: state?.selectedTimeSlot ?? null,
+  preferredTimeWindow: null,
+  vehicleSummary,
+  notes: null,
+};
+
+
+Replace the preferredDate + preferredTimeWindow part to use the parser instead. We want to:
+
+Capture the raw string from conversation state (e.g. state?.selectedTimeSlot or whatever field you used).
+
+Normalize it with normalizeTimePreference.
+
+Populate both raw and normalized fields.
+
+Example (adjust the field you pull from state to match your actual schema):
+
+// Determine raw time preference string from conversation state.
+// If your state uses a different property name, adjust here.
+const rawTimePreference: string | null =
+  (state && (state as any).selectedTimeSlot) ||
+  (state && (state as any).preferredTime) ||
+  null;
+
+let normalizedDate: string | null = null;
+let normalizedWindow: string | null = null;
+let normalizedStart: string | null = null;
+let normalizedEnd: string | null = null;
+
+if (rawTimePreference) {
+  const normalized = normalizeTimePreference(rawTimePreference);
+  normalizedDate = normalized.date;
+  normalizedWindow = normalized.windowLabel;
+  normalizedStart = normalized.startTime;
+  normalizedEnd = normalized.endTime;
+}
+
+const draft: BookingDraft = {
+  conversationId: conversation.id,
+  customerId: conversation.customerId ?? null,
+  customerName: state?.customerName ?? customer?.name ?? null,
+  customerPhone: (conversation as any).customerPhone ?? customer?.phone ?? null,
+  customerEmail: state?.customerEmail ?? customer?.email ?? null,
+  address: state?.address ?? customer?.address ?? null,
+  serviceName: state?.service ?? null,
+  serviceId: inferredServiceId,
+
+  preferredDate: normalizedDate,
+  preferredTimeWindow: normalizedWindow,
+  rawTimePreference,
+
+  normalizedStartTime: normalizedStart,
+  normalizedEndTime: normalizedEnd,
+
+  vehicleSummary,
+  notes: null,
+};
+
+
+Keep the service resilient:
+
+If rawTimePreference is null or parsing fails → preferredDate and time fields remain null.
+
+Never throw just because parsing failed.
+
+STEP 4 – Use normalized time in BookingPanel.tsx
+
+Open client/src/components/BookingPanel.tsx.
+
+You already pull the booking draft via React Query and set form state, e.g.:
+
+const [date, setDate] = useState('');
+// maybe: const [time, setTime] = useState('');
+// maybe: const [timeWindow, setTimeWindow] = useState('');
+
+useEffect(() => {
+  if (draft) {
+    if (!customerName && draft.customerName) setCustomerName(draft.customerName);
+    // ...
+    if (!date && draft.preferredDate) setDate(draft.preferredDate);
+    // etc.
+  }
+}, [draft]);
+
+
+Enhance this to also use preferredTimeWindow and normalizedStartTime/normalizedEndTime, but only if your existing UI has time-related fields.
+
+Example pattern (adjust to your actual state vars/field names):
+
+useEffect(() => {
+  if (!draft) return;
+
+  if (!customerName && draft.customerName) setCustomerName(draft.customerName);
+  if (!customerEmail && draft.customerEmail) setCustomerEmail(draft.customerEmail);
+  if (!customerPhone && draft.customerPhone) setCustomerPhone(draft.customerPhone);
+  if (!serviceName && draft.serviceName) setServiceName(draft.serviceName);
+  if (!address && draft.address) setAddress(draft.address);
+  if (!vehicle && draft.vehicleSummary) setVehicle(draft.vehicleSummary);
+
+  // Time/date auto-fill
+  if (!date && draft.preferredDate) {
+    // If your date picker expects "YYYY-MM-DD", this is already correct.
+    // If it expects a Date object, convert it here.
+    setDate(draft.preferredDate);
+  }
+
+  // If your form has a "time window" dropdown (morning/afternoon/evening), use it:
+  if (typeof setTimeWindow === 'function' && draft.preferredTimeWindow && !timeWindow) {
+    setTimeWindow(draft.preferredTimeWindow);
+  }
+
+  // If your form has a specific time field (start time, appointment time), you can choose:
+  // - Use normalizedStartTime as a suggested start time
+  // - Or show it as helper text instead of hard-filling the field
+  if (typeof setTime === 'function' && draft.normalizedStartTime && !time) {
+    setTime(draft.normalizedStartTime);
+  }
+}, [draft]);
+
+
+The exact field names (time, timeWindow, setTimeWindow) should match your existing BookingPanel implementation. If you only have a date + free-text notes, you can skip direct time-setting and optionally:
+
+Inject a helper text like:
+“Customer prefers: tomorrow morning” somewhere in the UI using draft.rawTimePreference.
+
+Key rule:
+
+Do NOT overwrite fields if the user has already typed something.
+
+Only auto-fill when the local state is empty.
+
+STEP 5 – Keep behavior non-blocking & robust
+
+If the draft route fails or parsing fails, the form should behave exactly as it did before.
+
+No modal errors, no blocked submission.
+
+Time intelligence is a bonus, not a requirement.
+
+STEP 6 – Sanity checks
+
+TypeScript compiles successfully (BookingDraft updated everywhere it’s used).
+
+Server starts with no runtime errors.
+
+Open a conversation where AI Behavior V2 has captured a time preference like:
+
+“tomorrow morning”
+
+“Friday afternoon”
+
+“next Tuesday”
+
+Click “Create Appointment” / open the BookingPanel:
+
+Date auto-fills to the correct day (today/tomorrow/next weekday).
+
+If you have a time window dropdown, it selects “morning/afternoon/evening/anytime” appropriately.
+
+If you have a time field and you mapped it, it pre-fills a reasonable default (e.g. 08:00 for morning).
+
+If any schema field names differ, inspect shared/schema.ts and adjust imports/field names, but preserve the overall behavior and structure above.
