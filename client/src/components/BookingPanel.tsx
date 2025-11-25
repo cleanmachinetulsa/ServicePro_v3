@@ -109,7 +109,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     }
   }, [appointment]);
 
-  // Auto-fill form with booking draft (AI Behavior V2 + Time Window Intelligence)
+  // Auto-fill form with booking draft (AI Behavior V2 + Time Window Intelligence + Smart Notes)
   useEffect(() => {
     if (!appointment && bookingDraft && isEditing) {
       // Find matching service by name or use draft serviceId
@@ -130,7 +130,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
         scheduledTime = new Date(`${bookingDraft.preferredDate}T${time}`).toISOString();
       }
 
-      // Build additional requests with vehicle info and optional time window hint
+      // Build additional requests with vehicle info, time preference, and AI-suggested notes
       let additionalRequests = '';
       const requestParts: string[] = [];
       
@@ -141,6 +141,11 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       // Add time preference hint if available
       if (bookingDraft.rawTimePreference) {
         requestParts.push(`Preferred: ${bookingDraft.rawTimePreference}`);
+      }
+      
+      // Add AI-suggested notes (Smart Notes Injection)
+      if (bookingDraft.aiSuggestedNotes) {
+        requestParts.push(bookingDraft.aiSuggestedNotes);
       }
       
       additionalRequests = requestParts.join(' | ');
@@ -368,6 +373,11 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                   className="mt-1"
                   data-testid="input-additional-requests"
                 />
+                {bookingDraft?.aiSuggestedNotes && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    AI Suggestion: {bookingDraft.aiSuggestedNotes}
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -476,6 +486,11 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                         className="mt-1"
                         data-testid="input-additional-requests"
                       />
+                      {bookingDraft?.aiSuggestedNotes && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          AI Suggestion: {bookingDraft.aiSuggestedNotes}
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex gap-2 pt-2">
