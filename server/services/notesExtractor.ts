@@ -10,32 +10,46 @@ export function extractNotesFromConversationState(state: any): string | null {
 
   const notes: string[] = [];
 
-  // 1. Special requests / problem areas
+  // Build a combined text from all relevant fields for keyword scanning
+  const searchableText = [
+    state.service,
+    state.specialRequests,
+    state.additionalNotes,
+    state.customerNotes,
+    state.problemDescription,
+  ].filter(Boolean).join(' ');
+
+  // 1. Special requests / problem areas (explicit fields)
   if (state.specialRequests) {
     notes.push(`Special request: ${state.specialRequests}`);
   }
 
-  // 2. Pet hair detection keywords
-  if (state.service && /pet hair|dog hair|cat hair/i.test(state.service)) {
+  // 2. Additional notes if present
+  if (state.additionalNotes) {
+    notes.push(state.additionalNotes);
+  }
+
+  // 3. Pet hair detection keywords
+  if (searchableText && /pet hair|dog hair|cat hair/i.test(searchableText)) {
     notes.push('Customer mentioned pet hair cleanup.');
   }
 
-  // 3. Spill/stain keywords
-  if (state.service && /spill|stain|vomit|coffee|juice|milk/i.test(state.service)) {
+  // 4. Spill/stain keywords
+  if (searchableText && /spill|stain|vomit|coffee|juice|milk/i.test(searchableText)) {
     notes.push('Customer described spill or stain needing extra attention.');
   }
 
-  // 4. Odor / smell
-  if (state.service && /odor|smell|funky|mildew|cigarette|smoke/i.test(state.service)) {
+  // 5. Odor / smell
+  if (searchableText && /odor|smell|funky|mildew|cigarette|smoke/i.test(searchableText)) {
     notes.push('Customer mentioned interior odor/smell.');
   }
 
-  // 5. Time constraints
+  // 6. Time constraints
   if (state.timeConstraints) {
     notes.push(`Time constraints: ${state.timeConstraints}`);
   }
 
-  // 6. Vehicle-specific descriptions (AI V2 supports nested vehicle info)
+  // 7. Vehicle-specific descriptions (AI V2 supports nested vehicle info)
   if (state.vehicles?.length) {
     const v = state.vehicles[0];
     if (v.condition) {
