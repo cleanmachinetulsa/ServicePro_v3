@@ -1,0 +1,243 @@
+You are editing the Servicepro-v3-base repo.
+
+Goal:
+Extend the existing TEST IVR so that:
+- Press 3 -> caller leaves voicemail (already working).
+- Twilio transcribes that voicemail using its built-in transcription.
+- Twilio sends transcription text to a new webhook: POST /api/twilio/voice/voicemail-transcription.
+- Our server:
+  - Takes TranscriptionText + caller number,
+  - Calls OpenAI (using the same SMS agent model) to generate a short SMS reply,
+  - Sends that reply to the caller via Twilio REST (using TWILIO_TEST_SMS_NUMBER as the from),
+  - Responds 200 OK to Twilio (no TwiML needed for transcription callback).
+
+We must:
+- NOT break existing IVR behavior (inbound, handle-key, voicemail-complete).
+- Reuse the existing OpenAI client and SMS_AGENT_MODEL in server/openai.ts.
+- Reuse twilioClient and TWILIO_TEST_SMS_NUMBER from server/twilioClient.ts.
+
+==================================================
+STEP 1 – Update the "Press 3" voicemail recording to request transcription
+==================================================
+
+1. Open server/routes/twilioTestVoice.ts.
+
+2. Find the switch/case in the /handle-key route, specifically the case for "3" where we call vr.record(...). It should look similar to:
+
+```ts
+case "3": {
+  vr.say("Please leave your message after the tone. Press the pound key when finished.");
+  vr.record({
+    action: "/api/twilio/voice/voicemail-complete",
+    method: "POST",
+    maxLength: 120,
+    finishOnKey: "#",
+  });
+  break;
+}
+Update the vr.record(...) call to request transcription from Twilio and point the transcription callback at a new endpoint we’ll create:
+
+ts
+Copy code
+case "3": {
+  vr.say(
+    "Please leave your message after the tone. Press the pound key when finished."
+  );
+  vr.record({
+    action: "/api/twilio/voice/voicemail-complete",
+    method: "POST",
+    maxLength: 120,
+    finishOnKey: "#",
+    transcribe: true,
+    transcribeCallback: "/api/twilio/voice/voicemail-transcription",
+  });
+  break;
+}
+Notes:
+
+/voicemail-complete stays as the action for the recording (so the caller hears “thank you, your message has been recorded”).
+
+transcribe: true tells Twilio to transcribe asynchronously.
+
+transcribeCallback will receive a separate POST later with TranscriptionText and RecordingUrl.
+
+==================================================
+STEP 2 – Add OpenAI helper to generate a voicemail follow-up SMS
+Open server/openai.ts.
+
+Locate the existing OpenAI client and SMS agent constants. There should be something like:
+
+ts
+Copy code
+import OpenAI from "openai";
+export const SMS_AGENT_MODEL = "...";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+(or an equivalent client setup).
+
+Add the following helper function near the other exported helpers:
+
+ts
+Copy code
+export async function generateVoicemailFollowupSms(transcriptionText: string): Promise<string> {
+  const trimmed = (transcriptionText || "").trim();
+
+  const basePrompt =
+    "You are an AI assistant helping a mobile auto detailing business respond to customer voicemails via SMS.\n" +
+    "You will be given the text transcription of a customer's voicemail.\n" +
+    "Your job is to craft a single, concise, friendly SMS reply that:\n" +
+    "- Acknowledges the voicemail\n" +
+    "- Briefly reflects what they asked for or described\n" +
+    "- Suggests the next step (like scheduling, clarifying details, or confirming a quote)\n" +
+    "- Stays under 320 characters if possible\n" +
+    "Do NOT include line breaks, quotes, or emojis.\n";
+
+  const messages = [
+    {
+      role: "system" as const,
+      content: basePrompt,
+    },
+    {
+      role: "user" as const,
+      content:
+        "Customer voicemail transcription:\n" +
+        trimmed +
+        "\n\nWrite the SMS reply text only:",
+    },
+  ];
+
+  const response = await openai.chat.completions.create({
+    model: SMS_AGENT_MODEL,
+    messages,
+    max_tokens: 120,
+    temperature: 0.4,
+  });
+
+  const text =
+    response.choices?.[0]?.message?.content?.trim() ||
+    "Thanks for your voicemail! We received your message and will review it shortly.";
+  return text;
+}
+Notes:
+
+Uses SMS_AGENT_MODEL so it stays aligned with the existing SMS agent config.
+
+Safe fallback text if OpenAI fails to produce usable content.
+
+==================================================
+STEP 3 – Wire Twilio transcription callback into the test voice router
+In server/routes/twilioTestVoice.ts, add imports at the top if they are not present yet:
+
+We already import twiml, twilioClient, TWILIO_TEST_SMS_NUMBER. Add:
+
+ts
+Copy code
+import { generateVoicemailFollowupSms } from "../openai";
+Still in server/routes/twilioTestVoice.ts, add a new route handler for the transcription callback AFTER the existing /voicemail-complete route:
+
+ts
+Copy code
+/**
+ * POST /api/twilio/voice/voicemail-transcription
+ * Twilio calls this AFTER transcribing the voicemail (async, separate from the call flow).
+ * We:
+ * - Read TranscriptionText, From, To, RecordingUrl
+ * - Generate an AI-powered SMS reply
+ * - Send that SMS to the caller
+ * - Return 200 OK (no TwiML needed)
+ */
+twilioTestVoiceRouter.post(
+  "/voicemail-transcription",
+  async (req: Request, res: Response) => {
+    const body = req.body as any;
+
+    const from = body.From as string | undefined;
+    const to = body.To as string | undefined;
+    const transcriptionText = body.TranscriptionText as string | undefined;
+    const recordingUrl = body.RecordingUrl as string | undefined;
+
+    console.log("[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Incoming:", {
+      from,
+      to,
+      hasTranscription: !!transcriptionText,
+      transcriptionPreview: transcriptionText
+        ? transcriptionText.slice(0, 120)
+        : null,
+      recordingUrl,
+    });
+
+    // Always respond quickly to Twilio to avoid 11200 errors.
+    // We'll try to process everything within this request, but we never throw.
+    try {
+      if (!from || !to) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Missing From/To fields",
+          { from, to }
+        );
+        res.status(200).send("OK");
+        return;
+      }
+
+      if (!transcriptionText || !transcriptionText.trim()) {
+        console.warn(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] No transcription text provided"
+        );
+        // Send a generic follow-up so the customer knows we got it.
+        if (twilioClient && TWILIO_TEST_SMS_NUMBER) {
+          await twilioClient.messages.create({
+            from: TWILIO_TEST_SMS_NUMBER as string,
+            to: from,
+            body:
+              "Thanks for your voicemail! We received your message and will review it shortly.",
+          });
+        }
+        res.status(200).send("OK");
+        return;
+      }
+
+      // Generate AI-powered SMS reply based on transcription
+      let aiReply: string;
+      try {
+        aiReply = await generateVoicemailFollowupSms(transcriptionText);
+      } catch (err: any) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Error generating AI reply:",
+          err
+        );
+        aiReply =
+          "Thanks for your voicemail! We received your message and will follow up with more details soon.";
+      }
+
+      console.log(
+        "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] AI reply about to send:",
+        aiReply
+      );
+
+      // Send SMS reply to caller
+      if (!twilioClient || !TWILIO_TEST_SMS_NUMBER) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Cannot send SMS; Twilio client or from number missing.",
+          { hasClient: !!twilioClient, fromNumber: TWILIO_TEST_SMS_NUMBER }
+        );
+      } else {
+        const msg = await twilioClient.messages.create({
+          from: TWILIO_TEST_SMS_NUMBER as string,
+          to: from,
+          body: aiReply,
+        });
+        console.log(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] SMS sent to caller:",
+          { sid: msg.sid, status: msg.status }
+        );
+      }
+
+      res.status(200).send("OK");
+    } catch (err: any) {
+      console.error(
+        "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Unhandled error:",
+        err
+      );
+      // Still respond 200 so Twilio doesn't retry indefinitely
+      res.status(200).send("OK");
+    }
+  }
+);

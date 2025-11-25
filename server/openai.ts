@@ -51,6 +51,66 @@ export function getDemoAIUsageStats() {
 }
 
 /**
+ * Generate an AI-powered SMS reply to a voicemail transcription.
+ * Used by the test IVR voicemail-transcription endpoint.
+ */
+export async function generateVoicemailFollowupSms(transcriptionText: string): Promise<string> {
+  if (!openai) {
+    console.warn('[OPENAI] OpenAI not configured, using fallback voicemail reply');
+    return "Thanks for your voicemail! We received your message and will review it shortly.";
+  }
+
+  const trimmed = (transcriptionText || "").trim();
+
+  const basePrompt =
+    "You are an AI assistant helping a mobile auto detailing business respond to customer voicemails via SMS.\n" +
+    "You will be given the text transcription of a customer's voicemail.\n" +
+    "Your job is to craft a single, concise, friendly SMS reply that:\n" +
+    "- Acknowledges the voicemail\n" +
+    "- Briefly reflects what they asked for or described\n" +
+    "- Suggests the next step (like scheduling, clarifying details, or confirming a quote)\n" +
+    "- Stays under 320 characters if possible\n" +
+    "Do NOT include line breaks, quotes, or emojis.\n";
+
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: basePrompt,
+    },
+    {
+      role: "user",
+      content:
+        "Customer voicemail transcription:\n" +
+        trimmed +
+        "\n\nWrite the SMS reply text only:",
+    },
+  ];
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: SMS_AGENT_MODEL,
+      messages,
+      max_completion_tokens: 120,
+      temperature: 0.4,
+    });
+
+    const text =
+      response.choices?.[0]?.message?.content?.trim() ||
+      "Thanks for your voicemail! We received your message and will review it shortly.";
+    
+    console.log("[VOICEMAIL AI] Generated follow-up SMS:", { 
+      transcriptionLength: trimmed.length,
+      replyLength: text.length 
+    });
+    
+    return text;
+  } catch (err) {
+    console.error("[VOICEMAIL AI] Error generating reply:", err);
+    return "Thanks for your voicemail! We received your message and will review it shortly.";
+  }
+}
+
+/**
  * OpenAI Function Schemas for Scheduling Tools
  * These allow the AI to intelligently schedule appointments using real data
  */
