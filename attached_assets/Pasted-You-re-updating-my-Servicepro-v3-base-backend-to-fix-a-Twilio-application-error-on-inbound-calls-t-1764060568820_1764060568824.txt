@@ -1,0 +1,79 @@
+You’re updating my Servicepro-v3-base backend to fix a Twilio “application error” on inbound calls to the TEST number.
+
+Context:
+- Twilio test number is already pointed at:
+  https://servicepro-v-3-base-cleanmachinetul.replit.app/api/twilio/voice/inbound
+- server/routes/twilioTestVoice.ts exists and is mounted at /api/twilio/voice.
+- When I call the test number, Twilio says: “We’re sorry, an application error has occurred. Goodbye.”
+- That means the webhook is reachable but the handler is throwing or not returning valid TwiML.
+
+Goal:
+Stabilize the inbound voice route by replacing the current complex IVR with a very simple, safe TwiML response and strong logging. Once it works, we’ll layer the IVR back on top.
+
+Steps:
+
+1. Open server/routes/twilioTestVoice.ts.
+
+2. Replace the current POST handler for /inbound with a minimal, robust version like this (adapt paths/types to match the file):
+
+   import { Router } from 'express';
+   import { twiml as TwiML } from 'twilio';
+
+   export const twilioTestVoiceRouter = Router();
+
+   twilioTestVoiceRouter.post('/inbound', (req, res) => {
+     try {
+       const { From, To } = req.body || {};
+       console.log('[TWILIO TEST VOICE INBOUND]', { From, To });
+
+       const response = new TwiML.VoiceResponse();
+
+       // Use the built-in Twilio "alice" voice, which is always supported.
+       response.say(
+         {
+           voice: 'alice',
+           language: 'en-US',
+         },
+         "Thanks for calling Clean Machine Auto Detail. This is the ServicePro v3 test line. " +
+           "Your call reached our server successfully. You can hang up now."
+       );
+
+       // Always send valid TwiML XML
+       res.type('text/xml').send(response.toString());
+     } catch (err) {
+       console.error('[TWILIO TEST VOICE ERROR]', err);
+       const response = new TwiML.VoiceResponse();
+       response.say(
+         { voice: 'alice', language: 'en-US' },
+         "Sorry, something went wrong on our end. Please try again later."
+       );
+       res.type('text/xml').send(response.toString());
+     }
+   });
+
+   // If this file previously exported a router under a different name
+   // (e.g. twilioVoiceRouter), make sure the same export name is preserved
+   // so server/routes.ts doesn't break. Update the export to match whatever
+   // server/routes.ts is importing.
+
+3. Make sure server/routes.ts is still correctly mounting this router at:
+
+   app.use('/api/twilio/voice', twilioTestVoiceRouter);
+
+   (Adjust the imported name if necessary.)
+
+4. Ensure there are NO async/await calls inside this basic handler that could throw before TwiML is sent. The idea for now is: zero dependencies, just static TwiML.
+
+5. Start the dev server and confirm there are no TypeScript or runtime errors on boot.
+
+6. On startup, log:
+
+   console.log('[Twilio] Test voice endpoint ready at /api/twilio/voice/inbound');
+
+7. Do not modify any SMS routes in this change. Only touch the voice test route.
+
+After you finish, I should be able to:
+- Call the test number
+- Hear the simple “ServicePro v3 test line” message
+- See a console log line like: [TWILIO TEST VOICE INBOUND] { From: '...', To: '...' }
+- No more "application error" from Twilio.
