@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
-import { twiml as Twiml } from "twilio";
+import twilio from "twilio";
+
+const MessagingResponse = twilio.twiml.MessagingResponse;
 
 const LEGACY_NUMBER = process.env.LEGACY_CLEAN_MACHINE_NUMBER_E164 || "";
 const LEGACY_WEBHOOK_URL = process.env.LEGACY_CLEAN_MACHINE_SMS_WEBHOOK_URL || "";
@@ -18,7 +20,7 @@ export async function forwardToLegacyCleanMachine(
       LEGACY_NUMBER_present: !!LEGACY_NUMBER,
       LEGACY_WEBHOOK_URL_present: !!LEGACY_WEBHOOK_URL,
     });
-    const twiml = new Twiml.MessagingResponse();
+    const twiml = new MessagingResponse();
     twiml.message(
       "We're experiencing a temporary routing issue. Please try again in a few minutes."
     );
@@ -59,7 +61,7 @@ export async function forwardToLegacyCleanMachine(
     res.status(200).type("text/xml").send(text);
   } catch (err: any) {
     console.error("[SMS ROUTER] Error forwarding to legacy Clean Machine webhook:", err);
-    const twiml = new Twiml.MessagingResponse();
+    const twiml = new MessagingResponse();
     twiml.message(
       "We hit an error routing your message. Please call or text again shortly."
     );
