@@ -501,14 +501,28 @@ export async function generateAIResponse(
         // Add current user message
         messages.push({ role: "user", content: userMessage });
         
-        // Make OpenAI call with SMS-optimized settings
-        const completion = await openai!.chat.completions.create({
-          model: "gpt-4o",
-          messages,
-          tools: SCHEDULING_FUNCTIONS,
-          tool_choice: "auto",
-          max_tokens: 300, // Shorter for SMS
-        });
+        // AI BEHAVIOR V2: Wrap OpenAI call in try-catch for safety fallback
+        let completion;
+        try {
+          // Make OpenAI call with SMS-optimized settings
+          completion = await openai!.chat.completions.create({
+            model: "gpt-4o",
+            messages,
+            tools: SCHEDULING_FUNCTIONS,
+            tool_choice: "auto",
+            max_tokens: 300, // Shorter for SMS
+          });
+        } catch (openaiError) {
+          console.error('[AI BEHAVIOR V2] OpenAI API error:', openaiError);
+          
+          // AI BEHAVIOR V2: Safety fallback
+          const { SAFETY_FALLBACK_MESSAGE } = await import('@shared/ai/smsAgentConfig');
+          
+          // TODO: Set needsHumanAttention flag on conversation in database
+          console.log('[AI BEHAVIOR V2] OpenAI error - returning safety fallback and flagging for human attention');
+          
+          return SAFETY_FALLBACK_MESSAGE;
+        }
         
         // Log usage
         try {
@@ -537,6 +551,21 @@ export async function generateAIResponse(
         
         // SMS length optimization: trim whitespace
         finalResponse = finalResponse.trim();
+        
+        // AI BEHAVIOR V2: Sentiment/Escalation detection
+        const { detectEscalationSentiment, ESCALATION_MESSAGE } = await import('@shared/ai/smsAgentConfig');
+        const escalationCheck = detectEscalationSentiment(userMessage, conversationHistory);
+        
+        if (escalationCheck.shouldEscalate) {
+          console.log(`[AI BEHAVIOR V2] Escalation detected - confidence: ${escalationCheck.confidence}, reason: ${escalationCheck.reason}`);
+          
+          // TODO: Set needsHumanAttention flag on conversation in database
+          // For high confidence escalations, use standard escalation message
+          if (escalationCheck.confidence === 'high') {
+            console.log('[AI BEHAVIOR V2] High confidence escalation - overriding AI response with escalation message');
+            finalResponse = ESCALATION_MESSAGE;
+          }
+        }
         
         // TODO: Consider truncating or splitting replies into multiple SMS segments if > 320 chars
         if (finalResponse.length > 320) {
