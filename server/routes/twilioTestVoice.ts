@@ -1,6 +1,7 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import twilio from "twilio";
 import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
+import { generateVoicemailFollowupSms } from "../openai";
 
 export const twilioTestVoiceRouter = Router();
 
@@ -102,14 +103,16 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
         vr.say(
           { voice: "alice", language: "en-US" },
           "Please leave your name, number, and a brief description of your vehicle and what you need. " +
-            "Press any key when you are finished."
+            "Press the pound key when you are finished."
         );
         vr.record({
           playBeep: true,
           maxLength: 120,
           action: "/api/twilio/voice/voicemail-complete",
           method: "POST",
-          finishOnKey: "1",
+          finishOnKey: "#",
+          transcribe: true,
+          transcribeCallback: "/api/twilio/voice/voicemail-transcription",
         });
         break;
 
@@ -167,6 +170,106 @@ twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
   }
 });
 
-console.log("[TWILIO TEST] Inbound Voice handlers READY at /api/twilio/voice/inbound, /handle-key, /voicemail-complete");
+/**
+ * POST /api/twilio/voice/voicemail-transcription
+ * Twilio calls this AFTER transcribing the voicemail (async, separate from the call flow).
+ * We:
+ * - Read TranscriptionText, From, To, RecordingUrl
+ * - Generate an AI-powered SMS reply
+ * - Send that SMS to the caller
+ * - Return 200 OK (no TwiML needed)
+ */
+twilioTestVoiceRouter.post(
+  "/voicemail-transcription",
+  async (req: Request, res: Response) => {
+    const body = req.body as any;
+
+    const from = body.From as string | undefined;
+    const to = body.To as string | undefined;
+    const transcriptionText = body.TranscriptionText as string | undefined;
+    const recordingUrl = body.RecordingUrl as string | undefined;
+
+    console.log("[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Incoming:", {
+      from,
+      to,
+      hasTranscription: !!transcriptionText,
+      transcriptionPreview: transcriptionText
+        ? transcriptionText.slice(0, 120)
+        : null,
+      recordingUrl,
+    });
+
+    try {
+      if (!from || !to) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Missing From/To fields",
+          { from, to }
+        );
+        res.status(200).send("OK");
+        return;
+      }
+
+      if (!transcriptionText || !transcriptionText.trim()) {
+        console.warn(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] No transcription text provided"
+        );
+        if (twilioClient && TWILIO_TEST_SMS_NUMBER) {
+          await twilioClient.messages.create({
+            from: TWILIO_TEST_SMS_NUMBER as string,
+            to: from,
+            body:
+              "Thanks for your voicemail! We received your message and will review it shortly.",
+          });
+        }
+        res.status(200).send("OK");
+        return;
+      }
+
+      let aiReply: string;
+      try {
+        aiReply = await generateVoicemailFollowupSms(transcriptionText);
+      } catch (err: any) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Error generating AI reply:",
+          err
+        );
+        aiReply =
+          "Thanks for your voicemail! We received your message and will follow up with more details soon.";
+      }
+
+      console.log(
+        "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] AI reply about to send:",
+        aiReply
+      );
+
+      if (!twilioClient || !TWILIO_TEST_SMS_NUMBER) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Cannot send SMS; Twilio client or from number missing.",
+          { hasClient: !!twilioClient, fromNumber: TWILIO_TEST_SMS_NUMBER }
+        );
+      } else {
+        const msg = await twilioClient.messages.create({
+          from: TWILIO_TEST_SMS_NUMBER as string,
+          to: from,
+          body: aiReply,
+        });
+        console.log(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] SMS sent to caller:",
+          { sid: msg.sid, status: msg.status }
+        );
+      }
+
+      res.status(200).send("OK");
+    } catch (err: any) {
+      console.error(
+        "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Unhandled error:",
+        err
+      );
+      res.status(200).send("OK");
+    }
+  }
+);
+
+console.log("[TWILIO TEST] Inbound Voice handlers READY at /api/twilio/voice/inbound, /handle-key, /voicemail-complete, /voicemail-transcription");
 
 export default twilioTestVoiceRouter;
