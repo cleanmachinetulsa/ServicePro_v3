@@ -1,7 +1,7 @@
 import { wrapTenantDb } from '../tenantDb';
 import { db } from '../db';
 import { customerVehicles } from '@shared/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 
 /**
  * Finds or creates a vehicle card for a customer.
@@ -26,20 +26,42 @@ export async function findOrCreateVehicleCard(
   const tenantDb = wrapTenantDb(db, tenantId);
 
   // Try to find a matching vehicle already
-  // Match on all provided fields to avoid duplicates
-  const conditions = [eq(customerVehicles.customerId, customerId)];
+  // Match on ALL fields including tenantId to avoid duplicates and ensure tenant isolation
+  // Use isNull() for null comparisons to avoid SQL NULL comparison issues
+  // Normalize undefined to null for consistent matching
+  const normalizedYear = year ?? null;
+  const normalizedMake = make ?? null;
+  const normalizedModel = model ?? null;
+  const normalizedColor = color ?? null;
   
-  if (year !== undefined) {
-    conditions.push(eq(customerVehicles.year, year ?? null));
+  const conditions = [
+    eq(customerVehicles.tenantId, tenantId), // CRITICAL: Tenant isolation
+    eq(customerVehicles.customerId, customerId)
+  ];
+  
+  // Add conditions for vehicle attributes, using isNull() for null values
+  if (normalizedYear !== null) {
+    conditions.push(eq(customerVehicles.year, normalizedYear));
+  } else {
+    conditions.push(isNull(customerVehicles.year));
   }
-  if (make !== undefined) {
-    conditions.push(eq(customerVehicles.make, make ?? null));
+  
+  if (normalizedMake !== null) {
+    conditions.push(eq(customerVehicles.make, normalizedMake));
+  } else {
+    conditions.push(isNull(customerVehicles.make));
   }
-  if (model !== undefined) {
-    conditions.push(eq(customerVehicles.model, model ?? null));
+  
+  if (normalizedModel !== null) {
+    conditions.push(eq(customerVehicles.model, normalizedModel));
+  } else {
+    conditions.push(isNull(customerVehicles.model));
   }
-  if (color !== undefined) {
-    conditions.push(eq(customerVehicles.color, color ?? null));
+  
+  if (normalizedColor !== null) {
+    conditions.push(eq(customerVehicles.color, normalizedColor));
+  } else {
+    conditions.push(isNull(customerVehicles.color));
   }
 
   const [existing] = await tenantDb
@@ -52,30 +74,38 @@ export async function findOrCreateVehicleCard(
     return existing;
   }
 
-  // Create new vehicle card
+  // Create new vehicle card with tenantId
   const [created] = await tenantDb
     .insert(customerVehicles)
     .values({
+      tenantId, // CRITICAL: Include tenantId for multi-tenant isolation
       customerId,
-      year: year ?? null,
-      make: make ?? null,
-      model: model ?? null,
-      color: color ?? null,
+      year: normalizedYear,
+      make: normalizedMake,
+      model: normalizedModel,
+      color: normalizedColor,
       isPrimary: false, // Will be set to true if this is the first vehicle
     })
     .returning();
 
   // If this is the customer's first vehicle, mark it as primary
+  // MUST include tenantId filter for tenant isolation
   const allVehicles = await tenantDb
     .select()
     .from(customerVehicles)
-    .where(eq(customerVehicles.customerId, customerId));
+    .where(and(
+      eq(customerVehicles.tenantId, tenantId),
+      eq(customerVehicles.customerId, customerId)
+    ));
 
   if (allVehicles.length === 1) {
     await tenantDb
       .update(customerVehicles)
       .set({ isPrimary: true })
-      .where(eq(customerVehicles.id, created.id));
+      .where(and(
+        eq(customerVehicles.tenantId, tenantId),
+        eq(customerVehicles.id, created.id)
+      ));
     
     return { ...created, isPrimary: true };
   }
@@ -92,6 +122,9 @@ export async function getCustomerVehicles(tenantId: string, customerId: number) 
   return await tenantDb
     .select()
     .from(customerVehicles)
-    .where(eq(customerVehicles.customerId, customerId))
+    .where(and(
+      eq(customerVehicles.tenantId, tenantId), // CRITICAL: Tenant isolation
+      eq(customerVehicles.customerId, customerId)
+    ))
     .orderBy(desc(customerVehicles.isPrimary)); // Primary vehicle first
 }
