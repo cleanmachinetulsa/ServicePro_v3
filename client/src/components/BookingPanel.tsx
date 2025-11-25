@@ -131,6 +131,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       }
 
       // Build additional requests with vehicle info, time preference, and AI-suggested notes
+      // Use comma-separated format to match the save handler's split logic
       let additionalRequests = '';
       const requestParts: string[] = [];
       
@@ -148,7 +149,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
         requestParts.push(bookingDraft.aiSuggestedNotes);
       }
       
-      additionalRequests = requestParts.join(' | ');
+      additionalRequests = requestParts.join(', ');
 
       setFormData(prev => ({
         serviceId: prev.serviceId || serviceId,
