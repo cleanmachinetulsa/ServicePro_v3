@@ -124,6 +124,7 @@ import { registerCustomerIntelligenceRoutes } from './routes.customerIntelligenc
 import { registerEscalationRoutes } from './routes.escalations';
 import customerAuthRoutes from './routes.customerAuth';
 import { placesRouter } from './routes/places';
+import { suggestionsRouter } from './routes/suggestions';
 import customerPortalRoutes from './routes.customerPortal';
 import { blockDemoSMS, blockDemoEmail, blockDemoPayments, blockDemoVoice, blockDemoGoogleAPI, blockDemoFileUpload, isDemoSession, logDemoActivity } from './demoGuard';
 
@@ -327,6 +328,9 @@ export async function registerRoutes(app: Express) {
   
   // Google Places API proxy for address autocomplete (public, no auth required)
   app.use('/api/places', placesRouter);
+  
+  // Suggestions/Feedback routes (platform + tenant + public)
+  app.use('/api/suggestions', suggestionsRouter);
   
   // Phase 15: Register customer portal routes (protected by customer session)
   app.use('/api/portal', customerPortalRoutes);

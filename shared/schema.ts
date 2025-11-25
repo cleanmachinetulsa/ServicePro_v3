@@ -3140,6 +3140,29 @@ export const usageSummary = pgTable('usage_summary', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// ============================================================
+// SUGGESTIONS / FEEDBACK TABLE
+// ============================================================
+export const suggestions = pgTable('suggestions', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id'),
+  customerId: integer('customer_id'),
+  source: text('source').notNull(),
+  context: text('context'),
+  message: text('message').notNull(),
+  name: text('name'),
+  contact: text('contact'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  handled: boolean('handled').default(false).notNull(),
+  handledBy: text('handled_by'),
+  handledAt: timestamp('handled_at'),
+  notes: text('notes'),
+}, (table) => ({
+  tenantIdIdx: index('suggestions_tenant_id_idx').on(table.tenantId),
+  sourceIdx: index('suggestions_source_idx').on(table.source),
+  handledIdx: index('suggestions_handled_idx').on(table.handled),
+}));
+
 // Zod schemas for API usage tracking
 export const insertApiUsageLogSchema = createInsertSchema(apiUsageLogs).omit({ id: true, createdAt: true });
 export const insertServiceHealthSchema = createInsertSchema(serviceHealth).omit({ id: true, updatedAt: true });
@@ -3202,6 +3225,13 @@ export const updatePlatformSettingsSchema = z.object({
 export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type InsertPlatformSettings = z.infer<typeof insertPlatformSettingsSchema>;
 export type UpdatePlatformSettings = z.infer<typeof updatePlatformSettingsSchema>;
+
+// ============================================================
+// SUGGESTIONS SCHEMAS
+// ============================================================
+export const insertSuggestionSchema = createInsertSchema(suggestions).omit({ id: true, createdAt: true });
+export type Suggestion = typeof suggestions.$inferSelect;
+export type InsertSuggestion = z.infer<typeof insertSuggestionSchema>;
 
 // ============================================================
 // PHASE 15 - CUSTOMER IDENTITY & OTP SCHEMAS
