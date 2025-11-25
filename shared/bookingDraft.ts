@@ -35,4 +35,14 @@ export interface BookingDraft {
 
   vehicleSummary: string | null;
   notes: string | null;
+
+  /**
+   * AI-generated notes derived from conversation context.
+   * Example:
+   * - "Customer mentioned pet hair in back seat."
+   * - "Spill on passenger floor mat."
+   * - "Needs ASAP, prefers morning. Will leave keys in cupholder."
+   * These are optional and fully editable in BookingPanel.
+   */
+  aiSuggestedNotes?: string | null;
 }
