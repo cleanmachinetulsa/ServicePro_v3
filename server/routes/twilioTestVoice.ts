@@ -51,7 +51,7 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
   const { Digits, From } = req.body || {};
   const vr = new VoiceResponse();
 
-  console.log("[TWILIO TEST VOICE - KEY]", { Digits, From });
+  console.log("[TWILIO TEST VOICE HANDLE KEY]", { Digits, From });
 
   try {
     switch (Digits) {
@@ -123,24 +123,35 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
 });
 
 twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
-  const { RecordingUrl, RecordingDuration, From } = req.body || {};
+  try {
+    const { RecordingUrl, RecordingDuration, From } = req.body || {};
 
-  console.log("[TWILIO TEST VOICEMAIL COMPLETE]", {
-    From,
-    RecordingUrl,
-    RecordingDuration,
-  });
+    console.log("[TWILIO TEST VOICEMAIL COMPLETE]", {
+      From,
+      RecordingUrl,
+      RecordingDuration,
+    });
 
-  const vr = new VoiceResponse();
-  vr.say(
-    { voice: "alice", language: "en-US" },
-    "Thank you. Your message has been received. Goodbye."
-  );
-  vr.hangup();
+    const vr = new VoiceResponse();
+    vr.say(
+      { voice: "alice", language: "en-US" },
+      "Thank you. Your message has been received. Goodbye."
+    );
+    vr.hangup();
 
-  res.type("text/xml").send(vr.toString());
+    res.type("text/xml").send(vr.toString());
+  } catch (err) {
+    console.error("[TWILIO TEST VOICE ERROR - VOICEMAIL COMPLETE]", err);
+    const errorTwiml = new VoiceResponse();
+    errorTwiml.say(
+      { voice: "alice", language: "en-US" },
+      "Sorry, something went wrong. Goodbye."
+    );
+    errorTwiml.hangup();
+    res.type("text/xml").send(errorTwiml.toString());
+  }
 });
 
-console.log("[Twilio] Test voice IVR endpoint ready at /api/twilio/voice/inbound");
+console.log("[TWILIO TEST] Inbound Voice handlers READY at /api/twilio/voice/inbound, /handle-key, /voicemail-complete");
 
 export default twilioTestVoiceRouter;

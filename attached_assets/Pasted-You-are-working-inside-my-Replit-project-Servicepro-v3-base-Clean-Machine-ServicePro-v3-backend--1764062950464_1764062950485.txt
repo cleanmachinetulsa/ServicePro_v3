@@ -1,0 +1,87 @@
+You are working inside my Replit project: Servicepro-v3-base (Clean Machine / ServicePro v3 backend).
+
+Goal:
+Fix Twilio inbound Voice + SMS webhooks so that:
+- Inbound calls to my Twilio TEST number hit /api/twilio/voice/inbound and play the IVR (press 1/2/3).
+- Inbound SMS to my Twilio TEST number hit /api/twilio/sms/inbound and get an AI reply.
+Currently, Twilio often returns “An application error has occurred” on voice calls.
+
+Environment details:
+- Twilio TEST number: +1 918 918 3265
+- Dev public URL (what Twilio is pointing at): https://servicepro-v3-base.cleanmachinetul.repl.co
+- Voice webhook (A call comes in):
+  https://servicepro-v3-base.cleanmachinetul.repl.co/api/twilio/voice/inbound
+- SMS webhook (A message comes in):
+  https://servicepro-v3-base.cleanmachinetul.repl.co/api/twilio/sms/inbound
+- We have:
+  - server/twilioClient.ts
+  - server/routes/twilioTestSms.ts
+  - server/routes/twilioTestVoice.ts
+  - server/routes.ts mounts routes under /api/twilio/sms and /api/twilio/voice
+- Logs on startup show:
+  [Twilio] Test voice IVR endpoint ready at /api/twilio/voice/inbound
+  [TWILIO TEST] Routes registered: /api/twilio/sms/inbound, /api/twilio/voice/inbound
+  [express] serving on port 5000
+
+Symptoms:
+- When I call the test number, Twilio sometimes says “We’re sorry, an application error has occurred. Goodbye.”
+- I’m not confident the /api/twilio/voice/inbound and /api/twilio/sms/inbound handlers are returning valid responses in all cases.
+- There might also be export/import issues or missing middleware for Twilio’s urlencoded body.
+
+I want you to:
+1. Open server/routes.ts and:
+   - Confirm that twilioTestSms and twilioTestVoice routers are actually imported and mounted as:
+     app.use("/api/twilio/sms", twilioTestSmsRouterOrWhateverName);
+     app.use("/api/twilio/voice", twilioTestVoiceRouterOrWhateverName);
+   - Make sure the imported names match the default/named exports in their files.
+
+2. Open server/routes/twilioTestVoice.ts and:
+   - Verify the POST "/inbound" handler always wraps TwiML generation in try/catch.
+   - Ensure it ALWAYS responds with valid Voice TwiML (XML) no matter what:
+     - Only use <Say>, <Gather>, <Record>, <Redirect>, <Hangup> in Voice responses.
+     - Do NOT use the <Message> verb in Voice TwiML.
+   - Check "/handle-key" and "/voicemail-complete" handlers:
+     - They must also always respond with TwiML.
+     - If any error occurs, catch it and respond with a simple fallback TwiML that apologizes and hangs up.
+   - Add console.log lines at the start of each handler:
+     - [TWILIO TEST VOICE INBOUND]
+     - [TWILIO TEST VOICE HANDLE KEY]
+     - [TWILIO TEST VOICEMAIL COMPLETE]
+
+3. Open server/routes/twilioTestSms.ts and:
+   - Confirm it exports a router that handles POST "/inbound".
+   - It should always respond with TwiML.MessagingResponse() and valid XML.
+   - Add a console.log like:
+     - [TWILIO TEST SMS INBOUND] { From, To, Body }
+
+4. Middleware check:
+   - Make sure Express is using body-parser or equivalent for urlencoded bodies BEFORE mounting these routes:
+     - app.use(express.urlencoded({ extended: false }));
+     - app.use(express.json());
+   - Twilio sends application/x-www-form-urlencoded by default, so urlencoded middleware is required.
+
+5. Run a local simulation in Replit:
+   - Use Replit’s HTTP client or fetch to POST to:
+     - http://localhost:5000/api/twilio/voice/inbound
+       with body: From=+15555555555&To=+19189183265
+       and header: Content-Type: application/x-www-form-urlencoded
+     - Confirm the handler runs and returns valid XML (no exceptions).
+   - Do the same for:
+     - http://localhost:5000/api/twilio/sms/inbound
+       with Body=Test&From=+15555555555&To=+19189183265
+   - If these fail, fix the routes until both return valid TwiML without throwing.
+
+6. Once everything is fixed:
+   - Ensure server starts cleanly with no TypeScript or runtime errors.
+   - Ensure that hitting /api/twilio/voice/inbound and /api/twilio/sms/inbound via test POSTs produces valid XML and logs to the console.
+   - Add a startup log line summarizing:
+     [TWILIO TEST] Inbound SMS and Voice handlers READY at /api/twilio/sms/inbound and /api/twilio/voice/inbound
+
+7. DO NOT:
+   - Touch any production /twilio/* routes used by the old Clean Machine repl.
+   - Change any other Twilio numbers or environments.
+   - Remove my GPT-5.1 SMS agent wiring.
+
+At the end, give me:
+- A short summary of what was broken and what you changed.
+- Confirmation that local POST tests to /api/twilio/voice/inbound and /api/twilio/sms/inbound succeed.
