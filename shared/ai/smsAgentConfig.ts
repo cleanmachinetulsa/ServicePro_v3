@@ -6,7 +6,50 @@
  * - Required/soft fields for booking
  * - Escalation triggers
  * - Behavioral constants
+ * - Booking status and handshake rules
  */
+
+// Booking status types for human handshake flow
+export type BookingStatus = 'not_ready' | 'ready_for_draft' | 'ready_for_human_review';
+
+export const BOOKING_REQUIRED_FIELDS = {
+  name: true,
+  service: true,
+  address: true,
+  dateOrWindow: true,
+} as const;
+
+/**
+ * Determine how close we are to a bookable appointment.
+ * This is used to guide AI behavior and show staff readiness indicators.
+ */
+export function getBookingStatusFromState(state: any): BookingStatus {
+  if (!state) return 'not_ready';
+
+  const hasName = Boolean(state.customerName);
+  const hasService = Boolean(state.service || state.serviceId);
+  const hasAddress = Boolean(state.address);
+  const hasTime =
+    Boolean(state.selectedTimeSlot) ||
+    Boolean(state.preferredDate) ||
+    Boolean(state.preferredTimeWindow);
+
+  const requiresManualApproval = Boolean(state.requiresManualApproval);
+  const inServiceArea = state.inServiceArea !== false;
+
+  if (!hasName || !hasService || !hasAddress || !hasTime) {
+    return 'not_ready';
+  }
+
+  // If all info is present but service area or other edge flags apply,
+  // we treat it as "ready for human review" (manual approval).
+  if (!inServiceArea || requiresManualApproval) {
+    return 'ready_for_human_review';
+  }
+
+  // Fully ready: all info present and no special flags
+  return 'ready_for_draft';
+}
 
 export interface RequiredBookingFields {
   customerName: string;

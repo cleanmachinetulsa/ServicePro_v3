@@ -1,0 +1,240 @@
+STEP 1 — Add Booking Status + Readiness Helper (shared config)
+
+Open: shared/ai/smsAgentConfig.ts
+
+Add a booking status type + helper config:
+
+export type BookingStatus = 'not_ready' | 'ready_for_draft' | 'ready_for_human_review';
+
+export const BOOKING_REQUIRED_FIELDS = {
+  name: true,
+  service: true,
+  address: true,
+  dateOrWindow: true,
+} as const;
+
+/**
+ * Determine how close we are to a bookable appointment.
+ */
+export function getBookingStatusFromState(state: any): BookingStatus {
+  if (!state) return 'not_ready';
+
+  const hasName = Boolean(state.customerName);
+  const hasService = Boolean(state.service || state.serviceId);
+  const hasAddress = Boolean(state.address);
+  const hasTime =
+    Boolean(state.selectedTimeSlot) ||
+    Boolean(state.preferredDate) ||
+    Boolean(state.preferredTimeWindow);
+
+  const requiresManualApproval = Boolean(state.requiresManualApproval);
+  const inServiceArea = state.inServiceArea !== false;
+
+  if (!hasName || !hasService || !hasAddress || !hasTime) {
+    return 'not_ready';
+  }
+
+  // If all info is present but service area or other edge flags apply,
+  // we treat it as "ready for human review" (manual approval).
+  if (!inServiceArea || requiresManualApproval) {
+    return 'ready_for_human_review';
+  }
+
+  // Fully ready: all info present and no special flags
+  return 'ready_for_draft';
+}
+
+
+Export BookingStatus and getBookingStatusFromState from this module if you have a barrel file.
+
+STEP 2 — Inject Booking Status Into the SMS System Prompt
+
+Open: server/ai/smsAgentPromptBuilder.ts
+
+At the top, import the helper:
+
+import { SYSTEM_PROMPT_TEMPLATE, BEHAVIOR_CONFIG, REQUIRED_FIELDS, getBookingStatusFromState, BookingStatus } from '@shared/ai/smsAgentConfig';
+
+
+Inside the main buildSmsSystemPrompt (or equivalent) function, after you compute conversationState / KNOWN_CONTEXT, compute booking status:
+
+const bookingStatus: BookingStatus = getBookingStatusFromState(conversationState);
+
+
+When building the system prompt string, append a BOOKING_HANDSHAKE section.
+Find where you currently append behavioral rules and KNOWN_CONTEXT, then add:
+
+SYSTEM_PROMPT += `
+BOOKING_HANDSHAKE_RULES:
+- You NEVER send a final confirmation message such as "You are fully booked" or "Your appointment is confirmed" on your own.
+- The human staff member must always review and confirm the booking inside the dashboard before a final confirmation is sent.
+- You may propose specific times and summarize what will be booked, but you must phrase it as a "draft" or "I'll submit this for review", not as a finalized booking.
+- When the system indicates bookingStatus = "ready_for_draft":
+  - You should say something like: "I have everything I need to prepare your appointment. I’ll submit this as a draft for our team to review. You’ll receive a final confirmation message once it's officially booked."
+- When bookingStatus = "ready_for_human_review" (e.g. outside service area or manual approval required):
+  - You should clearly explain that the request will be sent to a human for manual review and is NOT yet confirmed.
+  - Use wording like: "You're just outside our normal service area, but I can submit this to a team member to review. They’ll confirm if we can make an exception and you'll get a final confirmation afterward."
+- When bookingStatus = "not_ready":
+  - Focus on gathering missing details (service type, address, date/time, etc.) before talking about preparing the appointment.
+- You MUST avoid phrases that imply a fully confirmed booking such as:
+  - "You are booked"
+  - "Your appointment is confirmed"
+  - "We will definitely see you at [time]"
+  - Instead, use language like "I'll prepare this as a draft" or "Our team will review and confirm."`;
+
+
+Also append a short STATUS_CONTEXT hint (the model won’t see the raw boolean, but we can describe it):
+
+SYSTEM_PROMPT += `
+CURRENT_BOOKING_STATUS:
+- ${'${bookingStatus}'}  
+(Use this to decide whether to keep gathering info, prepare a draft, or clearly say a human will review before confirmation.)`;
+
+
+If your template building uses .replace placeholders instead of string interpolation, adapt accordingly (the Replit agent will know how to inline the value).
+
+STEP 3 — Include Booking Status in the OpenAI Response Payload (Backend)
+
+Open: server/openai.ts (or equivalent file that handles SMS AI responses).
+
+After you compute conversationState and before/after calling buildSmsSystemPrompt, recompute booking status:
+
+import { getBookingStatusFromState, BookingStatus } from '@shared/ai/smsAgentConfig';
+
+
+Then in the handler:
+
+const conversationState = await conversationStateManager.getState(conversationId);
+// existing logic...
+
+const bookingStatus: BookingStatus = getBookingStatusFromState(conversationState);
+
+const systemPrompt = buildSmsSystemPrompt({
+  tenantId,
+  phoneNumber,
+  customerId,
+  conversationState,
+  controlMode,
+  recentHumanMessages,
+  // etc...
+});
+
+
+When you return the AI response to the client (where you build the JSON response), ensure you include bookingStatus:
+
+return res.json({
+  message: assistantMessage,
+  controlMode: conversation.controlMode,
+  bookingStatus, // <-- NEW
+  // any other metadata you already send (escalation flags, etc.)
+});
+
+
+This exposes booking readiness to the front-end Messaging UI.
+
+STEP 4 — Show Booking Readiness in the Messaging Cockpit UI
+
+Now we wire this into the 3-pane messaging UI so staff see:
+
+“Not ready” → no badge
+
+“Ready for draft” → green “Ready to book” chip + “Create Appointment” button
+
+“Ready for human review” → yellow “Needs manual approval” chip + still can open booking
+
+Open: client/src/components/messages/ThreadPane.tsx
+(or wherever the conversation header + “Create Appointment” button lives).
+
+Make sure you’re receiving bookingStatus from the conversation/AI state.
+Typically this will be part of the query that fetches conversation metadata or the last AI message. If not, have the Replit agent plumb the bookingStatus from the API response into the ThreadPane props or state.
+
+For example, your conversation hook might look like:
+
+const { data: conversation } = useQuery({
+  queryKey: ['conversation', conversationId],
+  queryFn: fetchConversation,
+});
+
+
+Extend its type to include bookingStatus?: 'not_ready' | 'ready_for_draft' | 'ready_for_human_review';
+
+In the ThreadPane header UI, add badges:
+
+{conversation.bookingStatus === 'ready_for_draft' && (
+  <span className="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+    Ready to book
+  </span>
+)}
+
+{conversation.bookingStatus === 'ready_for_human_review' && (
+  <span className="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+    Needs manual approval
+  </span>
+)}
+
+
+Next to your “Create Appointment” button, slightly vary the label based on status:
+
+<button
+  onClick={openBookingPanel}
+  className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+>
+  {conversation.bookingStatus === 'ready_for_draft' && 'Create Appointment'}
+  {conversation.bookingStatus === 'ready_for_human_review' && 'Review & Create Appointment'}
+  {(!conversation.bookingStatus || conversation.bookingStatus === 'not_ready') && 'Start Booking'}
+</button>
+
+
+This way agents feel the AI’s suggestion but still stay in control.
+
+STEP 5 — Make BookingPanel Respect Manual-Approval Cases
+
+You already added service area + requiresManualApproval flags in the draft.
+Now, just ensure the submit logic treats manual review as “not auto-confirmed”.
+
+Open: client/src/components/BookingPanel.tsx
+
+In the submit handler (where you POST to your /api/bookings or similar):
+
+Make sure when:
+
+draft.requiresManualApproval === true
+OR
+
+draft.inServiceArea === false
+
+…you:
+
+Create the booking with a status like pending_review or needs_manual_approval
+
+Do not mark as “confirmed” in the DB
+
+Something like:
+
+const payload = {
+  ...formValues,
+  status:
+    draft?.requiresManualApproval || draft?.inServiceArea === false
+      ? 'pending_review'
+      : 'confirmed',
+};
+
+await fetch('/api/bookings', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+});
+
+
+Adjust field names to match your existing bookings schema (the Replit agent will reconcile that).
+
+After a successful submit, the AI confirmation message should be sent by your backend logic (or later phase), not by the AI model itself.
+For now, J’s job is: AI never claims confirmation, humans + system do.
+
+STEP 6 — Optional: Dashboard Filter for “Ready to Book”
+
+If you have an Admin Conversations page, you can add an optional filter:
+
+“Show only conversations where bookingStatus != 'not_ready'”
+
+so you can quickly see all threads where AI has done its job and you just need to click confirm.
