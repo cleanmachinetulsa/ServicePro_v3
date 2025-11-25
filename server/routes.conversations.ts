@@ -1149,6 +1149,7 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
+      // Return draft directly for frontend query (not wrapped)
       res.json(draft);
     } catch (error) {
       console.error('Error building booking draft:', error);
