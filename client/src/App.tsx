@@ -54,6 +54,8 @@ import AdminApplications from "./pages/AdminApplications";
 import AdminTenants from "./pages/AdminTenants";
 import AdminPhoneConfig from "./pages/AdminPhoneConfig";
 import AdminConciergeSetup from "./pages/AdminConciergeSetup";
+import PlatformSuggestions from "./pages/PlatformSuggestions";
+import TenantSuggestions from "./pages/TenantSuggestions";
 import ThemeGallery from "./pages/ThemeGallery";
 import PayerApprovalPage from "./pages/payer-approval";
 import QuoteApprovalPage from "./pages/quote-approval";
@@ -295,6 +297,16 @@ function Router() {
       <Route path="/admin/concierge-setup">
         <AuthGuard>
           <AdminConciergeSetup />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/suggestions">
+        <AuthGuard>
+          <PlatformSuggestions />
+        </AuthGuard>
+      </Route>
+      <Route path="/suggestions">
+        <AuthGuard>
+          <TenantSuggestions />
         </AuthGuard>
       </Route>
       <Route path="/admin/theme-gallery">
