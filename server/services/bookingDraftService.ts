@@ -8,6 +8,7 @@ import { normalizeTimePreference } from './timePreferenceParser';
 import { resolveServiceFromNaturalText } from './serviceNameResolver';
 import { findOrCreateVehicleCard } from './vehicleCardService';
 import { extractNotesFromConversationState } from './notesExtractor';
+import { generateRouteSuggestion } from './routeOptimizer';
 
 export async function buildBookingDraftFromConversation(
   tenantId: string,
@@ -132,6 +133,24 @@ export async function buildBookingDraftFromConversation(
   // 5) Smart Notes Injection: Extract AI-suggested notes from conversation context
   const aiSuggestedNotes = extractNotesFromConversationState(state);
 
+  // 6) Route Optimization: Generate route-aware booking suggestions based on location
+  let routeSuggestion = null;
+  
+  // Check if we have address coordinates in conversation state
+  if (state?.addressLat && state?.addressLng && state?.address) {
+    try {
+      routeSuggestion = await generateRouteSuggestion(
+        tenantId,
+        state.address,
+        state.addressLat,
+        state.addressLng
+      );
+    } catch (error) {
+      // Route suggestion failed - non-blocking
+      console.warn('[BOOKING DRAFT] Route suggestion failed:', error);
+    }
+  }
+
   // Build draft with data from conversation state, customer record, and conversation
   const draft: BookingDraft = {
     conversationId: conversation.id,
@@ -153,6 +172,7 @@ export async function buildBookingDraftFromConversation(
     vehicleSummary,
     notes: null,
     aiSuggestedNotes,
+    routeSuggestion,
   };
 
   return draft;
