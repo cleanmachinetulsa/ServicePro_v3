@@ -4,6 +4,7 @@ import { conversations, customers, services } from '@shared/schema';
 import type { BookingDraft } from '@shared/bookingDraft';
 import { eq } from 'drizzle-orm';
 import { conversationState } from '../conversationState';
+import { normalizeTimePreference } from './timePreferenceParser';
 
 export async function buildBookingDraftFromConversation(
   tenantId: string,
@@ -57,6 +58,31 @@ export async function buildBookingDraftFromConversation(
     inferredServiceId = svc?.id ?? null;
   }
 
+  // 4) Time window intelligence: normalize natural language time preferences
+  // Extract raw time preference from conversation state (selectedTimeSlot or preferredTime)
+  const rawTimePreference: string | null =
+    state?.selectedTimeSlot ??
+    (state as any)?.preferredTime ??
+    null;
+
+  let normalizedDate: string | null = null;
+  let normalizedWindow: string | null = null;
+  let normalizedStart: string | null = null;
+  let normalizedEnd: string | null = null;
+
+  if (rawTimePreference) {
+    try {
+      const normalized = normalizeTimePreference(rawTimePreference);
+      normalizedDate = normalized.date;
+      normalizedWindow = normalized.windowLabel;
+      normalizedStart = normalized.startTime;
+      normalizedEnd = normalized.endTime;
+    } catch (error) {
+      // Parsing failed; leave fields as null
+      console.warn('[BOOKING DRAFT] Time preference parsing failed:', error);
+    }
+  }
+
   // Build draft with data from conversation state, customer record, and conversation
   const draft: BookingDraft = {
     conversationId: conversation.id,
@@ -67,8 +93,14 @@ export async function buildBookingDraftFromConversation(
     address: state?.address ?? customer?.address ?? null,
     serviceName: state?.service ?? null,
     serviceId: inferredServiceId,
-    preferredDate: state?.selectedTimeSlot ?? null,
-    preferredTimeWindow: null,
+
+    // Time intelligence fields
+    preferredDate: normalizedDate,
+    preferredTimeWindow: normalizedWindow,
+    rawTimePreference,
+    normalizedStartTime: normalizedStart,
+    normalizedEndTime: normalizedEnd,
+
     vehicleSummary,
     notes: null,
   };
