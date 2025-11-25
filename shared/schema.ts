@@ -267,6 +267,12 @@ export const tenantConfig = pgTable("tenant_config", {
   primaryCity: varchar("primary_city", { length: 100 }),
   websiteUrl: varchar("website_url", { length: 500 }), // Phase 5: Tenant's website
   internalNotes: text("internal_notes"), // Owner-only notes about this tenant
+  
+  // Route optimization fields - home base location for travel time calculations
+  homeBaseAddress: text("home_base_address"),
+  homeBaseLat: numeric("home_base_lat", { precision: 10, scale: 7 }),
+  homeBaseLng: numeric("home_base_lng", { precision: 10, scale: 7 }),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
