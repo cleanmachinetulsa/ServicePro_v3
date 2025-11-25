@@ -64,16 +64,25 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
   });
 
   // Fetch booking draft (AI Behavior V2 auto-fill)
-  const { data: bookingDraft, isLoading: draftLoading } = useQuery<BookingDraft>({
+  // Only fetch when creating new appointment (no existing appointment, and editing)
+  const { data: bookingDraft, isLoading: draftLoading, error: draftError } = useQuery<BookingDraft>({
     queryKey: ['bookingDraft', conversationId],
-    enabled: !!conversationId && !appointment,
+    enabled: !!conversationId && !appointment && isEditing,
     queryFn: async () => {
-      const res = await fetch(`/api/conversations/${conversationId}/booking-draft`);
-      if (!res.ok) {
-        throw new Error('Failed to load booking draft');
+      try {
+        const res = await fetch(`/api/conversations/${conversationId}/booking-draft`);
+        if (!res.ok) {
+          const errorData = await res.json();
+          console.warn('[BOOKING DRAFT] Failed to load:', errorData.message);
+          return null;
+        }
+        return res.json();
+      } catch (error) {
+        console.error('[BOOKING DRAFT] Error fetching draft:', error);
+        return null;
       }
-      return res.json();
     },
+    retry: false,
   });
 
   const appointment = appointmentData?.appointment;
