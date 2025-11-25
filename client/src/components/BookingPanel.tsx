@@ -109,7 +109,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     }
   }, [appointment]);
 
-  // Auto-fill form with booking draft (AI Behavior V2)
+  // Auto-fill form with booking draft (AI Behavior V2 + Time Window Intelligence)
   useEffect(() => {
     if (!appointment && bookingDraft && isEditing) {
       // Find matching service by name or use draft serviceId
@@ -121,11 +121,35 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
         serviceId = matchingService?.id || 0;
       }
 
+      // Build scheduledTime from normalized date + time
+      let scheduledTime = '';
+      if (bookingDraft.preferredDate) {
+        // If we have a normalized start time, combine date + time
+        // Otherwise, default to 9:00 AM
+        const time = bookingDraft.normalizedStartTime || '09:00';
+        scheduledTime = new Date(`${bookingDraft.preferredDate}T${time}`).toISOString();
+      }
+
+      // Build additional requests with vehicle info and optional time window hint
+      let additionalRequests = '';
+      const requestParts: string[] = [];
+      
+      if (bookingDraft.vehicleSummary) {
+        requestParts.push(`Vehicle: ${bookingDraft.vehicleSummary}`);
+      }
+      
+      // Add time preference hint if available
+      if (bookingDraft.rawTimePreference) {
+        requestParts.push(`Preferred: ${bookingDraft.rawTimePreference}`);
+      }
+      
+      additionalRequests = requestParts.join(' | ');
+
       setFormData(prev => ({
         serviceId: prev.serviceId || serviceId,
-        scheduledTime: prev.scheduledTime || (bookingDraft.preferredDate ? new Date(bookingDraft.preferredDate).toISOString() : ''),
+        scheduledTime: prev.scheduledTime || scheduledTime,
         address: prev.address || bookingDraft.address || '',
-        additionalRequests: prev.additionalRequests || (bookingDraft.vehicleSummary ? `Vehicle: ${bookingDraft.vehicleSummary}` : ''),
+        additionalRequests: prev.additionalRequests || additionalRequests,
       }));
     }
   }, [bookingDraft, isEditing, appointment, services]);
