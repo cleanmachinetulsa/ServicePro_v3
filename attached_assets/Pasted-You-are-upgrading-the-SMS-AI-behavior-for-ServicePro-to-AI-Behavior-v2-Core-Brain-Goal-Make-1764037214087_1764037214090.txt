@@ -1,0 +1,159 @@
+You are upgrading the SMS AI behavior for ServicePro to **AI Behavior v2 — Core Brain**.
+
+Goal:
+Make the SMS AI more consistent, less repetitive, and less stupid when handed control, WITHOUT changing telephony routing or database schemas.
+
+────────────────────────────────────────
+SCOPE OF WORK
+────────────────────────────────────────
+ONLY touch files related to the SMS AI agent and conversation state.
+
+Step 1: Find the existing AI/SMS brain:
+- Search for references to:
+  - "/twilio/sms/incoming"
+  - "openai"
+  - "sms agent"
+  - "conversation_state"
+  - "intent" or "classifiedIntent"
+
+Use ripgrep and note file paths, then limit edits to:
+- server/routes/*sms*.ts
+- server/services/*sms*Agent*.ts
+- server/services/*conversationState*.ts
+- shared/*/smsAgent*.ts or shared/*/ai*.ts
+(Whatever actually exists with those responsibilities.)
+
+DO NOT modify:
+- Telephony routing core
+- DB schema files
+- Website or React components
+- Messaging layout
+
+────────────────────────────────────────
+BEHAVIOR CHANGES TO IMPLEMENT (V2)
+────────────────────────────────────────
+
+1) CENTRALIZE SYSTEM PROMPT & CONFIG
+Create or update a single config module, for example:
+- shared/ai/smsAgentConfig.ts  (use existing structure if already present)
+
+In that module define:
+- a SYSTEM_PROMPT string that:
+  - Explains you are ServicePro’s SMS agent for service businesses.
+  - Clearly lists:
+    - What info you need to book a job:
+      - customer name
+      - vehicle details (year/make/model or equivalent for the industry)
+      - service type / package
+      - preferred date/time window
+      - address / location
+    - That you MUST check existing conversation_state before asking.
+    - That you should stay concise and friendly.
+    - That you escalate when stuck or when customer is upset.
+
+- a BEHAVIOR_CONFIG constant with:
+  - requiredFields = ["customerName", "vehicle", "serviceType", "dateTime", "address"]
+  - softFields = ["pets", "specialNotes"]
+  - escalationTriggers = ["angry", "confused", "complaint", "unsafe"]
+
+2) STATE-AWARE INPUT TO OPENAI
+In the SMS agent service (the function that builds the OpenAI prompt):
+
+Before calling OpenAI:
+- Load conversation_state for this conversationId / customer:
+  - known fields: customerName, vehicle, serviceType, dateTime, address, lastBookingId, notes
+- Load the last N messages (e.g. last 15) for context.
+
+Then:
+- Build a structured prompt:
+  - SYSTEM_PROMPT (from config)
+  - A “CONTEXT” section that includes:
+    - normalized conversation_state fields
+    - a JSON-like summary of known info
+  - A “RECENT MESSAGES” section with the last messages (role + content)
+
+3) “NEVER RE-ASK KNOWN INFO” ENFORCEMENT
+Before deciding what to ask the customer next:
+
+- For each field in requiredFields:
+  - If present in conversation_state: DO NOT ask for it again.
+  - If missing: allow AI to ask for it.
+
+Implement a simple helper in the SMS agent service, something like:
+- getMissingRequiredFields(conversationState, requiredFields): string[]
+
+Then:
+- Add a short instruction to the user-facing prompt that says:
+  - “Do NOT ask again for any field that is already present in the known_context section. Only ask for missing fields.”
+
+4) HAND-BACK / CONTROL MODE AWARENESS
+If there is a controlMode or similar field on the conversation (e.g. "ai", "human", "hybrid"):
+
+- Make sure the AI sees it in the context you send:
+  - e.g. controlMode: "ai" or "human"
+- When controlMode transitions back to "ai" after a human takeover:
+  - Include a short machine-readable “handback_note” in the prompt context with:
+    - who took over (human)
+    - the last 3 human messages
+    - any new info the human collected (from conversation_state)
+
+You do NOT need to implement a full state machine yet.
+Just:
+- Make sure AI input knows:
+  - controlMode
+  - missing vs known fields
+  - recent human summary if present
+
+5) SENTIMENT / ESCALATION STUB (LIGHTWEIGHT)
+Implement a very light abstraction:
+
+- After OpenAI returns a response, inspect:
+  - model’s tool / classification output if already supported, OR
+  - simple keyword/sentiment heuristic (e.g. words like “angry”, “upset”, “cancel”, “complain”).
+
+If the AI thinks the customer is:
+- very upset
+- asking for a manager
+- clearly not getting what they need
+
+Then:
+- Set a flag on the conversation_state or similar field:
+  - needsHumanAttention = true
+- DO NOT auto-respond with another long AI message. Keep it short and suggest a human will follow up.
+
+6) SAFETY / FALLBACKS
+- If OpenAI returns an error or no content:
+  - Send a generic safe fallback:
+    - “Sorry, I’m having trouble right now. A human will follow up shortly.”
+  - Set needsHumanAttention = true.
+
+- Ensure that no part of this change:
+  - Blocks human takeover.
+  - Blocks manual messaging from the cockpit.
+  - Changes the Twilio webhook behavior at /twilio/sms/incoming.
+
+────────────────────────────────────────
+FAILSAFE RULES
+────────────────────────────────────────
+- DO NOT change any database schema (no table/column changes).
+- DO NOT change any Twilio routing URLs.
+- DO NOT modify React components or the messages UI.
+- DO NOT add new external dependencies.
+- Prefer small, surgical changes to existing AI service files.
+- If file names differ from those suggested, adapt to existing structure instead of creating parallel systems.
+
+────────────────────────────────────────
+OUTPUT FORMAT
+────────────────────────────────────────
+1) Show:
+   - Which files you changed.
+   - A short summary of each change (1–2 lines).
+2) Confirm that:
+   - TypeScript compiles
+   - Server starts without errors
+
+Then output exactly:
+"AI BEHAVIOR V2 CORE BRAIN — READY FOR TESTING"
+and stop.
+
+Begin now.
