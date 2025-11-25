@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
-import { twiml as TwiML } from 'twilio';
+import twilio from 'twilio';
 import { generateAIResponse } from '../openai';
-import { TWILIO_TEST_SMS_NUMBER } from '../twilioClient';
 
 export const twilioTestSmsRouter = Router();
 
+const MessagingResponse = twilio.twiml.MessagingResponse;
+
 twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
-  const twimlResponse = new TwiML.MessagingResponse();
+  const twimlResponse = new MessagingResponse();
   
   try {
     const { Body, From, To } = req.body || {};
@@ -41,7 +42,8 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
     res.type('text/xml').send(twimlResponse.toString());
   } catch (err) {
     console.error('[TWILIO TEST SMS INBOUND ERROR]', err);
-    twimlResponse.message("Sorry, I'm having trouble right now. A human will take a look and get back to you.");
-    res.type('text/xml').send(twimlResponse.toString());
+    const errorResponse = new MessagingResponse();
+    errorResponse.message("Sorry, I'm having trouble right now. A human will take a look and get back to you.");
+    res.type('text/xml').send(errorResponse.toString());
   }
 });
