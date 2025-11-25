@@ -1,0 +1,74 @@
+ONE DROP-IN FOR REPLIT AGENT (MOUNT THE TEST IVR)
+
+Copy this entire block into the Replit AI for Servicepro-v3-base:
+
+You are editing the Servicepro-v3-base repo.
+
+Goal:
+Wire up the existing test IVR router so that:
+- /api/twilio/voice/inbound, /handle-key, /voicemail-complete actually exist
+- WITHOUT touching the existing production twilioVoiceRouter mounted at /twilio.
+
+We only want to:
+- Import twilioTestVoiceRouter (the test IVR you already created)
+- Mount it under /api/twilio/voice in server/index.ts
+- Leave everything else exactly as-is.
+
+==================================================
+STEP 1 – Import the test voice router in server/index.ts
+==================================================
+
+1. Open server/index.ts.
+
+2. At the top where other routes are imported, you already have:
+
+```ts
+import sendgridWebhookRouter from "./routes.sendgridWebhook";
+import twilioVoiceRouter from "./routes.twilioVoice";
+import campaignsRouter from "./routes.campaigns";
+
+
+Right AFTER the twilioVoiceRouter import, add this line:
+
+import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
+
+
+(If the file path is slightly different, use the correct path to the test IVR router file you created earlier.)
+
+==================================================
+STEP 2 – Mount the test IVR router
+
+In the async IIFE near the bottom of server/index.ts, you already have:
+
+  // Register phone settings routes (phone line configuration)
+  app.use('/api/phone-settings', phoneSettingsRouter);
+
+  // Register Twilio Voice webhook (handles incoming calls to business number)
+  app.use('/twilio', twilioVoiceRouter);
+
+  // Run startup health checks for external services
+  await runStartupHealthChecks();
+
+
+RIGHT AFTER the line that mounts twilioVoiceRouter, insert:
+
+  // Register Twilio TEST Voice webhook (handles IVR for test number)
+  app.use('/api/twilio/voice', twilioTestVoiceRouter);
+
+
+The final block should look like:
+
+  // Register phone settings routes (phone line configuration)
+  app.use('/api/phone-settings', phoneSettingsRouter);
+
+  // Register Twilio Voice webhook (handles incoming calls to business number)
+  app.use('/twilio', twilioVoiceRouter);
+
+  // Register Twilio TEST Voice webhook (handles IVR for test number)
+  app.use('/api/twilio/voice', twilioTestVoiceRouter);
+
+  // Run startup health checks for external services
+  await runStartupHealthChecks();
+
+
+Do NOT change anything else in this file.

@@ -26,6 +26,7 @@ import { registerBannerRoutes } from "./routes.banners";
 import phoneSettingsRouter from "./routes.phoneSettings";
 import sendgridWebhookRouter from "./routes.sendgridWebhook";
 import twilioVoiceRouter from "./routes.twilioVoice";
+import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
 import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
@@ -369,6 +370,9 @@ app.use((req, res, next) => {
 
   // Register Twilio Voice webhook (handles incoming calls to business number)
   app.use('/twilio', twilioVoiceRouter);
+
+  // Register Twilio TEST Voice webhook (handles IVR for test number)
+  app.use('/api/twilio/voice', twilioTestVoiceRouter);
 
   // Run startup health checks for external services
   await runStartupHealthChecks();
