@@ -1,0 +1,192 @@
+🔧 REPLIT DROP-IN — Smart Notes Injection (Context → Booking Notes)
+
+Edit the Servicepro-v3 repo.
+Goal: Automatically populate the Booking Modal’s “notes” field with structured, AI-extracted context from the conversation.
+
+This includes:
+
+special requests
+
+problem areas
+
+customer expectations
+
+time constraints
+
+pet hair / odor / spills / stains
+
+repeat-service context
+
+vehicle issues
+
+This MUST be:
+
+non-blocking
+
+fully optional
+
+editable by the user
+
+based entirely on conversation state
+
+multi-tenant safe
+
+low-risk
+
+STEP 1 — Extend BookingDraft to include context notes
+
+Open shared/bookingDraft.ts.
+
+Add:
+
+/**
+ * AI-generated notes derived from conversation context.
+ * Example:
+ * - “Customer mentioned pet hair in back seat.”
+ * - “Spill on passenger floor mat.”
+ * - “Needs ASAP, prefers morning. Will leave keys in cupholder.”
+ * These are optional and fully editable in BookingPanel.
+ */
+aiSuggestedNotes?: string | null;
+
+
+Keep backward compatibility.
+
+STEP 2 — Build a Note Extraction Utility
+
+Create new file:
+server/services/notesExtractor.ts
+
+Paste:
+
+// server/services/notesExtractor.ts
+
+/**
+ * Generates human-friendly notes from conversation state.
+ * Pulls from:
+ * - keywords
+ * - vehicle condition descriptions
+ * - special instructions
+ */
+export function extractNotesFromConversationState(state: any): string | null {
+  if (!state) return null;
+
+  const notes: string[] = [];
+
+  // 1. Special requests / problem areas
+  if (state.specialRequests) {
+    notes.push(`Special request: ${state.specialRequests}`);
+  }
+
+  // 2. Pet hair detection keywords
+  if (state.service && /pet hair|dog hair|cat hair/i.test(state.service)) {
+    notes.push('Customer mentioned pet hair cleanup.');
+  }
+
+  // 3. Spill/stain keywords
+  if (state.service && /spill|stain|vomit|coffee|juice|milk/i.test(state.service)) {
+    notes.push('Customer described spill or stain needing extra attention.');
+  }
+
+  // 4. Odor / smell
+  if (state.service && /odor|smell|funky|mildew|cigarette|smoke/i.test(state.service)) {
+    notes.push('Customer mentioned interior odor/smell.');
+  }
+
+  // 5. Time constraints
+  if (state.timeConstraints) {
+    notes.push(`Time constraints: ${state.timeConstraints}`);
+  }
+
+  // 6. Vehicle-specific descriptions (AI V2 supports nested vehicle info)
+  if (state.vehicles?.length) {
+    const v = state.vehicles[0];
+    if (v.condition) {
+      notes.push(`Vehicle condition: ${v.condition}`);
+    }
+    if (v.notes) {
+      notes.push(`Vehicle notes: ${v.notes}`);
+    }
+  }
+
+  // Final output
+  if (!notes.length) return null;
+
+  return notes.join(' ');
+}
+
+
+This logic is simple, reliable, and easily extended.
+
+STEP 3 — Integrate Notes Into bookingDraftService
+
+Open:
+
+server/services/bookingDraftService.ts
+
+Add import:
+
+import { extractNotesFromConversationState } from './notesExtractor';
+
+
+Then inside the draft builder:
+
+const aiSuggestedNotes = extractNotesFromConversationState(state);
+
+
+Then add to the returned object:
+
+aiSuggestedNotes,
+
+STEP 4 — BookingPanel Auto-Fill for Notes
+
+In client/src/components/BookingPanel.tsx:
+
+Make sure you have:
+
+const [notes, setNotes] = useState('');
+
+
+Extend your useEffect where you auto-fill fields:
+
+useEffect(() => {
+  if (!draft) return;
+
+  // existing auto-fill stuff…
+
+  // Auto-fill notes (only if not already typed by the user)
+  if (!notes && draft.aiSuggestedNotes) {
+    setNotes(draft.aiSuggestedNotes);
+  }
+}, [draft]);
+
+
+That’s it.
+
+STEP 5 — Optional: Show AI-suggested notes as helper text
+
+Add under the notes input:
+
+{draft?.aiSuggestedNotes && (
+  <p className="text-xs text-muted-foreground">
+    AI Suggestion: {draft.aiSuggestedNotes}
+  </p>
+)}
+
+STEP 6 — Behavioral Guarantees
+
+This feature MUST:
+
+Never override user changes
+
+Never block booking if empty
+
+Never throw
+
+Never require AI to run at modal-open
+
+Only use stored AI Behavior V2 state
+
+Be harmless even if no context exists
+
+Exactly the design we want.
