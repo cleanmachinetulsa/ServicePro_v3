@@ -5,6 +5,7 @@ import type { BookingDraft } from '@shared/bookingDraft';
 import { eq } from 'drizzle-orm';
 import { conversationState } from '../conversationState';
 import { normalizeTimePreference } from './timePreferenceParser';
+import { resolveServiceFromNaturalText } from './serviceNameResolver';
 
 export async function buildBookingDraftFromConversation(
   tenantId: string,
@@ -47,15 +48,14 @@ export async function buildBookingDraftFromConversation(
         .join(' | ')
     : null;
 
-  // Try to derive a "serviceId" if the state.service matches a service name
+  // 3.5) Smart service resolution: Use fuzzy matching to resolve natural language service descriptions
   let inferredServiceId: number | null = null;
+  let inferredServiceName: string | null = null;
+  
   if (state?.service) {
-    const [svc] = await tenantDb
-      .select()
-      .from(services)
-      .where(eq(services.name, state.service))
-      .limit(1);
-    inferredServiceId = svc?.id ?? null;
+    const result = await resolveServiceFromNaturalText(tenantId, state.service);
+    inferredServiceId = result.id;
+    inferredServiceName = result.name;
   }
 
   // 4) Time window intelligence: normalize natural language time preferences
@@ -105,7 +105,7 @@ export async function buildBookingDraftFromConversation(
     customerPhone: conversation.customerPhone ?? customer?.phone ?? null,
     customerEmail: state?.customerEmail ?? customer?.email ?? null,
     address: state?.address ?? customer?.address ?? null,
-    serviceName: state?.service ?? null,
+    serviceName: inferredServiceName ?? state?.service ?? null,
     serviceId: inferredServiceId,
 
     // Time intelligence fields
