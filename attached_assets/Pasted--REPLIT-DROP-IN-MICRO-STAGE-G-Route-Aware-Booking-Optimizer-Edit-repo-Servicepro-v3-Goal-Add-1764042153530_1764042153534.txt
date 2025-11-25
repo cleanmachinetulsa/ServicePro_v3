@@ -1,0 +1,228 @@
+🔧 REPLIT DROP-IN — MICRO-STAGE G: Route-Aware Booking Optimizer
+
+Edit repo: Servicepro-v3
+Goal: Add backend logic & UI hooks for suggesting optimized time windows based on location + same-day jobs.
+
+STEP 1 — Add Shared Type for Route Suggestions
+
+Create:
+
+shared/routeOptimization.ts
+
+export interface RouteSuggestion {
+  reason: string;
+  suggestedDate: string | null;     // ISO date
+  suggestedStart: string | null;    // "HH:MM"
+  suggestedEnd: string | null;      // "HH:MM"
+  confidence: number;               // 0–1
+  nearbyJobIds?: number[];          // IDs of nearby bookings
+  travelMinutes: number | null;
+}
+
+STEP 2 — Add Tenant Home Base Fields (if not already present)
+
+In tenantConfig table inside shared/schema.ts:
+
+homeBaseAddress?: string | null;
+homeBaseLat?: number | null;
+homeBaseLng?: number | null;
+
+
+Tenants will enter this in Admin Settings later.
+
+STEP 3 — Create RouteOptimizer Service
+
+Create:
+
+server/services/routeOptimizer.ts
+
+import { wrapTenantDb } from '../tenantDb';
+import { db } from '../db';
+import { appointments, tenantConfig } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+import { getTravelTimeMinutes } from './travelTimeService';
+import { RouteSuggestion } from '@shared/routeOptimization';
+
+export async function generateRouteSuggestion(
+  tenantId: string,
+  targetAddress: string,
+  targetLat: number | null,
+  targetLng: number | null
+): Promise<RouteSuggestion | null> {
+  if (!targetLat || !targetLng) return null;
+
+  const tenantDb = wrapTenantDb(db, tenantId);
+
+  // Load tenant home base
+  const [config] = await tenantDb
+    .select()
+    .from(tenantConfig)
+    .where(eq(tenantConfig.tenantId, tenantId))
+    .limit(1);
+
+  if (!config?.homeBaseLat || !config?.homeBaseLng) {
+    return null;
+  }
+
+  // Fetch jobs for next 3 days
+  const upcomingJobs = await tenantDb
+    .select()
+    .from(appointments)
+    .limit(50); // simple; we expand later
+
+  let best = null as RouteSuggestion | null;
+
+  // Compare target against each job
+  for (const job of upcomingJobs) {
+    if (!job.addressLat || !job.addressLng) continue;
+
+    const travel = await getTravelTimeMinutes(
+      job.addressLat,
+      job.addressLng,
+      targetLat,
+      targetLng
+    );
+
+    if (travel == null) continue;
+
+    // If nearby (< 12 min)
+    if (travel <= 12) {
+      best = {
+        reason: 'nearby appointment',
+        suggestedDate: job.date,
+        suggestedStart: job.startTime,
+        suggestedEnd: job.endTime,
+        confidence: 0.9,
+        nearbyJobIds: [job.id],
+        travelMinutes: travel,
+      };
+      break;
+    }
+  }
+
+  // If none found, default to morning suggestion
+  if (!best) {
+    const homeTravel = await getTravelTimeMinutes(
+      config.homeBaseLat,
+      config.homeBaseLng,
+      targetLat,
+      targetLng
+    );
+
+    best = {
+      reason: 'shorter travel from home base',
+      suggestedDate: null,
+      suggestedStart: '09:00',
+      suggestedEnd: '10:00',
+      confidence: 0.6,
+      travelMinutes: homeTravel ?? null,
+    };
+  }
+
+  return best;
+}
+
+STEP 4 — Travel Time Service (uses Google Distance Matrix API)
+
+Create:
+
+server/services/travelTimeService.ts
+
+export async function getTravelTimeMinutes(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): Promise<number | null> {
+  try {
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) return null;
+
+    const url =
+      `https://maps.googleapis.com/maps/api/distancematrix/json` +
+      `?origins=${lat1},${lng1}` +
+      `&destinations=${lat2},${lng2}` +
+      `&key=${apiKey}`;
+
+    const res = await fetch(url);
+    const json = await res.json();
+
+    const duration = json.rows?.[0]?.elements?.[0]?.duration?.value;
+    if (!duration) return null;
+
+    return Math.round(duration / 60); // convert seconds → minutes
+  } catch (err) {
+    console.error('[TRAVEL TIME ERROR]', err);
+    return null;
+  }
+}
+
+STEP 5 — Return Suggestion Inside BookingDraft
+
+In bookingDraftService.ts:
+
+Add:
+
+import { generateRouteSuggestion } from './routeOptimizer';
+
+
+Then inside builder:
+
+let routeSuggestion = null;
+
+if (state?.addressLat && state?.addressLng) {
+  routeSuggestion = await generateRouteSuggestion(
+    tenantId,
+    state.address,
+    state.addressLat,
+    state.addressLng
+  );
+}
+
+
+Then add to draft:
+
+routeSuggestion,
+
+STEP 6 — Show Suggestion in BookingPanel
+
+In BookingPanel.tsx:
+
+Add:
+
+{draft?.routeSuggestion && (
+  <div className="p-3 mt-3 border rounded-md bg-blue-50 text-blue-900">
+    <div className="font-semibold">
+      Suggested time ({draft.routeSuggestion.reason})
+    </div>
+
+    {draft.routeSuggestion.suggestedDate && (
+      <div>Date: {draft.routeSuggestion.suggestedDate}</div>
+    )}
+
+    <div>
+      Time Window: {draft.routeSuggestion.suggestedStart} – {draft.routeSuggestion.suggestedEnd}
+    </div>
+
+    {draft.routeSuggestion.travelMinutes != null && (
+      <div className="text-xs opacity-70">
+        Travel time: {draft.routeSuggestion.travelMinutes} minutes
+      </div>
+    )}
+  </div>
+)}
+
+STEP 7 — Auto-Fill the Proposed Time (Optional)
+
+Inside your auto-fill hook:
+
+if (!date && draft?.routeSuggestion?.suggestedDate) {
+  setDate(draft.routeSuggestion.suggestedDate);
+}
+
+if (!time && draft?.routeSuggestion?.suggestedStart) {
+  setTime(draft.routeSuggestion.suggestedStart);
+}
+
+
+Always safe because staff can override.
