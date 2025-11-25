@@ -1,0 +1,211 @@
+🔧 REPLIT DROP-IN — Vehicle Auto-Create + Auto-Attach
+
+You are editing the Servicepro-v3 repo.
+Goal:
+Automatically detect vehicle info from AI Behavior V2 state and create/update customer vehicle cards.
+Booking Modal must auto-fill vehicle accordingly.
+
+This stage introduces:
+
+shared type: VehicleCard
+
+server service: vehicleCardService
+
+route: GET/POST auto-create from conversation
+
+BookingPanel auto-fill logic for vehicle selection
+
+full tenant isolation
+
+STEP 1 — Add Shared Type for Vehicle Cards
+
+Create:
+
+shared/vehicleCard.ts
+
+export interface VehicleCard {
+  id: number;
+  customerId: number;
+  year: string | null;
+  make: string | null;
+  model: string | null;
+  color: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+
+Add to a barrel if your project uses one.
+
+STEP 2 — Ensure Your Schema Supports Vehicles
+
+If your schema already has a vehicles or customerVehicles table, use that.
+If not, create:
+
+File: server/migrations/vehicleCards.sql
+(Your agent will create the actual Drizzle migration.)
+
+Table Requirements:
+
+id (serial)
+
+customerId
+
+year, make, model, color (nullable text)
+
+createdAt, updatedAt
+
+tenantId partitioning via wrapTenantDb
+
+STEP 3 — Build VehicleCardService
+
+Create:
+
+server/services/vehicleCardService.ts
+
+import { wrapTenantDb } from '../tenantDb';
+import { db } from '../db';
+import { vehicles } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
+
+export async function findOrCreateVehicleCard(
+  tenantId: string,
+  customerId: number,
+  year?: string,
+  make?: string,
+  model?: string,
+  color?: string
+) {
+  const tenantDb = wrapTenantDb(db, tenantId);
+
+  // Try to find a matching vehicle already
+  const [existing] = await tenantDb
+    .select()
+    .from(vehicles)
+    .where(and(
+      eq(vehicles.customerId, customerId),
+      eq(vehicles.year, year ?? null),
+      eq(vehicles.make, make ?? null),
+      eq(vehicles.model, model ?? null),
+      eq(vehicles.color, color ?? null)
+    ))
+    .limit(1);
+
+  if (existing) {
+    return existing;
+  }
+
+  // Create new
+  const [created] = await tenantDb
+    .insert(vehicles)
+    .values({
+      customerId,
+      year: year ?? null,
+      make: make ?? null,
+      model: model ?? null,
+      color: color ?? null,
+      createdAt: new Date().toISOString(),
+    })
+    .returning();
+
+  return created;
+}
+
+STEP 4 — Integrate Vehicle Logic Into Booking Draft Builder
+
+In bookingDraftService.ts:
+
+Add:
+
+import { findOrCreateVehicleCard } from './vehicleCardService';
+
+
+Then in the draft builder:
+
+let vehicleCard = null;
+
+if (state?.vehicles?.length && conversation.customerId) {
+  const v = state.vehicles[0];
+
+  vehicleCard = await findOrCreateVehicleCard(
+    tenantId,
+    conversation.customerId,
+    v.year,
+    v.make,
+    v.model,
+    v.color
+  );
+}
+
+
+Then modify the returned BookingDraft:
+
+vehicleSummary: vehicleCard
+  ? `${vehicleCard.year ?? ''} ${vehicleCard.make ?? ''} ${vehicleCard.model ?? ''} ${vehicleCard.color ?? ''}`.trim()
+  : null,
+
+STEP 5 — Add API Route to Fetch Vehicles for Booking Panel
+
+In server/routes.conversations.ts:
+
+app.get('/api/customers/:customerId/vehicles', async (req, res) => {
+  const tenantId = req.tenantId;
+  const customerId = Number(req.params.customerId);
+
+  const tenantDb = wrapTenantDb(db, tenantId);
+  const list = await tenantDb
+    .select()
+    .from(vehicles)
+    .where(eq(vehicles.customerId, customerId));
+
+  res.json(list);
+});
+
+STEP 6 — BookingPanel UI Auto-Fill
+
+In BookingPanel.tsx:
+
+Add:
+
+const { data: vehicles } = useQuery({
+  queryKey: ['vehicles', draft?.customerId],
+  enabled: !!draft?.customerId,
+  queryFn: async () => {
+    const res = await fetch(`/api/customers/${draft.customerId}/vehicles`);
+    return res.json();
+  }
+});
+
+
+Then hydrate:
+
+useEffect(() => {
+  if (!vehicle && draft?.vehicleSummary) {
+    setVehicle(draft.vehicleSummary);
+  }
+}, [draft]);
+
+
+And optionally show a dropdown:
+
+{vehicles?.length > 0 && (
+  <select value={vehicle} onChange={e => setVehicle(e.target.value)}>
+    {vehicles.map(v => (
+      <option key={v.id} value={`${v.year} ${v.make} ${v.model} ${v.color}`}>
+        {v.year} {v.make} {v.model} {v.color}
+      </option>
+    ))}
+  </select>
+)}
+
+STEP 7 — Safety & Behavior
+
+Never blocks booking even if vehicle auto-create fails
+
+If no vehicle data → no vehicle card created
+
+Supports multi-vehicle customers
+
+Booking auto-fill always uses the best match
+
+Vehicle cards accumulate automatically over time
