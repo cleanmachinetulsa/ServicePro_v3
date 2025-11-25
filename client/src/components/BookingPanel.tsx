@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Calendar, ChevronDown, ChevronUp, Clock, MapPin, Save, Trash2, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import type { BookingDraft } from '@shared/bookingDraft';
 
 interface Service {
   id: number;
@@ -62,6 +63,19 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     queryKey: ['/api/services'],
   });
 
+  // Fetch booking draft (AI Behavior V2 auto-fill)
+  const { data: bookingDraft, isLoading: draftLoading } = useQuery<BookingDraft>({
+    queryKey: ['bookingDraft', conversationId],
+    enabled: !!conversationId && !appointment,
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${conversationId}/booking-draft`);
+      if (!res.ok) {
+        throw new Error('Failed to load booking draft');
+      }
+      return res.json();
+    },
+  });
+
   const appointment = appointmentData?.appointment;
   const conversation = conversationData?.data;
   const services = servicesData?.services || [];
@@ -85,6 +99,27 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       });
     }
   }, [appointment]);
+
+  // Auto-fill form with booking draft (AI Behavior V2)
+  useEffect(() => {
+    if (!appointment && bookingDraft && isEditing) {
+      // Find matching service by name or use draft serviceId
+      let serviceId = bookingDraft.serviceId || 0;
+      if (!serviceId && bookingDraft.serviceName && services.length > 0) {
+        const matchingService = services.find(
+          s => s.name.toLowerCase() === bookingDraft.serviceName?.toLowerCase()
+        );
+        serviceId = matchingService?.id || 0;
+      }
+
+      setFormData(prev => ({
+        serviceId: prev.serviceId || serviceId,
+        scheduledTime: prev.scheduledTime || (bookingDraft.preferredDate ? new Date(bookingDraft.preferredDate).toISOString() : ''),
+        address: prev.address || bookingDraft.address || '',
+        additionalRequests: prev.additionalRequests || (bookingDraft.vehicleSummary ? `Vehicle: ${bookingDraft.vehicleSummary}` : ''),
+      }));
+    }
+  }, [bookingDraft, isEditing, appointment, services]);
 
   // Save appointment mutation
   const saveAppointmentMutation = useMutation({
