@@ -364,6 +364,29 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                 />
               </div>
 
+              {/* Route-Aware Booking Suggestion */}
+              {bookingDraft?.routeSuggestion && (
+                <div className="p-3 border rounded-md bg-blue-50 dark:bg-blue-950 text-blue-900 dark:text-blue-100" data-testid="route-suggestion">
+                  <div className="font-semibold text-sm">
+                    Suggested time ({bookingDraft.routeSuggestion.reason})
+                  </div>
+
+                  {bookingDraft.routeSuggestion.suggestedDate && (
+                    <div className="text-xs mt-1">Date: {bookingDraft.routeSuggestion.suggestedDate}</div>
+                  )}
+
+                  <div className="text-xs mt-1">
+                    Time Window: {bookingDraft.routeSuggestion.suggestedStart} – {bookingDraft.routeSuggestion.suggestedEnd}
+                  </div>
+
+                  {bookingDraft.routeSuggestion.travelMinutes != null && (
+                    <div className="text-xs opacity-70 mt-1">
+                      Travel time: {bookingDraft.routeSuggestion.travelMinutes} minutes
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <Label htmlFor="additionalRequests-create" className="text-xs">Additional Requests</Label>
                 <Input
@@ -476,6 +499,29 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                         data-testid="input-address"
                       />
                     </div>
+
+                    {/* Route-Aware Booking Suggestion */}
+                    {bookingDraft?.routeSuggestion && (
+                      <div className="p-3 border rounded-md bg-blue-50 dark:bg-blue-950 text-blue-900 dark:text-blue-100" data-testid="route-suggestion">
+                        <div className="font-semibold text-sm">
+                          Suggested time ({bookingDraft.routeSuggestion.reason})
+                        </div>
+
+                        {bookingDraft.routeSuggestion.suggestedDate && (
+                          <div className="text-xs mt-1">Date: {bookingDraft.routeSuggestion.suggestedDate}</div>
+                        )}
+
+                        <div className="text-xs mt-1">
+                          Time Window: {bookingDraft.routeSuggestion.suggestedStart} – {bookingDraft.routeSuggestion.suggestedEnd}
+                        </div>
+
+                        {bookingDraft.routeSuggestion.travelMinutes != null && (
+                          <div className="text-xs opacity-70 mt-1">
+                            Travel time: {bookingDraft.routeSuggestion.travelMinutes} minutes
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div>
                       <Label htmlFor="additionalRequests" className="text-xs">Additional Requests</Label>
