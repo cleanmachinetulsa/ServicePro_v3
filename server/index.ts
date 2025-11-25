@@ -376,6 +376,15 @@ app.use((req, res, next) => {
   // Log SMS Agent model configuration
   const { SMS_AGENT_MODEL } = await import('./openai');
   console.log(`[AI] SMS agent model: ${SMS_AGENT_MODEL}`);
+  
+  // Log Twilio Test routing status
+  const { TWILIO_TEST_SMS_NUMBER, isTwilioConfigured } = await import('./twilioClient');
+  if (isTwilioConfigured()) {
+    console.log(`[TWILIO TEST] Test SMS/Voice routing enabled - Number: ${TWILIO_TEST_SMS_NUMBER || 'not set'}`);
+    console.log('[TWILIO TEST] Webhook URLs: /api/twilio/sms/inbound, /api/twilio/voice/inbound');
+  } else {
+    console.log('[TWILIO TEST] TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not configured - test routes disabled');
+  }
 
   // Start timeout monitoring for manual mode conversations
   const { startTimeoutMonitoring } = await import('./timeoutMonitorService');
