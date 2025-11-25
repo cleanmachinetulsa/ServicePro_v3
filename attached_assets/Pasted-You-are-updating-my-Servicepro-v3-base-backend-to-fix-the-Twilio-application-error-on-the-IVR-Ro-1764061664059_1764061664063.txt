@@ -1,21 +1,29 @@
+You are updating my Servicepro-v3-base backend to fix the Twilio "application error" on the IVR.
+
+Root cause: the current /handle-key route uses a <Message> verb in Voice TwiML
+(vr.message(...)), which is not valid in a Voice response and causes an application error.
+
+Fix this by:
+- Removing the <Message> verb from the Voice TwiML
+- Sending the SMS via the Twilio REST API instead
+- Keeping the IVR menu logic (press 1 / 2 / 3) and voicemail recording
+- Using only valid Voice verbs: <Say>, <Gather>, <Record>, <Hangup>, <Redirect>
+
+Replace the entire contents of server/routes/twilioTestVoice.ts with:
+
 import { Router } from "express";
-import twilio from "twilio";
-import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
+import { twiml as TwiML } from "twilio";
+import { twilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
 
 export const twilioTestVoiceRouter = Router();
 
-const VoiceResponse = twilio.twiml.VoiceResponse;
-const twilioClient = getTwilioClient();
-
+// Inbound call → IVR menu
 twilioTestVoiceRouter.post("/inbound", (req, res) => {
-  const vr = new VoiceResponse();
+  const vr = new TwiML.VoiceResponse();
 
   try {
-    const { From, To } = req.body || {};
-    console.log("[TWILIO TEST VOICE INBOUND]", { From, To });
-
     const gather = vr.gather({
-      input: ["dtmf"],
+      input: "dtmf",
       numDigits: 1,
       action: "/api/twilio/voice/handle-key",
       method: "POST",
@@ -33,12 +41,13 @@ twilioTestVoiceRouter.post("/inbound", (req, res) => {
         "Press 3 to leave a voicemail for our team."
     );
 
+    // If no key pressed, redirect back to the menu
     vr.redirect("/api/twilio/voice/inbound");
 
     res.type("text/xml").send(vr.toString());
   } catch (err) {
     console.error("[TWILIO TEST VOICE ERROR - INBOUND]", err);
-    const errorTwiml = new VoiceResponse();
+    const errorTwiml = new TwiML.VoiceResponse();
     errorTwiml.say(
       { voice: "alice", language: "en-US" },
       "Sorry, something went wrong on our end. Please try again later."
@@ -47,9 +56,10 @@ twilioTestVoiceRouter.post("/inbound", (req, res) => {
   }
 });
 
+// Menu selection handler
 twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
   const { Digits, From } = req.body || {};
-  const vr = new VoiceResponse();
+  const vr = new TwiML.VoiceResponse();
 
   console.log("[TWILIO TEST VOICE - KEY]", { Digits, From });
 
@@ -65,13 +75,14 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
         break;
 
       case "2":
-        if (twilioClient && TWILIO_TEST_SMS_NUMBER && From) {
+        // Send SMS via REST API (not Voice TwiML)
+        if (TWILIO_TEST_SMS_NUMBER && From) {
           try {
             await twilioClient.messages.create({
               from: TWILIO_TEST_SMS_NUMBER,
               to: From,
               body:
-                "Here's your Clean Machine booking link: https://cleanmachinetulsa.com. " +
+                "Here’s your Clean Machine booking link: https://cleanmachinetulsa.com. " +
                 "You can text this number any time to ask questions or book.",
             });
             console.log("[TWILIO TEST VOICE] Sent follow-up SMS to", From);
@@ -88,6 +99,7 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
         break;
 
       case "3":
+        // Voicemail recording
         vr.say(
           { voice: "alice", language: "en-US" },
           "Please leave your name, number, and a brief description of your vehicle and what you need. " +
@@ -98,7 +110,7 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
           maxLength: 120,
           action: "/api/twilio/voice/voicemail-complete",
           method: "POST",
-          finishOnKey: "1",
+          finishOnKey: "1234567890*#".charAt(0), // any key stops recording; Twilio requires a single character here
         });
         break;
 
@@ -122,6 +134,7 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
   res.type("text/xml").send(vr.toString());
 });
 
+// Voicemail completion
 twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
   const { RecordingUrl, RecordingDuration, From } = req.body || {};
 
@@ -131,7 +144,7 @@ twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
     RecordingDuration,
   });
 
-  const vr = new VoiceResponse();
+  const vr = new TwiML.VoiceResponse();
   vr.say(
     { voice: "alice", language: "en-US" },
     "Thank you. Your message has been received. Goodbye."
@@ -141,6 +154,16 @@ twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
   res.type("text/xml").send(vr.toString());
 });
 
-console.log("[Twilio] Test voice IVR endpoint ready at /api/twilio/voice/inbound");
-
 export default twilioTestVoiceRouter;
+
+Make sure server/routes.ts is still mounting this router as:
+
+import twilioTestVoiceRouter from "./routes/twilioTestVoice";
+app.use("/api/twilio/voice", twilioTestVoiceRouter);
+
+After making this change:
+- Restart the server.
+- Call the test number.
+- You should hear the IVR (press 1 / 2 / 3).
+- Press 2 should send an SMS and NOT cause an application error.
+- Press 3 should let you record a voicemail and log [TWILIO TEST VOICEMAIL COMPLETE] in the console.
