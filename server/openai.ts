@@ -513,7 +513,7 @@ export async function generateAIResponse(
             messages,
             tools: SCHEDULING_FUNCTIONS,
             tool_choice: "auto",
-            max_tokens: 300, // Shorter for SMS
+            max_completion_tokens: 300, // Shorter for SMS (GPT-5.1 uses max_completion_tokens)
           });
         } catch (openaiError) {
           console.error('[AI BEHAVIOR V2] OpenAI API error:', openaiError);
@@ -851,7 +851,7 @@ export async function generateAIResponse(
           messages: currentMessages,
           tools: SCHEDULING_FUNCTIONS,
           tool_choice: "auto",
-          max_tokens: 500,
+          max_completion_tokens: 500, // GPT-5.1 uses max_completion_tokens
         });
       };
       

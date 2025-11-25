@@ -54,6 +54,7 @@ async function addMessage(tenantDb: any, conversationId: number, content: string
       conversationId,
       content,
       sender,
+      fromCustomer: sender === 'customer',
       platform: 'sms',
       timestamp: new Date(),
     });
@@ -112,3 +113,5 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
     res.type('text/xml').send(errorResponse.toString());
   }
 });
+
+console.log("[TWILIO TEST] Inbound SMS handler READY at /api/twilio/sms/inbound");
