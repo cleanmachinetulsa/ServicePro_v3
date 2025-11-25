@@ -18,6 +18,7 @@ import {
   getIvrConfigForTenant,
 } from './services/ivrHelper';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
+import { TWILIO_TEST_SMS_NUMBER } from './twilioClient';
 
 export function registerIvrRoutes(app: Express) {
   app.post('/twilio/voice/ivr-selection', verifyTwilioSignature, handleIvrSelection);
@@ -144,7 +145,12 @@ async function sendBookingInfoSms(toNumber: string, ivrConfig: { businessName: s
     const message = `Thanks for calling ${ivrConfig.businessName}! Here's our info & booking link: ${ivrConfig.bookingUrl}`;
     
     // TODO: Phase 3 - Get correct 'from' number from tenant phone config
-    const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+19188565304';
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    
+    if (!fromNumber) {
+      console.warn('[IVR SMS] No from number configured, skipping SMS');
+      return;
+    }
     
     await twilioClient.messages.create({
       to: toNumber,
@@ -188,7 +194,12 @@ async function notifyVoicemail(
     
     // TODO: Phase 3 - Get owner phone from tenant config
     const ownerPhone = '+19185551234'; // Placeholder - will be loaded from tenant settings
-    const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+19188565304';
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    
+    if (!fromNumber) {
+      console.warn('[IVR VOICEMAIL] No from number configured, skipping notification');
+      return;
+    }
     
     const message = `🎙️ New voicemail from ${callerNumber}. Recording: ${recordingUrl}`;
     

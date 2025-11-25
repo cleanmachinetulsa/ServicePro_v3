@@ -9,6 +9,7 @@ import { getWebSocketServer } from './websocketService';
 import { handleConversationalScheduling } from './conversationalScheduling';
 import { sendSMS } from './notifications';
 import { requireTechnician } from './technicianMiddleware';
+import { TWILIO_TEST_SMS_NUMBER } from './twilioClient';
 
 const router = express.Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -653,15 +654,19 @@ Respond ONLY with the SMS message text, nothing else.`;
     }
 
     // Send SMS response
-    const twilio = require('twilio');
-    const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    const mainPhoneNumber = process.env.TWILIO_PHONE_NUMBER || '+19188565304';
+    const twilioModule = require('twilio');
+    const twilioClient = twilioModule(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    const mainPhoneNumber = process.env.TWILIO_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
 
-    await twilioClient.messages.create({
-      body: smsResponse,
-      from: mainPhoneNumber,
-      to: fromNumber,
-    });
+    if (!mainPhoneNumber) {
+      console.warn('[TWILIO VOICE] No from number configured, skipping auto SMS');
+    } else {
+      await twilioClient.messages.create({
+        body: smsResponse,
+        from: mainPhoneNumber,
+        to: fromNumber,
+      });
+    }
 
     console.log('[TWILIO VOICE] Auto SMS response sent to', fromNumber, ':', smsResponse);
 
