@@ -21,15 +21,16 @@ import {
   CalendarDays
 } from 'lucide-react';
 import io from 'socket.io-client';
-import ThreadView from '@/components/ThreadView';
-import CustomerProfilePanel from '@/components/CustomerProfilePanel';
-import ConversationFilters from '@/components/messages/ConversationFilters';
-import ConversationList from '@/components/messages/ConversationList';
+import { ConversationListPane } from '@/components/messages/ConversationListPane';
+import { ThreadPane } from '@/components/messages/ThreadPane';
+import { CustomerSidebar } from '@/components/messages/CustomerSidebar';
 import Composer from '@/components/messages/Composer';
 import { AppShell } from '@/components/AppShell';
 import { useToast } from '@/hooks/use-toast';
 import { RecentCallersWidget } from '@/components/messages/RecentCallersWidget';
 import { ShareAvailabilityModal } from '@/components/ShareAvailabilityModal';
+import { apiRequest } from '@/lib/queryClient';
+import { useCustomerSidebarData } from '@/hooks/useCustomerSidebarData';
 
 interface Conversation {
   id: number;
@@ -63,7 +64,7 @@ function MessagesPageContent() {
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showProfilePanel, setShowProfilePanel] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(true); // Default open for Stage 1
   const [showMobileProfileSheet, setShowMobileProfileSheet] = useState(false);
   const [showComposeDialog, setShowComposeDialog] = useState(false);
   const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
@@ -156,6 +157,29 @@ function MessagesPageContent() {
     return new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime();
   });
 
+  // Take over control handler
+  const handleTakeOver = async () => {
+    if (!selectedConversation) return;
+
+    try {
+      await apiRequest('POST', `/api/conversations/${selectedConversation}/takeover`, {});
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+      
+      toast({
+        title: 'Control taken',
+        description: 'You now have manual control of this conversation',
+      });
+    } catch (error) {
+      console.error('Failed to take control:', error);
+      toast({
+        title: 'Failed to take control',
+        description: 'Could not switch to manual mode',
+        variant: 'destructive',
+      });
+    }
+  };
+
   useEffect(() => {
     if (!selectedConversation && showMobileProfileSheet) {
       setShowMobileProfileSheet(false);
@@ -193,6 +217,9 @@ function MessagesPageContent() {
 
   // Get selected conversation details for Share Availability
   const selectedConv = conversations.find(c => c.id === selectedConversation);
+
+  // Fetch customer data for sidebar
+  const { customerInfo, isLoading: isLoadingCustomer } = useCustomerSidebarData(selectedConversation);
 
   // Page-specific actions for AppShell
   const pageActions = (
@@ -271,63 +298,66 @@ function MessagesPageContent() {
         </div>
       ) : (
         <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30" data-page-wrapper>
-          {/* Conversation List Sidebar - Google Voice Polished */}
-          <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-col bg-white/98 dark:bg-gray-900/98 backdrop-blur-md border-r border-gray-200/60 dark:border-gray-800/60 shadow-xl transition-all duration-300`}>
+          {/* Pane A: Conversation List (Left Sidebar) */}
+          <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-80 flex-col transition-all duration-300`}>
             <div className="border-b border-gray-200/70 dark:border-gray-800/70 px-4 py-3 bg-gradient-to-b from-white/60 to-transparent dark:from-gray-900/60">
               <PhoneLineSwitcher />
             </div>
-            <ConversationFilters
-              activeFilter={filter}
-              onFilterChange={setFilter}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-            />
-            <ConversationList
+            <ConversationListPane
               conversations={sortedConversations}
               selectedId={selectedConversation}
               onSelect={setSelectedConversation}
               isLoading={isLoading}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              filter={filter}
+              onFilterChange={setFilter}
             />
           </div>
 
-        {/* Main Thread View - Polished Center */}
-        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30 transition-all duration-300`}>
-          {selectedConversation ? (
-            <ThreadView 
-              conversationId={selectedConversation}
-              onBack={() => setSelectedConversation(null)}
-            />
-          ) : (
-            <div className="flex flex-col h-full overflow-auto">
-              <div className="flex-1 flex items-center justify-center p-8">
-                <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="text-center glass-card p-10 rounded-3xl">
-                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
-                      <MessageCircle className="h-12 w-12 text-primary" />
+          {/* Pane B: Thread View (Center) */}
+          <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 transition-all duration-300`}>
+            {selectedConversation ? (
+              <ThreadPane
+                conversationId={selectedConversation}
+                onBack={() => setSelectedConversation(null)}
+                onTakeOver={handleTakeOver}
+                controlMode={selectedConv?.controlMode as any}
+                isMobile={false}
+              />
+            ) : (
+              <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30">
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="text-center glass-card p-10 rounded-3xl">
+                      <div className="bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
+                        <MessageCircle className="h-12 w-12 text-primary" />
+                      </div>
+                      <h2 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                        Select a conversation
+                      </h2>
+                      <p className="text-base text-muted-foreground/80 leading-relaxed">
+                        Choose a conversation from the list to view messages and reply
+                      </p>
                     </div>
-                    <h2 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                      Select a conversation
-                    </h2>
-                    <p className="text-base text-muted-foreground/80 leading-relaxed">
-                      Choose a conversation from the list to view messages and reply
-                    </p>
                   </div>
                 </div>
+                
+                <div className="p-6 border-t border-gray-200/60 dark:border-gray-800/60 bg-white/50 dark:bg-gray-900/50">
+                  <RecentCallersWidget />
+                </div>
               </div>
-              
-              <div className="p-6 border-t border-gray-200/60 dark:border-gray-800/60 bg-white/50 dark:bg-gray-900/50">
-                <RecentCallersWidget />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Customer Profile Panel - Polished Side */}
-        {selectedConversation && showProfilePanel && (
-          <div className="w-80 lg:w-96 border-l border-gray-200/60 dark:border-gray-800/60 flex flex-col bg-white/98 dark:bg-gray-900/98 backdrop-blur-md shadow-xl hidden md:flex transition-all duration-300">
-            <CustomerProfilePanel conversationId={selectedConversation} />
+            )}
           </div>
-        )}
+
+          {/* Pane C: Customer Sidebar (Right Sidebar) - Always mounted */}
+          <CustomerSidebar
+            customerInfo={selectedConversation ? customerInfo : null}
+            isOpen={showProfilePanel}
+            onClose={() => setShowProfilePanel(false)}
+            onBookAppointment={undefined}
+            isLoading={selectedConversation ? isLoadingCustomer : false}
+          />
         </div>
       )}
 
@@ -342,14 +372,20 @@ function MessagesPageContent() {
       <Sheet open={showMobileProfileSheet} onOpenChange={setShowMobileProfileSheet}>
         <SheetContent side="right" className="w-full sm:w-96 p-0 dark:bg-gray-900 dark:border-gray-800">
           <SheetHeader className="px-6 py-4 border-b dark:border-gray-800">
-            <SheetTitle className="dark:text-white">Customer Profile</SheetTitle>
+            <SheetTitle className="dark:text-white">Customer Details</SheetTitle>
             <SheetDescription className="dark:text-gray-400">
               View customer information and history
             </SheetDescription>
           </SheetHeader>
           {selectedConversation && (
-            <div className="h-[calc(100vh-5rem)] overflow-auto">
-              <CustomerProfilePanel conversationId={selectedConversation} />
+            <div className="h-[calc(100vh-5rem)]">
+              <CustomerSidebar
+                customerInfo={customerInfo}
+                isOpen={true}
+                onClose={() => setShowMobileProfileSheet(false)}
+                onBookAppointment={undefined}
+                isLoading={isLoadingCustomer}
+              />
             </div>
           )}
         </SheetContent>

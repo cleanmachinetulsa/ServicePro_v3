@@ -1,0 +1,99 @@
+You are updating the ServicePro Messaging module to implement **Messaging Cockpit 2.0 — Stage 1**.
+
+Make the following EXACT changes with no deviation:
+
+────────────────────────────────────────────────────
+SCOPE OF WORK
+────────────────────────────────────────────────────
+Target files:
+- client/src/pages/messages.tsx
+- client/src/components/messages/*
+- client/src/contexts/MessageContext.tsx
+- client/src/hooks/useMessages.ts
+- client/src/hooks/useConversations.ts
+- server/routes/messages.ts
+- server/routes/conversations.ts
+- server/services/messagingService.ts
+
+DO NOT touch any other files unless required for imports.
+
+────────────────────────────────────────────────────
+GOALS FOR STAGE 1
+────────────────────────────────────────────────────
+Implement the new **3-Pane Messaging Layout**:
+
+Pane A — Conversation List (left)
+Pane B — Thread View (center)
+Pane C — Customer Details Sidebar (right)
+
+Enforce layout rules:
+- Always-visible message composer (never blocked by banners)
+- Non-blocking AI Autopilot banner (fixed at top of thread)
+- Thread view scrollable independently from layout panes
+- Autopilot banner only signals AI mode; NEVER stops user from typing or sending
+
+────────────────────────────────────────────────────
+FEATURES TO IMPLEMENT (STAGE 1 ONLY)
+────────────────────────────────────────────────────
+1. Build new 3-column flex layout using Tailwind:
+   - left: w-80
+   - center: flex-1
+   - right: w-96 (collapsible for mobile)
+
+2. Create new components:
+   - ConversationListPane.tsx
+   - ThreadPane.tsx
+   - CustomerSidebar.tsx
+   - AutopilotBanner.tsx
+
+3. Refactor messages.tsx to import and render these 4 components:
+   <MessagingLayout>
+     <ConversationListPane />
+     <ThreadPane />
+     <CustomerSidebar />
+   </MessagingLayout>
+
+4. Move old thread UI into ThreadPane.tsx
+   - Keep message bubbles, timestamps, typing indicators
+   - Remove old blocking UI
+   - Add safe composer at bottom
+
+5. CustomerSidebar.tsx:
+   - Show name, phone, vehicles, notes
+   - Show "Book Appointment" button (non-functional for now)
+   - Show last booking if exists
+
+6. ConversationListPane.tsx:
+   - Show conversations sorted by last message
+   - Include search input
+   - Include filters: All / Unread / SMS / Web
+
+7. AutopilotBanner.tsx:
+   - Fixed at top of thread pane
+   - Shows: "AI Autopilot Active" (yellow)
+   - Button: "Take Over"
+   - NEVER blocks composing
+
+8. Add new conversation_state fields:
+   - controlMode: "ai" | "human" | "hybrid"
+   - unreadCount
+   - lastMessagePreview
+
+9. Update server/services/messagingService.ts to return enriched conversation items needed by ConversationListPane.
+
+10. DO NOT implement quick replies, AI suggestions, or handoff logic yet.
+    Only implement layout + autopilot banner + non-blocking composer.
+
+────────────────────────────────────────────────────
+OUTPUT FORMAT
+────────────────────────────────────────────────────
+Perform codebase edits using:
+- incremental file patches
+- minimal rewrites
+- do NOT regenerate entire files unless unavoidable
+
+After edits, output:
+"STAGE 1 COMPLETE — READY FOR TESTING"
+────────────────────────────────────────────────────
+
+Begin now.
