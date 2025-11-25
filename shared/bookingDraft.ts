@@ -51,4 +51,19 @@ export interface BookingDraft {
    * Helps minimize travel time and maximize efficiency
    */
   routeSuggestion?: import('@shared/routeOptimization').RouteSuggestion | null;
+
+  /**
+   * Geocoded address coordinates and service area validation
+   */
+  addressLat?: number | null;
+  addressLng?: number | null;
+  formattedAddress?: string | null;
+  
+  /**
+   * Service area validation results
+   */
+  inServiceArea?: boolean | null;
+  travelMinutes?: number | null;
+  serviceAreaSoftDeclineMessage?: string | null;
+  requiresManualApproval?: boolean | null;
 }

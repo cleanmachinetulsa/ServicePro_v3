@@ -9,6 +9,8 @@ import { resolveServiceFromNaturalText } from './serviceNameResolver';
 import { findOrCreateVehicleCard } from './vehicleCardService';
 import { extractNotesFromConversationState } from './notesExtractor';
 import { generateRouteSuggestion } from './routeOptimizer';
+import { geocodeAddress } from './geocodeService';
+import { evaluateServiceArea } from './serviceAreaEvaluator';
 
 export async function buildBookingDraftFromConversation(
   tenantId: string,
@@ -133,17 +135,60 @@ export async function buildBookingDraftFromConversation(
   // 5) Smart Notes Injection: Extract AI-suggested notes from conversation context
   const aiSuggestedNotes = extractNotesFromConversationState(state);
 
-  // 6) Route Optimization: Generate route-aware booking suggestions based on location
+  // 6) Address Geocoding: Convert address to coordinates if not already available
+  let addressLat: number | null = state?.addressLat ?? null;
+  let addressLng: number | null = state?.addressLng ?? null;
+  let formattedAddress: string | null = null;
+  
+  const customerAddress = state?.address ?? customer?.address ?? null;
+  
+  // If we have an address but no coordinates, geocode it
+  if (customerAddress && (!addressLat || !addressLng)) {
+    try {
+      const geo = await geocodeAddress(customerAddress);
+      addressLat = geo.lat;
+      addressLng = geo.lng;
+      formattedAddress = geo.formatted;
+    } catch (error) {
+      console.warn('[BOOKING DRAFT] Geocoding failed:', error);
+    }
+  }
+
+  // 7) Service Area Evaluation: Check if location is within service area
+  let inServiceArea: boolean | null = null;
+  let travelMinutes: number | null = null;
+  let serviceAreaSoftDeclineMessage: string | null = null;
+  let requiresManualApproval = false;
+  
+  if (addressLat && addressLng) {
+    try {
+      const serviceArea = await evaluateServiceArea(tenantId, addressLat, addressLng);
+      inServiceArea = serviceArea.inServiceArea;
+      travelMinutes = serviceArea.travelMinutes;
+      serviceAreaSoftDeclineMessage = serviceArea.softDeclineMessage;
+      
+      // Special behavior for Clean Machine root-tenant
+      if (tenantId === 'root-cleanmachine') {
+        if (travelMinutes != null && travelMinutes > 25) {
+          requiresManualApproval = true;
+        }
+      }
+    } catch (error) {
+      console.warn('[BOOKING DRAFT] Service area evaluation failed:', error);
+    }
+  }
+
+  // 8) Route Optimization: Generate route-aware booking suggestions based on location
   let routeSuggestion = null;
   
-  // Check if we have address coordinates in conversation state
-  if (state?.addressLat && state?.addressLng && state?.address) {
+  // Use geocoded coordinates or conversation state coordinates
+  if (addressLat && addressLng && customerAddress) {
     try {
       routeSuggestion = await generateRouteSuggestion(
         tenantId,
-        state.address,
-        state.addressLat,
-        state.addressLng
+        customerAddress,
+        addressLat,
+        addressLng
       );
     } catch (error) {
       // Route suggestion failed - non-blocking
@@ -158,7 +203,7 @@ export async function buildBookingDraftFromConversation(
     customerName: state?.customerName ?? customer?.name ?? conversation.customerName ?? null,
     customerPhone: conversation.customerPhone ?? customer?.phone ?? null,
     customerEmail: state?.customerEmail ?? customer?.email ?? null,
-    address: state?.address ?? customer?.address ?? null,
+    address: formattedAddress ?? customerAddress,
     serviceName: inferredServiceName ?? state?.service ?? null,
     serviceId: inferredServiceId,
 
@@ -173,6 +218,15 @@ export async function buildBookingDraftFromConversation(
     notes: null,
     aiSuggestedNotes,
     routeSuggestion,
+    
+    // Geocoding and service area fields
+    addressLat,
+    addressLng,
+    formattedAddress,
+    inServiceArea,
+    travelMinutes,
+    serviceAreaSoftDeclineMessage,
+    requiresManualApproval,
   };
 
   return draft;
