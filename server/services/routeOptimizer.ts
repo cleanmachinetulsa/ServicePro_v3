@@ -1,7 +1,7 @@
 import { wrapTenantDb } from '../tenantDb';
 import { db } from '../db';
 import { appointments, tenantConfig } from '@shared/schema';
-import { eq, and, gte } from 'drizzle-orm';
+import { eq, and, gte, lte, asc } from 'drizzle-orm';
 import { getTravelTimeMinutes } from './travelTimeService';
 import { RouteSuggestion } from '@shared/routeOptimization';
 
@@ -38,6 +38,7 @@ export async function generateRouteSuggestion(
   const homeBaseLng = Number(config.homeBaseLng);
 
   // Fetch upcoming jobs for next 3 days
+  const now = new Date();
   const threeDaysFromNow = new Date();
   threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
@@ -47,9 +48,11 @@ export async function generateRouteSuggestion(
     .where(
       and(
         eq(appointments.tenantId, tenantId),
-        gte(appointments.scheduledTime, new Date())
+        gte(appointments.scheduledTime, now),
+        lte(appointments.scheduledTime, threeDaysFromNow) // Only consider jobs within next 3 days
       )
     )
+    .orderBy(asc(appointments.scheduledTime)) // Process nearest jobs first
     .limit(50); // Limit for performance
 
   let best: RouteSuggestion | null = null;
