@@ -1,0 +1,229 @@
+/* client/src/styles/nightOpsTheme.css */
+/* Night Ops – Midnight Hyperglass theme tokens */
+
+:root {
+  --nightops-bg: #05070a;
+  --nightops-bg-elevated: rgba(15, 23, 42, 0.9);
+  --nightops-glass: rgba(15, 23, 42, 0.75);
+  --nightops-border-subtle: rgba(148, 163, 184, 0.3);
+  --nightops-border-strong: rgba(56, 189, 248, 0.8);
+  --nightops-accent: #22d3ee; /* cyan */
+  --nightops-accent-soft: rgba(34, 211, 238, 0.14);
+  --nightops-accent-secondary: #a855f7; /* purple */
+  --nightops-danger: #f97373;
+  --nightops-text: #e5e7eb;
+  --nightops-text-muted: #9ca3af;
+  --nightops-scroll-track: rgba(15, 23, 42, 1);
+  --nightops-scroll-thumb: rgba(148, 163, 184, 0.5);
+  --nightops-shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.9);
+  --nightops-glow-accent: 0 0 24px rgba(34, 211, 238, 0.45);
+}
+
+/* Scrollbars */
+.nightops-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.nightops-scroll::-webkit-scrollbar-track {
+  background: var(--nightops-scroll-track);
+}
+.nightops-scroll::-webkit-scrollbar-thumb {
+  background: var(--nightops-scroll-thumb);
+  border-radius: 999px;
+}
+.nightops-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
+
+/* Glass panel base */
+.nightops-panel {
+  background: radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 55%),
+              radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.1), transparent 60%),
+              var(--nightops-glass);
+  backdrop-filter: blur(22px);
+  border-radius: 1.25rem;
+  border: 1px solid var(--nightops-border-subtle);
+  box-shadow: var(--nightops-shadow-soft);
+}
+
+/* Neon edge outline (used on hover/focus) */
+.nightops-panel-glow {
+  box-shadow: var(--nightops-glow-accent);
+}
+
+/* Section titles */
+.nightops-section-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nightops-text-muted);
+}
+
+/* Accent text */
+.nightops-text-accent {
+  color: var(--nightops-accent);
+}
+
+/* Message bubble helpers */
+.nightops-bubble-outbound {
+  background: linear-gradient(135deg, #22d3ee, #a855f7);
+  color: white;
+}
+
+.nightops-bubble-inbound {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  color: var(--nightops-text);
+}
+
+/* AI bubble */
+.nightops-bubble-ai {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(168, 85, 247, 0.2));
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  color: var(--nightops-text);
+}
+
+/* Conversation row styling */
+.nightops-conversation-row {
+  transition: all 0.2s ease;
+  border-radius: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.nightops-conversation-row:hover {
+  background: rgba(34, 211, 238, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.3);
+}
+
+.nightops-conversation-row.selected {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(168, 85, 247, 0.1));
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.5);
+}
+
+/* Focus states */
+.nightops-focus:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nightops-accent);
+}
+
+/* Input styling */
+.nightops-input {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--nightops-border-subtle);
+  border-radius: 0.75rem;
+  color: var(--nightops-text);
+  transition: all 0.2s ease;
+}
+
+.nightops-input:focus {
+  border-color: var(--nightops-accent);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.15);
+}
+
+.nightops-input::placeholder {
+  color: var(--nightops-text-muted);
+}
+
+/* Button styling */
+.nightops-button {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(168, 85, 247, 0.2));
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  border-radius: 0.75rem;
+  color: var(--nightops-text);
+  transition: all 0.2s ease;
+}
+
+.nightops-button:hover {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(168, 85, 247, 0.3));
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.3);
+}
+
+.nightops-button-primary {
+  background: linear-gradient(135deg, #22d3ee, #a855f7);
+  border: none;
+  color: white;
+}
+
+.nightops-button-primary:hover {
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.5);
+}
+
+/* Card styling */
+.nightops-card {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--nightops-border-subtle);
+  border-radius: 1rem;
+  backdrop-filter: blur(12px);
+}
+
+/* Badge styling */
+.nightops-badge {
+  background: rgba(34, 211, 238, 0.15);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  border-radius: 9999px;
+  color: #22d3ee;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.125rem 0.5rem;
+}
+
+.nightops-badge-danger {
+  background: rgba(249, 115, 115, 0.15);
+  border: 1px solid rgba(249, 115, 115, 0.4);
+  color: #f97373;
+}
+
+.nightops-badge-success {
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+
+.nightops-badge-purple {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #a855f7;
+}
+
+/* Avatar styling */
+.nightops-avatar {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(168, 85, 247, 0.3));
+  border: 1px solid rgba(34, 211, 238, 0.5);
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nightops-text);
+  font-weight: 600;
+}
+
+/* Divider */
+.nightops-divider {
+  border-color: var(--nightops-border-subtle);
+}
+
+/* Animations */
+@keyframes nightops-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.nightops-pulse {
+  animation: nightops-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes nightops-glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(34, 211, 238, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(34, 211, 238, 0.6);
+  }
+}
+
+.nightops-glow-pulse {
+  animation: nightops-glow-pulse 2s ease-in-out infinite;
+}

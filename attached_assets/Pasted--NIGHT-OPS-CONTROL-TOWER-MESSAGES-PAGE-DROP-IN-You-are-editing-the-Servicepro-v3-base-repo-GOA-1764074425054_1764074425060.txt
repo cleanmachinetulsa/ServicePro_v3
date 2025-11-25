@@ -1,0 +1,623 @@
+🧩 NIGHT OPS CONTROL TOWER – MESSAGES PAGE DROP-IN
+You are editing the Servicepro-v3-base repo.
+
+GOAL (HIGH LEVEL)
+Upgrade the existing messaging cockpit into a **world-class “Night Ops – Midnight Hyperglass” Control Tower** screen.
+
+This is a **visual + UX refactor**, NOT a data/logic rewrite.
+
+Requirements:
+- KEEP all existing message-loading logic, conversation selection, booking integration, AI state, etc.
+- WRAP/ADAPT that logic into a **3-column Night Ops layout**:
+  - Left: Conversation list (inbox)
+  - Center: Thread view (messages, voicemail cards, actions)
+  - Right: Context panel (customer + booking + AI intel)
+- USE Tailwind + shadcn/ui + framer-motion + lucide-react.
+- Make it **insanely polished**: glass panels, neon edges, smooth hover/focus, good spacing, keyboard-friendly.
+
+Do NOT break routing or API calls.
+Do NOT change how conversations are fetched/updated.
+Do NOT change bookingDraftService behavior.
+
+==================================================
+STEP 0 – Discover the current Messages implementation
+==================================================
+
+1. Search the client code for the existing messages UI:
+   - Likely candidates:
+     - A page component under: client/src/pages/**Messages**.tsx or similar
+     - A route like: /dashboard/messages
+     - Components named: MessagesPage, MessagingPanel, ConversationsPanel, etc.
+
+2. Once found, IDENTIFY:
+   - The **top-level page component** for messages (the one used by the router for /dashboard/messages).
+   - The **core props / hooks** it uses to:
+     - Load conversations list
+     - Load selected conversation
+     - Render message list
+     - Trigger sendMessage / AI actions
+     - Trigger “Create Appointment” / booking draft
+
+For the rest of this task, call that page component **MessagesPage** (even if the actual name differs). Adapt names as needed, but keep behavior.
+
+==================================================
+STEP 1 – Add Night Ops theme foundation (CSS / tokens)
+==================================================
+
+1. Create a new CSS (or TS) file for Night Ops theme tokens:
+
+   - Path:
+     - client/src/styles/nightOpsTheme.css
+
+   - Content:
+
+```css
+/* client/src/styles/nightOpsTheme.css */
+/* Night Ops – Midnight Hyperglass theme tokens */
+
+:root {
+  --nightops-bg: #05070a;
+  --nightops-bg-elevated: rgba(15, 23, 42, 0.9);
+  --nightops-glass: rgba(15, 23, 42, 0.75);
+  --nightops-border-subtle: rgba(148, 163, 184, 0.3);
+  --nightops-border-strong: rgba(56, 189, 248, 0.8);
+  --nightops-accent: #22d3ee; /* cyan */
+  --nightops-accent-soft: rgba(34, 211, 238, 0.14);
+  --nightops-accent-secondary: #a855f7; /* purple */
+  --nightops-danger: #f97373;
+  --nightops-text: #e5e7eb;
+  --nightops-text-muted: #9ca3af;
+  --nightops-scroll-track: rgba(15, 23, 42, 1);
+  --nightops-scroll-thumb: rgba(148, 163, 184, 0.5);
+  --nightops-shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.9);
+  --nightops-glow-accent: 0 0 24px rgba(34, 211, 238, 0.45);
+}
+
+/* Scrollbars */
+.nightops-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.nightops-scroll::-webkit-scrollbar-track {
+  background: var(--nightops-scroll-track);
+}
+.nightops-scroll::-webkit-scrollbar-thumb {
+  background: var(--nightops-scroll-thumb);
+  border-radius: 999px;
+}
+
+/* Glass panel base */
+.nightops-panel {
+  background: radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 55%),
+              radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.1), transparent 60%),
+              var(--nightops-glass);
+  backdrop-filter: blur(22px);
+  border-radius: 1.25rem;
+  border: 1px solid var(--nightops-border-subtle);
+  box-shadow: var(--nightops-shadow-soft);
+}
+
+/* Neon edge outline (used on hover/focus) */
+.nightops-panel-glow {
+  box-shadow: var(--nightops-glow-accent);
+}
+
+/* Section titles */
+.nightops-section-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nightops-text-muted);
+}
+
+/* Accent text */
+.nightops-text-accent {
+  color: var(--nightops-accent);
+}
+
+/* Message bubble helpers */
+.nightops-bubble-outbound {
+  background: linear-gradient(135deg, #22d3ee, #a855f7);
+  color: white;
+}
+
+.nightops-bubble-inbound {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  color: var(--nightops-text);
+}
+
+
+Make sure this stylesheet is imported at the client entry level (once):
+
+For example in client/src/main.tsx or client/src/index.tsx:
+
+import "./styles/nightOpsTheme.css";
+
+
+Adjust path based on existing structure.
+
+==================================================
+STEP 2 – Install / ensure dependencies
+
+Ensure the following dependencies exist in package.json:
+
+"framer-motion"
+
+"lucide-react"
+
+If missing, add them to dependencies.
+
+The code below will assume framer-motion + lucide-react are available.
+
+==================================================
+STEP 3 – Create NightOpsMessagesLayout component
+
+Create a new component that will become the skeleton for the Messages page:
+
+Path: client/src/components/messages/NightOpsMessagesLayout.tsx
+
+Content:
+
+// client/src/components/messages/NightOpsMessagesLayout.tsx
+import React from "react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import {
+  MessageCircle,
+  PhoneCall,
+  Voicemail,
+  MapPin,
+  Clock,
+  User2,
+  Sparkles,
+  Info,
+} from "lucide-react";
+
+type NightOpsMessagesLayoutProps = {
+  conversationList: React.ReactNode;
+  threadView: React.ReactNode;
+  contextPanel: React.ReactNode;
+};
+
+export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
+  conversationList,
+  threadView,
+  contextPanel,
+}) => {
+  return (
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black text-slate-100">
+      {/* Top bar */}
+      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-500/15 ring-1 ring-cyan-400/60 shadow-[0_0_18px_rgba(34,211,238,0.5)]">
+              <Sparkles className="h-4 w-4 text-cyan-300" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase">
+                  Night Ops
+                </span>
+                <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[0.65rem] font-medium text-cyan-300 ring-1 ring-cyan-500/40">
+                  Control Tower v1
+                </span>
+              </div>
+              <h1 className="text-sm font-semibold text-slate-100 md:text-base">
+                Conversations & Dispatch
+              </h1>
+            </div>
+          </div>
+          <div className="hidden items-center gap-6 text-xs text-slate-400 md:flex">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-cyan-300" />
+              <span>Live threads</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <PhoneCall className="h-4 w-4 text-violet-300" />
+              <span>Voice & Voicemail</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald-300" />
+              <span>AI Assist</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main 3-column layout */}
+      <main className="mx-auto flex max-w-7xl flex-col gap-4 px-3 py-4 md:px-6 md:py-6 lg:flex-row">
+        {/* LEFT: Conversation list */}
+        <motion.section
+          layout
+          className={cn(
+            "nightops-panel nightops-scroll relative flex h-[70vh] w-full flex-col overflow-hidden md:h-[78vh] lg:h-[82vh]",
+            "lg:w-[26%]"
+          )}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+        >
+          <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
+            <div>
+              <div className="nightops-section-title">Inbox</div>
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400/90" />
+                <span>Live customers</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="nightops-scroll flex-1 overflow-y-auto px-2 py-2">
+            {conversationList}
+          </div>
+        </motion.section>
+
+        {/* CENTER: Thread view */}
+        <motion.section
+          layout
+          className={cn(
+            "nightops-panel nightops-scroll relative flex h-[72vh] w-full flex-col overflow-hidden md:h-[78vh] lg:h-[82vh]",
+            "lg:w-[46%]"
+          )}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+        >
+          <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <div className="nightops-section-title">Thread</div>
+              <span className="rounded-full bg-slate-900/70 px-2 py-0.5 text-[0.65rem] text-slate-400 ring-1 ring-slate-700/80">
+                SMS · Voice · AI
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[0.7rem] text-slate-400">
+              <div className="inline-flex items-center gap-1">
+                <Clock className="h-3 w-3 text-slate-500" />
+                <span>Chronological</span>
+              </div>
+              <div className="inline-flex items-center gap-1">
+                <Info className="h-3 w-3 text-cyan-400" />
+                <span>AI assisted</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="nightops-scroll flex-1 overflow-y-auto px-3 py-3">
+            {threadView}
+          </div>
+        </motion.section>
+
+        {/* RIGHT: Context panel */}
+        <motion.section
+          layout
+          className={cn(
+            "nightops-panel nightops-scroll relative flex h-[40vh] w-full flex-col overflow-hidden md:h-[78vh] lg:h-[82vh]",
+            "lg:w-[28%]"
+          )}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+        >
+          <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
+            <div>
+              <div className="nightops-section-title">Context</div>
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <User2 className="h-3.5 w-3.5 text-slate-300" />
+                <span>Customer · Vehicle · Jobs</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-[0.7rem] text-slate-400">
+              <MapPin className="h-3 w-3 text-cyan-300" />
+              <span>Route-aware</span>
+            </div>
+          </div>
+
+          <div className="nightops-scroll flex-1 overflow-y-auto px-4 py-3">
+            {contextPanel}
+          </div>
+        </motion.section>
+      </main>
+    </div>
+  );
+};
+
+==================================================
+STEP 4 – Conversation list: apply Night Ops visual treatment
+
+Find the component that renders the conversation list. It likely:
+
+Maps over a list of conversations,
+
+Shows customer name, last message, timestamp, unread badge,
+
+Handles onClick to set selected conversation.
+
+Wrap/replace that UI with a Night Ops styled version.
+
+If there is not a separate component yet, CREATE one:
+
+Path: client/src/components/messages/NightOpsConversationList.tsx
+
+Conceptual API:
+
+type NightOpsConversationListProps = {
+  conversations: ConversationSummary[]; // reuse existing type
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+};
+
+
+Use a layout like:
+
+Each row = glassy pill with:
+
+Left: avatar circle with initials
+
+Center: name + last message snippet
+
+Right: time + unread badge
+
+Hover: subtle neon edge glow
+
+Selected: stronger cyan/purple gradient edge
+
+Adapt existing logic into this component and then pass it into NightOpsMessagesLayout as conversationList.
+
+(You do NOT have to strictly follow type names here; adapt to the existing types, but keep the Night Ops look.)
+
+==================================================
+STEP 5 – Thread view: Night Ops bubbles + voicemail cards
+
+Find existing thread / messages component. It:
+
+Loops through messages
+
+Distinguishes inbound/outbound, AI/human
+
+Possibly shows status, etc.
+
+REFINE it to:
+
+Use bubble styles:
+
+Outbound (you / AI) → .nightops-bubble-outbound
+
+Inbound (customer) → .nightops-bubble-inbound
+
+Add:
+
+Tiny labels like:
+
+“AI” vs “You” vs “Customer”
+
+Subtle timestamp under bubble
+
+Small “Voicemail” pill for voicemail-type messages
+
+If voicemail messages currently exist as a special type (e.g. have recordingUrl / transcriptionText), render them using a VoicemailCard:
+
+Create component:
+
+Path: client/src/components/messages/NightOpsVoicemailCard.tsx
+
+// client/src/components/messages/NightOpsVoicemailCard.tsx
+import React from "react";
+import { Voicemail, Play } from "lucide-react";
+
+type NightOpsVoicemailCardProps = {
+  fromLabel: string;
+  createdAt: string;
+  transcription?: string | null;
+  recordingUrl?: string | null;
+  aiReplied?: boolean;
+};
+
+export const NightOpsVoicemailCard: React.FC<NightOpsVoicemailCardProps> = ({
+  fromLabel,
+  createdAt,
+  transcription,
+  recordingUrl,
+  aiReplied,
+}) => {
+  return (
+    <div className="mb-3 rounded-2xl border border-cyan-500/30 bg-slate-950/80 px-3.5 py-3 text-xs text-slate-200 shadow-[0_0_24px_rgba(34,211,238,0.25)]">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-300">
+            <Voicemail className="h-3.5 w-3.5" />
+          </span>
+          <div className="flex flex-col">
+            <span className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-cyan-300">
+              Voicemail
+            </span>
+            <span className="text-[0.65rem] text-slate-400">
+              from {fromLabel}
+            </span>
+          </div>
+        </div>
+        <span className="text-[0.6rem] text-slate-500">{createdAt}</span>
+      </div>
+
+      {transcription && (
+        <p className="mb-2 text-[0.7rem] leading-relaxed text-slate-200">
+          {transcription}
+        </p>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        {recordingUrl ? (
+          <a
+            href={recordingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded-full bg-cyan-500/15 px-3 py-1 text-[0.7rem] font-medium text-cyan-300 ring-1 ring-cyan-500/50 hover:bg-cyan-500/25"
+          >
+            <Play className="h-3 w-3" />
+            <span>Play recording</span>
+          </a>
+        ) : (
+          <span className="text-[0.65rem] text-slate-500">
+            Recording link unavailable
+          </span>
+        )}
+
+        {aiReplied && (
+          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[0.65rem] font-medium text-emerald-300 ring-1 ring-emerald-500/40">
+            AI reply sent
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+Integrate this VoicemailCard into the thread render function when a message has voicemail properties.
+
+==================================================
+STEP 6 – Context panel: Night Ops customer intel card
+
+Find the existing right-side panel or components that show:
+
+Customer name
+
+Phone / email
+
+Vehicles
+
+Past jobs
+
+Next booking / booking draft
+
+Wrap these into a more polished layout:
+
+Top: Customer identity card:
+
+Avatar circle with initials
+
+Name + primary phone
+
+Chips: “New”, “Returning”, “VIP”, etc. (based on existing flags if available)
+
+Middle: Vehicle summary list
+
+Bottom: Upcoming booking / suggested booking
+
+Use a structure like:
+
+<div className="space-y-4 text-xs text-slate-200">
+  {/* Customer card */}
+  {/* Vehicles */}
+  {/* Upcoming or suggested booking */}
+</div>
+
+
+Use Night Ops tokens:
+
+Panels with translucent backgrounds
+
+Border accents on important sections
+
+Subtle gradients
+
+==================================================
+STEP 7 – Wire it all together in the Messages page
+
+Open the top-level messages page component (whatever currently renders the messages cockpit).
+
+Instead of directly rendering the old layout, do:
+
+Compute:
+
+conversationListNode – the JSX for your conversation list component.
+
+threadViewNode – the JSX for your message thread + composer.
+
+contextPanelNode – the JSX for your context panel.
+
+Import and use the new NightOps layout:
+
+import { NightOpsMessagesLayout } from "@/components/messages/NightOpsMessagesLayout";
+
+export const MessagesPage = () => {
+  // Existing hooks: conversations, selectedId, handlers, etc.
+
+  const conversationListNode = (
+    <NightOpsConversationList
+      conversations={conversations}
+      selectedId={selectedConversationId}
+      onSelect={handleSelectConversation}
+      // pass other needed props
+    />
+  );
+
+  const threadViewNode = (
+    <NightOpsThreadView
+      conversation={selectedConversation}
+      onSendMessage={handleSendMessage}
+      onEscalate={handleEscalate}
+      // etc...
+    />
+  );
+
+  const contextPanelNode = (
+    <NightOpsContextPanel
+      conversation={selectedConversation}
+      customer={selectedCustomer}
+      upcomingBooking={upcomingBooking}
+      onOpenBookingDraft={handleOpenBookingDraft}
+      // etc...
+    />
+  );
+
+  return (
+    <NightOpsMessagesLayout
+      conversationList={conversationListNode}
+      threadView={threadViewNode}
+      contextPanel={contextPanelNode}
+    />
+  );
+};
+
+
+Adjust component names, imports, and props to match your actual implementation. The important part is:
+
+The data flow remains the same.
+
+The NightOps layout simply composes your existing logic into a gorgeous new frame.
+
+==================================================
+STEP 8 – Keyboard + interaction polish (optional but ideal)
+
+Add some small but powerful behaviors:
+
+Up / Down arrows to move through conversation list (when list focused).
+
+Enter to select a conversation.
+
+Ctrl+Enter (or Cmd+Enter) to send a message in the composer.
+
+Subtle focus outlines using the Night Ops accent color.
+
+You can do this within existing components by:
+
+Adding tabIndex={0} to interactive containers.
+
+Handling keyDown on the conversation list wrapper and composer input.
+
+==================================================
+FINAL NOTES
+
+Do NOT alter backend routes or bookingDraftService.
+
+Keep all business logic exactly as-is; only enhance presentation and ergonomics.
+
+If any names/paths differ from the above, adapt the code to match the existing project structure.
+
+Make sure the new Night Ops layout works on:
+
+Desktop: full 3-column
+
+Small screens: columns stack vertically in order: inbox, thread, context.
+
+End of instructions.
