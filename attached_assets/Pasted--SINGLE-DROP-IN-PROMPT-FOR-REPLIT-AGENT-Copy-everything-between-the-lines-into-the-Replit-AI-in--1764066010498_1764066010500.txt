@@ -1,0 +1,277 @@
+🛠️ SINGLE DROP-IN PROMPT FOR REPLIT AGENT
+
+Copy everything between the lines into the Replit AI in your Servicepro-v3-base repl.
+
+You are editing the Servicepro-v3-base project.
+
+Goal:
+Add an SMS router so that:
+- All inbound SMS from the A2P Messaging Service hit a single ServicePro route.
+- If the message is sent to the legacy Clean Machine number, we forward the request to the legacy Clean Machine webhook and return its TwiML.
+- Otherwise, we run the existing ServicePro AI SMS handler as we do now.
+
+We MUST NOT break the existing ServicePro SMS logic. We’re only wrapping it with routing.
+
+We also MUST NOT modify the legacy Clean Machine app (that lives in a different Replit project). We will just forward to it via HTTP.
+
+==================================================
+STEP 0 – Ensure we can use fetch on the server
+==================================================
+
+Check if the server code already uses `fetch` (Node 18+ built-in) or an HTTP client like axios.
+
+- If `fetch` is already used on the server side, use that.
+- If nothing exists, we will rely on the Node 18 built-in `fetch` and just suppress TypeScript complaints by typing it loosely.
+
+Do NOT add new dependencies unless absolutely necessary.
+
+==================================================
+STEP 1 – Create SMS router helper: server/services/smsRouter.ts
+==================================================
+
+Create a new file at server/services/smsRouter.ts with the following content:
+
+```ts
+// server/services/smsRouter.ts
+import type { Request, Response } from "express";
+import { Twilio } from "twilio";
+import TwilioLib from "twilio";
+import { twiml as Twiml } from "twilio";
+
+const LEGACY_NUMBER = process.env.LEGACY_CLEAN_MACHINE_NUMBER_E164 || "";
+const LEGACY_WEBHOOK_URL = process.env.LEGACY_CLEAN_MACHINE_SMS_WEBHOOK_URL || "";
+
+/**
+ * Normalize a phone number so comparisons are more robust.
+ * - Keep leading +
+ * - Strip spaces, dashes, parentheses
+ */
+function normalizeNumber(raw: any): string | null {
+  if (typeof raw !== "string") return null;
+  return raw.replace(/[^\d+]/g, "");
+}
+
+/**
+ * Forward this inbound SMS to the legacy Clean Machine SMS webhook.
+ * We proxy the Twilio form-encoded payload and return whatever TwiML XML it gives us.
+ */
+export async function forwardToLegacyCleanMachine(
+  req: Request,
+  res: Response
+): Promise<void> {
+  if (!LEGACY_WEBHOOK_URL || !LEGACY_NUMBER) {
+    console.error("[SMS ROUTER] Legacy forwarding requested but env vars are missing.", {
+      LEGACY_NUMBER_present: !!LEGACY_NUMBER,
+      LEGACY_WEBHOOK_URL_present: !!LEGACY_WEBHOOK_URL,
+    });
+    const twiml = new Twiml.MessagingResponse();
+    twiml.message(
+      "We’re experiencing a temporary routing issue. Please try again in a few minutes."
+    );
+    res.type("text/xml").status(200).send(twiml.toString());
+    return;
+  }
+
+  try {
+    console.log("[SMS ROUTER] Forwarding inbound SMS to legacy Clean Machine webhook", {
+      LEGACY_WEBHOOK_URL,
+    });
+
+    const body = req.body as Record<string, any>;
+
+    // Twilio sends x-www-form-urlencoded, so we’ll mirror that when forwarding.
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(body)) {
+      if (typeof value === "string") {
+        params.append(key, value);
+      }
+    }
+
+    const fetchImpl: typeof fetch =
+      (global as any).fetch || (await import("node-fetch")).default as any;
+
+    const upstreamResponse = await fetchImpl(LEGACY_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+
+    const text = await upstreamResponse.text();
+
+    console.log("[SMS ROUTER] Legacy webhook responded", {
+      status: upstreamResponse.status,
+      ok: upstreamResponse.ok,
+      length: text.length,
+    });
+
+    // Assume the legacy webhook is returning valid TwiML.
+    res.status(200).type("text/xml").send(text);
+  } catch (err: any) {
+    console.error("[SMS ROUTER] Error forwarding to legacy Clean Machine webhook:", err);
+    const twiml = new Twiml.MessagingResponse();
+    twiml.message(
+      "We hit an error routing your message. Please call or text again shortly."
+    );
+    res.type("text/xml").status(200).send(twiml.toString());
+  }
+}
+
+/**
+ * Decide whether this inbound SMS should be handled by the legacy Clean Machine app.
+ */
+export function shouldRouteToLegacyCleanMachine(req: Request): boolean {
+  const body = req.body as Record<string, any>;
+  const toRaw = body.To;
+  const toNorm = normalizeNumber(toRaw);
+  const legacyNorm = normalizeNumber(LEGACY_NUMBER);
+
+  console.log("[SMS ROUTER] Routing decision", {
+    rawTo: toRaw,
+    normalizedTo: toNorm,
+    legacyNumberNormalized: legacyNorm,
+    LEGACY_WEBHOOK_URL_present: !!LEGACY_WEBHOOK_URL,
+  });
+
+  if (!toNorm || !legacyNorm) return false;
+  return toNorm === legacyNorm;
+}
+
+
+Notes:
+
+This file:
+
+Normalizes numbers.
+
+Logs routing decisions.
+
+Forwards the full Twilio request to the legacy Clean Machine webhook and returns its TwiML.
+
+If Node 18 built-in fetch is available, the dynamic import of node-fetch will be skipped; if not, it will try to use node-fetch dynamically. If TypeScript complains, we can soften types later; don’t over-complicate it.
+
+==================================================
+STEP 2 – Refactor ServicePro inbound SMS route to use the router
+
+Locate the existing inbound SMS route file. It should be something like:
+
+server/routes/twilioTestSms.ts
+
+or server/routes/twilioSms.ts
+
+This file must currently:
+
+Mount a router at /inbound
+
+Build TwiML.MessagingResponse
+
+Call the AI SMS agent, etc.
+
+We will wrap that existing logic with the new router.
+
+Open the file that defines the Express router for /api/twilio/sms.
+
+It likely looks like:
+
+import { Router } from "express";
+import { twiml } from "twilio";
+// ... other imports
+
+const router = Router();
+
+router.post("/inbound", async (req, res) => {
+  // existing ServicePro AI SMS inbound logic
+});
+
+export const twilioTestSmsRouter = router;
+
+
+Modify this file as follows:
+
+At the top, add:
+
+import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from "../services/smsRouter";
+
+
+Then, refactor the existing router.post("/inbound", ...) as follows:
+
+a) Extract the current logic into a helper function named handleServiceProInboundSms.
+For example:
+
+async function handleServiceProInboundSms(req: Request, res: Response) {
+  // MOVE the existing inbound AI SMS logic FROM the router.post handler INTO here.
+}
+
+
+b) Replace the body of router.post("/inbound", ...) with:
+
+router.post("/inbound", async (req, res) => {
+  console.log("[TWILIO SMS INBOUND] Raw body:", req.body);
+
+  try {
+    if (shouldRouteToLegacyCleanMachine(req)) {
+      console.log("[TWILIO SMS INBOUND] Routing to legacy Clean Machine app.");
+      return forwardToLegacyCleanMachine(req, res);
+    }
+
+    console.log("[TWILIO SMS INBOUND] Routing to ServicePro AI SMS handler.");
+    return handleServiceProInboundSms(req, res);
+  } catch (err: any) {
+    console.error("[TWILIO SMS INBOUND] Unhandled error in router:", err);
+    const { twiml } = require("twilio");
+    const twimlResponse = new twiml.MessagingResponse();
+    twimlResponse.message(
+      "We hit an error processing your message. Please try again shortly."
+    );
+    res.type("text/xml").status(200).send(twimlResponse.toString());
+  }
+});
+
+
+IMPORTANT:
+
+Do NOT change the existing AI logic other than moving it into handleServiceProInboundSms.
+
+Do NOT change the router export name (e.g. twilioTestSmsRouter) or its mounting path in server/routes.ts.
+
+Ensure the imports for Request and Response from express exist at the top of this file:
+
+import type { Request, Response } from "express";
+
+==================================================
+STEP 3 – Make sure routes are mounted as before
+
+Open the central server/routes.ts (or wherever Express app uses the Twilio SMS router) and make sure nothing changes except any necessary import path adjustment.
+
+You should still have something like:
+
+import { twilioTestSmsRouter } from "./routes/twilioTestSms";
+
+app.use("/api/twilio/sms", twilioTestSmsRouter);
+
+
+Do NOT change that path. We want the same URL:
+
+POST /api/twilio/sms/inbound
+
+==================================================
+STEP 4 – Summary of required environment variables
+
+We rely on two new env vars:
+
+LEGACY_CLEAN_MACHINE_NUMBER_E164
+
+Example: +19188565304
+
+This is the number we’ll detect in req.body.To and route back to the legacy app.
+
+LEGACY_CLEAN_MACHINE_SMS_WEBHOOK_URL
+
+Example: https://clean-machine-chatbot-cleanmachinetul.replit.app/sms
+ (or whatever is currently configured for that number’s SMS webhook before we change the Messaging Service integration).
+
+Do NOT hard-code the number in code; use these env vars.
+
+==================================================
+END OF INSTRUCTIONS
