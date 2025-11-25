@@ -1,0 +1,237 @@
+You are updating my ServicePro v3 backend to support Twilio SMS and Voice for a TEST number only.
+
+Context:
+- I have a Twilio test number: stored in env as TWILIO_TEST_SMS_NUMBER (ex: +19189183265)
+- LIVE Clean Machine number is still on a different REPL and must NOT be touched by this repo.
+- SMS agent model is already set up as gpt-5.1 via SMS_AGENT_MODEL in server/openai.ts.
+- I want simple, production-safe inbound handlers for:
+  - SMS: /api/twilio/sms/inbound
+  - Voice: /api/twilio/voice/inbound
+- Everything must be TypeScript-safe and not break existing routes.
+
+Goals:
+1) Create a Twilio client helper (if not already present) that uses TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN.
+2) Create an inbound SMS route that:
+   - Receives POST from Twilio
+   - Logs From / To / Body
+   - Uses my existing GPT-5.1 SMS agent to generate a reply
+   - Returns TwiML <Message> with the AI’s reply
+   - Has safe error handling + a human-fallback message
+3) Create an inbound Voice route that:
+   - Answers calls to the test number
+   - Plays a friendly greeting with <Say>
+   - Uses <Gather> to create a simple IVR:
+     - Press 1: “General info & pricing” (plays a short message then hangs up)
+     - Press 2: “Text follow-up” (tells them a text will be sent, and triggers an SMS to the caller)
+     - Press 3: “Leave a voicemail” (sends them to a /voicemail endpoint that records a message)
+   - Uses Twilio <Record> for voicemail and logs the recording URL
+   - Has safe error handling and fallback prompts
+4) Wire these routes into server/routes.ts correctly.
+5) Do NOT change or delete any existing Twilio logic that might already exist for other use cases. If there are existing Twilio routes, either extend them or add new ones, but don’t break them.
+6) Log clearly on server startup that Twilio test routing is enabled.
+
+Implementation details:
+
+A) Twilio helper
+- If not already present, create server/twilioClient.ts like:
+
+  import twilio from 'twilio';
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID!;
+  const authToken = process.env.TWILIO_AUTH_TOKEN!;
+
+  export const twilioClient = twilio(accountSid, authToken);
+
+  export const TWILIO_TEST_SMS_NUMBER = process.env.TWILIO_TEST_SMS_NUMBER;
+
+- Make sure this is TypeScript-correct for whatever module system is used.
+
+B) Inbound SMS route
+- Create file server/routes/twilioSms.ts containing:
+
+  import { Router } from 'express';
+  import { twiml as TwiML } from 'twilio';
+  import { twilioClient } from '../twilioClient';
+  import { generateAIResponseForIncomingSms } from '../openai'; // or whatever function currently produces SMS replies
+
+  export const twilioSmsRouter = Router();
+
+  twilioSmsRouter.post('/inbound', async (req, res) => {
+    try {
+      const { Body, From, To } = req.body || {};
+
+      console.log('[TWILIO SMS INBOUND]', { From, To, Body });
+
+      // Call existing AI response helper (you may need to adapt the argument shape)
+      const aiReply = await generateAIResponseForIncomingSms({
+        from: From,
+        to: To,
+        body: Body,
+      });
+
+      const response = new TwiML.MessagingResponse();
+      response.message(aiReply || "Thanks for your message! We'll follow up shortly.");
+
+      res.type('text/xml').send(response.toString());
+    } catch (err) {
+      console.error('[TWILIO SMS INBOUND ERROR]', err);
+      const response = new TwiML.MessagingResponse();
+      response.message("Sorry, I'm having trouble right now. A human will take a look and get back to you.");
+      res.type('text/xml').send(response.toString());
+    }
+  });
+
+- If generateAIResponseForIncomingSms does not exist yet, wire this route to the existing OpenAI SMS handler you are already using for conversation responses (whatever function currently wraps buildSmsSystemPrompt + openai.responses.create). The key is to funnel inbound SMS into the same GPT-5.1 SMS agent you use in the messaging cockpit.
+
+C) Inbound Voice routes
+- Create file server/routes/twilioVoice.ts containing:
+
+  import { Router } from 'express';
+  import { twiml as TwiML } from 'twilio';
+  import { twilioClient, TWILIO_TEST_SMS_NUMBER } from '../twilioClient';
+
+  export const twilioVoiceRouter = Router();
+
+  // Main entry for incoming calls
+  twilioVoiceRouter.post('/inbound', (req, res) => {
+    const { From } = req.body || {};
+    console.log('[TWILIO VOICE INBOUND]', { From });
+
+    const response = new TwiML.VoiceResponse();
+    const gather = response.gather({
+      numDigits: 1,
+      action: '/api/twilio/voice/menu',
+      method: 'POST',
+    });
+
+    gather.say(
+      {
+        voice: 'Polly.Joanna', // or 'alice' / default; adapt to your configured voice provider
+        language: 'en-US',
+      },
+      "Thanks for calling Clean Machine Auto Detail. " +
+      "Press 1 for general info and pricing. " +
+      "Press 2 if you'd like us to text you booking details. " +
+      "Press 3 to leave a voicemail."
+    );
+
+    response.say(
+      { voice: 'Polly.Joanna', language: 'en-US' },
+      "We didn't receive any input. Goodbye."
+    );
+
+    res.type('text/xml').send(response.toString());
+  });
+
+  // Menu handler
+  twilioVoiceRouter.post('/menu', async (req, res) => {
+    const { Digits, From } = req.body || {};
+    console.log('[TWILIO VOICE MENU]', { From, Digits });
+
+    const response = new TwiML.VoiceResponse();
+
+    switch (Digits) {
+      case '1':
+        response.say(
+          { voice: 'Polly.Joanna', language: 'en-US' },
+          "We offer full interior and exterior detailing, with pricing based on vehicle size and condition. " +
+          "For specific quotes, please text us pictures of your vehicle or visit our website. Goodbye."
+        );
+        response.hangup();
+        break;
+      case '2':
+        if (TWILIO_TEST_SMS_NUMBER && From) {
+          try {
+            await twilioClient.messages.create({
+              from: TWILIO_TEST_SMS_NUMBER,
+              to: From,
+              body: "Thanks for calling Clean Machine Auto Detail. You can text us here to book or ask questions anytime.",
+            });
+          } catch (err) {
+            console.error('[TWILIO VOICE MENU SMS ERROR]', err);
+          }
+        }
+        response.say(
+          { voice: 'Polly.Joanna', language: 'en-US' },
+          "Perfect. We've sent you a text message so you can book or ask questions there. Goodbye."
+        );
+        response.hangup();
+        break;
+      case '3':
+        response.redirect('/api/twilio/voice/voicemail');
+        break;
+      default:
+        response.say(
+          { voice: 'Polly.Joanna', language: 'en-US' },
+          "Sorry, I didn't understand that. Goodbye."
+        );
+        response.hangup();
+        break;
+    }
+
+    res.type('text/xml').send(response.toString());
+  });
+
+  // Voicemail recording
+  twilioVoiceRouter.post('/voicemail', (req, res) => {
+    const response = new TwiML.VoiceResponse();
+
+    response.say(
+      { voice: 'Polly.Joanna', language: 'en-US' },
+      "Please leave your name, number, and a brief description of your vehicle and what you need. " +
+      "When you're finished, you can simply hang up."
+    );
+    response.record({
+      maxLength: 120,
+      transcribe: false,
+      playBeep: true,
+      action: '/api/twilio/voice/voicemail-complete',
+      method: 'POST',
+    });
+
+    res.type('text/xml').send(response.toString());
+  });
+
+  // Voicemail completion (logging only for now)
+  twilioVoiceRouter.post('/voicemail-complete', (req, res) => {
+    const { From, RecordingUrl, RecordingDuration } = req.body || {};
+    console.log('[TWILIO VOICEMAIL COMPLETE]', { From, RecordingUrl, RecordingDuration });
+
+    const response = new TwiML.VoiceResponse();
+    response.say(
+      { voice: 'Polly.Joanna', language: 'en-US' },
+      "Thanks for the details. We'll review your message and get back to you as soon as we can. Goodbye."
+    );
+    response.hangup();
+    res.type('text/xml').send(response.toString());
+  });
+
+- If you already have a different configured voice provider (e.g. Twilio default), adjust the voice value accordingly. The main point is that the IVR and voicemail routing exist and log events.
+
+D) Register routes
+- In server/routes.ts (or equivalent main Express setup), register:
+
+  import { twilioSmsRouter } from './routes/twilioSms';
+  import { twilioVoiceRouter } from './routes/twilioVoice';
+
+  app.use('/api/twilio/sms', twilioSmsRouter);
+  app.use('/api/twilio/voice', twilioVoiceRouter);
+
+E) Startup log
+- On server startup (e.g. in server/index.ts or wherever the app listens), add:
+
+  console.log('[Twilio] Test SMS/Voice routing enabled on /api/twilio/sms/inbound and /api/twilio/voice/inbound');
+
+F) TypeScript & build
+- Ensure all new files are included in the TS build.
+- Fix any import paths or types that don’t quite match your existing structure.
+- Confirm the dev server starts with no TS errors.
+
+Important:
+- Do NOT touch or modify any code related to the LIVE Clean Machine Twilio number. These handlers are for the ServicePro v3 test number ONLY.
+- Do NOT assume that TWILIO_TEST_SMS_NUMBER is the same as any other configured number.
+- Do NOT delete any existing Twilio integration unless it is clearly unused and commented as old/experimental.
+
+Once done, summarize:
+- Which files were created/modified
+- The final inbound URLs I should configure in the Twilio console for SMS and Voice for the test number.
