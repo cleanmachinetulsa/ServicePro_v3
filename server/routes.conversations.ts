@@ -1125,6 +1125,41 @@ export function registerConversationRoutes(app: Express) {
     }
   });
 
+  // Get booking draft from conversation state (AI Behavior V2)
+  app.get('/api/conversations/:id/booking-draft', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+
+      if (isNaN(conversationId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid conversation ID',
+        });
+      }
+
+      const tenantId = (req.tenant as any)?.id || 'root';
+      const { buildBookingDraftFromConversation } = await import('./services/bookingDraftService');
+      
+      const draft = await buildBookingDraftFromConversation(tenantId, conversationId);
+      
+      if (!draft) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversation not found or no draft available',
+        });
+      }
+
+      res.json(draft);
+    } catch (error) {
+      console.error('Error building booking draft:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to build booking draft',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   // Assign conversation to agent
   app.post('/api/conversations/:id/assign', async (req: Request, res: Response) => {
     try {
