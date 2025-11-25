@@ -1,10 +1,63 @@
 import { Router, Request, Response } from 'express';
 import twilio from 'twilio';
 import { generateAIResponse } from '../openai';
+import { db } from '../db';
+import { wrapTenantDb } from '../tenantDb';
+import { conversations, messages as messagesTable } from '@shared/schema';
+import { eq, asc } from 'drizzle-orm';
 
 export const twilioTestSmsRouter = Router();
 
 const MessagingResponse = twilio.twiml.MessagingResponse;
+
+async function getOrCreateTestConversation(tenantDb: any, phone: string) {
+  let conversation = await tenantDb.query.conversations.findFirst({
+    where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, phone)),
+  });
+  
+  if (!conversation) {
+    const [created] = await tenantDb
+      .insert(conversations)
+      .values({
+        customerPhone: phone,
+        platform: 'sms',
+        status: 'active',
+        controlMode: 'auto',
+      })
+      .returning();
+    conversation = created;
+    console.log('[TWILIO TEST SMS] Created new conversation for', phone);
+  }
+  
+  return conversation;
+}
+
+async function getConversationHistory(tenantDb: any, conversationId: number) {
+  const msgs = await tenantDb
+    .select()
+    .from(messagesTable)
+    .where(tenantDb.withTenantFilter(messagesTable, eq(messagesTable.conversationId, conversationId)))
+    .orderBy(asc(messagesTable.timestamp))
+    .limit(15);
+  
+  return msgs.map((msg: typeof messagesTable.$inferSelect) => ({
+    content: msg.content,
+    role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
+    sender: msg.sender
+  }));
+}
+
+async function addMessage(tenantDb: any, conversationId: number, content: string, sender: string) {
+  await tenantDb
+    .insert(messagesTable)
+    .values({
+      conversationId,
+      content,
+      sender,
+      platform: 'sms',
+      timestamp: new Date(),
+    });
+}
 
 twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
   const twimlResponse = new MessagingResponse();
@@ -25,15 +78,27 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
       return;
     }
     
+    const tenantId = 'root';
+    const tenantDb = wrapTenantDb(db, tenantId);
+    
+    const conversation = await getOrCreateTestConversation(tenantDb, From);
+    
+    await addMessage(tenantDb, conversation.id, Body, 'customer');
+    
+    const conversationHistory = await getConversationHistory(tenantDb, conversation.id);
+    
     const aiReply = await generateAIResponse(
       Body,
       From,
       'sms',
       undefined,
-      undefined,
+      conversationHistory,
       false,
-      'root'
+      tenantId,
+      conversation.controlMode || 'auto'
     );
+    
+    await addMessage(tenantDb, conversation.id, aiReply || "Thanks for your message!", 'ai');
     
     twimlResponse.message(aiReply || "Thanks for your message! We'll follow up shortly.");
     
