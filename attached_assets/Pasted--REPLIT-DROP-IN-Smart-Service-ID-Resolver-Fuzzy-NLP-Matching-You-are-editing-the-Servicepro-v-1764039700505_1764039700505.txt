@@ -1,0 +1,173 @@
+🔧 REPLIT DROP-IN — Smart Service ID Resolver (Fuzzy NLP Matching)
+
+You are editing the Servicepro-v3 repo.
+Goal: Make AI Behavior V2 service text (e.g. “interior”, “deep clean”, “full detail”, “wash + vacuum”, “basic”) intelligently resolve to the correct service in the tenant’s services database.
+
+This upgrade strengthens the Booking Modal Auto-Fill by filling the “Service” field automatically even with vague customer phrasing.
+
+STEP 1 — Create a Service Resolver Utility
+
+Create a new file:
+
+server/services/serviceNameResolver.ts
+
+Paste:
+
+import { wrapTenantDb } from '../tenantDb';
+import { db } from '../db';
+import { services } from '@shared/schema';
+import { ilike } from 'drizzle-orm';
+
+/**
+ * Performs fuzzy matching between a natural-language service description
+ * and the tenant's service list to find the best match.
+ *
+ * Matching algorithm (simple, fast, robust):
+ * 1. Case-insensitive partial match
+ * 2. Keyword-based scoring (interior, exterior, full, detail, basic, premium)
+ * 3. Falls back to highest keyword score
+ * 4. Falls back to null if nothing reasonable matches
+ */
+export async function resolveServiceFromNaturalText(
+  tenantId: string,
+  serviceText: string | null
+): Promise<{ id: number | null; name: string | null }> {
+  if (!serviceText) {
+    return { id: null, name: null };
+  }
+
+  const text = serviceText.toLowerCase().trim();
+  const tenantDb = wrapTenantDb(db, tenantId);
+
+  const svcList = await tenantDb
+    .select()
+    .from(services);
+
+  if (!svcList.length) {
+    return { id: null, name: null };
+  }
+
+  // Fast path: direct ILIKE match
+  const partial = svcList.find(svc =>
+    svc.name.toLowerCase().includes(text)
+  );
+  if (partial) {
+    return { id: partial.id, name: partial.name };
+  }
+
+  // Keyword scoring
+  const keywords = [
+    'interior',
+    'exterior',
+    'full',
+    'detail',
+    'deep',
+    'clean',
+    'wash',
+    'basic',
+    'premium',
+    'signature',
+  ];
+
+  const score = (svcName: string) => {
+    const lower = svcName.toLowerCase();
+    return keywords.reduce((acc, kw) => {
+      return acc + (text.includes(kw) || lower.includes(kw) ? 1 : 0);
+    }, 0);
+  };
+
+  let best = null as any;
+  let bestScore = 0;
+
+  for (const svc of svcList) {
+    const s = score(svc.name);
+    if (s > bestScore) {
+      best = svc;
+      bestScore = s;
+    }
+  }
+
+  if (best && bestScore > 0) {
+    return { id: best.id, name: best.name };
+  }
+
+  // No good match
+  return { id: null, name: null };
+}
+
+STEP 2 — Integrate Resolver Into bookingDraftService.ts
+
+Open server/services/bookingDraftService.ts.
+
+At the top, import:
+
+import { resolveServiceFromNaturalText } from './serviceNameResolver';
+
+
+Find where inferredServiceId is located. Replace it with:
+
+let inferredServiceId: number | null = null;
+let inferredServiceName: string | null = null;
+
+if (state?.service) {
+  const result = await resolveServiceFromNaturalText(tenantId, state.service);
+  inferredServiceId = result.id;
+  inferredServiceName = result.name;
+}
+
+
+Then update your draft builder:
+
+serviceName: inferredServiceName ?? state?.service ?? null,
+serviceId: inferredServiceId,
+
+
+This ensures:
+
+If a fuzzy match finds a real service — use it
+
+If not, keep the raw text so the Booking Panel still shows something
+
+NEVER blocks or throws an error
+
+STEP 3 — BookingPanel automatically prefers the normalized service
+
+In client/src/components/BookingPanel.tsx:
+
+Your auto-fill logic should now prefer:
+
+if (!serviceName && draft.serviceName) {
+  setServiceName(draft.serviceName);
+}
+
+
+This will now contain the database service name, not raw user text.
+
+Nothing else changes here.
+
+STEP 4 — Add optional helper text (UX polish)
+
+If your UI supports field hints:
+
+Right below your service dropdown, optionally show:
+
+{draft?.rawServiceText && (
+  <p className="text-xs text-muted-foreground">
+    Customer described this as: "{draft.rawServiceText}"
+  </p>
+)}
+
+
+This helps agents confirm the match.
+
+STEP 5 — Sanity Checks
+
+Ensure:
+
+TS compiles
+
+Booking-draft route works
+
+BookingPanel populates service dropdown correctly
+
+Fuzzy matching finds correct service 80–90% of the time
