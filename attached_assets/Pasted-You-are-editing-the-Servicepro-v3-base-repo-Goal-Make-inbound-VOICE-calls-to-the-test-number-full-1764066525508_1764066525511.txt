@@ -1,0 +1,219 @@
+You are editing the Servicepro-v3-base repo.
+
+Goal:
+Make inbound VOICE calls to the test number fully stable by:
+- Implementing a clean /api/twilio/voice/inbound IVR endpoint
+- Implementing /handle-key and /voicemail-complete
+- Only using valid Voice TwiML (no <Message> tags)
+- Adding clear logging
+
+Do NOT change SMS routes or the legacy Clean Machine project.
+
+==================================================
+STEP 1 – Create/repair server/routes/twilioTestVoice.ts
+==================================================
+
+1. Create or open server/routes/twilioTestVoice.ts.
+
+2. Replace its contents with the following, but if there is already useful logic, adapt it so the exposed route signatures and logging match this pattern:
+
+```ts
+// server/routes/twilioTestVoice.ts
+import { Router, Request, Response } from "express";
+import { twiml as Twiml } from "twilio";
+import { twilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
+
+const twilioTestVoiceRouter = Router();
+
+/**
+ * POST /api/twilio/voice/inbound
+ * Entry point for inbound calls from Twilio.
+ */
+twilioTestVoiceRouter.post("/inbound", (req: Request, res: Response) => {
+  console.log("[TWILIO TEST VOICE INBOUND] Raw body:", req.body);
+
+  const vr = new Twiml.VoiceResponse();
+
+  const gather = vr.gather({
+    input: "dtmf",
+    numDigits: 1,
+    action: "/api/twilio/voice/handle-key",
+    method: "POST",
+  });
+
+  gather.say(
+    "Thanks for calling Clean Machine. " +
+      "Press 1 to hear basic info. " +
+      "Press 2 to receive a text message with a booking link. " +
+      "Press 3 to leave a voicemail."
+  );
+
+  // If no input, repeat once then hang up.
+  vr.say("We didn't receive any input. Goodbye.");
+  vr.hangup();
+
+  const twiml = vr.toString();
+  console.log("[TWILIO TEST VOICE INBOUND] Responding with TwiML:", twiml);
+
+  res.type("text/xml").status(200).send(twiml);
+});
+
+/**
+ * POST /api/twilio/voice/handle-key
+ * Handles single-digit DTMF from the main menu.
+ */
+twilioTestVoiceRouter.post("/handle-key", async (req: Request, res: Response) => {
+  console.log("[TWILIO TEST VOICE HANDLE-KEY] Body:", req.body);
+  const digits = (req.body as any).Digits;
+  const from = (req.body as any).From;
+
+  const vr = new Twiml.VoiceResponse();
+
+  try {
+    switch (digits) {
+      case "1": {
+        vr.say(
+          "Clean Machine Auto Detail is a mobile detailing service based in Tulsa, Oklahoma. " +
+            "We come to you for interior and exterior details tailored to your vehicle."
+        );
+        vr.say("Thanks for calling. Goodbye.");
+        vr.hangup();
+        break;
+      }
+
+      case "2": {
+        // Send SMS via Twilio REST, but DO NOT use <Message> here.
+        if (!twilioClient || !TWILIO_TEST_SMS_NUMBER) {
+          console.error(
+            "[TWILIO TEST VOICE] Cannot send SMS: client or from number missing.",
+            { hasClient: !!twilioClient, from: TWILIO_TEST_SMS_NUMBER }
+          );
+          vr.say(
+            "We were unable to send a text right now. Please visit our website to book."
+          );
+          vr.hangup();
+          break;
+        }
+
+        console.log("[TWILIO TEST VOICE] Sending follow-up SMS from IVR:", {
+          from: TWILIO_TEST_SMS_NUMBER,
+          to: from,
+        });
+
+        try {
+          const result = await twilioClient.messages.create({
+            from: TWILIO_TEST_SMS_NUMBER as string,
+            to: from,
+            body:
+              "Thanks for calling Clean Machine! You can request service online at your usual booking link.",
+          });
+          console.log("[TWILIO TEST VOICE] SMS sent from IVR:", {
+            sid: result.sid,
+            status: result.status,
+          });
+        } catch (err: any) {
+          console.error("[TWILIO TEST VOICE] Error sending SMS from IVR:", err);
+          vr.say(
+            "We had trouble sending a text message, but you can still visit our website to book."
+          );
+          vr.hangup();
+          const twiml = vr.toString();
+          res.type("text/xml").status(200).send(twiml);
+          return;
+        }
+
+        vr.say("Okay. We just sent you a text message with more information.");
+        vr.say("Thanks for calling. Goodbye.");
+        vr.hangup();
+        break;
+      }
+
+      case "3": {
+        vr.say("Please leave your message after the tone. Press the pound key when finished.");
+        vr.record({
+          action: "/api/twilio/voice/voicemail-complete",
+          method: "POST",
+          maxLength: 120,
+          finishOnKey: "#",
+        });
+        break;
+      }
+
+      default: {
+        vr.say("Sorry, that is not a valid option.");
+        vr.redirect("/api/twilio/voice/inbound");
+      }
+    }
+  } catch (err: any) {
+    console.error("[TWILIO TEST VOICE HANDLE-KEY] Error:", err);
+    vr.say("We hit an error handling your request. Goodbye.");
+    vr.hangup();
+  }
+
+  const twiml = vr.toString();
+  console.log("[TWILIO TEST VOICE HANDLE-KEY] Responding with TwiML:", twiml);
+  res.type("text/xml").status(200).send(twiml);
+});
+
+/**
+ * POST /api/twilio/voice/voicemail-complete
+ * Called after the caller finishes recording a voicemail.
+ */
+twilioTestVoiceRouter.post(
+  "/voicemail-complete",
+  (req: Request, res: Response) => {
+    console.log("[TWILIO TEST VOICE VOICEMAIL COMPLETE] Body:", req.body);
+
+    const from = (req.body as any).From;
+    const recordingUrl = (req.body as any).RecordingUrl;
+    const recordingDuration = (req.body as any).RecordingDuration;
+
+    console.log("[TWILIO TEST VOICE VOICEMAIL] New voicemail:", {
+      from,
+      recordingUrl,
+      recordingDuration,
+    });
+
+    const vr = new Twiml.VoiceResponse();
+    vr.say(
+      "Thank you. Your message has been recorded. We will review it and get back to you as soon as possible."
+    );
+    vr.hangup();
+
+    const twiml = vr.toString();
+    res.type("text/xml").status(200).send(twiml);
+  }
+);
+
+export { twilioTestVoiceRouter };
+Notes:
+
+Only Voice verbs are used: <Say>, <Gather>, <Record>, <Redirect>, <Hangup>.
+
+All branches always end by sending TwiML and a 200 status.
+
+==================================================
+STEP 2 – Ensure routes are mounted and body parsing is correct
+Open the main server setup file where routes are mounted (e.g. server/routes.ts or server/index.ts).
+
+Ensure:
+
+express.urlencoded({ extended: false }) and express.json() are called before Twilio routes:
+
+ts
+Copy code
+import express from "express";
+import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
+// ... other imports
+
+const app = express();
+
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
+
+// Twilio voice test routes
+app.use("/api/twilio/voice", twilioTestVoiceRouter);
+
+// existing SMS routes stay as they are
+// app.use("/api/twilio/sms", twilioTestSmsRouter);
+Do NOT change any other route paths.
