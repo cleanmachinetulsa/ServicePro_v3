@@ -1,0 +1,291 @@
+Here’s the **single drop-in prompt** for Replit to implement **Booking Modal Auto-Fill** using the AI conversation state you already have (AI Behavior V2).
+
+You’ll paste this whole thing into the Replit Agent and let it run.
+
+---
+
+### 🔧 REPLIT DROP-IN – “Booking Modal Auto-Fill from AI Conversation State”
+
+> You are editing the `Servicepro-v3-base` repo.
+> Goal of this task:
+> **When a user opens the booking/scheduling modal from a conversation, the modal should be automatically pre-filled with whatever the AI already knows about that customer and job (from conversation state + customer record).**
+> Only missing fields should be blank. This is a UX micro-stage, NOT a full new feature.
+>
+> ## High-level behavior
+>
+> * Source of truth for auto-fill:
+>
+>   * `conversationState` (AI Behavior V2 state: customerName, address, service, selectedTimeSlot, vehicles, etc.)
+>   * customer/contact info attached to the conversation (phone, email, name)
+> * When a human agent is in the Messaging UI and clicks whatever “Book / Schedule / Create appointment” action exists for a conversation:
+>
+>   * Open the existing booking/appointment modal (reuse, don’t redesign).
+>   * Call a new backend endpoint to get a **BookingDraft** based on the conversation.
+>   * Use that draft to initialize the modal form fields.
+>   * Human can edit anything before saving.
+> * No AI call is made at modal-open time. This uses already-stored state only.
+>
+> ---
+>
+> ## STEP 1 – Create a shared BookingDraft type
+>
+> 1. Look in `shared/` for where shared types are defined. Likely `shared/schema.ts` and possibly other type helpers such as `shared/types.ts` or similar.
+> 2. Create a new file:
+>
+>    * `shared/bookingDraft.ts`
+> 3. In that file, export a `BookingDraft` interface designed to be generic across industries but still useful:
+>
+>    ```ts
+>    export interface BookingDraft {
+>      conversationId: number;
+>      customerId: number | null;
+>      customerName: string | null;
+>      customerPhone: string | null;
+>      customerEmail: string | null;
+>      address: string | null;
+>      serviceName: string | null;
+>      serviceId: number | null;      // if you can infer from services table, else null
+>      preferredDate: string | null;  // ISO date (yyyy-mm-dd) if available
+>      preferredTimeWindow: string | null; // e.g. "morning", "afternoon", specific time string
+>      vehicleSummary: string | null; // e.g. "2018 Honda Civic (blue)" or null
+>      notes: string | null;          // optional AI summary or last customer message
+>    }
+>    ```
+> 4. Export it from any shared barrel file if you use one (e.g. `shared/index.ts`), so both server and client can import it easily.
+>
+> ---
+>
+> ## STEP 2 – Implement server helper to build a BookingDraft
+>
+> 1. Create a new file:
+>
+>    * `server/services/bookingDraftService.ts`
+> 2. In this file, implement a function:
+>
+>    ```ts
+>    import { db } from '../db';
+>    import { wrapTenantDb } from '../tenantDb';
+>    import { conversations, customers, conversationState } from '@shared/schema';
+>    import type { BookingDraft } from '@shared/bookingDraft';
+>    import { eq } from 'drizzle-orm';
+>
+>    export async function buildBookingDraftFromConversation(tenantId: string, conversationId: number): Promise<BookingDraft | null> {
+>      const tenantDb = wrapTenantDb(db, tenantId);
+>
+>      // 1) Load conversation row (should give you customer phone, customerId, etc.)
+>      const [conversation] = await tenantDb
+>        .select()
+>        .from(conversations)
+>        .where(eq(conversations.id, conversationId))
+>        .limit(1);
+>
+>      if (!conversation) return null;
+>
+>      // 2) Load customer info if available
+>      let customer: any = null;
+>      if (conversation.customerId) {
+>        const [cust] = await tenantDb
+>          .select()
+>          .from(customers)
+>          .where(eq(customers.id, conversation.customerId))
+>          .limit(1);
+>        customer = cust || null;
+>      }
+>
+>      // 3) Load conversation state (AI Behavior V2) – table name should already exist;
+>      //    if it’s named differently, inspect @shared/schema and adjust.
+>      const [state] = await tenantDb
+>        .select()
+>        .from(conversationState)
+>        .where(eq(conversationState.conversationId, conversationId))
+>        .limit(1);
+>
+>      // Helper to build a vehicle summary string if state.vehicles exists
+>      const vehicleSummary = state?.vehicles?.length
+>        ? state.vehicles
+>            .map((v: any) => {
+>              const parts = [v.year, v.make, v.model, v.color].filter(Boolean);
+>              return parts.join(' ');
+>            })
+>            .join(' | ')
+>        : null;
+>
+>      // Try to derive a "serviceId" if the state.service matches a service name
+>      let inferredServiceId: number | null = null;
+>      if (state?.service) {
+>        // import services table from @shared/schema
+>        const { services } = await import('@shared/schema');
+>        const [svc] = await tenantDb
+>          .select()
+>          .from(services)
+>          .where(eq(services.name, state.service))
+>          .limit(1);
+>        inferredServiceId = svc?.id ?? null;
+>      }
+>
+>      // Build notes from last customer message or state if you already track that
+>      // If there is a convenient way to fetch the last message from this conversation, use that;
+>      // otherwise set notes = null for now.
+>
+>      const draft: BookingDraft = {
+>        conversationId: conversation.id,
+>        customerId: conversation.customerId ?? null,
+>        customerName: state?.customerName ?? customer?.name ?? null,
+>        customerPhone: conversation.customerPhone ?? customer?.phone ?? null,
+>        customerEmail: state?.customerEmail ?? customer?.email ?? null,
+>        address: state?.address ?? customer?.address ?? null,
+>        serviceName: state?.service ?? null,
+>        serviceId: inferredServiceId,
+>        preferredDate: state?.selectedTimeSlot ?? null,       // if you are storing full datetime, you can split later on the client
+>        preferredTimeWindow: null,                            // for now; you can improve later once you see how time windows are stored
+>        vehicleSummary,
+>        notes: null,                                          // optional – safe default
+>      };
+>
+>      return draft;
+>    }
+>    ```
+> 3. Make sure imports (`conversations`, `customers`, `conversationState`, `services`) match the actual table names in `@shared/schema`. Adjust field names (`customerPhone`, etc.) to match your schema.
+>
+> ---
+>
+> ## STEP 3 – Expose a backend route to fetch a booking draft
+>
+> 1. Open `server/routes.ts` (or wherever API routes are registered).
+> 2. Add a new GET route under the authenticated tenant API, something like:
+>
+>    ```ts
+>    import { buildBookingDraftFromConversation } from './services/bookingDraftService';
+>    import type { BookingDraft } from '@shared/bookingDraft';
+>
+>    // Inside your routes function / router setup:
+>    app.get('/api/conversations/:conversationId/booking-draft', async (req, res) => {
+>      try {
+>        const tenantId = req.tenantId; // use whatever tenant extraction you already use
+>        const conversationId = Number(req.params.conversationId);
+>
+>        if (!tenantId || !conversationId || Number.isNaN(conversationId)) {
+>          return res.status(400).json({ error: 'Invalid tenant or conversation id' });
+>        }
+>
+>        const draft = await buildBookingDraftFromConversation(tenantId, conversationId);
+>        if (!draft) {
+>          return res.status(404).json({ error: 'Conversation not found or no draft available' });
+>        }
+>
+>        const typedDraft: BookingDraft = draft;
+>        return res.json(typedDraft);
+>      } catch (err) {
+>        console.error('Error building booking draft:', err);
+>        return res.status(500).json({ error: 'Failed to build booking draft' });
+>      }
+>    });
+>    ```
+> 3. Ensure this route is protected the same way other conversation/tenant routes are (auth middleware, tenant extraction, etc.).
+>
+> ---
+>
+> ## STEP 4 – Wire booking draft into the Messaging UI (booking modal)
+>
+> 1. Find the React component that:
+>
+>    * renders the **booking/scheduling modal**
+>    * OR is used from the Messaging Cockpit when the agent wants to create an appointment from a conversation.
+>      Likely places:
+>    * `client/src/components/booking/BookingModal.tsx`
+>    * or a similarly named file under `client/src/components` or `client/src/pages/messages.tsx`.
+> 2. Identify:
+>
+>    * Which prop or handler opens the modal (`onSchedule`, `onCreateBooking`, etc.).
+>    * What props the modal expects (customer, service, date/time, etc.).
+> 3. Create a small React hook or inline TanStack Query call to fetch the draft:
+>
+>    ```ts
+>    import { useQuery } from '@tanstack/react-query';
+>    import type { BookingDraft } from '@shared/bookingDraft';
+>
+>    function useBookingDraft(conversationId: number | null) {
+>      return useQuery<BookingDraft>({
+>        queryKey: ['bookingDraft', conversationId],
+>        enabled: !!conversationId,
+>        queryFn: async () => {
+>          const res = await fetch(`/api/conversations/${conversationId}/booking-draft`);
+>          if (!res.ok) {
+>            throw new Error('Failed to load booking draft');
+>          }
+>          return res.json();
+>        },
+>      });
+>    }
+>    ```
+> 4. In the messaging page or wherever the modal is triggered (likely `client/src/pages/messages.tsx`), when a conversation is selected and the user clicks “Book”:
+>
+>    * Pass the `conversationId` into the booking modal (if it isn’t already).
+>    * Inside the modal, call `useBookingDraft(conversationId)` and use the returned data to set **initial state** for form fields.
+> 5. Example inside the modal (simplified):
+>
+>    ```tsx
+>    function BookingModal({ conversationId, isOpen, onClose, onSubmit }: Props) {
+>      const { data: draft } = useBookingDraft(conversationId ?? null);
+>
+>      const [customerName, setCustomerName] = useState('');
+>      const [customerEmail, setCustomerEmail] = useState('');
+>      const [customerPhone, setCustomerPhone] = useState('');
+>      const [serviceName, setServiceName] = useState('');
+>      const [date, setDate] = useState('');
+>      const [address, setAddress] = useState('');
+>      const [vehicle, setVehicle] = useState('');
+>
+>      useEffect(() => {
+>        if (draft) {
+>          if (!customerName && draft.customerName) setCustomerName(draft.customerName);
+>          if (!customerEmail && draft.customerEmail) setCustomerEmail(draft.customerEmail);
+>          if (!customerPhone && draft.customerPhone) setCustomerPhone(draft.customerPhone);
+>          if (!serviceName && draft.serviceName) setServiceName(draft.serviceName);
+>          if (!date && draft.preferredDate) setDate(draft.preferredDate);
+>          if (!address && draft.address) setAddress(draft.address);
+>          if (!vehicle && draft.vehicleSummary) setVehicle(draft.vehicleSummary);
+>        }
+>      }, [draft]);
+>    ```
+>
+>    * Important: only populate when local state is empty so that if the user edits a field and the query refetches, we don’t overwrite their edits.
+> 6. Make sure the modal still submits exactly the same booking/appointment payload it used before; we’re just seeding defaults, not changing the save semantics.
+>
+> ---
+>
+> ## STEP 5 – UX polish (small but important)
+>
+> 1. In the booking modal UI, if you have labels or helper text, add a subtle hint for auto-filled fields like:
+>
+>    * “(Pre-filled from conversation)” as muted helper text OR a tiny badge component.
+>      This is optional; if the existing design is tight, skip it.
+> 2. Ensure there is **no blocking** if the draft is missing data; the modal should:
+>
+>    * Open immediately.
+>    * Show a spinner or simply leave fields blank while `useBookingDraft` loads.
+>    * Allow user to type even if the draft fails; treat the draft as a convenience only.
+>
+> ---
+>
+> ## STEP 6 – Quick sanity checks
+>
+> * TypeScript should compile without errors.
+> * `server/routes.ts` (or equivalent) should register the new route cleanly.
+> * Starting the dev server should work with no new runtime errors.
+> * From the Messaging UI:
+>
+>   * Select a conversation that already has AI Behavior V2 state (e.g. name, service, vehicle).
+>   * Trigger the booking modal.
+>   * Confirm that:
+>
+>     * Name / phone / email pre-fill when available.
+>     * Service field pre-fills based on `state.service`.
+>     * Address pre-fills from state or customer record.
+>     * Vehicle field shows a summary if vehicle info exists.
+>
+> If any table/field names don’t match exactly, inspect `@shared/schema` and adjust imports/field names accordingly, but keep the overall behavior described above.
+
+---
+
+Once that finishes and compiles clean, tell me how it behaves and we can tune the auto-fill logic (e.g., better time window handling, notes, and smarter service matching) in the next micro-stage.
