@@ -44,6 +44,7 @@ interface BookingPanelProps {
 export default function BookingPanel({ conversationId }: BookingPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [override, setOverride] = useState(false);
   const { toast } = useToast();
 
   // Fetch appointment data
@@ -364,6 +365,29 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                 />
               </div>
 
+              {/* Service Area Warning */}
+              {bookingDraft?.inServiceArea === false && !override && (
+                <div className="p-3 border rounded-md bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200" data-testid="service-area-warning">
+                  <div className="font-semibold mb-1">Outside Service Area</div>
+                  <div className="text-sm">{bookingDraft.serviceAreaSoftDeclineMessage}</div>
+                  {bookingDraft.travelMinutes != null && (
+                    <div className="mt-2 text-xs opacity-70">
+                      Estimated travel time: {bookingDraft.travelMinutes} minutes
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600"
+                    onClick={() => setOverride(true)}
+                    data-testid="button-override-service-area"
+                  >
+                    Submit Anyway (Requires Manual Approval)
+                  </Button>
+                </div>
+              )}
+
               {/* Route-Aware Booking Suggestion */}
               {bookingDraft?.routeSuggestion && (
                 <div className="p-3 border rounded-md bg-blue-50 dark:bg-blue-950 text-blue-900 dark:text-blue-100" data-testid="route-suggestion">
@@ -499,6 +523,29 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                         data-testid="input-address"
                       />
                     </div>
+
+                    {/* Service Area Warning */}
+                    {bookingDraft?.inServiceArea === false && !override && (
+                      <div className="p-3 border rounded-md bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200" data-testid="service-area-warning">
+                        <div className="font-semibold mb-1">Outside Service Area</div>
+                        <div className="text-sm">{bookingDraft.serviceAreaSoftDeclineMessage}</div>
+                        {bookingDraft.travelMinutes != null && (
+                          <div className="mt-2 text-xs opacity-70">
+                            Estimated travel time: {bookingDraft.travelMinutes} minutes
+                          </div>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 bg-yellow-500 hover:bg-yellow-600 text-white border-yellow-600"
+                          onClick={() => setOverride(true)}
+                          data-testid="button-override-service-area"
+                        >
+                          Submit Anyway (Requires Manual Approval)
+                        </Button>
+                      </div>
+                    )}
 
                     {/* Route-Aware Booking Suggestion */}
                     {bookingDraft?.routeSuggestion && (
