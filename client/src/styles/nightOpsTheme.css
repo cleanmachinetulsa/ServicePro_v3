@@ -227,3 +227,160 @@
 .nightops-glow-pulse {
   animation: nightops-glow-pulse 2s ease-in-out infinite;
 }
+
+/* ========================================
+   ThreadView Container Overrides
+   Applies Night Ops styling to the existing ThreadView
+   when rendered inside Night Ops layout
+   ======================================== */
+
+.nightops-threadview-container {
+  background: transparent;
+}
+
+/* Style the scroll area within thread view */
+.nightops-threadview-container [data-radix-scroll-area-viewport] {
+  background: transparent;
+}
+
+.nightops-threadview-container [data-radix-scroll-area-viewport]::-webkit-scrollbar {
+  width: 8px;
+}
+
+.nightops-threadview-container [data-radix-scroll-area-viewport]::-webkit-scrollbar-track {
+  background: var(--nightops-scroll-track);
+}
+
+.nightops-threadview-container [data-radix-scroll-area-viewport]::-webkit-scrollbar-thumb {
+  background: var(--nightops-scroll-thumb);
+  border-radius: 999px;
+}
+
+/* Override message bubble backgrounds */
+.nightops-threadview-container .bg-blue-500,
+.nightops-threadview-container .dark\:bg-blue-600 {
+  background: linear-gradient(135deg, #22d3ee, #a855f7) !important;
+}
+
+.nightops-threadview-container .bg-gray-200,
+.nightops-threadview-container .dark\:bg-gray-700 {
+  background: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(148, 163, 184, 0.4) !important;
+}
+
+/* Override text colors */
+.nightops-threadview-container .text-gray-900,
+.nightops-threadview-container .dark\:text-gray-100 {
+  color: var(--nightops-text) !important;
+}
+
+/* Override card backgrounds */
+.nightops-threadview-container .bg-white,
+.nightops-threadview-container .dark\:bg-gray-900,
+.nightops-threadview-container .dark\:bg-gray-950,
+.nightops-threadview-container .bg-gray-50 {
+  background: transparent !important;
+}
+
+/* Style borders */
+.nightops-threadview-container .border-gray-200,
+.nightops-threadview-container .dark\:border-gray-800,
+.nightops-threadview-container .dark\:border-gray-700 {
+  border-color: var(--nightops-border-subtle) !important;
+}
+
+/* Style buttons in thread view */
+.nightops-threadview-container button:not([class*="nightops-"]) {
+  transition: all 0.2s ease;
+}
+
+.nightops-threadview-container button:not([class*="nightops-"]):hover {
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.2);
+}
+
+/* Style textareas and inputs */
+.nightops-threadview-container textarea,
+.nightops-threadview-container input {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border-color: var(--nightops-border-subtle) !important;
+  color: var(--nightops-text) !important;
+}
+
+.nightops-threadview-container textarea:focus,
+.nightops-threadview-container input:focus {
+  border-color: var(--nightops-accent) !important;
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.15) !important;
+}
+
+.nightops-threadview-container textarea::placeholder,
+.nightops-threadview-container input::placeholder {
+  color: var(--nightops-text-muted) !important;
+}
+
+/* Style AI suggestion cards */
+.nightops-threadview-container .bg-blue-50,
+.nightops-threadview-container .dark\:bg-blue-900\/20 {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.1), rgba(168, 85, 247, 0.08)) !important;
+  border: 1px solid rgba(34, 211, 238, 0.3) !important;
+  border-radius: 0.75rem;
+}
+
+/* Style suggestion buttons */
+.nightops-threadview-container .bg-blue-100,
+.nightops-threadview-container .dark\:bg-blue-800 {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.2), rgba(168, 85, 247, 0.15)) !important;
+  border: 1px solid rgba(34, 211, 238, 0.4) !important;
+}
+
+.nightops-threadview-container .bg-blue-100:hover,
+.nightops-threadview-container .dark\:bg-blue-800:hover {
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.3), rgba(168, 85, 247, 0.25)) !important;
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.3) !important;
+}
+
+/* Style badges */
+.nightops-threadview-container .bg-green-100,
+.nightops-threadview-container .dark\:bg-green-900 {
+  background: rgba(52, 211, 153, 0.15) !important;
+  border: 1px solid rgba(52, 211, 153, 0.4) !important;
+  color: #34d399 !important;
+}
+
+.nightops-threadview-container .bg-yellow-100,
+.nightops-threadview-container .dark\:bg-yellow-900 {
+  background: rgba(251, 191, 36, 0.15) !important;
+  border: 1px solid rgba(251, 191, 36, 0.4) !important;
+  color: #fbbf24 !important;
+}
+
+.nightops-threadview-container .bg-red-100,
+.nightops-threadview-container .dark\:bg-red-900 {
+  background: rgba(249, 115, 115, 0.15) !important;
+  border: 1px solid rgba(249, 115, 115, 0.4) !important;
+  color: #f97373 !important;
+}
+
+/* Style collapsibles and panels */
+.nightops-threadview-container [data-state="open"],
+.nightops-threadview-container [data-state="closed"] {
+  background: transparent;
+}
+
+/* Muted text */
+.nightops-threadview-container .text-muted-foreground {
+  color: var(--nightops-text-muted) !important;
+}
+
+/* Primary text */
+.nightops-threadview-container .text-primary {
+  color: var(--nightops-accent) !important;
+}
+
+/* ========================================
+   Night Ops Thread Wrapper
+   Wrapper for entire thread section
+   ======================================== */
+
+.nightops-thread-wrapper {
+  background: transparent;
+}
