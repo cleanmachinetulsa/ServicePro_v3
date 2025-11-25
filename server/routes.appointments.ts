@@ -70,6 +70,8 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
       serviceId: z.number(),
       scheduledTime: z.string().transform(str => new Date(str)),
       address: z.string(),
+      addressLat: z.number().nullable().optional(),
+      addressLng: z.number().nullable().optional(),
       additionalRequests: z.array(z.string()).optional(),
       addOns: z.any().optional(),
     });
@@ -94,6 +96,8 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
           serviceId: data.serviceId,
           scheduledTime: data.scheduledTime,
           address: data.address,
+          addressLat: data.addressLat ?? null,
+          addressLng: data.addressLng ?? null,
           additionalRequests: data.additionalRequests,
           addOns: data.addOns,
         })
@@ -109,6 +113,8 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
             serviceId: data.serviceId,
             scheduledTime: data.scheduledTime,
             address: data.address,
+            addressLat: data.addressLat ?? null,
+            addressLng: data.addressLng ?? null,
             additionalRequests: data.additionalRequests,
             addOns: data.addOns,
           })

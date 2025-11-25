@@ -270,6 +270,8 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       serviceId: formData.serviceId,
       scheduledTime: formData.scheduledTime,
       address: formData.address,
+      addressLat: formData.addressLat,
+      addressLng: formData.addressLng,
       additionalRequests: additionalRequestsArray,
       addOns: appointment?.addOns || null,
     });
@@ -296,6 +298,8 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                   serviceId: services[0]?.id || 0,
                   scheduledTime: '',
                   address: '',
+                  addressLat: null,
+                  addressLng: null,
                   additionalRequests: '',
                 });
               }}
