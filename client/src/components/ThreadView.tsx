@@ -157,13 +157,20 @@ export default function ThreadView({
   const phoneLines = phoneLinesData?.lines || [];
   const activeLine = phoneLines.find(line => line.id === activeSendLineId);
 
+  // Booking status type for human handshake flow
+  type BookingStatus = 'not_ready' | 'ready_for_draft' | 'ready_for_human_review';
+  
   // Fetch conversation details with messages
-  const { data: conversationData, isLoading: conversationLoading} = useQuery<{ success: boolean; data: Conversation & { messages: Message[] } }>({
+  const { data: conversationData, isLoading: conversationLoading} = useQuery<{ 
+    success: boolean; 
+    data: Conversation & { messages: Message[]; bookingStatus?: BookingStatus } 
+  }>({
     queryKey: [`/api/conversations/${conversationId}`],
     refetchInterval: 5000,
   });
 
   const conversation = conversationData?.data;
+  const bookingStatus = conversation?.bookingStatus || 'not_ready';
   
   // Filter messages based on search query (client-side search)
   const filteredMessages = conversation?.messages?.filter(msg => {
@@ -1265,6 +1272,36 @@ export default function ThreadView({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Booking Status Banner - Shows readiness for appointment creation */}
+          {bookingStatus !== 'not_ready' && (
+            <div className="border-t dark:border-gray-800 px-4 py-3 bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20">
+              <div className="flex items-center gap-3 max-w-4xl mx-auto">
+                {bookingStatus === 'ready_for_draft' && (
+                  <>
+                    <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" data-testid="badge-ready-to-book">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 animate-pulse" />
+                      Ready to book
+                    </span>
+                    <span className="text-xs text-emerald-700 dark:text-emerald-300">
+                      All required information collected. Click "Create Appointment" to submit.
+                    </span>
+                  </>
+                )}
+                {bookingStatus === 'ready_for_human_review' && (
+                  <>
+                    <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" data-testid="badge-needs-approval">
+                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mr-1.5 animate-pulse" />
+                      Needs manual approval
+                    </span>
+                    <span className="text-xs text-amber-700 dark:text-amber-300">
+                      Customer may be outside service area or requires special review.
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
