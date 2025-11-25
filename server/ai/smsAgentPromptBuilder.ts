@@ -17,7 +17,13 @@ import { wrapTenantDb } from '../tenantDb';
 import { tenantConfig, services } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { getCampaignContextForCustomer, getCustomerIdFromPhone } from '../services/campaignContextService';
-import { SYSTEM_PROMPT_TEMPLATE, BEHAVIOR_CONFIG, REQUIRED_FIELDS } from '@shared/ai/smsAgentConfig';
+import { 
+  SYSTEM_PROMPT_TEMPLATE, 
+  BEHAVIOR_CONFIG, 
+  REQUIRED_FIELDS, 
+  getBookingStatusFromState, 
+  BookingStatus 
+} from '@shared/ai/smsAgentConfig';
 
 interface ConversationStateInfo {
   customerName?: string;
@@ -25,7 +31,10 @@ interface ConversationStateInfo {
   address?: string;
   addressValidated?: boolean;
   service?: string;
+  serviceId?: number;
   selectedTimeSlot?: string;
+  preferredDate?: string;
+  preferredTimeWindow?: string;
   addOns?: string[];
   vehicles?: Array<{
     year?: string;
@@ -33,6 +42,9 @@ interface ConversationStateInfo {
     model?: string;
     color?: string;
   }>;
+  // Booking status flags
+  requiresManualApproval?: boolean;
+  inServiceArea?: boolean;
 }
 
 interface SmsPromptParams {
@@ -269,6 +281,31 @@ export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<str
       systemPrompt += `\n\nCONTROL MODE: PAUSED\nThis conversation is paused. A human will respond when ready.`;
     }
   }
+
+  // AI BEHAVIOR V2: Add booking status and handshake rules
+  const bookingStatus: BookingStatus = getBookingStatusFromState(conversationState);
+  
+  systemPrompt += `
+
+BOOKING_HANDSHAKE_RULES:
+- You NEVER send a final confirmation message such as "You are fully booked" or "Your appointment is confirmed" on your own.
+- The human staff member must always review and confirm the booking inside the dashboard before a final confirmation is sent.
+- You may propose specific times and summarize what will be booked, but you must phrase it as a "draft" or "I'll submit this for review", not as a finalized booking.
+- When the system indicates bookingStatus = "ready_for_draft":
+  - You should say something like: "I have everything I need to prepare your appointment. I'll submit this as a draft for our team to review. You'll receive a final confirmation message once it's officially booked."
+- When bookingStatus = "ready_for_human_review" (e.g. outside service area or manual approval required):
+  - You should clearly explain that the request will be sent to a human for manual review and is NOT yet confirmed.
+  - Use wording like: "You're just outside our normal service area, but I can submit this to a team member to review. They'll confirm if we can make an exception and you'll get a final confirmation afterward."
+- When bookingStatus = "not_ready":
+  - Focus on gathering missing details (service type, address, date/time, etc.) before talking about preparing the appointment.
+- You MUST avoid phrases that imply a fully confirmed booking such as:
+  - "You are booked"
+  - "Your appointment is confirmed"
+  - "We will definitely see you at [time]"
+  - Instead, use language like "I'll prepare this as a draft" or "Our team will review and confirm."
+
+CURRENT_BOOKING_STATUS: ${bookingStatus}
+(Use this to decide whether to keep gathering info, prepare a draft, or clearly say a human will review before confirmation.)`;
 
   // Inject campaign awareness context if available
   if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
