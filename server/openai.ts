@@ -15,7 +15,10 @@ import { conversationState } from "./conversationState";
 import { requestDamagePhotos } from "./damageAssessment";
 import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPersonalizationService";
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+// SMS Agent Model Configuration
+// GPT-5.1 upgrade requested - centralized config for easy switching
+export const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL ?? "gpt-5.1";
+
 const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
 
 if (!OPENAI_ENABLED) {
@@ -506,7 +509,7 @@ export async function generateAIResponse(
         try {
           // Make OpenAI call with SMS-optimized settings
           completion = await openai!.chat.completions.create({
-            model: "gpt-4o",
+            model: SMS_AGENT_MODEL,
             messages,
             tools: SCHEDULING_FUNCTIONS,
             tool_choice: "auto",
@@ -537,7 +540,7 @@ export async function generateAIResponse(
             inputTokens + outputTokens,
             totalCost,
             {
-              model: 'gpt-4o',
+              model: SMS_AGENT_MODEL,
               input_tokens: inputTokens,
               output_tokens: outputTokens,
               platform: 'sms',
@@ -844,7 +847,7 @@ export async function generateAIResponse(
       // Use demo rate limiter if in demo mode
       const makeOpenAICall = async () => {
         return await openai.chat.completions.create({
-          model: "gpt-4o",
+          model: SMS_AGENT_MODEL,
           messages: currentMessages,
           tools: SCHEDULING_FUNCTIONS,
           tool_choice: "auto",
@@ -875,7 +878,7 @@ export async function generateAIResponse(
           inputTokens + outputTokens,
           totalCost,
           {
-            model: 'gpt-4o',
+            model: SMS_AGENT_MODEL,
             input_tokens: inputTokens,
             output_tokens: outputTokens,
           }
