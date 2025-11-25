@@ -512,6 +512,8 @@ export const appointments = pgTable("appointments", {
   reminderSent: boolean("reminder_sent").default(false),
   additionalRequests: text("additional_requests").array(),
   address: text("address").notNull(),
+  addressLat: numeric("address_lat", { precision: 10, scale: 7 }), // Geocoded latitude
+  addressLng: numeric("address_lng", { precision: 10, scale: 7 }), // Geocoded longitude
   addOns: jsonb("add_ons"),
   damageAssessmentStatus: varchar("damage_assessment_status", { length: 20 }).default("none"), // none, pending, reviewed, approved, rejected
   damagePhotos: text("damage_photos").array(), // URLs to damage photos in Google Drive
