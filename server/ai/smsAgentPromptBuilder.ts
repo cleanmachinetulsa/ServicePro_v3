@@ -1,14 +1,15 @@
 /**
  * SMS AI Agent System Prompt Builder
  * 
- * Builds tenant-aware, SMS-optimized system prompts for the AI assistant
- * following the OG ServicePro specification.
+ * AI BEHAVIOR V2 - CORE BRAIN
  * 
- * CAMPAIGN AWARENESS (ServicePro v3):
- * This prompt builder is campaign-aware - it detects when a customer has
- * recently received a campaign (like Welcome Back) and injects context
- * into the system prompt so the AI agent knows about the campaign and
- * can respond intelligently without confusion.
+ * Builds tenant-aware, state-aware, SMS-optimized system prompts for the AI assistant.
+ * 
+ * Key features:
+ * - Centralized system prompt configuration
+ * - Conversation state awareness (never re-asks known info)
+ * - Control mode awareness (handles human handback scenarios)
+ * - Campaign awareness (ServicePro v3)
  */
 
 import { db } from '../db';
@@ -16,11 +17,31 @@ import { wrapTenantDb } from '../tenantDb';
 import { tenantConfig, services } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { getCampaignContextForCustomer, getCustomerIdFromPhone } from '../services/campaignContextService';
+import { SYSTEM_PROMPT_TEMPLATE, BEHAVIOR_CONFIG, REQUIRED_FIELDS } from '@shared/ai/smsAgentConfig';
+
+interface ConversationStateInfo {
+  customerName?: string;
+  customerEmail?: string;
+  address?: string;
+  addressValidated?: boolean;
+  service?: string;
+  selectedTimeSlot?: string;
+  addOns?: string[];
+  vehicles?: Array<{
+    year?: string;
+    make?: string;
+    model?: string;
+    color?: string;
+  }>;
+}
 
 interface SmsPromptParams {
   tenantId: string;
   phoneNumber: string;
-  customerId?: number;  // Optional: can be provided to skip customer lookup
+  customerId?: number;
+  conversationState?: ConversationStateInfo;  // AI Behavior v2: conversation state for context
+  controlMode?: 'auto' | 'manual' | 'paused';  // AI Behavior v2: control mode awareness
+  recentHumanMessages?: string[];  // AI Behavior v2: messages from human agent during handback
 }
 
 /**
@@ -103,10 +124,83 @@ function buildBookingLink(subdomain: string | null, tenantId: string): string {
 }
 
 /**
+ * Helper to determine missing required fields
+ */
+function getMissingRequiredFields(state: ConversationStateInfo | undefined): string[] {
+  if (!state) return [...REQUIRED_FIELDS];
+  
+  const missing: string[] = [];
+  
+  if (!state.customerName) missing.push('customerName');
+  
+  // Check for vehicle info (any of year/make/model)
+  const hasVehicle = state.vehicles && state.vehicles.length > 0 && 
+    (state.vehicles[0].year || state.vehicles[0].make || state.vehicles[0].model);
+  if (!hasVehicle) missing.push('vehicle');
+  
+  if (!state.service) missing.push('serviceType');
+  if (!state.selectedTimeSlot) missing.push('dateTime');
+  if (!state.address) missing.push('address');
+  
+  return missing;
+}
+
+/**
+ * Build KNOWN_CONTEXT section from conversation state
+ */
+function buildKnownContext(state: ConversationStateInfo | undefined): string {
+  if (!state) {
+    return 'KNOWN_CONTEXT: (none - this is a new conversation)';
+  }
+  
+  const knownFields: string[] = [];
+  
+  if (state.customerName) {
+    knownFields.push(`- Customer name: ${state.customerName}`);
+  }
+  
+  if (state.vehicles && state.vehicles.length > 0) {
+    const vehicle = state.vehicles[0];
+    const vehicleStr = [vehicle.year, vehicle.make, vehicle.model, vehicle.color].filter(Boolean).join(' ');
+    if (vehicleStr) {
+      knownFields.push(`- Vehicle: ${vehicleStr}`);
+    }
+  }
+  
+  if (state.service) {
+    knownFields.push(`- Service selected: ${state.service}`);
+  }
+  
+  if (state.selectedTimeSlot) {
+    knownFields.push(`- Preferred date/time: ${state.selectedTimeSlot}`);
+  }
+  
+  if (state.address) {
+    const validation = state.addressValidated ? ' (validated)' : ' (not yet validated)';
+    knownFields.push(`- Address: ${state.address}${validation}`);
+  }
+  
+  if (state.addOns && state.addOns.length > 0) {
+    knownFields.push(`- Add-ons: ${state.addOns.join(', ')}`);
+  }
+  
+  if (state.customerEmail) {
+    knownFields.push(`- Email: ${state.customerEmail}`);
+  }
+  
+  if (knownFields.length === 0) {
+    return 'KNOWN_CONTEXT: (none - this is a new conversation)';
+  }
+  
+  return `KNOWN_CONTEXT:\n${knownFields.join('\n')}`;
+}
+
+/**
  * Build SMS-optimized system prompt for AI agent
+ * AI BEHAVIOR V2: Now includes conversation state and control mode awareness
  */
 export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<string> {
-  const { tenantId, phoneNumber, customerId } = params;
+  const { tenantId, phoneNumber, customerId, conversationState, controlMode, recentHumanMessages } = params;
 
   // Get tenant configuration
   const { businessName, industryType, subdomain } = await getTenantBusinessInfo(tenantId);
@@ -137,21 +231,44 @@ export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<str
     // Continue without campaign context - don't break prompt builder
   }
 
-  // Build the system prompt following OG spec
-  let systemPrompt = `You are an AI assistant for ${businessName}, a ${industryType} business.
-
-Your role:
-- Answer questions about services and pricing
-- Help customers book appointments
-- Provide helpful, friendly support
-- Keep responses under 160 characters when possible (SMS messages)
-
-${servicesList}
-
-Booking link: ${bookingLink}
-
-CRITICAL: The customer's phone number is: ${phoneNumber}
-Always use this EXACT phone number when calling any function - never use placeholder text.`;
+  // AI BEHAVIOR V2: Start with template-based system prompt
+  let systemPrompt = SYSTEM_PROMPT_TEMPLATE
+    .replace('{businessName}', businessName)
+    .replace('{industryType}', industryType);
+  
+  // Add services list
+  systemPrompt += `\n\n${servicesList}`;
+  
+  // Add booking link
+  systemPrompt += `\n\nBooking link: ${bookingLink}`;
+  
+  // Add phone number context
+  systemPrompt += `\n\nCRITICAL: The customer's phone number is: ${phoneNumber}\nAlways use this EXACT phone number when calling any function - never use placeholder text.`;
+  
+  // AI BEHAVIOR V2: Add conversation state context
+  const knownContext = buildKnownContext(conversationState);
+  const missingFields = getMissingRequiredFields(conversationState);
+  
+  systemPrompt += `\n\n${knownContext}`;
+  
+  if (missingFields.length > 0) {
+    systemPrompt += `\n\nMISSING INFORMATION (ask for these if relevant to customer's request):\n- ${missingFields.join('\n- ')}`;
+  } else {
+    systemPrompt += `\n\nALL REQUIRED INFORMATION COLLECTED ✓\nYou can proceed to book the appointment when customer confirms.`;
+  }
+  
+  // AI BEHAVIOR V2: Add control mode awareness
+  if (controlMode && controlMode !== 'auto') {
+    if (controlMode === 'manual' && recentHumanMessages && recentHumanMessages.length > 0) {
+      systemPrompt += `\n\nCONTROL MODE: HANDBACK FROM HUMAN AGENT\nA human team member recently handled this conversation. Their last messages:\n`;
+      recentHumanMessages.slice(-BEHAVIOR_CONFIG.maxHandbackMessages).forEach((msg, idx) => {
+        systemPrompt += `${idx + 1}. "${msg}"\n`;
+      });
+      systemPrompt += `\nContinue the conversation naturally, building on what the human agent discussed.`;
+    } else if (controlMode === 'paused') {
+      systemPrompt += `\n\nCONTROL MODE: PAUSED\nThis conversation is paused. A human will respond when ready.`;
+    }
+  }
 
   // Inject campaign awareness context if available
   if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
