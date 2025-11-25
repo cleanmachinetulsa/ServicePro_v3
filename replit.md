@@ -44,6 +44,7 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 
 **Communication Services**:
 - **Twilio**: SMS notifications, voicemail transcription, and voice/IVR services.
+  - **SMS Router**: Routes inbound SMS based on destination number. If `LEGACY_CLEAN_MACHINE_NUMBER_E164` matches the `To` field, forwards to `LEGACY_CLEAN_MACHINE_SMS_WEBHOOK_URL`; otherwise uses ServicePro AI handler.
 - **SendGrid**: Email delivery.
 - **Slack**: Internal business notifications and alerts.
 - **Facebook Graph API**: Integration with Facebook Messenger and Instagram Direct Messages.
