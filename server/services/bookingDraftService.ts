@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { conversationState } from '../conversationState';
 import { normalizeTimePreference } from './timePreferenceParser';
 import { resolveServiceFromNaturalText } from './serviceNameResolver';
+import { findOrCreateVehicleCard } from './vehicleCardService';
 
 export async function buildBookingDraftFromConversation(
   tenantId: string,
@@ -38,15 +39,45 @@ export async function buildBookingDraftFromConversation(
   const phone = conversation.customerPhone;
   const state = phone ? conversationState.getState(phone) : null;
 
-  // Helper to build a vehicle summary string if state.vehicles exists
-  const vehicleSummary = state?.vehicles?.length
-    ? state.vehicles
+  // 3.1) Vehicle Auto-Create: Detect vehicle from conversation state and create/link vehicle card
+  let vehicleSummary: string | null = null;
+  
+  if (state?.vehicles?.length && conversation.customerId) {
+    try {
+      // Get the first vehicle from conversation state
+      const v = state.vehicles[0];
+      
+      // Auto-create or find vehicle card in database
+      const vehicleCard = await findOrCreateVehicleCard(
+        tenantId,
+        conversation.customerId,
+        v.year,
+        v.make,
+        v.model,
+        v.color
+      );
+      
+      // Build summary from the created/found vehicle card
+      if (vehicleCard) {
+        const parts = [
+          vehicleCard.year,
+          vehicleCard.make,
+          vehicleCard.model,
+          vehicleCard.color
+        ].filter(Boolean);
+        vehicleSummary = parts.join(' ').trim() || null;
+      }
+    } catch (error) {
+      // Vehicle creation failed - fall back to text summary from state
+      console.warn('[BOOKING DRAFT] Vehicle auto-create failed:', error);
+      vehicleSummary = state.vehicles
         .map((v: any) => {
           const parts = [v.year, v.make, v.model, v.color].filter(Boolean);
           return parts.join(' ');
         })
-        .join(' | ')
-    : null;
+        .join(' | ');
+    }
+  }
 
   // 3.5) Smart service resolution: Use fuzzy matching to resolve natural language service descriptions
   let inferredServiceId: number | null = null;
