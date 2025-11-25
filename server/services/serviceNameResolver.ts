@@ -31,48 +31,94 @@ export async function resolveServiceFromNaturalText(
     return { id: null, name: null };
   }
 
-  // Fast path: direct ILIKE match
-  const partial = svcList.find(svc =>
-    svc.name.toLowerCase().includes(text)
-  );
-  if (partial) {
-    return { id: partial.id, name: partial.name };
+  // Token-based similarity scoring with proper tie-breaking
+  // ALL services go through the same scoring + tie-breaking logic
+  const inputTokens = text.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+  
+  interface ScoredService {
+    service: typeof svcList[0];
+    score: number;
+    matchRatio: number;
+    nameLength: number;
   }
-
-  // Keyword scoring
-  const keywords = [
-    'interior',
-    'exterior',
-    'full',
-    'detail',
-    'deep',
-    'clean',
-    'wash',
-    'basic',
-    'premium',
-    'signature',
-  ];
-
-  const score = (svcName: string) => {
-    const lower = svcName.toLowerCase();
-    return keywords.reduce((acc, kw) => {
-      return acc + (text.includes(kw) || lower.includes(kw) ? 1 : 0);
-    }, 0);
-  };
-
-  let best = null as any;
-  let bestScore = 0;
-
+  
+  const scoredServices: ScoredService[] = [];
+  
   for (const svc of svcList) {
-    const s = score(svc.name);
-    if (s > bestScore) {
-      best = svc;
-      bestScore = s;
+    const svcName = svc.name;
+    const svcLower = svcName.toLowerCase();
+    const svcTokens = svcLower.split(/\s+/).filter(t => t.length > 2);
+    
+    let exactMatches = 0;
+    let partialMatches = 0;
+    
+    // Count token overlaps
+    for (const inputToken of inputTokens) {
+      for (const svcToken of svcTokens) {
+        if (inputToken === svcToken) {
+          exactMatches++;
+        } else if (inputToken.includes(svcToken) || svcToken.includes(inputToken)) {
+          partialMatches++;
+        }
+      }
+    }
+    
+    // Substring bonus: if input is contained in service name or vice versa
+    let substringBonus = 0;
+    if (svcLower.includes(text) || text.includes(svcLower)) {
+      substringBonus = 8; // Strong signal, but still subject to tie-breaking
+    }
+    
+    // Keyword bonus when keyword appears in BOTH input and service name
+    const importantKeywords = [
+      'interior', 'exterior', 'full', 'detail', 'deep', 'clean',
+      'wash', 'basic', 'premium', 'signature', 'complete', 'express'
+    ];
+    
+    let keywordBonus = 0;
+    for (const keyword of importantKeywords) {
+      if (text.includes(keyword) && svcLower.includes(keyword)) {
+        keywordBonus++;
+      }
+    }
+    
+    // Calculate final score
+    const score = (exactMatches * 10) + (partialMatches * 3) + (keywordBonus * 5) + substringBonus;
+    
+    // Calculate match ratio: how many input tokens were matched?
+    const matchRatio = inputTokens.length > 0 
+      ? (exactMatches + partialMatches * 0.5) / inputTokens.length 
+      : 0;
+    
+    if (score > 0) {
+      scoredServices.push({
+        service: svc,
+        score,
+        matchRatio,
+        nameLength: svcName.length,
+      });
     }
   }
-
-  if (best && bestScore > 0) {
-    return { id: best.id, name: best.name };
+  
+  if (scoredServices.length === 0) {
+    return { id: null, name: null };
+  }
+  
+  // Sort by:
+  // 1. Highest score first
+  // 2. Highest match ratio (more complete coverage of input)
+  // 3. Shortest name (more specific)
+  scoredServices.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score;
+    if (a.matchRatio !== b.matchRatio) return b.matchRatio - a.matchRatio;
+    return a.nameLength - b.nameLength;
+  });
+  
+  const best = scoredServices[0];
+  
+  // Only return if we have a reasonable match
+  if (best && best.score > 0) {
+    return { id: best.service.id, name: best.service.name };
   }
 
   // No good match
