@@ -5,6 +5,7 @@ import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
 import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq, asc } from 'drizzle-orm';
+import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
 
 export const twilioTestSmsRouter = Router();
 
@@ -60,12 +61,10 @@ async function addMessage(tenantDb: any, conversationId: number, content: string
     });
 }
 
-twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
+async function handleServiceProInboundSms(req: Request, res: Response) {
   const twimlResponse = new MessagingResponse();
   
   try {
-    console.log("[TWILIO TEST SMS INBOUND] Raw body:", req.body);
-    
     const { Body, From, To } = req.body || {};
     
     console.log("[TWILIO TEST SMS INBOUND] Parsed fields:", {
@@ -114,6 +113,27 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
     const errorResponse = new MessagingResponse();
     errorResponse.message("Sorry, I'm having trouble right now. A human will take a look and get back to you.");
     res.type('text/xml').send(errorResponse.toString());
+  }
+}
+
+twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
+  console.log("[TWILIO SMS INBOUND] Raw body:", req.body);
+
+  try {
+    if (shouldRouteToLegacyCleanMachine(req)) {
+      console.log("[TWILIO SMS INBOUND] Routing to legacy Clean Machine app.");
+      return forwardToLegacyCleanMachine(req, res);
+    }
+
+    console.log("[TWILIO SMS INBOUND] Routing to ServicePro AI SMS handler.");
+    return handleServiceProInboundSms(req, res);
+  } catch (err: any) {
+    console.error("[TWILIO SMS INBOUND] Unhandled error in router:", err);
+    const twimlResponse = new MessagingResponse();
+    twimlResponse.message(
+      "We hit an error processing your message. Please try again shortly."
+    );
+    res.type("text/xml").status(200).send(twimlResponse.toString());
   }
 });
 
