@@ -1,19 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
-import PhoneLineSwitcher from '@/components/messages/PhoneLineSwitcher';
 import { useLocation, useSearch } from 'wouter';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { 
-  MessageCircle, 
   PlusCircle, 
   PanelRight, 
   PanelRightClose,
@@ -21,13 +11,12 @@ import {
   CalendarDays
 } from 'lucide-react';
 import io from 'socket.io-client';
-import { ConversationListPane } from '@/components/messages/ConversationListPane';
-import { ThreadPane } from '@/components/messages/ThreadPane';
-import { CustomerSidebar } from '@/components/messages/CustomerSidebar';
+import { NightOpsMessagesLayout } from '@/components/messages/NightOpsMessagesLayout';
+import { NightOpsConversationList } from '@/components/messages/NightOpsConversationList';
+import { NightOpsThreadView } from '@/components/messages/NightOpsThreadView';
+import { NightOpsContextPanel } from '@/components/messages/NightOpsContextPanel';
 import Composer from '@/components/messages/Composer';
-import { AppShell } from '@/components/AppShell';
 import { useToast } from '@/hooks/use-toast';
-import { RecentCallersWidget } from '@/components/messages/RecentCallersWidget';
 import { ShareAvailabilityModal } from '@/components/ShareAvailabilityModal';
 import { apiRequest } from '@/lib/queryClient';
 import { useCustomerSidebarData } from '@/hooks/useCustomerSidebarData';
@@ -64,14 +53,12 @@ function MessagesPageContent() {
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showProfilePanel, setShowProfilePanel] = useState(true); // Default open for Stage 1
-  const [showMobileProfileSheet, setShowMobileProfileSheet] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(true);
   const [showComposeDialog, setShowComposeDialog] = useState(false);
   const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Fetch conversations
   const { data: conversationsData, isLoading } = useQuery<{ success: boolean; data: Conversation[] }>({
     queryKey: ['/api/conversations', filter, conversationFilter],
     queryFn: async () => {
@@ -90,8 +77,6 @@ function MessagesPageContent() {
 
   const conversations = conversationsData?.data || [];
 
-  // Handle URL parameters to open specific conversation
-  // Supports both ?phone=xxx (for phone-based lookup) and ?conversation=123 (for direct ID)
   useEffect(() => {
     const params = new URLSearchParams(search);
     const phoneParam = params.get('phone');
@@ -100,31 +85,16 @@ function MessagesPageContent() {
     if (conversations.length === 0) return;
     
     if (phoneParam) {
-      // Find conversation matching this phone number
       const matchingConv = conversations.find(c => c.customerPhone === phoneParam);
-      
       if (matchingConv) {
         setSelectedConversation(matchingConv.id);
-        // Clear the phone parameter from URL
         setLocation('/messages', { replace: true });
       }
     } else if (conversationParam) {
-      // Direct conversation ID lookup (from SMS deep links)
       const conversationId = parseInt(conversationParam, 10);
-      
       if (!isNaN(conversationId)) {
-        // Check if this conversation exists in the list
-        const matchingConv = conversations.find(c => c.id === conversationId);
-        
-        if (matchingConv) {
-          setSelectedConversation(conversationId);
-          // Clear the conversation parameter from URL
-          setLocation('/messages', { replace: true });
-        } else {
-          // Conversation exists but not in current filter/list - still open it
-          setSelectedConversation(conversationId);
-          setLocation('/messages', { replace: true });
-        }
+        setSelectedConversation(conversationId);
+        setLocation('/messages', { replace: true });
       }
     }
   }, [search, conversations, setLocation]);
@@ -157,15 +127,12 @@ function MessagesPageContent() {
     return new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime();
   });
 
-  // Take over control handler
   const handleTakeOver = async () => {
     if (!selectedConversation) return;
 
     try {
       await apiRequest('POST', `/api/conversations/${selectedConversation}/takeover`, {});
-      
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
-      
       toast({
         title: 'Control taken',
         description: 'You now have manual control of this conversation',
@@ -181,12 +148,6 @@ function MessagesPageContent() {
   };
 
   useEffect(() => {
-    if (!selectedConversation && showMobileProfileSheet) {
-      setShowMobileProfileSheet(false);
-    }
-  }, [selectedConversation, showMobileProfileSheet]);
-
-  useEffect(() => {
     const socket = io();
 
     socket.on('connect', () => {
@@ -194,18 +155,15 @@ function MessagesPageContent() {
       socket.emit('join_monitoring');
     });
 
-    socket.on('new_message', (data: any) => {
-      console.log('[MESSAGES] New message received:', data);
+    socket.on('new_message', () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
     });
 
-    socket.on('conversation_updated', (data: any) => {
-      console.log('[MESSAGES] Conversation updated:', data);
+    socket.on('conversation_updated', () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
     });
 
-    socket.on('control_mode_changed', (data: any) => {
-      console.log('[MESSAGES] Control mode changed:', data);
+    socket.on('control_mode_changed', () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
     });
 
@@ -215,151 +173,91 @@ function MessagesPageContent() {
     };
   }, [queryClient]);
 
-  // Get selected conversation details for Share Availability
   const selectedConv = conversations.find(c => c.id === selectedConversation);
-
-  // Fetch customer data for sidebar
   const { customerInfo, isLoading: isLoadingCustomer } = useCustomerSidebarData(selectedConversation);
 
-  // Page-specific actions for AppShell
-  const pageActions = (
-    <>
-      <Button 
-        variant="outline" 
-        size="sm" 
-        onClick={() => setShowComposeDialog(true)}
-        data-testid="button-compose"
-        className="transition-all duration-200 hover:scale-105"
-      >
-        <PlusCircle className="h-4 w-4 mr-2" />
-        <span className="hidden sm:inline">New Message</span>
-      </Button>
-      {selectedConversation && (
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => setShowShareAvailabilityModal(true)}
-          data-testid="button-share-availability"
-          className="transition-all duration-200 hover:scale-105"
-          title="Share calendar availability with customer"
-        >
-          <CalendarDays className="h-4 w-4 mr-2" />
-          <span className="hidden sm:inline">Share Availability</span>
-        </Button>
-      )}
-      <Button 
-        variant="outline" 
-        size="sm" 
-        onClick={() => setLocation('/phone')}
-        data-testid="button-phone"
-        className="transition-all duration-200 hover:scale-105"
-        title="Open Phone & Voicemail"
-      >
-        <Phone className="h-4 w-4" />
-        <span className="hidden sm:inline ml-2">Phone</span>
-      </Button>
-      {selectedConversation && (
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => setShowProfilePanel(!showProfilePanel)}
-          className="hidden md:flex transition-all duration-200 hover:scale-105"
-          data-testid="button-toggle-profile"
-          title={showProfilePanel ? "Hide Profile Panel" : "Show Profile Panel"}
-        >
-          {showProfilePanel ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
-        </Button>
-      )}
-    </>
+  const conversationListNode = (
+    <NightOpsConversationList
+      conversations={sortedConversations}
+      selectedId={selectedConversation}
+      onSelect={setSelectedConversation}
+      isLoading={isLoading}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      filter={filter}
+      onFilterChange={setFilter}
+    />
+  );
+
+  const threadViewNode = (
+    <NightOpsThreadView
+      conversationId={selectedConversation}
+      onBack={() => setSelectedConversation(null)}
+      onTakeOver={handleTakeOver}
+      controlMode={selectedConv?.controlMode as any}
+    />
+  );
+
+  const contextPanelNode = (
+    <NightOpsContextPanel
+      customerInfo={selectedConversation ? customerInfo : null}
+      isLoading={selectedConversation ? isLoadingCustomer : false}
+      onBookAppointment={undefined}
+    />
   );
 
   return (
-    <AppShell title="Messages" showSearch={false} pageActions={pageActions}>
-      {isLoading && conversations.length === 0 ? (
-        <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30">
-          {/* Conversation List Skeleton */}
-          <div className="w-full md:w-80 lg:w-96 bg-white/98 dark:bg-gray-900/98 border-r border-gray-200/60 dark:border-gray-800/60 p-4 space-y-3">
-            <Skeleton className="h-10 w-full bg-gray-200/60 dark:bg-gray-800/60" />
-            <Skeleton className="h-12 w-full bg-gray-200/60 dark:bg-gray-800/60" />
-            {[...Array(8)].map((_, i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="h-16 w-full bg-gray-200/60 dark:bg-gray-800/60" />
-              </div>
-            ))}
-          </div>
-          {/* Thread View Skeleton */}
-          <div className="hidden md:flex flex-1 items-center justify-center bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30">
-            <div className="text-center space-y-3">
-              <Skeleton className="h-20 w-20 rounded-full mx-auto bg-gray-200/60 dark:bg-gray-800/60" />
-              <Skeleton className="h-6 w-48 mx-auto bg-gray-200/60 dark:bg-gray-800/60" />
-              <Skeleton className="h-4 w-64 mx-auto bg-gray-200/60 dark:bg-gray-800/60" />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex h-full overflow-hidden bg-gradient-to-br from-gray-50/30 to-gray-100/20 dark:from-gray-950/50 dark:to-gray-900/30" data-page-wrapper>
-          {/* Pane A: Conversation List (Left Sidebar) */}
-          <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} w-80 flex-col transition-all duration-300`}>
-            <div className="border-b border-gray-200/70 dark:border-gray-800/70 px-4 py-3 bg-gradient-to-b from-white/60 to-transparent dark:from-gray-900/60">
-              <PhoneLineSwitcher />
-            </div>
-            <ConversationListPane
-              conversations={sortedConversations}
-              selectedId={selectedConversation}
-              onSelect={setSelectedConversation}
-              isLoading={isLoading}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              filter={filter}
-              onFilterChange={setFilter}
-            />
-          </div>
+    <>
+      <NightOpsMessagesLayout
+        conversationList={conversationListNode}
+        threadView={threadViewNode}
+        contextPanel={contextPanelNode}
+        showContextPanel={showProfilePanel && !!selectedConversation}
+      />
 
-          {/* Pane B: Thread View (Center) */}
-          <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 min-h-0 transition-all duration-300`}>
-            {selectedConversation ? (
-              <ThreadPane
-                conversationId={selectedConversation}
-                onBack={() => setSelectedConversation(null)}
-                onTakeOver={handleTakeOver}
-                controlMode={selectedConv?.controlMode as any}
-                isMobile={false}
-              />
-            ) : (
-              <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-gray-50/30 dark:from-gray-950 dark:to-gray-900/30">
-                <div className="flex-1 flex items-center justify-center p-8">
-                  <div className="w-full max-w-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="text-center glass-card p-10 rounded-3xl">
-                      <div className="bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/20 dark:to-primary/10 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
-                        <MessageCircle className="h-12 w-12 text-primary" />
-                      </div>
-                      <h2 className="text-2xl font-bold mb-3 bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                        Select a conversation
-                      </h2>
-                      <p className="text-base text-muted-foreground/80 leading-relaxed">
-                        Choose a conversation from the list to view messages and reply
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-6 border-t border-gray-200/60 dark:border-gray-800/60 bg-white/50 dark:bg-gray-900/50">
-                  <RecentCallersWidget />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Pane C: Customer Sidebar (Right Sidebar) - Always mounted */}
-          <CustomerSidebar
-            customerInfo={selectedConversation ? customerInfo : null}
-            isOpen={showProfilePanel}
-            onClose={() => setShowProfilePanel(false)}
-            onBookAppointment={undefined}
-            isLoading={selectedConversation ? isLoadingCustomer : false}
-          />
-        </div>
-      )}
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        <Button 
+          size="sm" 
+          onClick={() => setShowComposeDialog(true)}
+          data-testid="button-compose"
+          className="nightops-button text-xs"
+        >
+          <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
+          New
+        </Button>
+        {selectedConversation && (
+          <>
+            <Button 
+              size="sm" 
+              onClick={() => setShowShareAvailabilityModal(true)}
+              data-testid="button-share-availability"
+              className="nightops-button text-xs"
+              title="Share calendar availability"
+            >
+              <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+              Share
+            </Button>
+            <Button 
+              size="sm" 
+              onClick={() => setShowProfilePanel(!showProfilePanel)}
+              className="nightops-button text-xs hidden lg:flex"
+              data-testid="button-toggle-profile"
+              title={showProfilePanel ? "Hide Context Panel" : "Show Context Panel"}
+            >
+              {showProfilePanel ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+            </Button>
+          </>
+        )}
+        <Button 
+          size="sm" 
+          onClick={() => setLocation('/phone')}
+          data-testid="button-phone"
+          className="nightops-button text-xs"
+          title="Phone & Voicemail"
+        >
+          <Phone className="h-3.5 w-3.5" />
+        </Button>
+      </div>
 
       <Composer
         isOpen={showComposeDialog}
@@ -369,28 +267,6 @@ function MessagesPageContent() {
         }}
       />
 
-      <Sheet open={showMobileProfileSheet} onOpenChange={setShowMobileProfileSheet}>
-        <SheetContent side="right" className="w-full sm:w-96 p-0 dark:bg-gray-900 dark:border-gray-800">
-          <SheetHeader className="px-6 py-4 border-b dark:border-gray-800">
-            <SheetTitle className="dark:text-white">Customer Details</SheetTitle>
-            <SheetDescription className="dark:text-gray-400">
-              View customer information and history
-            </SheetDescription>
-          </SheetHeader>
-          {selectedConversation && (
-            <div className="h-[calc(100vh-5rem)]">
-              <CustomerSidebar
-                customerInfo={customerInfo}
-                isOpen={true}
-                onClose={() => setShowMobileProfileSheet(false)}
-                onBookAppointment={undefined}
-                isLoading={isLoadingCustomer}
-              />
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
-
       {selectedConv && (
         <ShareAvailabilityModal
           open={showShareAvailabilityModal}
@@ -399,7 +275,6 @@ function MessagesPageContent() {
           contactFirstName={selectedConv.customerName?.split(' ')[0] || undefined}
           channelType={selectedConv.platform as 'sms' | 'email' | 'facebook' | 'instagram'}
           onMessageGenerated={(messageText) => {
-            // Copy to clipboard and show success toast
             navigator.clipboard.writeText(messageText);
             toast({
               title: 'Availability copied',
@@ -413,14 +288,14 @@ function MessagesPageContent() {
       {!selectedConversation && (
         <Button
           onClick={() => setShowComposeDialog(true)}
-          className="md:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow z-50"
+          className="lg:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full nightops-button-primary shadow-[0_0_20px_rgba(34,211,238,0.5)] z-50"
           size="icon"
           data-testid="fab-compose-mobile"
         >
           <PlusCircle className="h-6 w-6" />
         </Button>
       )}
-    </AppShell>
+    </>
   );
 }
 
