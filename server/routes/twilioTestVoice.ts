@@ -1,14 +1,16 @@
 import { Router, Request, Response } from 'express';
-import { twiml as TwiML } from 'twilio';
+import twilio from 'twilio';
 import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from '../twilioClient';
 
 export const twilioTestVoiceRouter = Router();
+
+const VoiceResponse = twilio.twiml.VoiceResponse;
 
 twilioTestVoiceRouter.post('/inbound', (req: Request, res: Response) => {
   const { From } = req.body || {};
   console.log('[TWILIO TEST VOICE INBOUND]', { From });
 
-  const response = new TwiML.VoiceResponse();
+  const response = new VoiceResponse();
   
   const gather = response.gather({
     numDigits: 1,
@@ -39,7 +41,7 @@ twilioTestVoiceRouter.post('/menu', async (req: Request, res: Response) => {
   const { Digits, From } = req.body || {};
   console.log('[TWILIO TEST VOICE MENU]', { From, Digits });
 
-  const response = new TwiML.VoiceResponse();
+  const response = new VoiceResponse();
 
   switch (Digits) {
     case '1':
@@ -95,7 +97,7 @@ twilioTestVoiceRouter.post('/menu', async (req: Request, res: Response) => {
 twilioTestVoiceRouter.post('/voicemail', (req: Request, res: Response) => {
   console.log('[TWILIO TEST VOICE VOICEMAIL] Starting recording for', req.body?.From);
   
-  const response = new TwiML.VoiceResponse();
+  const response = new VoiceResponse();
 
   response.say(
     { voice: 'Polly.Joanna', language: 'en-US' },
@@ -122,7 +124,7 @@ twilioTestVoiceRouter.post('/voicemail-complete', (req: Request, res: Response) 
     RecordingDuration 
   });
 
-  const response = new TwiML.VoiceResponse();
+  const response = new VoiceResponse();
   response.say(
     { voice: 'Polly.Joanna', language: 'en-US' },
     "Thanks for the details. We'll review your message and get back to you as soon as we can. Goodbye."
