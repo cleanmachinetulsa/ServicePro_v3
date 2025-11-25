@@ -2292,6 +2292,7 @@ export async function registerRoutes(app: Express) {
 
       // Use unified AI system - handles both general chat AND intelligent scheduling
       // PHASE 11: Pass tenantId for SMS-optimized prompts
+      // AI BEHAVIOR V2: Pass controlMode for state-aware prompts
       const response = await generateAIResponse(
         message,
         phone,
@@ -2299,7 +2300,8 @@ export async function registerRoutes(app: Express) {
         behaviorSettings,
         conversationHistory,
         false, // isDemoMode
-        tenantId // PHASE 11: tenant-aware SMS prompts
+        tenantId, // PHASE 11: tenant-aware SMS prompts
+        conversation.controlMode || 'auto' // AI BEHAVIOR V2: control mode awareness
       );
 
       // Save AI response

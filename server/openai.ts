@@ -440,25 +440,56 @@ export async function generateAIResponse(
   },
   conversationHistory?: Array<{ content: string; role: string; sender: string }>,
   isDemoMode: boolean = false,
-  tenantId?: string
+  tenantId?: string,
+  controlMode?: 'auto' | 'manual' | 'paused'  // AI BEHAVIOR V2: control mode awareness
 ) {
   try {
-    // PHASE 11: Use SMS-optimized prompt for SMS platform
+    // PHASE 11 + AI BEHAVIOR V2: Use SMS-optimized, state-aware prompt for SMS platform
     if (platform === 'sms' && tenantId) {
-      console.log('[PHASE 11 SMS AI] Using tenant-aware SMS prompt builder');
+      console.log('[AI BEHAVIOR V2] Using state-aware SMS prompt builder');
       const { buildSmsSystemPrompt } = await import('./ai/smsAgentPromptBuilder');
       
       try {
-        const smsSystemPrompt = await buildSmsSystemPrompt({ tenantId, phoneNumber });
+        // AI BEHAVIOR V2: Load conversation state
+        const currentState = conversationState.getState(phoneNumber);
+        const conversationStateInfo = {
+          customerName: currentState.customerName,
+          customerEmail: currentState.customerEmail,
+          address: currentState.address,
+          addressValidated: currentState.addressValidated,
+          service: currentState.service,
+          selectedTimeSlot: currentState.selectedTimeSlot,
+          addOns: currentState.addOns,
+          vehicles: currentState.vehicles
+        };
+        
+        // AI BEHAVIOR V2: Extract recent human messages if transitioning from manual mode
+        let recentHumanMessages: string[] | undefined;
+        if (controlMode === 'auto' && conversationHistory && conversationHistory.length > 0) {
+          // Find recent human agent messages (last 3)
+          recentHumanMessages = conversationHistory
+            .filter(msg => msg.sender === 'agent' || msg.sender === 'owner')
+            .slice(-3)
+            .map(msg => msg.content);
+        }
+        
+        const smsSystemPrompt = await buildSmsSystemPrompt({ 
+          tenantId, 
+          phoneNumber,
+          conversationState: conversationStateInfo,  // AI BEHAVIOR V2: pass state
+          controlMode,  // AI BEHAVIOR V2: pass control mode
+          recentHumanMessages  // AI BEHAVIOR V2: pass human context
+        });
         
         // Build messages array with SMS-optimized prompt
         const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
           { role: "system", content: smsSystemPrompt }
         ];
         
-        // Add conversation history
+        // Add conversation history (limit to last 15 messages for context window)
         if (conversationHistory && conversationHistory.length > 0) {
-          for (const msg of conversationHistory) {
+          const recentHistory = conversationHistory.slice(-15);  // AI BEHAVIOR V2: limit history
+          for (const msg of recentHistory) {
             if (msg.sender === 'customer') {
               messages.push({ role: "user", content: msg.content });
             } else if (msg.sender === 'ai') {
@@ -512,10 +543,10 @@ export async function generateAIResponse(
           console.warn(`[SMS AI] Response length ${finalResponse.length} exceeds 2 SMS segments (320 chars)`);
         }
         
-        console.log(`[PHASE 11 SMS AI] Generated response (${finalResponse.length} chars)`);
+        console.log(`[AI BEHAVIOR V2] Generated response (${finalResponse.length} chars)`);
         return finalResponse;
       } catch (smsPromptError) {
-        console.error('[PHASE 11 SMS AI] Error with SMS prompt builder, falling back to standard prompt:', smsPromptError);
+        console.error('[AI BEHAVIOR V2] Error with SMS prompt builder, falling back to standard prompt:', smsPromptError);
         // Fall through to standard prompt below
       }
     }
