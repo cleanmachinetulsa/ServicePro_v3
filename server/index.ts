@@ -372,6 +372,10 @@ app.use((req, res, next) => {
 
   // Run startup health checks for external services
   await runStartupHealthChecks();
+  
+  // Log SMS Agent model configuration
+  const { SMS_AGENT_MODEL } = await import('./openai');
+  console.log(`[AI] SMS agent model: ${SMS_AGENT_MODEL}`);
 
   // Start timeout monitoring for manual mode conversations
   const { startTimeoutMonitoring } = await import('./timeoutMonitorService');
