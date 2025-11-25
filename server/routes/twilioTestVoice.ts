@@ -42,7 +42,9 @@ twilioTestVoiceRouter.post("/inbound", (req, res) => {
 
     vr.redirect("/api/twilio/voice/inbound");
 
-    res.type("text/xml").send(vr.toString());
+    const twiml = vr.toString();
+    console.log("[TWILIO TEST VOICE INBOUND] Responding with TwiML:", twiml);
+    res.type("text/xml").status(200).send(twiml);
   } catch (err) {
     console.error("[TWILIO TEST VOICE ERROR - INBOUND]", err);
     const errorTwiml = new VoiceResponse();
@@ -128,7 +130,9 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
     vr.hangup();
   }
 
-  res.type("text/xml").send(vr.toString());
+  const twiml = vr.toString();
+  console.log("[TWILIO TEST VOICE HANDLE-KEY] Responding with TwiML:", twiml);
+  res.type("text/xml").status(200).send(twiml);
 });
 
 twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
@@ -144,11 +148,13 @@ twilioTestVoiceRouter.post("/voicemail-complete", (req, res) => {
     const vr = new VoiceResponse();
     vr.say(
       { voice: "alice", language: "en-US" },
-      "Thank you. Your message has been received. Goodbye."
+      "Thank you. Your message has been received. We will review it and get back to you as soon as possible. Goodbye."
     );
     vr.hangup();
 
-    res.type("text/xml").send(vr.toString());
+    const twiml = vr.toString();
+    console.log("[TWILIO TEST VOICE VOICEMAIL-COMPLETE] Responding with TwiML:", twiml);
+    res.type("text/xml").status(200).send(twiml);
   } catch (err) {
     console.error("[TWILIO TEST VOICE ERROR - VOICEMAIL COMPLETE]", err);
     const errorTwiml = new VoiceResponse();
