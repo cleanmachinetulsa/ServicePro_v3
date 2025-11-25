@@ -71,15 +71,29 @@ export async function buildBookingDraftFromConversation(
   let normalizedEnd: string | null = null;
 
   if (rawTimePreference) {
-    try {
-      const normalized = normalizeTimePreference(rawTimePreference);
-      normalizedDate = normalized.date;
-      normalizedWindow = normalized.windowLabel;
-      normalizedStart = normalized.startTime;
-      normalizedEnd = normalized.endTime;
-    } catch (error) {
-      // Parsing failed; leave fields as null
-      console.warn('[BOOKING DRAFT] Time preference parsing failed:', error);
+    // Check if this is already an ISO timestamp (e.g. "2025-11-25T14:00:00Z")
+    // vs natural language (e.g. "tomorrow morning")
+    const isISOTimestamp = !isNaN(Date.parse(rawTimePreference)) && 
+                           (rawTimePreference.includes('T') || rawTimePreference.includes('-'));
+    
+    if (isISOTimestamp) {
+      // Preserve existing behavior: use ISO timestamp directly
+      const timestamp = new Date(rawTimePreference);
+      normalizedDate = timestamp.toISOString().split('T')[0]; // Extract YYYY-MM-DD
+      normalizedStart = timestamp.toTimeString().slice(0, 5); // Extract HH:MM
+      // Keep rawTimePreference for context
+    } else {
+      // Natural language: parse with time window intelligence
+      try {
+        const normalized = normalizeTimePreference(rawTimePreference);
+        normalizedDate = normalized.date;
+        normalizedWindow = normalized.windowLabel;
+        normalizedStart = normalized.startTime;
+        normalizedEnd = normalized.endTime;
+      } catch (error) {
+        // Parsing failed; leave fields as null
+        console.warn('[BOOKING DRAFT] Time preference parsing failed:', error);
+      }
     }
   }
 
