@@ -49,6 +49,8 @@ import { registerTwilioVoiceAiRoutes } from './routes.twilioVoiceAi';
 import techJobRoutes from './routes.techJobs';
 import notificationRoutes from './routes.notifications';
 import twilioStatusCallbackRoutes from './routes.twilioStatusCallback';
+import { twilioTestSmsRouter } from './routes/twilioTestSms';
+import { twilioTestVoiceRouter } from './routes/twilioTestVoice';
 import facebookRoutes from './routes.facebook';
 import tagRoutes from './routes.tags';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
@@ -3444,6 +3446,11 @@ Follow up with this lead to set up their 14-day trial!
   // Register OLD Twilio Voice webhook routes (legacy - for click-to-call and admin features)
   app.use('/api/voice', voiceWebhookRoutes);
   app.use('/api/twilio', twilioStatusCallbackRoutes);
+  
+  // Register TEST Twilio SMS and Voice routes (for TWILIO_TEST_SMS_NUMBER only)
+  app.use('/api/twilio/sms', twilioTestSmsRouter);
+  app.use('/api/twilio/voice', twilioTestVoiceRouter);
+  console.log('[TWILIO TEST] Routes registered: /api/twilio/sms/inbound, /api/twilio/voice/inbound');
   
   // Register TwiML routes for technician WebRTC calling
   app.use('/twiml', twilmlRoutes);
