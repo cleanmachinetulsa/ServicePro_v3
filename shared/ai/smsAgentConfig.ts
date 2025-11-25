@@ -245,3 +245,63 @@ export const SAFETY_FALLBACK_MESSAGE = "Sorry, I'm having trouble right now. A h
  * Escalation acknowledgment message
  */
 export const ESCALATION_MESSAGE = "I understand you need additional help. I'm connecting you with a team member who will assist you shortly.";
+
+/**
+ * Booking Status Types for conversation state
+ */
+export type BookingStatus = 
+  | 'not_ready' 
+  | 'missing_info' 
+  | 'ready_for_draft' 
+  | 'ready_for_human_review' 
+  | 'ready_to_book' 
+  | 'out_of_area' 
+  | 'needs_approval';
+
+/**
+ * Interface for booking state used in status computation
+ */
+export interface BookingState {
+  customerName?: string | null;
+  service?: string | null;
+  serviceId?: number | null;
+  address?: string | null;
+  selectedTimeSlot?: string | null;
+  preferredDate?: string | null;
+  preferredTimeWindow?: string | null;
+  requiresManualApproval?: boolean;
+  inServiceArea?: boolean;
+}
+
+/**
+ * Compute booking status from conversation state
+ */
+export function getBookingStatusFromState(state: BookingState): BookingStatus {
+  const hasName = !!state.customerName;
+  const hasService = !!(state.service || state.serviceId);
+  const hasAddress = !!state.address;
+  const hasTime = !!(state.selectedTimeSlot || state.preferredDate || state.preferredTimeWindow);
+  
+  // Check if all required fields are present
+  const hasAllRequired = hasName && hasService && hasAddress && hasTime;
+  
+  if (!hasAllRequired) {
+    // Determine if we have any info at all
+    if (!hasName && !hasService && !hasAddress && !hasTime) {
+      return 'not_ready';
+    }
+    return 'missing_info';
+  }
+  
+  // All required fields present - check for special cases
+  if (state.inServiceArea === false) {
+    return 'out_of_area';
+  }
+  
+  if (state.requiresManualApproval) {
+    return 'ready_for_human_review';
+  }
+  
+  // Ready for booking (but still needs human approval per handshake rules)
+  return 'ready_for_draft';
+}
