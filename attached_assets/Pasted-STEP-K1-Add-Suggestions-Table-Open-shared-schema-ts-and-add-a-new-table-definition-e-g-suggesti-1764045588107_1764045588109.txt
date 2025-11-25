@@ -1,0 +1,351 @@
+STEP K1 – Add Suggestions Table
+
+Open shared/schema.ts and add a new table definition, e.g. suggestions:
+
+export const suggestions = pgTable('suggestions', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').nullable(),          // null = platform-level suggestion
+  customerId: integer('customer_id').nullable(),   // optional for logged-in or known customers
+  source: text('source').notNull(),                // 'platform' | 'tenant_customer' | 'tenant_owner'
+  context: text('context').nullable(),             // e.g. 'messaging', 'booking', 'website', etc.
+  message: text('message').notNull(),
+  name: text('name').nullable(),                   // optional name
+  contact: text('contact').nullable(),             // email or phone if they want follow-up
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  handled: boolean('handled').default(false).notNull(),
+  handledBy: text('handled_by').nullable(),
+  handledAt: timestamp('handled_at').nullable(),
+  notes: text('notes').nullable(),
+});
+
+
+If you use a Drizzle schema index export, add suggestions there too.
+
+Create a migration (the agent can generate it) that creates this table.
+
+STEP K2 – Server Routes for Suggestions
+
+Create server/routes/suggestions.ts:
+
+import { Router } from 'express';
+import { wrapTenantDb } from '../tenantDb';
+import { db } from '../db';
+import { suggestions } from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
+
+export const suggestionsRouter = Router();
+
+/**
+ * Platform-level suggestions: for ServicePro itself.
+ * e.g. admin feedback about the platform.
+ * Requires some form of admin auth middleware (reuse your existing one).
+ */
+suggestionsRouter.get('/platform', async (req: any, res) => {
+  try {
+    // TODO: add proper admin auth check
+    const rows = await db
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.tenantId, null))
+      .orderBy(desc(suggestions.createdAt))
+      .limit(200);
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('[SUGGESTIONS PLATFORM LIST ERROR]', err);
+    return res.status(500).json({ error: 'Failed to load suggestions' });
+  }
+});
+
+suggestionsRouter.post('/platform', async (req, res) => {
+  try {
+    const { message, context, name, contact } = req.body ?? {};
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const [row] = await db
+      .insert(suggestions)
+      .values({
+        tenantId: null,
+        source: 'platform',
+        context: context ?? null,
+        message,
+        name: name ?? null,
+        contact: contact ?? null,
+      })
+      .returning();
+
+    return res.json(row);
+  } catch (err) {
+    console.error('[SUGGESTIONS PLATFORM CREATE ERROR]', err);
+    return res.status(500).json({ error: 'Failed to save suggestion' });
+  }
+});
+
+/**
+ * Tenant-scoped suggestions: internal (tenant owner/staff).
+ * Uses tenantId from req.tenantId.
+ */
+suggestionsRouter.get('/tenant', async (req: any, res) => {
+  try {
+    const tenantId = req.tenantId as string;
+    const tenantDb = wrapTenantDb(db, tenantId);
+
+    const rows = await tenantDb
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.tenantId, tenantId))
+      .orderBy(desc(suggestions.createdAt))
+      .limit(200);
+
+    return res.json(rows);
+  } catch (err) {
+    console.error('[SUGGESTIONS TENANT LIST ERROR]', err);
+    return res.status(500).json({ error: 'Failed to load tenant suggestions' });
+  }
+});
+
+suggestionsRouter.post('/tenant', async (req: any, res) => {
+  try {
+    const tenantId = req.tenantId as string;
+    const { message, context, name, contact } = req.body ?? {};
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const tenantDb = wrapTenantDb(db, tenantId);
+
+    const [row] = await tenantDb
+      .insert(suggestions)
+      .values({
+        tenantId,
+        source: 'tenant_owner',
+        context: context ?? null,
+        message,
+        name: name ?? null,
+        contact: contact ?? null,
+      })
+      .returning();
+
+    return res.json(row);
+  } catch (err) {
+    console.error('[SUGGESTIONS TENANT CREATE ERROR]', err);
+    return res.status(500).json({ error: 'Failed to save suggestion' });
+  }
+});
+
+/**
+ * Public customer suggestions: mounted by subdomain, e.g.
+ * POST /api/public/:subdomain/suggestions
+ */
+suggestionsRouter.post('/public/:subdomain', async (req: any, res) => {
+  try {
+    const subdomain = req.params.subdomain as string;
+    const { message, context, name, contact } = req.body ?? {};
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // You should already have a way to resolve subdomain -> tenantId.
+    const tenantId = await req.resolveTenantIdFromSubdomain?.(subdomain);
+    if (!tenantId) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    const tenantDb = wrapTenantDb(db, tenantId);
+
+    const [row] = await tenantDb
+      .insert(suggestions)
+      .values({
+        tenantId,
+        source: 'tenant_customer',
+        context: context ?? null,
+        message,
+        name: name ?? null,
+        contact: contact ?? null,
+      })
+      .returning();
+
+    return res.json(row);
+  } catch (err) {
+    console.error('[SUGGESTIONS PUBLIC CREATE ERROR]', err);
+    return res.status(500).json({ error: 'Failed to save suggestion' });
+  }
+});
+
+/**
+ * Mark suggestion handled / add notes
+ */
+suggestionsRouter.patch('/:id', async (req: any, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Invalid id' });
+
+    const { handled, notes } = req.body ?? {};
+    const updates: any = {};
+
+    if (typeof handled === 'boolean') {
+      updates.handled = handled;
+      updates.handledAt = handled ? new Date().toISOString() : null;
+      updates.handledBy = handled ? (req.user?.email ?? 'system') : null;
+    }
+
+    if (typeof notes === 'string') {
+      updates.notes = notes;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No changes' });
+    }
+
+    const [row] = await db
+      .update(suggestions)
+      .set(updates)
+      .where(eq(suggestions.id, id))
+      .returning();
+
+    return res.json(row);
+  } catch (err) {
+    console.error('[SUGGESTIONS UPDATE ERROR]', err);
+    return res.status(500).json({ error: 'Failed to update suggestion' });
+  }
+});
+
+
+Then register in server/routes.ts:
+
+import { suggestionsRouter } from './routes/suggestions';
+app.use('/api/suggestions', suggestionsRouter);
+
+
+(Adjust path/import naming to match your conventions.)
+
+STEP K3 – Platform Admin UI: Suggestions Inbox
+
+Create: client/src/pages/admin/PlatformSuggestionsPage.tsx
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+export default function PlatformSuggestionsPage() {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['platform-suggestions'],
+    queryFn: async () => {
+      const res = await fetch('/api/suggestions/platform');
+      return res.json();
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async ({ id, handled }: { id: number; handled: boolean }) => {
+      const res = await fetch(`/api/suggestions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handled }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-suggestions'] });
+    },
+  });
+
+  if (isLoading) return <div>Loading suggestions...</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto py-6">
+      <h1 className="text-2xl font-semibold mb-4">ServicePro Feedback Inbox</h1>
+      <p className="text-sm text-muted-foreground mb-4">
+        These are suggestions and feedback left by platform users about ServicePro itself.
+      </p>
+
+      <div className="space-y-3">
+        {data?.length === 0 && (
+          <div className="text-sm text-muted-foreground">No suggestions yet.</div>
+        )}
+        {data?.map((s: any) => (
+          <div
+            key={s.id}
+            className="border rounded-lg p-3 flex flex-col gap-1 bg-card"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs text-muted-foreground">
+                #{s.id} • {new Date(s.createdAt).toLocaleString()}
+              </div>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${
+                  s.handled
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                }`}
+              >
+                {s.handled ? 'Handled' : 'Open'}
+              </span>
+            </div>
+            <div className="text-sm whitespace-pre-wrap">{s.message}</div>
+            {s.context && (
+              <div className="text-xs text-muted-foreground">
+                Context: {s.context}
+              </div>
+            )}
+            {(s.name || s.contact) && (
+              <div className="text-xs text-muted-foreground">
+                {s.name && <>From: {s.name} </>}
+                {s.contact && <>• Contact: {s.contact}</>}
+              </div>
+            )}
+            <div className="mt-2 flex gap-2">
+              {!s.handled && (
+                <button
+                  className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => mutation.mutate({ id: s.id, handled: true })}
+                >
+                  Mark as handled
+                </button>
+              )}
+              {s.handled && (
+                <button
+                  className="text-xs px-2 py-1 rounded bg-slate-200 dark:bg-slate-800"
+                  onClick={() => mutation.mutate({ id: s.id, handled: false })}
+                >
+                  Reopen
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+Add a route in your admin router to render this page (e.g. /admin/suggestions).
+
+STEP K4 – Tenant Admin: “Suggestions from Your Customers”
+
+In tenant admin UI (e.g. client/src/pages/admin/TenantSettings.tsx or similar), add:
+
+A toggle: “Enable public suggestions widget”
+
+A read-only snippet showing the POST URL:
+
+<div className="border rounded-lg p-3 mt-4">
+  <div className="font-medium mb-1">Customer Suggestions Widget</div>
+  <p className="text-xs text-muted-foreground mb-2">
+    You can embed a simple suggestions form on your website that posts directly to your ServicePro tenant.
+  </p>
+  <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
+    {`POST https://your-domain.com/api/suggestions/public/${tenant.subdomain}
+Body: { "message": string, "name"?: string, "contact"?: string, "context"?: string }`}
+  </pre>
+</div>
+
+
+We can later provide actual HTML snippet, but this v1 is enough.
+
+STEP K5 – Optional Tenant Suggestions Viewer
+
+Optionally add a TenantSuggestionsPage.tsx similar to the platform page but calling /api/suggestions/tenant so each tenant can see their own inbox.
