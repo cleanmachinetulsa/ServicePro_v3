@@ -64,12 +64,14 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
   const twimlResponse = new MessagingResponse();
   
   try {
+    console.log("[TWILIO TEST SMS INBOUND] Raw body:", req.body);
+    
     const { Body, From, To } = req.body || {};
     
-    console.log('[TWILIO TEST SMS INBOUND]', { 
-      From, 
-      To, 
-      Body: Body?.substring(0, 100) + (Body?.length > 100 ? '...' : '')
+    console.log("[TWILIO TEST SMS INBOUND] Parsed fields:", {
+      From: (req.body as any)?.From,
+      To: (req.body as any)?.To,
+      Body: (req.body as any)?.Body,
     });
     
     if (!Body || !From) {
@@ -104,6 +106,7 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
     twimlResponse.message(aiReply || "Thanks for your message! We'll follow up shortly.");
     
     console.log('[TWILIO TEST SMS INBOUND] AI reply sent:', aiReply?.substring(0, 100));
+    console.log("[TWILIO TEST SMS INBOUND] Responding with TwiML:", twimlResponse.toString());
     
     res.type('text/xml').send(twimlResponse.toString());
   } catch (err) {
