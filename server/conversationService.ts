@@ -8,6 +8,8 @@ import {
   broadcastControlModeChange,
   broadcastBehaviorUpdate,
 } from './websocketService';
+import { getBookingStatusFromState, BookingStatus } from '@shared/ai/smsAgentConfig';
+import { conversationState } from './conversationState';
 
 /**
  * Get all active conversations with customer info and latest message
@@ -148,10 +150,35 @@ export async function getConversationById(
     // Reverse to chronological order (oldest first)
     messagesForResponse.reverse();
 
+    // Compute booking status from conversation state (if phone number available)
+    let bookingStatus: BookingStatus = 'not_ready';
+    const conv = conversation[0];
+    
+    if (conv.customerPhone) {
+      try {
+        const state = conversationState.getState(conv.customerPhone);
+        // Map conversation state to booking status helper format
+        bookingStatus = getBookingStatusFromState({
+          customerName: state.customerName,
+          service: state.service,
+          serviceId: null,
+          address: state.address,
+          selectedTimeSlot: state.selectedTimeSlot,
+          preferredDate: null,
+          preferredTimeWindow: null,
+          requiresManualApproval: state.damageAssessmentRequested || false,
+          inServiceArea: state.isInServiceArea !== false,
+        });
+      } catch (stateError) {
+        console.error('[BOOKING STATUS] Error computing booking status:', stateError);
+      }
+    }
+
     return {
-      ...conversation[0],
+      ...conv,
       messages: messagesForResponse,
       hasMore,
+      bookingStatus, // Include booking readiness status
     };
   } catch (error) {
     console.error('Error getting conversation by ID:', error);
