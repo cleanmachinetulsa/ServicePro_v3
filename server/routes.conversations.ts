@@ -1161,6 +1161,34 @@ export function registerConversationRoutes(app: Express) {
     }
   });
 
+  // Get all vehicles for a customer (Vehicle Auto-Create feature)
+  app.get('/api/customers/:customerId/vehicles', async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params.customerId);
+
+      if (isNaN(customerId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid customer ID',
+        });
+      }
+
+      const tenantId = (req.tenant as any)?.id || 'root';
+      const { getCustomerVehicles } = await import('./services/vehicleCardService');
+      
+      const vehicles = await getCustomerVehicles(tenantId, customerId);
+      
+      res.json(vehicles);
+    } catch (error) {
+      console.error('Error fetching customer vehicles:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch vehicles',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
   // Assign conversation to agent
   app.post('/api/conversations/:id/assign', async (req: Request, res: Response) => {
     try {
