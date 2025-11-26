@@ -30,6 +30,69 @@ Key features include multi-platform messaging (Facebook Messenger, Instagram DMs
 ### System Design Choices
 The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, shadcn/ui, TanStack React Query, React Hook Form with Zod, Stripe) and an Express.js backend with TypeScript. Core patterns include a monolithic service layer, multi-channel response formatting for AI, a customer memory system, and Google Sheets integration as a dynamic knowledge base. Data is stored in PostgreSQL (Neon serverless) with Drizzle ORM, Google Sheets, and Google Drive. Authentication is session-based. The Express server uses `app.set('trust proxy', true)` for correct handling of Replit's multi-layer proxy infrastructure.
 
+## Common Bugs & Fixes
+
+### Multi-Tenant Database Pattern: Global vs Tenant-Scoped Tables
+
+**CRITICAL:** Not all tables have a `tenantId` column. Using `tenantDb.withTenantFilter()` on tables without `tenantId` will cause runtime errors.
+
+#### Global Tables (NO tenantId - use `db` directly):
+- `dailySendCounters` - daily email/SMS send limits
+- `orgSettings` - organization-wide settings
+- `phoneLines` - shared phone infrastructure
+- `sessions` - user sessions
+
+#### Error Symptoms:
+```
+TypeError: Cannot read properties of undefined (reading 'execute')
+TypeError: Cannot read properties of undefined (reading 'update')
+```
+
+#### Fix Pattern:
+```typescript
+// ❌ WRONG - Using tenant wrapper on global table
+const [counter] = await tenantDb
+  .select()
+  .from(dailySendCounters)
+  .where(tenantDb.withTenantFilter(dailySendCounters, eq(dailySendCounters.date, today)));
+
+// ✅ CORRECT - Using direct db access for global tables
+const { db } = await import('./db');
+const [counter] = await db
+  .select()
+  .from(dailySendCounters)
+  .where(eq(dailySendCounters.date, today));
+```
+
+#### Before Using withTenantFilter:
+1. Check `shared/schema.ts` to verify the table has a `tenantId` column
+2. If no `tenantId` column exists, use `db` directly instead of `tenantDb`
+
+### Background Service Scheduler Pattern
+
+Background cron jobs must pass `tenantDb` to service functions that require it.
+
+#### Error Symptoms:
+```
+TypeError: Cannot read properties of undefined (reading 'execute')
+```
+
+#### Fix Pattern:
+```typescript
+// ❌ WRONG - Missing tenantDb argument
+cron.schedule('0 * * * *', async () => {
+  await processSMSCampaigns();
+});
+
+// ✅ CORRECT - Create and pass tenantDb
+cron.schedule('0 * * * *', async () => {
+  const { wrapTenantDb } = await import('./tenantDb');
+  const { db } = await import('./db');
+  const tenantDb = wrapTenantDb(db, 'root');
+  await processSMSCampaigns(tenantDb);
+});
+```
+
 ## External Dependencies
 
 **Google Workspace Suite**:
