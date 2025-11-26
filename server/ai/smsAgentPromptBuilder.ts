@@ -45,6 +45,8 @@ interface ConversationStateInfo {
   // Booking status flags
   requiresManualApproval?: boolean;
   inServiceArea?: boolean;
+  // Voicemail context
+  lastVoicemailSummary?: string;
 }
 
 interface SmsPromptParams {
@@ -200,6 +202,11 @@ function buildKnownContext(state: ConversationStateInfo | undefined): string {
     knownFields.push(`- Email: ${state.customerEmail}`);
   }
   
+  if (state.lastVoicemailSummary) {
+    const summaryTrimmed = state.lastVoicemailSummary.trim().slice(0, 240);
+    knownFields.push(`- Recent voicemail from this customer: ${summaryTrimmed}`);
+  }
+
   if (knownFields.length === 0) {
     return 'KNOWN_CONTEXT: (none - this is a new conversation)';
   }

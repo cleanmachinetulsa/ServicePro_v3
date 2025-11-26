@@ -1,0 +1,353 @@
+You are updating the ServicePro v3 codebase for Clean Machine.
+
+GOAL
+When a voicemail is left and transcribed, send an email notification with:
+- Caller number (and our line)
+- Transcription text
+- AI voicemail summary (if available)
+- Recording URL (clickable)
+- A link to the Messages dashboard
+
+Constraints:
+- Reuse existing email/SendGrid plumbing if present (emailService, sendgridService, etc.).
+- Do NOT break existing voicemail → transcription → AI SMS reply → conversation sync.
+- Be tolerant of email failures (log, don’t crash the webhook).
+- Keep it tenant-safe but okay if first version just emails a global address (env var).
+
+------------------------------------------------
+0) QUICK ORIENTATION
+------------------------------------------------
+Locate these existing pieces (names may vary slightly):
+
+1) Voicemail transcription handler:
+   - server/routes/twilioTestVoiceRouter.ts
+   OR
+   - server/routes/twilioVoiceRouter.ts
+   OR similar.
+   You want the handler for:
+   - POST /api/twilio/voice/voicemail-transcription
+
+2) The helper we added last time:
+   - server/openai.ts
+     - generateVoicemailSummary(...)
+   And the call to:
+   - syncVoicemailIntoConversation(...)
+
+3) Email / SendGrid integration:
+   Look for:
+   - server/services/emailService.ts
+   - server/services/notificationService.ts
+   - server/services/sendgridService.ts
+   - or any file exporting a generic sendEmail / sendTransactionalEmail function.
+
+Search for:
+   - "SendGrid"
+   - "sgMail"
+   - "sendEmail("
+   - "emailService"
+
+If there is an existing email helper, extend it.
+If there is NOT, create a small emailNotificationService that uses the project’s existing approach to sending email (e.g., SendGrid, nodemailer, etc.). Prefer reusing any existing config/client.
+
+------------------------------------------------
+1) DEFINE ENV VAR FOR ALERT EMAIL
+------------------------------------------------
+We need a global alert destination email address.
+
+1) In the codebase where env vars are read (for example server/config/env.ts or similar):
+   - Add a new env var, e.g.:
+
+   ```ts
+   export const ALERT_EMAIL_TO =
+     process.env.ALERT_EMAIL_TO || process.env.NOTIFY_EMAIL_TO || null;
+If there’s already a pattern like:
+
+getEnv("FOO")
+then follow that pattern instead.
+
+This should NOT crash the app if missing. If ALERT_EMAIL_TO is null/empty, we’ll simply skip sending voicemail emails and log a warning.
+
+ADD sendVoicemailAlertEmail(...) TO EMAIL SERVICE
+
+In the main email service file (whichever exists and is used for transactional emails):
+
+If you already have something like:
+
+ts
+Copy code
+export async function sendEmail(options: {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  // ...
+}) { ... }
+then implement a new helper that wraps it.
+
+Create:
+
+ts
+Copy code
+// server/services/emailNotificationService.ts
+// OR in existing emailService.ts if appropriate.
+
+import { ALERT_EMAIL_TO } from "../config/env"; // adjust import path
+import { logger } from "../logger"; // adjust to whatever logger you use
+import { sendEmail } from "./emailService"; // or existing base email sender
+
+export interface VoicemailAlertPayload {
+  fromPhone: string;
+  toPhone: string;
+  transcriptionText: string;
+  voicemailSummary?: string | null;
+  recordingUrl?: string | null;
+  createdAtIso?: string;
+}
+
+export async function sendVoicemailAlertEmail(
+  payload: VoicemailAlertPayload,
+): Promise<void> {
+  if (!ALERT_EMAIL_TO) {
+    logger.warn("[voicemail-email] ALERT_EMAIL_TO not configured; skipping email", {
+      fromPhone: payload.fromPhone,
+      toPhone: payload.toPhone,
+    });
+    return;
+  }
+
+  const {
+    fromPhone,
+    toPhone,
+    transcriptionText,
+    voicemailSummary,
+    recordingUrl,
+    createdAtIso,
+  } = payload;
+
+  const subject = `New voicemail from ${fromPhone}`;
+
+  const dashboardUrl =
+    process.env.PUBLIC_DASHBOARD_URL ||
+    "https://servicepro-v-3-base-cleanmachinetul.replit.app/dashboard/messages";
+
+  const safeSummary =
+    voicemailSummary && voicemailSummary.trim().length > 0
+      ? voicemailSummary.trim()
+      : null;
+
+  const textLines: string[] = [
+    `You have a new voicemail.`,
+    ``,
+    `From: ${fromPhone}`,
+    `To line: ${toPhone}`,
+    createdAtIso ? `Received at: ${createdAtIso}` : "",
+    ``,
+    safeSummary ? `AI summary: ${safeSummary}` : "",
+    ``,
+    `Transcription:`,
+    transcriptionText || "(no transcription text provided)",
+    ``,
+    recordingUrl ? `Recording: ${recordingUrl}` : "",
+    ``,
+    `Open Messages dashboard: ${dashboardUrl}`,
+  ].filter(Boolean) as string[];
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #111;">
+      <h2 style="margin-bottom: 8px;">New voicemail received</h2>
+      <p><strong>From:</strong> ${fromPhone}</p>
+      <p><strong>To line:</strong> ${toPhone}</p>
+      ${
+        createdAtIso
+          ? `<p><strong>Received at:</strong> ${createdAtIso}</p>`
+          : ""
+      }
+      ${
+        safeSummary
+          ? `<p><strong>AI summary:</strong> ${safeSummary}</p>`
+          : ""
+      }
+      <h3 style="margin-top: 16px; margin-bottom: 4px;">Transcription</h3>
+      <pre style="background: #f4f4f5; padding: 8px 10px; border-radius: 4px; white-space: pre-wrap;">${transcriptionText ||
+        "(no transcription text provided)"}</pre>
+      ${
+        recordingUrl
+          ? `<p style="margin-top: 12px;"><a href="${recordingUrl}" target="_blank" rel="noopener noreferrer">▶ Play recording</a></p>`
+          : ""
+      }
+      <p style="margin-top: 16px;">
+        <a href="${dashboardUrl}" target="_blank" rel="noopener noreferrer">
+          Open Messages dashboard
+        </a>
+      </p>
+    </div>
+  `;
+
+  await sendEmail({
+    to: ALERT_EMAIL_TO,
+    subject,
+    text: textLines.join("\n"),
+    html,
+  });
+
+  logger.info("[voicemail-email] Sent voicemail alert email", {
+    to: ALERT_EMAIL_TO,
+    fromPhone,
+    toPhone,
+  });
+}
+ADAPT:
+
+Import paths (env, logger, sendEmail) to match your existing structure.
+
+If sendEmail has a slightly different signature, adjust accordingly.
+
+If there is no existing email service at all:
+
+Create emailNotificationService.ts to use whatever email provider you already have configured elsewhere (SendGrid client, etc.). Reuse that client instead of introducing brand new dependencies.
+
+CALL sendVoicemailAlertEmail FROM VOICEMAIL TRANSCRIPTION HANDLER
+
+Open the handler for POST /api/twilio/voice/voicemail-transcription.
+
+It should already:
+
+Extract:
+
+From (caller)
+
+To (your Twilio line)
+
+TranscriptionText
+
+RecordingUrl
+
+Call:
+
+generateVoicemailFollowupSms(...)
+
+generateVoicemailSummary(...)
+
+syncVoicemailIntoConversation(...)
+
+Modify it to send an email AFTER everything else is successfully processed.
+
+Import the helper:
+
+ts
+Copy code
+import { sendVoicemailAlertEmail } from "../services/emailNotificationService"; // adjust path
+After successful transcription handling and conversation sync, call it:
+
+ts
+Copy code
+try {
+  // existing code:
+  // const from = req.body.From;
+  // const to = req.body.To;
+  // const transcriptionText = req.body.TranscriptionText;
+  // const recordingUrl = req.body.RecordingUrl;
+  // const summary = await generateVoicemailSummary(...);
+  // await syncVoicemailIntoConversation(...);
+
+  const createdAtIso = new Date().toISOString();
+
+  await sendVoicemailAlertEmail({
+    fromPhone: from,
+    toPhone: to,
+    transcriptionText,
+    voicemailSummary: summary ?? undefined,
+    recordingUrl: recordingUrl ?? null,
+    createdAtIso,
+  });
+} catch (emailErr) {
+  logger.error("[voicemail-email] Failed to send voicemail alert email", {
+    error: emailErr,
+    from,
+    to,
+  });
+  // DO NOT throw; Twilio must still get 200 OK so voicemail flow is not retried forever
+}
+Ensure the route handler still returns 200 OK even if the email send fails:
+
+The main try/catch for the webhook should already handle errors; if not, wrap email sending in its own try/catch like above.
+
+OPTIONAL: CONFIGURE PUBLIC_DASHBOARD_URL
+
+For a nicer link in the email:
+
+In env config, add:
+
+ts
+Copy code
+export const PUBLIC_DASHBOARD_URL =
+  process.env.PUBLIC_DASHBOARD_URL ||
+  "https://servicepro-v-3-base-cleanmachinetul.replit.app/dashboard/messages";
+Use PUBLIC_DASHBOARD_URL in sendVoicemailAlertEmail instead of hardcoding.
+
+You can later change PUBLIC_DASHBOARD_URL per tenant/domain when white-labeling.
+
+SAFETY + LOGGING
+
+Always guard against missing ALERT_EMAIL_TO:
+
+Log a warning and skip sending email; do not throw.
+
+Log success and failure with the [voicemail-email] tag so it’s easy to find in logs.
+
+Ensure sendVoicemailAlertEmail is never awaited in a way that blocks Twilio from getting 200 OK if an exception escapes:
+
+All errors should be caught and logged, not propagated.
+
+QUICK TEST PLAN
+
+After code changes:
+
+Ensure it builds:
+
+Run tests / type checks:
+
+npm test or pnpm test
+
+tsc --noEmit if available.
+
+Set env var(s) in Replit:
+
+ALERT_EMAIL_TO = (your desired alert inbox)
+
+PUBLIC_DASHBOARD_URL if you want a custom link.
+
+Deploy / run and trigger a real voicemail:
+
+Call the Twilio test number.
+
+Press 3 to leave a voicemail.
+
+Wait for Twilio to send the transcription callback (usually a few seconds).
+
+Verify:
+
+You still get the SMS AI follow-up.
+
+The voicemail appears in /dashboard/messages with transcription + AI summary.
+
+An email arrives in ALERT_EMAIL_TO with:
+
+Subject “New voicemail from {caller-number}”.
+
+Transcription text.
+
+AI summary line.
+
+Recording link.
+
+Link to Messages dashboard.
+
+If all that passes, the voicemail email alerts feature is successfully implemented.
+
+FINAL REQUIREMENTS
+Do NOT modify any behavior related to the legacy 918-856-5304 production number.
+
+All new functionality must be additive and fail-safe.
+
+Summarize which files were changed and confirm that voicemail, AI SMS reply, and conversation sync still work as before.

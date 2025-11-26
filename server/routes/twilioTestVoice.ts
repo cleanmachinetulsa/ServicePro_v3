@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import twilio from "twilio";
 import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
-import { generateVoicemailFollowupSms } from "../openai";
+import { generateVoicemailFollowupSms, generateVoicemailSummary } from "../openai";
 import { syncVoicemailIntoConversation } from "../services/voicemailConversationService";
 import { db } from "../db";
 import { wrapTenantDb } from "../tenantDb";
@@ -231,6 +231,8 @@ twilioTestVoiceRouter.post(
       }
 
       let aiReply: string;
+      let voicemailSummary: string | null = null;
+      
       try {
         aiReply = await generateVoicemailFollowupSms(transcriptionText);
       } catch (err: any) {
@@ -240,6 +242,26 @@ twilioTestVoiceRouter.post(
         );
         aiReply =
           "Thanks for your voicemail! We received your message and will follow up with more details soon.";
+      }
+
+      try {
+        voicemailSummary = await generateVoicemailSummary({
+          transcriptionText,
+          fromPhone: from,
+          toPhone: to,
+          recordingUrl,
+          tenantName: "Clean Machine Auto Detail",
+        });
+        console.log("[voicemail-summary] Generated summary:", {
+          from,
+          to,
+          hasSummary: !!voicemailSummary,
+        });
+      } catch (summaryErr: any) {
+        console.warn(
+          "[voicemail-summary] Error generating summary (continuing without):",
+          summaryErr
+        );
       }
 
       console.log(
@@ -288,6 +310,7 @@ twilioTestVoiceRouter.post(
             transcriptionText,
             recordingUrl,
             aiReplyText: aiReply,
+            voicemailSummary,
             phoneLineId,
           });
           console.log(

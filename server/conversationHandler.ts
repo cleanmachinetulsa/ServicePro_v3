@@ -165,7 +165,8 @@ Customer message: ${message}`;
     const conversationHistory = messages.map((msg: typeof messagesTable.$inferSelect) => ({
       content: msg.content,
       role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
-      sender: msg.sender
+      sender: msg.sender,
+      metadata: msg.metadata as Record<string, any> | null
     }));
 
     // After 2-3 message exchanges, ask for contact info to enable booking
@@ -256,7 +257,8 @@ async function processAuthenticatedConversation(
     const conversationHistory = messages.map((msg: typeof messagesTable.$inferSelect) => ({
       content: msg.content,
       role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
-      sender: msg.sender
+      sender: msg.sender,
+      metadata: msg.metadata as Record<string, any> | null
     }));
 
     // Build enhanced message with campaign context if available
