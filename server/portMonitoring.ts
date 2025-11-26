@@ -73,8 +73,8 @@ async function checkPortStatus(): Promise<boolean> {
     const testId = crypto.randomBytes(16).toString('hex');
     const expiresAt = new Date(Date.now() + 30000); // 30 second timeout
     
-    // Store test status in database
-    await tenantDb.insert(orgSettings).values({
+    // Store test status in database (orgSettings is global, no tenantId)
+    await db.insert(orgSettings).values({
       settingKey: 'port_monitoring_test_status',
       settingValue: {
         testId,
