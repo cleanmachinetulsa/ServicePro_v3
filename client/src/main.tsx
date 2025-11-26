@@ -1,9 +1,14 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./index.css";
 import "./styles/nightOpsTheme.css";
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <AppErrorBoundary>
+    <App />
+  </AppErrorBoundary>
+);
 
 // Development mode detection
 const isDevelopment = window.location.hostname === 'localhost' ||
