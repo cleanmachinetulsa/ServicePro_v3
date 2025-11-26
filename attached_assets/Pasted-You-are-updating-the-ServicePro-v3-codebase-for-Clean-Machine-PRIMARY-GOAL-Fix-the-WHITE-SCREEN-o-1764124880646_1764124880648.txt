@@ -1,0 +1,125 @@
+You are updating the ServicePro v3 codebase for Clean Machine.
+
+PRIMARY GOAL:
+Fix the WHITE SCREEN on the deployed UI. Instead of guessing, you MUST:
+1) Install a global ErrorBoundary so the error becomes visible.
+2) Load the app and CAPTURE the real error.
+3) Apply ONE minimal fix based on that error.
+4) DO NOT touch tenantDb usage unless the table is truly global.
+
+NON-NEGOTIABLE RULES:
+- For tenant-scoped tables, ALWAYS use wrapTenantDb(db, tenantId). NEVER replace with db.
+- Only use db directly for global tables with NO tenantId column (e.g. orgSettings).
+- Do NOT mass-refactor, do NOT “fix everything”, do NOT rewrite tenant isolation.
+- The goal is to reveal the true crash, not assume it.
+
+───────────────────────────────────────────────────────────────
+STEP 1 — Add a GLOBAL ErrorBoundary so white screen becomes a readable message
+───────────────────────────────────────────────────────────────
+
+Create:  client/src/components/AppErrorBoundary.tsx
+
+--- FILE START ---
+
+import React from "react";
+
+type Props = { children: React.ReactNode };
+type State = { hasError: boolean; message?: string };
+
+export class AppErrorBoundary extends React.Component<Props, State> {
+  state: State = { hasError: false, message: undefined };
+
+  static getDerivedStateFromError(error: unknown): State {
+    return {
+      hasError: true,
+      message:
+        error instanceof Error ? error.message : "An unexpected error occurred.",
+    };
+  }
+
+  componentDidCatch(error: unknown, info: unknown) {
+    // console.error("[AppErrorBoundary]", error, info); // optional logging
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+          <div className="max-w-md px-6 py-4 rounded-2xl border border-slate-700 bg-slate-900/80 shadow-lg">
+            <h1 className="text-lg font-semibold mb-2">
+              Something went wrong loading the app.
+            </h1>
+            {this.state.message && (
+              <p className="text-sm text-slate-300 mb-3 break-words">
+                {this.state.message}
+              </p>
+            )}
+            <p className="text-xs text-slate-400">
+              Refresh the page. If it continues, screenshot this text.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+--- FILE END ---
+
+Then wrap the ENTIRE app with it in client/src/main.tsx or client/src/index.tsx:
+
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+  <React.StrictMode>
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
+  </React.StrictMode>
+);
+
+───────────────────────────────────────────────────────────────
+STEP 2 — RELOAD APP AND CAPTURE THE ERROR
+───────────────────────────────────────────────────────────────
+
+You MUST perform this step — do not auto-fix blindly.
+
+1. Run the app + open deployed URL.
+2. If still blank, open browser console.
+3. ErrorBoundary should now SHOW the crash message.
+4. Check network tab for failing calls (/api/...).
+5. Check server logs for stack trace mentioning tenant, wrapTenantDb, tenantId, or null config.
+
+When you find the failing file, add a 1-line comment at the top:
+
+// WHITE SCREEN ROOT CAUSE → <short summary>
+
+───────────────────────────────────────────────────────────────
+STEP 3 — APPLY ONE MINIMAL FIX BASED ON THAT ERROR
+───────────────────────────────────────────────────────────────
+
+Examples ONLY — do NOT apply unless they match your actual crash:
+
+A) If tenant resolution fails on .replit.app → fallback to Clean Machine root tenant or env ROOT_TENANT_ID.
+B) If tenantConfig is null → add null guards + safe handling instead of crashing.
+C) If an API returns 500 → fix only the function causing it, no global rewrites.
+
+DO NOT:
+❌ remove tenantDb usage
+❌ replace tenantDb -> db everywhere
+❌ restructure unrelated modules
+
+───────────────────────────────────────────────────────────────
+STEP 4 — VERIFY FIX
+───────────────────────────────────────────────────────────────
+
+Reload deployed UI. Expected outcome:
+
+✔ App loads OR
+✔ ErrorBoundary shows real readable error text instead of blank
+
+Then report to me:
+1) File that contained the crash
+2) Exact message displayed by the boundary
+3) The one change made to resolve it
+
+Only once the UI loads without white screen, we proceed to Twilio testing.
