@@ -148,18 +148,18 @@ async function checkPortStatus(): Promise<boolean> {
 
 /**
  * Poll database for test confirmation with timeout
+ * Note: orgSettings is a global table without tenantId, so we query directly
  */
 async function waitForTestConfirmation(testId: string, timeoutMs: number): Promise<boolean> {
-  const tenantDb = wrapTenantDb(db, 'root');
   const startTime = Date.now();
   const pollInterval = 1000; // Check every 1 second
   
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const [status] = await tenantDb
+      const [status] = await db
         .select()
         .from(orgSettings)
-        .where(tenantDb.withTenantFilter(orgSettings, eq(orgSettings.settingKey, 'port_monitoring_test_status')));
+        .where(eq(orgSettings.settingKey, 'port_monitoring_test_status'));
       
       if (status?.settingValue) {
         const testStatus = status.settingValue as any;
@@ -215,11 +215,10 @@ async function sendPortCompleteAlert() {
 }
 
 async function disablePortMonitoring() {
-  const tenantDb = wrapTenantDb(db, 'root');
-  
+  // Note: orgSettings is a global table without tenantId, so we use db directly
   try {
     // Store in database that monitoring is disabled
-    await tenantDb.insert(orgSettings).values({
+    await db.insert(orgSettings).values({
       settingKey: 'port_monitoring_disabled',
       settingValue: { disabled: true, disabledAt: new Date().toISOString() },
       description: 'Port monitoring automatically disabled after successful completion',
@@ -258,14 +257,14 @@ async function runDailyPortCheck() {
 }
 
 export async function initializePortMonitoring() {
-  const tenantDb = wrapTenantDb(db, 'root');
+  // Note: orgSettings is a global table without tenantId, so we query directly
   
   // Check if monitoring was previously disabled
   try {
-    const [setting] = await tenantDb
+    const [setting] = await db
       .select()
       .from(orgSettings)
-      .where(tenantDb.withTenantFilter(orgSettings, eq(orgSettings.settingKey, 'port_monitoring_disabled')));
+      .where(eq(orgSettings.settingKey, 'port_monitoring_disabled'));
 
     if (setting?.settingValue && (setting.settingValue as any).disabled === true) {
       console.log('[PORT MONITOR] Monitoring previously disabled - skipping initialization');
@@ -315,9 +314,8 @@ export async function initializePortMonitoring() {
  * Can be called from admin panel if user wants to restart monitoring
  */
 export async function enablePortMonitoring() {
-  const tenantDb = wrapTenantDb(db, 'root');
-  
-  await tenantDb.insert(orgSettings).values({
+  // Note: orgSettings is a global table without tenantId, so we use db directly
+  await db.insert(orgSettings).values({
     settingKey: 'port_monitoring_disabled',
     settingValue: { disabled: false, enabledAt: new Date().toISOString() },
     description: 'Port monitoring manually re-enabled',
