@@ -370,7 +370,10 @@ export function initializeEscalationExpiry() {
   cron.schedule('0 * * * *', async () => {
     console.log('[ESCALATION] Running scheduled task: checking for expired escalations');
     const { expireOldEscalations } = await import('./escalationService');
-    await expireOldEscalations();
+    const { wrapTenantDb } = await import('./tenantDb');
+    const { db } = await import('./db');
+    const tenantDb = wrapTenantDb(db, 'root');
+    await expireOldEscalations(tenantDb);
   });
 
   escalationExpirySchedulerInitialized = true;

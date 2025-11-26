@@ -16,7 +16,7 @@ export function initializeCampaignScheduler() {
       const tenantDb = wrapTenantDb(db, 'root');
       await Promise.all([
         processEmailCampaigns(tenantDb),
-        processSMSCampaigns()
+        processSMSCampaigns(tenantDb)
       ]);
     } catch (error) {
       console.error('[CAMPAIGN SCHEDULER] Error processing campaigns:', error);
@@ -37,7 +37,7 @@ export async function triggerCampaignProcessing() {
     const tenantDb = wrapTenantDb(db, 'root');
     await Promise.all([
       processEmailCampaigns(tenantDb),
-      processSMSCampaigns()
+      processSMSCampaigns(tenantDb)
     ]);
     return { success: true, message: 'Campaign processing triggered successfully' };
   } catch (error: any) {
