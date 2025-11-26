@@ -1,0 +1,206 @@
+You are updating the ServicePro v3 codebase for Clean Machine Auto Detail.
+
+EMERGENCY GOAL
+The deployed app currently shows a WHITE SCREEN and I cannot use ANY of the UI, including Night Ops or messages. Your mission is to:
+
+1) Identify the REAL root cause of the white screen (frontend and backend).
+2) Fix it with MINIMAL, targeted changes.
+3) Confirm that the deployed app and the dev server both load WITHOUT a white screen.
+4) Summarize exactly what you changed and why.
+
+You MUST treat this like a production outage, not a refactor exercise.
+
+NON-NEGOTIABLE RULES (READ CAREFULLY)
+- Multi-tenant safety:
+  - For TENANT-SCOPED tables (customers, conversations, messages, vehicles, bookings, etc.) you MUST use wrapTenantDb(db, tenantId) or an existing tenantDb object.
+  - DO NOT replace tenantDb with db on those tables.
+  - Only use db directly for tables that are explicitly GLOBAL and have NO tenantId column (e.g. orgSettings, migrations, global logs). If you are not 100% sure, LEAVE tenantDb as-is.
+- No massive rewrites, no “cleanup”:
+  - DO NOT refactor large sections of code.
+  - DO NOT rename modules, move files, or change APIs unless that is clearly the root cause.
+  - DO NOT guess; use logs, errors, and actual behavior to guide changes.
+- Honesty:
+  - DO NOT say “fixed” unless you have actually reloaded the app and seen it render without a white screen or fatal error.
+  - If you cannot fully fix it, clearly explain what the blocking error is.
+
+────────────────────────────────────────
+STEP 1 — INSTALL / VERIFY A GLOBAL ERROR BOUNDARY (FRONTEND)
+────────────────────────────────────────
+
+Goal: Even if something explodes, I should see an on-screen error instead of a blank page.
+
+1) Create or verify an ErrorBoundary component at:
+   client/src/components/AppErrorBoundary.tsx
+
+   If it does not exist, create it with something like:
+
+   import React from "react";
+
+   type Props = { children: React.ReactNode };
+   type State = { hasError: boolean; message?: string };
+
+   export class AppErrorBoundary extends React.Component<Props, State> {
+     state: State = { hasError: false, message: undefined };
+
+     static getDerivedStateFromError(error: unknown): State {
+       return {
+         hasError: true,
+         message:
+           error instanceof Error
+             ? error.message
+             : "An unexpected error occurred.",
+       };
+     }
+
+     componentDidCatch(error: unknown, info: unknown) {
+       // Optional: console.error("[AppErrorBoundary]", error, info);
+     }
+
+     render() {
+       if (this.state.hasError) {
+         return (
+           <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+             <div className="max-w-md px-6 py-4 rounded-2xl border border-slate-700 bg-slate-900/80 shadow-lg">
+               <h1 className="text-lg font-semibold mb-2">
+                 Something went wrong loading the app.
+               </h1>
+               {this.state.message && (
+                 <p className="text-sm text-slate-300 mb-3 break-words">
+                   {this.state.message}
+                 </p>
+               )}
+               <p className="text-xs text-slate-400">
+                 Try refreshing the page. If this keeps happening, screenshot
+                 this message and the console for debugging.
+               </p>
+             </div>
+           </div>
+         );
+       }
+       return this.props.children;
+     }
+   }
+
+2) Wrap the entire app in this boundary in the React entry point:
+   - Likely client/src/main.tsx or client/src/index.tsx
+
+   Example pattern (adapt to actual file):
+
+   import React from "react";
+   import ReactDOM from "react-dom/client";
+   import App from "./App";
+   import { AppErrorBoundary } from "./components/AppErrorBoundary";
+
+   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+     <React.StrictMode>
+       <AppErrorBoundary>
+         <App />
+       </AppErrorBoundary>
+     </React.StrictMode>,
+   );
+
+This is required so we can SEE the true error instead of a blank screen.
+
+────────────────────────────────────────
+STEP 2 — FIND THE REAL ROOT CAUSE (FRONTEND + BACKEND)
+────────────────────────────────────────
+
+Now, with the ErrorBoundary in place, you MUST find the actual error that causes the crash.
+
+1) Start the dev server (whatever script the repo uses, e.g. npm run dev or pnpm dev).
+2) Open the main dashboard route that should load after login (for example /dashboard/messages or the default home).
+3) Observe:
+   - If the page is still totally blank: open browser DevTools and check the Console for uncaught errors.
+   - If the ErrorBoundary renders, read the message it shows.
+4) Check the Network tab:
+   - Look for failed XHR/fetch calls (status 4xx or 5xx).
+   - Note which URLs are failing, especially /api/… endpoints.
+5) In the Replit server logs:
+   - Look for stack traces that line up with the failing API calls.
+   - Pay special attention to:
+     - tenant resolution
+     - wrapTenantDb
+     - tenantId
+     - tenantConfig being null/undefined
+     - any unhandled exception at app startup.
+
+6) Once you identify the FIRST fatal error that is actually breaking initial render, add a short comment at the top of the most relevant file:
+
+   // WHITE SCREEN ROOT CAUSE:
+   // <brief description, e.g. "/api/session throws because no tenant for this host">
+
+You MUST base your fix on THIS real error, not on guesses.
+
+────────────────────────────────────────
+STEP 3 — FIX THE ROOT CAUSE WITH MINIMAL CHANGES
+────────────────────────────────────────
+
+Now that you know the real root cause, apply a minimal, targeted fix.
+
+Some common patterns (ONLY use if they match what you found):
+
+A) Tenant / host resolution failure:
+   - If the app crashes because no tenant is found for the Replit .replit.app host, then:
+     - In the tenant resolution logic (e.g. getCurrentTenant, getTenantFromRequest, resolveTenantFromHost), add a safe fallback to the Clean Machine root tenant or to an env like ROOT_TENANT_ID when the host matches the default Replit deployment domain.
+     - Do NOT change behavior for custom/white-label domains.
+     - Log clearly when the fallback is used.
+
+B) Missing tenantConfig or required config:
+   - If code assumes tenantConfig is non-null and it isn’t:
+     - Add a defensive guard:
+
+       if (!tenantConfig) {
+         logger.error("[tenant] Missing tenantConfig for tenant", { tenantId });
+         // Return a safe default or throw a controlled error, but do NOT crash the React app.
+       }
+
+     - On the backend, return a structured error message the frontend can handle.
+     - On the frontend, handle this by showing a user-friendly “config missing” message instead of crashing.
+
+C) Build-time or import error:
+   - If the error is something like “Cannot find module X” or a bad import:
+     - Fix the specific import path or export.
+     - Do not rewrite unrelated modules.
+
+D) Bad assumptions in Night Ops or Messages:
+   - If the Messages/Night Ops page assumes some field exists (e.g. message.metadata.voicemailSummary) and it might be undefined:
+     - Add safe optional chaining and defaults instead of assuming presence.
+     - Keep the UI stable even if some data is missing.
+
+IMPORTANT:
+- Keep changes scoped to the failing path.
+- Do NOT touch other areas (e.g. SMS agent, route optimizer, etc.) unless the stack trace clearly points there.
+- Do NOT globally replace tenantDb with db.
+
+────────────────────────────────────────
+STEP 4 — VERIFY: NO MORE WHITE SCREEN
+────────────────────────────────────────
+
+After applying your minimal fix:
+
+1) Restart or reload the dev server.
+2) Load the main dashboard route again in the dev environment.
+3) Confirm:
+   - The React app renders normally (no white screen).
+   - The ErrorBoundary is NOT triggered on initial load.
+4) Then check the deployed .replit.app URL and confirm the same: page loads without a white screen.
+
+If there is still an error:
+- Use the ErrorBoundary message + console logs + server logs to refine the fix.
+- Again, DO NOT guess. Base fixes only on actual errors.
+
+────────────────────────────────────────
+STEP 5 — FINAL SUMMARY (WRITE THIS DOWN)
+────────────────────────────────────────
+
+When you are done, you MUST provide a clear summary (in a comment in replit.md or a similar log file), including:
+
+1) The exact white-screen root cause you found (copy the ErrorBoundary or console error message).
+2) The specific files you changed (list them).
+3) The minimal fix you applied in each file.
+4) Confirmation that:
+   - The dev server loads the UI.
+   - The deployed .replit.app URL loads the UI.
+   - No tenant isolation rules were broken.
+
+Only after these conditions are true should you consider the white screen “fixed”.
