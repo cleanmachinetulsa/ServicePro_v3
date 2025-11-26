@@ -837,3 +837,121 @@ Clean Machine Auto Detail
 
   return await sendBusinessEmail(toEmail, subject, textContent, htmlContent);
 }
+
+const ALERT_EMAIL_TO = process.env.ALERT_EMAIL_TO || process.env.NOTIFY_EMAIL_TO || null;
+const PUBLIC_DASHBOARD_URL = process.env.PUBLIC_DASHBOARD_URL || 
+  "https://servicepro-v-3-base-cleanmachinetul.replit.app/dashboard/messages";
+
+export interface VoicemailAlertPayload {
+  fromPhone: string;
+  toPhone: string;
+  transcriptionText: string;
+  voicemailSummary?: string | null;
+  recordingUrl?: string | null;
+  createdAtIso?: string;
+}
+
+export async function sendVoicemailAlertEmail(
+  payload: VoicemailAlertPayload
+): Promise<{ success: boolean; error?: any }> {
+  if (!ALERT_EMAIL_TO) {
+    console.warn("[voicemail-email] ALERT_EMAIL_TO not configured; skipping email", {
+      fromPhone: payload.fromPhone,
+      toPhone: payload.toPhone,
+    });
+    return { success: true };
+  }
+
+  const {
+    fromPhone,
+    toPhone,
+    transcriptionText,
+    voicemailSummary,
+    recordingUrl,
+    createdAtIso,
+  } = payload;
+
+  const subject = `New voicemail from ${fromPhone}`;
+
+  const safeSummary =
+    voicemailSummary && voicemailSummary.trim().length > 0
+      ? voicemailSummary.trim()
+      : null;
+
+  const textLines: string[] = [
+    `You have a new voicemail.`,
+    ``,
+    `From: ${fromPhone}`,
+    `To line: ${toPhone}`,
+    createdAtIso ? `Received at: ${createdAtIso}` : "",
+    ``,
+    safeSummary ? `AI summary: ${safeSummary}` : "",
+    ``,
+    `Transcription:`,
+    transcriptionText || "(no transcription text provided)",
+    ``,
+    recordingUrl ? `Recording: ${recordingUrl}` : "",
+    ``,
+    `Open Messages dashboard: ${PUBLIC_DASHBOARD_URL}`,
+  ].filter(Boolean) as string[];
+
+  const htmlContent = `
+    <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; color: #111; max-width: 600px; margin: 0 auto;">
+      <h2 style="margin-bottom: 8px; color: #1e3a5f;">New voicemail received</h2>
+      <p><strong>From:</strong> ${fromPhone}</p>
+      <p><strong>To line:</strong> ${toPhone}</p>
+      ${createdAtIso ? `<p><strong>Received at:</strong> ${createdAtIso}</p>` : ""}
+      ${safeSummary ? `
+        <div style="background: #e0f7fa; border-left: 4px solid #00bcd4; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+          <strong style="color: #006064;">AI Summary:</strong>
+          <p style="margin: 8px 0 0 0;">${safeSummary}</p>
+        </div>
+      ` : ""}
+      <h3 style="margin-top: 16px; margin-bottom: 4px; color: #1e3a5f;">Transcription</h3>
+      <pre style="background: #f4f4f5; padding: 12px 14px; border-radius: 4px; white-space: pre-wrap; font-size: 13px; line-height: 1.5; overflow-x: auto;">${transcriptionText || "(no transcription text provided)"}</pre>
+      ${recordingUrl ? `
+        <p style="margin-top: 12px;">
+          <a href="${recordingUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 10px 20px; background: #1e3a5f; color: white; text-decoration: none; border-radius: 4px;">
+            &#9654; Play recording
+          </a>
+        </p>
+      ` : ""}
+      <p style="margin-top: 20px;">
+        <a href="${PUBLIC_DASHBOARD_URL}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 10px 20px; background: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">
+          Open Messages Dashboard
+        </a>
+      </p>
+      <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
+      <p style="color: #666; font-size: 12px;">This is an automated notification from ServicePro.</p>
+    </div>
+  `;
+
+  try {
+    const result = await sendBusinessEmail(ALERT_EMAIL_TO, subject, textLines.join("\n"), htmlContent);
+    
+    if (result.success) {
+      console.log("[voicemail-email] Sent voicemail alert email", {
+        to: ALERT_EMAIL_TO,
+        fromPhone,
+        toPhone,
+      });
+    } else {
+      console.error("[voicemail-email] Failed to send voicemail alert email", {
+        to: ALERT_EMAIL_TO,
+        fromPhone,
+        toPhone,
+        error: result.error,
+      });
+    }
+    
+    return result;
+  } catch (error) {
+    console.error("[voicemail-email] Exception sending voicemail alert email", {
+      to: ALERT_EMAIL_TO,
+      fromPhone,
+      toPhone,
+      error,
+    });
+    return { success: false, error };
+  }
+}
