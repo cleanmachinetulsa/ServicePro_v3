@@ -44,7 +44,8 @@ async function getConversationHistory(tenantDb: any, conversationId: number) {
   return msgs.map((msg: typeof messagesTable.$inferSelect) => ({
     content: msg.content,
     role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
-    sender: msg.sender
+    sender: msg.sender,
+    metadata: msg.metadata as Record<string, any> | null
   }));
 }
 

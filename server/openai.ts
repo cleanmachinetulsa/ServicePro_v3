@@ -111,6 +111,78 @@ export async function generateVoicemailFollowupSms(transcriptionText: string): P
 }
 
 /**
+ * Generate a short AI summary of a voicemail transcription.
+ * Used to provide quick context in the Messages UI and SMS agent prompts.
+ */
+export interface VoicemailSummaryInput {
+  transcriptionText: string;
+  fromPhone: string;
+  toPhone: string;
+  recordingUrl?: string;
+  tenantName?: string;
+}
+
+export async function generateVoicemailSummary(
+  input: VoicemailSummaryInput
+): Promise<string | null> {
+  if (!openai) {
+    console.warn('[voicemail-summary] OpenAI not configured, skipping summary generation');
+    return null;
+  }
+
+  const trimmed = (input.transcriptionText || "").trim();
+  if (!trimmed) {
+    console.warn('[voicemail-summary] Empty transcription, skipping summary');
+    return null;
+  }
+
+  const systemPrompt = `You are an assistant summarizing voicemails for a mobile auto detailing business${input.tenantName ? ` (${input.tenantName})` : ''}.
+Write a VERY short summary (1-2 sentences max, no bullets, no emojis) of what the caller wants.
+
+Focus on:
+- Vehicle details (year/make/model) if mentioned
+- Interior vs exterior vs full detail
+- Any requested date/time window
+- Any special concerns (stains, pet hair, bad odor, etc.)
+
+Tone: neutral, factual, concise. Do NOT invent details not mentioned in the voicemail.`;
+
+  const userPrompt = `VOICEMAIL TRANSCRIPT:
+${trimmed}
+
+Caller phone: ${input.fromPhone}
+Our line: ${input.toPhone}
+Recording URL: ${input.recordingUrl ?? "n/a"}
+
+Write a 1-2 sentence summary:`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: SMS_AGENT_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_completion_tokens: 80,
+      temperature: 0.3,
+    });
+
+    const summary = response.choices?.[0]?.message?.content?.trim() || null;
+    
+    console.log("[voicemail-summary] Generated summary:", {
+      transcriptionLength: trimmed.length,
+      summaryLength: summary?.length ?? 0,
+      hasSummary: !!summary,
+    });
+
+    return summary;
+  } catch (err) {
+    console.error("[voicemail-summary] Error generating summary:", err);
+    return null;
+  }
+}
+
+/**
  * OpenAI Function Schemas for Scheduling Tools
  * These allow the AI to intelligently schedule appointments using real data
  */
@@ -515,6 +587,19 @@ export async function generateAIResponse(
       try {
         // AI BEHAVIOR V2: Load conversation state
         const currentState = conversationState.getState(phoneNumber);
+        
+        // Extract last voicemail summary from conversation history (newest first)
+        let lastVoicemailSummary: string | undefined;
+        if (conversationHistory && conversationHistory.length > 0) {
+          for (let i = conversationHistory.length - 1; i >= 0; i--) {
+            const msg = conversationHistory[i] as any;
+            if (msg.metadata?.type === 'voicemail' && msg.metadata?.voicemailSummary) {
+              lastVoicemailSummary = msg.metadata.voicemailSummary;
+              break;
+            }
+          }
+        }
+        
         const conversationStateInfo = {
           customerName: currentState.customerName,
           customerEmail: currentState.customerEmail,
@@ -523,7 +608,8 @@ export async function generateAIResponse(
           service: currentState.service,
           selectedTimeSlot: currentState.selectedTimeSlot,
           addOns: currentState.addOns,
-          vehicles: currentState.vehicles
+          vehicles: currentState.vehicles,
+          lastVoicemailSummary,
         };
         
         // AI BEHAVIOR V2: Extract recent human messages if transitioning from manual mode

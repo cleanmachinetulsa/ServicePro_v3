@@ -155,6 +155,7 @@ export default function MessageBubble({
   const metadata = message.metadata as Record<string, any> | null;
   const isVoicemail = metadata?.type === 'voicemail' || (message.content && (message.content as string).startsWith('🎙️ Voicemail:'));
   const voicemailRecordingUrl = metadata?.recordingUrl || null;
+  const voicemailSummary = metadata?.voicemailSummary || null;
 
   return (
     <div
@@ -280,6 +281,26 @@ export default function MessageBubble({
                 ? (message.content as string).replace('🎙️ Voicemail:\n\n', '')
                 : (message.content as string)}
             </p>
+          )}
+          
+          {/* AI Voicemail Summary */}
+          {isVoicemail && voicemailSummary && (
+            <div className={`mt-2 rounded-md px-2.5 py-1.5 text-xs ${
+              isCustomer 
+                ? 'bg-white/40 dark:bg-gray-900/40 border border-gray-300/40 dark:border-gray-600/40'
+                : 'bg-white/15 border border-white/20'
+            }`} data-testid="voicemail-summary">
+              <div className={`font-semibold uppercase tracking-wide text-[0.65rem] mb-0.5 ${
+                isCustomer
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-sky-200'
+              }`}>
+                AI Summary
+              </div>
+              <div className={isCustomer ? 'text-gray-700 dark:text-gray-200' : 'text-white/90'}>
+                {voicemailSummary}
+              </div>
+            </div>
           )}
           
           {/* Attachments */}

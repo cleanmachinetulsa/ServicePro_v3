@@ -15,6 +15,7 @@ export interface VoicemailSyncPayload {
   transcriptionText: string;
   recordingUrl?: string | null;
   aiReplyText?: string | null;
+  voicemailSummary?: string | null;
   phoneLineId?: number;
 }
 
@@ -28,6 +29,7 @@ export async function syncVoicemailIntoConversation(
     transcriptionText,
     recordingUrl,
     aiReplyText,
+    voicemailSummary,
     phoneLineId,
   } = payload;
 
@@ -37,6 +39,7 @@ export async function syncVoicemailIntoConversation(
     transcriptionLength: transcriptionText?.length,
     hasRecording: !!recordingUrl,
     hasAiReply: !!aiReplyText,
+    hasSummary: !!voicemailSummary,
     phoneLineId,
   });
 
@@ -65,6 +68,7 @@ export async function syncVoicemailIntoConversation(
     transcribedAt: new Date().toISOString(),
     source: 'twilio',
     channel: 'voice',
+    voicemailSummary: voicemailSummary || null,
   };
 
   await addMessage(
