@@ -175,12 +175,14 @@ async function populateCampaignRecipients(tenantDb: TenantDb, campaignId: number
  * Get or create today's send counter
  */
 async function getTodaySendCounter(tenantDb: TenantDb) {
+  // Note: dailySendCounters is a global table without tenantId, so we use db directly
+  const { db } = await import('./db');
   const today = new Date().toISOString().split('T')[0];
   
-  const [counter] = await tenantDb
+  const [counter] = await db
     .select()
     .from(dailySendCounters)
-    .where(tenantDb.withTenantFilter(dailySendCounters, eq(dailySendCounters.date, today)))
+    .where(eq(dailySendCounters.date, today))
     .limit(1);
   
   if (counter) {
@@ -188,7 +190,7 @@ async function getTodaySendCounter(tenantDb: TenantDb) {
   }
   
   // Create new counter for today
-  const [newCounter] = await tenantDb
+  const [newCounter] = await db
     .insert(dailySendCounters)
     .values({
       date: today,
@@ -215,22 +217,21 @@ async function canSendEmail(tenantDb: TenantDb): Promise<boolean> {
  * Returns true if increment succeeded (within limit), false if limit reached
  */
 async function incrementEmailCounterAtomic(tenantDb: TenantDb): Promise<boolean> {
+  // Note: dailySendCounters is a global table without tenantId, so we use db directly
+  const { db } = await import('./db');
   const today = new Date().toISOString().split('T')[0];
   
   // Atomic update: only increment if under limit
-  const result = await tenantDb
+  const result = await db
     .update(dailySendCounters)
     .set({
       emailCount: sql`${dailySendCounters.emailCount} + 1`,
       updatedAt: new Date(),
     })
     .where(
-      tenantDb.withTenantFilter(
-        dailySendCounters,
-        and(
-          eq(dailySendCounters.date, today),
-          sql`${dailySendCounters.emailCount} < ${dailySendCounters.emailLimit}`
-        )
+      and(
+        eq(dailySendCounters.date, today),
+        sql`${dailySendCounters.emailCount} < ${dailySendCounters.emailLimit}`
       )
     )
     .returning();
