@@ -1,0 +1,387 @@
+DROP-IN: Voicemail → Conversation Sync (Backend + Conversation DB)
+
+Paste this whole block into the Replit AI for Servicepro-v3-base.
+
+You are editing the Servicepro-v3-base repo.
+
+GOAL
+Wire Twilio test-number voicemails into the existing conversation system.
+
+When a voicemail is transcribed (Twilio → /api/twilio/voice/voicemail-transcription):
+
+1. Find or create the customer based on the phone number (same logic as inbound SMS).
+2. Find or create the conversation associated with that customer (same logic as inbound SMS).
+3. Insert a "voicemail" message into the conversation:
+   - direction: inbound
+   - source: "voice" or "voicemail"
+   - bodyText: transcription
+   - recordingUrl: Twilio RecordingUrl
+   - mark as unread for human
+4. Insert a system message noting that an AI SMS reply was sent.
+5. Mark the conversation as needing human follow-up using whatever field/flag is already used for SMS escalations or needs-attention.
+
+Do NOT break existing SMS flow.
+Do NOT change bookingDraftService.
+Do NOT touch production non-test Twilio routes.
+
+We are only extending the test voice path for now:
+- server/routes/twilioTestVoice.ts
+- server/openai.ts
+- existing conversation/message services.
+
+==================================================
+STEP 0 – Discover existing conversation/message services
+==================================================
+
+1. Search the server codebase for the main inbound SMS handler and conversation logic. Look for files like:
+
+- server/routes/twilioSms.ts
+- server/routes/twilioTestSms.ts
+- server/services/conversationService.ts
+- server/services/messageService.ts
+- server/services/smsService.ts
+- Anything with "createConversation", "createMessage", "ensureConversation", etc.
+
+2. Identify the functions that are used in the inbound SMS route to:
+   - Given From/To numbers, locate or create:
+     - customer record
+     - conversation record
+   - Insert a message row into the DB representing the inbound SMS.
+   - Update conversation state (last message, unread, needsAttention/escalated, etc).
+
+3. We will REUSE those helpers instead of re-inventing:
+   - If there is an "ensureConversationForSms" or similar, we will create an analogous "ensureConversationForVoice" that wraps the same core logic but can tag the channel as "voice" or "voicemail".
+   - If there is a generic "createMessageForConversation" helper, we will use it.
+
+DO NOT rename any existing functions.
+DO NOT change the behavior of the SMS path; only add new functionality that calls into the same core helpers.
+
+==================================================
+STEP 1 – Create voicemail conversation helper service
+==================================================
+
+Create a new file to encapsulate voicemail → conversation syncing:
+
+- Path: server/services/voicemailConversationService.ts
+
+Implement it using the patterns from the SMS conversation/message helpers you discovered in STEP 0.
+
+Example structure (ADAPT to actual types/exports):
+
+```ts
+// server/services/voicemailConversationService.ts
+import { db } from "../db";
+import {
+  // import conversation/message/customer schemas or types as needed
+} from "@shared/schema";
+import {
+  // import existing helpers used by SMS inbound
+  ensureCustomerForPhone, // <-- adapt to real name
+  ensureConversationForCustomer, // <-- adapt
+  createConversationMessage, // <-- adapt
+  markConversationNeedsAttention, // <-- adapt
+} from "./conversationService"; // or wherever these live
+
+export interface VoicemailSyncPayload {
+  fromPhone: string;         // E.164 from Twilio body.From
+  toPhone: string;           // Twilio body.To (may map to tenant line)
+  transcriptionText: string; // Twilio body.TranscriptionText
+  recordingUrl?: string | null;
+  aiReplyText?: string | null;
+}
+
+/**
+ * Syncs a transcribed voicemail into the conversation system:
+ * - locate or create customer based on phone
+ * - locate or create conversation
+ * - insert a "voicemail" inbound message with transcription + recording URL
+ * - insert a system message noting AI reply (if provided)
+ * - mark conversation as needing human follow-up / attention
+ */
+export async function syncVoicemailIntoConversation(
+  payload: VoicemailSyncPayload
+): Promise<void> {
+  const {
+    fromPhone,
+    toPhone,
+    transcriptionText,
+    recordingUrl,
+    aiReplyText,
+  } = payload;
+
+  // 1) Ensure customer exists for this phone (reuse SMS helper)
+  const customer = await ensureCustomerForPhone(fromPhone, toPhone);
+  // If your helper signature is different, adapt this call accordingly.
+
+  // 2) Ensure there is a conversation for this customer
+  const conversation = await ensureConversationForCustomer(customer.id, {
+    // pass any channel or metadata flag you support, for example:
+    channel: "voice", // or "voicemail"
+    sourcePhone: toPhone,
+  });
+
+  // 3) Insert inbound "voicemail" message
+  await createConversationMessage({
+    conversationId: conversation.id,
+    customerId: customer.id,
+    direction: "inbound",
+    channel: "voice",      // or "voicemail" if your schema supports it
+    messageType: "voicemail",
+    bodyText: transcriptionText,
+    recordingUrl: recordingUrl || null,
+    // mark as unread / needing human by default
+    isRead: false,
+    isFromAi: false,
+    meta: {
+      via: "voicemail",
+      source: "twilio",
+    },
+  });
+
+  // 4) Insert a system message noting AI SMS reply (if provided)
+  if (aiReplyText && aiReplyText.trim().length > 0) {
+    await createConversationMessage({
+      conversationId: conversation.id,
+      customerId: customer.id,
+      direction: "system",
+      channel: "sms",
+      messageType: "system",
+      bodyText: `AI SMS reply sent in response to voicemail: "${aiReplyText}"`,
+      isRead: false,
+      isFromAi: true,
+      meta: {
+        via: "voicemail_followup",
+      },
+    });
+  }
+
+  // 5) Mark conversation as needing human attention
+  // Reuse the same helper/flag used when AI escalates or when an SMS requires manual follow-up.
+  await markConversationNeedsAttention(conversation.id, {
+    reason: "voicemail",
+    source: "voice",
+  });
+}
+
+
+IMPORTANT:
+
+Replace ensureCustomerForPhone, ensureConversationForCustomer, createConversationMessage, markConversationNeedsAttention with the actual helpers in this repo.
+
+If there is no dedicated markConversationNeedsAttention, but there is an escalation or status field on conversations, use that pattern (e.g. set status = "needs_human" or escalationReason = "voicemail").
+
+If your message schema uses different field names (e.g. content instead of bodyText), adapt accordingly.
+
+Make sure to import the correct types from @shared/schema or your existing services.
+
+==================================================
+STEP 2 – Extend /voicemail-transcription to call the sync helper
+
+Open:
+
+server/routes/twilioTestVoice.ts
+
+We already have a route similar to:
+
+twilioTestVoiceRouter.post(
+  "/voicemail-transcription",
+  async (req: Request, res: Response) => {
+    // ...
+    const from = body.From as string | undefined;
+    const to = body.To as string | undefined;
+    const transcriptionText = body.TranscriptionText as string | undefined;
+    const recordingUrl = body.RecordingUrl as string | undefined;
+    // ...
+    // generate AI reply with generateVoicemailFollowupSms()
+    // send SMS via twilioClient
+    // res.status(200).send("OK");
+  }
+);
+
+
+Modify this route to:
+
+IMPORT the new sync function:
+
+At the top of server/routes/twilioTestVoice.ts:
+
+import { syncVoicemailIntoConversation } from "./services/voicemailConversationService";
+
+
+(adjust relative path if the services folder is one level up: "../services/voicemailConversationService")
+
+After generating the AI reply (aiReply) AND attempting to send the SMS, call the sync helper with both transcription and AI reply.
+
+Inside the handler, after aiReply is computed and SMS send is attempted:
+
+      // ... after sending the AI reply SMS ...
+
+      // Sync voicemail + AI reply into conversation system
+      try {
+        if (transcriptionText && transcriptionText.trim().length > 0) {
+          await syncVoicemailIntoConversation({
+            fromPhone: from,
+            toPhone: to,
+            transcriptionText,
+            recordingUrl,
+            aiReplyText: aiReply,
+          });
+          console.log(
+            "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Voicemail synced into conversation DB"
+          );
+        } else {
+          console.warn(
+            "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Skipping conversation sync - no transcription text"
+          );
+        }
+      } catch (syncErr: any) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Error syncing voicemail into conversation DB:",
+          syncErr
+        );
+      }
+
+      res.status(200).send("OK");
+
+
+If Twilio SMS send fails (fake number, etc.), still call syncVoicemailIntoConversation, but pass aiReplyText (the generated string) even if the SMS wasn’t delivered. That way your dashboard still shows “AI reply generated” and the human can see what it intended to send.
+
+==================================================
+STEP 3 – Make sure the conversation list & thread include voicemail messages
+
+The goal here is minimal change: make sure voicemail messages appear in the existing messaging cockpit, even if they’re not yet visually fancy.
+
+Locate the message fetch/query logic used by the messages page:
+
+Server-side: the query that returns messages for a conversation.
+
+Client-side: the hook or query (e.g. useMessages(conversationId)).
+
+Ensure that messages with messageType = "voicemail" (or whatever name you used) are INCLUDED in the result set, ordered chronologically with SMS / other messages.
+
+In the React thread renderer, ensure that:
+
+It does NOT filter out messageType "voicemail".
+
+At minimum, it renders the transcription text and indicates that this was a voicemail. For now, a simple fallback is fine:
+
+Example in the message renderer (pseudocode, ADAPT to real code):
+
+if (message.messageType === "voicemail") {
+  return (
+    <div key={message.id} className="text-xs text-slate-300 mb-2">
+      <div className="font-semibold text-cyan-300">Voicemail</div>
+      {message.bodyText && (
+        <div className="whitespace-pre-wrap">{message.bodyText}</div>
+      )}
+      {message.recordingUrl && (
+        <a
+          href={message.recordingUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-cyan-400 underline"
+        >
+          Play recording
+        </a>
+      )}
+    </div>
+  );
+}
+
+
+Later, this can be replaced with the richer Night Ops VoicemailCard, but for now it’s more important that:
+
+The voicemail is visible in the thread.
+
+The transcription is accessible.
+
+The recording URL is accessible.
+
+The conversation shows up as needing human attention (whatever flag you used).
+
+==================================================
+STEP 4 – Mark conversations as needing follow-up in the UI
+
+Find where conversations are listed in the inbox (left column):
+
+The component that renders each conversation row (e.g. ConversationsListItem, ConversationRow, etc.).
+
+That component likely already has some props such as:
+
+conversation.status
+
+conversation.hasUnansweredAiEscalation
+
+conversation.unreadCount
+
+or similar.
+
+Ensure that the flag that markConversationNeedsAttention() sets (from STEP 1) is surfaced in the conversation list type (server → client).
+
+Add a small visual indicator in the list row, e.g.:
+
+A tiny chip: Voicemail or Needs follow-up
+
+A subtle amber dot next to the conversation
+
+A tooltip like “New voicemail pending review”
+
+Example (pseudocode):
+
+{conversation.needsAttention && (
+  <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[0.65rem] text-amber-300">
+    Needs follow-up
+  </span>
+)}
+
+
+Ensure that when you open the conversation and you (as a human) handle it (send a manual SMS, create a booking, mark as done, etc.), any existing “clear attention” behavior ALSO works for voicemail-triggered attention. If not, add a small helper to clear the flag when appropriate (without breaking existing behavior).
+
+==================================================
+STEP 5 – Sanity checks
+
+Confirm that server/index.ts still has the Twilio test voice router mounted:
+
+import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
+app.use("/api/twilio/voice", twilioTestVoiceRouter);
+
+
+Ensure that the body parsers are configured BEFORE Twilio routes:
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+
+Test end-to-end:
+
+Call the Twilio test number.
+
+Press 3.
+
+Leave a voicemail with some real content.
+
+Wait for transcription + AI reply.
+
+Confirm:
+
+You receive an SMS (if using a real number).
+
+Replit logs show:
+
+VOICEMAIL TRANSCRIPTION hit
+
+AI reply generated
+
+Voicemail synced into conversation DB
+
+On your messages page:
+
+A conversation exists for that number.
+
+A voicemail entry appears in the thread with transcription.
+
+The conversation is flagged as needing follow-up.
+
+If any existing helper names / fields differ from the above, ADAPT the calls to match the real code patterns. The core requirement is to reuse the same customer + conversation + message creation logic as the inbound SMS path, with minimal duplication.
+
+END OF INSTRUCTIONS
