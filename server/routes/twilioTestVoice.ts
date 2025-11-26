@@ -3,6 +3,7 @@ import twilio from "twilio";
 import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
 import { generateVoicemailFollowupSms, generateVoicemailSummary } from "../openai";
 import { syncVoicemailIntoConversation } from "../services/voicemailConversationService";
+import { sendVoicemailAlertEmail } from "../emailService";
 import { db } from "../db";
 import { wrapTenantDb } from "../tenantDb";
 import { phoneLines } from "@shared/schema";
@@ -326,6 +327,24 @@ twilioTestVoiceRouter.post(
           "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Error syncing voicemail into conversation DB:",
           syncErr
         );
+      }
+
+      try {
+        const createdAtIso = new Date().toISOString();
+        await sendVoicemailAlertEmail({
+          fromPhone: from,
+          toPhone: to,
+          transcriptionText: transcriptionText || "",
+          voicemailSummary: voicemailSummary ?? undefined,
+          recordingUrl: recordingUrl ?? null,
+          createdAtIso,
+        });
+      } catch (emailErr: any) {
+        console.error("[voicemail-email] Failed to send voicemail alert email", {
+          error: emailErr,
+          from,
+          to,
+        });
       }
 
       res.status(200).send("OK");
