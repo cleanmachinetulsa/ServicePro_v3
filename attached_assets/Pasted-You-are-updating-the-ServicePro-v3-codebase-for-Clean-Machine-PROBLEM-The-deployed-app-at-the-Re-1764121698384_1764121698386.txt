@@ -1,0 +1,233 @@
+You are updating the ServicePro v3 codebase for Clean Machine.
+
+PROBLEM
+- The deployed app at the Replit .replit.app URL is showing a white screen.
+- In the past, this has usually been caused by tenant-related errors on the backend (e.g., resolving the root tenant or loading tenant config), which then cause the frontend to crash.
+- I want you to:
+  1) Identify the exact error causing the white screen (both frontend and backend).
+  2) Fix the underlying cause if it’s a tenant/config issue.
+  3) Add a defensive UI error boundary so that even if something goes wrong, I get a visible error message instead of a blank screen.
+
+CONSTRAINTS
+- Do not remove or break existing multi-tenant isolation (Clean Machine is the root tenant, but ServicePro is white-label).
+- Keep fixes minimal, well-scoped, and TypeScript-correct.
+- Any new error handling should log clearly (server + client) and show a friendly message instead of a silent crash.
+
+------------------------------------------------
+1) REPRODUCE & CAPTURE THE ERROR
+------------------------------------------------
+1. Start the dev server if it’s not running.
+2. Open the app in the built-in browser AND also inspect the deployed URL I’m using (from .replit.app).
+3. Open:
+   - Browser DevTools → Console (look for React errors, uncaught exceptions).
+   - Network tab → check failed XHR/fetch calls (especially anything like `/api/tenant`, `/api/auth/session`, `/api/dashboard`, etc.).
+4. In the Replit server logs, look for stack traces that occur when loading the homepage or `/dashboard/messages`.
+
+Collect:
+- The exact frontend error message (e.g., “Cannot read properties of undefined (reading 'tenantId')”, etc.).
+- The exact backend error/stack trace (especially anything with “tenant”, “wrapTenantDb”, or “rootTenant”).
+
+Summarize briefly for me in a comment at the top of the most relevant file (e.g., `// White screen root cause: ...`).
+
+------------------------------------------------
+2) CHECK TENANT RESOLUTION / ROOT TENANT FLOW
+------------------------------------------------
+Search the server for tenant logic, especially files like (names may vary):
+
+- `server/services/tenantService.ts`
+- `server/services/tenantConfigService.ts`
+- `server/middleware/tenantContext.ts`
+- `server/tenant/tenantContext.ts`
+- Any function named something like:
+  - `getCurrentTenant`
+  - `getTenantFromRequest`
+  - `wrapTenantDb`
+  - `getRootTenant`
+  - `resolveTenantFromHost` or `resolveTenantFromSubdomain`
+
+Your goals here:
+
+1. Confirm how the backend decides “which tenant am I?” for:
+   - The main dashboard routes (e.g., `/dashboard`, `/dashboard/messages`).
+   - Public root (if it auto-resolves Clean Machine as root tenant).
+
+2. Check if there is a **hard requirement** for a specific `tenantId` or `subdomain` that is not being satisfied in the deployed environment, e.g.:
+   - Expecting a header or host like `clean-machine.servicepro.com` but instead getting `servicepro-v3-base-cleanmachinetul.replit.app`.
+   - Expecting a seeded tenant but failing if it doesn’t exist.
+
+3. Look for any code that throws on missing tenant and causes a 500, e.g.:
+
+   ```ts
+   if (!tenant) {
+     throw new Error("Tenant not found");
+   }
+or similar, especially near the initial auth/session routes.
+
+If the white screen is caused by a backend exception thrown when resolving the tenant, you must make this path more robust and/or correctly handle the root tenant configuration.
+
+FIX THE BACKEND TENANT ERROR
+
+Based on what you find:
+
+A) If the issue is “no tenant found for host”:
+
+Introduce a safe fallback to the Clean Machine root tenant when using the Replit .replit.app domain.
+
+Example (adapt to existing logic):
+
+ts
+Copy code
+// PSEUDO-CODE EXAMPLE:
+// In the tenant resolution function, AFTER trying host/subdomain resolution:
+
+if (!tenant) {
+  // Fallback: use root tenant for development / default Replit domain.
+  const fallbackTenant = await tenantRepo.findBySlug("clean-machine");
+  if (fallbackTenant) {
+    tenant = fallbackTenant;
+  }
+}
+Make sure this only applies in development / default deployment where we want Clean Machine as the default tenant. If you have an ENV for this (e.g. ROOT_TENANT_SLUG or DEFAULT_TENANT_ID), use that instead of hardcoding.
+
+B) If the issue is “missing or inconsistent seed data”:
+
+Check the seed scripts for tenants and ensure:
+
+Clean Machine (root tenant) exists and has valid config.
+
+Any required tenant config rows (service_area, homeBaseAddress, etc.) are present.
+
+If necessary, add a small migration or seed helper to guarantee the root tenant and essential config exist.
+
+C) If the error is something else (e.g. reading a null tenantConfig):
+
+Add null checks and friendly 500 handling:
+
+Avoid tenantConfig.someField when tenantConfig might be null.
+
+Gracefully return a structured error JSON instead of throwing, so the frontend can show a message.
+
+Whatever the actual cause, DO:
+
+Fix it at the source.
+
+Keep multi-tenant design intact.
+
+Add a log line like:
+
+ts
+Copy code
+logger.error("[tenant] Failed to resolve tenant for request", { host, url, error });
+for debugging.
+
+ADD A FRONTEND ERROR BOUNDARY TO AVOID WHITE SCREENS
+
+Regardless of backend fixes, add a global React ErrorBoundary around the main app so any uncaught frontend error shows a human-readable message.
+
+Create (or update) an error boundary component, e.g.:
+
+client/src/components/AppErrorBoundary.tsx
+
+tsx
+Copy code
+import React from "react";
+
+type Props = { children: React.ReactNode };
+type State = { hasError: boolean; message?: string };
+
+export class AppErrorBoundary extends React.Component<Props, State> {
+  state: State = { hasError: false, message: undefined };
+
+  static getDerivedStateFromError(error: unknown): State {
+    return {
+      hasError: true,
+      message:
+        error instanceof Error ? error.message : "An unexpected error occurred.",
+    };
+  }
+
+  componentDidCatch(error: unknown, info: unknown) {
+    // Optional: send to your logging endpoint if one exists.
+    // console.error("[AppErrorBoundary]", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
+          <div className="max-w-md px-6 py-4 rounded-2xl border border-slate-700 bg-slate-900/80 shadow-lg">
+            <h1 className="text-lg font-semibold mb-2">
+              Something went wrong loading the app.
+            </h1>
+            {this.state.message && (
+              <p className="text-sm text-slate-300 mb-3 break-words">
+                {this.state.message}
+              </p>
+            )}
+            <p className="text-xs text-slate-400">
+              Try refreshing the page. If this keeps happening, please send a
+              screenshot of this message to support.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+Wrap the root app in this boundary in client/src/main.tsx or wherever the React tree is created:
+
+tsx
+Copy code
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
+
+// ...
+
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+  <React.StrictMode>
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
+  </React.StrictMode>,
+);
+Adapt to the exact file structure you find, but ensure the entire app is wrapped at the top level.
+
+This ensures that even if something slips through (like a bad API response or undefined tenant), the user sees a clear message instead of a white screen.
+
+VERIFY THE FIX
+
+After making the changes:
+
+Run the dev server and reload the root dashboard route you use (e.g. /dashboard/messages).
+
+Confirm:
+
+No white screen.
+
+Either:
+
+App loads normally, OR
+
+ErrorBoundary shows a message instead of blank.
+
+Check the deployed .replit.app URL as well and ensure it behaves the same.
+
+If any error remains:
+
+Capture the NEW error message from the ErrorBoundary + server logs.
+
+Adjust tenant resolution or null checks accordingly.
+
+OUTPUT
+When you’re done, please:
+
+List the files you changed.
+
+Briefly describe:
+
+The root cause you found for the white screen.
+
+The fix you implemented.
+
+Any new env vars or seed steps I need to know about
