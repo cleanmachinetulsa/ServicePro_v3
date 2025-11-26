@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star } from 'lucide-react';
+import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Volume2 } from 'lucide-react';
 import type { Message } from '@shared/schema';
 import { Button } from '@/components/ui/button';
 import {
@@ -151,6 +151,10 @@ export default function MessageBubble({
         return sender;
     }
   };
+  
+  const metadata = message.metadata as Record<string, any> | null;
+  const isVoicemail = metadata?.type === 'voicemail' || (message.content && (message.content as string).startsWith('🎙️ Voicemail:'));
+  const voicemailRecordingUrl = metadata?.recordingUrl || null;
 
   return (
     <div
@@ -237,11 +241,44 @@ export default function MessageBubble({
             ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md'
             : 'bg-blue-500 dark:bg-blue-600 text-white rounded-2xl rounded-br-md'
           }
+          ${isVoicemail ? 'border-l-4 border-cyan-500 dark:border-cyan-400' : ''}
         `}>
+          {/* Voicemail Header */}
+          {isVoicemail && (
+            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-300/50 dark:border-gray-600/50">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 dark:bg-cyan-400/20">
+                <Mic className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <div className="flex-1">
+                <span className="text-xs font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+                  Voicemail Transcription
+                </span>
+              </div>
+              {voicemailRecordingUrl && (
+                <a
+                  href={voicemailRecordingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    isCustomer 
+                      ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300'
+                      : 'bg-white/20 hover:bg-white/30 text-white'
+                  }`}
+                  data-testid="button-play-voicemail"
+                >
+                  <Play className="h-3 w-3" />
+                  Play
+                </a>
+              )}
+            </div>
+          )}
+          
           {/* Message Content */}
           {message.content && (
             <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words" data-testid={`content-${message.id}`}>
-              {message.content as string}
+              {isVoicemail && message.content.startsWith('🎙️ Voicemail:') 
+                ? (message.content as string).replace('🎙️ Voicemail:\n\n', '')
+                : (message.content as string)}
             </p>
           )}
           

@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Phone,
   Globe,
-  Mail
+  Mail,
+  Mic
 } from 'lucide-react';
 import { SiFacebook, SiInstagram } from 'react-icons/si';
 import { formatDistanceToNow } from 'date-fns';
@@ -186,7 +187,9 @@ export function NightOpsConversationList({
                     <p className="text-xs text-slate-400 truncate mb-1.5">
                       {conv.latestMessage?.sender === 'customer' ? '' : 
                         conv.latestMessage?.sender === 'ai' ? '🤖 ' : 'You: '}
-                      {conv.latestMessage?.content || 'No messages yet'}
+                      {conv.latestMessage?.content?.startsWith('🎙️ Voicemail:') 
+                        ? conv.latestMessage.content.replace('🎙️ Voicemail:\n\n', '🎙️ ')
+                        : conv.latestMessage?.content || 'No messages yet'}
                     </p>
 
                     <div className="flex items-center gap-1.5 flex-wrap">

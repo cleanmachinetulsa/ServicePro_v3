@@ -2,6 +2,11 @@ import { Router, Request, Response } from "express";
 import twilio from "twilio";
 import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
 import { generateVoicemailFollowupSms } from "../openai";
+import { syncVoicemailIntoConversation } from "../services/voicemailConversationService";
+import { db } from "../db";
+import { wrapTenantDb } from "../tenantDb";
+import { phoneLines } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export const twilioTestVoiceRouter = Router();
 
@@ -256,6 +261,47 @@ twilioTestVoiceRouter.post(
         console.log(
           "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] SMS sent to caller:",
           { sid: msg.sid, status: msg.status }
+        );
+      }
+
+      try {
+        if (transcriptionText && transcriptionText.trim().length > 0) {
+          const tenantDb = wrapTenantDb(db, "root");
+          
+          let phoneLineId: number | undefined;
+          if (to) {
+            const [phoneLine] = await tenantDb
+              .select()
+              .from(phoneLines)
+              .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, to)))
+              .limit(1);
+            
+            if (phoneLine) {
+              phoneLineId = phoneLine.id;
+              console.log("[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Resolved phone line:", phoneLine.label);
+            }
+          }
+
+          await syncVoicemailIntoConversation(tenantDb, {
+            fromPhone: from,
+            toPhone: to,
+            transcriptionText,
+            recordingUrl,
+            aiReplyText: aiReply,
+            phoneLineId,
+          });
+          console.log(
+            "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Voicemail synced into conversation DB"
+          );
+        } else {
+          console.warn(
+            "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Skipping conversation sync - no transcription text"
+          );
+        }
+      } catch (syncErr: any) {
+        console.error(
+          "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] Error syncing voicemail into conversation DB:",
+          syncErr
         );
       }
 
