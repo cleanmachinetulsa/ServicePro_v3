@@ -11,6 +11,7 @@ import {
   Star,
   Pin,
   Mail,
+  Mic,
 } from 'lucide-react';
 import { FaFacebook, FaInstagram } from 'react-icons/fa';
 import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
@@ -264,7 +265,9 @@ export default function ConversationList({
                           ? 'AI: '
                           : 'You: '}
                       </span>
-                      {conversation.latestMessage.content}
+                      {conversation.latestMessage.content.startsWith('🎙️ Voicemail:') 
+                        ? conversation.latestMessage.content.replace('🎙️ Voicemail:\n\n', '🎙️ ')
+                        : conversation.latestMessage.content}
                     </p>
                   )}
                   

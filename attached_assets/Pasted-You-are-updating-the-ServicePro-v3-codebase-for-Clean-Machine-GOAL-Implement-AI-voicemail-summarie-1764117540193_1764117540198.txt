@@ -1,0 +1,415 @@
+You are updating the ServicePro v3 codebase for Clean Machine.
+
+GOAL
+Implement AI voicemail summaries end-to-end:
+
+1. When a voicemail transcription arrives, generate a short AI summary.
+2. Store that summary on the voicemail conversation message.
+3. Show the summary in the Messages / Night Ops UI under each voicemail.
+4. Expose the latest voicemail summary to the SMS AI brain as KNOWN_CONTEXT.
+
+This must:
+- Reuse existing OpenAI + Twilio plumbing.
+- Not break existing voicemail → transcription → AI SMS followup.
+- Be tenant-safe and backwards compatible (if summary fails, everything else still works).
+
+Use TypeScript, keep styles consistent with the existing code.
+
+------------------------------------------------
+0) QUICK ORIENTATION (DO NOT SKIP)
+------------------------------------------------
+First, find these files (or close equivalents):
+
+- Voice + voicemail routes:
+  - server/routes/twilioTestVoiceRouter.ts
+  - server/routes/twilioVoiceRouter.ts
+  - or the file that defines:
+    - POST /api/twilio/voice/voicemail-transcription
+    - syncVoicemailIntoConversation(...)
+
+- OpenAI helpers:
+  - server/openai.ts
+    - generateVoicemailFollowupSms(...)
+    - SMS_AGENT_MODEL or similar constant.
+
+- Conversation/message services:
+  - server/services/conversationService.ts
+  - server/services/messageService.ts
+  - shared/messageTypes.ts OR similar (message types/enums)
+
+- SMS agent prompt builder:
+  - server/ai/smsAgentPromptBuilder.ts
+    - The function that builds KNOWN_CONTEXT / MISSING_INFORMATION.
+
+- Frontend Messages / Night Ops UI:
+  - client/src/features/messages/ThreadView.tsx (or similar)
+  - client/src/features/messages/NightOpsThreadView.tsx (or similar)
+  - The component that renders voicemail messages in the message thread.
+
+If paths differ slightly, adapt accordingly, but keep the same architecture.
+
+------------------------------------------------
+1) BACKEND: ADD generateVoicemailSummary(...) IN server/openai.ts
+------------------------------------------------
+In server/openai.ts:
+
+1. Locate where SMS_AGENT_MODEL is imported/defined and where generateVoicemailFollowupSms is implemented.
+
+2. Under/near generateVoicemailFollowupSms, add a new exported helper:
+
+   - Name: generateVoicemailSummary
+   - Signature (adapt types to match project conventions):
+
+   ```ts
+   export interface VoicemailSummaryInput {
+     transcriptionText: string;
+     fromPhone: string;
+     toPhone: string;
+     recordingUrl?: string;
+     tenantName?: string;
+   }
+
+   export async function generateVoicemailSummary(
+     input: VoicemailSummaryInput,
+   ): Promise<string | null> { ... }
+Implementation details:
+
+Use the same OpenAI client and SMS_AGENT_MODEL that the SMS agent uses.
+
+Prompt style:
+
+Very short (1–2 sentences max).
+
+Super actionable.
+
+No emojis.
+
+Present tense.
+
+Include:
+
+Who is calling (if we say “the caller” that’s fine).
+
+Vehicle / service / timing details if present in transcription.
+
+What they want us to do next (quote, schedule, question, etc.).
+
+Example system+user prompt (adapt to existing client):
+
+ts
+Copy code
+const system = `
+You are an assistant summarizing voicemails for a mobile auto detailing business (Clean Machine Auto Detail in Tulsa).
+Write a VERY short summary (1–2 sentences, no bullets, no emojis) of what the caller wants.
+
+Focus on:
+
+Vehicle details (year/make/model) if mentioned.
+
+Interior vs exterior vs full detail.
+
+Any requested date/time window.
+
+Any special concerns (stains, pet hair, bad odor, etc.).
+
+Tone: neutral, factual, concise. Do NOT invent details.
+`;
+
+const user = `
+VOICEMAIL TRANSCRIPT:
+${input.transcriptionText}
+
+Caller phone: ${input.fromPhone}
+Our line: ${input.toPhone}
+Recording URL: ${input.recordingUrl ?? "n/a"}
+`;
+
+markdown
+Copy code
+
+- Call OpenAI with SMS_AGENT_MODEL (same wrapper used elsewhere).
+- Trim whitespace.
+- On any error (OpenAI failure, etc.), catch and:
+  - Log the error clearly with a prefixed tag like [voicemail-summary].
+  - Return null rather than throwing, so voicemail SMS followup still works.
+
+------------------------------------------------
+2) BACKEND: WIRE SUMMARY INTO VOICEMAIL TRANSCRIPTION HANDLER
+------------------------------------------------
+Find the route handler for POST /api/twilio/voice/voicemail-transcription.
+
+It likely does something like:
+- Read From, To, TranscriptionText, RecordingUrl, etc.
+- Call generateVoicemailFollowupSms(...)
+- Call syncVoicemailIntoConversation(...)
+
+Update this handler to:
+
+1. Import generateVoicemailSummary and VoicemailSummaryInput from server/openai.ts.
+
+2. After you extract the Twilio transcription fields, but before you call syncVoicemailIntoConversation, call the summary helper:
+
+```ts
+const summary = await generateVoicemailSummary({
+  transcriptionText,
+  fromPhone: from,
+  toPhone: to,
+  recordingUrl,
+  tenantName, // if you have tenantName in context; if not, omit
+});
+Pass this summary into syncVoicemailIntoConversation. If the current function does not accept a summary param yet, extend it.
+
+For example, change:
+
+ts
+Copy code
+await syncVoicemailIntoConversation({
+  fromPhone: from,
+  toPhone: to,
+  transcriptionText,
+  recordingUrl,
+  // ...
+});
+to:
+
+ts
+Copy code
+await syncVoicemailIntoConversation({
+  fromPhone: from,
+  toPhone: to,
+  transcriptionText,
+  recordingUrl,
+  voicemailSummary: summary ?? undefined,
+  // ...
+});
+Ensure that generateVoicemailFollowupSms continues to run exactly as before. Do NOT make the summary a prerequisite for sending the SMS. The order can be:
+
+(a) Generate SMS reply
+
+(b) Generate summary
+
+(c) Sync to conversation with both transcription + summary + AI reply
+
+or (b) and (a) can be swapped; just make sure both are awaited before the final 200 OK response.
+
+BACKEND: STORE SUMMARY ON THE VOICEMAIL MESSAGE
+
+Find syncVoicemailIntoConversation(...) (likely in server/services/conversationService.ts or a nearby file).
+
+Its job is roughly:
+
+Find or create a customer by phone.
+
+Find or create a conversation.
+
+Insert a message of type "voicemail" with transcription and recording URL.
+
+Insert a system message describing the AI SMS reply, and mark conversation as needs attention.
+
+Update this in a backward-compatible way:
+
+Ensure the voicemail message model can store a summary:
+
+Find the message DB schema (Drizzle model) and TS type. Look for a JSON metadata column or similar:
+
+If you already have a generic metadata or extra_data JSON column:
+
+Add an optional property voicemailSummary?: string to the TS type and store it under metadata.voicemailSummary.
+
+If you do NOT have such a column:
+
+Add a new nullable text column voicemail_summary (or similar) to the messages table via migration.
+
+Update the Drizzle model to include this field.
+
+Update the TS type accordingly.
+
+Prefer using existing metadata/extra_data JSON if available.
+
+When inserting the voicemail message:
+
+Add the summary:
+
+ts
+Copy code
+const voicemailMessage = await messageRepo.insert({
+  conversationId,
+  type: "voicemail",
+  direction: "inbound",
+  bodyText: transcriptionText,
+  recordingUrl,
+  // if JSON metadata:
+  metadata: {
+    ...(existingMetadata || {}),
+    voicemailSummary: voicemailSummary ?? null,
+  },
+  // or if dedicated column:
+  voicemailSummary: voicemailSummary ?? null,
+  // ...
+});
+Do NOT require voicemailSummary. If it’s null/undefined, just omit it or store null; everything must still work.
+
+BACKEND: EXPOSE LAST VOICEMAIL SUMMARY TO SMS AGENT PROMPT
+
+Now update the SMS AI brain so it can reference recent voicemail context.
+
+In server/ai/smsAgentPromptBuilder.ts:
+
+Find the function that builds KNOWN_CONTEXT (the big system prompt for the SMS agent).
+
+Determine where it can access the conversation messages. There is likely a call to some conversation/message service that already returns messages for that customer.
+
+Add a helper to compute the last voicemail summary:
+
+ts
+Copy code
+function getLastVoicemailSummaryForContext(
+  messages: ConversationMessage[],
+): string | null {
+  // messages likely ordered oldest → newest, confirm; if not, sort.
+  const reversed = [...messages].reverse();
+  for (const msg of reversed) {
+    if (msg.type === "voicemail") {
+      const summary =
+        (msg.metadata && msg.metadata.voicemailSummary) ||
+        (msg as any).voicemailSummary;
+      if (summary && summary.trim().length > 0) {
+        return summary.trim().slice(0, 240); // safety cap
+      }
+    }
+  }
+  return null;
+}
+Adapt type names to your actual message interface.
+
+When building KNOWN_CONTEXT:
+
+After you list known customer details (name, vehicles, address, service, time window, etc.), append a short line IF a voicemail summary exists:
+
+ts
+Copy code
+const lastVoicemailSummary = getLastVoicemailSummaryForContext(messages);
+
+if (lastVoicemailSummary) {
+  knownContextSections.push(
+    `Recent voicemail from this customer: ${lastVoicemailSummary}`,
+  );
+}
+Make sure this line is only appended if lastVoicemailSummary is non-empty. Keep it short and single-line so the prompt doesn’t bloat.
+
+FRONTEND: SHOW AI SUMMARY ON VOICEMAIL MESSAGES (THREAD VIEW)
+
+Now update the Messages UI so you can see the summary at a glance.
+
+Find the component that renders each message in the thread:
+
+Likely something like:
+
+client/src/features/messages/ThreadView.tsx
+
+client/src/features/messages/components/MessageBubble.tsx
+
+or a specialized VoicemailCard component.
+
+Inspect where type === "voicemail" is handled.
+
+Update that component to read the summary:
+
+From the message prop:
+
+const summary = message.metadata?.voicemailSummary ?? message.voicemailSummary;
+
+If summary exists and is non-empty, render an extra block under the transcription text:
+
+Example JSX (adapt styling to match shadcn / Night Ops theme):
+
+tsx
+Copy code
+{summary && (
+  <div className="mt-1 rounded-md bg-white/5 px-2 py-1 text-xs text-slate-200 border border-white/10">
+    <div className="font-semibold uppercase tracking-wide text-[0.65rem] text-sky-300 mb-0.5">
+      AI summary
+    </div>
+    <div>{summary}</div>
+  </div>
+)}
+Keep it compact and clearly labeled as “AI summary”.
+
+Use existing utility classes or variants if you have a design system for tags/pills.
+
+Ensure this looks good in both the regular Messages view and the Night Ops Control Tower variant:
+
+If NightOpsThreadView wraps ThreadView, no extra work is needed; the summary will flow through.
+
+If NightOpsThreadView has its own custom voicemail renderer, mirror the same summary block there.
+
+SAFETY + LOGGING
+
+Everywhere you handle voicemail summary, ensure null/undefined is safe:
+
+Do not assume summary always exists.
+
+All summary usage should be guarded by if (summary).
+
+In the voicemail transcription route, add a clear log line:
+
+ts
+Copy code
+logger.info("[voicemail-summary] Generated summary", {
+  from: fromPhone,
+  to: toPhone,
+  hasSummary: !!summary,
+});
+In case of OpenAI failure in generateVoicemailSummary:
+
+Log at warn or error level.
+
+Do NOT throw; return null so the pipeline continues.
+
+QUICK SELF-CHECK AFTER IMPLEMENTATION
+
+After making changes:
+
+Run tests / typecheck:
+
+npm test or pnpm test (whatever the repo uses)
+
+tsc --noEmit if there’s a script for type-checking.
+
+Deploy / run locally and simulate a voicemail:
+
+Use Twilio’s “Request Inspector” or “Replay” to resend a voicemail-transcription webhook,
+OR temporarily hit the endpoint yourself with a test payload.
+
+Confirm:
+
+A new voicemail message appears in /dashboard/messages.
+
+The message shows:
+
+Recording URL/Play button
+
+Transcription text
+
+The new “AI summary” block.
+
+The AI summary text is short and accurate.
+
+Send an SMS conversation afterward from the same number and verify (via logs)
+that the SMS prompt includes:
+
+Recent voicemail from this customer: ... line in KNOWN_CONTEXT.
+
+FINAL REQUIREMENTS
+Do not remove or degrade any existing voicemail behavior.
+
+Make all new behavior optional and resilient to failure.
+
+Keep the summary very short and non-fluffy.
+
+Ensure everything compiles and matches existing patterns (lint, types, imports).
+
+When finished, summarize the concrete files you changed and any migrations you added.
+
+yaml
+Copy code
