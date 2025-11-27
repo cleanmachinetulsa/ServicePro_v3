@@ -460,7 +460,51 @@ app.use((req, res, next) => {
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    // PRODUCTION FIX: Explicitly serve built assets from dist/public
+    // Symlinks don't survive Replit's deployment process, and server/vite.ts 
+    // (forbidden to edit) looks for server/public which doesn't exist.
+    // This serves the actual build output from dist/public BEFORE the 
+    // serveStatic fallback tries to find files in the wrong location.
+    const fs = await import('fs');
+    const distPublicPath = path.resolve(__dirname, '../dist/public');
+    const distAssetsPath = path.resolve(distPublicPath, 'assets');
+    
+    console.log(`[PRODUCTION] Checking build directory: ${distPublicPath}`);
+    console.log(`[PRODUCTION] Checking assets directory: ${distAssetsPath}`);
+    
+    if (fs.existsSync(distPublicPath)) {
+      console.log('[PRODUCTION] Build directory found - serving static assets');
+      
+      // Serve assets with immutable caching (hashed filenames)
+      if (fs.existsSync(distAssetsPath)) {
+        app.use('/assets', express.static(distAssetsPath, {
+          maxAge: '1y',
+          immutable: true,
+          setHeaders: (res, filePath) => {
+            if (filePath.endsWith('.js')) {
+              res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+            } else if (filePath.endsWith('.css')) {
+              res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+            }
+          }
+        }));
+        console.log('[PRODUCTION] /assets route registered from dist/public/assets');
+      }
+      
+      // Serve other static files (index.html, images, etc.)
+      app.use(express.static(distPublicPath));
+      console.log('[PRODUCTION] Static file serving registered from dist/public');
+      
+      // SPA fallback - serve index.html for all unmatched routes
+      app.use('*', (_req, res) => {
+        res.sendFile(path.resolve(distPublicPath, 'index.html'));
+      });
+      console.log('[PRODUCTION] SPA fallback registered');
+    } else {
+      console.error('[PRODUCTION] ERROR: Build directory not found at', distPublicPath);
+      // Fall back to original serveStatic (may fail, but provides error message)
+      serveStatic(app);
+    }
   }
 
   // ALWAYS serve the app on port 5000
