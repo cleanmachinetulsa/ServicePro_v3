@@ -54,8 +54,9 @@ const app = express();
 // Setting to true ensures session authentication works on deployed sites
 app.set('trust proxy', true);
 
-// Serve static assets (MP3 voicemail greeting, etc.)
-app.use('/assets', express.static(path.join(__dirname, '../attached_assets')));
+// Serve uploaded media assets (MP3 voicemail greeting, PDFs, etc.)
+// IMPORTANT: Use /media path to avoid conflicting with Vite's /assets build output
+app.use('/media', express.static(path.join(__dirname, '../attached_assets')));
 
 // SECURITY: Helmet middleware for security headers
 // Disable all cross-origin policies for Replit preview compatibility
@@ -114,6 +115,12 @@ app.get('/service-worker.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.setHeader('Service-Worker-Allowed', '/');
   res.sendFile(path.join(process.cwd(), 'public', 'service-worker.js'));
+});
+
+// Serve manifest.json for PWA (must be served from root with correct MIME type)
+app.get('/manifest.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.sendFile(path.join(process.cwd(), 'public', 'manifest.json'));
 });
 
 // Cache-busting middleware - prevent users from seeing stale code after deployments

@@ -859,7 +859,7 @@ export async function registerRoutes(app: Express) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
-    const logoUrl = `/attached_assets/uploads/${req.file.filename}`;
+    const logoUrl = `/media/uploads/${req.file.filename}`;
     return res.json({ success: true, logoUrl });
   });
 
@@ -928,7 +928,7 @@ export async function registerRoutes(app: Express) {
       
       let resumeUrl = null;
       if (req.file) {
-        resumeUrl = `/attached_assets/uploads/${req.file.filename}`;
+        resumeUrl = `/media/uploads/${req.file.filename}`;
       }
       
       const [application] = await req.tenantDb!.insert(jobApplications).values({

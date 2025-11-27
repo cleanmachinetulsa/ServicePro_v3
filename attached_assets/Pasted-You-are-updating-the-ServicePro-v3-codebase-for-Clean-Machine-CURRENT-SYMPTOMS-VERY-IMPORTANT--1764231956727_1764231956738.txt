@@ -1,0 +1,208 @@
+You are updating the ServicePro v3 codebase for Clean Machine.
+
+CURRENT SYMPTOMS (VERY IMPORTANT)
+- The deployed app at the .replit.app URL shows a white screen.
+- Browser devtools show:
+  - GET /assets/index-*.css → 500 status, MIME type application/json
+  - CSS is refused: "Refused to apply style ... MIME type 'application/json' is not a supported stylesheet MIME type"
+  - manifest.json requests return "Manifest: Line 1, column 1, Syntax error." (meaning not valid JSON)
+- This means the backend is returning a JSON error for static asset paths like /assets/... and /manifest.json instead of the real static files.
+
+GOAL
+1) Identify why /assets/* and /manifest.json are being handled by our API / tenant middleware instead of static hosting.
+2) Fix the Express routing so:
+   - Static assets from the built frontend are served correctly.
+   - /manifest.json and other static resources are served correctly.
+3) Ensure we keep multi-tenant isolation intact and **never replace tenantDb with db** for tenant tables.
+4) Ensure that if an error still happens, the frontend shows the AppErrorBoundary rather than a silently broken bundle.
+
+IMPORTANT MULTI-TENANT RULES (DO NOT BREAK)
+- For any tenant-scoped table (customers, conversations, messages, vehicles, bookings, etc.),
+  ALWAYS use wrapTenantDb(db, tenantId) or the existing tenantDb passed into the function.
+- NEVER replace tenantDb with db for tenant-scoped operations.
+- Only use db directly for tables that are explicitly global and have NO tenantId column
+  (for example: orgSettings, migrations, global logs).
+- If you are not 100% sure whether a table is tenant-scoped or global, LEAVE the existing tenantDb usage as-is.
+
+------------------------------------------------
+1) FIND STATIC HOSTING / SERVER ENTRYPOINT
+------------------------------------------------
+Locate:
+- server/index.ts (or the main Express server file)
+- Any file that sets up static serving for the frontend, such as:
+  - server/static.ts
+  - server/routes/staticRouter.ts
+  - or direct calls like: app.use(express.static(...))
+
+Also find any catch-all routes such as:
+- app.get("*", ...)
+- app.use((req, res, next) => { ... }) with broad matching
+- Tenant middleware that might apply to all GET requests.
+
+------------------------------------------------
+2) CONFIRM STATIC BUILD PATH
+------------------------------------------------
+Determine where the built frontend assets live. It is usually something like:
+- client/dist
+- client/build
+
+Confirm:
+- There is a CSS file (index-*.css) in that build output directory.
+- There is a manifest.json in that build output directory.
+
+If these are missing, the build step might be broken; in that case:
+- Ensure the Replit "Run" or "Deploy" command includes the frontend build step (e.g. `pnpm build` for client).
+- But FIRST assume the build is fine and fix routing; only change scripts if really necessary.
+
+------------------------------------------------
+3) FIX EXPRESS ROUTING ORDER FOR STATIC ASSETS
+------------------------------------------------
+In server/index.ts (or equivalent), ensure the order of middleware is:
+
+1. Any low-level security / logging middleware (helmet, cors, etc.).
+2. Static file hosting for the built frontend (express.static).
+3. API routes (e.g. app.use("/api", apiRouter), app.use("/twilio", twilioRouter), etc.).
+4. SPA fallback route (app.get("*", ... send index.html)).
+5. Error handlers.
+
+Specifically do the following:
+
+A) Add or adjust static hosting:
+
+Example (adapt paths to the actual project structure):
+
+```ts
+import path from "path";
+import express from "express";
+// ...
+
+const app = express();
+
+// existing middleware here (bodyParser, cors, etc.)
+
+// STATIC ASSETS: make sure this comes BEFORE any catch-all routes
+const clientDistPath = path.join(__dirname, "..", "client", "dist");
+app.use(express.static(clientDistPath));
+
+// API routes here (do NOT put static after these if you have an overly broad catch-all below)
+app.use("/api/twilio", twilioRouter);
+app.use("/api", apiRouter);
+// etc...
+If you already have static hosting, ensure:
+
+It points to the correct directory where index-*.css and manifest.json actually live.
+
+It is registered before any catch-all app.get("*", ...) or overly broad middleware.
+
+B) Fix SPA fallback so it does NOT swallow /assets and /manifest.json:
+
+Find any code like:
+
+ts
+Copy code
+app.get("*", (req, res) => {
+  res.sendFile(path.join(clientDistPath, "index.html"));
+});
+This is fine for SPA routes only if static middleware already resolved /assets/... and /manifest.json. But if your SPA fallback or tenant middleware runs BEFORE the static middleware, it may be intercepting /assets and returning JSON error.
+
+So ensure:
+
+The SPA fallback is registered after app.use(express.static(clientDistPath)).
+
+Any tenant-specific middleware that wraps all routes should either:
+
+run only for /api routes, or
+
+skip asset paths.
+
+If you have tenant middleware on app.use("*", tenantMiddleware) or similar, update it so it skips static assets:
+
+ts
+Copy code
+app.use((req, res, next) => {
+  const path = req.path || "";
+
+  // Allow static assets and manifest/favicons to pass through untouched
+  if (
+    path.startsWith("/assets/") ||
+    path === "/manifest.json" ||
+    path === "/favicon.ico" ||
+    path.startsWith("/icons/")
+  ) {
+    return next();
+  }
+
+  // existing tenant resolution logic here for app routes
+  // e.g., resolve tenant from host/subdomain, attach to req.tenant, etc.
+
+  return next();
+});
+Be careful to NOT alter existing tenant isolation logic for /api and SPA routes – just make sure static resources bypass it and can be served by express.static.
+
+VERIFY MANIFEST AND CSS RESPONSES
+
+After adjusting routing:
+
+Run the server locally (or in Replit) and hit these URLs in the browser (or curl) using the .replit.app domain:
+
+/assets/index-*.css (whatever file name the HTML references)
+
+/manifest.json
+
+Confirm:
+
+They return 200.
+
+The CSS route returns text/css.
+
+The manifest route returns valid JSON (not an error object).
+
+If they still return 500:
+
+Check the server logs and identify which middleware or route is producing the JSON error.
+
+Update that middleware/route so it does not handle these static paths (see the skip logic above).
+
+FRONTEND: ENSURE ERROR BOUNDARY IS ACTIVE
+
+Confirm that AppErrorBoundary (or similar) is wrapping the root app in the client entry file (e.g. client/src/main.tsx):
+
+tsx
+Copy code
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
+
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+  <React.StrictMode>
+    <AppErrorBoundary>
+      <App />
+    </AppErrorBoundary>
+  </React.StrictMode>,
+);
+This doesn’t fix the static asset issue, but ensures that if the JS bundle runs and there is a runtime error, the user sees a message instead of a blank screen.
+
+FINAL CHECKS
+
+After changes:
+
+Rebuild/redeploy if required by the Replit setup (e.g. run the build command or redeploy button).
+
+Open browser devtools → Network tab:
+
+Reload the .replit.app URL with cache disabled.
+
+Confirm:
+
+/assets/index-*.css returns 200 with Content-Type: text/css.
+
+/manifest.json returns 200 with Content-Type: application/json.
+
+Confirm the app now renders instead of a white screen.
+
+OUTPUT
+At the end, summarize in comments or logs:
+
+Which file(s) you changed (server/index.ts, tenant middleware, etc.).
+
+The root cause (e.g. "SPA fallback + tenant middleware were intercepting /assets and /manifest.json").
+
+The fix (proper express.static order + skip logic for static paths).
