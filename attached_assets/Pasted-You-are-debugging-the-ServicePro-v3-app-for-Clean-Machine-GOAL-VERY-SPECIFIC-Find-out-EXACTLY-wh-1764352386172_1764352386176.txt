@@ -1,0 +1,82 @@
+You are debugging the ServicePro v3 app for Clean Machine.
+
+GOAL (VERY SPECIFIC)
+Find out EXACTLY why the deployed app returns 500 JSON for:
+/assets/index-oELbvrNQ.js
+/assets/index-DB3t9imd.css
+
+Do NOT refactor big pieces of code.
+Just:
+1) Log the static root path.
+2) Log the real error for /assets/*.
+3) List what files are actually in client/dist/assets.
+Then summarize the findings for me.
+
+IMPORTANT: Do NOT change tenantDb vs db usage anywhere.
+
+--------------------------------
+1) LOG STATIC ROOT PATH
+--------------------------------
+Open the main Express server entry file (likely server/index.ts).
+
+Find where the frontend static path is defined, something like:
+
+const clientDistPath = path.join(__dirname, "..", "client", "dist");
+
+Right after that line, add:
+
+console.log("[static] clientDistPath =", clientDistPath);
+
+This is just for debugging; don’t change the path yet.
+
+--------------------------------
+2) LOG ERRORS FOR /assets/*
+--------------------------------
+Find the global error handler middleware, something like:
+
+app.use((err, req, res, next) => { ... });
+
+Inside it, BEFORE sending the response, add:
+
+if (err && req.path && req.path.startsWith("/assets/")) {
+  console.error("[asset-error]", {
+    path: req.path,
+    message: (err as any)?.message,
+    stack: (err as any)?.stack,
+  });
+}
+
+Do not change how the error response is sent, just log.
+
+--------------------------------
+3) LIST client/dist CONTENTS
+--------------------------------
+In the Replit shell, run:
+
+ls -R client/dist 2>/dev/null | sed -e '1,200p'
+
+Check whether you see:
+- an assets/ folder under client/dist
+- files named index-oELbvrNQ.js and index-DB3t9imd.css
+
+If you can, paste the ls output into a comment at the top of server/index.ts like:
+
+// DEBUG: client/dist contents:
+// [paste first few lines here]
+
+--------------------------------
+4) HOW TO TEST
+--------------------------------
+1) Start the server / deploy as usual.
+2) Hit this URL in the browser or with curl:
+   https://servicepro-v-3-base-cleanmachinetul.replit.app/assets/index-oELbvrNQ.js
+3) Check the server logs for:
+   - [static] clientDistPath = ...
+   - [asset-error] {...}
+
+DO NOT "fix" anything else yet. Just gather:
+- clientDistPath value
+- Whether index-oELbvrNQ.js actually exists in client/dist/assets
+- The exact error.message and stack for [asset-error]
+
+Finally, summarize these findings in a short comment at the top of server/index.ts so I can see them next.
