@@ -177,10 +177,15 @@ app.use((req, res, next) => {
 });
 
 // SECURITY: Strict CORS with explicit origin whitelist
+// NOTE: Must include both .repl.co (dev) and .replit.app (prod) origins so our own frontend is not blocked by CORS.
 // Environment-based origin configuration for production security
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [
+      // ServicePro v3 deployment origins (REQUIRED for frontend to load)
+      'https://servicepro-v-3-base-cleanmachinetul.replit.app',
+      'https://servicepro-v-3-base-cleanmachinetul.repl.co',
+      // Clean Machine custom domains
       'https://cleanmachinetulsa.com',
       'http://cleanmachinetulsa.com',
       'https://www.cleanmachinetulsa.com',
@@ -189,9 +194,15 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       'http://cleanmachineintulsa.com',
       'https://www.cleanmachineintulsa.com',
       'http://www.cleanmachineintulsa.com',
+      // Legacy Replit deployment
       'https://clean-machine-auto-detail.replit.app',
+      // Wildcard patterns for Replit preview URLs
       'https://*.replit.dev',
       'http://*.replit.dev',
+      'https://*.repl.co',
+      'http://*.repl.co',
+      'https://*.replit.app',
+      'http://*.replit.app',
       ...(process.env.NODE_ENV === 'development' ? [
         'http://localhost:5000',
         'http://localhost:5173',
