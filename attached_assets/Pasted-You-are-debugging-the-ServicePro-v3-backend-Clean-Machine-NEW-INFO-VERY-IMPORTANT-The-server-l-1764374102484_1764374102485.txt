@@ -1,0 +1,131 @@
+You are debugging the ServicePro v3 backend (Clean Machine).
+
+NEW INFO (VERY IMPORTANT)
+The server logs clearly show:
+
+[SECURITY] Blocked request from unauthorized origin: https://servicepro-v-3-base-cleanmachinetul.replit.app
+Error: Not allowed by CORS
+
+This is happening when the browser loads:
+- /assets/index-oELbvrNQ.js
+- /assets/index-DB3t9imd.css
+
+So the CORS/security layer is blocking our own production frontend origin, causing the 500 JSON errors.
+
+GOAL
+1) Find the CORS / security config that decides which origins are allowed.
+2) Add our real frontend origins so they are allowed.
+3) Make sure both dev (.repl.co) and prod (.replit.app) URLs are accepted.
+4) Do NOT weaken security more than necessary, and do NOT touch tenantDb vs db.
+
+CONSTRAINTS
+- Do NOT remove the security checks entirely.
+- Do NOT just set origin: true. Instead, explicitly allow the correct origins.
+- Keep the behavior of rejecting truly unknown / external origins.
+
+--------------------------------
+1) FIND CORS / SECURITY CONFIG
+--------------------------------
+Search for the code that logs:
+
+"[SECURITY] Blocked request from unauthorized origin"
+
+and the CORS origin function. Likely files:
+
+- server/security/*.ts
+- server/security.ts
+- server/cors.ts
+- anywhere that configures the `cors` npm package with a custom `origin` callback.
+
+Open that file.
+
+You should see something like:
+
+const allowedOrigins = [ ... ];
+const corsOptions = {
+  origin: (origin, callback) => { ... },
+  ...
+};
+
+or a function `isAllowedOrigin(origin: string)`.
+
+--------------------------------
+2) ADD THE CORRECT FRONTEND ORIGINS
+--------------------------------
+Update the CORS logic so that it allows AT LEAST these two origins:
+
+- https://servicepro-v-3-base-cleanmachinetul.repl.co
+- https://servicepro-v-3-base-cleanmachinetul.replit.app
+
+Implementation suggestion (adapt to existing code):
+
+1) Define a list of allowed origins:
+
+const allowedOrigins = [
+  "https://servicepro-v-3-base-cleanmachinetul.repl.co",
+  "https://servicepro-v-3-base-cleanmachinetul.replit.app",
+  // keep any existing allowed origins here (localhost, etc.)
+];
+
+2) In the origin callback, treat:
+   - Requests with no origin (like curl / internal) as allowed.
+   - Requests where origin matches one of allowedOrigins as allowed.
+   - Otherwise, log and reject.
+
+Example pattern (adapt, don’t duplicate if one already exists):
+
+function isAllowedOrigin(origin?: string | null): boolean {
+  if (!origin) return true; // same-origin / curl / server-side calls
+  return allowedOrigins.includes(origin);
+}
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    console.error("[SECURITY] Blocked request from unauthorized origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+};
+
+Make sure BOTH `.repl.co` and `.replit.app` hosts are in the allowedOrigins array, and keep any localhost / dev origins that were there before.
+
+--------------------------------
+3) ENSURE CORS APPLIES WHERE NEEDED
+--------------------------------
+CORS middleware should still be applied globally as before (do NOT remove it), but now it should ACCEPT our own frontend origin instead of rejecting it.
+
+Do NOT move the cors() middleware to a different place unless absolutely necessary; just fix the origin logic.
+
+--------------------------------
+4) VERIFY THE FIX
+--------------------------------
+After the change:
+
+1) Restart / redeploy the app.
+2) In an incognito window, with DevTools → Network → “Disable cache” checked, visit:
+
+   https://servicepro-v-3-base-cleanmachinetul.replit.app/
+
+3) Confirm that:
+
+- /assets/index-oELbvrNQ.js returns 200 with Content-Type application/javascript
+- /assets/index-DB3t9imd.css returns 200 with Content-Type text/css
+
+4) In server logs, you should NOT see:
+
+[SECURITY] Blocked request from unauthorized origin: https://servicepro-v-3-base-cleanmachinetul.replit.app
+
+anymore when loading the page.
+
+--------------------------------
+OUTPUT
+--------------------------------
+When you’re done, add a short comment above the allowedOrigins array like:
+
+// NOTE: Must include both .repl.co (dev) and .replit.app (prod) origins so our own frontend is not blocked by CORS.
+
+and leave a brief summary in the console explaining that the CORS origin list was updated.
