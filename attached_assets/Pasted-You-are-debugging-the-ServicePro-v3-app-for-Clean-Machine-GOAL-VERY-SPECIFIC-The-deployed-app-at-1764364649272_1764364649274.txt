@@ -1,0 +1,132 @@
+You are debugging the ServicePro v3 app for Clean Machine.
+
+GOAL (VERY SPECIFIC)
+The deployed app at:
+  https://servicepro-v-3-base-cleanmachinetul.replit.app
+shows a white screen with effectively 0kb HTML.
+
+We already know:
+- The frontend build outputs assets at dist/public/assets (index-oELbvrNQ.js, index-DB3t9imd.css).
+- /assets/* is now being served correctly from dist/public/assets.
+- There is NO client/dist directory.
+- The remaining problem is that / (the root HTML) is not serving the correct index.html.
+
+YOUR TASK:
+1) Find where the built index.html lives (probably dist/public/index.html).
+2) Update server/index.ts so that:
+   - express.static serves dist/public for all static assets (manifest, icons, assets, etc.).
+   - There is a SPA fallback route that sends dist/public/index.html for non-API, non-/media routes.
+3) Do NOT touch tenantDb vs db anywhere.
+4) Do NOT break /api or /twilio routes.
+
+--------------------------------
+1) LOCATE THE BUILT index.html
+--------------------------------
+In the Replit shell, run:
+
+ls -R dist 2>/dev/null | sed -e '1,200p'
+
+Confirm:
+- The path to index.html (e.g. dist/public/index.html).
+
+Make sure you use THAT path in the static root.
+
+--------------------------------
+2) UPDATE STATIC SERVING IN server/index.ts
+--------------------------------
+Open server/index.ts.
+
+1) Define a static root pointing at dist/public:
+
+For example (adapt if needed):
+
+import path from "path";
+import express from "express";
+
+const app = express();
+
+const staticRoot = path.join(__dirname, "..", "dist", "public");
+console.log("[static] staticRoot =", staticRoot);
+
+// Serve ALL built static assets (JS, CSS, manifest, icons)
+app.use(express.static(staticRoot));
+
+IMPORTANT:
+- Leave the /media route (attached_assets) as-is, e.g.:
+
+  app.use("/media", express.static(path.join(__dirname, "../attached_assets")));
+
+- Ensure /media is defined BEFORE or AFTER express.static(staticRoot) in a way that does not conflict. /media and /assets are separate paths.
+
+2) Make sure API + Twilio routes come AFTER static registration but BEFORE SPA fallback. Example ordering:
+
+app.use(express.json());
+// ... any other middleware
+
+app.use(express.static(staticRoot));
+app.use("/media", express.static(path.join(__dirname, "../attached_assets")));
+
+// API routes
+app.use("/api/twilio", twilioRouter);
+app.use("/api", apiRouter);
+// etc.
+
+3) Add SPA fallback to send index.html for non-API, non-media routes.
+
+At the bottom (after API routes, before error handlers), add:
+
+app.get("*", (req, res, next) => {
+  const path = req.path || "";
+
+  // Let API and media routes pass through
+  if (
+    path.startsWith("/api/") ||
+    path.startsWith("/twilio/") ||
+    path.startsWith("/media/")
+  ) {
+    return next();
+  }
+
+  res.sendFile(path.join(staticRoot, "index.html"), (err) => {
+    if (err) {
+      console.error("[spa-fallback] Failed to send index.html", {
+        path,
+        error: err.message,
+      });
+      // Fallback: let error handler deal with it
+      next(err);
+    }
+  });
+});
+
+This ensures:
+- `/` and any frontend route (/dashboard, /onboarding/industry, etc.) get the real built index.html from dist/public.
+- `/api/*` and `/twilio/*` are not hijacked by the SPA fallback.
+- `/media/*` continues to serve attached assets.
+
+4) Do NOT remove or change any Twilio or API route definitions; only adjust ordering and add the SPA fallback.
+
+--------------------------------
+3) VERIFY AFTER CHANGE
+--------------------------------
+1) Redeploy the app (Publish in Replit).
+
+2) In a fresh incognito window, with DevTools Network → “Disable cache” checked, hit:
+
+- https://servicepro-v-3-base-cleanmachinetul.replit.app/
+
+3) Confirm:
+- The root HTML response has non-zero content (index.html).
+- /assets/index-oELbvrNQ.js returns 200 application/javascript.
+- /assets/index-DB3t9imd.css returns 200 text/css.
+- The UI actually renders instead of a white screen.
+
+If any error occurs when sending index.html, check logs for:
+- [spa-fallback] messages.
+
+--------------------------------
+4) DO NOT CHANGE
+--------------------------------
+- Do NOT modify tenantDb vs db.
+- Do NOT remove /media or /api or /twilio routes.
+- Do NOT touch server/vite.ts (you can leave it unused in prod as long as index.html and assets are correctly served here).

@@ -446,14 +446,6 @@ app.use((req, res, next) => {
   }, 60 * 1000);
   console.log('[SERVER] Unanswered message monitoring started - checks every 5 minutes for web chat messages without AI responses');
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -463,49 +455,73 @@ app.use((req, res, next) => {
     // PRODUCTION FIX: Explicitly serve built assets from dist/public
     // Symlinks don't survive Replit's deployment process, and server/vite.ts 
     // (forbidden to edit) looks for server/public which doesn't exist.
-    // This serves the actual build output from dist/public BEFORE the 
-    // serveStatic fallback tries to find files in the wrong location.
     const fs = await import('fs');
-    const distPublicPath = path.resolve(__dirname, '../dist/public');
-    const distAssetsPath = path.resolve(distPublicPath, 'assets');
+    const staticRoot = path.resolve(__dirname, '../dist/public');
     
-    console.log(`[PRODUCTION] Checking build directory: ${distPublicPath}`);
-    console.log(`[PRODUCTION] Checking assets directory: ${distAssetsPath}`);
+    console.log(`[PRODUCTION] staticRoot = ${staticRoot}`);
     
-    if (fs.existsSync(distPublicPath)) {
+    if (fs.existsSync(staticRoot)) {
       console.log('[PRODUCTION] Build directory found - serving static assets');
       
-      // Serve assets with immutable caching (hashed filenames)
-      if (fs.existsSync(distAssetsPath)) {
-        app.use('/assets', express.static(distAssetsPath, {
-          maxAge: '1y',
-          immutable: true,
-          setHeaders: (res, filePath) => {
-            if (filePath.endsWith('.js')) {
-              res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
-            } else if (filePath.endsWith('.css')) {
-              res.setHeader('Content-Type', 'text/css; charset=UTF-8');
-            }
+      // Serve ALL built static assets (JS, CSS, manifest, icons, images)
+      app.use(express.static(staticRoot, {
+        maxAge: '1y',
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+          } else if (filePath.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+          } else if (filePath.endsWith('.html')) {
+            // HTML should never be cached
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
           }
-        }));
-        console.log('[PRODUCTION] /assets route registered from dist/public/assets');
-      }
+        }
+      }));
+      console.log('[PRODUCTION] Static file serving registered from', staticRoot);
       
-      // Serve other static files (index.html, images, etc.)
-      app.use(express.static(distPublicPath));
-      console.log('[PRODUCTION] Static file serving registered from dist/public');
-      
-      // SPA fallback - serve index.html for all unmatched routes
-      app.use('*', (_req, res) => {
-        res.sendFile(path.resolve(distPublicPath, 'index.html'));
+      // SPA fallback - serve index.html for frontend routes (NOT API/media/twilio)
+      app.get('*', (req, res, next) => {
+        const reqPath = req.path || '';
+        
+        // Let API, Twilio, and media routes pass through to 404/error handlers
+        if (
+          reqPath.startsWith('/api/') ||
+          reqPath.startsWith('/api') ||
+          reqPath.startsWith('/twilio/') ||
+          reqPath.startsWith('/twilio') ||
+          reqPath.startsWith('/media/')
+        ) {
+          return next();
+        }
+        
+        // Serve index.html for all frontend routes
+        res.sendFile(path.join(staticRoot, 'index.html'), (err) => {
+          if (err) {
+            console.error('[SPA-FALLBACK] Failed to send index.html:', {
+              path: reqPath,
+              error: (err as any).message,
+            });
+            next(err);
+          }
+        });
       });
       console.log('[PRODUCTION] SPA fallback registered');
     } else {
-      console.error('[PRODUCTION] ERROR: Build directory not found at', distPublicPath);
+      console.error('[PRODUCTION] ERROR: Build directory not found at', staticRoot);
       // Fall back to original serveStatic (may fail, but provides error message)
       serveStatic(app);
     }
   }
+
+  // Error handler MUST be last (after all routes including SPA fallback)
+  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+
+    res.status(status).json({ message });
+    throw err;
+  });
 
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.
