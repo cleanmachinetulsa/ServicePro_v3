@@ -1,3 +1,5 @@
+import { phoneConfig, formatPhoneForDisplay } from '../config/phoneConfig';
+
 export interface InvoiceEmailData {
   invoiceNumber: string;
   customerName: string;
@@ -17,6 +19,12 @@ export interface InvoiceEmailData {
   paypalUsername: string;
   upsell?: { title: string; description: string; ctaText: string; ctaUrl: string };
   notes?: string;
+  // Tenant branding (optional - uses Clean Machine defaults if not provided)
+  branding?: {
+    businessName: string;
+    publicPhone: string | null;
+    supportEmail: string | null;
+  };
 }
 
 const BRAND_COLORS = {
@@ -53,6 +61,11 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
   const currency = (n: number) => `$${n.toFixed(2)}`;
   const currentYear = new Date().getFullYear();
 
+  // Use tenant branding if provided, otherwise default to Clean Machine (root tenant)
+  const businessName = data.branding?.businessName || 'Clean Machine Auto Detail';
+  const businessPhone = data.branding?.publicPhone || phoneConfig.twilioMain || '';
+  const businessPhoneDisplay = formatPhoneForDisplay(businessPhone);
+
   // Preheader text (shows in inbox preview)
   const preheader = `Invoice ${data.invoiceNumber} | Total: ${currency(data.total)} | ${data.loyaltyPoints.earned} points earned`;
 
@@ -66,7 +79,7 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
   <meta name="format-detection" content="address=no"/>
   <meta name="format-detection" content="email=no"/>
   <meta name="x-apple-disable-message-reformatting"/>
-  <title>Invoice ${data.invoiceNumber} - Clean Machine Auto Detail</title>
+  <title>Invoice ${data.invoiceNumber} - ${businessName}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -261,7 +274,7 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: ${BRAND_COLORS.gray50}; border-left: 4px solid ${BRAND_COLORS.primary}; border-radius: 4px;">
                 <tr>
                   <td style="padding: 16px;">
-                    <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: ${BRAND_COLORS.gray600}; text-transform: uppercase; letter-spacing: 0.5px;">Note from Clean Machine</p>
+                    <p style="margin: 0 0 4px 0; font-size: 12px; font-weight: 700; color: ${BRAND_COLORS.gray600}; text-transform: uppercase; letter-spacing: 0.5px;">Note from ${businessName}</p>
                     <p style="margin: 0; font-size: 14px; color: ${BRAND_COLORS.gray700}; line-height: 1.6;">${data.notes.replace(/\r?\n/g, '<br>')}</p>
                   </td>
                 </tr>
@@ -275,10 +288,10 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
             <td style="padding: 24px; background-color: ${BRAND_COLORS.gray50}; border-top: 1px solid ${BRAND_COLORS.gray200}; border-radius: 0 0 12px 12px;">
               <p style="margin: 0 0 12px 0; font-size: 13px; color: ${BRAND_COLORS.gray600}; text-align: center; line-height: 1.6;">
                 Questions about your invoice?<br/>
-                Reply to this email or call us at <a href="tel:+19188565304" style="color: ${BRAND_COLORS.primary}; text-decoration: none; font-weight: 600;">918-856-5304</a>
+                ${businessPhone ? `Reply to this email or call us at <a href="tel:${businessPhone}" style="color: ${BRAND_COLORS.primary}; text-decoration: none; font-weight: 600;">${businessPhoneDisplay}</a>` : 'Reply to this email'}
               </p>
               <p style="margin: 0; font-size: 12px; color: ${BRAND_COLORS.gray600}; text-align: center;">
-                © ${currentYear} Clean Machine Auto Detail. All rights reserved.
+                © ${currentYear} ${businessName}. All rights reserved.
               </p>
             </td>
           </tr>
@@ -297,7 +310,12 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
 export function renderInvoiceEmailPlainText(data: InvoiceEmailData): string {
   const currency = (n: number) => `$${n.toFixed(2)}`;
   
-  return `CLEAN MACHINE AUTO DETAIL
+  // Use tenant branding if provided, otherwise default to Clean Machine (root tenant)
+  const businessName = data.branding?.businessName || 'Clean Machine Auto Detail';
+  const businessPhone = data.branding?.publicPhone || phoneConfig.twilioMain || '';
+  const businessPhoneDisplay = formatPhoneForDisplay(businessPhone);
+  
+  return `${businessName.toUpperCase()}
 Invoice ${data.invoiceNumber}
 
 Service Date: ${data.serviceDate}
@@ -334,11 +352,11 @@ Learn more: ${data.upsell.ctaUrl}
 ` : ''}
 
 ${data.notes ? `
-NOTE FROM CLEAN MACHINE:
+NOTE FROM ${businessName.toUpperCase()}:
 ${data.notes}
 ` : ''}
 
-Questions? Reply to this email or call 918-856-5304
+Questions? Reply to this email${businessPhoneDisplay ? ` or call ${businessPhoneDisplay}` : ''}
 
-© ${new Date().getFullYear()} Clean Machine Auto Detail`;
+© ${new Date().getFullYear()} ${businessName}`;
 }

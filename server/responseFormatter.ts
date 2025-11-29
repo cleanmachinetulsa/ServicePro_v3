@@ -235,10 +235,12 @@ class ResponseFormatter {
     response = this.formatForEmail(response);
 
     // Add branding with conditional detailed signature
+    // TODO: Make tenant-aware by passing branding to formatForEmail
+    // For now, uses Clean Machine defaults (root tenant)
     if (opts.includeBranding) {
       if (opts.includeDetailedSignature) {
-        // Full signature with contact details
-        response = `${response}\n\nBest regards,\nThe Clean Machine Auto Detail Team\n\nClean Machine Auto Detail\nPremium Automotive Detailing Services\nPhone: 918-856-5304\nEmail: cleanmachinetulsa@gmail.com`;
+        // Full signature with contact details - will use tenant branding when implemented
+        response = `${response}\n\nBest regards,\nThe Clean Machine Auto Detail Team\n\nClean Machine Auto Detail\nPremium Automotive Detailing Services\nPhone: (918) 856-5304\nEmail: cleanmachinetulsa@gmail.com`;
       } else {
         // Simple signature
         response = `${response}\n\nBest regards,\nClean Machine Auto Detail`;

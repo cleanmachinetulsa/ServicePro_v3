@@ -1,5 +1,6 @@
 import sgMail from '@sendgrid/mail';
 import { RewardService } from "@shared/schema";
+import { phoneConfig, formatPhoneForDisplay } from './config/phoneConfig';
 
 const DEMO_MODE = false; // PRODUCTION: Demo mode disabled for live customers
 
@@ -14,17 +15,9 @@ if (!process.env.SENDGRID_API_KEY) {
 // Your verified business email address - read from environment
 const BUSINESS_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'info@cleanmachinetulsa.com';
 
-// Business phone number - configurable via environment variable
-const getBusinessPhoneNumber = () => process.env.BUSINESS_PHONE_NUMBER || '+19188565304';
-const getBusinessPhoneDisplay = () => {
-  const phone = getBusinessPhoneNumber();
-  // Format +19188565711 as (918) 856-5711
-  if (phone.startsWith('+1')) {
-    const digits = phone.slice(2); // Remove +1
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
-  return phone;
-};
+// Business phone number - use phoneConfig.twilioMain (customer-facing line)
+const getBusinessPhoneNumber = () => phoneConfig.twilioMain || process.env.BUSINESS_PHONE_NUMBER || '';
+const getBusinessPhoneDisplay = () => formatPhoneForDisplay(getBusinessPhoneNumber());
 
 if (process.env.SENDGRID_FROM_EMAIL) {
   console.log(`[EMAIL] Sender configured: ${BUSINESS_EMAIL}`);

@@ -93,25 +93,19 @@ export async function logError(details: ErrorDetails): Promise<void> {
 
 /**
  * Send notifications to admin about critical errors
+ * Uses centralized alertService for proper phone number routing
  */
 async function notifyAdmin(details: ErrorDetails): Promise<void> {
   const message = `🚨 CRITICAL: ${details.type} error at ${details.endpoint || 'unknown'}\n\n${details.message.substring(0, 150)}\n\nCheck dashboard immediately.`;
 
-  // Always send SMS for critical errors to catch issues immediately
+  // Use alertService for critical alerts (goes to both admin and urgent lines)
   try {
-    const adminPhone = process.env.BUSINESS_OWNER_PHONE;
-    if (adminPhone) {
-      console.log('[ERROR MONITOR] 📱 Sending critical error SMS to business owner');
-      await sendSMS(
-        adminPhone,
-        message
-      );
-      console.log('[ERROR MONITOR] ✅ Critical error SMS sent successfully');
-    } else {
-      console.warn('[ERROR MONITOR] ⚠️ No BUSINESS_OWNER_PHONE configured - cannot send SMS alerts');
-    }
+    const { sendCriticalAlert } = await import('./services/alertService');
+    console.log('[ERROR MONITOR] 📱 Sending critical error alert via alertService');
+    await sendCriticalAlert(message);
+    console.log('[ERROR MONITOR] ✅ Critical error alert sent successfully');
   } catch (error) {
-    console.error('[ERROR MONITOR] ❌ Failed to send SMS alert:', error);
+    console.error('[ERROR MONITOR] ❌ Failed to send alert:', error);
   }
 }
 

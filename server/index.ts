@@ -410,6 +410,10 @@ app.use((req, res, next) => {
   // Run startup health checks for external services
   await runStartupHealthChecks();
   
+  // Log phone configuration status
+  const { logPhoneConfigStatus } = await import('./config/phoneConfig');
+  logPhoneConfigStatus();
+  
   // Log SMS Agent model configuration
   const { SMS_AGENT_MODEL } = await import('./openai');
   console.log(`[AI] SMS agent model: ${SMS_AGENT_MODEL}`);
@@ -471,6 +475,11 @@ app.use((req, res, next) => {
     );
   }, 60 * 1000);
   console.log('[SERVER] Unanswered message monitoring started - checks every 5 minutes for web chat messages without AI responses');
+
+  // Start system health monitoring (checks every 5 minutes)
+  const { startHealthMonitoring } = await import('./services/systemHealthMonitor');
+  startHealthMonitoring();
+  console.log('[SERVER] System health monitoring started - checks every 5 minutes, sends URGENT alerts for critical issues');
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
