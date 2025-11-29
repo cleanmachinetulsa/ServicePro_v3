@@ -1,0 +1,120 @@
+
+
+You are updating the ServicePro v3 base repo for strict, SAFE, white-label multi-tenancy.
+
+CONTEXT
+- ServicePro is multi-tenant & white-label.
+- Clean Machine ("root" tenant) is Jody's business and can use Clean Machine branding.
+- Other tenants must NEVER leak or inherit Clean Machine data (phone, email, logo, city, URL, etc.).
+- We already have a global phoneConfig with roles (twilioMain, twilioTest, phoneAdmin, ownerUrgent).
+
+GOAL
+Implement a tenant branding + contact system with a SAFE hybrid fallback model:
+
+1) Root tenant ("root"):
+   - May use Clean Machine phone/email/logo/address.
+   - May fall back to global phoneConfig if needed.
+
+2) Non-root tenants:
+   - Use their own tenant-configured branding and contact info.
+   - MAY fall back to THEIR OWN tenant defaults if present.
+   - If they have nothing configured, use NEUTRAL system values (no-reply@servicepro.app, "Your Business").
+   - They MUST NOT fall back to Clean Machine data.
+
+========================================================
+1) Create server/services/tenantBrandingService.ts
+========================================================
+
+```ts
+// server/services/tenantBrandingService.ts
+
+import { phoneConfig } from "../config/phoneConfig";
+
+export interface TenantBranding {
+  businessName: string;
+  publicPhone?: string | null;
+  supportEmail?: string | null;
+  websiteUrl?: string | null;
+  logoUrl?: string | null;
+  city?: string | null;
+}
+
+const DEFAULT_SYSTEM_EMAIL =
+  process.env.DEFAULT_SYSTEM_EMAIL || "no-reply@servicepro.app";
+
+export async function getTenantBranding(
+  tenantId: string | null
+): Promise<TenantBranding> {
+  const isRoot = !tenantId || tenantId === "root";
+
+  if (isRoot) {
+    return {
+      businessName: "Clean Machine Auto Detail",
+      publicPhone: phoneConfig.twilioMain,
+      supportEmail: process.env.CM_EMAIL || "info@cleanmachinetulsa.com",
+      websiteUrl: "https://cleanmachinetulsa.com",
+      logoUrl: process.env.CM_LOGO_URL || null,
+      city: "Tulsa, OK",
+    };
+  }
+
+  return {
+    businessName: "Your Business",
+    publicPhone: null,
+    supportEmail: null,
+    websiteUrl: null,
+    logoUrl: null,
+    city: null,
+  };
+}
+
+export async function getTenantFromEmail(
+  tenantId: string | null
+): Promise<{ email: string; name: string }> {
+  const branding = await getTenantBranding(tenantId);
+
+  if (!tenantId || tenantId === "root") {
+    return {
+      email: branding.supportEmail || DEFAULT_SYSTEM_EMAIL,
+      name: branding.businessName,
+    };
+  }
+
+  return {
+    email: branding.supportEmail || DEFAULT_SYSTEM_EMAIL,
+    name: branding.businessName || "Your Detailer",
+  };
+}
+
+======================================================== 2) Update public site + email system to use getTenantBranding()
+
+Search & replace:
+
+❗ Any "Clean Machine", "Tulsa", "918-856-5304", "info@cleanmachinetulsa.com" ⛔ REMOVE from shared templates
+
+Instead use:
+
+import { getTenantBranding } from "../services/tenantBrandingService";
+const branding = await getTenantBranding(tenantId);
+
+Public site should show:
+
+branding.businessName
+
+branding.publicPhone
+
+branding.supportEmail
+
+branding.logoUrl ✔ For non-root tenants missing values → show nothing or "Configure branding to publish".
+
+
+======================================================== 3) Confirm no Clean Machine data leaks
+
+Run these searches:
+
+rg -n "Clean Machine" -S .
+rg -n "cleanmachinetulsa\\.com" -S .
+rg -n "918[- )]?856[- ]?5304" -S .
+rg -n "Tulsa" server client shared -S .
+
+Any result in shared/public UI MUST be replaced with tenantBranding fields. Root-only files may remain.

@@ -1,0 +1,382 @@
+Perfect, that screenshot is exactly what I needed. Let me first lock in the mapping of those four numbers, then I’ll give you a big Replit drop-in that:
+
+Centralizes all the phone numbers into a clean phoneConfig.
+
+Makes sure customer-facing copy always shows the main line.
+
+Scrubs any hard-coded or wrong numbers from headers, footers, promos, emails, SMS templates, etc.
+
+Keeps admin + urgent behavior wired to the right lines.
+
+
+
+---
+
+1️⃣ Final mapping from your Replit secrets
+
+From the screenshot:
+
+BUSINESS_OWNER_PHONE → +19182820103
+👉 This is your urgent personal AT&T line (wake-me-up-if-it’s-on-fire).
+
+VIP_PHONE_NUMBER → (hidden, but this should be +19188565304)
+👉 This is your MAIN Clean Machine line (customer-facing).
+
+TWILIO_PHONE_NUMBER → +19188565711
+👉 This is your admin line (your “business phone line” for notifications).
+
+TWILIO_TEST_SMS_NUMBER → +19189183265
+👉 This is your Twilio test/dev line.
+
+
+We’ll turn those into four canonical roles:
+
+PHONE_TWILIO_TEST → test line → TWILIO_TEST_SMS_NUMBER
+
+PHONE_TWILIO_MAIN → main customer line → VIP_PHONE_NUMBER
+
+PHONE_ADMIN → admin notifications line → TWILIO_PHONE_NUMBER
+
+PHONE_OWNER_URGENT → “system is broken” line → BUSINESS_OWNER_PHONE
+
+
+And then expose them everywhere via a single phoneConfig.
+
+
+---
+
+2️⃣ Big Replit drop-in for you to paste
+
+Here’s the full prompt you can feed the Replit agent. It assumes the project is the ServicePro v3 base you’ve been using.
+
+> Copy everything in the gray block and paste it into Replit’s chat:
+
+
+
+You are updating the ServicePro v3 base repo for Clean Machine.
+
+GOAL
+Clean up ALL phone number usage so that:
+1) All Twilio / AI / voicemail logic uses a single unified phoneConfig.
+2) The correct MAIN business line (+19188565304) is shown everywhere customer-facing
+   (headers, footers, promos, emails, SMS copy, etc.).
+3) The admin and urgent numbers are only used for internal alerts, not public copy.
+4) The test number is NEVER shown to customers, only used in dev/test flows.
+
+SOURCE OF TRUTH – CURRENT SECRETS (DO NOT CHANGE VALUES)
+From Replit secrets:
+
+- BUSINESS_OWNER_PHONE = +19182820103
+- VIP_PHONE_NUMBER     = +19188565304   (MAIN customer-facing Clean Machine line)
+- TWILIO_PHONE_NUMBER  = +19188565711   (ADMIN line / business phone)
+- TWILIO_TEST_SMS_NUMBER = +19189183265 (Twilio TEST line)
+
+ROLE MAPPING
+Use these roles:
+
+- phoneConfig.twilioTest   → TWILIO_TEST_SMS_NUMBER
+- phoneConfig.twilioMain   → VIP_PHONE_NUMBER
+- phoneConfig.phoneAdmin   → TWILIO_PHONE_NUMBER
+- phoneConfig.ownerUrgent  → BUSINESS_OWNER_PHONE
+
+These roles must be the ONLY way phone numbers are referenced in server code.
+
+========================================================
+1) ENV + PHONE CONFIG SETUP
+========================================================
+
+A. Update env loader (server/config/env.ts or equivalent)
+
+Create or update exports so we read from the existing secrets:
+
+```ts
+// server/config/env.ts
+
+export const PHONE_TWILIO_TEST =
+  process.env.TWILIO_TEST_SMS_NUMBER || null;
+
+export const PHONE_TWILIO_MAIN =
+  process.env.VIP_PHONE_NUMBER || null;
+
+export const PHONE_ADMIN =
+  process.env.TWILIO_PHONE_NUMBER || null;
+
+export const PHONE_OWNER_URGENT =
+  process.env.BUSINESS_OWNER_PHONE || null;
+
+Do NOT change the actual secret names in Replit; just map them here.
+
+B. Create a centralized phoneConfig
+
+// server/config/phoneConfig.ts
+import {
+  PHONE_TWILIO_TEST,
+  PHONE_TWILIO_MAIN,
+  PHONE_ADMIN,
+  PHONE_OWNER_URGENT,
+} from "./env";
+
+export const phoneConfig = {
+  twilioTest: PHONE_TWILIO_TEST,
+  twilioMain: PHONE_TWILIO_MAIN,
+  phoneAdmin: PHONE_ADMIN,
+  ownerUrgent: PHONE_OWNER_URGENT,
+};
+
+Anywhere in server code that needs a phone number should import from here:
+
+import { phoneConfig } from "../config/phoneConfig";
+
+======================================================== 2) WIRE PHONE CONFIG INTO TWILIO / AI / VOICEMAIL LOGIC
+
+A. Search for existing phone-related env usage
+
+Use ripgrep to find all phone-related env vars and hard-coded numbers:
+
+rg -n "TWILIO_TEST_SMS_NUMBER|TWILIO_PHONE_NUMBER|VIP_PHONE_NUMBER|BUSINESS_OWNER_PHONE" server client shared || true
+rg -n "918[- )]?856[- ]?5304|918[- )]?856[- ]?5711|918[- )]?918[- ]?3265|918[- )]?282[- ]?0103" -S .
+rg -n "\\+19188565304|\\+1 918 856 5304|\918\ 856-5304" -S .
+rg -n "\\+19188565711|\918\ 856-5711" -S .
+rg -n "\\+19189183265|\918\ 918-3265" -S .
+rg -n "\\+19182820103|\918\ 282-0103" -S .
+
+B. Update server-side Twilio usage
+
+For each place where Twilio is used (openai voicemail followup, SMS agent, admin alerts, etc.):
+
+1. Outbound SMS to customers (AI replies, voicemail followups, automated confirmations):
+
+Use the MAIN line as the from:
+
+
+import { phoneConfig } from "../config/phoneConfig";
+
+const fromNumber = phoneConfig.twilioMain || phoneConfig.twilioTest;
+
+await twilioClient.messages.create({
+  from: fromNumber,
+  to: customerPhone,
+  body: messageBody,
+});
+
+Remove any direct references to process.env.TWILIO_PHONE_NUMBER, TWILIO_TEST_SMS_NUMBER or hard-coded +1918... strings here. Always go through phoneConfig.
+
+
+
+2. Inbound webhooks (Twilio /api/twilio routes):
+
+Keep current From / To logic, but anywhere we compare or log the “our” number, use phoneConfig.twilioMain and/or phoneConfig.twilioTest instead of hard-coded numbers.
+
+
+
+3. Admin notifications (e.g. new voicemail -> notify you, escalations, etc.):
+
+Use phoneConfig.phoneAdmin as the recipient.
+
+
+if (phoneConfig.phoneAdmin && phoneConfig.twilioMain) {
+  await twilioClient.messages.create({
+    to: phoneConfig.phoneAdmin,
+    from: phoneConfig.twilioMain,
+    body: `[Admin] ${summaryText}`,
+  });
+}
+
+
+4. Urgent alerts (system health, failed integrations, repeated errors):
+
+Implement a small alert service if one doesn’t exist:
+
+
+// server/services/alertService.ts
+import twilio from "twilio";
+import { phoneConfig } from "../config/phoneConfig";
+import { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } from "../config/env";
+import { logger } from "../logger";
+
+const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+
+export async function sendUrgentAlert(message: string) {
+  if (!phoneConfig.ownerUrgent || !phoneConfig.twilioMain) {
+    logger.error("[urgent-alert] Missing ownerUrgent or twilioMain number", {
+      ownerUrgent: phoneConfig.ownerUrgent,
+      twilioMain: phoneConfig.twilioMain,
+    });
+    return;
+  }
+
+  try {
+    await client.messages.create({
+      to: phoneConfig.ownerUrgent,
+      from: phoneConfig.twilioMain,
+      body: `[URGENT][ServicePro] ${message}`,
+    });
+    logger.info("[urgent-alert] Sent urgent SMS", {
+      to: phoneConfig.ownerUrgent,
+    });
+  } catch (err) {
+    logger.error("[urgent-alert] Failed to send urgent SMS", { error: err });
+  }
+}
+
+Wire this into any health-check, error-rate monitor, or “self scan” logic the app already has, so critical failures go to ownerUrgent.
+
+
+
+
+IMPORTANT:
+
+Do NOT change tenantDb vs db usage.
+
+Do NOT remove multi-tenant isolation.
+
+
+======================================================== 3) FIX CUSTOMER-FACING COPY ACROSS THE APP
+
+We must ensure that only the MAIN line (+1 918 856 5304) appears in user-facing copy, and all other numbers are hidden from customers.
+
+A. Search for any hard-coded phone numbers in client + shared code
+
+Run:
+
+rg -n "918[- )]?856[- ]?5304|9188565304|\918\ 856-5304|\\+1 918 856 5304" client shared server -S
+rg -n "918[- )]?856[- ]?5711|9188565711|\918\ 856-5711" client shared server -S
+rg -n "918[- )]?918[- ]?3265|9189183265|\918\ 918-3265" client shared server -S
+rg -n "918[- )]?282[- ]?0103|9182820103|\918\ 282-0103" client shared server -S
+
+B. For marketing / UI copy (headers, footers, hero sections, promos, contact blocks, website generator templates, email templates):
+
+1. Any phone number shown to customers should be the MAIN line only:
+
+Display format (for now):
+
+(918) 856-5304
+
+
+
+
+2. Replace any instances of 5711, 3265, or 0103 in user-facing copy with 5304 only where the number is shown to the public.
+
+
+3. For now, it’s OK if the public-facing components hard-code (918) 856-5304 for the Clean Machine root tenant. Later, we can make this tenant-configurable, but today the priority is “no wrong numbers.”
+
+Example:
+
+// client/src/components/FooterContact.tsx (example)
+export const MAIN_PHONE_DISPLAY = "(918) 856-5304";
+
+// In JSX:
+<a href="tel:+19188565304">{MAIN_PHONE_DISPLAY}</a>
+
+Make sure href="tel:+19188565304" matches the main line.
+
+
+
+C. Email / SMS template copy
+
+Search templates:
+
+rg -n "Call us at|Text us at|call or text" client server -S
+
+Ensure any embedded phone number in copy uses:
+
+(918) 856-5304 for display, and
+
++19188565304 as the tel link or SMS example.
+
+
+
+D. Remove sensitive numbers from public outputs
+
++19188565711 (admin line),
+
++19189183265 (test line),
+
++19182820103 (urgent AT&T),
+
+
+should never appear in:
+
+Public website UI,
+
+Customer emails,
+
+Customer SMS content.
+
+
+They may appear in logs or admin panels, but not customer-facing templates.
+
+======================================================== 4) QUICK SANITY CHECKS AFTER CHANGES
+
+After wiring everything:
+
+1. Run tests (or at least a manual smoke test):
+
+
+
+In dev, hit some flows that send SMS:
+
+AI SMS replies
+
+Voicemail followup SMS
+
+Any admin notifications
+
+
+
+Check that:
+
+Outbound customer messages have FROM = +19188565304 (main line) or the configured test line in dev.
+
+Admin notifications go TO = +19188565711.
+
+Urgent alerts (if triggered) go TO = +19182820103.
+
+
+2. In the browser:
+
+
+
+Visit the main marketing pages, site generator output, footer, and any contact areas. Confirm:
+
+Only (918) 856-5304 is visible.
+
+No “5711”, “3265”, or “0103” appear anywhere in the UI.
+
+
+
+3. Use ripgrep one more time to ensure no stray numbers:
+
+
+
+rg -n "856[- ]?5711|918[- )]?918[- ]?3265|282[- ]?0103" -S .
+
+If this prints anything in client/shared code, fix or remove it.
+
+At the end, leave a short comment somewhere like server/config/phoneConfig.ts summarizing the mapping so future edits stay consistent:
+
+// Mapping:
+// twilioTest    = TWILIO_TEST_SMS_NUMBER (+19189183265)
+// twilioMain    = VIP_PHONE_NUMBER       (+19188565304)
+// phoneAdmin    = TWILIO_PHONE_NUMBER    (+19188565711)
+// ownerUrgent   = BUSINESS_OWNER_PHONE   (+19182820103)
+
+---
+
+## 3️⃣ Do you need to give me anything else?
+
+For this pass, no — those four secrets + the roles are enough to clean it up.
+
+Later, if you want to:
+
+- Split “marketing display phone” per tenant, or  
+- Have different numbers per industry pack,
+
+then it’d help to know exactly how tenant config is stored (tables/columns). But for **“make sure the whole app uses the right numbers and scrub wrong ones”**, this drop-in is everything we need.
+
+When you’ve run it, you can test like:
+
+1. Call +1-918-856-5304 (once it’s fully on ServicePro) and check messages.  
+2. Make sure every place a customer sees a number, it’s **5304**, and every alert behaves according to the roles above.
+
+If something looks off after the agent makes changes, paste the specific behavior and we’ll patch just that piece.0
