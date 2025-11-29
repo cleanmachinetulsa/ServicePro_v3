@@ -411,9 +411,11 @@ async function sendOwnerNotifications(
   customerContext: any
 ) {
   try {
-    const ownerPhone = process.env.BUSINESS_OWNER_PHONE;
-    if (!ownerPhone) {
-      console.error('[ESCALATION] BUSINESS_OWNER_PHONE not configured');
+    // Use phoneConfig for admin notifications
+    const { phoneConfig } = await import('./config/phoneConfig');
+    const adminPhone = phoneConfig.phoneAdmin;
+    if (!adminPhone) {
+      console.error('[ESCALATION] phoneAdmin not configured in phoneConfig');
       return;
     }
 
@@ -432,7 +434,7 @@ async function sendOwnerNotifications(
     message += `\nTrigger: "${escalation.triggerPhrase}"\n\n`;
     message += `Reply to this customer via the Messages dashboard.`;
 
-    const smsResult = await sendSMS(tenantDb, ownerPhone, message);
+    const smsResult = await sendSMS(tenantDb, adminPhone, message);
     const smsSent = smsResult.success;
 
     const adminUsers = await tenantDb.query.users.findMany({

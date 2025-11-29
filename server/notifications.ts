@@ -4,12 +4,10 @@ import { WeatherCheckResult } from './weatherService';
 import { db } from './db';
 import { smsDeliveryStatus } from '@shared/schema';
 import type { TenantDb } from './tenantDb';
+import { phoneConfig } from './config/phoneConfig';
 
 // Set to true if you want to enable demo mode restrictions
 const DEMO_MODE = process.env.DEMO_MODE === 'true';
-
-// Emergency alert number (0103 line)
-const EMERGENCY_ALERT_PHONE = '+19182820103';
 
 /**
  * Notification Service for Clean Machine Auto Detail
@@ -278,22 +276,20 @@ export async function smartSendNotification(
     console.warn(`[SMART NOTIFY] No email provided - cannot use email fallback`);
   }
   
-  // Step 3: Both SMS and email failed - alert emergency number (0103)
-  console.error(`[SMART NOTIFY] 🚨 CRITICAL: Both SMS and email failed! Alerting to emergency line: ${EMERGENCY_ALERT_PHONE}`);
+  // Step 3: Both SMS and email failed - alert urgent number via alertService
+  const urgentPhone = phoneConfig.ownerUrgent;
+  console.error(`[SMART NOTIFY] 🚨 CRITICAL: Both SMS and email failed! Alerting to urgent line: ${urgentPhone}`);
   
   try {
-    const emergencyMessage = `🚨 NOTIFICATION DELIVERY FAILURE\n\nFailed to send message to:\nPhone: ${customerPhone}\nEmail: ${customerEmail || 'not provided'}\n\nOriginal message:\n${message.substring(0, 200)}${message.length > 200 ? '...' : ''}`;
+    const { sendUrgentAlert } = await import('./services/alertService');
+    const emergencyMessage = `NOTIFICATION DELIVERY FAILURE - Failed to send to ${customerPhone} / ${customerEmail || 'no email'}: ${message.substring(0, 100)}`;
     
-    await twilio.messages.create({
-      body: emergencyMessage,
-      from: twilioPhoneNumber,
-      to: EMERGENCY_ALERT_PHONE,
-    });
+    await sendUrgentAlert(emergencyMessage);
     
-    console.log(`[SMART NOTIFY] 📱 Emergency alert sent to ${EMERGENCY_ALERT_PHONE}`);
-    return { success: false, method: 'emergency', error: 'SMS and email both failed - alert sent to emergency line' };
+    console.log(`[SMART NOTIFY] 📱 Urgent alert sent to ${urgentPhone}`);
+    return { success: false, method: 'emergency', error: 'SMS and email both failed - alert sent to urgent line' };
   } catch (emergencyError) {
-    console.error(`[SMART NOTIFY] 🔴 CRITICAL: Emergency alert also failed!`, emergencyError);
+    console.error(`[SMART NOTIFY] 🔴 CRITICAL: Urgent alert also failed!`, emergencyError);
     return { success: false, method: 'emergency', error: 'All notification methods failed' };
   }
 }

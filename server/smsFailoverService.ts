@@ -4,15 +4,16 @@
  * Emergency fix for Twilio Error 30024 (Numeric Sender ID Not Provisioned)
  * Automatically retries failed SMS with backup phone line
  * 
- * Context: Main line +19188565304 (ported Google Voice) hasn't completed
- * carrier provisioning. This service automatically falls back to working
- * line +19188565711 when Error 30024 is detected.
+ * Uses phoneConfig for number references:
+ * - twilioMain (+19188565304) = Main customer-facing line
+ * - phoneAdmin (+19188565711) = Admin/backup line for failover
  */
 
 import type { TenantDb } from './db';
 import { phoneLines } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import * as Twilio from 'twilio';
+import { phoneConfig } from './config/phoneConfig';
 
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
@@ -31,8 +32,8 @@ if (twilioAccountSid && twilioAuthToken) {
 let backupPhoneLineCache: { number: string; id: number; label: string } | null = null;
 
 /**
- * Get backup phone line (Jody's Line +19188565711)
- * This is the working Twilio number that can send SMS while main line is provisioning
+ * Get backup phone line (Admin line for failover)
+ * Uses phoneConfig.phoneAdmin as the backup when main line fails
  */
 async function getBackupPhoneLine(tenantDb: TenantDb): Promise<{ number: string; id: number; label: string } | null> {
   if (backupPhoneLineCache) {
@@ -40,8 +41,12 @@ async function getBackupPhoneLine(tenantDb: TenantDb): Promise<{ number: string;
   }
 
   try {
-    // Jody's Line should be ID 2 in the database, or we can search by number
-    const backupLineNumber = '+19188565711';
+    // Use phoneConfig.phoneAdmin as the backup line
+    const backupLineNumber = phoneConfig.phoneAdmin;
+    if (!backupLineNumber) {
+      console.error('[SMS FAILOVER] phoneAdmin not configured in phoneConfig');
+      return null;
+    }
     
     const [backupLine] = await tenantDb
       .select()
@@ -205,8 +210,9 @@ let lastFailoverNotification = 0;
 const NOTIFICATION_COOLDOWN = 3600000; // 1 hour
 
 /**
- * Notify business owner when SMS failover is triggered
+ * Notify admin when SMS failover is triggered
  * Rate-limited to once per hour to avoid spam
+ * Uses phoneConfig for proper number routing
  */
 async function notifyOwnerOfFailover(primaryNumber: string, backupNumber: string): Promise<void> {
   try {
@@ -214,12 +220,13 @@ async function notifyOwnerOfFailover(primaryNumber: string, backupNumber: string
     
     // Check cooldown
     if (now - lastFailoverNotification < NOTIFICATION_COOLDOWN) {
-      console.log('[SMS FAILOVER] Skipping owner notification (cooldown active)');
+      console.log('[SMS FAILOVER] Skipping admin notification (cooldown active)');
       return;
     }
 
-    const ownerPhone = process.env.BUSINESS_OWNER_PHONE;
-    if (!ownerPhone || !twilio) {
+    // Use phoneConfig.phoneAdmin for failover notifications
+    const adminPhone = phoneConfig.phoneAdmin;
+    if (!adminPhone || !twilio) {
       return;
     }
 
@@ -236,13 +243,13 @@ No action needed - failover is automatic.`;
     await twilio.messages.create({
       body: alertMessage,
       from: backupNumber, // Use backup since primary is down
-      to: ownerPhone,
+      to: adminPhone,
     });
 
     lastFailoverNotification = now;
-    console.log('[SMS FAILOVER] Owner notified of failover event');
+    console.log('[SMS FAILOVER] Admin notified of failover event');
   } catch (error) {
-    console.error('[SMS FAILOVER] Failed to notify owner:', error);
+    console.error('[SMS FAILOVER] Failed to notify admin:', error);
   }
 }
 
