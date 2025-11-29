@@ -1,0 +1,166 @@
+You are fixing the ServicePro v3 backend for Clean Machine.
+
+THE REAL PROBLEM (FROM LOGS)
+The server is blocking its own production frontend:
+
+- Logs show: 
+  [SECURITY] Blocked request from unauthorized origin: https://servicepro-v-3-base-cleanmachinetul.replit.app
+  Error: Not allowed by CORS
+
+- When the browser loads:
+  /assets/index-oELbvrNQ.js
+  /assets/index-DB3t9imd.css
+
+the CORS layer rejects the origin and returns JSON 500 instead of JS/CSS.
+
+GOAL
+Stop CORS/security from blocking our **own** frontend.
+
+We will:
+1) Replace the origin-check logic with a robust version that explicitly allows both dev and prod URLs.
+2) Make sure static assets (/assets, /manifest.json, /favicon.ico) are not blocked by this check.
+
+DO NOT:
+- Remove CORS completely.
+- Touch tenantDb vs db.
+- Move unrelated middleware.
+
+------------------------------------------------
+STEP 1: FIX THE CORS ORIGIN CHECK
+------------------------------------------------
+1. Search the code for the log message:
+
+   "[SECURITY] Blocked request from unauthorized origin"
+
+   Open that file (it’s where the CORS origin callback lives).
+
+2. In that file, completely REPLACE the current origin-check helper with this implementation (adapt imports if needed, but keep the logic exactly):
+
+   ```ts
+   const allowedOrigins = [
+     "https://servicepro-v-3-base-cleanmachinetul.repl.co",
+     "https://servicepro-v-3-base-cleanmachinetul.replit.app",
+     "http://localhost:3000",
+     "http://localhost:5173",
+     "http://localhost:4173",
+   ];
+
+   function isAllowedOrigin(origin?: string | null): boolean {
+     if (!origin) return true; // same-origin / curl / server calls
+
+     try {
+       const url = new URL(origin);
+       const host = url.hostname;
+       const normalized = `${url.protocol}//${host}`;
+
+       // Exact matches first
+       if (allowedOrigins.includes(normalized)) {
+         return true;
+       }
+
+       // Also allow any repl.co / replit.app for this project as a fallback
+       if (
+         host.endsWith(".repl.co") ||
+         host.endsWith(".replit.app")
+       ) {
+         return true;
+       }
+
+       return false;
+     } catch {
+       return false;
+     }
+   }
+Ensure the CORS options use that helper, like this:
+
+ts
+Copy code
+import type { CorsOptions } from "cors";
+
+export const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    console.error("[SECURITY] Blocked request from unauthorized origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+};
+If the file already has a corsOptions, overwrite its origin function with the one above. Keep any additional options (methods, allowed headers) as they are.
+
+STEP 2: MAKE SURE STATIC ASSETS AREN’T BLOCKED
+Now open server/index.ts (the main Express entry).
+
+We’re going to wrap the CORS middleware so it does NOT apply to static assets.
+
+Find where cors(corsOptions) is used. It may look like:
+
+ts
+Copy code
+app.use(cors(corsOptions));
+Replace that single usage with this wrapper:
+
+ts
+Copy code
+import cors from "cors";
+import { corsOptions } from "./path/to/your/cors/options/file"; // keep existing import, just reuse it
+
+// IMPORTANT: use CORS only for API-style routes, not static assets
+app.use((req, res, next) => {
+  const path = req.path || "";
+
+  // Let static assets / manifest / icons through with no CORS blocking
+  if (
+    path.startsWith("/assets/") ||
+    path === "/manifest.json" ||
+    path === "/favicon.ico" ||
+    path.startsWith("/icon-") ||
+    path.startsWith("/media/") // static media is safe
+  ) {
+    return next();
+  }
+
+  // For everything else, run the normal CORS check
+  return cors(corsOptions)(req, res, next);
+});
+Make sure you remove the old bare app.use(cors(corsOptions)); so CORS is not applied twice.
+
+Do NOT move express.static calls. Just ensure the CORS wrapper above is the only place CORS is applied.
+
+STEP 3: REDEPLOY AND VERIFY
+Click “Publish” to deploy.
+
+In a fresh incognito window with DevTools → Network → “Disable cache” checked, open:
+
+https://servicepro-v-3-base-cleanmachinetul.replit.app/
+
+Confirm in Network tab that:
+
+/assets/index-oELbvrNQ.js has:
+
+Status: 200
+
+Type / Content-Type: application/javascript
+
+/assets/index-DB3t9imd.css has:
+
+Status: 200
+
+Type / Content-Type: text/css
+
+Confirm the server logs no longer show:
+
+[SECURITY] Blocked request from unauthorized origin: https://servicepro-v-3-base-cleanmachinetul.replit.app
+
+during a normal page load.
+
+Add a short comment above allowedOrigins:
+
+// NOTE: include both .repl.co (dev) and .replit.app (prod) origins so our own frontend is not blocked by CORS.
+
+That’s it. Do not change anything else.
+
+markdown
+Copy code
