@@ -177,67 +177,82 @@ app.use((req, res, next) => {
 });
 
 // SECURITY: Strict CORS with explicit origin whitelist
-// NOTE: Must include both .repl.co (dev) and .replit.app (prod) origins so our own frontend is not blocked by CORS.
-// Environment-based origin configuration for production security
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : [
-      // ServicePro v3 deployment origins (REQUIRED for frontend to load)
-      'https://servicepro-v-3-base-cleanmachinetul.replit.app',
-      'https://servicepro-v-3-base-cleanmachinetul.repl.co',
-      // Clean Machine custom domains
-      'https://cleanmachinetulsa.com',
-      'http://cleanmachinetulsa.com',
-      'https://www.cleanmachinetulsa.com',
-      'http://www.cleanmachinetulsa.com',
-      'https://cleanmachineintulsa.com',
-      'http://cleanmachineintulsa.com',
-      'https://www.cleanmachineintulsa.com',
-      'http://www.cleanmachineintulsa.com',
-      // Legacy Replit deployment
-      'https://clean-machine-auto-detail.replit.app',
-      // Wildcard patterns for Replit preview URLs
-      'https://*.replit.dev',
-      'http://*.replit.dev',
-      'https://*.repl.co',
-      'http://*.repl.co',
-      'https://*.replit.app',
-      'http://*.replit.app',
-      ...(process.env.NODE_ENV === 'development' ? [
-        'http://localhost:5000',
-        'http://localhost:5173',
-        'http://127.0.0.1:5000',
-        'http://127.0.0.1:5173'
-      ] : []),
-    ];
+// NOTE: include both .repl.co (dev) and .replit.app (prod) origins so our own frontend is not blocked by CORS.
+const allowedOrigins = [
+  "https://servicepro-v-3-base-cleanmachinetul.repl.co",
+  "https://servicepro-v-3-base-cleanmachinetul.replit.app",
+  "https://cleanmachinetulsa.com",
+  "https://www.cleanmachinetulsa.com",
+  "https://cleanmachineintulsa.com",
+  "https://www.cleanmachineintulsa.com",
+  "https://clean-machine-auto-detail.replit.app",
+  "http://localhost:3000",
+  "http://localhost:5000",
+  "http://localhost:5173",
+  "http://localhost:4173",
+];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    // Check if origin is in whitelist
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (allowed.includes('*')) {
-        // Handle wildcard domains like *.replit.dev
-        const pattern = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
-        return pattern.test(origin);
-      }
-      return allowed === origin;
-    });
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.warn(`[SECURITY] Blocked request from unauthorized origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+function isAllowedOrigin(origin?: string | null): boolean {
+  if (!origin) return true; // same-origin / curl / server calls
+
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    const normalized = `${url.protocol}//${host}`;
+
+    // Exact matches first
+    if (allowedOrigins.includes(normalized)) {
+      return true;
     }
+
+    // Also allow any repl.co / replit.app / replit.dev for this project as a fallback
+    if (
+      host.endsWith(".repl.co") ||
+      host.endsWith(".replit.app") ||
+      host.endsWith(".replit.dev")
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+const corsOptions = {
+  origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    if (isAllowedOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    console.error("[SECURITY] Blocked request from unauthorized origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
   },
-  credentials: true, // Allow cookies
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
   exposedHeaders: ["RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
-}));
+};
+
+// IMPORTANT: use CORS only for API-style routes, not static assets
+app.use((req, res, next) => {
+  const reqPath = req.path || "";
+
+  // Let static assets / manifest / icons through with no CORS blocking
+  if (
+    reqPath.startsWith("/assets/") ||
+    reqPath === "/manifest.json" ||
+    reqPath === "/favicon.ico" ||
+    reqPath.startsWith("/icon-") ||
+    reqPath.startsWith("/media/")
+  ) {
+    return next();
+  }
+
+  // For everything else, run the normal CORS check
+  return cors(corsOptions)(req, res, next);
+});
 
 // Use shared session middleware (also used by Socket.IO)
 app.use(sessionMiddleware);
