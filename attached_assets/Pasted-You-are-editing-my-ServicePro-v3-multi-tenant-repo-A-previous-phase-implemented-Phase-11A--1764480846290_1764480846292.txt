@@ -1,0 +1,181 @@
+You are editing my **ServicePro v3 multi-tenant** repo.
+
+A previous phase implemented:
+
+- Phase 11A: Tenant Readiness Engine (service-level logic)
+- Phase 11B: Tenant Readiness UI Panel (admin UI)
+
+Replit just told me:
+
+> "I've completed Phase 11B - the Tenant Readiness UI Panel. You can now view a tenant's readiness report by clicking on a tenant from the Admin Tenants list."
+
+But when I run this in the Shell:
+
+  npm run tenant:readiness -- --tenantSlug=cleanmachine
+
+I get:
+
+  npm error Missing script: "tenant:readiness"
+
+So: the UI is done but the CLI / npm script was never wired up.
+
+==============================
+GOAL OF THIS EDIT
+==============================
+
+Create a **proper CLI runner** for the Tenant Readiness Engine and wire it up as:
+
+  npm run tenant:readiness -- --tenantSlug=<slug>
+
+so I can run a readiness report for any tenant directly from the Shell and paste the results back into ChatGPT.
+
+Do NOT break any existing tests or scripts.
+
+==============================
+STEP 0 – DISCOVER EXISTING READINESS ENGINE
+==============================
+
+1. Search the repo for the Phase 11A implementation:
+   - Look for files / symbols like:
+     - "tenantReadiness"
+     - "TenantReadiness"
+     - "TenantReadinessReport"
+     - "getTenantReadiness"
+     - "readinessScore"
+   - There should already be:
+     - A **service** that computes readiness for a given tenant (branding, website, telephony, email, AI, conversations, etc.).
+     - An **API route** used by the new admin UI panel (Phase 11B).
+
+2. DO NOT re-implement readiness logic.
+   - Reuse the **existing service function(s)** and **existing data types**.
+   - We just need a CLI wrapper around whatever already exists.
+
+If you find multiple readiness-related helpers, choose the one that the **admin readiness panel** uses as the “single source of truth”.
+
+==============================
+STEP 1 – CREATE A CLI ENTRYPOINT
+==============================
+
+Create a new file (or use the standard CLI scripts folder if one already exists). Prefer this path unless a different one is clearly standard in this repo:
+
+  server/scripts/tenantReadinessCli.ts
+
+Inside that file, do ALL of the following:
+
+1. **Environment / setup**
+   - Initialize env the same way existing CLI scripts do (e.g., `import "dotenv/config"` or equivalent).
+   - Import the **global DB** and the **tenant DB wrapper** that is used elsewhere in the app.
+     - Example (adjust to real names / paths in this repo):
+       - `import { db } from "../db";`
+       - `import { wrapTenantDb } from "../services/tenantDb";`
+   - Import the **Tenant Readiness service** from Phase 11A.
+     - Example (adjust to actual file & function names):
+       - `import { getTenantReadinessReport } from "../services/tenantReadinessService";`
+
+2. **Argument parsing**
+   - Parse `process.argv` to extract a `--tenantSlug=` argument.
+   - If no `--tenantSlug` is provided:
+     - print a clear usage message to stderr, e.g.:
+       - `Usage: npm run tenant:readiness -- --tenantSlug=<slug>`
+     - exit with non-zero code.
+
+3. **Tenant lookup**
+   - Use the same **global tenant table** and logic that the **Admin Tenants API** uses.
+   - DO NOT hardcode table names blindly; reuse the pattern from the admin tenants list or tenant details route.
+   - Find the tenant by its **slug** (or equivalent canonical field used in the admin UI).
+   - If tenant not found:
+     - print `Tenant not found for slug "<slug>"` to stderr
+     - exit non-zero.
+
+4. **Compute readiness**
+   - Using the **found tenant**, build a `tenantDb` using the existing `wrapTenantDb` or equivalent multi-tenant helper.
+   - Call the existing **Tenant Readiness** function that Phase 11A uses.
+     - Example:
+       ```ts
+       const readiness = await getTenantReadinessReport({
+         globalDb: db,
+         tenantDb,
+         tenant,
+       });
+       ```
+     - Adjust the call shape to match the actual service signature.
+
+5. **Pretty-print result**
+   - Print a **JSON object** to stdout, something like:
+     ```ts
+     console.log(JSON.stringify({
+       ok: true,
+       tenantSlug,
+       tenantId: tenant.id, // or real field name
+       readiness,
+     }, null, 2));
+     ```
+   - Make sure the output includes:
+     - some kind of numeric or categorical **score**
+     - an array of **gaps / issues** (with severity)
+     - any useful labels (e.g., plan tier, key feature flags) that the readiness service already includes.
+
+6. **Error handling**
+   - Wrap main logic in a try/catch.
+   - On error:
+     - log error to stderr with a clear prefix, like `[tenant:readiness]`
+     - exit with non-zero status.
+
+==============================
+STEP 2 – WIRE NPM SCRIPT
+==============================
+
+Edit **package.json** and add a script:
+
+  "tenant:readiness": "<SAME_PATTERN_AS_OTHER_TS SCRIPTS> server/scripts/tenantReadinessCli.ts"
+
+Requirements:
+
+- Use the **same runner** that other TS scripts use in this repo:
+  - If `db:migrate` uses `tsx`, use `tsx` for this script.
+  - If it uses `ts-node`, use `ts-node` here as well.
+- Do NOT change or remove existing scripts.
+- Place `"tenant:readiness"` next to other “maintenance / ops” scripts (e.g., migrate, seed, etc.), for cleanliness.
+
+If there is already some kind of CLI script for tenants or readiness, either:
+
+- reuse it, or
+- gently refactor it so `"tenant:readiness"` becomes the canonical entrypoint.
+
+==============================
+STEP 3 – QUICK SELF-CHECK
+==============================
+
+Before you say “done”:
+
+1. Run (in the Replit Shell):
+
+   - `npm run tenant:readiness -- --tenantSlug=cleanmachine`
+
+2. If `cleanmachine` is NOT a valid slug in this DB:
+   - Try to detect the Clean Machine tenant slug by inspecting:
+     - whatever field the **Admin Tenants list** uses,
+     - or the seed data used for the root tenant.
+   - You don’t need to guess the slug in the script itself, but mention in your summary what the likely slug is.
+
+3. Confirm that:
+   - The script runs.
+   - It prints a JSON blob with `readiness` data.
+   - It exits successfully (exit code 0) for a valid tenant.
+
+==============================
+STEP 4 – REPORT BACK
+==============================
+
+In your final message, tell me:
+
+1. The path of the new CLI file you created.
+2. The exact `tenant:readiness` entry you added to `package.json`.
+3. The **correct tenantSlug** you found for my Clean Machine tenant (so I can use it myself).
+4. Paste a **sample** of the JSON output you saw (it can be truncated, but show the top-level keys and one or two gaps).
+
+Do NOT show me the entire code here (it will be in the repo). I just need paths + script names + sample output and the slug so I can run it myself.
+
+IMPORTANT:
+- Follow the existing multi-tenant patterns (wrapTenantDb / tenantDb) and DO NOT switch to using the global db for tenant-scoped queries.
+- Do not change any existing readiness logic or admin UI behavior; only add the CLI entrypoint + npm script and minimal glue code.
