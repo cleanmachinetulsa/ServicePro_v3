@@ -1,0 +1,69 @@
+You are editing my ServicePro v3 multi-tenant ServicePro v3 repo.
+
+GOAL:
+Fix the remaining code-side warnings reported by `scripts/printCleanMachineReadiness.ts` for the Clean Machine tenant (`tenantId = root`, `tenantSlug = cleanmachine`), WITHOUT breaking any existing behavior.
+
+Do NOT change tests or the readiness CLI path. Keep everything multi-tenant safe.
+
+====================================================
+TASK A – Fix conversations recent activity query
+====================================================
+
+1. Find the service or helper that powers the "conversations" section of the Tenant Readiness Engine. It will be the code that:
+   - Runs a DB query to count recent conversations
+   - Returns an item with key like "conversations.recent_activity" or "conversations.recent_activity_query_error"
+   - Currently produces a SQL error like: syntax error at or near ">="
+
+2. Fix the SQL or query builder so it correctly checks for "recent" conversations, e.g.:
+   - lastMessageAt >= now() - interval '30 days'
+   or the equivalent using whatever date helpers we use.
+   - Make sure it’s valid for Postgres.
+
+3. Add or update tests so that:
+   - The readiness service no longer sets the "recent_activity_query_error" warning.
+   - The script `npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=root --json`
+     runs without throwing a SQL error, and includes a proper conversations recent-activity item
+     with either pass/warn based on data, not on a query error.
+
+4. Run all existing tests and ensure they pass.
+
+====================================================
+TASK B – Make sure the AI industry pack is set for Clean Machine
+====================================================
+
+Goal: root / Clean Machine should have an industry pack set to our Auto Detailing / Mobile Auto Detail pack.
+
+1. Find where "industry" is represented:
+   - It may be a column on tenants, tenant_settings, tenant_config, or similar, or
+   - A relation to an "industry_packs" table or ID.
+   - There is also likely a config file such as `shared/industryPacks.ts`, `client/src/config/industryPacks.ts`, or similar.
+
+2. Identify the industry pack that corresponds to my main business: auto detailing / mobile auto detailing (Clean Machine). Use the existing IDs/keys in code – do NOT invent a new industry ID.
+
+3. Ensure that the Clean Machine tenant (`tenantId = root`, `tenantSlug = cleanmachine`) has that industry pack set, using the same mechanism all other tenants would use. This should be done using:
+   - Existing migrations/columns, not new schema unless absolutely necessary.
+   - Either:
+     - A one-time seed/update in a seed script, or
+     - A safe update helper that ensures root has an industryId set if missing.
+
+4. After wiring it:
+   - Run `npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=root --json`
+   - Confirm that the `ai.industry_configured` item is now a PASS for root.
+
+====================================================
+CONSTRAINTS
+====================================================
+
+- Do NOT hardcode root-specific behavior in the application logic; any root-specific updates should be in seed/update scripts or very clearly scoped to "initial data migration."
+- Do NOT break multi-tenant isolation.
+- Do NOT remove or refactor major structures; keep changes minimal and targeted.
+
+====================================================
+AFTER YOU FINISH
+====================================================
+
+1. Post back in the Replit logs / output:
+   - The updated readiness JSON for `tenantSlug=root` (truncated if needed).
+   - A short summary of what you changed.
+
+Stop after these tasks – do NOT start new phases.

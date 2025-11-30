@@ -591,7 +591,7 @@ async function checkConversations(tenantId: string): Promise<ReadinessCategory> 
         .where(
           and(
             eq(conversations.tenantId, tenantId),
-            gte(conversations.lastMessageAt, thirtyDaysAgo)
+            gte(conversations.lastMessageTime, thirtyDaysAgo)
           )
         );
 
@@ -628,7 +628,7 @@ async function checkConversations(tenantId: string): Promise<ReadinessCategory> 
         label: 'Recent conversation activity check',
         status: 'warn',
         details: `Query failed: ${errMessage.slice(0, 80)}`,
-        suggestion: 'Ensure lastMessageAt column exists and is populated for accurate activity tracking.',
+        suggestion: 'Ensure lastMessageTime column exists and is populated for accurate activity tracking.',
       });
     }
 
