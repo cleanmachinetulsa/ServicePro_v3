@@ -611,7 +611,13 @@ export function initializeProactiveReminderScheduler() {
   // Run every 6 hours to check for customers needing reminders
   cron.schedule('0 */6 * * *', async () => {
     console.log('[PROACTIVE REMINDERS] Running scheduled task');
-    await processProactiveReminders();
+    console.log('[PROACTIVE REMINDERS] Skipping - reminder system temporarily disabled during tenant migration');
+    // TODO: Re-enable after full tenant isolation is complete
+    // Background jobs need to iterate over all tenants and create tenantDb for each
+    // const { wrapTenantDb } = await import('./tenantDb');
+    // const { db } = await import('./db');
+    // const tenantDb = wrapTenantDb(db, 'root');
+    // await processProactiveReminders(tenantDb);
   });
 
   schedulerInitialized = true;
