@@ -20,8 +20,7 @@ const APP_TSX = path.join(process.cwd(), 'client/src/App.tsx');
 
 // Known exceptions - pages that are intentionally not directly routed
 const EXCEPTIONS = new Set([
-  'not-found.tsx',       // 404 fallback page (special handling)
-  'Billing.tsx',         // Intentionally unused duplicate (lowercase billing.tsx is used)
+  'not-found.tsx',       // 404 fallback page (used as catch-all via wouter's default route)
 ]);
 
 // Template pages that are loaded dynamically via template system

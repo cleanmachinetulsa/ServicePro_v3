@@ -106,6 +106,7 @@ import PricingPage from "./pages/PricingPage";
 
 // Phase 7C: Stripe Billing Integration
 import BillingSuccess from "./pages/BillingSuccess";
+import SubscriptionPage from "./pages/subscription";
 
 function Router() {
   return (
@@ -265,6 +266,14 @@ function Router() {
           <BillingSuccess />
         </AuthGuard>
       </Route>
+      
+      {/* Subscription/Plan Management */}
+      <Route path="/subscription">
+        <AuthGuard>
+          <SubscriptionPage />
+        </AuthGuard>
+      </Route>
+      
       <Route path="/admin/employees">
         <AuthGuard>
           <AdminEmployees />
