@@ -22,7 +22,7 @@ router.post('/test/inbound-call', requireAuth, async (req: Request, res: Respons
     const simulatedWebhook = {
       CallSid: testCallSid,
       From: testPhoneNumber,
-      To: process.env.TWILIO_PHONE_NUMBER || process.env.BUSINESS_OWNER_PHONE,
+      To: process.env.MAIN_PHONE_NUMBER || process.env.BUSINESS_OWNER_PERSONAL_PHONE,
       CallStatus: 'ringing',
       Direction: 'inbound'
     };
@@ -73,7 +73,7 @@ router.post('/test/outbound-call', requireAuth, async (req: Request, res: Respon
     const client = twilio.default(twilioAccountSid, twilioAuthToken);
     
     const testNumber = req.body.testNumber || '+19185550100';
-    const fromNumber = process.env.TWILIO_PHONE_NUMBER || process.env.BUSINESS_OWNER_PHONE;
+    const fromNumber = process.env.MAIN_PHONE_NUMBER || process.env.BUSINESS_OWNER_PERSONAL_PHONE;
     
     if (!fromNumber) {
       throw new Error('Twilio phone number not configured');
@@ -120,7 +120,7 @@ router.post('/test/voicemail-flow', requireAuth, async (req: Request, res: Respo
     const [callEvent] = await req.tenantDb!.insert(callEvents).values({
       callSid: testCallSid,
       from: testPhoneNumber,
-      to: process.env.TWILIO_PHONE_NUMBER || '+19188565304',
+      to: process.env.MAIN_PHONE_NUMBER || '+19188565304',
       direction: 'inbound',
       status: 'completed',
       duration: 30,
@@ -297,7 +297,7 @@ router.get('/test/voice-system-check', requireAuth, async (req: Request, res: Re
     checks.twilioConfigured = !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
     
     // Check phone number configuration
-    checks.phoneNumberConfigured = !!(process.env.TWILIO_PHONE_NUMBER || process.env.BUSINESS_OWNER_PHONE);
+    checks.phoneNumberConfigured = !!(process.env.MAIN_PHONE_NUMBER || process.env.BUSINESS_OWNER_PERSONAL_PHONE);
     
     // Check database connectivity
     try {

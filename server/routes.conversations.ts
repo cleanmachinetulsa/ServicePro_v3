@@ -445,7 +445,7 @@ export function registerConversationRoutes(app: Express) {
         }
         
         // Check if Twilio is configured
-        if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.VIP_PHONE_NUMBER) {
+        if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.MAIN_PHONE_NUMBER) {
           return res.status(500).json({
             success: false,
             message: 'SMS delivery is not configured. Missing Twilio credentials.',

@@ -26,7 +26,7 @@ export async function seedPhoneLines() {
     // Get phone numbers from environment (with fallback defaults)
     const mainLineNumber = process.env.BUSINESS_PHONE_NUMBER || '+19188565711';
     const vipLineNumber = process.env.VIP_PHONE_NUMBER || '+19182820103';
-    const forwardingNumber = process.env.BUSINESS_OWNER_PHONE || null;
+    const forwardingNumber = process.env.BUSINESS_OWNER_PERSONAL_PHONE || null;
 
     // Create Main Line - Primary Twilio business number
     const [mainLine] = await tenantDb.insert(phoneLines).values({

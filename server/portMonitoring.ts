@@ -24,7 +24,7 @@ async function checkPortStatus(): Promise<boolean> {
   
   try {
     // Use BUSINESS_PHONE_NUMBER env var for flexibility (supports any ported number)
-    const portedNumber = process.env.BUSINESS_PHONE_NUMBER || process.env.VIP_PHONE_NUMBER;
+    const portedNumber = process.env.BUSINESS_PHONE_NUMBER || process.env.MAIN_PHONE_NUMBER;
     
     if (!portedNumber) {
       console.log('[PORT MONITOR] Business phone number not configured in environment variables');
@@ -182,7 +182,7 @@ async function waitForTestConfirmation(testId: string, timeoutMs: number): Promi
 async function sendPortCompleteAlert() {
   try {
     const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
-    const twilioPhoneNumber = process.env.VIP_PHONE_NUMBER;
+    const twilioPhoneNumber = process.env.MAIN_PHONE_NUMBER;
 
     if (!ownerPhone) {
       console.log('[PORT MONITOR] Owner phone not configured for alert');

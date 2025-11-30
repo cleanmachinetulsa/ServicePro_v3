@@ -41,7 +41,7 @@ export function checkConsentKeyword(messageContent: string): ConsentCheckResult 
   // Check for HELP keywords
   if (HELP_KEYWORDS.includes(normalizedMessage)) {
     // Get business phone from environment or use default
-    const businessPhone = process.env.OWNER_PHONE || process.env.TWILIO_PHONE_NUMBER || '(contact us)';
+    const businessPhone = process.env.OWNER_PHONE || process.env.MAIN_PHONE_NUMBER || '(contact us)';
     
     return {
       isConsentKeyword: true,

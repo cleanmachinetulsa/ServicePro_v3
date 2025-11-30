@@ -191,7 +191,7 @@ export class UnansweredMessageMonitor {
     try {
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
-      const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+      const fromNumber = process.env.MAIN_PHONE_NUMBER;
 
       if (!accountSid || !authToken || !fromNumber) {
         console.warn('[UNANSWERED MONITOR] Twilio credentials not configured, skipping SMS alert');

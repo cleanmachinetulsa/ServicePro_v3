@@ -9,7 +9,7 @@ const router = Router();
 // Twilio credentials
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+const twilioPhoneNumber = process.env.MAIN_PHONE_NUMBER;
 
 let twilio: any = null;
 if (twilioAccountSid && twilioAuthToken) {

@@ -296,7 +296,7 @@ export function registerFileUploadRoutes(app: Express) {
             console.log(`[DAMAGE ASSESSMENT] Photo processed for ${customerPhone}`);
           } else {
             // Standard photo upload notification
-            const businessPhone = process.env.BUSINESS_OWNER_PHONE;
+            const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
             if (businessPhone) {
               const fileSize = (req.file.size / 1024).toFixed(1); // Convert to KB
               const photoMessage = message ? `\n\nCustomer message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"` : '';
