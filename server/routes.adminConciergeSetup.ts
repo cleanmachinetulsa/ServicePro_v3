@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { wrapTenantDb } from './tenantDb';
 import { applyIndustryPackToTenant } from './industryPackService';
 import type { IndustryPackId } from '../shared/industryPacks';
+import { promoCodeService } from './services/promoCodeService';
 
 /**
  * Concierge Setup Routes (Phase 5)
@@ -49,6 +50,7 @@ const onboardTenantSchema = z.object({
   internalNotes: z.string().optional().or(z.literal('')),
   sendWelcomeEmail: z.boolean().optional().default(false),
   sendWelcomeSms: z.boolean().optional().default(false),
+  promoCode: z.string().max(50).optional().or(z.literal('')).nullable(),
 });
 
 type OnboardTenantRequest = z.infer<typeof onboardTenantSchema>;
@@ -152,6 +154,43 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
 
         console.log('[CONCIERGE SETUP] Successfully created tenant:', tenantId);
 
+        // Apply promo code if provided
+        let promoResult = null;
+        if (data.promoCode && data.promoCode.trim()) {
+          console.log(`[CONCIERGE SETUP] Applying promo code: ${data.promoCode}`);
+          
+          try {
+            const applyResult = await promoCodeService.applyPromoCode({
+              code: data.promoCode.trim().toUpperCase(),
+              tenantId,
+              contactEmail: data.contactEmail || undefined,
+            });
+
+            if (applyResult.success) {
+              promoResult = {
+                success: true,
+                discountType: applyResult.discountType,
+                discountValue: applyResult.discountValue,
+                trialDaysAdded: applyResult.trialDaysAdded,
+                message: applyResult.message,
+              };
+              console.log(`[CONCIERGE SETUP] Promo code applied successfully: ${applyResult.message}`);
+            } else {
+              promoResult = {
+                success: false,
+                error: applyResult.error,
+              };
+              console.warn(`[CONCIERGE SETUP] Promo code failed: ${applyResult.error}`);
+            }
+          } catch (error: any) {
+            console.error('[CONCIERGE SETUP] Error applying promo code:', error);
+            promoResult = {
+              success: false,
+              error: error.message,
+            };
+          }
+        }
+
         // Phase 8: Apply industry pack if selected
         let packResult = null;
         if (data.industryPackId && data.applyIndustryPack !== false) {
@@ -209,6 +248,8 @@ export function registerAdminConciergeSetupRoutes(app: Express) {
             industryPackApplied: packResult?.success || false,
             servicesCreated: packResult?.servicesCreated || 0,
             faqsCreated: packResult?.faqsCreated || 0,
+            promoCodeApplied: promoResult?.success || false,
+            promoCodeMessage: promoResult?.message || promoResult?.error || null,
           },
         });
       } catch (error: any) {
