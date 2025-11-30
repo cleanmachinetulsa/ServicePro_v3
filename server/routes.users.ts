@@ -4,15 +4,17 @@ import { users } from '@shared/schema';
 import { eq, and, ne } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { requireRole } from './rbacMiddleware';
+import { db } from './db';
 
 const router = Router();
 
 /**
  * Get current user info
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.get('/me', requireAuth, async (req, res) => {
   try {
-    const [user] = await req.tenantDb!
+    const [user] = await db
       .select({
         id: users.id,
         username: users.username,
@@ -26,7 +28,7 @@ router.get('/me', requireAuth, async (req, res) => {
         createdAt: users.createdAt,
       })
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
+      .where(eq(users.id, req.session.userId!))
       .limit(1);
 
     if (!user) {
@@ -51,13 +53,14 @@ router.get('/me', requireAuth, async (req, res) => {
 
 /**
  * Mark dashboard tour as completed
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.post('/dashboard-tour/complete', requireAuth, async (req, res) => {
   try {
-    await req.tenantDb!
+    await db
       .update(users)
       .set({ hasSeenDashboardTour: true })
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)));
+      .where(eq(users.id, req.session.userId!));
 
     res.json({
       success: true,
@@ -74,10 +77,11 @@ router.post('/dashboard-tour/complete', requireAuth, async (req, res) => {
 
 /**
  * Get all users (manager and owner only)
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.get('/all', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
   try {
-    const allUsers = await req.tenantDb!
+    const allUsers = await db
       .select({
         id: users.id,
         username: users.username,
@@ -88,8 +92,7 @@ router.get('/all', requireAuth, requireRole('manager', 'owner'), async (req, res
         createdAt: users.createdAt,
         createdBy: users.createdBy,
       })
-      .from(users)
-      .where(req.tenantDb!.withTenantFilter(users));
+      .from(users);
 
     res.json({
       success: true,
@@ -106,6 +109,7 @@ router.get('/all', requireAuth, requireRole('manager', 'owner'), async (req, res
 
 /**
  * Create new user (manager and owner only)
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
   try {
@@ -119,10 +123,10 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
     }
 
     // Check if user can create this role
-    const [currentUser] = await req.tenantDb!
+    const [currentUser] = await db
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
+      .where(eq(users.id, req.session.userId!))
       .limit(1);
 
     // Managers can only create employees
@@ -142,10 +146,10 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
     }
 
     // Check if username already exists
-    const [existing] = await req.tenantDb!
+    const [existing] = await db
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.username, username)))
+      .where(eq(users.username, username))
       .limit(1);
 
     if (existing) {
@@ -160,7 +164,7 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
     // Create user
-    const [newUser] = await req.tenantDb!
+    const [newUser] = await db
       .insert(users)
       .values({
         username,
@@ -197,6 +201,7 @@ router.post('/create', requireAuth, requireRole('manager', 'owner'), async (req,
 
 /**
  * Update user (manager and owner only)
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.put('/:id', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
   try {
@@ -211,16 +216,16 @@ router.put('/:id', requireAuth, requireRole('manager', 'owner'), async (req, res
     }
 
     // Get current user and target user
-    const [currentUser] = await req.tenantDb!
+    const [currentUser] = await db
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
+      .where(eq(users.id, req.session.userId!))
       .limit(1);
 
-    const [targetUser] = await req.tenantDb!
+    const [targetUser] = await db
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
+      .where(eq(users.id, userId))
       .limit(1);
 
     if (!targetUser) {
@@ -260,10 +265,10 @@ router.put('/:id', requireAuth, requireRole('manager', 'owner'), async (req, res
     if (isActive !== undefined) updateData.isActive = isActive;
     if (role !== undefined && currentUser.role === 'owner') updateData.role = role;
 
-    const [updatedUser] = await req.tenantDb!
+    const [updatedUser] = await db
       .update(users)
       .set(updateData)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
+      .where(eq(users.id, userId))
       .returning({
         id: users.id,
         username: users.username,
@@ -289,6 +294,7 @@ router.put('/:id', requireAuth, requireRole('manager', 'owner'), async (req, res
 
 /**
  * Reset user password (manager and owner only)
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.post('/:id/reset-password', requireAuth, requireRole('manager', 'owner'), async (req, res) => {
   try {
@@ -301,10 +307,10 @@ router.post('/:id/reset-password', requireAuth, requireRole('manager', 'owner'),
       });
     }
 
-    const [targetUser] = await req.tenantDb!
+    const [targetUser] = await db
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
+      .where(eq(users.id, userId))
       .limit(1);
 
     if (!targetUser) {
@@ -318,14 +324,14 @@ router.post('/:id/reset-password', requireAuth, requireRole('manager', 'owner'),
     const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    await req.tenantDb!
+    await db
       .update(users)
       .set({
         password: hashedPassword,
         requirePasswordChange: true,
         lastPasswordChange: new Date(),
       })
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)));
+      .where(eq(users.id, userId));
 
     res.json({
       success: true,
@@ -343,6 +349,7 @@ router.post('/:id/reset-password', requireAuth, requireRole('manager', 'owner'),
 
 /**
  * Update current user's operator name
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.put('/me/operator-name', requireAuth, async (req, res) => {
   try {
@@ -355,10 +362,10 @@ router.put('/me/operator-name', requireAuth, async (req, res) => {
       });
     }
 
-    const [updatedUser] = await req.tenantDb!
+    const [updatedUser] = await db
       .update(users)
       .set({ operatorName: operatorName.trim() || null })
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, req.session.userId!)))
+      .where(eq(users.id, req.session.userId!))
       .returning({
         id: users.id,
         username: users.username,
@@ -381,6 +388,7 @@ router.put('/me/operator-name', requireAuth, async (req, res) => {
 
 /**
  * Delete user (owner only)
+ * NOTE: users table is global (no tenantId column) - use db directly
  */
 router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
   try {
@@ -402,10 +410,10 @@ router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
     }
 
     // Prevent deleting owner accounts
-    const [targetUser] = await req.tenantDb!
+    const [targetUser] = await db
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)))
+      .where(eq(users.id, userId))
       .limit(1);
 
     if (!targetUser) {
@@ -422,7 +430,7 @@ router.delete('/:id', requireAuth, requireRole('owner'), async (req, res) => {
       });
     }
 
-    await req.tenantDb!.delete(users).where(req.tenantDb!.withTenantFilter(users, eq(users.id, userId)));
+    await db.delete(users).where(eq(users.id, userId));
 
     res.json({
       success: true,
