@@ -1,0 +1,93 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Harden the promo code system that was just implemented and add automated tests, WITHOUT changing unrelated parts of the app.
+
+Context:
+- Promo codes are already:
+  - Integrated into AdminConciergeSetup onboarding (promo code field).
+  - Managed in an AdminPromos page at /admin/promos.
+  - Connected to billing discounts / trial extensions.
+  - QR-backed via react-qr-code on the ReferralPage.
+- We ALSO have the friends & family / internal flags design, where:
+  - Certain tenants can be marked as "internal / friends-and-family".
+  - Those tenants may get free platform fee, or free platform + usage at-cost.
+
+GOALS FOR THIS BLOCK:
+1) Promo Model & Rules (Backend)
+   - Find the promo-related DB schema and service layer (e.g. promo codes table, validation and application logic).
+   - Ensure the model supports at least:
+     - percentageDiscount (e.g. 10%, 25%, 100%)
+     - flatDiscount (e.g. $50 off)
+     - trialExtensionDays (e.g. +14 days)
+     - maxRedemptions and/or maxTenants
+     - reusable vs singleUse flags
+     - optional validFrom / validTo timestamps
+   - Enforce these rules in the promo application logic:
+     - If promo is expired (validTo < now) → reject.
+     - If promo is not yet active (validFrom > now) → reject.
+     - If maxRedemptions / maxTenants is reached → reject.
+     - If promo is deactivated/disabled → reject.
+     - If any validation fails, return a clear error reason (for the toast system) and DO NOT apply any discount.
+
+2) Friends & Family / Internal Flag Integration
+   - Find the tenant-level flag we use for internal / friends-and-family tenants (if not present, add a minimal boolean flag like `isInternal` or `friendsAndFamily` on the tenants or tenant_config table and wire it into the tenant admin UI).
+   - Behavior for internal tenants:
+     - Platform subscription fee can be zeroed out.
+     - Usage-based fees are STILL tracked, but can be priced at-cost (we will plug exact numbers later).
+   - IMPORTANT: Do NOT override or complicate Stripe integration yet. For now:
+     - Implement the logic in the billing calculation / plan evaluation layer so that:
+       - When a tenant is marked internal, the app logic knows “this tenant is internal → platform fee waived / special pricing”.
+     - It’s okay if this is initially represented as "internalPricingMode" or similar in the billing config, as long as the logic is clean and easy to extend.
+
+3) Onboarding Integration Safety
+   - Make sure the AdminConciergeSetup onboarding flow:
+     - Validates promo codes using the central promo service, not duplicated logic.
+     - Shows a clear success message when promo is accepted, including:
+       - Effective plan price after discount, OR
+       - Extended trial end date, if applicable.
+     - Shows the existing failure toast with more specific reasons (invalid/expired/used/max reached).
+   - Ensure that if a promo code fails:
+     - Tenant creation STILL works (just without the discount).
+     - No partial or inconsistent billing state is created.
+
+4) QR Promo Page Polishing (ReferralPage)
+   - Confirm that the ReferralPage:
+     - Uses react-qr-code correctly.
+     - Encodes a URL that includes the promo code in the query string (e.g. serviceproapp.com/signup?promo=XYZ).
+     - Shows the actual promo code text and any short description so the admin knows what they’re sharing.
+   - DO NOT yet implement the public self-serve signup handling of promo codes. Just ensure the QR is clean, the component is stable, and types are correct.
+
+5) Automated Tests
+   - Add tests for the promo service and, if applicable, any billing helper that applies promos:
+     - Valid promo → accepted, correct discount/trial extension applied.
+     - Expired promo → rejected with correct reason.
+     - Not-yet-active promo → rejected with correct reason.
+     - maxRedemptions and/or maxTenants reached → rejected.
+     - Single-use promo used twice → second attempt fails.
+     - Internal / friends-and-family tenants:
+       - Confirm the billing logic detects internal tenants and applies free platform fee / special pricing mode.
+   - Integrate tests into the existing test runner (jest / vitest / etc.) the repo already uses.
+   - Do NOT create a brand new test framework.
+
+6) Safety & UX
+   - Make sure that any error paths are:
+     - Logged server-side with enough detail to debug promo issues.
+     - Exposed to the frontend via a clean error shape (e.g. { ok: false, code: "PROMO_EXPIRED", message: "Promo expired on 2025-01-01" }).
+   - Keep all changes scoped to:
+     - promo-related tables, services, and UI
+     - internal/friends-and-family billing flag.
+   - Do NOT break existing billing UI (Billing page, Subscription page, AdminPromos page).
+
+IMPORTANT IMPLEMENTATION NOTES:
+- Do NOT rename or move existing core directories or config files.
+- Keep all new types in shared or existing promo/billing-related files (do NOT create a totally new parallel system).
+- After changes:
+  - Run the relevant test suites.
+  - If possible, add a short note to MASTER_PLAN_V3.md under the promos section summarizing:
+    - promo features now supported
+    - internal / friends-and-family handling basics.
+
+At the end, show me:
+- A summary of files changed.
+- Any new environment variables (if any) and how to set them.
+- The exact command I should run to execute the promo tests (e.g. `npm test -- promo`).

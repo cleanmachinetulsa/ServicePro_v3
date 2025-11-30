@@ -1871,6 +1871,7 @@ export const homepageContent = pgTable('homepage_content', {
 // Job Postings - Careers/Employment portal job listings
 export const jobPostings = pgTable('job_postings', {
   id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().default('root'),
   title: varchar('title', { length: 200 }).notNull(),
   department: varchar('department', { length: 100 }),
   location: varchar('location', { length: 100 }),
@@ -1887,6 +1888,7 @@ export const jobPostings = pgTable('job_postings', {
 // Job Applications - Applications submitted through careers portal
 export const jobApplications = pgTable('job_applications', {
   id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().default('root'),
   jobPostingId: integer('job_posting_id').references(() => jobPostings.id),
   firstName: varchar('first_name', { length: 100 }).notNull(),
   lastName: varchar('last_name', { length: 100 }).notNull(),
