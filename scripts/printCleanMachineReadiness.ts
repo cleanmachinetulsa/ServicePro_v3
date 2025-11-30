@@ -1,22 +1,62 @@
 #!/usr/bin/env tsx
 /**
- * Clean Machine Readiness Report Script
+ * Tenant Readiness CLI Script
  * 
- * Generates and prints a human-readable readiness report for the
- * Clean Machine tenant (or any tenant specified via CLI argument).
+ * Generates and prints a comprehensive readiness report for any tenant.
+ * Supports both positional and named argument formats.
  * 
  * Usage:
  *   npx tsx scripts/printCleanMachineReadiness.ts [tenantSlug]
- *   npm run check:readiness [tenantSlug]
+ *   npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=<slug>
+ *   npm run tenant:readiness -- --tenantSlug=<slug>
  * 
  * Examples:
- *   npx tsx scripts/printCleanMachineReadiness.ts
+ *   npx tsx scripts/printCleanMachineReadiness.ts                    # defaults to 'root'
+ *   npx tsx scripts/printCleanMachineReadiness.ts root               # positional arg
+ *   npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=root  # named arg
  *   npx tsx scripts/printCleanMachineReadiness.ts cleanmachine
- *   npx tsx scripts/printCleanMachineReadiness.ts my-other-tenant
+ * 
+ * Output Modes:
+ *   --json    Output only JSON (no pretty-print header)
+ *   --quiet   Suppress banner, show only essential output
  */
 
 import { getTenantReadinessReportBySlug } from '../server/services/tenantReadinessService';
 import type { TenantReadinessReport, ReadinessCategory, ReadinessItem } from '../shared/readinessTypes';
+
+function parseArgs(): { tenantSlug: string; jsonOnly: boolean; quiet: boolean } {
+  const args = process.argv.slice(2);
+  let tenantSlug = 'root';
+  let jsonOnly = false;
+  let quiet = false;
+
+  for (const arg of args) {
+    if (arg.startsWith('--tenantSlug=')) {
+      tenantSlug = arg.split('=')[1] || 'root';
+    } else if (arg === '--json') {
+      jsonOnly = true;
+    } else if (arg === '--quiet') {
+      quiet = true;
+    } else if (!arg.startsWith('--') && !arg.startsWith('-')) {
+      tenantSlug = arg;
+    }
+  }
+
+  if (!tenantSlug || tenantSlug.trim() === '') {
+    console.error('[tenant:readiness] ERROR: Missing tenant slug.');
+    console.error('');
+    console.error('Usage:');
+    console.error('  npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=<slug>');
+    console.error('  npx tsx scripts/printCleanMachineReadiness.ts <slug>');
+    console.error('');
+    console.error('Examples:');
+    console.error('  npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=root');
+    console.error('  npx tsx scripts/printCleanMachineReadiness.ts cleanmachine');
+    process.exit(1);
+  }
+
+  return { tenantSlug: tenantSlug.trim(), jsonOnly, quiet };
+}
 
 const STATUS_ICONS: Record<string, string> = {
   pass: '✅',
@@ -89,30 +129,65 @@ function formatReport(report: TenantReadinessReport): string {
 }
 
 async function main() {
-  const identifier = process.argv[2] || 'root';
+  const { tenantSlug, jsonOnly, quiet } = parseArgs();
   
-  console.log(`\n🔍 Generating readiness report for tenant: ${identifier}...\n`);
+  if (!quiet && !jsonOnly) {
+    console.log(`\n🔍 Generating readiness report for tenant: ${tenantSlug}...\n`);
+  }
   
   try {
-    const report = await getTenantReadinessReportBySlug(identifier);
-    console.log(formatReport(report));
+    const report = await getTenantReadinessReportBySlug(tenantSlug);
+    
+    if (jsonOnly) {
+      console.log(JSON.stringify({
+        ok: true,
+        tenantSlug,
+        tenantId: report.tenantId,
+        tenantName: report.tenantName,
+        overallStatus: report.overallStatus,
+        summary: report.summary,
+        readiness: report,
+      }, null, 2));
+    } else {
+      console.log(formatReport(report));
+    }
     
     if (report.overallStatus === 'fail') {
-      console.log('⚠️  There are FAILING items that need attention before going live.\n');
+      if (!quiet && !jsonOnly) {
+        console.log('⚠️  There are FAILING items that need attention before going live.\n');
+      }
       process.exit(1);
     } else if (report.overallStatus === 'warn') {
-      console.log('⚠️  There are warnings to review, but no critical failures.\n');
+      if (!quiet && !jsonOnly) {
+        console.log('⚠️  There are warnings to review, but no critical failures.\n');
+      }
       process.exit(0);
     } else {
-      console.log('✅ All readiness checks passed!\n');
+      if (!quiet && !jsonOnly) {
+        console.log('✅ All readiness checks passed!\n');
+      }
       process.exit(0);
     }
   } catch (error: any) {
-    console.error(`\n❌ Error: ${error.message}\n`);
+    const errorOutput = {
+      ok: false,
+      tenantSlug,
+      error: error.message,
+    };
     
-    if (error.message.includes('not found')) {
-      console.error(`Tenant "${identifier}" was not found in the database.`);
-      console.error('You can use either the subdomain or tenant ID to look up a tenant.');
+    if (jsonOnly) {
+      console.log(JSON.stringify(errorOutput, null, 2));
+    } else {
+      console.error(`\n[tenant:readiness] ❌ Error: ${error.message}\n`);
+      
+      if (error.message.includes('not found')) {
+        console.error(`Tenant "${tenantSlug}" was not found in the database.`);
+        console.error('You can use either the subdomain or tenant ID to look up a tenant.');
+        console.error('\nCommon tenant slugs:');
+        console.error('  - root             (Clean Machine Auto Detail - the root tenant)');
+        console.error('  - <subdomain>      (any tenant subdomain)');
+        console.error('  - <tenantId>       (direct tenant ID)');
+      }
     }
     
     process.exit(1);
