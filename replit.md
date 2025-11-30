@@ -118,3 +118,25 @@ cron.schedule('0 * * * *', async () => {
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, and service recommendations.
+
+## Pre-Publish Verification
+
+### Route Verification Script
+Run before publishing to ensure all pages are properly routed and reachable:
+
+```bash
+npx tsx scripts/verifyRoutes.ts
+```
+
+This script:
+- Scans all page files in `client/src/pages/`
+- Checks that each page is imported in `App.tsx`
+- Reports orphaned pages (files without routes)
+- Lists all registered routes for review
+- Exits with code 1 if issues found (can be used in CI)
+
+**Output:**
+- ✅ All pages properly routed = safe to publish
+- ❌ Orphaned pages found = fix before publishing
+
+**Adding new pages:** Always import in `App.tsx` and add a `<Route>` entry, or add to the EXCEPTIONS list in the script if intentionally not routed.
