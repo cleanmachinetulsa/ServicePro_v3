@@ -3295,6 +3295,88 @@ export type TenantEmailProfile = typeof tenantEmailProfiles.$inferSelect;
 export type InsertTenantEmailProfile = z.infer<typeof insertTenantEmailProfileSchema>;
 
 // ============================================================
+// PROMO CODES & BILLING OVERRIDES
+// ============================================================
+
+// Promo override type enum
+export const promoOverrideTypeEnum = pgEnum("promo_override_type", [
+  "friends_and_family",
+  "partner",
+  "internal_test",
+  "beta_user",
+]);
+
+// Promo codes table - global to ServicePro platform (not tenant-scoped)
+export const promoCodes = pgTable("promo_codes", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  label: varchar("label", { length: 255 }).notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true).notNull(),
+  appliesToPlan: varchar("applies_to_plan", { length: 50 }),
+  subscriptionDiscountPercent: integer("subscription_discount_percent").default(0).notNull(),
+  usageRateMultiplier: numeric("usage_rate_multiplier", { precision: 5, scale: 2 }),
+  trialExtensionDays: integer("trial_extension_days").default(0).notNull(),
+  setOverrideType: promoOverrideTypeEnum("set_override_type"),
+  isReusable: boolean("is_reusable").default(false).notNull(),
+  maxRedemptions: integer("max_redemptions"),
+  perTenantLimit: integer("per_tenant_limit").default(1).notNull(),
+  lockedToEmail: varchar("locked_to_email", { length: 255 }),
+  startsAt: timestamp("starts_at"),
+  expiresAt: timestamp("expires_at"),
+  createdByAdminId: integer("created_by_admin_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  codeIdx: uniqueIndex("promo_codes_code_idx").on(table.code),
+  activeIdx: index("promo_codes_active_idx").on(table.isActive),
+}));
+
+// Promo redemptions table - tracks when promo codes are used
+export const promoRedemptions = pgTable("promo_redemptions", {
+  id: serial("id").primaryKey(),
+  promoCodeId: integer("promo_code_id").notNull().references(() => promoCodes.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  redeemedByEmail: varchar("redeemed_by_email", { length: 255 }),
+  redeemedAt: timestamp("redeemed_at").defaultNow().notNull(),
+  context: jsonb("context").$type<{
+    source?: string;
+    path?: string;
+    userAgent?: string;
+    ipAddress?: string;
+  }>(),
+}, (table) => ({
+  promoCodeIdIdx: index("promo_redemptions_promo_code_id_idx").on(table.promoCodeId),
+  tenantIdIdx: index("promo_redemptions_tenant_id_idx").on(table.tenantId),
+}));
+
+// Tenant billing overrides - per-tenant billing adjustments
+export const tenantBillingOverrides = pgTable("tenant_billing_overrides", {
+  tenantId: varchar("tenant_id", { length: 50 }).primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
+  overrideType: promoOverrideTypeEnum("override_type"),
+  subscriptionDiscountPercent: integer("subscription_discount_percent").default(0).notNull(),
+  usageRateMultiplier: numeric("usage_rate_multiplier", { precision: 5, scale: 2 }),
+  skipAutomaticCharges: boolean("skip_automatic_charges").default(false).notNull(),
+  notes: text("notes"),
+  appliedPromoCodeId: integer("applied_promo_code_id").references(() => promoCodes.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Zod schemas for promo codes
+export const insertPromoCodeSchema = createInsertSchema(promoCodes).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPromoRedemptionSchema = createInsertSchema(promoRedemptions).omit({ id: true, redeemedAt: true });
+export const insertTenantBillingOverrideSchema = createInsertSchema(tenantBillingOverrides).omit({ createdAt: true, updatedAt: true });
+
+// Types for promo codes
+export type PromoCode = typeof promoCodes.$inferSelect;
+export type InsertPromoCode = z.infer<typeof insertPromoCodeSchema>;
+export type PromoRedemption = typeof promoRedemptions.$inferSelect;
+export type InsertPromoRedemption = z.infer<typeof insertPromoRedemptionSchema>;
+export type TenantBillingOverride = typeof tenantBillingOverrides.$inferSelect;
+export type InsertTenantBillingOverride = z.infer<typeof insertTenantBillingOverrideSchema>;
+
+// ============================================================
 // PHASE 16.5 - PORTAL WELCOME CONFIG TYPES
 // ============================================================
 export interface WelcomeTier {
