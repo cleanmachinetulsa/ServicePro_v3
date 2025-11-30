@@ -1,0 +1,174 @@
+**You're right to ask this.**
+Right now, each drop-in *implements* features — but unless we run **automated regression tests**, we're basically trusting instead of verifying.
+
+**That’s dangerous.**
+
+So here's what we do:
+
+---
+
+# 🔥 NEW RULE FOR ALL FUTURE PHASES
+
+Every major feature drop-in **must include an automated test suite**, unless explicitly skipping it.
+
+And the test suite must prove, end-to-end:
+
+| The DB migrations work                     |
+| ------------------------------------------ |
+| The service functions run without env vars |
+| The service functions run *with* env vars  |
+| The Agent Context receives correct status  |
+| Errors produce expected gap outputs        |
+| No cross-tenant leakage occurs             |
+
+That way we stop guessing.
+We **verify correctness before moving forward.**
+
+---
+
+# Here is the **Test Add-On Drop-In** to append to the Phase 11 email build.
+
+Paste this to Replit **after the Phase 11 implementation**:
+
+---
+
+```text
+You are continuing Phase 11 – Add Automated Tests for Email + Agent Context
+
+GOAL:
+Prove the SendGrid v1 email plumbing is functioning correctly and that the Agent Context Engine is returning correct status flags and gaps under multiple configurations.
+
+Create a full end-to-end Jest test suite covering:
+
+=============================================================
+TEST GROUP 1 – DB + MIGRATION
+=============================================================
+
+✓ Assert tenant_email_profiles table exists
+✓ Insert a tenant row + email profile row → expect read to succeed
+✓ Ensure no row is visible across tenant boundaries (multi-tenant safety)
+
+FILES:
+🆕 tests/email/migration.test.ts
+
+=============================================================
+TEST GROUP 2 – EMAIL SERVICE BEHAVIOR
+=============================================================
+
+🆕 tests/email/emailService.test.ts
+
+Write tests for:
+
+1) When SENDGRID_API_KEY *is missing*
+   - CALL sendTenantEmail()
+   - Expect {ok:false, reason:'missing_env'}
+   - Ensure NO exception is thrown
+   - Ensure no DB writes occur
+
+2) When API key is present BUT tenant email profile does not exist
+   - CALL sendTenantEmail()
+   - Expect graceful failure or fallback
+   - Expect reply-to defaults to tenant.ownerEmail if exists
+
+3) When full profile exists AND API key exists
+   - MOCK sgMail.send to return success
+   - Expect {ok:true}
+   - Expect status upgraded to 'healthy'
+
+4) Force SendGrid send error
+   - MOCK sgMail.send to throw
+   - Expect {ok:false, reason:'send_failed'}
+   - Expect profile.status === 'error'
+
+=============================================================
+TEST GROUP 3 – AGENT CONTEXT INTEGRATION
+=============================================================
+
+🆕 tests/agent/context-email.test.ts
+
+Mock environments:
+
+CASE A – No SendGrid env vars
+✓ context.email.provider = "none"
+✓ gaps includes email_missing_env error
+
+CASE B – SendGrid enabled but NO tenant profile
+✓ provider="sendgrid"
+✓ status="not_configured"
+✓ gaps includes email_profile_missing warning
+
+CASE C – Tenant has profile + healthy status
+✓ provider="sendgrid"
+✓ status="healthy"
+✓ gaps.length === 0
+
+All tests must use wrapTenantDb to maintain isolation.
+
+=============================================================
+ADD DEV COMMANDS
+=============================================================
+
+Update package.json:
+
+"scripts": {
+  "test": "jest --runInBand",
+  "test:watch": "jest --watch",
+  "test:email": "jest tests/email --runInBand",
+  "test:agent": "jest tests/agent --runInBand"
+}
+
+=============================================================
+SUCCESS CRITERIA
+=============================================================
+
+The following must pass with no manual guessing:
+
+✔ jest runs with 0 failures
+✔ Agent Context returns correct email slice for every case
+✔ No cross-tenant leakage
+✔ Email service gracefully handles env failure
+✔ Errors produce proper gap messages
+
+Return ONLY:
+
+1) a PASS/FAIL summary
+2) a sample Agent Context output JSON
+
+This ensures we *never again hope something works* — we KNOW.
+```
+
+---
+
+### When you run the tests, I expect output like:
+
+```json
+{
+  "email": {
+    "provider": "sendgrid",
+    "fromEmail": "no-reply@servicepro-mail.com",
+    "fromName": "Tulsa Detailers LLC",
+    "replyToEmail": "owner@tulsadetailers.com",
+    "status": "healthy"
+  },
+  "gaps": []
+}
+```
+
+If tests fail — good. We fix them until green.
+
+If they pass — **we move to Phase 12 with confidence.**
+
+---
+
+### When Replit finishes, reply with:
+
+```
+PHASE 11 TEST RESULTS READY
+```
+
+And paste:
+
+* The test summary screenshot or output
+* The JSON returned by `/api/agent/context`
+
+Then we execute Phase 12 instantly — **with speed and certainty instead of luck.** 🚀
