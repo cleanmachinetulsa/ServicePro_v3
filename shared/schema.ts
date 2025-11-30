@@ -361,8 +361,8 @@ export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   name: text("name").notNull(),
-  email: text("email").unique(), // Make email unique for email-only customer lookups
-  phone: text("phone").unique(), // Make phone nullable to support email-only customers
+  email: text("email"), // Email for email-only customer lookups (tenant-scoped unique via index)
+  phone: text("phone"), // Phone for SMS customers (tenant-scoped unique via index)
   address: text("address"),
   vehicleInfo: text("vehicle_info"),
   lastInteraction: timestamp("last_interaction").defaultNow(),
@@ -398,8 +398,9 @@ export const customers = pgTable("customers", {
   notifyViaSms: boolean("notify_via_sms").default(true), // SMS notification preference
   notifyViaPush: boolean("notify_via_push").default(false), // Push notification preference
 }, (table) => ({
-  tenantPhoneIdx: index("customers_tenant_phone_idx").on(table.tenantId, table.phone),
-  tenantEmailIdx: index("customers_tenant_email_idx").on(table.tenantId, table.email),
+  // Tenant-scoped unique constraints: phone and email must be unique per tenant
+  tenantPhoneUnique: uniqueIndex("customers_tenant_phone_unique").on(table.tenantId, table.phone),
+  tenantEmailUnique: uniqueIndex("customers_tenant_email_unique").on(table.tenantId, table.email),
 }));
 
 // Phase 16 - Households table for grouping customers by normalized address
@@ -496,6 +497,7 @@ export const customerVehicles = pgTable("customer_vehicles", {
 // Customer Service History - Track all completed services for AI personalization
 export const customerServiceHistory = pgTable("customer_service_history", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
   appointmentId: integer("appointment_id").references(() => appointments.id),
   serviceDate: timestamp("service_date").notNull(),
@@ -605,6 +607,7 @@ export const appointments = pgTable("appointments", {
 // Job Photos - Photos uploaded by technicians during job completion
 export const jobPhotos = pgTable("job_photos", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   appointmentId: integer("appointment_id").notNull().references(() => appointments.id, { onDelete: "cascade" }), // Delete photos when appointment deleted
   technicianId: integer("technician_id").references(() => technicians.id, { onDelete: "set null" }), // Nullable: preserve photos if tech deleted
   photoUrl: text("photo_url").notNull(), // Google Drive URL
@@ -624,6 +627,7 @@ export const jobPhotos = pgTable("job_photos", {
 // Quote Requests - Tracks specialty jobs that require manual pricing before booking
 export const quoteRequests = pgTable("quote_requests", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").references(() => customers.id),
   phone: text("phone").notNull(),
   customerName: text("customer_name").notNull(),
@@ -715,6 +719,7 @@ export const invoices = pgTable("invoices", {
 // Technician Deposits - Daily cash/check payment tracking and reconciliation
 export const technicianDeposits = pgTable("technician_deposits", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   technicianId: integer("technician_id").notNull().references(() => users.id),
   depositDate: date("deposit_date").notNull(), // Date of work day
   cashAmount: numeric("cash_amount", { precision: 10, scale: 2 }).notNull().default("0"),
@@ -807,6 +812,7 @@ export const messages = pgTable("messages", {
 // Message Reactions - Emoji reactions on messages (like iMessage tapbacks)
 export const messageReactions = pgTable("message_reactions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   messageId: integer("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), // Which agent/user added this reaction
   emoji: text("emoji").notNull(), // 👍, ❤️, 😂, 😮, 😢, 🙏
@@ -821,6 +827,7 @@ export const messageReactions = pgTable("message_reactions", {
 // Message Edit History - Track all edits to messages
 export const messageEditHistory = pgTable("message_edit_history", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   messageId: integer("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
   previousContent: text("previous_content").notNull(), // Content before edit
   newContent: text("new_content").notNull(), // Content after edit
@@ -834,6 +841,7 @@ export const messageEditHistory = pgTable("message_edit_history", {
 // Scheduled Messages - Messages scheduled to send at a future time
 export const scheduledMessages = pgTable("scheduled_messages", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
   userId: integer("user_id").references(() => users.id, { onDelete: "set null" }), // Who scheduled it
   content: text("content").notNull(), // Message content to send
@@ -853,6 +861,7 @@ export const scheduledMessages = pgTable("scheduled_messages", {
 // Tracks customer requests to speak with owner directly (pauses AI, sends notifications)
 export const humanEscalationRequests = pgTable("human_escalation_requests", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   conversationId: integer("conversation_id").references(() => conversations.id).notNull(),
   customerId: integer("customer_id").references(() => customers.id).notNull(),
   customerPhone: varchar("customer_phone", { length: 20 }).notNull(),
@@ -890,6 +899,7 @@ export const humanEscalationRequests = pgTable("human_escalation_requests", {
 // Call Events - Logs all inbound and outbound calls
 export const callEvents = pgTable("call_events", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   conversationId: integer("conversation_id").references(() => conversations.id), // Link to conversation if available
   callSid: text("call_sid").notNull().unique(), // Twilio's unique call identifier
   direction: varchar("direction", { length: 20 }).notNull(), // inbound, outbound, technician_outbound
@@ -954,6 +964,7 @@ export const phoneLines = pgTable("phone_lines", {
 // Phone Schedules - Business hours and call routing rules for each phone line
 export const phoneSchedules = pgTable("phone_schedules", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   phoneLineId: integer("phone_line_id").notNull().references(() => phoneLines.id, { onDelete: "cascade" }),
   dayOfWeek: integer("day_of_week").notNull(), // 0=Sunday, 1=Monday, ..., 6=Saturday
   startTime: varchar("start_time", { length: 5 }).notNull(), // "09:00" 24-hour format
@@ -968,6 +979,7 @@ export const phoneSchedules = pgTable("phone_schedules", {
 // Recurring Services - Tracks customer subscriptions to regular service schedules
 export const recurringServices = pgTable("recurring_services", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   serviceId: integer("service_id").notNull().references(() => services.id),
   frequency: varchar("frequency", { length: 30 }).notNull(), // weekly, biweekly, monthly, every_2_months, every_3_months, quarterly, every_6_months, yearly, first_of_month, 15th_of_month, last_of_month, custom_dates
@@ -994,6 +1006,7 @@ export const recurringServices = pgTable("recurring_services", {
 // SMS Delivery Tracking - Monitors every SMS sent via Twilio
 export const smsDeliveryStatus = pgTable("sms_delivery_status", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   messageSid: text("message_sid").notNull().unique(), // Twilio's unique message identifier
   conversationId: integer("conversation_id").references(() => conversations.id), // Link to conversation if available
   messageId: integer("message_id").references(() => messages.id), // Link to stored message
@@ -1029,6 +1042,7 @@ export const loyaltyPoints = pgTable("loyalty_points", {
 
 export const loyaltyTiers = pgTable("loyalty_tiers", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   description: text("description").notNull(),
   pointThreshold: integer("point_threshold").notNull(),
@@ -1038,6 +1052,7 @@ export const loyaltyTiers = pgTable("loyalty_tiers", {
 
 export const achievements = pgTable("achievements", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   description: text("description").notNull(),
   pointValue: integer("point_value").notNull().default(0),
@@ -1048,6 +1063,7 @@ export const achievements = pgTable("achievements", {
 
 export const rewardServices = pgTable("reward_services", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   description: text("description").notNull(),
   pointCost: integer("point_cost").notNull(), // 500, 1000, 2000, or 5000
@@ -1096,6 +1112,7 @@ export const loyaltyTransactions = pgTable("loyalty_transactions", {
 
 export const customerAchievements = pgTable("customer_achievements", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   achievementId: integer("achievement_id").notNull().references(() => achievements.id),
   dateEarned: timestamp("date_earned").defaultNow(),
@@ -1104,6 +1121,7 @@ export const customerAchievements = pgTable("customer_achievements", {
 
 export const redeemedRewards = pgTable("redeemed_rewards", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   rewardServiceId: integer("reward_service_id").notNull().references(() => rewardServices.id),
   pointsSpent: integer("points_spent").notNull(),
@@ -1119,6 +1137,7 @@ export const redeemedRewards = pgTable("redeemed_rewards", {
 // Optional states: expired (if code expires), invalid (fraud/abuse detection)
 export const referrals = pgTable("referrals", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   referrerId: integer("referrer_id").notNull().references(() => customers.id), // Customer who made the referral
   referralCode: varchar("referral_code", { length: 20 }).notNull().unique(), // Unique code for tracking (e.g., "JOHN-ABC123")
   refereePhone: varchar("referee_phone", { length: 20 }), // Phone number of person being referred
@@ -1140,6 +1159,7 @@ export const referrals = pgTable("referrals", {
 // This table stores all configurable properties for the referral system
 export const referralProgramConfig = pgTable("referral_program_config", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   enabled: boolean("enabled").notNull().default(true), // Master on/off switch
   
   // Referrer reward configuration (person who shares the code)
@@ -1172,6 +1192,7 @@ export const referralProgramConfig = pgTable("referral_program_config", {
 // Used for debugging, analytics, and ensuring rewards are only applied once
 export const rewardAudit = pgTable("reward_audit", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   referralId: integer("referral_id").notNull().references(() => referrals.id),
   customerId: integer("customer_id").notNull().references(() => customers.id), // Who received the reward
   rewardRole: varchar("reward_role", { length: 20 }).notNull(), // 'referrer' or 'referee'
@@ -1199,6 +1220,7 @@ export const rewardAudit = pgTable("reward_audit", {
 // QR Code Actions - Configurable QR code actions with scan tracking
 export const qrCodeActions = pgTable("qr_code_actions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   actionType: varchar("action_type", { length: 50 }).notNull().default("booking"), // 'booking', 'profile', 'loyalty', 'custom', 'deep_link'
   actionUrl: text("action_url").notNull(), // Target URL or deep link
@@ -1214,6 +1236,7 @@ export const qrCodeActions = pgTable("qr_code_actions", {
 // Tables for post-purchase upsell system
 export const upsellOffers = pgTable("upsell_offers", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   description: text("description").notNull(),
   serviceId: integer("service_id").references(() => services.id),
@@ -1231,6 +1254,7 @@ export const upsellOffers = pgTable("upsell_offers", {
 
 export const appointmentUpsells = pgTable("appointment_upsells", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   appointmentId: integer("appointment_id").notNull().references(() => appointments.id),
   upsellOfferId: integer("upsell_offer_id").notNull().references(() => upsellOffers.id),
   offeredAt: timestamp("offered_at").defaultNow(),
@@ -1244,6 +1268,7 @@ export const appointmentUpsells = pgTable("appointment_upsells", {
 // Email campaign tables
 export const emailCampaigns = pgTable("email_campaigns", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   subject: text("subject").notNull(),
   content: text("content").notNull(),
@@ -1264,6 +1289,7 @@ export const emailCampaigns = pgTable("email_campaigns", {
 // Campaign Recipients - Track individual email sends per campaign
 export const campaignRecipients = pgTable("campaign_recipients", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   campaignId: integer("campaign_id").notNull().references(() => emailCampaigns.id),
   customerId: integer("customer_id").references(() => customers.id),
   email: text("email").notNull(),
@@ -1289,6 +1315,7 @@ export const campaignRecipients = pgTable("campaign_recipients", {
 // Email Suppression List - Global bounce/spam/unsubscribe list
 export const emailSuppressionList = pgTable("email_suppression_list", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   email: text("email").notNull().unique(),
   reason: varchar("reason", { length: 20 }).notNull(), // hard_bounce, soft_bounce, spam_complaint, unsubscribe, manual
   source: text("source"), // Which campaign triggered this
@@ -1301,6 +1328,7 @@ export const emailSuppressionList = pgTable("email_suppression_list", {
 // SMS Campaign tables
 export const smsCampaigns = pgTable("sms_campaigns", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   message: text("message").notNull(), // SMS content (max 1600 chars, but recommend 320 for 2 segments)
   scheduledDate: timestamp("scheduled_date"),
@@ -1321,6 +1349,7 @@ export const smsCampaigns = pgTable("sms_campaigns", {
 // SMS Campaign Recipients - Track individual SMS sends
 export const smsCampaignRecipients = pgTable("sms_campaign_recipients", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   campaignId: integer("campaign_id").notNull().references(() => smsCampaigns.id),
   customerId: integer("customer_id").references(() => customers.id),
   phoneNumber: text("phone_number").notNull(), // E.164 format
@@ -1358,6 +1387,7 @@ export const dailySendCounters = pgTable("daily_send_counters", {
 
 export const emailTemplates = pgTable("email_templates", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   subject: text("subject").notNull(),
   content: text("content").notNull(),
@@ -1367,15 +1397,20 @@ export const emailTemplates = pgTable("email_templates", {
 
 export const emailSubscribers = pgTable("email_subscribers", {
   id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  email: text("email").notNull(), // Tenant-scoped unique via index
   subscribed: boolean("subscribed").default(true),
   subscribedAt: timestamp("subscribed_at").defaultNow(),
   unsubscribedAt: timestamp("unsubscribed_at"),
-});
+}, (table) => ({
+  // Tenant-scoped unique constraint: email must be unique per tenant
+  tenantEmailUnique: uniqueIndex("email_subscribers_tenant_email_unique").on(table.tenantId, table.email),
+}));
 
 // Quick reply templates for the messaging interface
 export const quickReplyCategories = pgTable("quick_reply_categories", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   icon: text("icon"), // Emoji or icon name
   displayOrder: integer("display_order").default(0),
@@ -1384,6 +1419,7 @@ export const quickReplyCategories = pgTable("quick_reply_categories", {
 
 export const quickReplyTemplates = pgTable("quick_reply_templates", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   categoryId: integer("category_id").notNull().references(() => quickReplyCategories.id),
   content: text("content").notNull(),
   shortcut: text("shortcut"), // Optional keyboard shortcut (e.g. "/hi", "/price")
@@ -1395,12 +1431,16 @@ export const quickReplyTemplates = pgTable("quick_reply_templates", {
 // Notification settings for voice webhooks, SMS, email, etc.
 export const notificationSettings = pgTable("notification_settings", {
   id: serial("id").primaryKey(),
-  settingKey: text("setting_key").notNull().unique(), // e.g., 'voice_webhook', 'sms_reminder'
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  settingKey: text("setting_key").notNull(), // e.g., 'voice_webhook', 'sms_reminder'
   enabled: boolean("enabled").default(true),
   config: jsonb("config").notNull(), // Flexible JSON for any settings
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
-});
+}, (table) => ({
+  // Tenant-scoped unique constraint: settingKey must be unique per tenant
+  tenantSettingKeyUnique: uniqueIndex("notification_settings_tenant_setting_key_unique").on(table.tenantId, table.settingKey),
+}));
 
 // SMS Templates - Centralized template management with versioning
 export const smsTemplates = pgTable("sms_templates", {
@@ -1478,6 +1518,7 @@ export const faqEntries = pgTable("faq_entries", {
 // Push notification subscriptions for PWA
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   userId: integer("user_id").references(() => users.id), // Link to user
   endpoint: text("endpoint").notNull().unique(), // Browser push endpoint
   p256dh: text("p256dh").notNull(), // Public key for encryption
@@ -1490,6 +1531,7 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 // Notification preferences for granular control over notification channels
 export const notificationPreferences = pgTable("notification_preferences", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   userId: integer("user_id").notNull().references(() => users.id),
   // Notification types
   voicemailSms: boolean("voicemail_sms").notNull().default(true),
@@ -1506,6 +1548,7 @@ export const notificationPreferences = pgTable("notification_preferences", {
 // Critical monitoring settings for multi-channel alerts on integration failures
 export const criticalMonitoringSettings = pgTable("critical_monitoring_settings", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   alertChannels: jsonb("alert_channels").notNull().$type<{ sms: boolean; push: boolean; email: boolean }>(), // Which channels to use for alerts
   smsRecipients: text("sms_recipients").array().notNull().default([]), // Phone numbers to receive SMS alerts
   emailRecipients: text("email_recipients").array().notNull().default([]), // Email addresses to receive email alerts
@@ -1532,6 +1575,7 @@ export const galleryPhotos = pgTable("gallery_photos", {
 // Subscription cost tracking for managing all website service subscriptions
 export const subscriptions = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   serviceName: text("service_name").notNull(), // e.g., "Stripe", "Twilio", "SendGrid"
   description: text("description"), // What this service is used for
   monthlyCost: numeric("monthly_cost", { precision: 10, scale: 2 }).notNull(), // Cost per month
@@ -1549,6 +1593,7 @@ export const subscriptions = pgTable("subscriptions", {
 // Cancellation feedback tracking for business insights
 export const cancellationFeedback = pgTable("cancellation_feedback", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   appointmentId: integer("appointment_id").references(() => appointments.id),
   customerId: integer("customer_id").references(() => customers.id),
   customerName: text("customer_name").notNull(),
@@ -1570,6 +1615,7 @@ export const cancellationFeedback = pgTable("cancellation_feedback", {
 // Follow-up reminder queue for customers who want to be contacted later
 export const followUpReminders = pgTable("follow_up_reminders", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   cancellationId: integer("cancellation_id").references(() => cancellationFeedback.id),
   reminderDate: timestamp("reminder_date").notNull(), // When to send reminder
@@ -1586,6 +1632,7 @@ export const followUpReminders = pgTable("follow_up_reminders", {
 // Facebook/Instagram Messenger Integration Settings
 export const facebookPageTokens = pgTable("facebook_page_tokens", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   pageId: text("page_id").notNull().unique(), // Facebook Page ID
   pageName: text("page_name").notNull(), // Friendly name for display
   pageAccessToken: text("page_access_token").notNull(), // Page-scoped access token (stored encrypted)
@@ -1652,6 +1699,7 @@ export const businessSettings = pgTable("business_settings", {
 // Service Limits - Daily booking caps per service type
 export const serviceLimits = pgTable("service_limits", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   serviceId: integer("service_id").notNull().references(() => services.id),
   dailyLimit: integer("daily_limit").notNull(), // Max bookings per calendar day
   effectiveFrom: date("effective_from"), // Optional: limit only applies after this date
@@ -1681,13 +1729,15 @@ export const banners = pgTable("banners", {
   scheduleStart: timestamp("schedule_start"), // When to start showing
   scheduleEnd: timestamp("schedule_end"), // When to stop showing
   isDismissible: boolean("is_dismissible").default(true), // Can user close it?
-  trackingKey: text("tracking_key").notNull().unique(), // Unique key for tracking dismissals in localStorage
+  trackingKey: text("tracking_key").notNull(), // Unique key for tracking dismissals in localStorage (tenant-scoped)
   themeColor: varchar("theme_color", { length: 20 }).default("blue"), // blue, red, green, yellow, purple
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   createdBy: integer("created_by").references(() => users.id),
 }, (table) => ({
+  // Tenant-scoped unique constraint: trackingKey must be unique per tenant
+  tenantTrackingKeyUnique: uniqueIndex("banners_tenant_tracking_key_unique").on(table.tenantId, table.trackingKey),
   // Index for fast active banner queries
   bannerActiveScheduleIdx: index("banner_active_schedule_idx").on(table.isActive, table.scheduleStart, table.scheduleEnd),
 }));
@@ -1695,6 +1745,7 @@ export const banners = pgTable("banners", {
 // Banner Analytics - Track impressions and clicks separately from banner config
 export const bannerMetrics = pgTable("banner_metrics", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   bannerId: integer("banner_id").notNull().references(() => banners.id),
   eventType: varchar("event_type", { length: 20 }).notNull(), // impression, click, dismiss
   sessionId: text("session_id"), // Optional: track unique sessions
@@ -1708,16 +1759,21 @@ export const bannerMetrics = pgTable("banner_metrics", {
 // Customer Tags - For organizing and filtering customers
 export const customerTags = pgTable("customer_tags", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(), // Tag name (e.g., "Hot Lead", "VIP", "Warranty")
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  name: text("name").notNull(), // Tag name (e.g., "Hot Lead", "VIP", "Warranty")
   color: varchar("color", { length: 20 }).notNull().default("blue"), // UI color: blue, red, green, yellow, purple, gray
   icon: text("icon"), // Optional lucide icon name
   isPredefined: boolean("is_predefined").default(false), // System tags vs user-created
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Tenant-scoped unique constraint: tag name must be unique per tenant
+  tenantNameUnique: uniqueIndex("customer_tags_tenant_name_unique").on(table.tenantId, table.name),
+}));
 
 // Join table: Conversations <-> Tags (many-to-many)
 export const conversationTags = pgTable("conversation_tags", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   conversationId: integer("conversation_id").notNull().references(() => conversations.id),
   tagId: integer("tag_id").notNull().references(() => customerTags.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1728,6 +1784,7 @@ export const conversationTags = pgTable("conversation_tags", {
 // Technician Profiles - Bio information for customer-facing OTW notifications
 export const technicians = pgTable("technicians", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   userId: integer("user_id").references(() => users.id), // Link to user account if they have one
   publicId: text("public_id").notNull().unique(), // Public-facing ID for /p/:techPublicId URLs
   preferredName: text("preferred_name").notNull(), // First name for customer communication
@@ -1910,6 +1967,7 @@ export const jobApplications = pgTable('job_applications', {
 // Shift Templates - Define standard shift types (Morning, Afternoon, Full Day, etc.)
 export const shiftTemplates = pgTable("shift_templates", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(), // "Morning Shift", "Afternoon Shift", "Full Day"
   startTime: text("start_time").notNull(), // "08:00"
   endTime: text("end_time").notNull(), // "16:00"
@@ -1922,6 +1980,7 @@ export const shiftTemplates = pgTable("shift_templates", {
 // Shifts - Assigned work periods for technicians
 export const shifts = pgTable("shifts", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   technicianId: integer("technician_id").references(() => technicians.id), // Nullable for open shifts
   templateId: integer("template_id").references(() => shiftTemplates.id),
   shiftDate: date("shift_date").notNull(),
@@ -1939,6 +1998,7 @@ export const shifts = pgTable("shifts", {
 // Time Entries - Clock in/out tracking with geofencing
 export const timeEntries = pgTable("time_entries", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   technicianId: integer("technician_id").notNull().references(() => technicians.id),
   shiftId: integer("shift_id").references(() => shifts.id),
   clockInTime: timestamp("clock_in_time").notNull(),
@@ -1963,6 +2023,7 @@ export const timeEntries = pgTable("time_entries", {
 // PTO Requests - Time off management
 export const ptoRequests = pgTable("pto_requests", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   technicianId: integer("technician_id").notNull().references(() => technicians.id),
   requestType: varchar("request_type", { length: 20 }).notNull(), // vacation, sick, personal, unpaid
   startDate: date("start_date").notNull(),
@@ -1979,6 +2040,7 @@ export const ptoRequests = pgTable("pto_requests", {
 // Shift Trades - Technicians can swap shifts
 export const shiftTrades = pgTable("shift_trades", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   originalShiftId: integer("original_shift_id").notNull().references(() => shifts.id),
   offeringTechId: integer("offering_tech_id").notNull().references(() => technicians.id), // Who wants to give away shift
   requestingTechId: integer("requesting_tech_id").references(() => technicians.id), // Who wants to take shift (null if open offer)
@@ -1996,6 +2058,7 @@ export const shiftTrades = pgTable("shift_trades", {
 // Availability Preferences - Techs set their preferred working days/times
 export const technicianAvailability = pgTable("technician_availability", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   technicianId: integer("technician_id").notNull().references(() => technicians.id),
   dayOfWeek: integer("day_of_week").notNull(), // 0-6 (Sunday-Saturday)
   available: boolean("available").default(true),
@@ -2010,6 +2073,7 @@ export const technicianAvailability = pgTable("technician_availability", {
 // Applicants - Job applicant tracking and hiring pipeline
 export const applicants = pgTable("applicants", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email").notNull(),
@@ -2036,6 +2100,7 @@ export const applicants = pgTable("applicants", {
 // Audit Log - Track all important actions for compliance and debugging
 export const auditLog = pgTable("audit_log", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   userId: integer("user_id").references(() => users.id), // Who performed the action
   technicianId: integer("technician_id").references(() => technicians.id), // If action relates to a tech
   actionType: varchar("action_type", { length: 50 }).notNull(), // profile_create, profile_update, profile_approve, otw_send, ai_suggest, schedule_change, etc.
@@ -2053,6 +2118,7 @@ export const auditLog = pgTable("audit_log", {
 // Different from `customers` table which remains the primary customer record
 export const contacts = pgTable("contacts", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(),
   phoneE164: text("phone_e164").notNull(), // E.164 format: +19185551234
   phoneDisplay: text("phone_display"), // Display format: (918) 555-1234
@@ -2077,6 +2143,7 @@ export const contacts = pgTable("contacts", {
 // Authorizations - Digital approvals and signatures for payer approval, service authorization, etc.
 export const authorizations = pgTable("authorizations", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   appointmentId: integer("appointment_id").notNull().references(() => appointments.id),
   signerContactId: integer("signer_contact_id").notNull().references(() => contacts.id), // Who signed
   authType: varchar("auth_type", { length: 30 }).notNull(), // service_auth, payer_approval, gift_acceptance, change_order
@@ -2102,6 +2169,7 @@ export const authorizations = pgTable("authorizations", {
 // Payment Links - Track Stripe payment links for deposits and invoices
 export const paymentLinks = pgTable("payment_links", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   appointmentId: integer("appointment_id").notNull().references(() => appointments.id),
   invoiceId: integer("invoice_id").references(() => invoices.id),
   contactId: integer("contact_id").notNull().references(() => contacts.id), // Who should pay
@@ -2122,6 +2190,7 @@ export const paymentLinks = pgTable("payment_links", {
 // Gift Cards - Track gift card codes, balances, and redemptions
 export const giftCards = pgTable("gift_cards", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   code: text("code").notNull().unique(), // Gift card code (e.g., "GIFT-2024-ABC123")
   initialValue: numeric("initial_value", { precision: 10, scale: 2 }).notNull(),
   currentBalance: numeric("current_balance", { precision: 10, scale: 2 }).notNull(),
@@ -2143,6 +2212,7 @@ export const giftCards = pgTable("gift_cards", {
 // Credit Ledger - Track customer service credits and awarded gift cards
 export const creditLedger = pgTable("credit_ledger", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   creditType: varchar("credit_type", { length: 20 }).notNull(), // 'service_credit', 'gift_card'
   initialAmount: numeric("initial_amount", { precision: 10, scale: 2 }).notNull(),
@@ -2165,6 +2235,7 @@ export const creditLedger = pgTable("credit_ledger", {
 // Credit Transactions - Audit trail for all credit ledger changes
 export const creditTransactions = pgTable("credit_transactions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   creditLedgerId: integer("credit_ledger_id").notNull().references(() => creditLedger.id),
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(), // Negative for usage, positive for additions
   invoiceId: integer("invoice_id").references(() => invoices.id), // Link to invoice if applied to payment
@@ -2178,6 +2249,7 @@ export const creditTransactions = pgTable("credit_transactions", {
 // Service Addons - Catalog of available service enhancements
 export const serviceAddons = pgTable("service_addons", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(), // e.g., "Tire Shine", "Air Freshener", "Engine Bay Detail"
   description: text("description"), // What the addon includes
   value: numeric("value", { precision: 10, scale: 2 }).notNull(), // Dollar value if purchased separately
@@ -2190,6 +2262,7 @@ export const serviceAddons = pgTable("service_addons", {
 // Customer Addon Credits - Track awarded free addons
 export const customerAddonCredits = pgTable("customer_addon_credits", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   addonId: integer("addon_id").notNull().references(() => serviceAddons.id),
   source: varchar("source", { length: 50 }).notNull(), // 'referral_reward', 'promotion', 'compensation', 'admin_grant'
@@ -2207,6 +2280,7 @@ export const customerAddonCredits = pgTable("customer_addon_credits", {
 // Milestone Definitions - Configurable achievement milestones
 export const milestoneDefinitions = pgTable("milestone_definitions", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(), // e.g., "5th Booking Milestone", "VIP Spender"
   description: text("description"), // What the milestone represents
   milestoneType: varchar("milestone_type", { length: 30 }).notNull(), // 'bookings_count', 'total_spent', 'days_since_first'
@@ -2222,6 +2296,7 @@ export const milestoneDefinitions = pgTable("milestone_definitions", {
 // Customer Milestone Progress - Track customer progress toward milestones
 export const customerMilestoneProgress = pgTable("customer_milestone_progress", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   milestoneId: integer("milestone_id").notNull().references(() => milestoneDefinitions.id),
   currentValue: numeric("current_value", { precision: 10, scale: 2 }).notNull().default('0'), // Current progress
@@ -2240,6 +2315,7 @@ export const customerMilestoneProgress = pgTable("customer_milestone_progress", 
 // Reminder Rules - Configuration for different reminder types
 export const reminderRules = pgTable("reminder_rules", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   name: text("name").notNull(), // e.g., "Maintenance Detail Reminder", "3-Month Check-in"
   serviceId: integer("service_id").references(() => services.id), // Optional - null means applies to all services
   triggerType: varchar("trigger_type", { length: 30 }).notNull(), // time_since_last, recurring_schedule, manual
@@ -2255,6 +2331,7 @@ export const reminderRules = pgTable("reminder_rules", {
 // Reminder Jobs - Scheduled reminders to be sent
 export const reminderJobs = pgTable("reminder_jobs", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   ruleId: integer("rule_id").notNull().references(() => reminderRules.id),
   scheduledFor: timestamp("scheduled_for").notNull(), // When to send reminder
@@ -2274,6 +2351,7 @@ export const reminderJobs = pgTable("reminder_jobs", {
 // Reminder Events - History of all reminder interactions
 export const reminderEvents = pgTable("reminder_events", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   jobId: integer("job_id").notNull().references(() => reminderJobs.id, { onDelete: "cascade" }),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   eventType: varchar("event_type", { length: 20 }).notNull(), // sent, delivered, opened, clicked, booked, snoozed, opted_out, failed
@@ -2290,6 +2368,7 @@ export const reminderEvents = pgTable("reminder_events", {
 // Reminder Snoozes - Customer snooze preferences
 export const reminderSnoozes = pgTable("reminder_snoozes", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   jobId: integer("job_id").notNull().references(() => reminderJobs.id, { onDelete: "cascade" }),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   snoozedUntil: timestamp("snoozed_until").notNull(), // When to resume reminders
@@ -2304,6 +2383,7 @@ export const reminderSnoozes = pgTable("reminder_snoozes", {
 // Reminder Opt-outs - Customers who opted out of reminders
 export const reminderOptOuts = pgTable("reminder_opt_outs", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   optedOutAt: timestamp("opted_out_at").defaultNow(),
   reason: text("reason"), // Optional reason for opting out
@@ -2316,6 +2396,7 @@ export const reminderOptOuts = pgTable("reminder_opt_outs", {
 // Reminder Consent - Track TCPA consent for reminder communications
 export const reminderConsent = pgTable("reminder_consent", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   consentType: varchar("consent_type", { length: 20 }).notNull(), // sms, email, push, all
   consentGiven: boolean("consent_given").notNull().default(true),
