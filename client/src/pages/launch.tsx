@@ -2,53 +2,20 @@ import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 
 /**
- * Smart Launch Router - Device-aware entry point for PWA
+ * Smart Launch Router - Entry point for PWA
  * 
- * Detects device type and routes to optimal destination:
- * - Mobile phones → /messages (primary communication hub)
- * - iPad/tablets → /technician (technician workflow interface)
- * - Fallback → /messages (default for unknown devices)
+ * Routes all devices to the messages hub for consistent experience.
+ * Users can manually navigate to technician page if needed.
  * 
  * This route is set as the PWA manifest start_url to provide
- * device-appropriate experiences when launching from home screen.
+ * a consistent experience when launching from home screen.
  */
 export default function LaunchPage() {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    // Device detection using User Agent
-    const userAgent = navigator.userAgent.toLowerCase();
-    
-    // iPad detection (includes iPad Pro, iPad Air, iPad Mini)
-    const isIPad = /ipad/.test(userAgent) || 
-                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    
-    // Android tablet detection (screen width + user agent)
-    const isAndroidTablet = /android/.test(userAgent) && 
-                            !/mobile/.test(userAgent) &&
-                            window.innerWidth >= 768;
-    
-    // General tablet detection (fallback for other tablets)
-    const isTablet = isIPad || isAndroidTablet || window.innerWidth >= 768;
-    
-    console.log('[LAUNCH] Device detection:', {
-      userAgent: navigator.userAgent,
-      isIPad,
-      isAndroidTablet,
-      isTablet,
-      screenWidth: window.innerWidth,
-      platform: navigator.platform,
-      maxTouchPoints: navigator.maxTouchPoints
-    });
-
-    // Route based on device type
-    if (isIPad || isTablet) {
-      console.log('[LAUNCH] iPad/Tablet detected → redirecting to /technician');
-      setLocation('/technician');
-    } else {
-      console.log('[LAUNCH] Mobile phone detected → redirecting to /messages');
-      setLocation('/messages');
-    }
+    console.log('[LAUNCH] Redirecting to /messages');
+    setLocation('/messages');
   }, [setLocation]);
 
   // Show minimal loading state during redirect

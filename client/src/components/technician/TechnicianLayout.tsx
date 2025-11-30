@@ -1,10 +1,11 @@
 import { ReactNode } from 'react';
 import logoImage from '@assets/generated_images/Clean_Machine_white_logo_transparent_f0645d6c.png';
-import { Settings } from 'lucide-react';
+import { Settings, LayoutDashboard } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Link } from 'wouter';
 
 interface TechnicianLayoutProps {
   children: ReactNode;
@@ -97,6 +98,18 @@ export function TechnicianLayout({
                 {statusLabels[technicianStatus]}
               </span>
             </div>
+
+            {/* Dashboard Navigation Button */}
+            <Link href="/dashboard">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-white hover:bg-white/10"
+                data-testid="button-go-to-dashboard"
+              >
+                <LayoutDashboard className="h-5 w-5" />
+              </Button>
+            </Link>
 
             {/* Settings Popover with Demo Mode Toggle */}
             {onToggleDemo && (
