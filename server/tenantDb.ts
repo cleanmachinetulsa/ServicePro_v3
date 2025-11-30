@@ -3,7 +3,7 @@ import { eq, and, SQL } from 'drizzle-orm';
 import type { PgTable } from 'drizzle-orm/pg-core';
 import type { TenantInfo } from './tenantMiddleware';
 import { 
-  customers, appointments, services, conversations, messages, invoices,
+  users, customers, appointments, services, conversations, messages, invoices,
   jobPhotos, quoteRequests, technicianDeposits, messageReactions,
   messageEditHistory, scheduledMessages, humanEscalationRequests,
   callEvents, phoneLines, phoneSchedules, recurringServices,
@@ -31,6 +31,7 @@ import {
 } from '@shared/schema';
 
 const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
+  [users, { tenantIdColumn: users.tenantId }],
   [customers, { tenantIdColumn: customers.tenantId }],
   [appointments, { tenantIdColumn: appointments.tenantId }],
   [services, { tenantIdColumn: services.tenantId }],
@@ -71,7 +72,6 @@ const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
   [emailSuppressionList, { tenantIdColumn: emailSuppressionList.tenantId }],
   [smsCampaigns, { tenantIdColumn: smsCampaigns.tenantId }],
   [smsCampaignRecipients, { tenantIdColumn: smsCampaignRecipients.tenantId }],
-  [dailySendCounters, { tenantIdColumn: dailySendCounters.tenantId }],
   [emailTemplates, { tenantIdColumn: emailTemplates.tenantId }],
   [emailSubscribers, { tenantIdColumn: emailSubscribers.tenantId }],
   [quickReplyCategories, { tenantIdColumn: quickReplyCategories.tenantId }],
@@ -84,16 +84,12 @@ const TABLE_METADATA = new Map<any, { tenantIdColumn: any }>([
   [criticalMonitoringSettings, { tenantIdColumn: criticalMonitoringSettings.tenantId }],
   [galleryPhotos, { tenantIdColumn: galleryPhotos.tenantId }],
   [facebookPageTokens, { tenantIdColumn: facebookPageTokens.tenantId }],
-  [businessSettings, { tenantIdColumn: businessSettings.tenantId }],
   [serviceLimits, { tenantIdColumn: serviceLimits.tenantId }],
   [banners, { tenantIdColumn: banners.tenantId }],
   [bannerMetrics, { tenantIdColumn: bannerMetrics.tenantId }],
   [customerTags, { tenantIdColumn: customerTags.tenantId }],
   [conversationTags, { tenantIdColumn: conversationTags.tenantId }],
   [technicians, { tenantIdColumn: technicians.tenantId }],
-  [orgSettings, { tenantIdColumn: orgSettings.tenantId }],
-  [agentPreferences, { tenantIdColumn: agentPreferences.tenantId }],
-  [homepageContent, { tenantIdColumn: homepageContent.tenantId }],
   [jobPostings, { tenantIdColumn: jobPostings.tenantId }],
   [jobApplications, { tenantIdColumn: jobApplications.tenantId }],
   [shiftTemplates, { tenantIdColumn: shiftTemplates.tenantId }],
