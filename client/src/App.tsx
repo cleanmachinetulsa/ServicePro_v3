@@ -53,6 +53,7 @@ import AdminQuoteRequests from "./pages/admin-quote-requests";
 import AdminApplications from "./pages/AdminApplications";
 import AdminTenants from "./pages/AdminTenants";
 import AdminTenantDetail from "./pages/AdminTenantDetail";
+import AdminPromos from "./pages/AdminPromos";
 import AdminPhoneConfig from "./pages/AdminPhoneConfig";
 import AdminConciergeSetup from "./pages/AdminConciergeSetup";
 import PlatformSuggestions from "./pages/PlatformSuggestions";
@@ -302,6 +303,11 @@ function Router() {
       <Route path="/admin/tenants/:tenantId">
         <AuthGuard>
           <AdminTenantDetail />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/promos">
+        <AuthGuard>
+          <AdminPromos />
         </AuthGuard>
       </Route>
       <Route path="/admin/phone-config">

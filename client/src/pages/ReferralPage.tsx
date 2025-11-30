@@ -19,9 +19,10 @@ import {
   Clock, 
   TrendingUp,
   QrCode as QrCodeIcon,
-  Search
+  Search,
+  Download
 } from 'lucide-react';
-import * as QRCode from 'qrcode';
+import QRCode from 'react-qr-code';
 import { AppShell } from '@/components/AppShell';
 
 interface ReferralStats {
@@ -52,10 +53,9 @@ export default function ReferralPage() {
   const [searchPhone, setSearchPhone] = useState('');
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [showSmsForm, setShowSmsForm] = useState(false);
   const [friendPhone, setFriendPhone] = useState('');
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const qrRef = useRef<HTMLDivElement>(null);
 
   // Fetch referral code
   const { data: codeData, isLoading: codeLoading } = useQuery<{ success: boolean; data: { code: string }; message: string }>({
@@ -144,78 +144,35 @@ export default function ReferralPage() {
   const referrals = listData?.data || [];
   const qrAction = qrActionData?.data;
   const qrCodeId = qrCodeIdData?.data?.qrCodeId;
+  
+  const qrUrl = qrCodeId ? `${window.location.origin}/api/qr/scan/${qrCodeId}` : '';
 
-  // Generate QR code with highest security (ECC Level H, Version 40) and logo embedding
-  useEffect(() => {
-    if (!referralCode || !qrCodeId || !qrCanvasRef.current) return;
-    
-    const canvas = qrCanvasRef.current;
-    const qrUrl = `${window.location.origin}/api/qr/scan/${qrCodeId}`;
-    
-    // Generate QR code first
-    QRCode.toCanvas(
-      canvas,
-      qrUrl,
-      {
-        errorCorrectionLevel: 'H',
-        version: 40,
-        width: 300,
-        margin: 4,
-        color: {
-          dark: '#000000',
-          light: '#ffffff',
-        },
-      },
-      async (error) => {
-        if (error) {
-          console.error('QR code generation failed:', error);
-          return;
-        }
-        
-        // ALWAYS generate download URL (even if logo fails)
-        const downloadUrl = canvas.toDataURL('image/png');
-        setQrCodeUrl(downloadUrl);
-        
-        // Try to embed logo (optional enhancement)
-        try {
-          const logo = new Image();
-          logo.crossOrigin = 'anonymous';
-          
-          logo.onload = () => {
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            
-            // Calculate logo size (20% of QR code)
-            const logoSize = canvas.width * 0.2;
-            const logoX = (canvas.width - logoSize) / 2;
-            const logoY = (canvas.height - logoSize) / 2;
-            
-            // Draw white background circle
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(canvas.width / 2, canvas.height / 2, logoSize / 2 + 4, 0, 2 * Math.PI);
-            ctx.fill();
-            
-            // Draw logo
-            ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-            
-            // Update download URL with logo
-            setQrCodeUrl(canvas.toDataURL('image/png'));
-          };
-          
-          logo.onerror = () => {
-            console.warn('Logo failed to load, using QR code without logo');
-            // Download URL already set above
-          };
-          
-          logo.src = '/qr-logo.png';
-        } catch (logoError) {
-          console.warn('Logo embedding failed:', logoError);
-          // Download URL already set, so download still works
-        }
-      }
-    );
-  }, [referralCode, qrCodeId]);
+  const handleDownloadQr = () => {
+    if (!qrRef.current || !referralCode) return;
+
+    const svg = qrRef.current.querySelector('svg');
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    img.onload = () => {
+      canvas.width = img.width * 2;
+      canvas.height = img.height * 2;
+      ctx?.scale(2, 2);
+      ctx?.drawImage(img, 0, 0);
+      const pngFile = canvas.toDataURL('image/png');
+      
+      const downloadLink = document.createElement('a');
+      downloadLink.download = `referral-qr-${referralCode}.png`;
+      downloadLink.href = pngFile;
+      downloadLink.click();
+    };
+
+    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+  };
 
   // Send SMS invite mutation
   const sendInviteMutation = useMutation({
@@ -289,14 +246,7 @@ export default function ReferralPage() {
     }
   };
 
-  const downloadQrCode = () => {
-    if (qrCodeUrl) {
-      const link = document.createElement('a');
-      link.download = `referral-${referralCode}.png`;
-      link.href = qrCodeUrl;
-      link.click();
-    }
-  };
+  const downloadQrCode = handleDownloadQr;
 
   const handleSendInvite = () => {
     if (!friendPhone.trim()) {
@@ -453,8 +403,19 @@ export default function ReferralPage() {
 
             {/* QR Code */}
             <div className="text-center space-y-2">
-              <div className="inline-block bg-white p-4 rounded-lg shadow-lg">
-                <canvas ref={qrCanvasRef} />
+              <div ref={qrRef} className="inline-block bg-white p-4 rounded-lg shadow-lg">
+                {qrUrl ? (
+                  <QRCode
+                    value={qrUrl}
+                    size={200}
+                    level="H"
+                    data-testid="qr-code-image"
+                  />
+                ) : (
+                  <div className="w-[200px] h-[200px] flex items-center justify-center text-gray-400">
+                    Loading QR...
+                  </div>
+                )}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 Scan to get your friend's discount
@@ -463,9 +424,10 @@ export default function ReferralPage() {
                 variant="outline"
                 size="sm"
                 onClick={downloadQrCode}
+                disabled={!qrUrl}
                 data-testid="button-download-qr"
               >
-                <QrCodeIcon className="h-4 w-4 mr-2" />
+                <Download className="h-4 w-4 mr-2" />
                 Download QR Code
               </Button>
             </div>
