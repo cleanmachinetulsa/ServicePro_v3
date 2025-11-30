@@ -1,0 +1,259 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+GOAL
+Implement Phase 11B “Tenant Readiness Runner + Admin UI Panel” on top of the existing Phase 11A Tenant Readiness Engine.
+
+You MUST:
+- Reuse the existing Tenant Readiness Engine implementation (Phase 11A) and its types.
+- Add:
+  1) A backend admin API endpoint to fetch readiness for a given tenant.
+  2) A CLI runner script to run readiness from the command line for any tenant.
+  3) An admin UI card/panel that displays readiness for a selected tenant.
+  4) Automated tests where appropriate.
+- NOT refactor unrelated code or break multi-tenant safety.
+
+IMPORTANT CONSTRAINTS
+- Do NOT change database schema or migrations.
+- Do NOT touch CORS again.
+- Do NOT rip up or heavily refactor existing routers or layout components; extend them.
+- Respect existing multi-tenant patterns (tenantDb, wrapTenantDb, etc.).
+- Use existing auth/admin guard patterns; do NOT invent a new auth system.
+
+====================================================
+STEP 0 – DISCOVER EXISTING READINESS ENGINE
+====================================================
+
+1. Open MASTER_PLAN_V3.md (or MASTER_PLAN_V3_*.md) and find the section for:
+   "PHASE 11 – Tenant Readiness Engine" or "Phase 11A".
+   - Use that as conceptual guidance only.
+
+2. Locate the existing Tenant Readiness Engine code:
+   - Search for “Tenant Readiness Engine” or similar keywords:
+     - e.g. "tenantReadiness", "readiness", "Phase 11A".
+   - Likely locations (examples, adjust to actual repo):
+     - server/services/tenantReadinessService.ts
+     - server/services/tenantReadinessEngine.ts
+     - server/services/tenantReadiness.ts
+   - Identify:
+     - The main exported function(s) that compute readiness.
+     - The types it returns (e.g. TenantReadinessResult, TenantReadinessGap, etc).
+
+3. DO NOT rewrite the engine logic.
+   - You may add small helpers or types if missing.
+   - But leave the core scoring/gaps logic as-is.
+
+====================================================
+STEP 1 – BACKEND ADMIN API ENDPOINT
+====================================================
+
+Create a small, admin-only API endpoint to fetch readiness for a specific tenant.
+
+1. Find the existing admin API router(s):
+   - Look for something like:
+     - server/routes/adminRouter.ts
+     - server/routes/adminTenantsRouter.ts
+     - server/routes/admin/index.ts
+   - If there is an existing admin tenants route (e.g. /api/admin/tenants), extend that.
+   - If not, create a dedicated router file for tenant readiness, but keep it under the existing admin path convention.
+
+2. Implement a new endpoint:
+   - Path (choose one consistent with current style, but I prefer):
+     - GET /api/admin/tenants/:tenantId/readiness
+   - Behavior:
+     - Auth:
+       - Require existing admin / super-admin middleware.
+       - Reuse whatever guard is already used for other admin-only routes (e.g. requireAdmin, requirePlatformOwner, etc.).
+     - tenantId resolution:
+       - Use the :tenantId path param as the tenant ID or slug, depending on your existing conventions.
+       - Use existing tenant lookup helper(s), do NOT bypass them.
+     - Logic:
+       - Resolve the tenant entity.
+       - If tenant not found → return 404 with { ok: false, error: "Tenant not found" }.
+       - Call the existing Tenant Readiness Engine function for that tenant.
+         - Example (adjust to actual name/signature):
+           - const readiness = await computeTenantReadiness(tenantId, db)
+       - Return JSON:
+         {
+           ok: true,
+           tenantId: "<id or slug>",
+           readiness
+         }
+
+3. Error handling:
+   - On any unexpected error, log it using the existing logger.
+   - Return 500 with a generic error JSON:
+     { ok: false, error: "Internal server error" }
+   - DO NOT leak internal stack traces to the client.
+
+4. Wire router:
+   - Register the new router in the main server entrypoint:
+     - server/index.ts or similar.
+   - Keep path naming consistent with existing admin routes.
+
+====================================================
+STEP 2 – CLI READINESS RUNNER SCRIPT
+====================================================
+
+Add a CLI script so I (the user) can run:
+
+  npm run tenant:readiness -- --tenantSlug=cleanmachine
+
+…and get a JSON readiness report in the console.
+
+1. Inspect the repo for existing CLI scripts:
+   - Look for a /scripts directory or similar.
+   - Look for any script that uses ts-node, node, or similar to run internal code.
+   - Mirror whatever pattern is already used.
+
+2. Create a new script file, for example:
+   - scripts/tenantReadinessRunner.ts
+
+3. Script behavior:
+   - Parse process.argv for:
+     - --tenantId=... or --tenantSlug=...
+   - If no tenant identifier given:
+     - Print a helpful usage message and exit with non-zero code:
+       "Usage: npm run tenant:readiness -- --tenantSlug=cleanmachine"
+   - Resolve the tenant via the same helper(s) the API uses.
+   - Call the readiness engine.
+   - Print a nicely formatted JSON report to stdout, for example:
+
+     Tenant Readiness Report for <tenantName> (<tenantId>):
+
+     {
+       "status": "ready" | "incomplete" | "blocked",
+       "score": 0-100,
+       "gaps": [
+         { "id": "missing_twilio", "severity": "HIGH", "message": "...", "category": "telephony" },
+         ...
+       ]
+     }
+
+   - Also print a one-line human summary at the end like:
+     - "Overall: 78/100 – 1 HIGH, 2 MEDIUM, 3 LOW gaps."
+
+4. Wire it into package.json:
+   - Add a script:
+     "tenant:readiness": "ts-node ./scripts/tenantReadinessRunner.ts"
+
+   - Use ts-node or the repo’s existing preferred pattern for running TS scripts.
+   - If the repo already has a ts-node registration helper or uses ts-node-dev, follow that pattern.
+
+====================================================
+STEP 3 – ADMIN UI READINESS PANEL
+====================================================
+
+Add a visual Tenant Readiness panel to the admin UI so I can see this status without the CLI.
+
+1. Find the existing admin tenant UI:
+   - Search in the frontend (client) for files like:
+     - AdminTenantsPage.tsx
+     - AdminTenantDetail.tsx
+     - TenantsPage.tsx
+     - "Manage Tenants" components.
+   - Identify the screen where a single tenant’s details are shown (or where it makes the most sense to show readiness).
+
+2. Add a panel/card component:
+   - Use the existing design system (likely shadcn/ui Card, Badge, etc.).
+   - Create a new component, for example:
+     - client/src/features/admin/TenantReadinessCard.tsx
+   - This component should:
+     - Accept a tenantId (or tenant slug) as a prop.
+     - On mount (or via a "Refresh" button click), call the new API endpoint:
+       - GET /api/admin/tenants/:tenantId/readiness
+     - Show:
+       - A heading: "Tenant Readiness"
+       - A status badge: e.g. READY, NEEDS CONFIG, BLOCKED (derive from the readiness result).
+       - A score (0–100) if provided by the engine.
+       - A list of gaps:
+         - Show severity with color indicators:
+           - HIGH → red
+           - MEDIUM → amber/orange
+           - LOW → muted/gray
+         - Show a short message for each gap.
+       - A “Refresh” button to re-run the check.
+
+3. Loading & error states:
+   - On initial load:
+     - Show a skeleton or spinner.
+   - On error:
+     - Show an inline error message.
+     - Do NOT crash the whole page.
+
+4. Integrate card into the admin tenant detail page:
+   - On the chosen admin tenant screen, render the <TenantReadinessCard tenantId={...} /> in a sensible place:
+     - e.g. right column or a dedicated “Health & Readiness” section.
+   - Ensure it only shows for users with appropriate admin privileges (whatever your existing UI uses to gate admin-only panels).
+
+====================================================
+STEP 4 – TESTS
+====================================================
+
+Add minimal but meaningful tests to confirm this wiring works.
+
+1. Backend tests:
+   - If backend tests already exist (e.g. using Jest/Vitest), add tests for:
+     - The new API route:
+       - When tenant exists and readiness engine returns a result → returns 200 with ok: true and the readiness object.
+       - When tenant does not exist → returns 404 with ok: false.
+   - Use any existing test helpers for:
+     - Seeding a tenant.
+     - Seeding minimal data if needed.
+
+2. CLI tests (optional but nice):
+   - If the project has a pattern for testing CLI scripts, follow it.
+   - Otherwise, at minimum, ensure:
+     - The CLI doesn’t crash when given a valid tenant and prints something.
+     - If tests for CLI are too heavy, you can omit them but leave the code clean and documented.
+
+3. Frontend tests (optional but nice):
+   - If the project uses React Testing Library or similar, add a simple test for TenantReadinessCard:
+     - Mocks the API call.
+     - Confirms that:
+       - Score and a GAP item render correctly.
+   - If frontend testing setup is not obvious, you may skip this to avoid breaking builds.
+
+====================================================
+STEP 5 – CLEANUP & DEVELOPER INSTRUCTIONS
+====================================================
+
+1. Do NOT change unrelated code or styles.
+2. Make sure everything compiles and the existing test suite still passes.
+
+3. At the end, print a short “developer note” in a comment in a central file or in README-style markdown (if appropriate), and also summarize in your response:
+
+   Include ALL of the following in your final message to me:
+
+   A) Files you created/modified for:
+      - Backend API endpoint
+      - CLI script
+      - Frontend readiness panel
+      - Tests
+
+   B) How to run the CLI:
+      - Exact command, e.g.:
+        - npm run tenant:readiness -- --tenantSlug=cleanmachine
+
+   C) How to view the readiness UI:
+      - Example:
+        1) Log in as an admin.
+        2) Navigate to: /admin/tenants
+        3) Click on the Clean Machine tenant.
+        4) Scroll to the “Tenant Readiness” panel and click “Refresh”.
+
+   D) Any limitations or TODOs you think I should know about.
+
+====================================================
+QUALITY CHECKLIST (DO THIS BEFORE YOU FINISH)
+====================================================
+
+- [ ] Confirm the new API route is protected by admin auth middleware.
+- [ ] Confirm the readiness engine is called with the correct tenant ID and not leaking data from other tenants.
+- [ ] Confirm CORS configuration is NOT changed in this task.
+- [ ] Confirm `npm test` (or the repo’s test command) still passes.
+- [ ] Confirm `npm run tenant:readiness -- --tenantSlug=<my-clean-machine-slug>` works locally.
+- [ ] Confirm the admin UI loads and shows a readiness panel without crashing.
+
+When you’re done, reply with:
+- A short summary of what you implemented.
+- The exact commands and URL paths I should use to test everything end-to-end.
