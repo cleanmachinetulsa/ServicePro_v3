@@ -35,6 +35,7 @@ import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
+import agentContextRouter from "./routes/agentContextRouter";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -303,6 +304,8 @@ app.use('/api/campaigns', campaignsRouter);
 app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 // Register SMS templates routes (requires auth)
 app.use('/api/sms-templates', smsTemplatesRouter);
+// Register agent context routes (Phase 10 - AI Setup & Support Agent)
+app.use('/api/agent', agentContextRouter);
 // Register referral invoice routes (validation public, apply requires auth)
 registerReferralInvoiceRoutes(app);
 // Register industry onboarding routes (Phase 8B)
