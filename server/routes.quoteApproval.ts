@@ -424,10 +424,11 @@ router.post('/:token/decline', async (req, res) => {
     }
 
     // Fetch business settings for notification recipients
-    const [settings] = await req.tenantDb!
+    // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
+    const { db } = await import('./db');
+    const [settings] = await db
       .select()
       .from(businessSettings)
-      .where(req.tenantDb!.withTenantFilter(businessSettings))
       .limit(1);
 
     // Consume OTP before declining (verifies and deletes to prevent reuse)

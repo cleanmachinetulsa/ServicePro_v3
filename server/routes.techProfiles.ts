@@ -359,11 +359,11 @@ router.post('/api/admin/tech/:id/review', async (req: Request, res: Response) =>
 });
 
 // Get org settings (feature flags)
+// NOTE: orgSettings is a GLOBAL table (no tenantId) - use db directly
 router.get('/api/org/settings', async (req: Request, res: Response) => {
   try {
-    const settings = await req.tenantDb!.query.orgSettings.findMany({
-      where: (orgSettings) => req.tenantDb!.withTenantFilter(orgSettings),
-    });
+    const { db } = await import('./db');
+    const settings = await db.query.orgSettings.findMany();
     
     // Convert to key-value object for easier access
     const settingsObj = settings.reduce((acc, setting) => {
@@ -379,8 +379,10 @@ router.get('/api/org/settings', async (req: Request, res: Response) => {
 });
 
 // Update org setting
+// NOTE: orgSettings is a GLOBAL table (no tenantId) - use db directly
 router.post('/api/org/settings', async (req: Request, res: Response) => {
   try {
+    const { db } = await import('./db');
     const user = (req as any).user;
     if (!user || user.role !== 'owner') {
       return res.status(403).json({ error: 'Admin access required' });
@@ -389,23 +391,23 @@ router.post('/api/org/settings', async (req: Request, res: Response) => {
     const { settingKey, settingValue, description } = req.body;
 
     // Check if setting exists
-    const existing = await req.tenantDb!.query.orgSettings.findFirst({
-      where: (orgSettings, { eq }) => req.tenantDb!.withTenantFilter(orgSettings, eq(orgSettings.settingKey, settingKey)),
+    const existing = await db.query.orgSettings.findFirst({
+      where: (orgSettings, { eq }) => eq(orgSettings.settingKey, settingKey),
     });
 
     if (existing) {
       // Update existing setting
-      await req.tenantDb!.update(orgSettings)
+      await db.update(orgSettings)
         .set({
           settingValue,
           description,
           updatedAt: new Date(),
           updatedBy: user.id,
         })
-        .where(req.tenantDb!.withTenantFilter(orgSettings, eq(orgSettings.settingKey, settingKey)));
+        .where(eq(orgSettings.settingKey, settingKey));
     } else {
       // Create new setting
-      await req.tenantDb!.insert(orgSettings).values({
+      await db.insert(orgSettings).values({
         settingKey,
         settingValue,
         description,
