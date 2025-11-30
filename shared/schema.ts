@@ -6,7 +6,8 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
+  username: text("username").notNull(),
   password: text("password").notNull(),
   email: text("email"),
   role: varchar("role", { length: 20 }).notNull().default("employee"), // employee, manager, owner
@@ -28,6 +29,8 @@ export const users = pgTable("users", {
     name: "users_created_by_fkey"
   }),
   createdByIdx: index("users_created_by_idx").on(table.createdBy),
+  tenantIdIdx: index("users_tenant_id_idx").on(table.tenantId),
+  tenantUsernameIdx: uniqueIndex("users_tenant_username_unique_idx").on(table.tenantId, table.username),
 }));
 
 // OAuth providers for linking external accounts (Google, GitHub, Apple) to technician users
@@ -663,6 +666,7 @@ export const quoteRequests = pgTable("quote_requests", {
 
 export const invoices = pgTable("invoices", {
   id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   appointmentId: integer("appointment_id").references(() => appointments.id), // Nullable - allows manual invoices without appointments
   customerId: integer("customer_id").notNull().references(() => customers.id),
   invoiceType: varchar("invoice_type", { length: 20 }).notNull().default("appointment"), // 'appointment' | 'manual'
@@ -704,7 +708,9 @@ export const invoices = pgTable("invoices", {
   technicianId: integer("technician_id").references(() => users.id), // Technician who collected cash/check payment
   
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  tenantIdIdx: index("invoices_tenant_id_idx").on(table.tenantId),
+}));
 
 // Technician Deposits - Daily cash/check payment tracking and reconciliation
 export const technicianDeposits = pgTable("technician_deposits", {
