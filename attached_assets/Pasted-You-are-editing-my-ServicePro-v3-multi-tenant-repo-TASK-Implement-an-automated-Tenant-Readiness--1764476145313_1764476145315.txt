@@ -1,0 +1,393 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement an automated "Tenant Readiness Engine" + Clean Machine runner that checks as many production-readiness items as possible and prints a clear report.
+
+This is a backend-only phase. Do NOT touch UI styling or unrelated files.
+
+We’ll do:
+
+1) Shared types for readiness reports
+2) Service to compute a readiness report for ANY tenant
+3) Admin API endpoint: GET /api/admin/tenant-readiness/:tenantSlug
+4) CLI-style script + npm script to run the report for the Clean Machine tenant and log a human-readable summary
+5) Minimal tests if there's already a test setup, otherwise just keep things self-contained
+
+====================================================
+STEP 0 – FIND EXISTING PATTERNS
+====================================================
+
+1. Open MASTER_PLAN_V3*.md and skim Phase 10 (Agent Context Engine) so you understand the existing "agent context" shape and how tenant context is loaded.
+2. Find the existing Agent Context endpoint you already implemented (e.g. /api/agent/context or similar).
+3. Reuse as many of those helpers / patterns as possible so this new Readiness Engine is consistent:
+   - How you resolve current tenant
+   - How you load plan tier, telephony, email, feature flags
+
+Do NOT duplicate big chunks of logic if you can sensibly share a helper instead.
+
+====================================================
+STEP 1 – SHARED READINESS TYPES
+====================================================
+
+Create a new shared file for readiness types, for example:
+
+  shared/readinessTypes.ts
+
+Add (and export) types similar to:
+
+  export type ReadinessStatus = "pass" | "warn" | "fail";
+
+  export interface ReadinessItem {
+    key: string;          // e.g. "tenant.exists"
+    label: string;        // human label e.g. "Tenant record exists"
+    status: ReadinessStatus;
+    details?: string;     // optional extra info for humans
+    suggestion?: string;  // optional recommendation
+  }
+
+  export interface ReadinessCategory {
+    id: string;           // "branding" | "website" | "telephony" | ...
+    label: string;        // "Branding & Identity"
+    items: ReadinessItem[];
+  }
+
+  export interface TenantReadinessReport {
+    tenantId: string;
+    tenantSlug: string;
+    tenantName: string;
+    generatedAt: string;           // ISO string
+    overallStatus: ReadinessStatus;
+    categories: ReadinessCategory[];
+  }
+
+Export these so both server code AND (later) front-end or Agent Context can reuse them.
+
+====================================================
+STEP 2 – TENANT READINESS SERVICE
+====================================================
+
+Create a new backend service file, e.g.:
+
+  server/services/tenantReadinessService.ts
+
+In this file, implement:
+
+  import { TenantReadinessReport, ReadinessCategory, ReadinessItem, ReadinessStatus } from "../../shared/readinessTypes";
+
+  export async function getTenantReadinessReportBySlug(tenantSlug: string): Promise<TenantReadinessReport> {
+    // 1) Look up tenant by slug using the same DB and types as the rest of the app.
+    // 2) For that tenant, compute a set of ReadinessCategory + items:
+    //    - Branding
+    //    - Website / Booking
+    //    - Telephony
+    //    - Email
+    //    - AI & Booking Engine
+    //    - Night Ops / Conversations (basic check)
+    // 3) Compute an overallStatus = "fail" if ANY fail, "warn" if no fails but at least one warn, else "pass".
+  }
+
+Design the checks like this (use REAL table/field names from this repo, adjust if needed):
+
+A) BRANDING CATEGORY
+   - tenant.exists
+       * PASS if tenant row found
+       * FAIL if not found
+   - tenant.name
+       * PASS if non-empty
+       * WARN if missing or very short
+   - tenant.slug
+       * PASS if matches input and non-empty
+   - tenant.brand_color / logo / primary color fields (if you have them)
+       * PASS if at least one of logo or brand color is configured
+       * WARN if totally default / null
+
+B) WEBSITE / BOOKING CATEGORY
+   - website.enabled
+       * PASS if tenant has any website/booking config row (whatever your schema uses)
+       * WARN if booking is technically possible but no site config
+   - website.booking_url
+       * PASS if a computed public booking url can be formed from tenant config
+       * WARN if missing
+   - booking.services_configured
+       * PASS if at least 1 active service / SKU exists for the tenant
+       * FAIL if 0 active services (they can’t really book anything)
+
+C) TELEPHONY CATEGORY
+   Use your tenant_phone_config or equivalent table:
+
+   - telephony.phone_config_exists
+       * PASS if tenant has a phone config row
+       * FAIL if none
+   - telephony.sms_number_present
+       * PASS if SMS number present and looks like E.164 string
+       * WARN if config exists but missing number
+   - telephony.ivr_mode_configured
+       * PASS if IVR / routing mode is set to some valid enum
+       * WARN if still default/placeholder
+
+   (We CANNOT actually call Twilio here, just inspect config.)
+
+D) EMAIL CATEGORY
+   Use any existing SendGrid/email config patterns:
+
+   - email.global_sendgrid_config_present
+       * PASS if env vars or global config table for SendGrid are present
+       * WARN if missing (but don’t crash, just detect)
+   - email.tenant_profile_exists
+       * PASS if per-tenant email profile row exists (if you have one)
+       * WARN if not, but global config exists
+   - email.reply_to_configured
+       * PASS if tenant email profile has a reply-to or from address
+       * WARN if missing
+
+E) AI & BOOKING ENGINE CATEGORY
+   This should re-use whatever Phase 10 Agent Context Engine already exposes for:
+   - plan tier
+   - feature flags
+   - booking/AI engine flags, etc.
+
+   For example:
+   - ai.plan_tier
+       * PASS if plan tier is not null (starter/pro/elite/etc)
+       * WARN if missing
+   - ai.booking_engine_enabled
+       * PASS if necessary feature flags for booking AI are ON for this tenant
+       * WARN if any required flag is off
+   - ai.agent_context_endpoint_healthy (if you can cheaply call the local function, not HTTP)
+       * PASS if internal agent context function returns ok
+       * WARN if it throws or shows critical gaps
+
+F) NIGHT OPS / CONVERSATIONS CATEGORY
+   Keep this cheap and local:
+
+   - conversations.schema_present
+       * PASS if messages/conversations tables can be queried at all for this tenant
+   - conversations.any_recent_activity
+       * WARN if there are 0 messages in the last N days
+         (This isn’t a “fail” but lets us know they might not be live yet.)
+
+Use helper functions inside tenantReadinessService.ts to build categories and items; do not inline 300 lines of if/else logic. Make the code clean and readable.
+
+====================================================
+STEP 3 – ADMIN API ENDPOINT
+====================================================
+
+Create a new route file, for example:
+
+  server/routes/adminTenantReadinessRouter.ts
+
+It should:
+
+1. Use your existing auth/role middleware so ONLY an authenticated super-admin (you) can hit it.
+2. Define route:
+
+   GET /api/admin/tenant-readiness/:tenantSlug
+
+3. Implementation:
+   - Extract :tenantSlug from params
+   - Call getTenantReadinessReportBySlug(tenantSlug)
+   - If tenant not found, return 404 { ok: false, error: "Tenant not found" }
+   - Else return 200 { ok: true, report }
+
+Wire this router into your main server index/router file in the same style as other admin routes (e.g., prefix /api/admin if that’s your pattern).
+
+====================================================
+STEP 4 – CLEAN MACHINE READINESS SCRIPT
+====================================================
+
+Create a small CLI-style script under e.g.:
+
+  scripts/printCleanMachineReadiness.ts
+
+This script should:
+
+1. Bootstrap the same way other standalone scripts do (use the existing DB/init helper).
+2. Look up the Clean Machine tenant by slug. Assume slug "cleanmachine" by default, but:
+   - Also accept a slug via process.argv[2] so we can override if needed.
+3. Call getTenantReadinessReportBySlug(slug).
+4. Print a HUMAN-READABLE summary to stdout, something like:
+
+   === Tenant Readiness Report: cleanmachine ===
+   Overall: PASS
+
+   [Branding & Identity]
+   - PASS: Tenant record exists
+   - PASS: Tenant name set (Clean Machine Auto Detail)
+   - WARN: Logo missing (consider uploading a logo in Settings → Branding)
+
+   [Telephony]
+   - PASS: Phone config row found
+   - PASS: SMS number: +1XXX
+   - WARN: IVR mode still set to default (update in Phone Settings)
+
+   ...
+
+5. Also print a compact JSON blob at the end for easy copy/paste:
+
+   JSON:
+   { ...full TenantReadinessReport here... }
+
+Add a new npm script in package.json, following the style of existing scripts. For example:
+
+  "scripts": {
+    ...
+    "check:cleanmachine-readiness": "ts-node scripts/printCleanMachineReadiness.ts cleanmachine"
+  }
+
+Use whatever tool you already use for running TS scripts (ts-node, tsx, or a pre-existing pattern). Do NOT invent a brand new way if something already exists.
+
+====================================================
+STEP 5 – (OPTIONAL) BASIC TESTS
+====================================================
+
+If this repo already has a test harness (Jest, Vitest, etc.):
+
+1. Add a very small test file, like:
+
+   server/services/__tests__/tenantReadinessService.test.ts
+
+2. Include tests like:
+   - getTenantReadinessReportBySlug throws or returns a FAIL when slug is unknown
+   - When a tenant with minimal config exists, categories array is non-empty and overallStatus is at least "warn".
+
+Keep it light; focus on not breaking the build.
+
+If there is no existing test setup, SKIP this step entirely.
+
+====================================================
+STEP 6 – CLEANUP & DOCUMENTATION
+====================================================
+
+1. Ensure all new files are included in TypeScript compilation and imports are correct.
+2. Add a short section to MASTER_PLAN_V3*.md under the appropriate phase, noting:
+
+   - Tenant Readiness Engine implemented
+   - Admin API: GET /api/admin/tenant-readiness/:tenantSlug
+   - Script: npm run check:cleanmachine-readiness
+
+3. Do NOT rename or delete unrelated files.
+4. Keep logging minimal and clear; no noisy console.log in production paths.
+5. When finished, reply in the Replit output describing:
+   - New files created
+   - Any existing files modified
+   - Example command to run the Clean Machine readiness script.
+That’s the whole drop-in for Replit.
+Once Replit AI finishes, we do the hand-holding part.
+
+2️⃣ After Replit finishes – how YOU run the checks
+Step 1 – Run the Clean Machine readiness script
+In your Replit shell for the ServicePro v3 project:
+
+Make sure the AI changes are saved.
+
+In the Shell, run:
+
+bash
+Copy code
+npm run check:cleanmachine-readiness
+(or whatever exact script name Replit said it added; it will echo it at the end.)
+
+You should see output like:
+
+text
+Copy code
+=== Tenant Readiness Report: cleanmachine ===
+Overall: WARN
+
+[Branding & Identity]
+- PASS: Tenant record exists
+- PASS: Tenant name set (Clean Machine Auto Detail)
+- WARN: Logo missing (upload branding in Settings → Branding)
+
+[Website / Booking]
+- PASS: At least 3 active services configured
+- WARN: No booking website URL configured yet
+
+...
+
+JSON:
+{ ...big JSON blob... }
+Select and copy EVERYTHING from === Tenant Readiness Report: ... down through the JSON.
+
+Paste that into ChatGPT for me. I’ll read it and tell you exactly which things are left to fix and which are safe to ignore.
+
+3️⃣ Manual tests that can’t be auto-checked (click-by-click)
+These are the “ears / eyeballs” tests the code can’t do:
+
+A. IVR + Voicemail Flow (Phone call test)
+From your personal phone, call the Clean Machine Twilio number that’s configured for the tenant.
+
+Listen:
+
+Do you hear the greeting we designed?
+
+Do the menu options match what we expect? (Press 1 info, 2 link, 3 voicemail, etc.)
+
+Press 1:
+
+You should hear your info spiel, then the call ends.
+
+Call back and press 2:
+
+You should receive an SMS from that number with the info/link.
+
+Call back and press 3:
+
+Leave a realistic message (vehicle, day/time, etc.).
+
+Hang up.
+
+Then:
+
+Check your phone:
+
+You should get an AI SMS voicemail follow-up.
+
+Open /dashboard/messages in the app:
+
+Find that conversation.
+
+Confirm you see:
+
+Voicemail card
+
+Transcription text
+
+Recording link
+
+(If we wired it) AI summary.
+
+If any of those steps don’t behave like that, just tell me which step broke and what you saw / didn’t see.
+
+B. Night Ops Dashboard basic sanity
+Go to your Messages / Night Ops page (/dashboard/messages or similar).
+
+Verify:
+
+You can see a list of conversations on the left.
+
+Clicking one shows the thread.
+
+If you just did the voicemail test, that thread appears there.
+
+Click into the voicemail thread:
+
+Check you can scroll, see AI/human messages, and see the voicemail block.
+
+If this feels slow, glitchy, or empty, tell me exactly what looks wrong and we’ll fix that piece next.
+
+C. Email test (v1 email layer)
+In the app, find whatever panel controls email settings for the tenant (or ask me after we see the readiness report; I can locate the file/route).
+
+Make sure:
+
+Reply-To is set to something like info@cleanmachinetulsa.com.
+
+Use whatever “send test email” or “simulate confirmation email” function exists (if we don’t have one yet, I’ll add it in the next drop-in).
+
+Check your inbox:
+
+Email arrives.
+
+From name looks correct.
+
+Replying to it goes to your real inbox.
