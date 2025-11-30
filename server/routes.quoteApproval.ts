@@ -205,7 +205,7 @@ router.get('/:token', async (req, res) => {
       },
       approverType,
       businessName: 'Clean Machine Auto Detail',
-      businessPhone: process.env.TWILIO_PHONE_NUMBER || '(918) 555-0100',
+      businessPhone: process.env.MAIN_PHONE_NUMBER || '(918) 555-0100',
     });
   } catch (error) {
     console.error('[QUOTE APPROVAL] Error fetching quote:', error);
@@ -339,7 +339,7 @@ router.post('/:token/approve', async (req, res) => {
     }
 
     // Notify business owner about approval
-    const businessPhone = process.env.TWILIO_PHONE_NUMBER || '';
+    const businessPhone = process.env.MAIN_PHONE_NUMBER || '';
     if (businessPhone) {
       let ownerMessage = `✅ Quote APPROVED - ${quote.customerName} (${quote.phone})\n`;
       ownerMessage += `Service: ${quote.damageType}\n`;
@@ -459,7 +459,7 @@ router.post('/:token/decline', async (req, res) => {
     // Notify business owner about decline (multi-channel)
     try {
       // Use settings from database for notification recipients
-      const businessPhone = settings?.alertPhone || process.env.BUSINESS_OWNER_PHONE || process.env.TWILIO_PHONE_NUMBER || '';
+      const businessPhone = settings?.alertPhone || process.env.BUSINESS_OWNER_PERSONAL_PHONE || process.env.MAIN_PHONE_NUMBER || '';
       const businessEmail = settings?.backupEmail;
 
       // 1. SMS notification to business owner

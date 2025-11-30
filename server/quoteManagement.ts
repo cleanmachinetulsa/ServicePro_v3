@@ -59,7 +59,7 @@ export async function requestSpecialtyQuote(tenantDb: TenantDb, params: {
     console.log('[QUOTE REQUEST] Created quote request:', quoteRequest.id);
 
     // Send SMS alert to business owner
-    const businessPhone = process.env.BUSINESS_OWNER_PHONE;
+    const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
     if (businessPhone) {
       const thirdPartyInfo = params.thirdPartyPayerName
         ? `\n\nThird-Party Payer: ${params.thirdPartyPayerName}${params.poNumber ? ` (PO: ${params.poNumber})` : ''}`

@@ -263,8 +263,8 @@ export function registerCallRoutes(app: Router) {
       
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
-      const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-      const businessPhone = process.env.BUSINESS_OWNER_PHONE;
+      const twilioPhone = process.env.MAIN_PHONE_NUMBER;
+      const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
 
       // Safety check: prevent calling business numbers
       const businessNumbers = [

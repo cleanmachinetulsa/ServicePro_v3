@@ -562,7 +562,7 @@ export async function createSMSCampaign(tenantDb: TenantDb, data: {
         ${data.scheduledDate?.toISOString() || null},
         ${data.scheduledDate ? 'scheduled' : 'draft'},
         ${data.targetAudience},
-        ${data.fromNumber || process.env.TWILIO_PHONE_NUMBER || null},
+        ${data.fromNumber || process.env.MAIN_PHONE_NUMBER || null},
         ${segments},
         ${data.createdBy || null}
       )
