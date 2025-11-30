@@ -38,7 +38,6 @@ const onboardTenantSchema = z.object({
     required_error: 'Please select a status',
   }),
   industry: z.string().max(100).optional().or(z.literal('')),
-  // Phase 8: Industry pack selection
   industryPackId: z.string().max(100).optional().or(z.literal('')),
   applyIndustryPack: z.boolean().optional().default(true),
   phoneNumber: z.string().min(1, 'Phone number is required').max(50),
@@ -52,6 +51,7 @@ const onboardTenantSchema = z.object({
   internalNotes: z.string().optional().or(z.literal('')),
   sendWelcomeEmail: z.boolean().optional().default(false),
   sendWelcomeSms: z.boolean().optional().default(false),
+  promoCode: z.string().max(50).optional().or(z.literal('')),
 });
 
 type OnboardTenantForm = z.infer<typeof onboardTenantSchema>;
@@ -72,6 +72,8 @@ interface OnboardResponse {
     industryPackApplied: boolean;
     servicesCreated: number;
     faqsCreated: number;
+    promoCodeApplied: boolean;
+    promoCodeMessage: string | null;
   };
 }
 
@@ -110,6 +112,7 @@ export default function AdminConciergeSetup() {
       internalNotes: '',
       sendWelcomeEmail: false,
       sendWelcomeSms: false,
+      promoCode: '',
     },
   });
 
@@ -118,15 +121,27 @@ export default function AdminConciergeSetup() {
       const response = await apiRequest('POST', '/api/admin/concierge/onboard-tenant', data);
       return await response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setCreatedTenant(data.tenant);
       const packMessage = data.tenant.industryPackApplied 
         ? ` with ${data.tenant.servicesCreated} services and ${data.tenant.faqsCreated} FAQs`
         : '';
+      const promoMessage = data.tenant.promoCodeApplied
+        ? `. ${data.tenant.promoCodeMessage}`
+        : '';
       toast({
         title: 'Success',
-        description: `Tenant "${data.tenant.businessName}" created successfully${packMessage}`,
+        description: `Tenant "${data.tenant.businessName}" created successfully${packMessage}${promoMessage}`,
       });
+      
+      if (variables.promoCode && variables.promoCode.trim() && !data.tenant.promoCodeApplied) {
+        toast({
+          title: 'Promo Code Warning',
+          description: data.tenant.promoCodeMessage || 'The promo code could not be applied',
+          variant: 'destructive',
+        });
+      }
+      
       form.reset();
     },
     onError: (error: Error) => {
@@ -545,6 +560,28 @@ export default function AdminConciergeSetup() {
                       </Select>
                       <FormDescription>
                         Account status for this tenant
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="promoCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Promo Code</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="e.g., LAUNCH50"
+                          className="uppercase"
+                          data-testid="input-promo-code"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Apply a promotional code for billing discounts or extended trials
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

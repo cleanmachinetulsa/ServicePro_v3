@@ -427,3 +427,58 @@ export async function getRedemptionsByPromoId(promoId: number): Promise<PromoRed
     .where(eq(promoRedemptions.promoCodeId, promoId))
     .orderBy(sql`${promoRedemptions.redeemedAt} DESC`);
 }
+
+export const promoCodeService = {
+  getAllPromoCodes,
+  getPromoCodeById,
+  getPromoCodeByCode,
+  createPromoCode,
+  updatePromoCode,
+  deletePromoCode,
+  validatePromoForRequest,
+  applyPromoToTenant,
+  getTenantBillingOverride,
+  getRedemptionsByPromoId,
+  
+  async applyPromoCode(request: ApplyPromoRequest): Promise<ApplyPromoResult> {
+    const validation = await validatePromoForRequest(request);
+    
+    if (!validation.ok) {
+      return {
+        success: false,
+        error: validation.error,
+      };
+    }
+    
+    const applyResult = await applyPromoToTenant({
+      promo: validation.promo!,
+      tenantId: request.tenantId,
+      redeemerEmail: request.contactEmail,
+    });
+    
+    if (!applyResult.ok) {
+      return {
+        success: false,
+        error: applyResult.error,
+      };
+    }
+    
+    const applied = applyResult.applied!;
+    let message = 'Promo code applied successfully!';
+    
+    if (applied.subscriptionDiscountPercent && applied.subscriptionDiscountPercent > 0) {
+      message = `${applied.subscriptionDiscountPercent}% discount applied to your subscription`;
+    }
+    if (applied.trialExtensionDays && applied.trialExtensionDays > 0) {
+      message += ` + ${applied.trialExtensionDays} extra trial days`;
+    }
+    
+    return {
+      success: true,
+      discountType: applied.subscriptionDiscountPercent && applied.subscriptionDiscountPercent > 0 ? 'percentage' : undefined,
+      discountValue: applied.subscriptionDiscountPercent || undefined,
+      trialDaysAdded: applied.trialExtensionDays || undefined,
+      message,
+    };
+  },
+};
