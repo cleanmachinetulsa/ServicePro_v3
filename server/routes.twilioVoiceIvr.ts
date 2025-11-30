@@ -145,7 +145,7 @@ async function sendBookingInfoSms(toNumber: string, ivrConfig: { businessName: s
     const message = `Thanks for calling ${ivrConfig.businessName}! Here's our info & booking link: ${ivrConfig.bookingUrl}`;
     
     // TODO: Phase 3 - Get correct 'from' number from tenant phone config
-    const fromNumber = process.env.TWILIO_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    const fromNumber = process.env.VIP_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
     
     if (!fromNumber) {
       console.warn('[IVR SMS] No from number configured, skipping SMS');
@@ -194,7 +194,7 @@ async function notifyVoicemail(
     
     // TODO: Phase 3 - Get owner phone from tenant config
     const ownerPhone = '+19185551234'; // Placeholder - will be loaded from tenant settings
-    const fromNumber = process.env.TWILIO_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    const fromNumber = process.env.VIP_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
     
     if (!fromNumber) {
       console.warn('[IVR VOICEMAIL] No from number configured, skipping notification');

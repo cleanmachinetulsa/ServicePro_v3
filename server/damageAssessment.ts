@@ -71,7 +71,7 @@ export async function handleDamagePhotoUpload(
     } as any);
     
     // Get business phone for alert (using correct env var)
-    const businessPhone = process.env.BUSINESS_OWNER_PHONE;
+    const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
     
     if (businessPhone) {
       // Send immediate SMS alert to business owner with photo link

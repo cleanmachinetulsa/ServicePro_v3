@@ -17,7 +17,7 @@ const DEMO_MODE = process.env.DEMO_MODE === 'true';
 // Use environment variables for Twilio credentials
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+const twilioPhoneNumber = process.env.VIP_PHONE_NUMBER;
 const twilioMessagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
 // Import Twilio if credentials are available
@@ -724,7 +724,7 @@ function formatPhoneNumber(phoneNumber: string): string {
 
   // Handle test phone numbers for development
   if (cleaned === '5551234567') {
-    return process.env.TWILIO_PHONE_NUMBER || '+15551234567'; // Use our own number for testing
+    return process.env.VIP_PHONE_NUMBER || '+15551234567'; // Use our own number for testing
   }
 
   // If the number doesn't start with a country code, add US country code (1)

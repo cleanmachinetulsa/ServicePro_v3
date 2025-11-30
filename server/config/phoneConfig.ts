@@ -6,10 +6,10 @@
  * 
  * ROLE MAPPING (DO NOT CHANGE ROLES - only update values via env vars):
  * 
- * twilioTest   = TWILIO_TEST_SMS_NUMBER (+19189183265) - Dev/test only, NEVER customer-facing
- * twilioMain   = VIP_PHONE_NUMBER       (+19188565304) - MAIN customer-facing line
- * phoneAdmin   = TWILIO_PHONE_NUMBER    (+19188565711) - Admin notifications line
- * ownerUrgent  = BUSINESS_OWNER_PHONE   (+19182820103) - Urgent AT&T line for system alerts
+ * twilioTest   = TWILIO_TEST_SMS_NUMBER         (+19189183265) - Dev/test only, NEVER customer-facing
+ * twilioMain   = MAIN_PHONE_NUMBER              (+19188565304) - MAIN customer-facing line
+ * phoneAdmin   = VIP_PHONE_NUMBER               (+19188565711) - VIP/Admin notifications line
+ * ownerUrgent  = BUSINESS_OWNER_PERSONAL_PHONE  (+19182820103) - Owner's personal phone for urgent alerts
  * 
  * USAGE RULES:
  * - Customer-facing copy (headers, footers, emails, SMS) → twilioMain ONLY
@@ -26,14 +26,14 @@
 // Known Clean Machine defaults (root tenant) - ensures flows work even without env vars
 const DEFAULT_TWILIO_TEST = '+19189183265';
 const DEFAULT_TWILIO_MAIN = '+19188565304'; // Main customer-facing line
-const DEFAULT_PHONE_ADMIN = '+19188565711';  // Admin notifications
-const DEFAULT_OWNER_URGENT = '+19182820103'; // AT&T line for urgent alerts
+const DEFAULT_PHONE_ADMIN = '+19188565711';  // VIP/Admin notifications
+const DEFAULT_OWNER_URGENT = '+19182820103'; // Owner's personal phone for urgent alerts
 
 // Environment variable mappings with safe defaults for root tenant
 export const PHONE_TWILIO_TEST = process.env.TWILIO_TEST_SMS_NUMBER || DEFAULT_TWILIO_TEST;
-export const PHONE_TWILIO_MAIN = process.env.VIP_PHONE_NUMBER || DEFAULT_TWILIO_MAIN;
-export const PHONE_ADMIN = process.env.TWILIO_PHONE_NUMBER || DEFAULT_PHONE_ADMIN;
-export const PHONE_OWNER_URGENT = process.env.BUSINESS_OWNER_PHONE || DEFAULT_OWNER_URGENT;
+export const PHONE_TWILIO_MAIN = process.env.MAIN_PHONE_NUMBER || DEFAULT_TWILIO_MAIN;
+export const PHONE_ADMIN = process.env.VIP_PHONE_NUMBER || DEFAULT_PHONE_ADMIN;
+export const PHONE_OWNER_URGENT = process.env.BUSINESS_OWNER_PERSONAL_PHONE || DEFAULT_OWNER_URGENT;
 
 export interface PhoneConfig {
   twilioTest: string;
@@ -89,20 +89,20 @@ export function validatePhoneConfig(): { valid: boolean; info: string[] } {
   const info: string[] = [];
   
   // All numbers now have safe defaults, log whether using env or default
-  if (process.env.VIP_PHONE_NUMBER) {
-    info.push('twilioMain: using env var VIP_PHONE_NUMBER');
+  if (process.env.MAIN_PHONE_NUMBER) {
+    info.push('twilioMain: using env var MAIN_PHONE_NUMBER');
   } else {
     info.push('twilioMain: using default (Clean Machine)');
   }
   
-  if (process.env.TWILIO_PHONE_NUMBER) {
-    info.push('phoneAdmin: using env var TWILIO_PHONE_NUMBER');
+  if (process.env.VIP_PHONE_NUMBER) {
+    info.push('phoneAdmin: using env var VIP_PHONE_NUMBER');
   } else {
     info.push('phoneAdmin: using default (Clean Machine)');
   }
   
-  if (process.env.BUSINESS_OWNER_PHONE) {
-    info.push('ownerUrgent: using env var BUSINESS_OWNER_PHONE');
+  if (process.env.BUSINESS_OWNER_PERSONAL_PHONE) {
+    info.push('ownerUrgent: using env var BUSINESS_OWNER_PERSONAL_PHONE');
   } else {
     info.push('ownerUrgent: using default (Clean Machine)');
   }
@@ -127,7 +127,7 @@ export function logPhoneConfigStatus(): void {
   
   console.log('[PHONE CONFIG] Status:', valid ? 'OK' : 'ISSUES');
   console.log('[PHONE CONFIG] twilioMain (customer-facing):', 'SET');
-  console.log('[PHONE CONFIG] phoneAdmin (notifications):', 'SET');
-  console.log('[PHONE CONFIG] ownerUrgent (system alerts):', 'SET');
+  console.log('[PHONE CONFIG] phoneAdmin (VIP notifications):', 'SET');
+  console.log('[PHONE CONFIG] ownerUrgent (personal alerts):', 'SET');
   console.log('[PHONE CONFIG] twilioTest (dev/test):', 'SET');
 }

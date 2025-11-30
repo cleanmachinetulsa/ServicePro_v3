@@ -229,7 +229,7 @@ May I answer any questions or get your vehicle scheduled?`;
 async function sendVoicemailNotification(toPhone: string, fromPhone: string, transcription: string, recordingUrl: string) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+  const twilioPhone = process.env.VIP_PHONE_NUMBER;
 
   if (!accountSid || !authToken || !twilioPhone) {
     throw new Error('Twilio credentials not configured');
@@ -656,7 +656,7 @@ Respond ONLY with the SMS message text, nothing else.`;
     // Send SMS response
     const twilioModule = require('twilio');
     const twilioClient = twilioModule(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-    const mainPhoneNumber = process.env.TWILIO_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    const mainPhoneNumber = process.env.VIP_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
 
     if (!mainPhoneNumber) {
       console.warn('[TWILIO VOICE] No from number configured, skipping auto SMS');
@@ -896,8 +896,8 @@ router.post('/voice/click-to-call', async (req: Request, res: Response) => {
 
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
-    const businessPhone = process.env.BUSINESS_OWNER_PHONE;
+    const twilioPhone = process.env.VIP_PHONE_NUMBER;
+    const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
 
     if (!accountSid || !authToken || !twilioPhone || !businessPhone) {
       return res.status(500).json({ error: 'Twilio or business phone not configured' });
@@ -970,7 +970,7 @@ router.post('/voice/connect-customer', verifyTwilioSignature, async (req: Reques
 
   // Dial the customer
   const dial = twiml.dial({
-    callerId: process.env.TWILIO_PHONE_NUMBER,
+    callerId: process.env.VIP_PHONE_NUMBER,
     timeout: 30,
   });
   dial.number(customerPhone);

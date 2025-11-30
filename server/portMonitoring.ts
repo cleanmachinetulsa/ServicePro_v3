@@ -24,7 +24,7 @@ async function checkPortStatus(): Promise<boolean> {
   
   try {
     // Use BUSINESS_PHONE_NUMBER env var for flexibility (supports any ported number)
-    const portedNumber = process.env.BUSINESS_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER;
+    const portedNumber = process.env.BUSINESS_PHONE_NUMBER || process.env.VIP_PHONE_NUMBER;
     
     if (!portedNumber) {
       console.log('[PORT MONITOR] Business phone number not configured in environment variables');
@@ -98,7 +98,7 @@ async function checkPortStatus(): Promise<boolean> {
     });
 
     // Send test SMS to business owner's phone (can't send to self - Twilio doesn't deliver those)
-    const ownerPhone = process.env.BUSINESS_OWNER_PHONE;
+    const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
     
     if (!ownerPhone) {
       console.log('[PORT MONITOR] ❌ Business owner phone not configured - cannot test delivery');
@@ -181,8 +181,8 @@ async function waitForTestConfirmation(testId: string, timeoutMs: number): Promi
 
 async function sendPortCompleteAlert() {
   try {
-    const ownerPhone = process.env.BUSINESS_OWNER_PHONE;
-    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+    const twilioPhoneNumber = process.env.VIP_PHONE_NUMBER;
 
     if (!ownerPhone) {
       console.log('[PORT MONITOR] Owner phone not configured for alert');

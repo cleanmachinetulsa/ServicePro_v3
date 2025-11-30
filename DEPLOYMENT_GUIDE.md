@@ -40,7 +40,7 @@ These should already be synced from your workspace (verify they exist):
 - ✅ `TWILIO_AUTH_TOKEN` - SMS/Voice
 - ✅ `SENDGRID_API_KEY` - Email
 - ✅ `STRIPE_SECRET_KEY` - Payments
-- ✅ `BUSINESS_OWNER_PHONE` - Owner contact
+- ✅ `BUSINESS_OWNER_PERSONAL_PHONE` - Owner contact
 - ✅ `BUSINESS_PHONE_NUMBER` - Main business line
 - ✅ `GOOGLE_PLACE_ID` - Google reviews/maps
 

@@ -21,7 +21,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
     const customerPhone = req.body.To;
     const techIdentity = req.body.Caller; // e.g., "tech:123"
     const callSid = req.body.CallSid;
-    const twilioPhone = process.env.TWILIO_PHONE_NUMBER;
+    const twilioPhone = process.env.VIP_PHONE_NUMBER;
 
     if (!customerPhone) {
       twiml.say({ voice: 'alice' }, 'Error: Customer phone number not provided.');
