@@ -56,7 +56,7 @@ export default function AdminTenants() {
   const [editPlanDialogOpen, setEditPlanDialogOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
 
-  const { data: tenantsData, isLoading } = useQuery<{ tenants: any[] }>({
+  const { data: tenantsData, isLoading, error, isError } = useQuery<{ tenants: any[] }>({
     queryKey: ['/api/admin/tenants'],
   });
 
@@ -479,6 +479,24 @@ export default function AdminTenants() {
               </Card>
             ))}
           </div>
+        ) : isError ? (
+          <Card className="p-6 border-red-500 bg-red-50 dark:bg-red-950">
+            <div className="flex items-center gap-3 text-red-600 dark:text-red-400">
+              <Shield className="w-6 h-6" />
+              <div>
+                <h3 className="font-semibold">Failed to load tenants</h3>
+                <p className="text-sm">{error?.message || 'Unknown error occurred'}</p>
+              </div>
+            </div>
+            <Button 
+              className="mt-4" 
+              variant="outline"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['/api/admin/tenants'] })}
+              data-testid="button-retry"
+            >
+              Retry
+            </Button>
+          </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {tenantsData?.tenants.map((tenant) => (

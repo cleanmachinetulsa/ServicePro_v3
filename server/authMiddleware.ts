@@ -46,7 +46,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // This prevents privilege escalation if user enables 2FA after session creation
     // or if attacker intercepts session between password and 2FA steps
     const { isTOTPEnabled } = await import('./securityService');
-    const has2FA = await isTOTPEnabled(db, user.id);
+    const has2FA = await isTOTPEnabled(user.id);
     
     if (has2FA && !req.session.twoFactorVerified) {
       console.warn(`[AUTH] User ${user.username} has 2FA enabled but session lacks verification. Rejecting request.`);
