@@ -1,7 +1,7 @@
 {
-  "name": "Clean Machine Communications Hub",
-  "short_name": "Comm Hub",
-  "description": "AI-powered communications platform for Clean Machine Auto Detail",
+  "name": "ServicePro Business Automation",
+  "short_name": "ServicePro",
+  "description": "AI-powered business automation platform for service businesses",
   "start_url": "/launch",
   "scope": "/",
   "display": "standalone",

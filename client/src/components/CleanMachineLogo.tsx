@@ -1,27 +1,26 @@
-import React from 'react';
-import logoImage from '@assets/ab_Clean4-03.jpg';
+import logoImage from '@assets/clean-machine-logo.png';
 
 interface LogoProps {
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
 
-const CleanMachineLogo: React.FC<LogoProps> = ({ size = 'md', className = '' }) => {
-  // Map size to dimensions
+const CleanMachineLogo = ({ size = 'md', className = '' }: LogoProps) => {
   const sizeMap = {
     sm: 'w-8 h-8',
     md: 'w-12 h-12',
-    lg: 'w-16 h-16'
+    lg: 'w-16 h-16',
+    xl: 'w-24 h-24'
   };
   
   const sizeClass = sizeMap[size];
   
   return (
-    <div className={`${sizeClass} flex items-center justify-center overflow-hidden bg-black rounded-lg ${className}`}>
+    <div className={`${sizeClass} flex items-center justify-center overflow-hidden rounded-lg ${className}`}>
       <img 
         src={logoImage} 
-        alt="Clean Machine Logo" 
-        className="w-full h-full object-contain p-0.5"
+        alt="Clean Machine Mobile Auto Detail" 
+        className="w-full h-full object-contain"
       />
     </div>
   );
