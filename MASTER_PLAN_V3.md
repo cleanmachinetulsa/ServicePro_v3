@@ -866,7 +866,18 @@ The Tenant Readiness Engine provides automated production-readiness checks for a
 | Telephony | phone_config_exists, sms_number_present, ivr_mode_configured, messaging_service |
 | Email | global_sendgrid_config_present, tenant_profile_exists, reply_to_configured, status_healthy |
 | AI & Booking Engine | plan_tier, booking_engine_enabled, industry_configured |
-| Conversations | schema_present, any_recent_activity |
+| Conversations | schema_present, recent_activity OR recent_activity_query_error OR schema_error |
+
+### 26.3.1 Conversation Diagnostics
+
+The conversations check uses distinct keys to differentiate between error states:
+
+- **`conversations.schema_present`** (pass): Database table is accessible, shows total conversation count
+- **`conversations.recent_activity`** (pass/warn): Recent 30-day activity check succeeded
+- **`conversations.recent_activity_query_error`** (warn): Recent activity query failed (e.g., null lastMessageAt values)
+- **`conversations.schema_error`** (fail): Database table query completely failed
+
+This separation ensures diagnostics clearly indicate whether issues are with schema access, data quality, or expected tenant inactivity.
 
 ### 26.4 Usage
 

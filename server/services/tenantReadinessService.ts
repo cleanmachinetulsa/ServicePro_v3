@@ -25,7 +25,6 @@ import {
   tenantEmailProfiles,
   services,
   conversations,
-  messages,
 } from '@shared/schema';
 import { eq, desc, gte, count, and } from 'drizzle-orm';
 
@@ -600,7 +599,7 @@ async function checkConversations(tenantId: string): Promise<ReadinessCategory> 
 
       if (recentCount === 0 && totalConversations > 0) {
         items.push({
-          key: 'conversations.any_recent_activity',
+          key: 'conversations.recent_activity',
           label: 'Recent conversation activity',
           status: 'warn',
           details: 'No conversations in the last 30 days.',
@@ -608,7 +607,7 @@ async function checkConversations(tenantId: string): Promise<ReadinessCategory> 
         });
       } else if (recentCount === 0) {
         items.push({
-          key: 'conversations.any_recent_activity',
+          key: 'conversations.recent_activity',
           label: 'Recent conversation activity',
           status: 'warn',
           details: 'No conversations recorded yet.',
@@ -616,29 +615,31 @@ async function checkConversations(tenantId: string): Promise<ReadinessCategory> 
         });
       } else {
         items.push({
-          key: 'conversations.any_recent_activity',
+          key: 'conversations.recent_activity',
           label: 'Recent conversation activity',
           status: 'pass',
           details: `${recentCount} conversation(s) in the last 30 days.`,
         });
       }
-    } catch {
+    } catch (queryError: unknown) {
+      const errMessage = queryError instanceof Error ? queryError.message : String(queryError);
       items.push({
-        key: 'conversations.any_recent_activity',
-        label: 'Recent conversation activity',
+        key: 'conversations.recent_activity_query_error',
+        label: 'Recent conversation activity check',
         status: 'warn',
-        details: 'Could not check recent activity.',
-        suggestion: 'Ensure lastMessageAt field is populated.',
+        details: `Query failed: ${errMessage.slice(0, 80)}`,
+        suggestion: 'Ensure lastMessageAt column exists and is populated for accurate activity tracking.',
       });
     }
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errMessage = error instanceof Error ? error.message : String(error);
     items.push({
-      key: 'conversations.schema_present',
-      label: 'Conversations table accessible',
-      status: 'warn',
-      details: 'Error querying conversations table.',
-      suggestion: 'Check database schema.',
+      key: 'conversations.schema_error',
+      label: 'Conversations table query failed',
+      status: 'fail',
+      details: `Database error: ${errMessage.slice(0, 80)}`,
+      suggestion: 'Check that the conversations table exists and is accessible.',
     });
   }
 
