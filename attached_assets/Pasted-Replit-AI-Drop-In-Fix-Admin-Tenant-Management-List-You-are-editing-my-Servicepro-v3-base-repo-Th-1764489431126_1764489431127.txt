@@ -1,0 +1,188 @@
+Replit AI Drop-In – Fix Admin Tenant Management List
+
+You are editing my Servicepro-v3-base repo.
+The Admin Tenant Management screen at /admin/tenants is showing an empty list even though I definitely have tenants in the database (for example, the readiness CLI shows tenant root with slug cleanmachine).
+
+Goal:
+Fix the Admin Tenant Management page so it:
+
+Correctly loads all tenants from the backend.
+
+Shows my Clean Machine Auto Detail tenant and any test tenants.
+
+Keeps all the new "ops" theme styling – only fix data flow, do NOT rip out or redesign the UI.
+
+STEP 0 – Quick sanity checks (run commands, don’t guess)
+
+In the shell, run these and inspect:
+
+# 0.1 – Confirm tenants exist in DB
+npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=root --json
+
+
+We already know this works and shows tenantId: root, tenantSlug: cleanmachine.
+If there is also a seed/fixture script for tenants, locate it too (for reference only).
+
+In the shell, list npm scripts so you know what’s available (don’t change them yet):
+
+npm run
+
+
+Just use this to orient yourself; don’t modify scripts at this step.
+
+STEP 1 – Find the Admin Tenant Management UI
+
+Locate the React page/component for /admin/tenants. It will likely be something like:
+
+client/src/pages/admin/TenantsPage.tsx, or
+
+client/src/features/admin/tenants/AdminTenantsPage.tsx, or
+
+whatever file the router uses for the /admin/tenants route.
+
+Once you find it, analyze:
+
+What hook/function is used to fetch tenants? (e.g. useTenantsQuery, fetchTenants, api.admin.tenants.list, etc.)
+
+What API endpoint is it calling? (e.g. /api/admin/tenants).
+
+Is there any filter that might accidentally hide all tenants (e.g. filtering to only “active” but the seed data marks them differently)?
+
+Does it handle and display errors if the API call fails, or does it just silently show an empty list?
+
+Do NOT change styling. Only adjust data fetching, query keys, and error handling as needed.
+
+STEP 2 – Inspect the backend tenants endpoint
+
+Find the server code that powers the admin tenants list, for example:
+
+server/routes/adminTenants.ts,
+
+server/api/admin/tenants.ts,
+
+or equivalent.
+
+Verify:
+
+The route path (e.g. GET /api/admin/tenants) matches what the front end is calling.
+
+It uses the global / platform DB to list all tenants (NOT a tenant-scoped wrapTenantDb call).
+
+It actually returns root / cleanmachine and any other tenants.
+
+From the shell, directly test the endpoint using curl or HTTPie, e.g.:
+
+# adjust port/path if needed based on server config
+curl -sS http://localhost:3000/api/admin/tenants || echo "request failed"
+
+
+If auth is required, either:
+
+use whatever local dev bypass is already implemented, or
+
+temporarily log the response of the internal query function instead (e.g. the DB query that loads tenants).
+
+If the backend query is wrong (e.g. wrong table name, wrong column, or tenant filter that excludes everything), fix the query so it:
+
+Returns at least:
+
+id
+
+slug or subdomain
+
+name
+
+planTier
+
+created/updated timestamps
+
+Includes the root / cleanmachine tenant row and existing test tenants.
+
+Make sure the API response shape matches what the front end expects. If you change the shape, update the front-end types accordingly instead of any “any” hacks.
+
+STEP 3 – Wire data → UI and add minimal error visibility
+
+Go back to the Admin Tenant Management React page and:
+
+Confirm the hook or data fetch now receives the correct tenant list.
+
+Ensure the list is rendered correctly in the UI component (e.g. rows in a table or cards).
+
+Add lightweight error feedback:
+
+If the API call fails, show a simple inline message, e.g. “Failed to load tenants” rather than a silent empty screen.
+
+Keep this in the existing theme (no big design changes).
+
+Make sure the page:
+
+Shows a loading state while fetching.
+
+Shows the tenant rows when data is present.
+
+Does not get stuck in an infinite loading spinner.
+
+STEP 4 – Regression test for tenant listing
+
+Add a small test so we don’t lose this again:
+
+Find the existing tests related to admin tenants or admin pages. They might live under:
+
+tests/admin/tenants.test.ts,
+
+client/src/tests/adminTenants.test.tsx,
+
+or a nearby location.
+
+If there is already a test file, extend it. If not, create a light test that:
+
+Mocks a backend response with at least one tenant (root / cleanmachine).
+
+Asserts that the Admin Tenant Management UI renders at least one row with the correct name / slug.
+
+Run the relevant test command, e.g.:
+
+npm test -- --runInBand --watch=false
+
+
+or whatever is used in this repo (check package.json).
+
+STEP 5 – Manual verification
+
+Restart the dev server if needed.
+
+In the browser, go to /admin/tenants.
+
+Confirm:
+
+You see Clean Machine Auto Detail listed as a tenant.
+
+Any seeded test tenants also appear.
+
+The new “ops” theme styling is still intact (no design regression).
+
+If the backend is down or errors, you now see a friendly error message instead of an empty screen.
+
+IMPORTANT GUARDRAILS
+
+Do not remove or significantly redesign the “ops” theme.
+
+Do not change tenant creation logic or seeding beyond what’s needed to get the list working.
+
+Keep changes focused on:
+
+The admin tenants API route / DB query.
+
+The front-end data fetching and minimal UX feedback.
+
+A small regression test.
+
+When you’re done, summarize:
+
+Which files you changed.
+
+What the bug actually was (wrong endpoint, bad query, missing auth, etc.).
+
+How to verify in the UI (“Click here, you should see X tenants…”).
+
+How to run the tests you added/updated.

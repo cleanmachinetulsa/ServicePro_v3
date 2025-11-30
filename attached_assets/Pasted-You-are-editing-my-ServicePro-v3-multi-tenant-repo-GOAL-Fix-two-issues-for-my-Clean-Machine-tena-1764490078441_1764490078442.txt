@@ -1,0 +1,130 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+GOAL: 
+Fix two issues for my Clean Machine tenant so the admin UI shows tenants correctly AND SMS routing can use Twilio Messaging Service:
+
+1) "root" / Clean Machine tenant is missing from the `tenants` table, so the Admin → Tenants page appears empty or incomplete.
+2) `tenant_phone_config` has my phone number but NO `messaging_service_sid`, so routing only uses phone-number fallback.
+
+IMPORTANT STYLE RULES:
+- Do NOT refactor unrelated code.
+- Do NOT rename existing files, tables, or scripts.
+- Do NOT introduce brand-new tech or libraries.
+- Keep changes as SMALL and TARGETED as possible.
+- If you add any scripts, comment them clearly and keep them in the existing style.
+
+====================================================
+STEP 1 – RECONSTRUCT ROOT TENANT ROW
+====================================================
+
+1. Inspect DB schema and current rows:
+
+   - Look at these tables:
+     - `tenants`
+     - `tenant_config`
+     - Any other tenant-related tables you previously used (if applicable).
+
+   - Confirm what’s currently in:
+     - `tenants` (should have test tenants but NOT `root`).
+     - `tenant_config` (should have a `root` row for Clean Machine with subdomain `cleanmachine`, plan tier `elite`, etc.).
+
+2. Create or repair the `tenants` table row for the "root" tenant:
+
+   - If a row with `id = 'root'` does NOT exist in `tenants`, INSERT one based on the config you find in `tenant_config`.
+   - Required fields (adapt to current schema):
+     - `id`: `"root"`
+     - `slug` or `subdomain` or equivalent: `"cleanmachine"`
+     - `name`: `"Clean Machine Auto Detail"`
+     - Any required status fields (e.g., `status = 'active'`, `isArchived = false`, etc.).
+     - Any timestamps (use now() or consistent defaults).
+
+   - If a row DOES exist but is malformed (e.g. archived, wrong slug, etc.), UPDATE it instead so it lines up with:
+     - Tenant name: "Clean Machine Auto Detail"
+     - Subdomain/slug: "cleanmachine"
+     - Active status.
+
+3. Make sure this does NOT break any existing test tenants. 
+   - Only add/update the `root` row; don’t delete or modify test tenants.
+
+====================================================
+STEP 2 – FIX ADMIN TENANT LIST (API + UI)
+====================================================
+
+1. Find the API endpoint that powers the **Admin → Tenants** page.
+   - Likely something like `/api/admin/tenants` or similar.
+   - Confirm the query: it should JOIN from `tenants` to `tenant_config` (and maybe other tables).
+
+2. Verify that:
+   - The query includes the `root` tenant now that it exists in `tenants`.
+   - Tenants are NOT accidentally filtered out due to:
+     - `is_deleted`, `archived`, or `suspended` flags that might be wrong
+     - A `WHERE` clause that filters by something unexpected.
+
+3. Fix any obvious filtering issues so:
+   - Clean Machine shows up in the tenant list.
+   - Any other valid tenants also show up (test tenants, etc.).
+   - Do NOT change business rules; just correct the query or mapping so it matches the intended rules.
+
+4. Confirm the **frontend** admin page:
+   - Go to `/admin/tenants` in the running app and make sure:
+     - You see at least:
+       - Clean Machine (root)
+       - Any existing test tenants.
+     - Nothing breaks visually with the "ops" theme.
+   - If the UI is filtering out tenants incorrectly, fix that too (for example, wrong type guard or expecting fields that are null).
+
+====================================================
+STEP 3 – STORE TWILIO MESSAGING SERVICE SID
+====================================================
+
+We want to store my Twilio Messaging Service SID in `tenant_phone_config` so SMS routing can use the preferred Strategy 1 (MessagingServiceSid) instead of just phone number matching.
+
+
+   MG3c825f1ef8b2f6ad805524645fd9008b     
+1. Find `tenant_phone_config`:
+   - Confirm there is a row for the root / Clean Machine tenant phone number: `+1 918 856 5304`.
+   - Confirm the schema includes `messaging_service_sid` (or similar).
+
+2. Update that row so:
+   - `messaging_service_sid = 'MGXXXXXXXXXXXXXXXXXXXXXXXXXXXX'`  (the real SID, not the placeholder)
+   - Do NOT change the phone number itself or other fields unless clearly required.
+
+3. Double-check any helper functions that read from `tenant_phone_config`:
+   - Ensure they prefer `messaging_service_sid` when present and only fall back to phone-number matching when it is NULL.
+   - If this logic already exists and was the basis for the previous analysis, don’t change it; just rely on it.
+
+====================================================
+STEP 4 – VERIFY EVERYTHING WORKS
+====================================================
+
+1. Run the tenant readiness CLI again for root in the shell:
+
+   - JSON mode:
+     `npx tsx scripts/printCleanMachineReadiness.ts --tenantSlug=root --json`
+
+   Requirements for successful result:
+   - `ok: true`
+   - `tenantSlug: "cleanmachine"` and `tenantId: "root"`
+   - `telephony.messaging_service` item should now be `status: "pass"` (or equivalent) and reference the MessagingServiceSid instead of a “warn” about it being missing.
+
+2. Go to the Admin → Tenants page in the browser:
+   - Confirm that:
+     - Clean Machine tenant appears in the list.
+     - Any other tenants (test tenants) also appear.
+   - Confirm that clicking into a tenant still works and doesn’t throw errors.
+
+3. Briefly inspect logs for an inbound/outbound SMS to confirm routing now uses the Messaging Service path (Strategy 1) instead of only phone number fallback. 
+   - If possible, simulate or log a test message and confirm it resolves correctly to the root tenant via MessagingServiceSid.
+
+====================================================
+STEP 5 – REPORT BACK
+====================================================
+
+When you’re done, please summarize for me in plain English:
+
+1) Exactly what you changed in the database (INSERT/UPDATE details for `tenants` and `tenant_phone_config`).
+2) The current Admin → Tenants behavior (which tenants show up).
+3) The key parts of the new JSON output from the readiness CLI for `telephony.messaging_service`.
+4) Anything you noticed that still looks off or might need follow-up work.
+
+Do NOT skip the summary. I will paste that summary back into ChatGPT so the architect (my human-side helper) can double-check everything.
