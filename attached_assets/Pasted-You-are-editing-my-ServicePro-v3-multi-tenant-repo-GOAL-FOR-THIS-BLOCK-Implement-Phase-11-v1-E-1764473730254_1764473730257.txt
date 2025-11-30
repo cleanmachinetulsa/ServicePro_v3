@@ -1,0 +1,334 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+GOAL FOR THIS BLOCK
+Implement **Phase 11 – v1 Email + SendGrid Plumbing** so that:
+
+1. We have a tenant-scoped email profile (what “brand name” + reply-to to use).
+2. There is a shared SendGrid-powered email service using a global API key.
+3. The existing Phase 10 Agent Context Engine exposes an `email` section that tells the AI/setup agent whether email is configured and what’s missing.
+
+⚠️ IMPORTANT RULES
+- Do NOT break multi-tenant isolation. Always use `tenantDb` or `wrapTenantDb` for tenant-scoped tables.
+- Do NOT hardcode “Clean Machine” anywhere. Everything must be tenant-aware and white-label.
+- Do NOT send real emails if the env vars are missing; just log a clear warning.
+- Follow existing patterns in the codebase (types, services, routing, logging).
+
+====================================================
+STEP 0 – INSPECT EXISTING CONTEXT & CONFIG
+====================================================
+
+1. Open the files created for Phase 10 (or equivalent):
+   - The shared Agent Context types file (e.g. `shared/agentContext.ts` or similar).
+   - The Agent Context service (e.g. `server/services/agentContextService.ts`).
+   - The Agent Context router (e.g. `server/routes/agentContextRouter.ts`).
+
+2. Identify:
+   - The main `AgentContext` (or similar) TypeScript interface/type.
+   - How the context object is assembled from tenant + feature flags.
+   - How “gaps” or “issues” are represented (likely an array of `{ code, severity, message, hint }`).
+
+We will extend these to include an `email` section.
+
+====================================================
+STEP 1 – ADD TENANT EMAIL PROFILE TABLE (DB + TYPES)
+====================================================
+
+1. In the Drizzle schema (where other tenant-scoped tables live, e.g. `server/db/schema/tenant.ts` or similar),
+   add a new table definition for tenant email profiles, something like:
+
+   - Table name: `tenant_email_profiles`
+   - Columns:
+     - `id` (serial or uuid, primary key)
+     - `tenantId` (fk to tenants, NOT NULL, unique – one profile per tenant for now)
+     - `provider` (text, default `'sendgrid'` for v1)
+     - `fromName` (text, nullable)          // brand display name override
+     - `fromEmail` (text, nullable)         // optional override if we ever support per-tenant domains
+     - `replyToEmail` (text, nullable)      // tenant’s real inbox for replies
+     - `status` (text enum-ish): `'not_configured' | 'needs_verification' | 'healthy' | 'error'`
+     - `lastVerifiedAt` (timestamp, nullable)
+     - `lastError` (text, nullable)
+     - timestamps (`createdAt`, `updatedAt`) consistent with other tables
+
+   Follow existing table/enum patterns in the schema (if there is a shared enum helper, use it).
+
+2. Make sure:
+   - The table is **tenant-scoped** (either enforced via composite key with tenantId or unique constraint).
+   - It is exported from the schema index if you have one.
+
+3. Create a migration for this new table using the existing migration flow (Drizzle migration file, etc.).
+
+4. In a shared types file (e.g. `shared/email.ts` or similar – create it if needed),
+   define a TypeScript type for the DB shape or a simplified DTO:
+
+   ```ts
+   export type TenantEmailStatus = 'not_configured' | 'needs_verification' | 'healthy' | 'error';
+
+   export interface TenantEmailProfile {
+     tenantId: string;
+     provider: 'sendgrid';
+     fromName: string | null;
+     fromEmail: string | null;
+     replyToEmail: string | null;
+     status: TenantEmailStatus;
+     lastVerifiedAt: string | null; // ISO
+     lastError: string | null;
+   }
+Adjust imports/paths to match your structure.
+
+====================================================
+STEP 2 – ADD SENDGRID DEPENDENCY + CONFIG
+In package.json, add (or confirm) the dependency:
+
+"@sendgrid/mail": "^8.1.0" (or the latest stable version you’re already using if present).
+
+In your server config/env utilities (where you read env vars), ensure we have:
+
+SENDGRID_API_KEY (string | undefined)
+
+EMAIL_FROM_ADDRESS (string | undefined) // e.g. no-reply@servicepro-mail.com
+
+EMAIL_FROM_NAME (string | undefined) // default brand name, e.g. ServicePro Mailer
+
+Use existing config patterns (e.g. config.ts, env.ts, etc.). Do NOT hardcode actual values.
+
+====================================================
+STEP 3 – IMPLEMENT EMAIL SERVICE (server/services/emailService.ts)
+Create or open server/services/emailService.ts.
+
+Implement a tenant-aware email sending helper using SendGrid:
+
+Initialize @sendgrid/mail using SENDGRID_API_KEY if present.
+
+Export an interface for payloads, something like:
+
+ts
+Copy code
+export interface SendTenantEmailInput {
+  tenantId: string;
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+  category?: string; // e.g. 'booking_confirmation', 'trial_welcome'
+}
+Implement an async function, e.g. sendTenantEmail(tenantDb, tenantId, input: SendTenantEmailInput) that:
+
+a) Fetches the tenant row (for brand name, owner email, etc.) using tenantDb or an existing tenant service.
+
+b) Fetches the tenant_email_profiles row (if any) for this tenant.
+
+c) Determines:
+
+fromName:
+
+priority: emailProfile.fromName → tenant.businessName (or similar) → fallback to EMAIL_FROM_NAME.
+
+fromEmail:
+
+For v1, ALWAYS use the shared EMAIL_FROM_ADDRESS if set.
+
+If EMAIL_FROM_ADDRESS is missing, log a warning and do not throw (just skip sending).
+
+replyTo:
+
+priority: emailProfile.replyToEmail → tenant.ownerEmail (or similar) → undefined (no reply-to).
+
+d) Builds the SendGrid message:
+
+ts
+Copy code
+const msg = {
+  to: input.to,
+  from: {
+    email: fromEmail,
+    name: fromName,
+  },
+  subject: input.subject,
+  html: input.html,
+  text: input.text ?? stripHtmlToText(input.html), // helper
+  replyTo: replyToEmail ? { email: replyToEmail, name: fromName } : undefined,
+  categories: input.category ? [input.category] : undefined,
+};
+e) If SENDGRID_API_KEY or EMAIL_FROM_ADDRESS is missing:
+
+Log a clear message like:
+"[emailService] SENDGRID_API_KEY or EMAIL_FROM_ADDRESS missing; skipping email send for tenant ${tenantId}"
+
+Return an object { ok: false, reason: 'missing_env' }.
+
+f) Otherwise, call sgMail.send(msg) inside try/catch:
+
+On success:
+
+Optionally, update tenant_email_profiles.status to 'healthy' if it was 'not_configured' or 'needs_verification'.
+
+Return { ok: true }.
+
+On failure:
+
+Log the error.
+
+Update tenant_email_profiles.status to 'error' and lastError with a truncated message.
+
+Return { ok: false, reason: 'send_failed', errorMessage: ... }.
+
+Make sure this service file reuses any existing logging helper, error handling conventions, and multi-tenant DB patterns.
+
+====================================================
+STEP 4 – PLUMB EMAIL INTO AGENT CONTEXT ENGINE
+We now extend Phase 10’s Agent Context with an email section.
+
+In the shared Agent Context types file (e.g. shared/agentContext.ts):
+
+Add a new interface:
+
+ts
+Copy code
+export interface AgentEmailContext {
+  provider: 'sendgrid' | 'none';
+  fromEmail: string | null;
+  fromName: string | null;
+  replyToEmail: string | null;
+  status: TenantEmailStatus; // reuse from shared/email.ts
+}
+Add email: AgentEmailContext; to the main AgentContext (or equivalent) type.
+
+In server/services/agentContextService.ts (or equivalent):
+
+When constructing the context, fetch the tenant_email_profiles row (if any) for the current tenant using tenantDb.
+
+Build the email section like:
+
+ts
+Copy code
+const emailProfile = await tenantDb
+  .select()
+  .from(tenantEmailProfiles)
+  .where(eq(tenantEmailProfiles.tenantId, tenantId))
+  .limit(1);
+
+const profile = emailProfile[0];
+
+const hasGlobalSendgrid = !!process.env.SENDGRID_API_KEY && !!process.env.EMAIL_FROM_ADDRESS;
+
+const emailContext: AgentEmailContext = {
+  provider: hasGlobalSendgrid ? 'sendgrid' : 'none',
+  fromEmail: hasGlobalSendgrid ? process.env.EMAIL_FROM_ADDRESS ?? null : null,
+  fromName: profile?.fromName ?? null,
+  replyToEmail: profile?.replyToEmail ?? null,
+  status: profile?.status ?? (hasGlobalSendgrid ? 'not_configured' : 'not_configured'),
+};
+Add this email object to the final AgentContext payload returned from the service.
+
+Extend the existing “gaps” / “issues” logic in the Agent Context:
+
+If !hasGlobalSendgrid:
+
+Add a gap with something like:
+
+code: 'email_missing_env'
+
+severity: 'error'
+
+message: 'SendGrid API key or from address not configured at platform level.'
+
+hint: 'Set SENDGRID_API_KEY and EMAIL_FROM_ADDRESS in the environment.'
+
+If hasGlobalSendgrid AND no email profile for the tenant:
+
+Add a gap:
+
+code: 'email_profile_missing'
+
+severity: 'warning'
+
+message: 'Tenant email profile not configured.'
+
+hint: 'Collect a reply-to email and create a tenant email profile so replies go to the right inbox.'
+
+If profile exists but status === 'error':
+
+Add a gap:
+
+code: 'email_profile_error'
+
+severity: 'warning' or 'error' depending on how you treat it
+
+message summarizing that the last send failed.
+
+hint advising to check reply-to email and SendGrid logs.
+
+Reuse the existing AgentContextGap type from Phase 10 instead of inventing a new pattern.
+
+====================================================
+STEP 5 – OPTIONAL: SIMPLE TEST ENDPOINT (NO UI)
+(Do this only if it fits cleanly with your existing API patterns.)
+
+Add a small authenticated route to test email sending for the current tenant, e.g.:
+
+server/routes/emailTestRouter.ts with:
+
+POST /api/email/test
+
+Reads:
+
+current tenantId from auth/middleware
+
+a to email from the body (or default to the current user’s email)
+
+Calls sendTenantEmail(tenantDb, tenantId, { ... }) with a simple subject/body:
+
+Subject: "[ServicePro] Test email from tenant ${tenant.name}"
+
+Body: a simple HTML paragraph explaining it’s a test.
+
+Mount this router in server/index.ts or the main router file under /api/email.
+
+This is mainly for debug & QA, not for final UI; keep it simple and guarded by auth.
+
+====================================================
+STEP 6 – UPDATE MASTER PLAN & NOTES
+Open MASTER_PLAN_V3.md (or equivalent).
+
+In the section for Phase 11 – Email v1 / SendGrid, mark the backend plumbing as:
+
+Implemented:
+
+Tenant email profile table.
+
+SendGrid service.
+
+Agent Context integration.
+
+Remaining for later phases:
+
+Tenant-facing UI to edit email profile (reply-to, fromName).
+
+In-app flows that actually send booking confirmations, trial welcome emails, etc.
+
+Ensure there is a short note tying this to Phase 10:
+
+“Agent Context now exposes context.email for the setup/support agent to reason about email configuration status and gaps.”
+
+====================================================
+STEP 7 – SANITY CHECKS
+After code changes, please also:
+
+Ensure TypeScript builds pass (no type errors in shared/agentContext, emailService, schema, etc.).
+
+Confirm /api/agent/context still returns { ok: true, context } and now includes an email object with the expected shape.
+
+If possible, hit /api/agent/context for:
+
+A tenant with NO email profile.
+
+A tenant with a dummy email profile row.
+(Even if SENDGRID_API_KEY is missing, the endpoint should work and just report the correct gaps.)
+
+Return a short summary of:
+
+New files created.
+
+Existing files updated.
+
+Any migrations added.

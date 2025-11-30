@@ -83,6 +83,7 @@ export type AgentEmailHealthStatus =
   | 'error';
 
 export interface AgentEmailContext {
+  provider: 'sendgrid' | 'none';
   status: AgentEmailHealthStatus;
   fromAddress: string | null;
   displayName: string | null;
