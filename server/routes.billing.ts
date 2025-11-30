@@ -234,14 +234,23 @@ router.get('/api/tenant/billing/status', async (req: Request, res: Response) => 
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const tenant = req.tenant;
+    // Fetch full tenant record from database (req.tenant only has basic info)
+    const { db } = await import('./db');
+    const [fullTenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, req.tenant.id))
+      .limit(1);
+
+    if (!fullTenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
 
     res.json({
       success: true,
-      planTier: tenant.planTier,
-      status: tenant.status,
-      hasStripeCustomer: !!tenant.stripeCustomerId,
-      // Note: Stripe IDs intentionally omitted for security (no need to expose them to frontend)
+      planTier: fullTenant.planTier || 'free',
+      status: fullTenant.status || 'active',
+      hasStripeCustomer: !!fullTenant.stripeCustomerId,
     });
 
   } catch (error: any) {

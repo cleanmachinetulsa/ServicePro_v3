@@ -574,15 +574,16 @@ export async function registerRoutes(app: Express) {
   });
 
   // Business settings endpoints
+  // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly, not tenantDb
   app.get('/api/business-settings', requireAuth, async (req: Request, res: Response) => {
     try {
-      const settings = await req.tenantDb!.select().from(businessSettings).where(
-        req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, 1))
+      const settings = await db.select().from(businessSettings).where(
+        eq(businessSettings.id, 1)
       ).limit(1);
       
       // If no settings exist, create default settings
       if (settings.length === 0) {
-        const defaultSettings = await req.tenantDb!.insert(businessSettings).values({
+        const defaultSettings = await db.insert(businessSettings).values({
           id: 1,
           startHour: 9,
           startMinute: 0,
@@ -610,6 +611,7 @@ export async function registerRoutes(app: Express) {
   });
 
   // Switch seasonal schedule
+  // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
   app.post('/api/business-settings/switch-schedule', requireAuth, async (req: Request, res: Response) => {
     try {
       const { scheduleType } = req.body;
@@ -618,7 +620,7 @@ export async function registerRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid schedule type' });
       }
       
-      const [settings] = await req.tenantDb!.select().from(businessSettings).limit(1);
+      const [settings] = await db.select().from(businessSettings).limit(1);
       
       if (!settings) {
         return res.status(404).json({ success: false, message: 'Business settings not found' });
@@ -646,7 +648,7 @@ export async function registerRoutes(app: Express) {
       }
       
       // Update the settings
-      const [updated] = await req.tenantDb!
+      const [updated] = await db
         .update(businessSettings)
         .set({
           activeScheduleType: scheduleType,
@@ -655,7 +657,7 @@ export async function registerRoutes(app: Express) {
           endHour,
           endMinute,
         })
-        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
+        .where(eq(businessSettings.id, 1))
         .returning();
       
       res.json({ 
@@ -669,6 +671,7 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
   app.put('/api/business-settings', requireAuth, async (req: Request, res: Response) => {
     try {
       const updateData = {
@@ -677,9 +680,9 @@ export async function registerRoutes(app: Express) {
         updatedBy: req.user?.id,
       };
       
-      const updated = await req.tenantDb!.update(businessSettings)
+      const updated = await db.update(businessSettings)
         .set(updateData)
-        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
+        .where(eq(businessSettings.id, 1))
         .returning();
       
       res.json({ success: true, settings: updated[0], message: 'Business settings updated successfully' });
@@ -690,16 +693,17 @@ export async function registerRoutes(app: Express) {
   });
 
   // Homepage Content endpoints
+  // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
   app.get('/api/homepage-content', async (req: Request, res: Response) => {
     try {
       const { homepageContent } = await import('@shared/schema');
       
       // Get the single row (or create default if doesn't exist)
-      let [content] = await req.tenantDb!.select().from(homepageContent).limit(1);
+      let [content] = await db.select().from(homepageContent).limit(1);
       
       if (!content) {
         // Create default content
-        [content] = await req.tenantDb!.insert(homepageContent).values({}).returning();
+        [content] = await db.insert(homepageContent).values({}).returning();
       }
       
       return res.json({ success: true, content });
@@ -709,6 +713,7 @@ export async function registerRoutes(app: Express) {
     }
   });
 
+  // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
   app.put('/api/homepage-content', requireAuth, async (req: Request, res: Response) => {
     if (req.user.role !== 'owner' && req.user.role !== 'manager') {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -724,23 +729,23 @@ export async function registerRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
       }
       
-      // Get existing row
-      let [existing] = await req.tenantDb!.select().from(homepageContent).limit(1);
+      // Get existing row (using db directly - homepageContent is global)
+      let [existing] = await db.select().from(homepageContent).limit(1);
       
       let updated;
       if (existing) {
         // Update existing
-        [updated] = await req.tenantDb!.update(homepageContent)
+        [updated] = await db.update(homepageContent)
           .set({
             ...parsed.data,
             updatedAt: new Date(),
             updatedBy: req.user.id,
           })
-          .where(req.tenantDb!.withTenantFilter(homepageContent, eq(homepageContent.id, existing.id)))
+          .where(eq(homepageContent.id, existing.id))
           .returning();
       } else {
         // Create new
-        [updated] = await req.tenantDb!.insert(homepageContent)
+        [updated] = await db.insert(homepageContent)
           .values({
             ...parsed.data,
             updatedBy: req.user.id,
@@ -756,6 +761,7 @@ export async function registerRoutes(app: Express) {
   });
 
   // Template switching endpoint - non-destructive update of only templateId
+  // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
   app.put('/api/homepage-content/template', requireAuth, async (req: Request, res: Response) => {
     try {
       const { homepageContent } = await import('@shared/schema');
@@ -768,7 +774,8 @@ export async function registerRoutes(app: Express) {
           'dynamic_spotlight',
           'prestige_grid',
           'night_drive_neon',
-          'executive_minimal'
+          'executive_minimal',
+          'quantum_concierge'
         ]),
       });
       
@@ -782,23 +789,23 @@ export async function registerRoutes(app: Express) {
         });
       }
       
-      // Get existing row
-      let [existing] = await req.tenantDb!.select().from(homepageContent).limit(1);
+      // Get existing row (using db directly - homepageContent is global)
+      let [existing] = await db.select().from(homepageContent).limit(1);
       
       let updated;
       if (existing) {
         // Update only the templateId field (non-destructive)
-        [updated] = await req.tenantDb!.update(homepageContent)
+        [updated] = await db.update(homepageContent)
           .set({
             templateId: parsed.data.templateId,
             updatedAt: new Date(),
             updatedBy: req.user.id,
           })
-          .where(req.tenantDb!.withTenantFilter(homepageContent, eq(homepageContent.id, existing.id)))
+          .where(eq(homepageContent.id, existing.id))
           .returning();
       } else {
         // Create new row with the selected template
-        [updated] = await req.tenantDb!.insert(homepageContent)
+        [updated] = await db.insert(homepageContent)
           .values({
             templateId: parsed.data.templateId,
             updatedBy: req.user.id,

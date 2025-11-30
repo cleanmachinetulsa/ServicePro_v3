@@ -41,6 +41,8 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 - `orgSettings` - organization-wide settings
 - `phoneLines` - shared phone infrastructure
 - `sessions` - user sessions
+- `homepageContent` - singleton/global homepage content
+- `businessSettings` - global business configuration
 
 #### Error Symptoms:
 ```
@@ -67,6 +69,16 @@ const [counter] = await db
 #### Before Using withTenantFilter:
 1. Check `shared/schema.ts` to verify the table has a `tenantId` column
 2. If no `tenantId` column exists, use `db` directly instead of `tenantDb`
+
+### Tenant Middleware Limited Fields
+
+**IMPORTANT:** The `req.tenant` object set by `tenantMiddleware.ts` only contains basic fields:
+- `id`, `name`, `subdomain`, `isRoot`
+
+Fields like `planTier`, `status`, `stripeCustomerId`, etc. are NOT included. If you need full tenant data, fetch from database:
+```typescript
+const [fullTenant] = await db.select().from(tenants).where(eq(tenants.id, req.tenant.id)).limit(1);
+```
 
 ### Background Service Scheduler Pattern
 
