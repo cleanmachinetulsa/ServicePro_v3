@@ -192,6 +192,10 @@ const allowedOrigins = [
   "http://localhost:5000",
   "http://localhost:5173",
   "http://localhost:4173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
 ];
 
 function isAllowedOrigin(origin?: string | null): boolean {
@@ -200,7 +204,8 @@ function isAllowedOrigin(origin?: string | null): boolean {
   try {
     const url = new URL(origin);
     const host = url.hostname;
-    const normalized = `${url.protocol}//${host}`;
+    const port = url.port;
+    const normalized = port ? `${url.protocol}//${host}:${port}` : `${url.protocol}//${host}`;
 
     // Exact matches first
     if (allowedOrigins.includes(normalized)) {
