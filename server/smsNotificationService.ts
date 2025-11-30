@@ -10,7 +10,7 @@ interface HandoffNotificationConfig {
 
 // Default configuration - can be made dynamic later via settings
 const config: HandoffNotificationConfig = {
-  businessPhone: process.env.BUSINESS_OWNER_PHONE || '',
+  businessPhone: process.env.BUSINESS_OWNER_PERSONAL_PHONE || '',
   enabled: true,
   notifyOnHandoff: true,
   notifyOnReturn: true,

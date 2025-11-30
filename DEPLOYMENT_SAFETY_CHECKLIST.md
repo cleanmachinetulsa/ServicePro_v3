@@ -47,7 +47,7 @@ npm run db:push --force
 ### 4. **Environment Secrets**
 Verify all required secrets are set in Replit:
 - ✅ `GOOGLE_PLACE_ID` (for reviews)
-- ✅ `BUSINESS_OWNER_PHONE` (for call forwarding)
+- ✅ `BUSINESS_OWNER_PERSONAL_PHONE` (for call forwarding)
 - ✅ `BUSINESS_PHONE_NUMBER` (main line)
 - ✅ All API keys (Twilio, OpenAI, Stripe, etc.)
 

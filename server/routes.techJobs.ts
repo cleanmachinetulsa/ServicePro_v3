@@ -1006,7 +1006,7 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
       }
 
       // Send SMS to business owner phone if configured (check preference)
-      const businessOwnerPhone = process.env.BUSINESS_OWNER_PHONE;
+      const businessOwnerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
       if (businessOwnerPhone) {
         const owner = ownerManagers.find(u => u.role === 'owner');
         if (owner && await shouldSendNotification(owner.id, 'cashPaymentSms')) {

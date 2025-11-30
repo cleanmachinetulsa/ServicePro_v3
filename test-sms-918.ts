@@ -1,10 +1,10 @@
 import { sendSMS } from './server/notifications.js';
 
 async function testTwilioSMS() {
-  const businessPhone = process.env.BUSINESS_OWNER_PHONE || '+19188565304';
+  const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE || '+19188565304';
   
   console.log(`📱 Testing Twilio SMS to: ${businessPhone}`);
-  console.log(`📞 From Twilio number: ${process.env.TWILIO_PHONE_NUMBER}`);
+  console.log(`📞 From Twilio number: ${process.env.VIP_PHONE_NUMBER}`);
   console.log(`🔑 Using Account SID: ${process.env.TWILIO_ACCOUNT_SID?.substring(0, 10)}...`);
   
   const testMessage = `🎉 Clean Machine SMS Test! Your 918 A2P 10DLC campaign is LIVE and working! Message sent at ${new Date().toLocaleString()}`;
