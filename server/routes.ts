@@ -4782,6 +4782,289 @@ Follow up with this lead to set up their 14-day trial!
     }
   });
 
+  // ============================================================
+  // PROMO CODE MANAGEMENT (Platform Admin Only)
+  // ============================================================
+
+  // GET /api/admin/promos - List all promo codes
+  app.get('/api/admin/promos', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const { getAllPromoCodes } = await import('./services/promoCodeService');
+      const promos = await getAllPromoCodes();
+      return res.json({ success: true, promos });
+    } catch (error) {
+      console.error('[ADMIN PROMOS] Error listing promos:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // GET /api/admin/promos/:id - Get promo code details
+  app.get('/api/admin/promos/:id', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid promo ID' });
+      }
+      
+      const { getPromoCodeById } = await import('./services/promoCodeService');
+      const promo = await getPromoCodeById(id);
+      
+      if (!promo) {
+        return res.status(404).json({ success: false, message: 'Promo code not found' });
+      }
+      
+      return res.json({ success: true, promo });
+    } catch (error) {
+      console.error('[ADMIN PROMOS] Error getting promo:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/promos - Create new promo code
+  app.post('/api/admin/promos', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const createPromoSchema = z.object({
+        code: z.string().min(3).max(50),
+        label: z.string().min(1).max(255),
+        description: z.string().optional(),
+        isActive: z.boolean().optional().default(true),
+        appliesToPlan: z.string().nullable().optional(),
+        subscriptionDiscountPercent: z.number().min(0).max(100).optional().default(0),
+        usageRateMultiplier: z.number().min(0).max(10).nullable().optional(),
+        trialExtensionDays: z.number().min(0).max(365).optional().default(0),
+        setOverrideType: z.enum(['friends_and_family', 'partner', 'internal_test', 'beta_user']).nullable().optional(),
+        isReusable: z.boolean().optional().default(false),
+        maxRedemptions: z.number().min(1).nullable().optional(),
+        perTenantLimit: z.number().min(1).optional().default(1),
+        lockedToEmail: z.string().email().nullable().optional(),
+        startsAt: z.string().nullable().optional(),
+        expiresAt: z.string().nullable().optional(),
+      });
+
+      const parsed = createPromoSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.errors });
+      }
+
+      const { createPromoCode, getPromoCodeByCode } = await import('./services/promoCodeService');
+      
+      const existing = await getPromoCodeByCode(parsed.data.code);
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Promo code already exists' });
+      }
+
+      const promo = await createPromoCode({
+        ...parsed.data,
+        startsAt: parsed.data.startsAt ? new Date(parsed.data.startsAt) : null,
+        expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null,
+        createdByAdminId: req.user.id,
+      });
+
+      return res.json({ success: true, promo });
+    } catch (error) {
+      console.error('[ADMIN PROMOS] Error creating promo:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/admin/promos/:id - Update promo code
+  app.put('/api/admin/promos/:id', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid promo ID' });
+      }
+
+      const updatePromoSchema = z.object({
+        code: z.string().min(3).max(50).optional(),
+        label: z.string().min(1).max(255).optional(),
+        description: z.string().nullable().optional(),
+        isActive: z.boolean().optional(),
+        appliesToPlan: z.string().nullable().optional(),
+        subscriptionDiscountPercent: z.number().min(0).max(100).optional(),
+        usageRateMultiplier: z.number().min(0).max(10).nullable().optional(),
+        trialExtensionDays: z.number().min(0).max(365).optional(),
+        setOverrideType: z.enum(['friends_and_family', 'partner', 'internal_test', 'beta_user']).nullable().optional(),
+        isReusable: z.boolean().optional(),
+        maxRedemptions: z.number().min(1).nullable().optional(),
+        perTenantLimit: z.number().min(1).optional(),
+        lockedToEmail: z.string().email().nullable().optional(),
+        startsAt: z.string().nullable().optional(),
+        expiresAt: z.string().nullable().optional(),
+      });
+
+      const parsed = updatePromoSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.errors });
+      }
+
+      const { updatePromoCode, getPromoCodeById, getPromoCodeByCode } = await import('./services/promoCodeService');
+      
+      const existing = await getPromoCodeById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: 'Promo code not found' });
+      }
+
+      if (parsed.data.code && parsed.data.code !== existing.code) {
+        const codeExists = await getPromoCodeByCode(parsed.data.code);
+        if (codeExists) {
+          return res.status(400).json({ success: false, message: 'Promo code already exists' });
+        }
+      }
+
+      const updates = {
+        ...parsed.data,
+        startsAt: parsed.data.startsAt ? new Date(parsed.data.startsAt) : (parsed.data.startsAt === null ? null : undefined),
+        expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : (parsed.data.expiresAt === null ? null : undefined),
+      };
+
+      const promo = await updatePromoCode(id, updates);
+      return res.json({ success: true, promo });
+    } catch (error) {
+      console.error('[ADMIN PROMOS] Error updating promo:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/admin/promos/:id - Delete promo code
+  app.delete('/api/admin/promos/:id', requireAuth, requireRole('owner'), async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ success: false, message: 'Invalid promo ID' });
+      }
+
+      const { deletePromoCode, getPromoCodeById } = await import('./services/promoCodeService');
+      
+      const existing = await getPromoCodeById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, message: 'Promo code not found' });
+      }
+
+      await deletePromoCode(id);
+      return res.json({ success: true, message: 'Promo code deleted' });
+    } catch (error) {
+      console.error('[ADMIN PROMOS] Error deleting promo:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  });
+
+  // ============================================================
+  // PUBLIC PROMO CODE ENDPOINTS
+  // ============================================================
+
+  // POST /api/public/promos/apply - Validate and apply a promo code
+  app.post('/api/public/promos/apply', async (req: Request, res: Response) => {
+    try {
+      const applyPromoSchema = z.object({
+        code: z.string().min(1).max(50),
+        email: z.string().email(),
+        planTier: z.string(),
+        currentTenantId: z.string().optional(),
+      });
+
+      const parsed = applyPromoSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ 
+          ok: false, 
+          errorCode: 'INVALID_INPUT',
+          errorMessage: 'Invalid input',
+        });
+      }
+
+      const { validatePromoForRequest, applyPromoToTenant } = await import('./services/promoCodeService');
+      
+      const validationResult = await validatePromoForRequest(parsed.data);
+      
+      if (!validationResult.valid) {
+        return res.status(400).json({
+          ok: false,
+          errorCode: validationResult.errorCode,
+          errorMessage: validationResult.errorMessage,
+        });
+      }
+
+      if (parsed.data.currentTenantId && validationResult.promo) {
+        const context = {
+          source: 'public_apply_endpoint',
+          path: req.path,
+          userAgent: req.headers['user-agent'],
+          ipAddress: req.ip,
+        };
+        
+        const result = await applyPromoToTenant(
+          parsed.data.currentTenantId, 
+          validationResult.promo,
+          parsed.data.email,
+          context
+        );
+        
+        return res.json(result);
+      }
+
+      return res.json({
+        ok: true,
+        applied: {
+          promoId: validationResult.promo!.id,
+          promoCode: validationResult.promo!.code,
+          subscriptionDiscountPercent: validationResult.promo!.subscriptionDiscountPercent,
+          usageRateMultiplier: validationResult.promo!.usageRateMultiplier ? parseFloat(validationResult.promo!.usageRateMultiplier) : null,
+          trialExtensionDays: validationResult.promo!.trialExtensionDays,
+          setOverrideType: validationResult.promo!.setOverrideType,
+        },
+      });
+    } catch (error) {
+      console.error('[PUBLIC PROMO APPLY] Error:', error);
+      return res.status(500).json({ 
+        ok: false, 
+        errorCode: 'SERVER_ERROR',
+        errorMessage: 'Internal server error',
+      });
+    }
+  });
+
+  // GET /api/public/promos/check/:code - Check if a promo code is valid (without applying)
+  app.get('/api/public/promos/check/:code', async (req: Request, res: Response) => {
+    try {
+      const code = req.params.code;
+      const email = req.query.email as string | undefined;
+      const planTier = req.query.planTier as string || 'starter';
+
+      if (!code) {
+        return res.status(400).json({ valid: false, message: 'Code is required' });
+      }
+
+      const { validatePromoForRequest } = await import('./services/promoCodeService');
+      
+      const result = await validatePromoForRequest({
+        code,
+        email: email || 'check@example.com',
+        planTier,
+      });
+
+      if (!result.valid) {
+        return res.json({ 
+          valid: false, 
+          errorCode: result.errorCode,
+          message: result.errorMessage,
+        });
+      }
+
+      return res.json({
+        valid: true,
+        promo: {
+          code: result.promo!.code,
+          label: result.promo!.label,
+          subscriptionDiscountPercent: result.promo!.subscriptionDiscountPercent,
+          trialExtensionDays: result.promo!.trialExtensionDays,
+        },
+      });
+    } catch (error) {
+      console.error('[PUBLIC PROMO CHECK] Error:', error);
+      return res.status(500).json({ valid: false, message: 'Internal server error' });
+    }
+  });
+
   const io = new Server(server, {
     cors: {
       origin: true, // More restrictive than '*'
