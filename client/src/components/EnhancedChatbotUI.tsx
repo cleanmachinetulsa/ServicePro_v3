@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { CarIcon, PaperclipIcon, PaperPlaneIcon, UserIcon, XIcon } from "@/components/ui/icons";
 import { Download, HelpCircle } from "lucide-react";
 import { useLocation } from "wouter";
-import logoUrl from '@assets/generated_images/Clean_Machine_hexagonal_shield_logo_46864b38.png';
+import logoUrl from '@assets/clean-machine-logo.png';
 import {
   Tooltip,
   TooltipContent,

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import cleanMachineLogo from '@assets/clean-machine-logo.png';
+import cleanMachineHeroLogo from '@assets/clean-machine-hero-logo.png';
 
 export default function SophisticatedAnimatedLogo() {
   return (
@@ -45,7 +45,7 @@ export default function SophisticatedAnimatedLogo() {
                   transition={{ duration: 1, delay: 0.3 }}
                 >
                   <motion.img 
-                    src={cleanMachineLogo}
+                    src={cleanMachineHeroLogo}
                     alt="Clean Machine Mobile Auto Detail"
                     className="w-full h-full object-contain drop-shadow-2xl"
                     animate={{ 
