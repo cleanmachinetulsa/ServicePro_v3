@@ -3402,6 +3402,7 @@ export const promoCodes = pgTable("promo_codes", {
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
   isActive: boolean("is_active").default(true).notNull(),
+  isInternal: boolean("is_internal").default(false).notNull(),
   appliesToPlan: varchar("applies_to_plan", { length: 50 }),
   subscriptionDiscountPercent: integer("subscription_discount_percent").default(0).notNull(),
   usageRateMultiplier: numeric("usage_rate_multiplier", { precision: 5, scale: 2 }),
@@ -3419,6 +3420,7 @@ export const promoCodes = pgTable("promo_codes", {
 }, (table) => ({
   codeIdx: uniqueIndex("promo_codes_code_idx").on(table.code),
   activeIdx: index("promo_codes_active_idx").on(table.isActive),
+  internalIdx: index("promo_codes_internal_idx").on(table.isInternal),
 }));
 
 // Promo redemptions table - tracks when promo codes are used

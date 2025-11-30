@@ -15,6 +15,7 @@ export interface PromoCodeSummary {
   description: string | null;
   status: PromoCodeStatus;
   isReusable: boolean;
+  isInternal: boolean;
   maxRedemptions: number | null;
   currentRedemptions: number;
   perTenantLimit: number;
@@ -72,6 +73,7 @@ export interface CreatePromoCodeRequest {
   label: string;
   description?: string;
   isActive?: boolean;
+  isInternal?: boolean;
   appliesToPlan?: string | null;
   subscriptionDiscountPercent?: number;
   usageRateMultiplier?: number | null;

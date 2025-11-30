@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Copy, QrCode, Trash2, Edit, Eye, Download, RefreshCw, Calendar, Lock, Users, Percent, Clock, HelpCircle } from 'lucide-react';
+import { Plus, Copy, QrCode, Trash2, Edit, Eye, Download, RefreshCw, Calendar, Lock, Users, Percent, Clock, HelpCircle, Shield, Filter, X } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { format } from 'date-fns';
 import type { PromoCodeSummary, PromoCodeDetails, PromoOverrideType } from '@shared/promos';
@@ -25,6 +25,7 @@ interface CreatePromoForm {
   label: string;
   description: string;
   isActive: boolean;
+  isInternal: boolean;
   appliesToPlan: string | null;
   subscriptionDiscountPercent: number;
   usageRateMultiplier: number | null;
@@ -43,6 +44,7 @@ const defaultForm: CreatePromoForm = {
   label: '',
   description: '',
   isActive: true,
+  isInternal: false,
   appliesToPlan: null,
   subscriptionDiscountPercent: 0,
   usageRateMultiplier: null,
@@ -56,6 +58,8 @@ const defaultForm: CreatePromoForm = {
   expiresAt: null,
 };
 
+type PromoFilter = 'all' | 'active' | 'internal' | 'reusable' | 'expired';
+
 export default function AdminPromos() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -66,12 +70,28 @@ export default function AdminPromos() {
   const [form, setForm] = useState<CreatePromoForm>(defaultForm);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [activeFilter, setActiveFilter] = useState<PromoFilter>('all');
 
   const { data: promosData, isLoading } = useQuery<{ success: boolean; promos: PromoCodeSummary[] }>({
     queryKey: ['/api/admin/promos'],
   });
 
-  const promos = promosData?.promos || [];
+  const allPromos = promosData?.promos || [];
+  
+  const promos = allPromos.filter((promo) => {
+    switch (activeFilter) {
+      case 'active':
+        return promo.status === 'active';
+      case 'internal':
+        return promo.isInternal;
+      case 'reusable':
+        return promo.isReusable;
+      case 'expired':
+        return promo.status === 'expired';
+      default:
+        return true;
+    }
+  });
 
   const createMutation = useMutation({
     mutationFn: (data: CreatePromoForm) => apiRequest('POST', '/api/admin/promos', data),
@@ -129,6 +149,7 @@ export default function AdminPromos() {
       label: promo.label,
       description: promo.description || '',
       isActive: promo.status === 'active' || promo.status === 'scheduled',
+      isInternal: promo.isInternal,
       appliesToPlan: promo.appliesToPlan,
       subscriptionDiscountPercent: promo.subscriptionDiscountPercent,
       usageRateMultiplier: promo.usageRateMultiplier,
@@ -243,6 +264,69 @@ export default function AdminPromos() {
           </Button>
         </div>
 
+        {/* Quick Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter className="h-4 w-4 text-gray-400" />
+          <Button
+            variant={activeFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('all')}
+            data-testid="filter-all"
+          >
+            All ({allPromos.length})
+          </Button>
+          <Button
+            variant={activeFilter === 'active' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('active')}
+            className={activeFilter === 'active' ? '' : 'border-green-500/30 text-green-400 hover:bg-green-500/10'}
+            data-testid="filter-active"
+          >
+            Active ({allPromos.filter(p => p.status === 'active').length})
+          </Button>
+          <Button
+            variant={activeFilter === 'internal' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('internal')}
+            className={activeFilter === 'internal' ? '' : 'border-purple-500/30 text-purple-400 hover:bg-purple-500/10'}
+            data-testid="filter-internal"
+          >
+            <Shield className="h-3 w-3 mr-1" />
+            Internal ({allPromos.filter(p => p.isInternal).length})
+          </Button>
+          <Button
+            variant={activeFilter === 'reusable' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('reusable')}
+            className={activeFilter === 'reusable' ? '' : 'border-blue-500/30 text-blue-400 hover:bg-blue-500/10'}
+            data-testid="filter-reusable"
+          >
+            <Users className="h-3 w-3 mr-1" />
+            Reusable ({allPromos.filter(p => p.isReusable).length})
+          </Button>
+          <Button
+            variant={activeFilter === 'expired' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setActiveFilter('expired')}
+            className={activeFilter === 'expired' ? '' : 'border-gray-500/30 text-gray-400 hover:bg-gray-500/10'}
+            data-testid="filter-expired"
+          >
+            Expired ({allPromos.filter(p => p.status === 'expired').length})
+          </Button>
+          {activeFilter !== 'all' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setActiveFilter('all')}
+              className="text-gray-400 hover:text-white"
+              data-testid="filter-clear"
+            >
+              <X className="h-3 w-3 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
+
         <Card className="bg-gray-900/50 border-gray-800">
           <CardContent className="p-0">
             <Table>
@@ -276,6 +360,19 @@ export default function AdminPromos() {
                       <TableCell className="font-mono font-bold text-white">
                         <div className="flex items-center gap-2">
                           {promo.code}
+                          {promo.isInternal && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 text-[10px] px-1.5">
+                                    <Shield className="h-2.5 w-2.5 mr-0.5" />
+                                    INT
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>Internal promo - admin only</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                           <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleCopyCode(promo.code)} data-testid={`button-copy-${promo.id}`}>
                             <Copy className="h-3 w-3 text-gray-400" />
                           </Button>
@@ -559,7 +656,7 @@ export default function AdminPromos() {
               </div>
 
               <div className="flex items-center justify-between border-t border-gray-800 pt-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Switch
                       id="isActive"
@@ -582,6 +679,24 @@ export default function AdminPromos() {
                         <Tooltip>
                           <TooltipTrigger><HelpCircle className="h-3 w-3" /></TooltipTrigger>
                           <TooltipContent>If enabled, multiple tenants can use this code</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="isInternal"
+                      checked={form.isInternal}
+                      onCheckedChange={(checked) => setForm({ ...form, isInternal: checked })}
+                      data-testid="switch-is-internal"
+                    />
+                    <Label htmlFor="isInternal" className="flex items-center gap-1">
+                      <Shield className="h-3 w-3 text-purple-400" />
+                      Internal
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger><HelpCircle className="h-3 w-3" /></TooltipTrigger>
+                          <TooltipContent>Internal promos are only visible to admins and not publicly discoverable</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </Label>
