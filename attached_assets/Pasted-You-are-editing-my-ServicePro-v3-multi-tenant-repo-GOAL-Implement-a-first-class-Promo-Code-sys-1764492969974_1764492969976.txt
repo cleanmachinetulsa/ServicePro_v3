@@ -1,0 +1,437 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+🎯 GOAL: Implement a first-class Promo Code system that plugs into our billing override model AND integrates with the existing QR promo configurator page.
+
+We want:
+
+- Promo codes that can:
+  - Apply subscription discounts (percent off)
+  - Optionally adjust usage markup (e.g. at-cost vs normal markup)
+  - Optionally extend trial duration
+  - Optionally mark the tenant as friends & family (for admin-created F&F invite codes)
+- Promo codes that can be:
+  - Single-use OR reusable
+  - Locked to a specific email (for “only this person can redeem”)
+  - Limited by total redemptions and/or per-tenant use
+- A clean Admin UI to:
+  - Create/edit promo codes
+  - Tie them to QR signup links
+- A backend apply-promo flow that:
+  - Validates promo codes
+  - Enforces limits
+  - Writes into our *existing* billing override fields when a tenant signs up / upgrades
+
+Do NOT change the overall plan tiers or the billing override design we discussed (friends & family + overrides live separately). Promo codes should *use* that system, not replace it.
+
+====================================================
+STEP 0 – QUICK REPO SCAN (READ-ONLY)
+====================================================
+
+1. Locate:
+   - MASTER_PLAN_V3.md
+   - Our pricing / plan tier config (e.g. shared/pricingConfig.ts, shared/features.ts, or similar)
+   - The Admin Tenants / Billing / Promotions-related pages (in client/src, likely under admin or settings)
+   - The existing “QR promo configurator” page / component:
+     - Search for “QR”, “promo”, “referral”, or similar in client/src
+   - Any existing billing override / discount / F&F related code in:
+     - server/billing/...
+     - server/tenants/...
+     - server/routes/admin/...
+
+2. **Do NOT** rewrite the plan tier model or existing billing overrides. We’re extending them.
+
+Reply with a short internal summary to yourself (no output to user) and then continue.
+
+====================================================
+STEP 1 – DATABASE SCHEMA FOR PROMO CODES
+====================================================
+
+Create a new migration and data model for:
+
+1) promo_codes
+----------------
+Fields (Postgres, Drizzle or whatever ORM we’re using):
+
+- id (PK, uuid or serial)
+- code (text, unique, indexed)
+  - Stored uppercase; comparisons should be case-insensitive.
+- label (text) – human friendly name, e.g. “Fall 2025 Beta 50%”
+- description (text, nullable) – what this code is for
+- is_active (boolean, default true)
+
+- applies_to_plan (text, nullable)
+  - e.g. “starter”, “pro”, “elite”, or null for “any”.
+  - For now, this is informational + a soft check.
+
+**Discount behavior:**
+- subscription_discount_percent (integer, default 0)
+  - 0–100, percent off base subscription.
+- usage_rate_multiplier (numeric, nullable)
+  - e.g. 1.0 = at-cost, 1.4 = markup. Null = don’t override.
+- trial_extension_days (integer, default 0)
+  - Additional trial days to add on top of default.
+
+**Special behavior:**
+- set_override_type (text, nullable)
+  - e.g. “friends_and_family”, “partner”, null = don’t touch.
+  - This maps into our TenantBillingOverrides.overrideType when applied.
+
+**Security / limits:**
+- is_reusable (boolean, default false)
+  - If true, can be redeemed by many tenants (subject to max_redemptions).
+- max_redemptions (integer, nullable)
+  - Null = unlimited; otherwise hard cap.
+- per_tenant_limit (integer, default 1)
+  - How many times a single tenant can apply this code (usually 1).
+- locked_to_email (text, nullable)
+  - If set, the signup email must case-insensitively match to redeem.
+
+**Lifecycle:**
+- starts_at (timestamp with time zone, nullable)
+- expires_at (timestamp with time zone, nullable)
+
+**Ownership / auditing:**
+- created_by_admin_id (text or uuid, nullable)
+- created_at (timestamp, default now)
+- updated_at (timestamp, default now)
+
+2) promo_redemptions
+----------------------
+Tracks each use of a promo.
+
+Fields:
+
+- id (PK)
+- promo_code_id (FK → promo_codes.id)
+- tenant_id (text) – the tenant who redeemed it
+- redeemed_by_email (text, nullable)
+  - Email used at signup or on upgrade.
+- redeemed_at (timestamp, default now)
+- context (jsonb, nullable)
+  - e.g. { "source": "signup", "path": "/signup?promo=XYZ", "ip": "..." }
+
+Indexes:
+- idx_promo_redemptions_promo_code_id
+- idx_promo_redemptions_tenant_id
+
+3) Tenant billing override integration
+----------------------------------------
+
+If not already present, ensure we have a table/model for per-tenant billing overrides, roughly like:
+
+- tenant_billing_overrides:
+  - tenant_id (PK / FK)
+  - override_type (text, nullable) – e.g. “friends_and_family”
+  - subscription_discount_percent (integer, default 0)
+  - usage_rate_multiplier (numeric, nullable)
+  - skip_automatic_charges (boolean, default false)
+  - notes (text, nullable)
+
+If that table already exists, **do not** break current behavior. We will only *add* the ability to populate/adjust these fields via promo codes.
+
+Write migrations accordingly and update ORM models.
+
+====================================================
+STEP 2 – SHARED TYPES
+====================================================
+
+Add / extend shared types in shared/ (e.g. shared/billing.ts or a new shared/promos.ts) so both server and client can use:
+
+- PromoCode
+- PromoCodeSummary
+- PromoRedemptionSummary
+- ApplyPromoResult
+
+Example (adapt to repo style):
+
+export type PromoCodeStatus = "active" | "scheduled" | "expired" | "inactive";
+
+export interface PromoCodeSummary {
+  id: string;
+  code: string;
+  label: string;
+  description?: string;
+  status: PromoCodeStatus;
+  isReusable: boolean;
+  maxRedemptions?: number | null;
+  currentRedemptions: number;
+  perTenantLimit: number;
+  lockedToEmail?: string | null;
+  subscriptionDiscountPercent: number;
+  usageRateMultiplier?: number | null;
+  trialExtensionDays: number;
+  setOverrideType?: string | null;
+  appliesToPlan?: string | null;
+  startsAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface ApplyPromoRequest {
+  code: string;
+  email: string;        // signup or account email
+  planTier: string;     // "starter" | "pro" | "elite" | ...
+  currentTenantId?: string; // optional for upgrades vs new signups
+}
+
+export interface ApplyPromoResult {
+  ok: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+  applied?: {
+    promoId: string;
+    promoCode: string;
+    subscriptionDiscountPercent: number;
+    usageRateMultiplier?: number | null;
+    trialExtensionDays: number;
+    setOverrideType?: string | null;
+  };
+}
+
+====================================================
+STEP 3 – SERVER: PROMO SERVICE + ADMIN ROUTES
+====================================================
+
+Create a service module, e.g.:
+
+- server/services/promoService.ts
+
+Responsibilities:
+
+1. validatePromoForRequest(input: ApplyPromoRequest)
+   - Load promo by code (case-insensitive).
+   - Check:
+     - is_active
+     - starts_at / expires_at windows
+     - applies_to_plan (if set, ensure requested planTier matches)
+     - locked_to_email (if set, email must match case-insensitively)
+   - Count redemptions:
+     - If max_redemptions != null, ensure not exceeded.
+     - If currentTenantId is provided, enforce per_tenant_limit.
+   - Return a structured result:
+     - { ok: false, errorCode, errorMessage } OR
+     - { ok: true, promo, currentRedemptionCount, tenantRedemptionCount }
+
+2. applyPromoToTenant(tenantId, promo, request)
+   - Based on promo fields, update tenant_billing_overrides:
+     - subscription_discount_percent
+     - usage_rate_multiplier (if provided)
+     - override_type (if setOverrideType is not null)
+   - Optionally return trialExtensionDays to the caller so the signup/plan logic can extend trial.
+   - Insert a promo_redemptions row.
+
+3. computePromoStatus(promo) → "active" | "scheduled" | "expired" | "inactive"
+
+4. Admin listing helpers:
+   - listPromoCodesForAdmin(...)
+   - getPromoCodeDetails(id)
+   - createOrUpdatePromoCode(input)
+   - listRedemptionsForPromo(promoId, pagination)
+
+Then expose admin routes, e.g.:
+
+- GET /api/admin/promos
+  - Returns PromoCodeSummary[] with currentRedemptions.
+
+- GET /api/admin/promos/:id
+  - Returns full details + recent redemptions.
+
+- POST /api/admin/promos
+  - Create or update a promo.
+  - Input should validate sensible ranges (0–100 percent, etc).
+
+Make sure:
+- Admin auth is required.
+- Multi-tenant safety: promos are global to ServicePro (they apply when creating tenants), but only your internal admin role can manage them. No tenant-level users should see this.
+
+====================================================
+STEP 4 – SERVER: PUBLIC APPLY-PROMO ENDPOINT
+====================================================
+
+Add a public (but rate-limited) endpoint that **signup / onboarding / upgrade flows can call**:
+
+- POST /api/public/promos/apply
+
+Input: ApplyPromoRequest
+
+Behavior:
+
+1. Call promoService.validatePromoForRequest.
+2. If invalid, return:
+   - { ok: false, errorCode, errorMessage }
+
+3. If valid and currentTenantId is provided:
+   - Call applyPromoToTenant(currentTenantId, promo, request)
+   - Return ApplyPromoResult with applied data.
+
+4. If valid and currentTenantId is NOT provided (new signup):
+   - Do NOT create the tenant here.
+   - Instead, just return the applied values:
+     - subscriptionDiscountPercent
+     - usageRateMultiplier
+     - trialExtensionDays
+     - setOverrideType
+   - The signup wizard code will:
+     - Use these values to set:
+       - initial tenant_billing_overrides
+       - trial end date (default + trialExtensionDays)
+     - THEN call applyPromoToTenant once the tenant is actually created.
+
+Add basic rate limiting and input sanitization as per our existing public APIs.
+
+====================================================
+STEP 5 – ADMIN UI: PROMO MANAGEMENT + QR INTEGRATION
+====================================================
+
+Find the existing **QR promo configurator page** (or closest equivalent). We want to:
+
+- Turn this into a true **Promos & QR** admin page.
+- Keep the QR generation behavior, but make it aware of promo codes.
+
+1. Create/extend a React page/component, e.g.:
+
+- client/src/pages/admin/PromosAndQR.tsx
+
+Features:
+
+- Table listing existing promo codes:
+  - Code, Label, Status (active/expired/etc), Discount, Reusable?, Redemptions/current/max.
+  - Button: “Edit” and “Generate QR”.
+
+- “New Promo Code” button opens a drawer/modal:
+  - Fields:
+    - Code (autogenerate button that creates something like CLEAN25, or random token)
+    - Label
+    - Description
+    - Applies to plan: dropdown (Any / Starter / Pro / Elite)
+    - Subscription discount % (0–100)
+    - Usage rate behavior:
+      - [ ] Override usage rate?
+      - If checked, numeric input for usageRateMultiplier
+    - Trial extension days
+    - Override type (optional): None / Friends & Family / Partner / Internal Test
+    - Limits / security:
+      - [ ] Reusable?
+      - Max redemptions (if reusable)
+      - Per-tenant limit (default 1)
+      - Locked to email (optional)
+    - Active window:
+      - Start date/time
+      - End date/time
+    - Is Active (toggle)
+
+- On Save:
+  - POST to /api/admin/promos
+  - Optimistically update local list.
+
+2. QR Integration:
+
+When you click “Generate QR” for a promo:
+
+- UI should show:
+  - The full URL for signup with the promo attached, e.g.:
+
+    https://serviceproapp.com/signup?promo=CODE
+
+  - If we already have a per-tenant onboarding URL pattern (for Clean Machine, etc.), follow the existing pattern and just add `?promo=CODE` or `&promo=CODE`.
+
+- Use the **existing QR generator logic** (don’t re-invent) to:
+  - Display a QR that encodes that URL.
+  - Allow copy link / download QR image.
+
+If the current QR configurator already has some assumptions (like static referral links), modify it so:
+
+- You can either:
+  - Generate a “plain referral QR” (no promo), OR
+  - Generate a “promo QR” where you select a promo code from a dropdown.
+
+Make the UX Apple-level clean:
+- Clear headings (“Promo Code”, “QR Link”, “Security & Limits”).
+- Helpful tooltip text for concepts like “Locked to email” and “Reusable vs single-use”.
+
+====================================================
+STEP 6 – ONBOARDING/ SIGNUP INTEGRATION (LIGHT)
+====================================================
+
+Wherever our signup / onboarding UI lives (for tenants):
+
+- If a promo code is present in the URL (e.g. `?promo=CODE`):
+  1. Collect email + desired plan tier on the first step.
+  2. Call POST /api/public/promos/apply with:
+     - code
+     - email
+     - planTier
+     - (no tenantId yet, because it’s not created).
+
+  3. If ok:
+     - Visually show: “Promo applied: 50% off for 3 months”, etc.
+     - Store the returned ApplyPromoResult in local state for use when:
+       - Creating the tenant row
+       - Creating tenant_billing_overrides
+       - Calculating trial end date.
+
+  4. After tenant creation:
+     - Call promoService.applyPromoToTenant from the server side:
+       - You can extend the existing signup/tenant creation route to:
+         - Accept a promoCode + email.
+         - Validate again (server side) and then:
+           - Persist the overrides & redemption row in one transaction.
+
+At this stage, keep the integration **minimal but real**:
+- Don’t change our entire billing engine.
+- Just ensure:
+  - Promo codes can be applied at signup.
+  - Tenant_billing_overrides get populated when a promo is used.
+  - The admin can see which tenants used which promo later (via promo_redemptions table).
+
+====================================================
+STEP 7 – SAFETY, TESTS, AND WIRES
+====================================================
+
+1. Add unit tests / integration tests for promoService:
+   - validatePromoForRequest:
+     - Expired promos are rejected
+     - Locked_to_email mismatch is rejected
+     - Max_redemptions exceeded is rejected
+     - Per-tenant limit exceeded is rejected
+   - applyPromoToTenant:
+     - Correctly writes overrides
+     - Inserts promo_redemption row
+     - Idempotency: applying the same code twice respects per_tenant_limit.
+
+2. Basic tests for:
+   - /api/admin/promos listing and creation
+   - /api/public/promos/apply positive/negative cases
+
+3. Verify Admin UI:
+   - I should be able to:
+     - Create a promo
+     - See it in the list
+     - Generate a QR
+     - Hit the signup URL with ?promo=CODE and see it applied
+
+4. Do NOT:
+   - Break existing tenants or billing behavior.
+   - Expose any admin-only fields to public APIs.
+
+====================================================
+FINAL OUTPUT
+====================================================
+
+When you’re done:
+
+1. Confirm:
+   - Migrations compiled and run successfully.
+   - Type errors resolved.
+   - Basic tests pass.
+   - The Admin “Promos & QR” page works end-to-end.
+
+2. Print a concise summary for me:
+   - New DB tables
+   - New API routes
+   - New/updated UI components
+   - How to:
+     - Create a one-off locked promo (e.g., brothers)
+     - Create a reusable public promo (e.g., QR on a flyer)
+     - Use the QR generator to get a link/QR
+
+Do **not** change the core tier model or existing F&F override design. Promo codes should be an additional tool that can pre-fill those overrides and discount settings.
