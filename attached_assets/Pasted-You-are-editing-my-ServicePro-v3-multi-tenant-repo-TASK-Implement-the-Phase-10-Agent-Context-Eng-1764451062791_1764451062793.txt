@@ -1,0 +1,1032 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement the Phase 10 "Agent Context Engine" – an internal API that returns a rich, structured snapshot of the current tenant, their configuration, and key feature flags for use by an in-app AI setup & support agent.
+
+This phase DOES NOT call any AI APIs. It ONLY builds the context endpoint + supporting helpers.
+
+====================================================
+STEP 0 – READ MASTER PLAN PHASE 10
+====================================================
+
+1. Open MASTER_PLAN_V3.md.
+2. Find the section for "PHASE 10 – AI SETUP & SUPPORT AGENTS".
+3. Use that as the high-level spec:
+   - Product-aware copilot.
+   - Knows tenant config, plan tier, industry pack, website, telephony, etc.
+   - Can explain pages, features, and configuration gaps.
+
+We implement the "context provider" part in this block.
+
+====================================================
+STEP 1 – DEFINE AGENT CONTEXT TYPES (SHARED)
+====================================================
+
+Add a shared TypeScript type that describes what the support agent sees.
+
+1. In a shared types module (or create a new one), e.g.:
+
+   - `shared/agentContextTypes.ts`
+
+2. Define:
+
+   ```ts
+   export interface AgentContextTenant {
+     id: string;
+     slug: string;
+     businessName: string;
+     planTier: 'free' | 'starter' | 'pro' | 'elite' | 'internal';
+     status: 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled';
+     industry?: string | null;
+     industryPackId?: string | null;
+     city?: string | null;
+   }
+
+   export interface AgentContextBranding {
+     primaryColor?: string | null;
+     accentColor?: string | null;
+     logoUrl?: string | null;
+   }
+
+   export interface AgentContextWebsite {
+     hasPublicSite: boolean;
+     heroHeadline?: string;
+     heroSubheadline?: string;
+     aboutBlurb?: string;
+     hasCustomDomain: boolean;
+     hasWatermark: boolean;
+   }
+
+   export interface AgentContextTelephony {
+     hasPhoneConfig: boolean;
+     ivrMode?: 'simple' | 'ivr' | 'ai-voice' | null;
+     phoneNumberE164?: string | null;
+     messagingServiceConfigured: boolean;
+   }
+
+   export interface AgentContextFeatures {
+     featuresByKey: Record<string, boolean>;
+     // convenience booleans for key things the agent will talk about
+     hasCrmBasic: boolean;
+     hasWebsite: boolean;
+     hasCustomDomain: boolean;
+     hasSms: boolean;
+     hasAiSms: boolean;
+     hasCampaigns: boolean;
+     hasLoyalty: boolean;
+     hasAiVoice: boolean;
+   }
+
+   export interface AgentContextIndustryPack {
+     id?: string | null;
+     name?: string | null;
+     description?: string | null;
+   }
+
+   export interface AgentContextOnboarding {
+     isNewTenant: boolean;
+     hasAnyCustomers: boolean;
+     hasAnyServices: boolean;
+     hasAnyAppointments: boolean;
+     hasWebsiteConfigured: boolean;
+     missingRecommendedSteps: string[]; // e.g. ["configure phone number", "add at least 3 services"]
+   }
+
+   export interface AgentContextSummary {
+     tenant: AgentContextTenant;
+     branding: AgentContextBranding;
+     website: AgentContextWebsite;
+     telephony: AgentContextTelephony;
+     features: AgentContextFeatures;
+     industryPack: AgentContextIndustryPack;
+     onboarding: AgentContextOnboarding;
+   }
+Export everything so server + client can use these types.
+
+====================================================
+STEP 2 – BACKEND SERVICE: BUILD AGENT CONTEXT SUMMARY
+Create a backend service that composes all the pieces of context into one object.
+
+New file:
+
+server/services/agentContextService.ts
+
+Implement:
+
+ts
+Copy code
+import { AgentContextSummary } from '../shared/agentContextTypes'; // adjust path
+import { hasFeature } from '../shared/featureFlags';              // adjust path
+import { INDUSTRY_PACK_BY_ID } from '../shared/industryPacks';    // adjust path
+
+interface BuildAgentContextOptions {
+  tenant: any;       // your Tenant type
+  tenantConfig: any; // your tenant_config type
+  phoneConfig?: any | null;
+  websiteConfig?: any | null;
+  stats: {
+    customerCount: number;
+    serviceCount: number;
+    appointmentCount: number;
+  };
+}
+
+export function buildAgentContextSummary(opts: BuildAgentContextOptions): AgentContextSummary {
+  const { tenant, tenantConfig, phoneConfig, websiteConfig, stats } = opts;
+
+  const planTier = tenant.planTier;
+  const featuresByKey = buildFeaturesByKey(tenant); // helper below
+
+  const industryPackId = tenantConfig.industryPackId ?? null;
+  const pack = industryPackId ? INDUSTRY_PACK_BY_ID[industryPackId] : undefined;
+
+  const hasPublicSite = !!websiteConfig?.enabled;
+  const hasCustomDomain = !!websiteConfig?.customDomain;
+  const hasWatermark = planTier === 'free';
+
+  const onboardingMissing: string[] = [];
+
+  if (stats.customerCount === 0) onboardingMissing.push('add_first_customer');
+  if (stats.serviceCount === 0) onboardingMissing.push('add_first_services');
+  if (!phoneConfig) onboardingMissing.push('configure_phone_number');
+  if (!hasPublicSite) onboardingMissing.push('enable_website');
+
+  const summary: AgentContextSummary = {
+    tenant: {
+      id: tenant.id,
+      slug: tenant.slug,
+      businessName: tenant.businessName,
+      planTier,
+      status: tenant.status,
+      industry: tenantConfig.industry ?? null,
+      industryPackId,
+      city: tenantConfig.city ?? null,
+    },
+    branding: {
+      primaryColor: tenantConfig.primaryColor ?? null,
+      accentColor: tenantConfig.accentColor ?? null,
+      logoUrl: tenantConfig.logoUrl ?? null,
+    },
+    website: {
+      hasPublicSite,
+      heroHeadline: websiteConfig?.heroHeadline ?? null,
+      heroSubheadline: websiteConfig?.heroSubheadline ?? null,
+      aboutBlurb: websiteConfig?.aboutBlurb ?? null,
+      hasCustomDomain,
+      hasWatermark,
+    },
+    telephony: {
+      hasPhoneConfig: !!phoneConfig,
+      ivrMode: phoneConfig?.ivrMode ?? null,
+      phoneNumberE164: phoneConfig?.phoneNumber ?? null,
+      messagingServiceConfigured: !!phoneConfig?.messagingServiceSid,
+    },
+    features: {
+      featuresByKey,
+      hasCrmBasic: !!featuresByKey['crm_basic'],
+      hasWebsite: !!featuresByKey['website_free'],
+      hasCustomDomain: !!featuresByKey['website_custom_domain'],
+      hasSms: !!featuresByKey['sms_basic'],
+      hasAiSms: !!featuresByKey['sms_ai_assistant'],
+      hasCampaigns: !!featuresByKey['campaigns'],
+      hasLoyalty: !!featuresByKey['loyalty'],
+      hasAiVoice: !!featuresByKey['ai_voice'],
+    },
+    industryPack: {
+      id: industryPackId,
+      name: pack?.name ?? null,
+      description: pack?.description ?? null,
+    },
+    onboarding: {
+      isNewTenant: stats.customerCount === 0 && stats.serviceCount === 0,
+      hasAnyCustomers: stats.customerCount > 0,
+      hasAnyServices: stats.serviceCount > 0,
+      hasAnyAppointments: stats.appointmentCount > 0,
+      hasWebsiteConfigured: hasPublicSite,
+      missingRecommendedSteps: onboardingMissing,
+    },
+  };
+
+  return summary;
+}
+
+function buildFeaturesByKey(tenant: any): Record<string, boolean> {
+  // Use your existing hasFeature helper and FEATURE_KEYS list.
+  // This is a convenience for the agent; it can inspect this object dynamically.
+  const features: Record<string, boolean> = {};
+
+  // Assuming you have an exported FEATURE_KEYS array somewhere:
+  // FEATURE_KEYS.forEach(key => {
+  //   features[key] = hasFeature(tenant, key);
+  // });
+
+  return features;
+}
+Integrate with your actual types:
+
+Replace any with your Tenant, TenantConfig, TenantPhoneConfig, WebsiteConfig types.
+
+Hook up real FEATURE_KEYS iteration inside buildFeaturesByKey.
+
+====================================================
+STEP 3 – BACKEND: AGENT CONTEXT ENDPOINT
+Expose the context summary to the frontend for the AI dock to consume.
+
+Create a new route file, e.g.:
+
+server/routes.agentContext.ts
+
+Implement:
+
+ts
+Copy code
+import { Router } from 'express';
+import { requireAuth } from './middleware/auth';      // adjust path
+import { buildAgentContextSummary } from '../services/agentContextService';
+import { getTenantStats } from '../services/tenantStatsService'; // create/extend below
+
+const router = Router();
+
+router.get('/api/agent/context', requireAuth, async (req, res, next) => {
+  try {
+    const tenant = req.tenant;       // from tenant middleware
+    const tenantDb = req.tenantDb;   // tenant-scoped DB handle
+
+    // Load config:
+    const tenantConfig = await tenantDb.query.tenant_config.findFirst();
+    const phoneConfig = await tenantDb.query.tenant_phone_config?.findFirst?.(); // adjust
+    const websiteConfig = await tenantDb.query.website_config?.findFirst?.();    // adjust
+
+    const stats = await getTenantStats(tenantDb);
+
+    const summary = buildAgentContextSummary({
+      tenant,
+      tenantConfig,
+      phoneConfig,
+      websiteConfig,
+      stats,
+    });
+
+    res.json({ ok: true, data: summary });
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;
+Wire this router into your server:
+
+In your main server file (e.g. server/index.ts or similar):
+
+ts
+Copy code
+import agentContextRoutes from './routes.agentContext';
+app.use(agentContextRoutes);
+====================================================
+STEP 4 – TENANT STATS HELPER
+Create a small service that counts key records for onboarding logic.
+
+New file:
+
+server/services/tenantStatsService.ts
+
+Implement:
+
+ts
+Copy code
+interface TenantStats {
+  customerCount: number;
+  serviceCount: number;
+  appointmentCount: number;
+}
+
+export async function getTenantStats(tenantDb: any): Promise<TenantStats> {
+  const [customers, services, appointments] = await Promise.all([
+    tenantDb.query.customers.count(),       // adjust table/query names
+    tenantDb.query.services.count(),
+    tenantDb.query.appointments.count(),
+  ]);
+
+  return {
+    customerCount: customers,
+    serviceCount: services,
+    appointmentCount: appointments,
+  };
+}
+Adjust for your actual table names (customers, services, appointments or equivalents).
+
+====================================================
+STEP 5 – FRONTEND HOOK / CLIENT FOR AGENT CONTEXT
+Add a simple client utility and React hook to fetch the context.
+
+In the client, create:
+
+client/src/api/agentContextClient.ts
+
+Implement:
+
+ts
+Copy code
+import type { AgentContextSummary } from '../../shared/agentContextTypes'; // adjust path
+
+export async function fetchAgentContext(): Promise<AgentContextSummary> {
+  const res = await fetch('/api/agent/context', {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    throw new Error('Failed to load agent context');
+  }
+  const json = await res.json();
+  return json.data as AgentContextSummary;
+}
+Create a hook:
+
+client/src/hooks/useAgentContext.ts
+
+ts
+Copy code
+import { useEffect, useState } from 'react';
+import { fetchAgentContext } from '../api/agentContextClient';
+import type { AgentContextSummary } from '../../shared/agentContextTypes';
+
+export function useAgentContext() {
+  const [data, setData] = useState<AgentContextSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const ctx = await fetchAgentContext();
+        if (!cancelled) {
+          setData(ctx);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { data, loading, error };
+}
+====================================================
+STEP 6 – SAFETY & PRIVACY
+Ensure /api/agent/context is auth-protected with requireAuth.
+
+Do NOT include:
+
+API keys
+
+secrets
+
+raw Twilio credentials
+
+anything not necessary for the UI/agent.
+
+Only expose first-level metadata and counts, not raw logs.
+
+====================================================
+END OF BLOCK 1 – AGENT CONTEXT ENGINE
+csharp
+Copy code
+
+---
+
+## 🧩 BLOCK 2 – Safe Action Layer (What the Agent Is ALLOWED to Change)
+
+This is the “hands” for the brain: **small, safe API endpoints** the AI can call to help users configure things (website text, hours, toggles, etc.) without ever touching dangerous stuff like billing or credentials.
+
+When you’re ready, paste this into **Replit → Build**:
+
+```text
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement a "Safe Action Layer" for the Phase 10 AI Setup & Support Agent.
+
+This layer exposes a SMALL, CURATED set of backend routes that:
+- Are tenant-scoped.
+- Are permission-checked.
+- Can be safely triggered by an AI support agent or the UI dock.
+- Do NOT touch billing, API keys, or destructive operations.
+
+We are NOT wiring AI calls here – just defining the API that AI *could* call.
+
+====================================================
+STEP 0 – DESIGN SAFE ACTIONS
+====================================================
+
+For v1, implement these safe actions:
+
+1. Update business basics:
+   - businessName
+   - city
+
+2. Update website content:
+   - heroHeadline
+   - heroSubheadline
+   - aboutBlurb
+
+3. Toggle website enabled:
+   - enabled true/false
+
+4. Configure basic telephony:
+   - update `ivrMode` between 'simple' | 'ivr' | 'ai-voice'
+   - (Not phone number assignment – that remains manual/concierge-only)
+
+====================================================
+STEP 1 – DEFINE ACTION TYPES (SHARED)
+====================================================
+
+Add shared types so both frontend and any AI tooling understand the contracts.
+
+1. In `shared/agentActions.ts` (or similar):
+
+   ```ts
+   export type AgentActionType =
+     | 'update_business_basics'
+     | 'update_website_content'
+     | 'toggle_website_enabled'
+     | 'update_ivr_mode';
+
+   export interface UpdateBusinessBasicsPayload {
+     businessName?: string;
+     city?: string;
+   }
+
+   export interface UpdateWebsiteContentPayload {
+     heroHeadline?: string;
+     heroSubheadline?: string;
+     aboutBlurb?: string;
+   }
+
+   export interface ToggleWebsiteEnabledPayload {
+     enabled: boolean;
+   }
+
+   export interface UpdateIvrModePayload {
+     ivrMode: 'simple' | 'ivr' | 'ai-voice';
+   }
+
+   export interface AgentActionRequest {
+     type: AgentActionType;
+     payload:
+       | UpdateBusinessBasicsPayload
+       | UpdateWebsiteContentPayload
+       | ToggleWebsiteEnabledPayload
+       | UpdateIvrModePayload;
+   }
+
+   export interface AgentActionResponse {
+     ok: boolean;
+     message?: string;
+   }
+====================================================
+STEP 2 – BACKEND ROUTE: /api/agent/action
+Create an authenticated route that switches on the action type and calls internal services.
+
+New file:
+
+server/routes.agentActions.ts
+
+Implement:
+
+ts
+Copy code
+import { Router } from 'express';
+import { requireAuth } from './middleware/auth'; // adjust path
+import {
+  AgentActionRequest,
+  AgentActionResponse,
+} from '../shared/agentActions';
+
+const router = Router();
+
+router.post('/api/agent/action', requireAuth, async (req, res, next) => {
+  try {
+    const tenant = req.tenant;
+    const tenantDb = req.tenantDb;
+
+    const body = req.body as AgentActionRequest;
+
+    const result: AgentActionResponse = await handleAgentAction(tenant, tenantDb, body);
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;
+
+async function handleAgentAction(tenant: any, tenantDb: any, req: AgentActionRequest): Promise<AgentActionResponse> {
+  switch (req.type) {
+    case 'update_business_basics':
+      return handleUpdateBusinessBasics(tenant, tenantDb, req.payload as any);
+    case 'update_website_content':
+      return handleUpdateWebsiteContent(tenant, tenantDb, req.payload as any);
+    case 'toggle_website_enabled':
+      return handleToggleWebsiteEnabled(tenant, tenantDb, req.payload as any);
+    case 'update_ivr_mode':
+      return handleUpdateIvrMode(tenant, tenantDb, req.payload as any);
+    default:
+      return { ok: false, message: 'Unsupported action type' };
+  }
+}
+
+async function handleUpdateBusinessBasics(tenant: any, tenantDb: any, payload: any): Promise<AgentActionResponse> {
+  const { businessName, city } = payload;
+
+  // Update tenants table (root DB) AND/OR tenant_config based on your schema.
+  // Use a conservative approach: only update fields that are explicitly provided.
+  if (businessName) {
+    await tenantDb.updateTenantName?.(businessName); // or proper Drizzle update
+  }
+  if (city) {
+    await tenantDb.updateTenantCity?.(city); // or update tenant_config.city
+  }
+
+  return { ok: true, message: 'Business details updated.' };
+}
+
+async function handleUpdateWebsiteContent(tenant: any, tenantDb: any, payload: any): Promise<AgentActionResponse> {
+  const { heroHeadline, heroSubheadline, aboutBlurb } = payload;
+
+  // Upsert into website_config table.
+  // Pseudocode: fetch current, then patch.
+  const existing = await tenantDb.query.website_config.findFirst?.();
+  if (!existing) {
+    await tenantDb.insert.website_config.values({
+      heroHeadline,
+      heroSubheadline,
+      aboutBlurb,
+      enabled: true,
+    });
+  } else {
+    await tenantDb
+      .update.website_config
+      .set({
+        heroHeadline: heroHeadline ?? existing.heroHeadline,
+        heroSubheadline: heroSubheadline ?? existing.heroSubheadline,
+        aboutBlurb: aboutBlurb ?? existing.aboutBlurb,
+      })
+      .where(/* id match */);
+  }
+
+  return { ok: true, message: 'Website content updated.' };
+}
+
+async function handleToggleWebsiteEnabled(tenant: any, tenantDb: any, payload: any): Promise<AgentActionResponse> {
+  const { enabled } = payload as { enabled: boolean };
+
+  const existing = await tenantDb.query.website_config.findFirst?.();
+  if (!existing) {
+    await tenantDb.insert.website_config.values({
+      enabled,
+    });
+  } else {
+    await tenantDb.update.website_config.set({ enabled }).where(/* id match */);
+  }
+
+  return { ok: true, message: `Website is now ${enabled ? 'enabled' : 'disabled'}.` };
+}
+
+async function handleUpdateIvrMode(tenant: any, tenantDb: any, payload: any): Promise<AgentActionResponse> {
+  const { ivrMode } = payload as { ivrMode: 'simple' | 'ivr' | 'ai-voice' };
+
+  const phoneConfig = await tenantDb.query.tenant_phone_config.findFirst?.();
+  if (!phoneConfig) {
+    return { ok: false, message: 'No phone configuration found for this tenant.' };
+  }
+
+  await tenantDb
+    .update.tenant_phone_config
+    .set({ ivrMode })
+    .where(/* id match */);
+
+  return { ok: true, message: `IVR mode updated to ${ivrMode}.` };
+}
+Wire router in your main server file:
+
+ts
+Copy code
+import agentActionsRoutes from './routes.agentActions';
+app.use(agentActionsRoutes);
+Replace tenantDb.updateTenantName, etc., with actual Drizzle update calls for your schema.
+
+====================================================
+STEP 3 – PERMISSION & SAFETY GUARDS
+Ensure /api/agent/action uses:
+
+requireAuth (must be logged in).
+
+Optionally requireRole('owner' | 'admin') if you want to limit these actions to higher roles.
+
+Do NOT add any actions that:
+
+Change billing / planTier.
+
+Touch Stripe.
+
+Change API keys / secrets.
+
+Delete critical data.
+
+Keep this surface SMALL and EXPLICIT.
+
+====================================================
+STEP 4 – FRONTEND CLIENT FOR AGENT ACTIONS
+Create a small client utility for calling these actions from the UI dock.
+
+In client/src/api/agentActionsClient.ts:
+
+ts
+Copy code
+import type {
+  AgentActionRequest,
+  AgentActionResponse,
+} from '../../shared/agentActions';
+
+export async function callAgentAction(req: AgentActionRequest): Promise<AgentActionResponse> {
+  const res = await fetch('/api/agent/action', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify(req),
+  });
+
+  if (!res.ok) {
+    throw new Error('Agent action failed');
+  }
+
+  return (await res.json()) as AgentActionResponse;
+}
+====================================================
+END OF BLOCK 2 – SAFE ACTION LAYER
+php
+Copy code
+
+---
+
+## 🧩 BLOCK 3 – UI Dock + In-App AI Helper Shell
+
+This gives you the **little floating “Help / Ask ServicePro” widget** in the corner of the app, wired to the context endpoint + action client. For now, it uses plain UI + logs; later you (or another agent) can wire it into OpenAI.
+
+Paste this into **Replit → Build** when you’re ready:
+
+```text
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Implement the UI "Agent Dock" for Phase 10 – an in-app support widget that:
+
+- Lives in the bottom-right corner of the dashboard.
+- Lets the user:
+  - See a short summary of their setup state.
+  - Ask questions (we’ll stub the AI call for now).
+  - Trigger safe actions (e.g., “Enable website”, “Update hero text”).
+- Uses:
+  - /api/agent/context (Block 1)
+  - /api/agent/action (Block 2)
+
+We are ONLY building the UI shell + wiring to those endpoints. AI calls can be added later in another phase.
+
+====================================================
+STEP 1 – UI COMPONENT: AgentDock
+====================================================
+
+1. Create a new React component:
+
+   - `client/src/components/AgentDock.tsx`
+
+2. Implement something like:
+
+   ```tsx
+   import React, { useState } from 'react';
+   import { useAgentContext } from '../hooks/useAgentContext';
+   import { callAgentAction } from '../api/agentActionsClient';
+
+   // If you have a UI library (e.g. shadcn), you can use Card/Button components.
+   // Here we assume Tailwind is available.
+
+   export const AgentDock: React.FC = () => {
+     const [isOpen, setIsOpen] = useState(false);
+     const { data: ctx, loading, error } = useAgentContext();
+     const [input, setInput] = useState('');
+     const [busy, setBusy] = useState(false);
+     const [messages, setMessages] = useState<{ from: 'user' | 'agent'; text: string }[]>([
+       { from: 'agent', text: 'Hi! I\'m your setup assistant. How can I help you get configured?' },
+     ]);
+
+     const toggleOpen = () => setIsOpen((prev) => !prev);
+
+     const handleUserSend = async () => {
+       if (!input.trim()) return;
+       const text = input.trim();
+       setInput('');
+       setMessages((prev) => [...prev, { from: 'user', text }]);
+
+       // For now, we just echo a stub response + show some suggested actions.
+       setBusy(true);
+       try {
+         // FUTURE: Call AI backend.
+         const reply = buildStubReply(ctx, text);
+         setMessages((prev) => [...prev, { from: 'agent', text: reply }]);
+       } catch (err) {
+         setMessages((prev) => [
+           ...prev,
+           { from: 'agent', text: 'Sorry, something went wrong while thinking about that.' },
+         ]);
+       } finally {
+         setBusy(false);
+       }
+     };
+
+     const handleQuickAction = async (action: 'enable_website' | 'disable_website') => {
+       setBusy(true);
+       try {
+         const enabled = action === 'enable_website';
+         await callAgentAction({
+           type: 'toggle_website_enabled',
+           payload: { enabled },
+         });
+         setMessages((prev) => [
+           ...prev,
+           {
+             from: 'agent',
+             text: enabled
+               ? '✅ Website has been enabled. You can customize it under Website settings.'
+               : '✅ Website has been disabled for now.',
+           },
+         ]);
+       } catch (err) {
+         setMessages((prev) => [
+           ...prev,
+           { from: 'agent', text: 'I couldn\'t update the website setting. Please try again.' },
+         ]);
+       } finally {
+         setBusy(false);
+       }
+     };
+
+     return (
+       <>
+         {/* Floating button */}
+         <button
+           onClick={toggleOpen}
+           className="fixed bottom-4 right-4 z-40 rounded-full px-4 py-3 shadow-xl
+                      bg-gradient-to-r from-sky-500 to-indigo-500 text-white text-sm font-semibold
+                      hover:scale-105 transition-transform backdrop-blur-md"
+         >
+           {isOpen ? 'Close Help' : 'Need Help?'}
+         </button>
+
+         {/* Dock panel */}
+         {isOpen && (
+           <div
+             className="fixed bottom-20 right-4 z-40 w-80 max-w-full rounded-2xl shadow-2xl
+                        bg-slate-900/90 text-slate-50 backdrop-blur-xl border border-white/10
+                        flex flex-col overflow-hidden"
+           >
+             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+               <div>
+                 <div className="text-xs uppercase tracking-wide text-sky-300/80">
+                   Setup Assistant
+                 </div>
+                 <div className="text-sm font-semibold">
+                   {ctx?.tenant.businessName ?? 'Your Business'}
+                 </div>
+               </div>
+               <span className="text-[10px] text-slate-400">
+                 {ctx?.tenant.planTier?.toUpperCase()} PLAN
+               </span>
+             </div>
+
+             <div className="px-4 py-2 border-b border-white/10">
+               {loading && <div className="text-xs text-slate-400">Loading your setup...</div>}
+               {error && (
+                 <div className="text-xs text-red-300">
+                   Couldn&apos;t load your setup context. Some answers may be limited.
+                 </div>
+               )}
+               {ctx && !loading && (
+                 <div className="text-[11px] text-slate-300 space-y-1">
+                   <div>
+                     <span className="font-semibold">Industry:</span>{' '}
+                     {ctx.industryPack.name ?? ctx.tenant.industry ?? 'Not set'}
+                   </div>
+                   <div>
+                     <span className="font-semibold">Website:</span>{' '}
+                     {ctx.website.hasPublicSite ? 'Enabled' : 'Not enabled yet'}
+                     {ctx.website.hasWatermark && ' · Free tier watermark active'}
+                   </div>
+                   <div>
+                     <span className="font-semibold">Phone:</span>{' '}
+                     {ctx.telephony.hasPhoneConfig
+                       ? `Configured (${ctx.telephony.ivrMode ?? 'simple'})`
+                       : 'Not configured'}
+                   </div>
+                   <div className="pt-1">
+                     <span className="font-semibold">Next steps:</span>{' '}
+                     {ctx.onboarding.missingRecommendedSteps.length === 0
+                       ? 'You look pretty dialed in!'
+                       : ctx.onboarding.missingRecommendedSteps
+                           .map(mapOnboardingStepLabel)
+                           .join(' · ')}
+                   </div>
+                 </div>
+               )}
+             </div>
+
+             <div className="flex-1 px-3 py-2 space-y-2 overflow-y-auto text-[11px]">
+               {messages.map((m, idx) => (
+                 <div
+                   key={idx}
+                   className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}
+                 >
+                   <div
+                     className={`max-w-[80%] rounded-xl px-3 py-2 ${
+                       m.from === 'user'
+                         ? 'bg-sky-500/80 text-white'
+                         : 'bg-white/10 text-slate-50 border border-white/5'
+                     }`}
+                   >
+                     {m.text}
+                   </div>
+                 </div>
+               ))}
+               {busy && (
+                 <div className="text-[10px] text-slate-400 italic">
+                   Thinking about that...
+                 </div>
+               )}
+             </div>
+
+             <div className="px-3 pb-3 border-t border-white/10 space-y-2">
+               {/* Quick actions row */}
+               {ctx && (
+                 <div className="flex gap-2">
+                   {!ctx.website.hasPublicSite && (
+                     <button
+                       onClick={() => handleQuickAction('enable_website')}
+                       disabled={busy}
+                       className="flex-1 rounded-lg bg-emerald-500/90 text-xs font-semibold text-white
+                                  py-1.5 hover:bg-emerald-400 transition-colors"
+                     >
+                       Enable Website
+                     </button>
+                   )}
+                   {ctx.website.hasPublicSite && (
+                     <button
+                       onClick={() => handleQuickAction('disable_website')}
+                       disabled={busy}
+                       className="flex-1 rounded-lg bg-slate-700/80 text-xs font-semibold text-slate-100
+                                  py-1.5 hover:bg-slate-600 transition-colors"
+                     >
+                       Disable Website
+                     </button>
+                   )}
+                 </div>
+               )}
+
+               {/* Input row */}
+               <div className="flex items-center gap-2">
+                 <input
+                   type="text"
+                   placeholder="Ask how to set something up..."
+                   value={input}
+                   onChange={(e) => setInput(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && handleUserSend()}
+                   className="flex-1 rounded-lg bg-slate-800/80 border border-white/10
+                              text-[11px] px-2 py-1.5 focus:outline-none focus:ring-1
+                              focus:ring-sky-400/80"
+                 />
+                 <button
+                   onClick={handleUserSend}
+                   disabled={!input.trim() || busy}
+                   className="rounded-lg bg-sky-500/90 text-[11px] text-white font-semibold
+                              px-3 py-1.5 hover:bg-sky-400 transition-colors disabled:opacity-50"
+                 >
+                   Send
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
+       </>
+     );
+   };
+
+   function mapOnboardingStepLabel(step: string): string {
+     switch (step) {
+       case 'add_first_customer':
+         return 'Add your first customer';
+       case 'add_first_services':
+         return 'Create your first services';
+       case 'configure_phone_number':
+         return 'Configure a phone number';
+       case 'enable_website':
+         return 'Enable your public website';
+       default:
+         return step;
+     }
+   }
+
+   function buildStubReply(ctx: any, userText: string): string {
+     // Super simple stub logic. Later, this will be replaced by a real AI call.
+     if (!ctx) {
+       return "I can't see your setup details yet, but I can still answer general questions about ServicePro.";
+     }
+
+     const lower = userText.toLowerCase();
+     if (lower.includes('website')) {
+       if (!ctx.website.hasPublicSite) {
+         return "It looks like your website isn't enabled yet. You can click 'Enable Website' below, and then customize your hero text and services.";
+       } else {
+         return "Your website is already enabled. You can adjust the hero text, about section, and services from the Website or Services pages.";
+       }
+     }
+
+     if (lower.includes('phone') || lower.includes('call')) {
+       if (!ctx.telephony.hasPhoneConfig) {
+         return "You don't have a phone number fully configured yet. Go to Phone/IVR settings to connect a number, then I can help you configure IVR or AI voice.";
+       } else {
+         return "Your phone configuration is in place. You can adjust IVR mode (simple, IVR, or AI voice) in the Phone/IVR settings.";
+       }
+     }
+
+     if (lower.includes('ai') || lower.includes('sms')) {
+       if (!ctx.features.hasAiSms) {
+         return "AI SMS Assistant is available on Pro and Elite plans. You can check the Pricing page to see what’s included.";
+       } else {
+         return "You have AI SMS enabled. You can tune its behavior from the Automations or AI Assistant settings.";
+       }
+     }
+
+     return "Thanks! I’ll soon be able to give very detailed answers and even make changes for you. For now, I can tell you that your plan, website, and phone setup status are shown above.";
+   }
+====================================================
+STEP 2 – ADD DOCK TO MAIN APP SHELL
+Mount the AgentDock inside your main dashboard layout so it appears on every page for logged-in users.
+
+Find your main app shell component, something like:
+
+client/src/AppShell.tsx
+
+or client/src/layouts/DashboardLayout.tsx
+
+Import and render:
+
+tsx
+Copy code
+import { AgentDock } from '../components/AgentDock'; // adjust path
+
+export const AppShell: React.FC = ({ children }) => {
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-50">
+      {/* existing header/sidebar/etc */}
+      {children}
+      <AgentDock />
+    </div>
+  );
+};
+Ensure this only renders for authenticated dashboard views, not public marketing pages (unless you explicitly want it there later).
+
+====================================================
+STEP 3 – FUTURE AI WIRING (COMMENT ONLY)
+In AgentDock, near buildStubReply, add a clear TODO:
+
+ts
+Copy code
+// TODO Phase 10B/14: Replace buildStubReply with a real AI call.
+// This call will send:
+//  - userText
+//  - AgentContextSummary (ctx)
+//  - available AgentActions
+// and stream back a helpful answer with optional suggested actions.
+Do NOT add AI API calls in this block. That comes later.
+
+====================================================
+END OF BLOCK 3 – UI DOCK & IN-APP AGENT SHELL
+yaml
+Copy code
+
+---
+
+You’re now set up so that:
+
+- The agent has **context** (Block 1)  
+- The agent has **hands** (safe actions, Block 2)  
+- The user has a **beautiful dock** to interact with (Block 3)  
+
+When you get time after work and let Replit chew through these, send me whatever summary it gives back (“Phase 10 complete…” etc.), and we’ll move on to the next lever (most likely Free Tier polish + trial logic + deeper AI).
+::contentReference[oaicite:0]{index=0}

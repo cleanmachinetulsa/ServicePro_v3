@@ -1,0 +1,431 @@
+Perfect, let’s lock in **Phase 10 – Agent Context Engine**.
+
+Below is your **single drop-in prompt** for Replit.
+Copy–paste this into the Replit AI assistant for your `ServicePro_v3` repo.
+
+---
+
+````text
+You are editing my ServicePro v3 multi-tenant repo.
+
+GOAL (PHASE 10):
+Implement the Phase 10 "Agent Context Engine" – a **backend-only** internal API that returns a rich, structured snapshot of the current tenant, their configuration, and key feature flags, for use by an in-app AI setup & support agent.
+
+❗ IMPORTANT:
+- This phase **does NOT call any AI APIs**.
+- It only builds the **types, service, and HTTP endpoint** that return agent context.
+- Do NOT break existing routes or multi-tenant isolation.
+
+====================================================
+GLOBAL CONSTRAINTS (DO NOT BREAK)
+====================================================
+
+1. Multi-tenant rules
+   - For any tenant-scoped table (customers, conversations, messages, vehicles, bookings, tenant configs, etc.):
+     - ALWAYS use `tenantDb` / `wrapTenantDb(db, tenantId)` or the existing tenant-scoped DB instance passed into services.
+     - NEVER replace `tenantDb` with the global `db` for tenant-scoped operations.
+   - Only use the global `db` directly for truly global tables with **no tenantId** column (e.g., global settings, migrations).
+   - If you are not 100% sure whether a table is tenant-scoped or global, **leave existing `tenantDb` usage as-is** and follow existing patterns.
+
+2. Backward-compatibility & style
+   - Do NOT rename or remove existing exports from shared modules.
+   - Prefer **additive** changes (new types, new files, new functions).
+   - Match existing code style: TypeScript, async/await, error handling, and file organization.
+   - If something is unclear (e.g., exact table names), search the codebase and follow existing patterns instead of inventing new schema.
+
+3. Routing & auth
+   - Use whatever mechanism is **already** used in other authenticated tenant APIs:
+     - If there is a helper like `requireTenant`, `requireAuth`, or `withTenant`, reuse that.
+     - The Agent Context endpoint must resolve the **current tenant** and build context for that tenant only.
+
+====================================================
+STEP 0 – READ MASTER PLAN PHASE 10
+====================================================
+
+1. Open the master plan file (e.g. `MASTER_PLAN_V3.md` or `MASTER_PLAN_V3_4.md`).
+2. Find the section for **"PHASE 10 – AI SETUP & SUPPORT AGENTS"** or similar language.
+3. Use that as the high-level specification for what the setup/support agent needs to know:
+   - Tenant plan & feature flags
+   - Industry pack
+   - Branding & website status
+   - Telephony status (Twilio / A2P readiness)
+   - Email status (SendGrid / sender identity readiness)
+   - Obvious configuration gaps
+
+We are implementing the **"Context Engine / Context Endpoint"** only.
+
+====================================================
+STEP 1 – DEFINE SHARED AGENT CONTEXT TYPES
+====================================================
+
+Create a new shared types file:
+
+- `shared/agentContext.ts`  (or in the same shared folder where other shared types live)
+
+In this file, define **TypeScript types/interfaces** for a structured agent context object.
+
+Follow existing shared type style (e.g. `shared/pricingConfig.ts`, `shared/features.ts`, etc.).
+
+Define at least:
+
+```ts
+export interface AgentTenantProfileContext {
+  tenantId: string;
+  tenantName: string;
+  planKey: string;            // e.g. "starter" | "pro" | "elite" | "internal"
+  industryKey: string | null; // e.g. "auto_detailing", "house_cleaning"
+  subdomain: string | null;
+  customDomain: string | null;
+  branding: {
+    displayName: string;
+    primaryColor: string | null;
+    logoUrl: string | null;
+    poweredByServicePro: boolean;
+  };
+}
+
+export interface AgentFeatureGateContext {
+  enabledFeatures: string[];       // list of feature keys
+  disabledFeatures: string[];      // optional convenience
+  planDescription?: string;        // human-friendly summary (optional)
+}
+
+export type AgentTelephonyHealthStatus =
+  | "not_configured"
+  | "configured"
+  | "trial_sandbox"
+  | "misconfigured"
+  | "needs_a2p"
+  | "error";
+
+export interface AgentTelephonyContext {
+  status: AgentTelephonyHealthStatus;
+  phoneNumbers: {
+    sid: string;
+    friendlyName: string | null;
+    phoneNumber: string;
+    isTrialNumber: boolean;
+  }[];
+  messagingServiceConfigured: boolean;
+  a2pCampaignStatus?: string | null; // "pending", "approved", "rejected", etc., if available
+  notes: string[];                   // human-readable hints for the setup agent
+}
+
+export type AgentEmailHealthStatus =
+  | "not_configured"
+  | "sender_verified"
+  | "domain_verified"
+  | "misconfigured"
+  | "error";
+
+export interface AgentEmailContext {
+  status: AgentEmailHealthStatus;
+  fromAddress: string | null;      // actual From
+  displayName: string | null;
+  replyToAddress: string | null;
+  notes: string[];                 // hints like "needs DNS records for domain"
+}
+
+export type AgentWebsiteHealthStatus =
+  | "not_configured"
+  | "preview_only"
+  | "live_default_domain"
+  | "live_custom_domain"
+  | "error";
+
+export interface AgentWebsiteContext {
+  status: AgentWebsiteHealthStatus;
+  bookingUrl: string | null;        // public booking/website URL if known
+  hasCustomDomain: boolean;
+  customDomain: string | null;
+  notes: string[];
+}
+
+export interface AgentConfigGap {
+  key: string;                      // e.g. "telephony.missing_number"
+  severity: "info" | "warning" | "critical";
+  area: "telephony" | "email" | "website" | "industry" | "integrations" | "billing" | "other";
+  message: string;                  // human-readable message: "No phone number is configured for this tenant."
+  suggestion?: string;              // optional short suggestion for the agent
+}
+
+export interface AgentContext {
+  tenant: AgentTenantProfileContext;
+  features: AgentFeatureGateContext;
+  telephony: AgentTelephonyContext;
+  email: AgentEmailContext;
+  website: AgentWebsiteContext;
+  gaps: AgentConfigGap[];
+}
+````
+
+Notes:
+
+* Adapt field names to match existing types if needed (e.g. plan key vs plan tier).
+* If the repo already has similar types (e.g. a `TenantBranding`, `PlanKey`, `FeatureKey`), reuse those instead of recreating duplicates.
+* Keep this file **purely types & tiny helpers** – no DB queries here.
+
+====================================================
+STEP 2 – IMPLEMENT agentContextService
+======================================
+
+Create a new service file:
+
+* `server/services/agentContextService.ts`
+
+This service will:
+
+* Take a resolved `tenantId` and the proper tenant-scoped DB (`tenantDb`).
+* Use existing helpers (like `hasFeature`, plan lookup, tenant config fetchers, telephony/email config fetchers).
+* Return a fully populated `AgentContext`.
+
+Skeleton:
+
+```ts
+import { db } from "../db"; // or wherever global db is
+import type { TenantDb } from "../db/tenantDb"; // or existing type
+import { AgentContext } from "../../shared/agentContext";
+import { hasFeature } from "../../shared/features"; // or existing helper
+
+export async function buildAgentContext(params: {
+  tenantId: string;
+  tenantDb: TenantDb;
+}): Promise<AgentContext> {
+  const { tenantId, tenantDb } = params;
+
+  // 1) Fetch core tenant info (name, plan, industry, domains, branding)
+  //    - use existing tables like `tenants`, `tenant_settings`, `tenant_branding` etc.
+  //    - Do NOT invent new tables; search the code for these.
+  //    - Fall back to reasonable defaults if optional data is missing.
+
+  // 2) Fetch feature flags / plan features
+  //    - Use existing plan/feature system from Phase 7 (e.g. `hasFeature(tenantId, key)` or similar).
+  //    - Build `enabledFeatures` by enumerating known feature keys and checking with `hasFeature`.
+
+  // 3) Telephony context
+  //    - Look at existing telephony/phone config tables:
+  //      `tenant_phone_config`, `phone_numbers`, or similar.
+  //    - Determine:
+  //        * Whether any phone numbers exist for this tenant.
+  //        * Whether any are flagged as "trial" vs "production".
+  //        * Whether a messaging service SID is configured.
+  //        * If A2P status is stored anywhere (campaign table, config JSON, etc.), surface it.
+  //    - Translate this into an `AgentTelephonyContext`:
+  //        status:
+  //          - "not_configured"     -> no phone numbers or messaging service
+  //          - "trial_sandbox"      -> only trial/shared numbers detected
+  //          - "configured"         -> has real numbers & messaging service
+  //          - "needs_a2p"          -> known that A2P not approved yet
+  //          - "misconfigured"      -> conflicting/partial data
+  //        notes: short strings describing what’s missing or OK.
+
+  // 4) Email context
+  //    - Use existing SendGrid/email configuration tables or env-based config:
+  //      e.g. `tenant_email_profile`, `email_settings`, etc.
+  //    - Determine:
+  //        * fromAddress (e.g. "notifications@servicepro-mail.com")
+  //        * displayName (e.g. "Clean Machine Auto Detail")
+  //        * replyToAddress (tenant’s preferred mailbox)
+  //        * whether domain or sender identity is verified (if tracked anywhere).
+  //    - Map to `AgentEmailContext.status`:
+  //        - "not_configured"
+  //        - "sender_verified"
+  //        - "domain_verified"
+  //        - "misconfigured"
+  //        - "error"
+  //      plus helpful `notes`.
+
+  // 5) Website context
+  //    - Use existing website/subdomain/booking config: e.g. `tenant_website_config`.
+  //    - Determine:
+  //        * Public booking URL (default subdomain or custom domain).
+  //        * Whether a custom domain is mapped and active.
+  //    - Map to `AgentWebsiteContext.status`:
+  //        - "not_configured"       -> no public booking or website defined
+  //        - "preview_only"         -> internal preview but not public
+  //        - "live_default_domain"  -> e.g. mytenant.servicepro.app
+  //        - "live_custom_domain"   -> e.g. book.mytenant.com
+  //        - "error"
+
+  // 6) Gaps
+  //    - Based on the above, derive `gaps: AgentConfigGap[]`:
+  //      Examples:
+  //        - telephony.missing_number
+  //        - telephony.missing_messaging_service
+  //        - telephony.missing_a2p
+  //        - email.not_configured
+  //        - website.not_configured
+  //        - industry.not_set
+  //    - Use clear messages + simple suggestions that an AI agent can read and explain back to the user.
+
+  // 7) Return the assembled AgentContext object.
+
+  // NOTE:
+  // - Follow existing patterns for querying using tenantDb.
+  // - If any area (telephony/email/website) throws, catch and:
+  //     * log the error
+  //     * set status: "error"
+  //     * add a note describing that something went wrong
+
+  throw new Error("buildAgentContext not implemented yet");
+}
+```
+
+Now **fully implement** `buildAgentContext` using actual tables, helpers, and patterns from the repo:
+
+* Search for:
+
+  * `tenant_phone_config`
+  * `phoneConfig`
+  * `twilio` routing/telephony config
+  * `tenant_email_profile` or similar
+  * `website` / `site` / `booking` config for tenants
+  * plan/feature logic from Phase 7 (e.g. `shared/features.ts`, `hasFeature`).
+
+Replace the final `throw` with real logic.
+
+====================================================
+STEP 3 – ADD /api/agent/context ENDPOINT
+========================================
+
+Create a new Express router file:
+
+* `server/routes/agentContextRouter.ts`  (or similar path that matches your project conventions)
+
+This router should expose:
+
+* `GET /api/agent/context`
+
+Behavior:
+
+* Require an authenticated user & resolved tenant (reuse existing middleware).
+
+  * If you have something like `requireAuth` + `requireTenant`, use them.
+  * The handler must have access to `tenantId` and `tenantDb` in the same way other tenant APIs do.
+* Call `buildAgentContext({ tenantId, tenantDb })`.
+* Return JSON shaped like:
+
+```ts
+res.json({
+  ok: true,
+  context,
+});
+```
+
+Skeleton:
+
+```ts
+import { Router } from "express";
+import { buildAgentContext } from "../services/agentContextService";
+import { requireAuth } from "../middleware/requireAuth"; // or existing auth helper
+import { withTenantDb } from "../middleware/withTenantDb"; // or existing tenant helper
+
+export function createAgentContextRouter(): Router {
+  const router = Router();
+
+  // Adjust middleware names to match your codebase:
+  router.get(
+    "/context",
+    requireAuth,
+    withTenantDb,
+    async (req, res, next) => {
+      try {
+        const tenantId = req.tenantId;    // or however tenantId is exposed
+        const tenantDb = req.tenantDb;    // or existing tenant DB wrapper
+
+        if (!tenantId || !tenantDb) {
+          return res.status(400).json({
+            ok: false,
+            error: "Tenant context missing",
+          });
+        }
+
+        const context = await buildAgentContext({ tenantId, tenantDb });
+        res.json({ ok: true, context });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  return router;
+}
+```
+
+Now:
+
+* Wire this router into the main server router file (e.g. `server/index.ts` or `server/routes/index.ts`):
+
+  * Mount as: `app.use("/api/agent", createAgentContextRouter());`
+  * Or similar pattern used for other `/api/*` routes.
+
+====================================================
+STEP 4 – BASIC TEST COVERAGE
+============================
+
+Add a small test to confirm the endpoint works and returns the expected shape.
+
+1. Find the existing HTTP tests (e.g. in `server/__tests__`, `tests/api`, or similar).
+
+2. Create a new test file, e.g.:
+
+   * `server/__tests__/agentContext.test.ts`
+
+3. In that test:
+
+   * Spin up the test app using the same helper used by other tests.
+   * Seed or use a known dummy tenant (whichever the test helpers already do).
+   * Hit `GET /api/agent/context` with an authenticated request for that tenant.
+   * Assert:
+
+     * `res.status` is 200.
+     * `res.body.ok === true`.
+     * `res.body.context.tenant.tenantId` matches the test tenant.
+     * `res.body.context.features.enabledFeatures` is an array.
+     * Telephony/email/website sections exist and have a `status` field.
+
+Follow existing test patterns for auth + tenant in this repo. Do NOT invent a new testing pattern.
+
+====================================================
+STEP 5 – LIGHT TOUCHES & LOGGING
+================================
+
+1. Add helpful logging around buildAgentContext (using the project’s logger, not console.log) for:
+
+   * Start/end of building context.
+   * Any caught errors in telephony/email/website sub-sections.
+
+2. Add minimal JSDoc comments to the main exported functions and types so future AI agents and human devs can understand quickly.
+
+====================================================
+STEP 6 – FINAL CHECKLIST
+========================
+
+Before you stop:
+
+1. Ensure TypeScript passes (no type errors).
+2. Ensure all existing tests still pass.
+3. Ensure the new test for `/api/agent/context` passes.
+4. Summarize:
+
+   * Files created:
+
+     * `shared/agentContext.ts`
+     * `server/services/agentContextService.ts`
+     * `server/routes/agentContextRouter.ts`
+     * any test file(s)
+   * Any existing files you modified (list them).
+   * How to hit the endpoint in dev (e.g. `GET http://localhost:3000/api/agent/context` after logging in via the usual mechanism).
+
+Return that summary at the end of your work.
+
+```
+
+---
+
+When Replit finishes:
+
+- Try hitting `/api/agent/context` (Authenticated) in your dev environment or via browser after login.
+- If you get the `ok: true` + structured context, Phase 10 backend is **done** and ready for the future setup/support agent UI + AI brains.
+::contentReference[oaicite:0]{index=0}
+```
