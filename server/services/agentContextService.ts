@@ -8,8 +8,9 @@
 
 import { db } from '../db';
 import { type TenantDb } from '../tenantDb';
-import { tenants, tenantConfig, tenantPhoneConfig, services, customers, appointments } from '@shared/schema';
+import { tenants, tenantConfig, tenantPhoneConfig, tenantEmailProfiles, services, customers, appointments } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { hasGlobalSendGridConfig, getGlobalEmailFromAddress } from './tenantEmailService';
 import { 
   getEnabledFeatures, 
   getDisabledFeatures,
@@ -52,8 +53,8 @@ export async function buildAgentContext(params: BuildAgentContextParams): Promis
   // 3. Build telephony context (pass tenantDb for multi-tenant safety)
   const telephony = await buildTelephonyContext(tenantId, tenantDb, gaps);
   
-  // 4. Build email context
-  const email = buildEmailContext(tenantProfile, gaps);
+  // 4. Build email context (Phase 11: now async, queries tenant_email_profiles)
+  const email = await buildEmailContext(tenantId, tenantDb, tenantProfile, gaps);
   
   // 5. Build website context
   const website = buildWebsiteContext(tenantProfile, gaps);
@@ -256,50 +257,104 @@ async function buildTelephonyContext(
 /**
  * Build email context
  * 
- * Note: Currently ServicePro uses a shared SendGrid configuration.
- * In the future, tenants may have individual sender identities.
+ * Phase 11: Now queries tenant_email_profiles for tenant-specific configuration.
+ * Uses shared SendGrid at the platform level.
  */
-function buildEmailContext(
+async function buildEmailContext(
+  tenantId: string,
+  tenantDb: TenantDb,
   tenantProfile: AgentTenantProfileContext,
   gaps: AgentConfigGap[]
-): AgentEmailContext {
+): Promise<AgentEmailContext> {
   let status: AgentEmailHealthStatus = 'not_configured';
   const notes: string[] = [];
   
-  // Check if SendGrid is configured at the platform level
-  const sendgridApiKey = process.env.SENDGRID_API_KEY;
+  const hasGlobalConfig = hasGlobalSendGridConfig();
+  const globalFromAddress = getGlobalEmailFromAddress();
   
-  if (!sendgridApiKey) {
+  if (!hasGlobalConfig) {
     status = 'not_configured';
     notes.push('Email service is not configured at the platform level.');
     
     gaps.push({
-      key: 'email.not_configured',
+      key: 'email.missing_env',
       severity: 'critical',
       area: 'email',
-      message: 'Email service is not configured.',
-      suggestion: 'Configure SendGrid API key to enable email notifications.',
+      message: 'SendGrid API key or from address not configured at platform level.',
+      suggestion: 'Set SENDGRID_API_KEY and SENDGRID_FROM_EMAIL in the environment.',
     });
-  } else {
-    // SendGrid is configured, assume sender is verified
-    status = 'sender_verified';
-    notes.push('SendGrid is configured and ready for sending emails.');
     
-    // Check if tenant has a valid business name for email display
-    if (!tenantProfile.branding.displayName || tenantProfile.branding.displayName === tenantProfile.tenantName) {
-      notes.push('Using tenant name as email display name. Consider setting a business name.');
-    }
+    return {
+      provider: 'none',
+      status,
+      fromAddress: null,
+      displayName: tenantProfile.branding.displayName,
+      replyToAddress: null,
+      notes,
+    };
   }
   
-  // TODO: In future, fetch tenant-specific email configuration
-  // For now, use platform-level from address
-  const fromAddress = process.env.SENDGRID_FROM_EMAIL || 'noreply@servicepro.app';
+  let emailProfile: { fromName: string | null; replyToEmail: string | null; status: string | null } | null = null;
+  
+  try {
+    const [profile] = await tenantDb.raw
+      .select({
+        fromName: tenantEmailProfiles.fromName,
+        replyToEmail: tenantEmailProfiles.replyToEmail,
+        status: tenantEmailProfiles.status,
+      })
+      .from(tenantEmailProfiles)
+      .where(eq(tenantEmailProfiles.tenantId, tenantId))
+      .limit(1);
+    
+    emailProfile = profile || null;
+  } catch (error) {
+    console.error('[AGENT CONTEXT] Error fetching email profile:', error);
+  }
+  
+  if (!emailProfile) {
+    status = 'sender_verified';
+    notes.push('SendGrid is configured. No tenant-specific email profile set.');
+    
+    gaps.push({
+      key: 'email.profile_missing',
+      severity: 'warning',
+      area: 'email',
+      message: 'Tenant email profile not configured.',
+      suggestion: 'Collect a reply-to email and create a tenant email profile so replies go to the right inbox.',
+    });
+  } else if (emailProfile.status === 'error') {
+    status = 'error';
+    notes.push('Last email send failed. Check SendGrid logs.');
+    
+    gaps.push({
+      key: 'email.profile_error',
+      severity: 'warning',
+      area: 'email',
+      message: 'Last email send failed for this tenant.',
+      suggestion: 'Check the reply-to email address and SendGrid dashboard for delivery issues.',
+    });
+  } else if (emailProfile.status === 'healthy') {
+    status = 'sender_verified';
+    notes.push('Email profile configured and working.');
+  } else {
+    status = 'sender_verified';
+    notes.push('Email profile exists but not yet verified by a successful send.');
+  }
+  
+  const displayName = emailProfile?.fromName || tenantProfile.branding.displayName;
+  const replyToAddress = emailProfile?.replyToEmail || null;
+  
+  if (!replyToAddress) {
+    notes.push('No reply-to email configured. Customer replies will go to the default address.');
+  }
   
   return {
+    provider: 'sendgrid',
     status,
-    fromAddress,
-    displayName: tenantProfile.branding.displayName,
-    replyToAddress: null, // TODO: Support tenant-specific reply-to
+    fromAddress: globalFromAddress,
+    displayName,
+    replyToAddress,
     notes,
   };
 }
