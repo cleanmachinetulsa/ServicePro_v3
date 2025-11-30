@@ -297,6 +297,24 @@ export const tenantPhoneConfig = pgTable("tenant_phone_config", {
   tenantIdIdx: index("tenant_phone_config_tenant_id_idx").on(table.tenantId),
 }));
 
+// Phase 11 - Tenant email profile configuration
+// Stores tenant-specific email sender identity and reply-to settings
+export const tenantEmailProfiles = pgTable("tenant_email_profiles", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().unique().references(() => tenants.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 50 }).notNull().default("sendgrid"), // 'sendgrid' for v1
+  fromName: varchar("from_name", { length: 255 }), // Brand display name override
+  fromEmail: varchar("from_email", { length: 255 }), // Optional per-tenant sender (future use)
+  replyToEmail: varchar("reply_to_email", { length: 255 }), // Where customer replies should go
+  status: varchar("status", { length: 50 }).notNull().default("not_configured"), // not_configured | needs_verification | healthy | error
+  lastVerifiedAt: timestamp("last_verified_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("tenant_email_profiles_tenant_id_idx").on(table.tenantId),
+}));
+
 // Campaign configurations per tenant for Welcome Back and other campaigns
 export const campaignConfigs = pgTable("campaign_configs", {
   id: serial("id").primaryKey(),
@@ -3265,6 +3283,7 @@ export type InsertCustomerSession = z.infer<typeof insertCustomerSessionSchema>;
 export const insertTenantSchema = createInsertSchema(tenants).omit({ createdAt: true, updatedAt: true });
 export const insertTenantConfigSchema = createInsertSchema(tenantConfig).omit({ createdAt: true, updatedAt: true });
 export const insertTenantPhoneConfigSchema = createInsertSchema(tenantPhoneConfig).omit({ createdAt: true });
+export const insertTenantEmailProfileSchema = createInsertSchema(tenantEmailProfiles).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -3272,6 +3291,8 @@ export type TenantConfig = typeof tenantConfig.$inferSelect;
 export type InsertTenantConfig = z.infer<typeof insertTenantConfigSchema>;
 export type TenantPhoneConfig = typeof tenantPhoneConfig.$inferSelect;
 export type InsertTenantPhoneConfig = z.infer<typeof insertTenantPhoneConfigSchema>;
+export type TenantEmailProfile = typeof tenantEmailProfiles.$inferSelect;
+export type InsertTenantEmailProfile = z.infer<typeof insertTenantEmailProfileSchema>;
 
 // ============================================================
 // PHASE 16.5 - PORTAL WELCOME CONFIG TYPES
