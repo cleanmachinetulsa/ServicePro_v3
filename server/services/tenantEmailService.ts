@@ -54,12 +54,16 @@ async function getTenantEmailContext(
   tenantId: string
 ): Promise<TenantEmailContext | null> {
   try {
+    // Query email profile with explicit tenantId filter
     const [emailProfile] = await tenantDb.raw
       .select()
       .from(tenantEmailProfiles)
       .where(eq(tenantEmailProfiles.tenantId, tenantId))
       .limit(1);
 
+    // Query tenant info - this is a primary key lookup (tenants.id IS the tenantId)
+    // Using tenantDb.raw is still correct here as we're explicitly filtering by the tenant
+    // The tenants table doesn't have a tenantId column because id IS the tenant identifier
     const [tenantInfo] = await tenantDb.raw
       .select({
         tenantName: tenants.name,

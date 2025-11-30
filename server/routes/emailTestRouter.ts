@@ -6,7 +6,7 @@
  */
 
 import { Router } from 'express';
-import { requireAuth } from '../replitAuth';
+import { requireAuth } from '../authMiddleware';
 import { wrapTenantDb } from '../tenantDb';
 import { db } from '../db';
 import { sendTenantEmail } from '../services/tenantEmailService';
