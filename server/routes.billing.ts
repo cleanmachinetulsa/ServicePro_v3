@@ -133,8 +133,8 @@ router.post('/api/tenant/billing/checkout-session', async (req: Request, res: Re
           quantity: 1,
         },
       ],
-      success_url: `${appUrl}/app/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/app/billing`,
+      success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/billing`,
       metadata: {
         tenantId: tenant.id,
         targetTier: targetTier,
@@ -212,7 +212,7 @@ router.post('/api/tenant/billing/portal-session', async (req: Request, res: Resp
 
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: tenant.stripeCustomerId,
-      return_url: `${appUrl}/app/billing`,
+      return_url: `${appUrl}/billing`,
     });
 
     console.log(`[BILLING] Created portal session for tenant ${tenant.id}`);
