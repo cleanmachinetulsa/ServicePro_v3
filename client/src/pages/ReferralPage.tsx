@@ -20,10 +20,17 @@ import {
   TrendingUp,
   QrCode as QrCodeIcon,
   Search,
-  Download
+  Download,
+  Sparkles
 } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { AppShell } from '@/components/AppShell';
+
+interface BusinessSettings {
+  businessName?: string;
+  referralDiscount?: string;
+  referralPoints?: number;
+}
 
 interface ReferralStats {
   totalReferrals: number;
@@ -86,6 +93,14 @@ export default function ReferralPage() {
     queryKey: [`/api/qr/generate-id/${customerId}`],
     enabled: !!customerId,
   });
+
+  // Fetch business settings for tenant-aware branding
+  const { data: businessSettingsData } = useQuery<{ success: boolean; settings: BusinessSettings }>({
+    queryKey: ['/api/business-settings'],
+  });
+
+  const businessName = businessSettingsData?.settings?.businessName || 'Our Business';
+  const referralDiscount = businessSettingsData?.settings?.referralDiscount || '$25';
 
   // Search for customer by phone
   const handleSearch = async () => {
@@ -228,12 +243,12 @@ export default function ReferralPage() {
 
   const handleShare = async () => {
     const shareUrl = `${window.location.origin}/book?ref=${referralCode}`;
-    const shareText = `Get $25 off your first auto detail with Clean Machine! Use my code: ${referralCode}\n\n${shareUrl}`;
+    const shareText = `Get ${referralDiscount} off your first service with ${businessName}! Use my code: ${referralCode}\n\n${shareUrl}`;
 
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Clean Machine Referral',
+          title: `${businessName} Referral`,
           text: shareText,
         });
       } catch (error) {
@@ -401,35 +416,71 @@ export default function ReferralPage() {
               </Badge>
             </div>
 
-            {/* QR Code */}
-            <div className="text-center space-y-2">
-              <div ref={qrRef} className="inline-block bg-white p-4 rounded-lg shadow-lg">
-                {qrUrl ? (
-                  <QRCode
-                    value={qrUrl}
-                    size={200}
-                    level="H"
-                    data-testid="qr-code-image"
-                  />
-                ) : (
-                  <div className="w-[200px] h-[200px] flex items-center justify-center text-gray-400">
-                    Loading QR...
+            {/* QR Code Section */}
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 rounded-xl blur-sm" />
+              <div className="relative bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-xl p-6">
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  {/* QR Code */}
+                  <div className="flex-shrink-0">
+                    <div ref={qrRef} className="inline-block bg-white p-4 rounded-xl shadow-lg ring-2 ring-blue-100 dark:ring-blue-900">
+                      {qrUrl ? (
+                        <QRCode
+                          value={qrUrl}
+                          size={180}
+                          level="H"
+                          data-testid="qr-code-image"
+                        />
+                      ) : (
+                        <div className="w-[180px] h-[180px] flex items-center justify-center text-gray-400">
+                          <Sparkles className="h-8 w-8 animate-pulse" />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+                  
+                  {/* QR Description */}
+                  <div className="flex-1 text-center md:text-left space-y-3">
+                    <div className="flex items-center gap-2 justify-center md:justify-start">
+                      <QrCodeIcon className="h-5 w-5 text-blue-600" />
+                      <h3 className="font-semibold text-lg">Share via QR Code</h3>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Friends can scan this code to instantly get your referral discount. 
+                      Download it to print on cards or share in person.
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={downloadQrCode}
+                        disabled={!qrUrl}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                        data-testid="button-download-qr"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download QR
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyToClipboard(qrUrl, 'QR link')}
+                        disabled={!qrUrl}
+                        data-testid="button-copy-qr-url"
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Link
+                      </Button>
+                    </div>
+                    {qrActionData?.data?.scans !== undefined && qrActionData.data.scans > 0 && (
+                      <div className="inline-flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded-full">
+                        <TrendingUp className="h-3 w-3" />
+                        {qrActionData.data.scans} scan{qrActionData.data.scans !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Scan to get your friend's discount
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={downloadQrCode}
-                disabled={!qrUrl}
-                data-testid="button-download-qr"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download QR Code
-              </Button>
             </div>
 
             <Separator />

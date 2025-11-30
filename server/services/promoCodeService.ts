@@ -59,6 +59,7 @@ export async function getAllPromoCodes(): Promise<PromoCodeSummary[]> {
       description: promo.description,
       status: getPromoStatus(promo),
       isReusable: promo.isReusable,
+      isInternal: promo.isInternal,
       maxRedemptions: promo.maxRedemptions,
       currentRedemptions: redemptionCount[0]?.count || 0,
       perTenantLimit: promo.perTenantLimit,
@@ -111,6 +112,7 @@ export async function getPromoCodeById(id: number): Promise<PromoCodeDetails | n
     description: p.description,
     status: getPromoStatus(p),
     isReusable: p.isReusable,
+    isInternal: p.isInternal,
     maxRedemptions: p.maxRedemptions,
     currentRedemptions: redemptionCount[0]?.count || 0,
     perTenantLimit: p.perTenantLimit,
@@ -144,6 +146,7 @@ export interface CreatePromoCodeArgs {
   label: string;
   description?: string;
   isActive?: boolean;
+  isInternal?: boolean;
   appliesToPlan?: string | null;
   subscriptionDiscountPercent?: number;
   usageRateMultiplier?: number | null;
@@ -164,6 +167,7 @@ export async function createPromoCode(args: CreatePromoCodeArgs): Promise<PromoC
     label: args.label,
     description: args.description || null,
     isActive: args.isActive ?? true,
+    isInternal: args.isInternal ?? false,
     appliesToPlan: args.appliesToPlan || null,
     subscriptionDiscountPercent: args.subscriptionDiscountPercent ?? 0,
     usageRateMultiplier: args.usageRateMultiplier?.toString() || null,
@@ -188,6 +192,7 @@ export async function updatePromoCode(id: number, updates: Partial<CreatePromoCo
   if (updates.label !== undefined) updateData.label = updates.label;
   if (updates.description !== undefined) updateData.description = updates.description;
   if (updates.isActive !== undefined) updateData.isActive = updates.isActive;
+  if (updates.isInternal !== undefined) updateData.isInternal = updates.isInternal;
   if (updates.appliesToPlan !== undefined) updateData.appliesToPlan = updates.appliesToPlan;
   if (updates.subscriptionDiscountPercent !== undefined) updateData.subscriptionDiscountPercent = updates.subscriptionDiscountPercent;
   if (updates.usageRateMultiplier !== undefined) updateData.usageRateMultiplier = updates.usageRateMultiplier?.toString() || null;
@@ -440,45 +445,38 @@ export const promoCodeService = {
   getTenantBillingOverride,
   getRedemptionsByPromoId,
   
-  async applyPromoCode(request: ApplyPromoRequest): Promise<ApplyPromoResult> {
-    const validation = await validatePromoForRequest(request);
-    
-    if (!validation.ok) {
+  async applyPromoCode(request: ApplyPromoRequest & { tenantId?: string }): Promise<ApplyPromoResult> {
+    const tenantId = request.tenantId || request.currentTenantId;
+    if (!tenantId) {
       return {
-        success: false,
-        error: validation.error,
+        ok: false,
+        errorCode: 'MISSING_TENANT',
+        errorMessage: 'Tenant ID is required to apply promo code',
       };
     }
     
-    const applyResult = await applyPromoToTenant({
-      promo: validation.promo!,
-      tenantId: request.tenantId,
-      redeemerEmail: request.contactEmail,
+    const validation = await validatePromoForRequest({
+      code: request.code,
+      email: request.email,
+      planTier: request.planTier,
+      currentTenantId: tenantId,
     });
     
-    if (!applyResult.ok) {
+    if (!validation.valid) {
       return {
-        success: false,
-        error: applyResult.error,
+        ok: false,
+        errorCode: validation.errorCode,
+        errorMessage: validation.errorMessage || 'Invalid promo code',
       };
     }
     
-    const applied = applyResult.applied!;
-    let message = 'Promo code applied successfully!';
+    const applyResult = await applyPromoToTenant(
+      tenantId,
+      validation.promo!,
+      request.email,
+      { source: 'applyPromoCode' }
+    );
     
-    if (applied.subscriptionDiscountPercent && applied.subscriptionDiscountPercent > 0) {
-      message = `${applied.subscriptionDiscountPercent}% discount applied to your subscription`;
-    }
-    if (applied.trialExtensionDays && applied.trialExtensionDays > 0) {
-      message += ` + ${applied.trialExtensionDays} extra trial days`;
-    }
-    
-    return {
-      success: true,
-      discountType: applied.subscriptionDiscountPercent && applied.subscriptionDiscountPercent > 0 ? 'percentage' : undefined,
-      discountValue: applied.subscriptionDiscountPercent || undefined,
-      trialDaysAdded: applied.trialExtensionDays || undefined,
-      message,
-    };
+    return applyResult;
   },
 };
