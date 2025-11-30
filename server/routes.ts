@@ -24,6 +24,7 @@ import { registerPublicCustomerLookupRoutes } from './routes.publicCustomerLooku
 import { registerAdminTenantRoutes } from './routes.adminTenants';
 import { registerAdminPhoneConfigRoutes } from './routes.adminPhoneConfig';
 import { registerAdminConciergeSetupRoutes } from './routes.adminConciergeSetup';
+import adminTenantReadinessRouter from './routes/adminTenantReadinessRouter';
 import adminImpersonationRoutes from './routes.adminImpersonation';
 import adminBackfillRoutes from './routes.adminBackfill';
 import { registerUpsellRoutes } from './routes.upsell';
@@ -2980,6 +2981,7 @@ Follow up with this lead to set up their 14-day trial!
   registerAdminTenantRoutes(app);
   registerAdminPhoneConfigRoutes(app);
   registerAdminConciergeSetupRoutes(app);
+  app.use(adminTenantReadinessRouter);
   app.use('/api/admin/impersonate', adminImpersonationRoutes);
   app.use('/api/admin/backfill', adminBackfillRoutes);
   registerCustomerIntelligenceRoutes(app);

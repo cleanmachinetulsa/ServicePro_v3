@@ -827,6 +827,64 @@ Phase 23 builds on:
 Status: **DESIGNED (📝)**  
 Implementation will be handled by subsequent feature/build phases that hook into billing, feature gating, and website generation.
 
+---
+
+## 26. TENANT READINESS ENGINE (Phase 12)
+
+### 26.1 Overview
+
+The Tenant Readiness Engine provides automated production-readiness checks for any tenant. It inspects branding, website, telephony, email, AI features, and conversation activity to generate a comprehensive report.
+
+### 26.2 Components
+
+1. **Shared Types** (`shared/readinessTypes.ts`):
+   - `ReadinessStatus`: "pass" | "warn" | "fail"
+   - `ReadinessItem`: Individual check result with key, label, status, details, suggestion
+   - `ReadinessCategory`: Group of related items (branding, telephony, etc.)
+   - `TenantReadinessReport`: Full report with overall status and summary counts
+
+2. **Readiness Service** (`server/services/tenantReadinessService.ts`):
+   - `getTenantReadinessReportBySlug(identifier)`: Lookup by subdomain or tenant ID
+   - Checks 6 categories: Branding, Website/Booking, Telephony, Email, AI/Booking Engine, Conversations
+
+3. **Admin API Endpoint**:
+   - `GET /api/admin/tenant-readiness/:tenantSlug`
+   - Protected by auth + owner role
+   - Returns `{ ok: true, report: TenantReadinessReport }`
+
+4. **CLI Script** (`scripts/printCleanMachineReadiness.ts`):
+   - Run: `npx tsx scripts/printCleanMachineReadiness.ts [identifier]`
+   - Default: `root` (Clean Machine)
+   - Outputs human-readable summary + JSON blob
+
+### 26.3 Readiness Categories
+
+| Category | Checks |
+|----------|--------|
+| Branding & Identity | tenant.exists, tenant.name, tenant.subdomain, branding.visual_identity |
+| Website & Booking | website.enabled, website.booking_url, booking.services_configured |
+| Telephony | phone_config_exists, sms_number_present, ivr_mode_configured, messaging_service |
+| Email | global_sendgrid_config_present, tenant_profile_exists, reply_to_configured, status_healthy |
+| AI & Booking Engine | plan_tier, booking_engine_enabled, industry_configured |
+| Conversations | schema_present, any_recent_activity |
+
+### 26.4 Usage
+
+```bash
+# Check Clean Machine (root tenant)
+npx tsx scripts/printCleanMachineReadiness.ts
+
+# Check specific tenant by subdomain
+npx tsx scripts/printCleanMachineReadiness.ts my-business
+
+# Check specific tenant by ID
+npx tsx scripts/printCleanMachineReadiness.ts tenant-abc123
+```
+
+Status: **COMPLETE (✔️)**
+
+---
+
 🎯 CURRENT FOCUS (v3.4)
 
 Phase 5 – Concierge Dashboard
