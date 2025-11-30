@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { db } from './db';
 import {
   stripe,
   getPriceIdForTier,
@@ -66,7 +67,14 @@ router.post('/api/tenant/billing/checkout-session', async (req: Request, res: Re
     }
 
     const { targetTier } = parseResult.data;
-    const tenant = req.tenant;
+    
+    // CRITICAL: req.tenant only has {id, name, subdomain, isRoot}
+    // Must fetch full tenant from database to access planTier, stripeCustomerId
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, req.tenant.id)).limit(1);
+    
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
 
     // Validate upgrade is to a higher tier
     if (!isValidUpgrade(tenant.planTier, targetTier)) {
@@ -103,7 +111,7 @@ router.post('/api/tenant/billing/checkout-session', async (req: Request, res: Re
       customerId = customer.id;
 
       // Update tenant with new Stripe customer ID
-      await req.db.update(tenants)
+      await db.update(tenants)
         .set({ stripeCustomerId: customerId })
         .where(eq(tenants.id, tenant.id));
 
@@ -181,7 +189,13 @@ router.post('/api/tenant/billing/portal-session', async (req: Request, res: Resp
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const tenant = req.tenant;
+    // CRITICAL: req.tenant only has {id, name, subdomain, isRoot}
+    // Must fetch full tenant from database to access stripeCustomerId
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, req.tenant.id)).limit(1);
+    
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
 
     // Require existing Stripe customer
     if (!tenant.stripeCustomerId) {
@@ -235,7 +249,6 @@ router.get('/api/tenant/billing/status', async (req: Request, res: Response) => 
     }
 
     // Fetch full tenant record from database (req.tenant only has basic info)
-    const { db } = await import('./db');
     const [fullTenant] = await db
       .select()
       .from(tenants)

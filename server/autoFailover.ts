@@ -30,10 +30,11 @@ export async function checkAutoFailover(): Promise<{ triggered: boolean; reason?
   
   try {
     // Get current business settings
-    const [settings] = await tenantDb
+    // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
+    const [settings] = await db
       .select()
       .from(businessSettings)
-      .where(tenantDb.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
+      .where(eq(businessSettings.id, 1))
       .limit(1);
 
     if (!settings) {
@@ -146,11 +147,10 @@ async function triggerMaintenanceMode(
   reason: string,
   settings: typeof businessSettings.$inferSelect
 ): Promise<void> {
-  const tenantDb = wrapTenantDb(db, 'root');
-  
   try {
     // Update business settings to enable maintenance mode
-    await tenantDb
+    // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
+    await db
       .update(businessSettings)
       .set({
         maintenanceMode: true,
@@ -158,7 +158,7 @@ async function triggerMaintenanceMode(
         lastFailoverAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(tenantDb.withTenantFilter(businessSettings, eq(businessSettings.id, 1)));
+      .where(eq(businessSettings.id, 1));
 
     // Invalidate cache to apply changes immediately
     try {
@@ -299,14 +299,13 @@ export async function forwardBookingToBackup(bookingDetails: {
   vehicleInfo?: string;
   notes?: string;
 }): Promise<{ success: boolean; error?: any }> {
-  const tenantDb = wrapTenantDb(db, 'root');
-  
   try {
     // Get business settings to retrieve backup email
-    const [settings] = await tenantDb
+    // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
+    const [settings] = await db
       .select()
       .from(businessSettings)
-      .where(tenantDb.withTenantFilter(businessSettings, eq(businessSettings.id, 1)))
+      .where(eq(businessSettings.id, 1))
       .limit(1);
 
     if (!settings || !settings.backupEmail) {

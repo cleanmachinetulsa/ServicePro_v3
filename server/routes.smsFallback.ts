@@ -32,7 +32,9 @@ if (twilioAccountSid && twilioAuthToken) {
 router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Response) => {
   try {
     // Query business settings for SMS fallback config
-    const [settings] = await req.tenantDb!.select().from(businessSettings).where(req.tenantDb!.withTenantFilter(businessSettings)).limit(1);
+    // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
+    const { db } = await import('./db');
+    const [settings] = await db.select().from(businessSettings).limit(1);
     
     // Check if SMS fallback is enabled
     if (!settings || !settings.smsFallbackEnabled) {
@@ -60,10 +62,10 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
     if (!fallbackPhone || fallbackPhone.trim() === '') {
       console.warn('[SMS FALLBACK] Enabled but no phone configured - AUTO-DISABLING for safety (migration self-heal)');
       
-      // Persist the auto-disable to database
-      await req.tenantDb!.update(businessSettings)
+      // Persist the auto-disable to database (businessSettings is global - use db directly)
+      await db.update(businessSettings)
         .set({ smsFallbackEnabled: false })
-        .where(req.tenantDb!.withTenantFilter(businessSettings, eq(businessSettings.id, settings.id)));
+        .where(eq(businessSettings.id, settings.id));
       
       console.log('[SMS FALLBACK] Auto-disabled SMS fallback in database - system self-healed');
       
@@ -112,7 +114,9 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
  */
 router.get('/sms-fallback/health', async (req: Request, res: Response) => {
   try {
-    const [settings] = await req.tenantDb!.select().from(businessSettings).where(req.tenantDb!.withTenantFilter(businessSettings)).limit(1);
+    // NOTE: businessSettings is a GLOBAL table (no tenantId) - use db directly
+    const { db } = await import('./db');
+    const [settings] = await db.select().from(businessSettings).limit(1);
     
     const status = {
       status: 'operational',
