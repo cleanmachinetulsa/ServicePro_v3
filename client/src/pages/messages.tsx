@@ -8,7 +8,8 @@ import {
   PanelRight, 
   PanelRightClose,
   Phone,
-  CalendarDays
+  CalendarDays,
+  LayoutDashboard
 } from 'lucide-react';
 import io from 'socket.io-client';
 import { NightOpsMessagesLayout } from '@/components/messages/NightOpsMessagesLayout';
@@ -208,6 +209,7 @@ function MessagesPageContent() {
     <NightOpsContextPanel
       customerInfo={selectedConversation ? customerInfo : null}
       isLoading={selectedConversation ? isLoadingCustomer : false}
+      hasSelectedConversation={!!selectedConversation}
       onBookAppointment={undefined}
     />
   );
@@ -219,51 +221,63 @@ function MessagesPageContent() {
         threadView={threadViewNode}
         contextPanel={contextPanelNode}
         showContextPanel={showProfilePanel && !!selectedConversation}
-      />
-
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-        <Button 
-          size="sm" 
-          onClick={() => setShowComposeDialog(true)}
-          data-testid="button-compose"
-          className="nightops-button text-xs"
-        >
-          <PlusCircle className="h-3.5 w-3.5 mr-1.5" />
-          New
-        </Button>
-        {selectedConversation && (
-          <>
+        selectedConversationId={selectedConversation}
+        headerActions={
+          <div className="flex items-center gap-2">
             <Button 
               size="sm" 
-              onClick={() => setShowShareAvailabilityModal(true)}
-              data-testid="button-share-availability"
+              onClick={() => setLocation('/')}
+              data-testid="button-dashboard"
               className="nightops-button text-xs"
-              title="Share calendar availability"
+              title="Dashboard"
             >
-              <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
-              Share
+              <LayoutDashboard className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Dashboard</span>
             </Button>
             <Button 
               size="sm" 
-              onClick={() => setShowProfilePanel(!showProfilePanel)}
-              className="nightops-button text-xs hidden lg:flex"
-              data-testid="button-toggle-profile"
-              title={showProfilePanel ? "Hide Context Panel" : "Show Context Panel"}
+              onClick={() => setShowComposeDialog(true)}
+              data-testid="button-compose"
+              className="nightops-button text-xs"
             >
-              {showProfilePanel ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+              <PlusCircle className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">New</span>
             </Button>
-          </>
-        )}
-        <Button 
-          size="sm" 
-          onClick={() => setLocation('/phone')}
-          data-testid="button-phone"
-          className="nightops-button text-xs"
-          title="Phone & Voicemail"
-        >
-          <Phone className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+            {selectedConversation && (
+              <>
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowShareAvailabilityModal(true)}
+                  data-testid="button-share-availability"
+                  className="nightops-button text-xs"
+                  title="Share calendar availability"
+                >
+                  <CalendarDays className="h-3.5 w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Share</span>
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowProfilePanel(!showProfilePanel)}
+                  className="nightops-button text-xs hidden lg:flex"
+                  data-testid="button-toggle-profile"
+                  title={showProfilePanel ? "Hide Context Panel" : "Show Context Panel"}
+                >
+                  {showProfilePanel ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+                </Button>
+              </>
+            )}
+            <Button 
+              size="sm" 
+              onClick={() => setLocation('/phone')}
+              data-testid="button-phone"
+              className="nightops-button text-xs"
+              title="Phone & Voicemail"
+            >
+              <Phone className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        }
+      />
 
       <Composer
         isOpen={showComposeDialog}
@@ -291,16 +305,14 @@ function MessagesPageContent() {
         />
       )}
 
-      {!selectedConversation && (
-        <Button
-          onClick={() => setShowComposeDialog(true)}
-          className="lg:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full nightops-button-primary shadow-[0_0_20px_rgba(34,211,238,0.5)] z-50"
-          size="icon"
-          data-testid="fab-compose-mobile"
-        >
-          <PlusCircle className="h-6 w-6" />
-        </Button>
-      )}
+      <Button
+        onClick={() => setShowComposeDialog(true)}
+        className="lg:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full nightops-button-primary shadow-[0_0_20px_rgba(34,211,238,0.5)] z-50"
+        size="icon"
+        data-testid="fab-compose-mobile"
+      >
+        <PlusCircle className="h-6 w-6" />
+      </Button>
     </>
   );
 }
