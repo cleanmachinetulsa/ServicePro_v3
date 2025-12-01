@@ -585,6 +585,10 @@ export const appointments = pgTable("appointments", {
   serviceType: text("service_type"), // Cached service name for easy access
   vehicleMake: text("vehicle_make"),
   vehicleModel: text("vehicle_model"),
+  
+  // Multi-service and multi-vehicle support (Phase 12)
+  serviceIds: integer("service_ids").array(), // Array of service IDs for multi-service appointments
+  vehicles: jsonb("vehicles"), // Array of vehicle objects: [{ year, make, model }]
   location: text("location"), // Alias for address (some code uses this)
   smsConsent: boolean("sms_consent").default(false),
   smsConsentTimestamp: timestamp("sms_consent_timestamp"),
