@@ -26,6 +26,16 @@ interface CustomerInfo {
 export function useCustomerSidebarData(conversationId: number | null) {
   const { data: profileData, isLoading } = useQuery({
     queryKey: ['/api/tags/customer-profile', conversationId],
+    queryFn: async () => {
+      if (!conversationId) return null;
+      const res = await fetch(`/api/tags/customer-profile/${conversationId}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch customer profile');
+      }
+      return res.json();
+    },
     enabled: !!conversationId,
   });
 

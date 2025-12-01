@@ -21,6 +21,7 @@ import {
   Send, 
   Loader2, 
   ArrowLeftRight,
+  ArrowDown,
   Clock,
   Sparkles,
   MessageSquare,
@@ -141,6 +142,8 @@ export default function ThreadView({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const draftRestoredRef = useRef(false); // Track if draft has been restored for current conversation
+  const initialLoadRef = useRef(true); // Track if this is the first load
+  const [isUserNearBottom, setIsUserNearBottom] = useState(true); // Track if user has scrolled up
   const queryClient = useQueryClient();
   const { toast} = useToast();
 
@@ -469,9 +472,32 @@ export default function ThreadView({
     };
   }, [conversationId, queryClient, currentUser?.username]);
 
-  // Auto-scroll to bottom on new messages
+  // Use a ref to track scroll position without causing re-renders
+  const isUserNearBottomRef = useRef(true);
+
+  // Handle scroll events from ScrollArea viewport
+  const handleViewportScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    // Consider "near bottom" if within 150px of the bottom
+    const nearBottom = scrollHeight - scrollTop - clientHeight < 150;
+    isUserNearBottomRef.current = nearBottom;
+    setIsUserNearBottom(nearBottom);
+  };
+
+  // Reset initial load flag when conversation changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    initialLoadRef.current = true;
+    isUserNearBottomRef.current = true;
+    setIsUserNearBottom(true);
+  }, [conversationId]);
+
+  // Auto-scroll to bottom on new messages - only if user is near bottom or initial load
+  useEffect(() => {
+    // Use ref for immediate check to avoid stale closure issues
+    if (initialLoadRef.current || isUserNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: initialLoadRef.current ? 'auto' : 'smooth' });
+      initialLoadRef.current = false;
+    }
   }, [conversation?.messages]);
 
   // Offline Drafts: Restore draft from localStorage on mount/conversation change
@@ -1090,7 +1116,7 @@ export default function ThreadView({
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         {/* Main Message Area */}
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
           {/* Scheduled Banner Slot - Extension point for Phase 2 scheduled message summaries */}
           {scheduledBannerSlot && (
             <div className="border-b dark:border-gray-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3">
@@ -1120,7 +1146,11 @@ export default function ThreadView({
           )}
           
           {/* Messages */}
-          <ScrollArea ref={scrollContainerRef} className="flex-1 bg-gray-50 dark:bg-gray-900/50">
+          <ScrollArea 
+            ref={scrollContainerRef} 
+            className="flex-1 bg-gray-50 dark:bg-gray-900/50"
+            onViewportScroll={handleViewportScroll}
+          >
             <div className="max-w-4xl mx-auto py-6">
               {filteredMessages && filteredMessages.length > 0 ? (
                 <>
@@ -1215,6 +1245,24 @@ export default function ThreadView({
               )}
             </div>
           </ScrollArea>
+
+          {/* Jump to Latest Button - Shows when user has scrolled up */}
+          {!isUserNearBottom && filteredMessages.length > 0 && (
+            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
+              <Button
+                onClick={() => {
+                  messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                  setIsUserNearBottom(true);
+                }}
+                size="sm"
+                className="gap-2 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white px-4"
+                data-testid="button-jump-to-latest"
+              >
+                <ArrowDown className="h-4 w-4" />
+                Jump to latest
+              </Button>
+            </div>
+          )}
 
           {/* AI Suggestions - Enhanced UI with Mobile Collapse */}
           {conversation.controlMode === 'manual' && suggestions.length > 0 && (
