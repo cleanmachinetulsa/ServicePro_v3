@@ -5,42 +5,27 @@ import { cn } from "@/lib/utils"
 
 interface ScrollAreaProps extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
   onViewportScroll?: React.UIEventHandler<HTMLDivElement>;
-  viewportRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   ScrollAreaProps
->(({ className, children, onViewportScroll, viewportRef, ...props }, ref) => {
-  // Internal ref for the viewport
-  const internalViewportRef = React.useRef<HTMLDivElement | null>(null);
-  
-  // Callback ref that sets both internal and external refs
-  const setViewportRef = React.useCallback((node: HTMLDivElement | null) => {
-    internalViewportRef.current = node;
-    if (viewportRef && 'current' in viewportRef) {
-      (viewportRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
-    }
-  }, [viewportRef]);
-  
-  return (
-    <ScrollAreaPrimitive.Root
-      ref={ref}
-      className={cn("relative overflow-hidden", className)}
-      {...props}
+>(({ className, children, onViewportScroll, ...props }, ref) => (
+  <ScrollAreaPrimitive.Root
+    ref={ref}
+    className={cn("relative overflow-hidden", className)}
+    {...props}
+  >
+    <ScrollAreaPrimitive.Viewport 
+      className="h-full w-full rounded-[inherit]"
+      onScroll={onViewportScroll}
     >
-      <ScrollAreaPrimitive.Viewport 
-        ref={setViewportRef}
-        className="h-full w-full rounded-[inherit]"
-        onScroll={onViewportScroll}
-      >
-        {children}
-      </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
-      <ScrollAreaPrimitive.Corner />
-    </ScrollAreaPrimitive.Root>
-  );
-})
+      {children}
+    </ScrollAreaPrimitive.Viewport>
+    <ScrollBar />
+    <ScrollAreaPrimitive.Corner />
+  </ScrollAreaPrimitive.Root>
+))
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
 
 const ScrollBar = React.forwardRef<
