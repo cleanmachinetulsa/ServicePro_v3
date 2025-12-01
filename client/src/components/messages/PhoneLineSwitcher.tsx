@@ -23,11 +23,11 @@ export default function PhoneLineSwitcher() {
   const activeLine = phoneLines.find(line => line.id === activeSendLineId);
 
   // CRITICAL: Validate activeSendLineId exists in phone lines list using useEffect
-  // If invalid, auto-select first available working line
+  // If invalid, auto-select first available working line (prefer Main Business Line)
   useEffect(() => {
     if (phoneLines.length > 0 && !activeLine && !isLoading) {
-      // Find first working line (prefer line 2 if available, otherwise first active line)
-      const preferredLine = phoneLines.find(line => line.id === 2 && line.isActive);
+      // Find first working line (prefer line 1 = Main Business Line, otherwise first active line)
+      const preferredLine = phoneLines.find(line => line.id === 1 && line.isActive);
       const fallbackLine = phoneLines.find(line => line.isActive) || phoneLines[0];
       const validLine = preferredLine || fallbackLine;
       
@@ -125,7 +125,6 @@ export default function PhoneLineSwitcher() {
               data-testid={`send-line-${line.id}`}
             >
               {line.label}
-              {line.id === 1 && <span className="ml-1 text-[10px] opacity-70">(offline)</span>}
             </Button>
           ))}
         </div>

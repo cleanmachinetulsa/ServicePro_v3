@@ -464,6 +464,7 @@ export function registerConversationRoutes(app: Express) {
           // Use sendSMS from notifications to handle phone line properly
           const { sendSMS } = await import('./notifications');
           await sendSMS(
+            req.tenantDb!,
             conversation.customerPhone,
             processedContent,
             conversationId,
