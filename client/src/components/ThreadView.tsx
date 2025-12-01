@@ -474,78 +474,155 @@ export default function ThreadView({
   }, [conversationId, queryClient, currentUser?.username]);
 
   // ============================================================================
-  // PREMIUM SCROLL BEHAVIOR (iMessage/WhatsApp style) - Native Pattern
+  // PREMIUM SCROLL BEHAVIOR (iMessage/WhatsApp style) - MutationObserver Pattern
   // ============================================================================
-  // Uses refs (not state) to avoid re-renders during scroll. Radix ScrollArea
-  // was replaced with native div because Radix resets scroll position on render.
+  // Uses MutationObserver to detect when DOM content stabilizes before scrolling.
+  // stickToBottomRef ONLY set true via scrollToBottom() or on new conversation.
+  // Jump button visibility updated directly (no RAF loop needed).
   // ============================================================================
 
-  // Guard to ignore scroll events during pagination restoration
+  // Guard to ignore scroll events during programmatic scroll
   const isRestoringScrollRef = useRef(false);
+  const isProgrammaticScrollRef = useRef(false);
+  // Track the last conversation we initialized for
+  const lastInitializedConversationRef = useRef<string | number | null>(null);
+  // Track previous message count for new message detection
+  const prevMessageCountRef = useRef(0);
+  // Content wrapper ref for MutationObserver
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom helper
+  // Scroll to bottom - called by Jump button or after initial hydration
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
     const container = containerRef.current;
     if (!container) return;
+    
+    isProgrammaticScrollRef.current = true;
+    stickToBottomRef.current = true;
+    setIsAtBottom(true);
+    
     container.scrollTo({ top: container.scrollHeight, behavior });
+    
+    // Reset programmatic flag after scroll completes
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+    });
   };
 
-  // Attach native scroll listener for direction detection (uses refs, no re-renders)
+  // Scroll handler - attached directly to container
+  const handleScroll = () => {
+    if (isRestoringScrollRef.current || isProgrammaticScrollRef.current) return;
+    
+    const el = containerRef.current;
+    if (!el) return;
+    
+    const currentTop = el.scrollTop;
+    const maxScrollTop = el.scrollHeight - el.clientHeight;
+    const atBottom = maxScrollTop - currentTop < 16; // Within 16px of bottom
+    const scrolledUp = currentTop < lastScrollTopRef.current - 5; // 5px hysteresis
+    lastScrollTopRef.current = currentTop;
+
+    // When user scrolls UP, disable auto-scroll and show Jump button
+    if (scrolledUp && stickToBottomRef.current) {
+      stickToBottomRef.current = false;
+      setIsAtBottom(false);
+    }
+    // When user manually scrolls TO bottom, re-enable auto-scroll
+    else if (atBottom && !stickToBottomRef.current) {
+      stickToBottomRef.current = true;
+      setIsAtBottom(true);
+    }
+  };
+
+  // Initial scroll using MutationObserver to wait for DOM hydration
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    lastScrollTopRef.current = container.scrollTop;
-
-    const onScroll = () => {
-      if (isRestoringScrollRef.current) return;
-      const el = containerRef.current;
-      if (!el) return;
-      
-      const currentTop = el.scrollTop;
-      const maxScrollTop = el.scrollHeight - el.clientHeight;
-      const scrolledUp = currentTop < lastScrollTopRef.current;
-      const scrolledDown = currentTop > lastScrollTopRef.current;
-      lastScrollTopRef.current = currentTop;
-
-      if (scrolledUp) {
-        if (stickToBottomRef.current) {
-          el.scrollTo({ top: currentTop, behavior: 'auto' });
-        }
-        stickToBottomRef.current = false;
-        setIsAtBottom(false);
-      } else if (scrolledDown) {
-        if (currentTop >= maxScrollTop - 2) {
-          stickToBottomRef.current = true;
-          setIsAtBottom(true);
-        }
-      }
-    };
-
-    container.addEventListener('scroll', onScroll, { passive: true });
-    return () => container.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // Reset scroll state when conversation changes
-  useEffect(() => {
+    const messages = conversation?.messages || [];
+    if (messages.length === 0) return;
+    
+    // Skip if we already initialized this conversation
+    if (lastInitializedConversationRef.current === conversationId) {
+      return;
+    }
+    
+    // Mark this conversation as being initialized
+    lastInitializedConversationRef.current = conversationId;
+    
+    // Reset state for new conversation
     stickToBottomRef.current = true;
     lastScrollTopRef.current = 0;
+    prevMessageCountRef.current = 0;
     setIsAtBottom(true);
-  }, [conversationId]);
-
-  // Initial scroll to bottom on first load (jump immediately)
-  useEffect(() => {
-    const el = containerRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
+    
+    // Use MutationObserver to wait for content to stabilize
+    const content = contentRef.current;
+    const container = containerRef.current;
+    if (!content || !container) {
+      // Fallback: just scroll after a delay
+      setTimeout(() => {
+        if (containerRef.current) {
+          containerRef.current.scrollTop = containerRef.current.scrollHeight;
+          prevMessageCountRef.current = messages.length;
+        }
+      }, 100);
+      return;
     }
-  }, [conversationId]);
+    
+    let mutationTimeout: NodeJS.Timeout;
+    let scrollDone = false;
+    
+    const doScroll = () => {
+      if (scrollDone) return;
+      scrollDone = true;
+      observer.disconnect();
+      
+      // Scroll to bottom
+      container.scrollTop = container.scrollHeight;
+      prevMessageCountRef.current = messages.length;
+    };
+    
+    const observer = new MutationObserver(() => {
+      // Reset timeout on each mutation - wait for mutations to stop
+      clearTimeout(mutationTimeout);
+      mutationTimeout = setTimeout(doScroll, 50);
+    });
+    
+    observer.observe(content, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    
+    // Initial timeout in case no mutations occur
+    mutationTimeout = setTimeout(doScroll, 150);
+    
+    return () => {
+      observer.disconnect();
+      clearTimeout(mutationTimeout);
+    };
+  }, [conversationId, conversation?.messages]); // Include messages to detect hydration
 
   // Auto-scroll on new messages (only if stickToBottom is true)
-  useLayoutEffect(() => {
-    if (stickToBottomRef.current && containerRef.current) {
-      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' });
+  useEffect(() => {
+    const messages = conversation?.messages || [];
+    
+    // Skip if this is initial load or different conversation
+    if (lastInitializedConversationRef.current !== conversationId) return;
+    if (messages.length <= prevMessageCountRef.current) {
+      prevMessageCountRef.current = messages.length;
+      return;
     }
-  }, [conversation?.messages]);
+    
+    // New messages arrived
+    const newCount = messages.length;
+    prevMessageCountRef.current = newCount;
+    
+    if (stickToBottomRef.current && containerRef.current) {
+      isProgrammaticScrollRef.current = true;
+      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' });
+      requestAnimationFrame(() => {
+        isProgrammaticScrollRef.current = false;
+      });
+    }
+  }, [conversationId, conversation?.messages]);
 
   // Offline Drafts: Restore draft from localStorage on mount/conversation change
   useEffect(() => {
@@ -1269,12 +1346,13 @@ export default function ThreadView({
             </div>
           </div>
           
-          {/* Messages - Native scrollable div (Radix ScrollArea was incompatible with scroll preservation) */}
+          {/* Messages - Native scrollable div with MutationObserver for hydration detection */}
           <div 
             ref={containerRef}
+            onScroll={handleScroll}
             className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50"
           >
-            <div className="max-w-4xl mx-auto py-6 px-4">
+            <div ref={contentRef} className="max-w-4xl mx-auto py-6 px-4">
               {filteredMessages && filteredMessages.length > 0 ? (
                 <>
                   {/* Load More Button */}
