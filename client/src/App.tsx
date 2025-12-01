@@ -86,6 +86,7 @@ import UsageDashboard from "./pages/UsageDashboard";
 import GalleryManagementPage from "./pages/gallery-management";
 import DownloadExportPage from "./pages/download-export";
 import LaunchPage from "./pages/launch";
+import SetupCopilot from "./pages/SetupCopilot";
 
 // 🆕 Industry onboarding page
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
@@ -363,6 +364,11 @@ function Router() {
       <Route path="/admin/banner-management">
         <AuthGuard>
           <BannerManagement />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/setup-copilot">
+        <AuthGuard>
+          <SetupCopilot />
         </AuthGuard>
       </Route>
 
