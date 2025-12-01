@@ -275,8 +275,31 @@ main {
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
  
+/* ========================================
+   UNIFIED THEMING SYSTEM
+   ======================================== 
+   
+   IMPORTANT FOR AI AGENTS & FUTURE DEVELOPMENT:
+   
+   This theming system ensures BOTH light and dark modes work correctly.
+   
+   RULES:
+   1. NEVER use hardcoded colors like bg-white, bg-gray-900, text-slate-800
+   2. ALWAYS use semantic tokens: bg-surface, text-heading, border-subtle, etc.
+   3. For gradients, use the gradient tokens or CSS variables
+   4. When adding new UI, test in BOTH light and dark modes
+   
+   TOKEN REFERENCE:
+   - bg-surface / bg-surface-elevated / bg-surface-sunken = container backgrounds
+   - text-heading / text-body / text-muted = text hierarchy  
+   - border-default / border-subtle / border-strong = border variants
+   - bg-hero-gradient = dashboard/calendar gradient background
+   
+   ======================================== */
+
 @layer base {
   :root {
+    /* Core shadcn tokens - LIGHT MODE */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
@@ -306,9 +329,65 @@ main {
     --ring: 221.2 83.2% 53.3%;
  
     --radius: 0.5rem;
+    
+    /* ========================================
+       EXTENDED SEMANTIC TOKENS - LIGHT MODE
+       ======================================== */
+    
+    /* Surface tokens - use for backgrounds */
+    --surface: 0 0% 100%;
+    --surface-elevated: 0 0% 100%;
+    --surface-sunken: 210 40% 98%;
+    --surface-overlay: 0 0% 100%;
+    
+    /* Text hierarchy tokens */
+    --text-heading: 222.2 84% 4.9%;
+    --text-body: 222.2 47.4% 20%;
+    --text-muted: 215.4 16.3% 46.9%;
+    --text-inverted: 210 40% 98%;
+    
+    /* Border variants */
+    --border-default: 214.3 31.8% 91.4%;
+    --border-subtle: 214.3 31.8% 94%;
+    --border-strong: 214.3 31.8% 80%;
+    
+    /* Status colors with proper contrast */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Hero/Dashboard gradient - LIGHT MODE */
+    --hero-gradient-from: 221 83% 53%;
+    --hero-gradient-via: 199 89% 48%;
+    --hero-gradient-to: 217 91% 60%;
+    
+    /* Calendar/Panel backgrounds */
+    --panel-header: 221 83% 53%;
+    --panel-header-foreground: 210 40% 98%;
+    
+    /* Sidebar tokens - LIGHT MODE */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 222.2 47.4% 20%;
+    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96.1%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-ring: 221.2 83.2% 53.3%;
+    
+    /* Chart colors - LIGHT MODE */
+    --chart-1: 221 83% 53%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
  
   .dark {
+    /* Core shadcn tokens - DARK MODE */
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
  
@@ -336,6 +415,61 @@ main {
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
+    
+    /* ========================================
+       EXTENDED SEMANTIC TOKENS - DARK MODE
+       ======================================== */
+    
+    /* Surface tokens - use for backgrounds */
+    --surface: 222.2 84% 4.9%;
+    --surface-elevated: 217.2 32.6% 12%;
+    --surface-sunken: 222.2 84% 3%;
+    --surface-overlay: 217.2 32.6% 10%;
+    
+    /* Text hierarchy tokens */
+    --text-heading: 210 40% 98%;
+    --text-body: 210 40% 90%;
+    --text-muted: 215 20.2% 65.1%;
+    --text-inverted: 222.2 84% 4.9%;
+    
+    /* Border variants */
+    --border-default: 217.2 32.6% 17.5%;
+    --border-subtle: 217.2 32.6% 12%;
+    --border-strong: 217.2 32.6% 30%;
+    
+    /* Status colors with proper contrast */
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    
+    /* Hero/Dashboard gradient - DARK MODE */
+    --hero-gradient-from: 222 47% 11%;
+    --hero-gradient-via: 217 33% 17%;
+    --hero-gradient-to: 215 28% 17%;
+    
+    /* Calendar/Panel backgrounds */
+    --panel-header: 217.2 32.6% 17.5%;
+    --panel-header-foreground: 210 40% 98%;
+    
+    /* Sidebar tokens - DARK MODE */
+    --sidebar-background: 222.2 84% 4.9%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217.2 91.2% 59.8%;
+    --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-ring: 224.3 76.3% 48%;
+    
+    /* Chart colors - DARK MODE */
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 70% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 }
  

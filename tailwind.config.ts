@@ -61,6 +61,56 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        /* ========================================
+           SEMANTIC TOKENS FOR UNIFIED THEMING
+           ======================================== 
+           
+           Use these instead of hardcoded colors!
+           They automatically adapt to light/dark mode.
+           
+           Examples:
+           - bg-surface (instead of bg-white dark:bg-gray-900)
+           - text-heading (instead of text-gray-900 dark:text-white)
+           - border-subtle (instead of border-gray-200 dark:border-gray-700)
+           ======================================== */
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          elevated: "hsl(var(--surface-elevated))",
+          sunken: "hsl(var(--surface-sunken))",
+          overlay: "hsl(var(--surface-overlay))",
+        },
+        "text-theme": {
+          heading: "hsl(var(--text-heading))",
+          body: "hsl(var(--text-body))",
+          muted: "hsl(var(--text-muted))",
+          inverted: "hsl(var(--text-inverted))",
+        },
+        "border-theme": {
+          DEFAULT: "hsl(var(--border-default))",
+          subtle: "hsl(var(--border-subtle))",
+          strong: "hsl(var(--border-strong))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
+        "hero-gradient": {
+          from: "hsl(var(--hero-gradient-from))",
+          via: "hsl(var(--hero-gradient-via))",
+          to: "hsl(var(--hero-gradient-to))",
+        },
+        panel: {
+          header: "hsl(var(--panel-header))",
+          "header-foreground": "hsl(var(--panel-header-foreground))",
+        },
       },
       keyframes: {
         "accordion-down": {
