@@ -83,8 +83,18 @@ export async function sendSMS(
     // Format phone number to E.164 format if not already
     const formattedPhone = formatPhoneNumber(phoneNumber);
     
-    // Load phone line from database if phoneLineId provided
-    let fromPhoneNumber = twilioPhoneNumber; // Default to env variable
+    // Get the tenant's SMS configuration for proper FROM number
+    const { getSmsConfig } = await import('./services/smsConfigService');
+    const tenantId = tenantDb.tenantId || 'root';
+    const smsConfig = await getSmsConfig(tenantId);
+    
+    // Default to tenant's configured FROM number
+    let fromPhoneNumber = smsConfig.fromNumber || twilioPhoneNumber;
+    let messagingServiceSidToUse = smsConfig.messagingServiceSid || twilioMessagingServiceSid;
+    
+    console.log(`[SMS] Tenant ${tenantId}: Configured FROM=${smsConfig.fromNumber}, MessagingSvc=${smsConfig.messagingServiceSid || 'none'}`);
+    
+    // Override with specific phone line if phoneLineId provided
     if (phoneLineId) {
       const { phoneLines } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
@@ -97,9 +107,10 @@ export async function sendSMS(
       
       if (phoneLine) {
         fromPhoneNumber = phoneLine.phoneNumber;
-        console.log(`[SMS] Using phone line ${phoneLine.label} (${phoneLine.phoneNumber})`);
+        messagingServiceSidToUse = null; // Don't use messaging service when specific line is requested
+        console.log(`[SMS] Using specific phone line ${phoneLine.label} (${phoneLine.phoneNumber})`);
       } else {
-        console.warn(`[SMS] Phone line ID ${phoneLineId} not found, using default`);
+        console.warn(`[SMS] Phone line ID ${phoneLineId} not found, using tenant default: ${fromPhoneNumber}`);
       }
     }
     
@@ -156,22 +167,14 @@ export async function sendSMS(
       statusCallback: statusCallbackUrl, // Twilio will POST updates to this URL
     };
 
-    // CRITICAL FIX: When phoneLineId is specified, use that line's phone number directly
-    // DO NOT use Messaging Service when a specific line is requested
-    if (phoneLineId) {
-      // Use the specific phone line number (bypass Messaging Service)
-      smsParams.from = fromPhoneNumber;
-      console.log(`[SMS] Sending via specific phone line: ${fromPhoneNumber} (Line ID: ${phoneLineId})`);
+    // Use Messaging Service SID if available (better A2P compliance/deliverability)
+    // Fall back to direct FROM number if no messaging service is configured
+    if (messagingServiceSidToUse && !phoneLineId) {
+      smsParams.messagingServiceSid = messagingServiceSidToUse;
+      console.log(`[SMS] Sending via Messaging Service: ${messagingServiceSidToUse}`);
     } else {
-      // Legacy behavior: Use Messaging Service SID for better deliverability (A2P compliance)
-      // If not available, fall back to default phone number
-      if (twilioMessagingServiceSid) {
-        smsParams.messagingServiceSid = twilioMessagingServiceSid;
-        console.log(`[SMS] Sending via Messaging Service: ${twilioMessagingServiceSid}`);
-      } else {
-        smsParams.from = fromPhoneNumber;
-        console.log(`[SMS] Sending via default phone number: ${fromPhoneNumber}`);
-      }
+      smsParams.from = fromPhoneNumber;
+      console.log(`[SMS] Sending via FROM number: ${fromPhoneNumber}`);
     }
 
     // EMERGENCY FIX: Use failover service for Error 30024 (ported number not provisioned)
@@ -190,6 +193,7 @@ export async function sendSMS(
     
     // Send SMS with automatic failover (retry with backup line if Error 30024)
     const failoverResult = await sendSMSWithFailover(
+      tenantDb,
       formattedPhone,
       message,
       actualFromNumber,

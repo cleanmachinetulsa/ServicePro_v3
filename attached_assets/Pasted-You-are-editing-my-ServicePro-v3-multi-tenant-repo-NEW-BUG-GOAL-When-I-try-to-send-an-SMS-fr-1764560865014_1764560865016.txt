@@ -1,0 +1,139 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+NEW BUG + GOAL:
+
+- When I try to send an SMS from the app, the request fails with:
+  {
+    "success": false,
+    "message": "Failed to send message",
+    "error": "tenantDb.select is not a function"
+  }
+
+- The UI also shows: "Sending from: Jody's Business Line (+19188565711) – Different from conversation's original line", but I want my primary Clean Machine business line +1 918 856 5304 to be the default for outbound SMS.
+
+GOAL: Fix the SMS pipeline so that:
+- Outbound SMS actually sends (no server crash).
+- The correct FROM number is used for the Clean Machine tenant (root / cleanmachine) – default should be +1 918 856 5304, not 5711.
+- If a number mismatch occurs, the UI messaging is clear and accurate, but the behavior is intentional (not a bug).
+- Nothing about voice calling is broken.
+
+IMPORTANT CONTEXT (please read):
+- Calling is working.
+- Telephony readiness shows PASS for sms_number + messaging_service.
+- Startup logs show Twilio clients and SMS template bootstrap are all working.
+- We previously added voiceConfigService + diagnoseVoiceConfig.ts; follow similar patterns for SMS if helpful.
+
+====================================================
+STEP 1 – FIND & FIX THE CRASHING SMS HANDLER
+====================================================
+
+1. Locate the server route that my UI is calling when I send a message.
+   - In the browser Network panel the failing request is named something like "send-message" and returns 500.
+   - Find that route in the server code (search for "send-message", "/api/messages", "/api/twilio/sms", etc.).
+
+2. In that handler, fix the "tenantDb.select is not a function" error:
+   - Identify how tenantDb is created (wrapTenantDb / getTenantDb / drizzle instance).
+   - Use the correct Drizzle pattern for SELECT queries (e.g. tenantDb.select().from(...), or tenantDb.query.tableName.findFirst, etc.).
+   - Do NOT use raw SQL if we already have proper helpers for tenant-scoped queries.
+
+3. After fixing the query, make sure the handler:
+   - Resolves the tenantId safely and in a multi-tenant-safe way.
+   - Loads the tenant’s phone config (number, messaging service, flags).
+   - Builds the outbound SMS request and calls the Twilio helper.
+
+4. Ensure the handler always returns a JSON shape like:
+   - { success: true, sid, details } on success
+   - { success: false, message, error } on failure
+   and NEVER crashes with an unhandled exception.
+
+====================================================
+STEP 2 – STANDARDIZE OUTBOUND "FROM" NUMBER FOR CLEAN MACHINE
+====================================================
+
+For tenantSlug=cleanmachine / tenantId=root:
+
+1. Identify all relevant phone config fields:
+   - MAIN_PHONE_NUMBER (env)
+   - VIP_PHONE_NUMBER, TWILIO_TEST_SMS_NUMBER, BUSINESS_TWILIO_TEST_SMS_NUMBER (env)
+   - tenant_phone_config row for root (sms_number, messaging_service_sid, flags).
+
+2. Decide on a single source of truth for the PRIMARY outbound SMS FROM:
+   - For production messages, default to:
+     - tenant_phone_config.sms_number if set,
+     - otherwise MAIN_PHONE_NUMBER.
+   - Test numbers (TWILIO_TEST_SMS_NUMBER etc.) should only be used when a specific "dev/test mode" flag or tenant is active.
+
+3. Implement a helper, something like:
+   - getSmsFromConfig(tenantId) → { fromNumber, messagingServiceSid, mode }
+   that:
+   - never returns a hard-coded test number for the root tenant in production.
+   - prefers the Clean Machine line +1 918 856 5304 for root.
+
+4. Update the SMS send handler to use this helper so that:
+   - For Clean Machine, outbound SMS uses +1 918 856 5304 (or MessagingServiceSid tied to that number).
+   - We can still support dev/test behavior for test tenants/numbers without affecting root.
+
+====================================================
+STEP 3 – ALIGN THE UI "SENDING FROM" BANNER WITH BACKEND LOGIC
+====================================================
+
+1. Find the React component that shows:
+   "Sending from: Jody's Business Line (+19188565711) – Different from conversation's original line"
+
+   Likely in a Phone/Conversation/Message component.
+
+2. Make the UI read the same effective "from" config that the server uses:
+   - Either call a small API like GET /api/telephony/current-line or reuse existing telephony context.
+   - Or mirror the same tenant phone config logic on the client side (but keep it simple).
+
+3. Update the banner so that:
+   - It shows the actual FROM number that will be used by the server.
+   - It only shows the "Different from conversation's original line" warning when that is truly the case.
+
+====================================================
+STEP 4 – ADD A SMALL SMS DIAGNOSTIC SCRIPT (LIKE VOICE)
+====================================================
+
+1. Create scripts/diagnoseSmsConfig.ts similar to scripts/diagnoseVoiceConfig.ts.
+
+2. The script should:
+   - Accept --tenantSlug=<slug>, e.g. cleanmachine.
+   - Resolve tenantId safely (reuse the improved, non-buggy tenant resolver).
+   - Print:
+     - Tenant ID + slug + name.
+     - SMS number and/or MessagingServiceSid from tenant_phone_config.
+     - Whether SMS is marked enabled for this tenant.
+     - Which FROM number it will actually use for outbound SMS based on the helper in STEP 2.
+   - Verify Twilio env vars needed for SMS (ACCOUNT_SID, AUTH_TOKEN, from number / messaging service).
+   - Print "SMS Configured: YES/NO" at the end with helpful hints.
+
+3. Document the command at the bottom of the script, e.g.:
+   - npx tsx scripts/diagnoseSmsConfig.ts --tenantSlug=cleanmachine
+
+You may also add an npm script if allowed:
+   - "sms:diagnose": "tsx scripts/diagnoseSmsConfig.ts --tenantSlug=cleanmachine"
+
+====================================================
+STEP 5 – SELF-TEST & REPORT BACK
+====================================================
+
+1. Run the diagnostic script in the Replit shell:
+   - npx tsx scripts/diagnoseSmsConfig.ts --tenantSlug=cleanmachine
+   - Ensure it completes without errors and shows SMS Configured: YES.
+
+2. In the dev preview browser:
+   - Open the console/network tab.
+   - Send a test SMS from the normal UI to a dummy US cell number.
+   - Confirm:
+     - The send-message API returns success:true.
+     - No "tenantDb.select is not a function" error.
+     - Twilio accepts the message with the expected FROM number (matching +1 918 856 5304 or its MessagingServiceSid).
+
+3. Only when everything is green, update your internal task log with:
+   - What was broken (tenantDb misuse, wrong FROM logic, etc.).
+   - What files you changed (server + client) and a 1–2 sentence summary per file.
+
+VERY IMPORTANT:
+- Do NOT change voice calling behavior or any non-SMS telephony pieces.
+- Keep all logic multi-tenant safe (no hard-coding root except in the diagnostic script or clearly-marked dev helpers).
+- Keep the code clean and well-commented so I can understand it later.
