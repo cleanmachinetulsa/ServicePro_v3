@@ -108,7 +108,7 @@ export function CalendarWidget({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.2 }}
       >
-        <Card className="rounded-xl backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl overflow-hidden" data-testid="calendar-card">
+        <Card className="rounded-xl backdrop-blur-xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 shadow-xl overflow-hidden" data-testid="calendar-card">
           <CardHeader className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-md text-white pb-6 border-b border-white/20">
             <CardTitle className="flex items-center justify-between text-2xl">
               <div className="flex items-center gap-3">
@@ -222,7 +222,7 @@ export function CalendarWidget({
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-8 backdrop-blur-sm">
+          <CardContent className="p-8">
             <style>
               {`
                 .modern-calendar .rdp {
@@ -240,6 +240,9 @@ export function CalendarWidget({
                   text-transform: uppercase;
                   letter-spacing: 0.05em;
                 }
+                .dark .modern-calendar .rdp-head_cell {
+                  color: #9ca3af;
+                }
                 .modern-calendar .rdp-cell { padding: 2px; }
                 .modern-calendar .rdp-day {
                   width: 70px;
@@ -250,11 +253,18 @@ export function CalendarWidget({
                   position: relative;
                   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
                   cursor: pointer;
+                  color: #1f2937;
+                }
+                .dark .modern-calendar .rdp-day {
+                  color: #e5e7eb;
                 }
                 .modern-calendar .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled) {
                   background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
                   transform: translateY(-2px);
                   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+                }
+                .dark .modern-calendar .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled) {
+                  background: linear-gradient(135deg, #1e3a5f 0%, #312e81 100%);
                 }
                 .modern-calendar .rdp-day_selected {
                   background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%) !important;
@@ -268,6 +278,11 @@ export function CalendarWidget({
                   font-weight: 700;
                   border: 2px solid #3b82f6;
                 }
+                .dark .modern-calendar .rdp-day_today:not(.rdp-day_selected) {
+                  background: linear-gradient(135deg, #1e3a5f 0%, #1e40af 100%);
+                  color: #93c5fd;
+                  border-color: #60a5fa;
+                }
                 .modern-calendar .rdp-day_disabled { opacity: 0.3; cursor: not-allowed; }
                 .modern-calendar .rdp-button { width: 100%; height: 100%; }
                 .modern-calendar .rdp-nav_button {
@@ -276,6 +291,10 @@ export function CalendarWidget({
                   border-radius: 10px;
                   background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
                   transition: all 0.2s;
+                }
+                .dark .modern-calendar .rdp-nav_button {
+                  background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+                  color: #e5e7eb;
                 }
                 .modern-calendar .rdp-nav_button:hover {
                   background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
