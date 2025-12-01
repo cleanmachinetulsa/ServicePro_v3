@@ -3,10 +3,57 @@ import { conversations, appointments, callEvents, customers, messages } from '@s
 import { desc, eq, and, or, gte, sql } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { normalizePhone } from './phoneValidationMiddleware';
+import { isVoiceConfiguredForTenant, getVoiceDiagnostics } from './services/voiceConfigService';
 
 const router = Router();
 
 export function registerCallRoutes(app: Router) {
+  // Voice configuration status endpoint
+  app.get('/api/voice/status', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const tenantId = (req as any).tenantId || 'root';
+      const status = await isVoiceConfiguredForTenant(tenantId);
+      
+      res.json({
+        success: true,
+        isConfigured: status.isConfigured,
+        errors: status.errors,
+        warnings: status.warnings,
+      });
+    } catch (error) {
+      console.error('[VOICE STATUS] Error checking voice configuration:', error);
+      res.status(500).json({
+        success: false,
+        isConfigured: false,
+        message: 'Failed to check voice configuration',
+      });
+    }
+  });
+
+  // Voice diagnostics endpoint (admin only)
+  app.get('/api/voice/diagnostics', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      if (user?.role !== 'owner' && user?.role !== 'manager') {
+        return res.status(403).json({ success: false, message: 'Admin access required' });
+      }
+
+      const tenantId = (req as any).tenantId || 'root';
+      const diagnostics = await getVoiceDiagnostics(tenantId);
+      
+      res.json({
+        success: true,
+        diagnostics,
+      });
+    } catch (error) {
+      console.error('[VOICE DIAGNOSTICS] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get voice diagnostics',
+      });
+    }
+  });
+
   // Get active customers (recent contacts + scheduled/pending appointments)
   app.get('/api/calls/customers', requireAuth, async (req: Request, res: Response) => {
     try {

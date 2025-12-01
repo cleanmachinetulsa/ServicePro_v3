@@ -294,7 +294,14 @@ export const tenantPhoneConfig = pgTable("tenant_phone_config", {
   sipUsername: varchar("sip_username", { length: 255 }), // e.g., jody
   sipPasswordEncrypted: varchar("sip_password_encrypted", { length: 255 }), // Encrypted SIP password (if needed)
   ivrMode: varchar("ivr_mode", { length: 50 }).default("simple"), // simple | ivr | ai-voice
+  // Voice configuration fields
+  voiceEnabled: boolean("voice_enabled").default(true), // Whether outbound voice is enabled
+  voiceWebhookUrl: varchar("voice_webhook_url", { length: 500 }), // TwiML webhook URL for inbound calls
+  voiceStatusCallbackUrl: varchar("voice_status_callback_url", { length: 500 }), // Call status webhook
+  forwardingNumber: varchar("forwarding_number", { length: 50 }), // Business owner phone for click-to-call
+  ringDuration: integer("ring_duration").default(20), // Seconds to ring before voicemail
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   phoneNumberIdx: uniqueIndex("tenant_phone_config_phone_number_idx").on(table.phoneNumber),
   tenantIdIdx: index("tenant_phone_config_tenant_id_idx").on(table.tenantId),

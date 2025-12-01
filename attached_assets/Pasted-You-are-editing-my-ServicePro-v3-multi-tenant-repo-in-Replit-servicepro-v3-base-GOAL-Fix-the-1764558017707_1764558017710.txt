@@ -1,0 +1,176 @@
+You are editing my ServicePro v3 multi-tenant repo in Replit (`servicepro-v3-base`).
+
+GOAL: 
+Fix the “Phone service not configured – Twilio Voice service is not yet configured” problem and get a solid v1 Voice setup working for my Clean Machine tenant.
+
+Constraints / context:
+- SMS is already working (Messaging Service SID is stored; inbound SMS works).
+- My main Twilio number is: +19188565304
+- ENV already has: MAIN_PHONE_NUMBER, VIP_PHONE_NUMBER, BUSINESS_TEST_SMS_NUMBER, TWILIO_VOICE_FROM_NUMBER, etc.
+- The Clean Machine tenant is:
+  - tenantId: root
+  - slug/subdomain: cleanmachine
+- I am NOT a programmer. Do **all file edits for me**, and give me very clear shell commands to run.
+
+Please implement the following, step by step:
+
+====================================================
+STEP 1 – Understand current Voice state
+====================================================
+1. Search the repo for:
+   - "Phone service not configured"
+   - "Twilio Voice service is not yet configured"
+   - "TWILIO_VOICE_FROM_NUMBER"
+   - "/api/twilio/voice"
+   - "callOutbound" or similar outbound-call helpers.
+2. Identify:
+   - Which backend file actually decides "voice configured or not" (likely a service under server/* or a dedicated voiceService).
+   - Which frontend component shows the red "Phone service not configured" toast (the Phone dialer page).
+3. Summarize for the user (in your final message), in plain English:
+   - Where the voice config check currently lives.
+   - Why it is returning "not configured" right now.
+
+Do NOT ask me questions; make reasonable assumptions and proceed.
+
+====================================================
+STEP 2 – Add a tenant_voice_config table (if missing)
+====================================================
+We want a small, simple table to store per-tenant Voice settings (even if we’re mostly using env variables for now).
+
+1. Check the existing Drizzle schema files (likely under `server/db/schema` or similar). If a tenant voice config table already exists, **reuse it** and skip migration creation, but still wire it up in the later steps.
+2. If there is **no** voice config table yet:
+   - Create a new Drizzle schema file, e.g. `server/db/schema/tenantVoiceConfig.ts` with something like:
+
+     - tenantId (primary key, text, references tenants/tenant_config as appropriate)
+     - voiceWebhookUrl (text, not null)
+     - sipEnabled (boolean, default false)
+     - sipDomain (text, nullable)
+     - sipUsername (text, nullable)
+     - sipPassword (text, nullable or stored via encrypted/secret mechanism already used)
+     - createdAt / updatedAt timestamps if that’s the pattern in this repo.
+
+   - Add the new table to the main Drizzle schema index (where all tables are exported).
+   - Create a Drizzle migration file under whatever migration folder this repo uses (for example `drizzle/migrations/*`). Follow the existing migration style. The migration should:
+     - Create the `tenant_voice_config` table with the columns described above.
+3. Make sure the migration can be run with the existing `db:push` or migration commands (we already have a `"db:push": "drizzle-kit push"` script in package.json).
+
+====================================================
+STEP 3 – Seed voice config for the Clean Machine tenant
+====================================================
+We want one initial row for the `root/cleanmachine` tenant so the app has something real to read.
+
+1. Add a small seed or upsert script, e.g. `scripts/seedVoiceConfig.ts` that:
+   - Connects to the main DB (using the same pattern as any other seed or script in this repo).
+   - Upserts a row in `tenant_voice_config` for tenantId `"root"`:
+     - tenantId: "root"
+     - voiceWebhookUrl: "https://servicepro-v-3-base-cleanmachinetul.repl.app/api/twilio/voice/inbound"
+     - sipEnabled: false (for now)
+     - sipDomain / sipUsername / sipPassword: null for now.
+   - Uses the existing logging style (console.log with clear messages like "Seeded tenant_voice_config for tenant root").
+2. Do NOT hardcode anything for other tenants yet – just make it **safe and idempotent** (running the seed twice should not duplicate rows).
+3. At the end of your response, give me the exact shell command to run this script via `npx tsx ...`.
+
+====================================================
+STEP 4 – Create a VoiceConfig service helper
+====================================================
+We want a clean helper that wraps all voice config logic instead of scattering it everywhere.
+
+1. Create something like `server/services/voiceConfigService.ts` (or equivalent based on this repo’s conventions) that exposes functions such as:
+   - `getTenantVoiceConfig(tenantId: string)`:
+     - Reads `tenant_voice_config` for that tenant.
+     - If no row exists, falls back to sensible defaults using env vars:
+       - `TWILIO_VOICE_FROM_NUMBER`
+       - App base URL env (whatever is used for public URLs, e.g. `APP_URL`).
+   - `isVoiceConfiguredForTenant(tenantId: string)`:
+     - Returns true if:
+       - Twilio Account SID and Auth Token envs are present.
+       - `TWILIO_VOICE_FROM_NUMBER` is present.
+       - A voiceWebhookUrl exists either from DB row or via fallback.
+     - Returns false otherwise.
+2. Reuse existing Twilio client wiring already present in the repo. Do NOT duplicate Twilio client configuration if there is already a shared helper.
+
+====================================================
+STEP 5 – Wire voiceConfig into the call API and the Phone UI
+====================================================
+1. Find the backend route that handles outbound calls (for the Phone dialer). If it doesn’t exist yet, create a route under the existing Twilio router such as:
+   - `POST /api/twilio/voice/outbound`
+     - Body: `{ to: string }`
+     - Uses `getTenantVoiceConfig` and `isVoiceConfiguredForTenant` to decide whether to proceed.
+     - If not configured, responds with HTTP 400 and a JSON body like:
+       `{ success: false, code: "VOICE_NOT_CONFIGURED", message: "Twilio Voice service is not yet configured." }`
+     - If configured, it should use the Twilio REST API to initiate a call that:
+       - Uses `TWILIO_VOICE_FROM_NUMBER` as the `from`.
+       - Points to an existing or new `/api/twilio/voice/bridge` TwiML endpoint for call instructions (use whatever voice webhook structure already exists; if nothing exists, implement the simplest “call this customer and bridge” behavior consistent with current voice design).
+2. Update the frontend Phone page component (under `client/src/pages/phone` or similar):
+   - Right now it is showing the red toast "Phone service not configured". Update the logic so that:
+     - It calls an API (either the outbound call endpoint itself or a dedicated `/api/voice/status` endpoint) and bases the error on the actual `VOICE_NOT_CONFIGURED` result from the backend.
+     - If voice IS configured, let me dial numbers without that blocking toast.
+   - Do not remove any existing safety logic that prevents call loops to our own business numbers; just make sure that:
+     - Calling a true customer number will go through (once voice is configured).
+     - Calling the main business number keeps the loop protection.
+
+====================================================
+STEP 6 – Build a diagnostic CLI script for Voice config
+====================================================
+I want an easy way to paste output into ChatGPT later.
+
+1. Create `scripts/diagnoseVoiceConfig.ts` that:
+   - Accepts a `--tenantSlug` or `--tenantId` arg (support both, like you did for the readiness script).
+   - Resolves the tenantId from the slug (using the same functions already used for the readiness engine).
+   - Prints a **JSON** object like:
+
+     {
+       "tenantId": "root",
+       "tenantSlug": "cleanmachine",
+       "env": {
+         "TWILIO_ACCOUNT_SID_PRESENT": true/false,
+         "TWILIO_AUTH_TOKEN_PRESENT": true/false,
+         "TWILIO_VOICE_FROM_NUMBER": "+19188565304 or null"
+       },
+       "db": {
+         "voiceConfigRowFound": true/false,
+         "voiceWebhookUrl": "...",
+         "sipEnabled": false,
+         "sipDomain": null
+       },
+       "computed": {
+         "isVoiceConfigured": true/false,
+         "errors": [ ... human-readable error messages ... ]
+       }
+     }
+
+   - Use the same DB access patterns and error handling style as the readiness CLI script.
+2. At the end of your response, give me the exact commands to run, for example:
+
+   - `npx drizzle-kit push`   (if you created a new migration)
+   - `npx tsx scripts/seedVoiceConfig.ts`
+   - `npx tsx scripts/diagnoseVoiceConfig.ts --tenantSlug=cleanmachine --json`
+
+====================================================
+STEP 7 – Update the Tenant Readiness Engine (optional but ideal)
+====================================================
+1. If feasible in this block, extend the Tenant Readiness engine you already built to include a new "Voice" subsection under Telephony OR a new "Voice" category that reports:
+   - PASS if `isVoiceConfiguredForTenant` is true.
+   - WARN with clear suggestions if:
+     - Twilio credentials are missing.
+     - TWILIO_VOICE_FROM_NUMBER is missing.
+     - No voice config row.
+2. Make sure the readiness panel for the `root / cleanmachine` tenant reflects whatever we just configured, and that any remaining WARNs are accurate and helpful.
+
+====================================================
+STEP 8 – Tests & final instructions
+====================================================
+1. Run any existing tests that are quick, such as:
+   - `npm run check`
+   - `npm test` or `npm run test` if present.
+2. Make sure the app still builds and starts in Replit.
+3. In your final reply to me (the user), include:
+   - A short summary of what you changed (file list + one-line per file).
+   - The exact shell commands I should run in the Replit shell **in order**, including:
+     - migration command (`npx drizzle-kit push` if needed),
+     - seed command,
+     - diagnostic script command,
+     - how to test an outbound call from the Phone page.
+   - What I should paste back into ChatGPT (e.g., the JSON from the diagnostic script) if something still doesn’t work.
+
+DO NOT refactor unrelated parts of the code. Keep changes tightly focused on Twilio Voice config, the Phone page, and the new diagnostic tooling.
