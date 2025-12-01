@@ -83,7 +83,7 @@ export default function ActiveCall({ callId, onEnd }: ActiveCallProps) {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const phoneNumber = call?.direction === 'outbound' ? call.to : call.from;
+  const phoneNumber = call ? (call.direction === 'outbound' ? call.to : call.from) : '';
   const callStatus = call?.status || 'connecting';
 
   return (
