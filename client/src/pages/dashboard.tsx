@@ -457,9 +457,9 @@ export default function Dashboard() {
       <OfflineIndicator />
       <InstallPromptBanner />
       <AppShell title="Dashboard" pageActions={pageActions} sidebarActions={sidebarActions}>
-        <div data-tour-id="main-dashboard-root">
+        <div data-tour-id="main-dashboard-root" className="p-3 sm:p-4 md:p-6 max-w-[1800px] mx-auto">
         {isLoadingData ? (
-          <div className="space-y-4 p-6">
+          <div className="space-y-4">
             {/* Statistics Bar Skeleton */}
             <Card className="backdrop-blur-xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 shadow-xl">
               <div className="py-4 px-6">

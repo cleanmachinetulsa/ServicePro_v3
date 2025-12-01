@@ -144,33 +144,33 @@ export default function Dialer() {
   ];
 
   return (
-    <div className="max-w-md mx-auto px-6 py-8 flex flex-col h-full">
+    <div className="max-w-sm sm:max-w-md mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col h-full">
       {/* Display */}
-      <div className="mb-8">
+      <div className="mb-6 sm:mb-8">
         <div className="text-center">
           <input
             type="tel"
             value={phoneNumber}
             readOnly
             placeholder="Enter number"
-            className="text-4xl font-light text-center w-full bg-transparent border-none outline-none dark:text-white tracking-wider"
+            className="text-3xl sm:text-4xl font-light text-center w-full bg-transparent border-none outline-none dark:text-white tracking-wider"
             data-testid="input-phone-display"
           />
         </div>
       </div>
 
       {/* Dial Pad */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
         {dialPadButtons.map((btn) => (
           <button
             key={btn.digit}
             onClick={() => handleKeyPress(btn.digit)}
-            className="aspect-square rounded-full bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors shadow-sm border dark:border-gray-700 flex flex-col items-center justify-center"
+            className="aspect-square rounded-full bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 transition-all shadow-sm border dark:border-gray-700 flex flex-col items-center justify-center min-h-[64px] sm:min-h-[72px]"
             data-testid={`button-dial-${btn.digit}`}
           >
-            <span className="text-3xl font-light dark:text-white">{btn.digit}</span>
+            <span className="text-2xl sm:text-3xl font-light dark:text-white">{btn.digit}</span>
             {btn.letters && (
-              <span className="text-xs text-muted-foreground uppercase mt-1">
+              <span className="text-[10px] sm:text-xs text-muted-foreground uppercase mt-0.5 sm:mt-1">
                 {btn.letters}
               </span>
             )}
@@ -179,27 +179,27 @@ export default function Dialer() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex items-center justify-center gap-6 mt-auto">
+      <div className="flex items-center justify-center gap-4 sm:gap-6 mt-auto pb-4">
         {/* Message Button */}
         <Button
           variant="outline"
           size="lg"
           onClick={handleMessage}
           disabled={phoneNumber.replace(/\D/g, '').length < 10}
-          className="rounded-full h-16 w-16 p-0"
+          className="rounded-full h-14 w-14 sm:h-16 sm:w-16 p-0"
           data-testid="button-message"
         >
-          <MessageCircle className="h-6 w-6" />
+          <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6" />
         </Button>
 
         {/* Call Button */}
         <Button
           onClick={handleCall}
           disabled={callMutation.isPending || phoneNumber.replace(/\D/g, '').length < 10}
-          className="rounded-full h-20 w-20 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 p-0 shadow-lg"
+          className="rounded-full h-16 w-16 sm:h-20 sm:w-20 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 p-0 shadow-lg active:scale-95 transition-transform"
           data-testid="button-call"
         >
-          <Phone className="h-8 w-8" />
+          <Phone className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
 
         {/* Delete Button */}
@@ -208,10 +208,10 @@ export default function Dialer() {
           size="lg"
           onClick={handleDelete}
           disabled={phoneNumber.length === 0}
-          className="rounded-full h-16 w-16 p-0"
+          className="rounded-full h-14 w-14 sm:h-16 sm:w-16 p-0"
           data-testid="button-delete"
         >
-          <Delete className="h-6 w-6" />
+          <Delete className="h-5 w-5 sm:h-6 sm:w-6" />
         </Button>
       </div>
 

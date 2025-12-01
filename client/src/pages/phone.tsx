@@ -39,8 +39,8 @@ export default function PhonePage() {
   return (
     <AppShell title="Phone" showSearch={false}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-        <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 px-4">
-          <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 bg-gray-100 dark:bg-gray-800">
+        <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 px-2 sm:px-4">
+          <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 bg-gray-100 dark:bg-gray-800 h-10 sm:h-auto">
             <TabsTrigger 
               value="dialer" 
               className="gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700"

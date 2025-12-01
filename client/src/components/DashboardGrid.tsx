@@ -122,15 +122,15 @@ export function DashboardGrid({
         items={visibleWidgets.map((w) => w.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-6 relative" data-testid="dashboard-grid">
+        <div className="space-y-4 sm:space-y-6 relative" data-testid="dashboard-grid">
           {isEditMode && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/50 rounded-lg p-4 mb-4"
+              className="bg-blue-500/20 backdrop-blur-sm border border-blue-400/50 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4"
               data-testid="edit-mode-banner"
             >
-              <p className="text-blue-100 text-sm">
+              <p className="text-blue-100 text-xs sm:text-sm">
                 <strong>Edit Mode:</strong> Drag the grip icons to rearrange your widgets. Click "Done" when finished.
               </p>
             </motion.div>
