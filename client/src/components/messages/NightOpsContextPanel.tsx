@@ -52,6 +52,7 @@ interface CustomerInfo {
 interface NightOpsContextPanelProps {
   customerInfo: CustomerInfo | null;
   isLoading?: boolean;
+  hasSelectedConversation?: boolean;
   onBookAppointment?: () => void;
   onSaveNotes?: (notes: string) => void;
 }
@@ -112,6 +113,7 @@ function SectionCard({
 export function NightOpsContextPanel({
   customerInfo,
   isLoading = false,
+  hasSelectedConversation = false,
   onBookAppointment,
   onSaveNotes
 }: NightOpsContextPanelProps) {
@@ -167,10 +169,12 @@ export function NightOpsContextPanel({
           <User className="h-8 w-8 text-slate-600" />
         </div>
         <h3 className="text-sm font-medium text-slate-300 mb-1">
-          No conversation selected
+          {hasSelectedConversation ? 'Customer data unavailable' : 'No conversation selected'}
         </h3>
         <p className="text-xs text-slate-500">
-          Select a conversation to view customer details
+          {hasSelectedConversation 
+            ? 'Customer details will appear here once available'
+            : 'Select a conversation to view customer details'}
         </p>
       </div>
     );

@@ -25,6 +25,7 @@ type NightOpsMessagesLayoutProps = {
   showContextPanel?: boolean;
   onToggleContextPanel?: () => void;
   selectedConversationId?: number | null;
+  headerActions?: React.ReactNode;
 };
 
 export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
@@ -34,6 +35,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
   showContextPanel = true,
   onToggleContextPanel,
   selectedConversationId,
+  headerActions,
 }) => {
   const [mobileView, setMobileView] = useState<'inbox' | 'thread'>('inbox');
   const [showMobileContext, setShowMobileContext] = useState(false);
@@ -41,9 +43,9 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
   const hasSelectedConversation = selectedConversationId !== null && selectedConversationId !== undefined;
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black text-slate-100">
-      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-40">
-        <div className="mx-auto flex max-w-[1800px] items-center justify-between px-4 py-3 md:px-8">
+    <div className="h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black text-slate-100 flex flex-col overflow-hidden">
+      <header className="flex-shrink-0 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl z-40">
+        <div className="mx-auto flex max-w-[1800px] items-center justify-between px-3 py-2 md:px-6 md:py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-500/15 ring-1 ring-cyan-400/60 shadow-[0_0_18px_rgba(34,211,238,0.5)]">
               <Sparkles className="h-4 w-4 text-cyan-300" />
@@ -62,28 +64,31 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
               </h1>
             </div>
           </div>
-          <div className="hidden items-center gap-6 text-xs text-slate-400 md:flex">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="h-4 w-4 text-cyan-300" />
-              <span>Live threads</span>
+          <div className="flex items-center gap-3 md:gap-6">
+            <div className="hidden items-center gap-4 text-xs text-slate-400 lg:flex">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-cyan-300" />
+                <span>Live threads</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <PhoneCall className="h-4 w-4 text-violet-300" />
+                <span>Voice & Voicemail</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-emerald-300" />
+                <span>AI Assist</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <PhoneCall className="h-4 w-4 text-violet-300" />
-              <span>Voice & Voicemail</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-300" />
-              <span>AI Assist</span>
-            </div>
+            {headerActions}
           </div>
         </div>
       </header>
 
-      <main className="mx-auto hidden max-w-[1800px] gap-4 px-3 py-4 md:px-6 md:py-6 lg:flex">
+      <main className="flex-1 mx-auto hidden max-w-[1800px] gap-4 px-3 py-4 md:px-6 md:py-4 lg:flex overflow-hidden">
         <motion.section
           layout
           className={cn(
-            "nightops-panel nightops-scroll relative flex h-[82vh] w-full flex-col overflow-hidden",
+            "nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden",
             "lg:w-[26%] min-w-[280px]"
           )}
           initial={{ opacity: 0, x: -20 }}
@@ -109,7 +114,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
         <motion.section
           layout
           className={cn(
-            "nightops-panel nightops-scroll relative flex h-[82vh] w-full flex-col overflow-hidden",
+            "nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden",
             showContextPanel ? "lg:w-[46%]" : "lg:w-[74%]"
           )}
           initial={{ opacity: 0, y: 10 }}
@@ -146,7 +151,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
             <motion.section
               layout
               className={cn(
-                "nightops-panel nightops-scroll relative flex h-[82vh] w-full flex-col overflow-hidden",
+                "nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden",
                 "lg:w-[28%] min-w-[280px]"
               )}
               initial={{ opacity: 0, x: 20 }}
@@ -173,7 +178,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
         </AnimatePresence>
       </main>
 
-      <div className="lg:hidden flex flex-col h-[calc(100vh-64px)]">
+      <div className="lg:hidden flex-1 flex flex-col overflow-hidden">
         <AnimatePresence mode="wait">
           {mobileView === 'inbox' && (
             <motion.div
