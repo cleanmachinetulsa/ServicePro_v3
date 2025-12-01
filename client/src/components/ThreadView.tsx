@@ -560,6 +560,7 @@ export default function ThreadView({
       setTimeout(() => {
         if (containerRef.current) {
           containerRef.current.scrollTop = containerRef.current.scrollHeight;
+          lastScrollTopRef.current = containerRef.current.scrollTop;
           prevMessageCountRef.current = messages.length;
         }
       }, 100);
@@ -574,8 +575,9 @@ export default function ThreadView({
       scrollDone = true;
       observer.disconnect();
       
-      // Scroll to bottom
+      // Scroll to bottom and update lastScrollTopRef so scroll direction detection works
       container.scrollTop = container.scrollHeight;
+      lastScrollTopRef.current = container.scrollTop;
       prevMessageCountRef.current = messages.length;
     };
     
@@ -1347,11 +1349,12 @@ export default function ThreadView({
           </div>
           
           {/* Messages - Native scrollable div with MutationObserver for hydration detection */}
-          <div 
-            ref={containerRef}
-            onScroll={handleScroll}
-            className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50"
-          >
+          <div className="relative flex-1 min-h-0">
+            <div 
+              ref={containerRef}
+              onScroll={handleScroll}
+              className="absolute inset-0 overflow-y-auto bg-gray-50 dark:bg-gray-900/50"
+            >
             <div ref={contentRef} className="max-w-4xl mx-auto py-6 px-4">
               {filteredMessages && filteredMessages.length > 0 ? (
                 <>
@@ -1445,22 +1448,23 @@ export default function ThreadView({
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Jump to Latest Button - Shows when user has scrolled up (reading history) */}
-          {!isAtBottom && filteredMessages.length > 0 && (
-            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
-              <Button
-                onClick={() => scrollToBottom('smooth')}
-                size="sm"
-                className="gap-2 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white px-4"
-                data-testid="button-jump-to-latest"
-              >
-                <ArrowDown className="h-4 w-4" />
-                Jump to latest
-              </Button>
             </div>
-          )}
+
+            {/* Jump to Latest Button - Shows when user has scrolled up (reading history) */}
+            {!isAtBottom && filteredMessages.length > 0 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+                <Button
+                  onClick={() => scrollToBottom('smooth')}
+                  size="sm"
+                  className="gap-2 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white px-4"
+                  data-testid="button-jump-to-latest"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                  Jump to latest
+                </Button>
+              </div>
+            )}
+          </div>
 
           {/* AI Suggestions - Enhanced UI with Mobile Collapse */}
           {conversation.controlMode === 'manual' && suggestions.length > 0 && (
