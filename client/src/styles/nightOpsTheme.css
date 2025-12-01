@@ -384,3 +384,85 @@
 .nightops-thread-wrapper {
   background: transparent;
 }
+
+/* ========================================
+   Phase 13 – Enhanced Messaging Hub Styles
+   ======================================== */
+
+/* Hide scrollbar for filter tabs */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Enhanced conversation row with better transitions */
+.nightops-conversation-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.nightops-conversation-row::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.05), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.5s ease;
+}
+
+.nightops-conversation-row:hover::before {
+  transform: translateX(100%);
+}
+
+/* Keyboard navigation focus styles */
+.nightops-conversation-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.5);
+}
+
+/* Tabs styling for context panel */
+[data-state="active"].data-\[state\=active\]\:bg-cyan-500\/20 {
+  background: rgba(34, 211, 238, 0.2) !important;
+}
+
+/* Improved empty state styling */
+[data-testid="thread-empty-state"],
+[data-testid="inbox-empty"] {
+  background: radial-gradient(circle at center, rgba(34, 211, 238, 0.03), transparent 70%);
+}
+
+/* Mobile sheet styling */
+.nightops-mobile-sheet {
+  background: var(--nightops-bg) !important;
+}
+
+/* Keyboard hints */
+kbd {
+  font-family: ui-monospace, monospace;
+  font-size: 0.65rem;
+}
+
+/* Status indicator pulse */
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+}
+
+.status-indicator-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* Phone line label styling */
+.phone-line-label {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
