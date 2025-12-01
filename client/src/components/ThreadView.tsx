@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card } from '@/components/ui/card';
@@ -140,11 +140,11 @@ export default function ThreadView({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);      // whether we should auto-scroll on new messages
+  const lastScrollTopRef = useRef(0);         // tracks last scrollTop to detect scroll direction
   const draftRestoredRef = useRef(false); // Track if draft has been restored for current conversation
-  const initialLoadRef = useRef(true); // Track if this is the first load
-  const previousMessageCountRef = useRef(0); // Track message count for new message detection
-  const [isAtBottom, setIsAtBottom] = useState(true); // Premium scroll: true = at bottom, false = reading history
+  const [isAtBottom, setIsAtBottom] = useState(true); // For UI only (Jump to latest button)
   const queryClient = useQueryClient();
   const { toast} = useToast();
 
@@ -474,66 +474,78 @@ export default function ThreadView({
   }, [conversationId, queryClient, currentUser?.username]);
 
   // ============================================================================
-  // PREMIUM SCROLL BEHAVIOR (iMessage/WhatsApp style)
+  // PREMIUM SCROLL BEHAVIOR (iMessage/WhatsApp style) - Native Pattern
   // ============================================================================
-  // Rules:
-  // 1. Auto-scroll to bottom ONLY when user is at/near bottom AND new messages arrive
-  // 2. If user has scrolled up (reading history), NEVER move their scroll position
-  // 3. Show "Jump to latest" button when user is not at bottom
-  // 4. "At bottom" = within 24px of the scroll container's bottom edge
+  // Uses refs (not state) to avoid re-renders during scroll. Radix ScrollArea
+  // was replaced with native div because Radix resets scroll position on render.
   // ============================================================================
 
   // Guard to ignore scroll events during pagination restoration
   const isRestoringScrollRef = useRef(false);
 
-  // Scroll to bottom helper using viewport ref
+  // Scroll to bottom helper
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    const container = containerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior });
   };
 
-  // Handle scroll events from the viewport - updates isAtBottom state
-  const handleViewportScroll = () => {
-    if (isRestoringScrollRef.current) return;
-    
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    
-    const { scrollTop, scrollHeight, clientHeight } = viewport;
-    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
-    setIsAtBottom(distanceFromBottom < 48);
-  };
+  // Attach native scroll listener for direction detection (uses refs, no re-renders)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    lastScrollTopRef.current = container.scrollTop;
+
+    const onScroll = () => {
+      if (isRestoringScrollRef.current) return;
+      const el = containerRef.current;
+      if (!el) return;
+      
+      const currentTop = el.scrollTop;
+      const maxScrollTop = el.scrollHeight - el.clientHeight;
+      const scrolledUp = currentTop < lastScrollTopRef.current;
+      const scrolledDown = currentTop > lastScrollTopRef.current;
+      lastScrollTopRef.current = currentTop;
+
+      if (scrolledUp) {
+        if (stickToBottomRef.current) {
+          el.scrollTo({ top: currentTop, behavior: 'auto' });
+        }
+        stickToBottomRef.current = false;
+        setIsAtBottom(false);
+      } else if (scrolledDown) {
+        if (currentTop >= maxScrollTop - 2) {
+          stickToBottomRef.current = true;
+          setIsAtBottom(true);
+        }
+      }
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Reset scroll state when conversation changes
   useEffect(() => {
-    initialLoadRef.current = true;
-    previousMessageCountRef.current = 0;
+    stickToBottomRef.current = true;
+    lastScrollTopRef.current = 0;
     setIsAtBottom(true);
   }, [conversationId]);
 
-  // SINGLE AUTO-SCROLL EFFECT: scroll to bottom on load + when new messages arrive (if at bottom)
+  // Initial scroll to bottom on first load (jump immediately)
   useEffect(() => {
-    if (!isAtBottom) return;
-    
-    const messages = conversation?.messages || [];
-    const currentCount = messages.length;
-    
-    // On initial load, scroll immediately (no animation) after a brief delay for DOM
-    if (initialLoadRef.current && currentCount > 0) {
-      initialLoadRef.current = false;
-      previousMessageCountRef.current = currentCount;
-      requestAnimationFrame(() => scrollToBottom('auto'));
-      return;
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
     }
-    
-    // New messages arrived + user is at bottom: scroll smoothly
-    const previousCount = previousMessageCountRef.current;
-    if (currentCount > previousCount) {
-      scrollToBottom('smooth');
+  }, [conversationId]);
+
+  // Auto-scroll on new messages (only if stickToBottom is true)
+  useLayoutEffect(() => {
+    if (stickToBottomRef.current && containerRef.current) {
+      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' });
     }
-    previousMessageCountRef.current = currentCount;
-  }, [conversation?.messages, isAtBottom]);
+  }, [conversation?.messages]);
 
   // Offline Drafts: Restore draft from localStorage on mount/conversation change
   useEffect(() => {
@@ -636,11 +648,11 @@ export default function ThreadView({
   const handleLoadMore = async () => {
     if (!conversation?.messages || conversation.messages.length === 0 || isLoadingMore) return;
     
-    const viewport = viewportRef.current;
-    if (!viewport) return;
+    const container = containerRef.current;
+    if (!container) return;
     
     // Find the ACTUAL first visible message at the top of the viewport
-    const viewportRect = viewport.getBoundingClientRect();
+    const viewportRect = container.getBoundingClientRect();
     let anchorMessageId: number | null = null;
     let relativeOffset = 0;
     
@@ -696,12 +708,12 @@ export default function ThreadView({
           requestAnimationFrame(() => {
             const anchorAfter = document.querySelector(`[data-message-id="${anchorMessageId}"]`);
             
-            if (viewport && anchorAfter) {
+            if (container && anchorAfter) {
               const anchorOffsetAfter = anchorAfter.getBoundingClientRect().top;
-              const viewportTopAfter = viewport.getBoundingClientRect().top;
-              const currentRelativeOffset = anchorOffsetAfter - viewportTopAfter;
+              const containerTopAfter = container.getBoundingClientRect().top;
+              const currentRelativeOffset = anchorOffsetAfter - containerTopAfter;
               const scrollAdjustment = relativeOffset - currentRelativeOffset;
-              viewport.scrollTop += scrollAdjustment;
+              container.scrollTop += scrollAdjustment;
             }
             
             isRestoringScrollRef.current = false;
@@ -1257,15 +1269,12 @@ export default function ThreadView({
             </div>
           </div>
           
-          {/* Messages */}
-          <ScrollArea 
-            className="flex-1 bg-gray-50 dark:bg-gray-900/50"
-            viewportRef={viewportRef}
-            viewportProps={{
-              onScroll: handleViewportScroll,
-            }}
+          {/* Messages - Native scrollable div (Radix ScrollArea was incompatible with scroll preservation) */}
+          <div 
+            ref={containerRef}
+            className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/50"
           >
-            <div className="max-w-4xl mx-auto py-6">
+            <div className="max-w-4xl mx-auto py-6 px-4">
               {filteredMessages && filteredMessages.length > 0 ? (
                 <>
                   {/* Load More Button */}
@@ -1358,7 +1367,7 @@ export default function ThreadView({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
 
           {/* Jump to Latest Button - Shows when user has scrolled up (reading history) */}
           {!isAtBottom && filteredMessages.length > 0 && (
