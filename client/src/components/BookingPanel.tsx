@@ -71,7 +71,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
   // Only fetch when creating new appointment (no existing appointment, and editing)
   const { data: bookingDraft, isLoading: draftLoading, error: draftError } = useQuery<BookingDraft>({
     queryKey: ['bookingDraft', conversationId],
-    enabled: !!conversationId && !appointment && isEditing,
+    enabled: !!conversationId && !appointmentData?.appointment && isEditing,
     queryFn: async () => {
       try {
         const res = await fetch(`/api/conversations/${conversationId}/booking-draft`);
