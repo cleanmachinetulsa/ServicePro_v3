@@ -483,15 +483,15 @@ export default function ThreadView({
   // 4. "At bottom" = within 48px of the scroll container's bottom edge
   // ============================================================================
 
-  // Direct reference to the Radix ScrollArea viewport element
-  // Captured from scroll events for reliability
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  
   // Guard to ignore scroll events during pagination restoration
   const isRestoringScrollRef = useRef(false);
 
+  // Helper to get the Radix viewport element (the actual scrollable container)
+  const getViewport = (): HTMLDivElement | null => {
+    return scrollContainerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
+  };
+
   // Handle scroll events from ScrollArea viewport - updates isAtBottom state
-  // Note: viewportRef is now set via composed ref in ScrollArea during mount
   const handleViewportScroll = (e: React.UIEvent<HTMLDivElement>) => {
     // Skip updating isAtBottom during pagination scroll restoration
     if (isRestoringScrollRef.current) {
@@ -506,10 +506,9 @@ export default function ThreadView({
     setIsAtBottom(atBottom);
   };
 
-  // Scroll to bottom - uses viewport ref for direct manipulation
-  // CRITICAL: viewportRef is now set via composed ref in ScrollArea, so it's available on mount
+  // Scroll to bottom - queries the viewport directly
   const scrollToBottom = (smooth: boolean = true) => {
-    const viewport = viewportRef.current;
+    const viewport = getViewport();
     if (viewport) {
       viewport.scrollTo({
         top: viewport.scrollHeight,
@@ -531,12 +530,20 @@ export default function ThreadView({
     const currentCount = messages.length;
     const previousCount = previousMessageCountRef.current;
 
-    // On initial load, scroll to bottom immediately (no animation)
+    // On initial load, scroll to bottom after DOM is ready
     if (initialLoadRef.current && currentCount > 0) {
-      // Use setTimeout to ensure DOM is ready
-      setTimeout(() => scrollToBottom(false), 0);
       initialLoadRef.current = false;
       previousMessageCountRef.current = currentCount;
+      
+      // Wait for DOM to be fully ready with double RAF
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const viewport = getViewport();
+          if (viewport) {
+            viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'auto' });
+          }
+        });
+      });
       return;
     }
 
@@ -546,8 +553,12 @@ export default function ThreadView({
     // Only auto-scroll if:
     // 1. There are MORE messages than before (new messages arrived)
     // 2. AND the user was at the bottom
+    // 3. AND the viewport exists
     if (currentCount > previousCount && isAtBottom) {
-      scrollToBottom(true);
+      const viewport = getViewport();
+      if (viewport) {
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+      }
     }
     // If user has scrolled up (!isAtBottom), do NOT move scroll position
   }, [conversation?.messages, isAtBottom]);
@@ -653,7 +664,7 @@ export default function ThreadView({
   const handleLoadMore = async () => {
     if (!conversation?.messages || conversation.messages.length === 0 || isLoadingMore) return;
     
-    const viewport = viewportRef.current;
+    const viewport = getViewport();
     if (!viewport) return;
     
     // Find the ACTUAL first visible message at the top of the viewport
@@ -721,7 +732,7 @@ export default function ThreadView({
         // Double RAF ensures we're measuring after React has rendered
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            const liveViewport = viewportRef.current;
+            const liveViewport = getViewport();
             const anchorAfter = document.querySelector(`[data-message-id="${anchorMessageId}"]`);
             
             if (liveViewport && anchorAfter) {
@@ -731,7 +742,8 @@ export default function ThreadView({
               const currentRelativeOffset = anchorOffsetAfter - viewportTopAfter;
               
               // Adjust scroll to put the anchor back at its original relative position
-              const scrollAdjustment = currentRelativeOffset - relativeOffset;
+              // Subtract the delta to cancel out the prepended content shift
+              const scrollAdjustment = relativeOffset - currentRelativeOffset;
               liveViewport.scrollTop += scrollAdjustment;
             }
             
@@ -1292,7 +1304,6 @@ export default function ThreadView({
           {/* Messages */}
           <ScrollArea 
             ref={scrollContainerRef}
-            viewportRef={viewportRef}
             className="flex-1 bg-gray-50 dark:bg-gray-900/50"
             onViewportScroll={handleViewportScroll}
           >
