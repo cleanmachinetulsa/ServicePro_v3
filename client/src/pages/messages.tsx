@@ -176,6 +176,11 @@ function MessagesPageContent() {
   const selectedConv = conversations.find(c => c.id === selectedConversation);
   const { customerInfo, isLoading: isLoadingCustomer } = useCustomerSidebarData(selectedConversation);
 
+  const { data: phoneLinesData } = useQuery<{ success: boolean; lines: { id: number; label: string; phoneNumber: string; isActive: boolean }[] }>({
+    queryKey: ['/api/phone-settings/lines'],
+  });
+  const phoneLines = phoneLinesData?.lines || [];
+
   const conversationListNode = (
     <NightOpsConversationList
       conversations={sortedConversations}
@@ -186,6 +191,7 @@ function MessagesPageContent() {
       onSearchChange={setSearchQuery}
       filter={filter}
       onFilterChange={setFilter}
+      phoneLines={phoneLines}
     />
   );
 

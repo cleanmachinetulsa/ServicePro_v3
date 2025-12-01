@@ -1,0 +1,325 @@
+PROMPT FOR REPLIT AGENT (PHASE 13 – NIGHT OPS MESSAGING HUB UX REVAMP)
+
+You are editing my ServicePro v3 multi-tenant repo.
+
+We are now implementing PHASE 13 – Night Ops Messaging Hub UX Revamp.
+
+Goal:
+Upgrade the existing “Night Ops” / Conversations UI from the current 3-panel tower into a premium, iMessage-style Messaging Hub:
+
+Left: Conversation list (inbox)
+
+Middle: Active conversation with clean chat bubbles
+
+Right: Customer / job context panel
+
+Absolutely do not break existing SMS/voice routing, AI behavior, or tenant isolation. This phase is primarily frontend + light wiring on top of existing APIs.
+
+STEP 0 – READ EXISTING SPECS & CODE
+
+Open MASTER_PLAN_V3.md.
+
+Find the sections related to:
+
+Night Ops / Conversations
+
+Messaging UI
+
+Any “Night Ops v2 / Messages app feel” notes
+
+Open the current Night Ops UI:
+
+Page(s) likely under something like:
+
+client/src/pages/night-ops/*
+
+or client/src/pages/conversations/*
+
+or a route with “night-ops” / “messages” / “conversations`.
+
+Also open:
+
+Any shared chat components (message list, composer, etc.)
+
+Any hooks used to load conversations/messages (React Query hooks, etc.).
+
+Do not change:
+
+Backend API contracts (unless there’s a clear, small bug fix).
+
+Twilio/SMS/voice logic.
+
+Conversation DB schema.
+
+We are doing a UI/UX refactor + light wiring only.
+
+STEP 1 – NEW LAYOUT: 3-PANE MESSAGING HUB
+
+Create / update a top-level Night Ops page component (for example):
+
+client/src/pages/night-ops/index.tsx
+or whatever the existing route is. Reuse the existing route, don’t create a brand-new top-level route unless required.
+
+Layout requirements:
+
+Use existing design system:
+
+Tailwind + shadcn/ui where appropriate.
+
+Keep the dark theme “ops” look, but make it clean and modern.
+
+Layout structure (desktop widths ≥ 1024px):
+
+Left column (~26–28% width): Inbox
+
+Middle column (~42–48% width): Active Conversation
+
+Right column (~26–28% width): Context Panel
+
+Use CSS grid or flex with responsive breakpoints.
+
+Responsiveness:
+
+Tablet / small screens: allow collapsing the right panel into a slide-over or tab.
+
+Mobile: it’s acceptable to use a 2-step view:
+
+View 1: list of conversations
+
+View 2: active conversation (+ a button/icon to open context).
+
+Don’t rewrite the entire app shell – only refactor the Night Ops view.
+
+STEP 2 – INBOX (LEFT COLUMN)
+
+Inbox behavior:
+
+Use the existing conversations query:
+
+Whatever hook or API is currently used (e.g. /api/conversations?status=...).
+
+Don’t change the API, just use it cleanly.
+
+Inbox items should display:
+
+Customer name (or phone if name missing)
+
+Latest message preview
+
+Timestamp of last message
+
+Status pill or small badge (e.g. “Open”, “Waiting”, “Resolved” if available)
+
+Small indicator for:
+
+Channel (SMS vs web chat vs voice note, if available)
+
+Phone line used (e.g. “Main line”, “VIP line”) if that info is available in the conversation object.
+
+Add basic filters/toggles at the top:
+
+Simple tab or segmented control:
+
+All
+
+Unread / Needs attention
+
+Open / Active
+
+Use existing status fields in the conversation model; do not invent new ones.
+
+UX polish:
+
+Highlight currently selected conversation.
+
+Show a skeleton / shimmer state while loading.
+
+Show an empty-state message when there are no conversations.
+
+STEP 3 – ACTIVE CONVERSATION (MIDDLE COLUMN)
+
+Use the existing messages data + send message APIs.
+
+Message list:
+
+Display bubbles similar to iMessage/modern chat:
+
+Right-aligned bubbles for “me” (Clean Machine / tenant side).
+
+Left-aligned bubbles for the customer.
+
+Include:
+
+Timestamp (small, subtle)
+
+Optional “Delivered” / “Sent by AI” indicators if info is available.
+
+Preserve existing data like AI vs human messages if that is already present.
+
+Composer:
+
+Reuse the current input + send logic.
+
+Ensure the send button:
+
+Uses the same Twilio/SMS pipeline as before (no new endpoints).
+
+Keep any existing AI-assist button if present; if not, add a clearly labeled:
+
+“Ask AI to draft reply” button that calls the existing AI SMS reply endpoint (if it exists); otherwise leave a TODO comment and a small disabled button.
+
+Behavior:
+
+Auto-scroll to bottom on new messages.
+
+When user selects a conversation in the inbox:
+
+The middle panel loads that conversation’s messages.
+
+Display small banner if the conversation is on a different line than the current phone selection (if that concept exists in your state).
+
+STEP 4 – CONTEXT PANEL (RIGHT COLUMN)
+
+Right panel shows structured context for the selected conversation.
+
+Use existing APIs / hooks where possible; don’t invent major new backends.
+
+Suggested structure:
+
+Tabs or sections (can be simple stacked sections):
+
+Customer:
+
+Name
+
+Phone
+
+Email (if known)
+
+City/Area (if known)
+
+Total lifetime jobs / revenue (if easily available)
+
+Vehicles / Jobs:
+
+Most recent vehicle for this conversation
+
+Most recent or upcoming booking (date, service, status)
+
+Notes:
+
+Existing notes from DB (read-only is fine v1)
+
+If there’s a safe “add note” API, add a small textarea + Save button.
+
+AI Insight (optional if endpoint exists):
+
+If we already have any summary / sentiment / tags from the AI, surface them.
+
+Data sources:
+
+Reuse existing “tenant context”, “agent context”, or “tenant readiness” helper endpoints if any already return this info.
+
+Otherwise, re-use existing customer/appointment endpoints (e.g. /api/customers/:id, /api/appointments?conversationId=...).
+
+Performance:
+
+Use React Query for fetching; cache where appropriate.
+
+Don’t spam the server; only refetch when conversation changes.
+
+STEP 5 – WIRING & STATE MANAGEMENT
+
+Use a single source of truth for “selected conversation”:
+
+Either local state in the Night Ops page
+
+Or a small Zustand/Redux store if one already exists (do not add a new global store if there’s already a pattern).
+
+Ensure:
+
+URL reflects the selected conversation where appropriate (e.g. /night-ops/:conversationId).
+
+If there is already routing like this, keep it; don’t break deep links.
+
+Keyboard polish (if quick to implement):
+
+Up/down arrow to move between conversations when inbox focused.
+
+Esc to deselect or collapse context on small screens.
+
+STEP 6 – TESTS & SAFETY CHECKS
+
+Keep tests light but real. Do not auto-generate huge suites.
+
+If the repo uses Vitest/React Testing Library:
+
+Add/update a small test file, e.g.:
+
+client/src/pages/night-ops/NightOpsPage.test.tsx
+
+Cover:
+
+Renders three columns.
+
+Selecting a conversation in the inbox shows it in the middle panel.
+
+When no conversation is selected, show a friendly placeholder in the center and right panels.
+
+Add data-testid attributes where helpful:
+
+data-testid="night-ops-inbox"
+
+data-testid="night-ops-active-conversation"
+
+data-testid="night-ops-context-panel"
+
+STEP 7 – DO NOT BREAK / DO NOT TOUCH LIST
+
+Please DO NOT:
+
+Change environment variables or add secrets.
+
+Modify Twilio SMS/voice routing logic, or any DB migration files.
+
+Edit ai_support_export/*.md or any long design/notes markdown files.
+
+Remove existing health checks, schedulers, or monitors.
+
+Reformat unrelated files or rename existing routes without a clear reason.
+
+If you must change a backend endpoint, keep it:
+
+Backwards compatible (same path + fields).
+
+Documented in a short comment in the relevant file.
+
+STEP 8 – MANUAL QA CHECKLIST (FOR ME)
+
+After you’re done, please:
+
+Tell me which route to open in the preview (e.g. /night-ops or /admin/night-ops).
+
+Confirm:
+
+✅ Inbox shows my real conversations from the DB.
+
+✅ Clicking a conversation loads messages in the center panel.
+
+✅ The right panel shows customer + job context for that conversation (or a nice empty state).
+
+Provide 3–5 bullet “How to test it” instructions:
+
+Including sending an SMS from Night Ops and seeing it appear.
+
+Call out any known limitations left for a future polish phase (e.g., no “typing…” indicator yet, notes read-only, etc.).
+
+When you’re finished, summarize:
+
+Files created/changed (paths).
+
+Any new components/hooks.
+
+Any tests added/updated.
+
+How to access the new Night Ops Messaging Hub in the UI.
