@@ -1,0 +1,76 @@
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
+// ... other imports (if any)
+
+const ThreadView: React.FC<ThreadViewProps> = ({ messages, ...props }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);      // whether we should auto-scroll on new messages
+  const lastScrollTopRef = useRef(0);         // tracks last scrollTop to detect scroll direction
+
+  // On mount, attach a scroll event handler to track user's scroll position
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    lastScrollTopRef.current = container.scrollTop;  // initialize last scroll position
+
+    const onScroll = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const currentTop = el.scrollTop;
+      const maxScrollTop = el.scrollHeight - el.clientHeight;
+
+      const scrolledUp = currentTop < lastScrollTopRef.current;
+      const scrolledDown = currentTop > lastScrollTopRef.current;
+      lastScrollTopRef.current = currentTop;  // update for next event
+
+      if (scrolledUp) {
+        // User is scrolling up (away from bottom) – disable stick-to-bottom
+        if (stickToBottomRef.current) {
+          // If an auto-scroll is in progress, cancel it by jumping to current position
+          el.scrollTo({ top: currentTop, behavior: 'auto' }); 
+        }
+        stickToBottomRef.current = false;
+      } else if (scrolledDown) {
+        // User scrolled down; if they reached bottom, re-enable stick-to-bottom
+        if (currentTop >= maxScrollTop - 2) {
+          // within 2px of bottom
+          stickToBottomRef.current = true;
+        }
+      }
+      // (If neither scrolledUp nor scrolledDown, the scroll event was triggered programmatically)
+    };
+
+    container.addEventListener('scroll', onScroll);
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+    };
+  }, []);
+
+  // On messages update, auto-scroll if stickToBottom is true
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (stickToBottomRef.current) {
+      // Smooth scroll to bottom for new message
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+    // If stickToBottom is false, do nothing (preserve user's scroll position)
+  }, [messages]);
+
+  // (Optional but recommended) On initial mount or first load of messages, jump to bottom immediately
+  // so the user starts at the latest message.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;  // jump to bottom without animation on first render
+    }
+  }, []); 
+
+  return (
+    <div ref={containerRef} className="thread-view-container" {...props}>
+      {/* Render chat messages here */}
+      {messages.map(msg => (
+        <MessageBubble key={msg.id} data={msg} />
+      ))}
+    </div>
+  );
+};
