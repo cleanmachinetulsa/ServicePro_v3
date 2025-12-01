@@ -5,13 +5,22 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Calendar, ChevronDown, ChevronUp, Clock, MapPin, Save, Trash2, Wrench } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronUp, Clock, MapPin, Save, Trash2, Wrench, Plus, X, Car } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { BookingDraft } from '@shared/bookingDraft';
 import AddressAutocomplete from './AddressAutocomplete';
+
+export interface VehicleData {
+  id: string;
+  year: string;
+  make: string;
+  model: string;
+}
 
 interface Service {
   id: number;
@@ -93,26 +102,88 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
   const conversation = conversationData?.data;
   const services = servicesData?.services || [];
 
-  // Form state
+  // Form state - supports multiple services and vehicles
   const [formData, setFormData] = useState({
-    serviceId: 0,
+    serviceIds: [] as number[],
     scheduledTime: '',
     address: '',
     addressLat: null as number | null,
     addressLng: null as number | null,
     additionalRequests: '',
+    vehicles: [] as VehicleData[],
   });
+  
+  // State for service multi-select popover
+  const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
+  
+  // Toggle service selection
+  const toggleService = (serviceId: number) => {
+    setFormData(prev => ({
+      ...prev,
+      serviceIds: prev.serviceIds.includes(serviceId)
+        ? prev.serviceIds.filter(id => id !== serviceId)
+        : [...prev.serviceIds, serviceId]
+    }));
+  };
+  
+  // Add new vehicle
+  const addVehicle = () => {
+    setFormData(prev => ({
+      ...prev,
+      vehicles: [...prev.vehicles, { id: crypto.randomUUID(), year: '', make: '', model: '' }]
+    }));
+  };
+  
+  // Remove vehicle
+  const removeVehicle = (vehicleId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      vehicles: prev.vehicles.filter(v => v.id !== vehicleId)
+    }));
+  };
+  
+  // Update vehicle field
+  const updateVehicle = (vehicleId: string, field: keyof VehicleData, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      vehicles: prev.vehicles.map(v => 
+        v.id === vehicleId ? { ...v, [field]: value } : v
+      )
+    }));
+  };
+  
+  // Get selected services display text
+  const getSelectedServicesText = () => {
+    if (formData.serviceIds.length === 0) return 'Select services...';
+    const selectedServices = services.filter(s => formData.serviceIds.includes(s.id));
+    if (selectedServices.length === 1) return selectedServices[0].name;
+    return `${selectedServices.length} services selected`;
+  };
 
   // Update form when appointment loads
   useEffect(() => {
     if (appointment) {
+      // Support both legacy single serviceId and new serviceIds array
+      const existingServiceIds = (appointment as any).serviceIds?.length > 0 
+        ? (appointment as any).serviceIds 
+        : appointment.serviceId ? [appointment.serviceId] : [];
+      
+      // Parse vehicles from appointment if available
+      const existingVehicles = (appointment as any).vehicles || [];
+      
       setFormData({
-        serviceId: appointment.serviceId,
+        serviceIds: existingServiceIds,
         scheduledTime: appointment.scheduledTime,
         address: appointment.address,
         addressLat: appointment.addressLat ? Number(appointment.addressLat) : null,
         addressLng: appointment.addressLng ? Number(appointment.addressLng) : null,
         additionalRequests: appointment.additionalRequests?.join(', ') || '',
+        vehicles: existingVehicles.map((v: any) => ({
+          id: v.id || crypto.randomUUID(),
+          year: v.year || '',
+          make: v.make || '',
+          model: v.model || ''
+        })),
       });
     }
   }, [appointment]);
@@ -121,31 +192,25 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
   useEffect(() => {
     if (!appointment && bookingDraft && isEditing) {
       // Find matching service by name or use draft serviceId
-      let serviceId = bookingDraft.serviceId || 0;
-      if (!serviceId && bookingDraft.serviceName && services.length > 0) {
+      let draftServiceIds: number[] = [];
+      if (bookingDraft.serviceId) {
+        draftServiceIds = [bookingDraft.serviceId];
+      } else if (bookingDraft.serviceName && services.length > 0) {
         const matchingService = services.find(
           s => s.name.toLowerCase() === bookingDraft.serviceName?.toLowerCase()
         );
-        serviceId = matchingService?.id || 0;
+        if (matchingService) draftServiceIds = [matchingService.id];
       }
 
       // Build scheduledTime from normalized date + time
       let scheduledTime = '';
       if (bookingDraft.preferredDate) {
-        // If we have a normalized start time, combine date + time
-        // Otherwise, default to 9:00 AM
         const time = bookingDraft.normalizedStartTime || '09:00';
         scheduledTime = new Date(`${bookingDraft.preferredDate}T${time}`).toISOString();
       }
 
-      // Build additional requests with vehicle info, time preference, and AI-suggested notes
-      // Use comma-separated format to match the save handler's split logic
-      let additionalRequests = '';
+      // Build additional requests with time preference and AI-suggested notes
       const requestParts: string[] = [];
-      
-      if (bookingDraft.vehicleSummary) {
-        requestParts.push(`Vehicle: ${bookingDraft.vehicleSummary}`);
-      }
       
       // Add time preference hint if available
       if (bookingDraft.rawTimePreference) {
@@ -157,15 +222,32 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
         requestParts.push(bookingDraft.aiSuggestedNotes);
       }
       
-      additionalRequests = requestParts.join(', ');
+      const additionalRequests = requestParts.join(', ');
+      
+      // Parse vehicle info from draft if available
+      let draftVehicles: VehicleData[] = [];
+      if (bookingDraft.vehicleSummary) {
+        // Try to parse vehicle summary into structured data
+        // Format often like "2020 Honda Accord"
+        const parts = bookingDraft.vehicleSummary.split(' ');
+        if (parts.length >= 3) {
+          draftVehicles = [{
+            id: crypto.randomUUID(),
+            year: parts[0] || '',
+            make: parts[1] || '',
+            model: parts.slice(2).join(' ') || ''
+          }];
+        }
+      }
 
       setFormData(prev => ({
-        serviceId: prev.serviceId || serviceId,
+        serviceIds: prev.serviceIds.length > 0 ? prev.serviceIds : draftServiceIds,
         scheduledTime: prev.scheduledTime || scheduledTime,
         address: prev.address || bookingDraft.formattedAddress || bookingDraft.address || '',
         addressLat: prev.addressLat || bookingDraft.addressLat || null,
         addressLng: prev.addressLng || bookingDraft.addressLng || null,
         additionalRequests: prev.additionalRequests || additionalRequests,
+        vehicles: prev.vehicles.length > 0 ? prev.vehicles : draftVehicles,
       }));
     }
   }, [bookingDraft, isEditing, appointment, services]);
@@ -234,11 +316,11 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       return;
     }
 
-    // Validate form fields
-    if (!formData.serviceId || formData.serviceId === 0) {
+    // Validate form fields - require at least one service
+    if (!formData.serviceIds || formData.serviceIds.length === 0) {
       toast({
         title: 'Service required',
-        description: 'Please select a service',
+        description: 'Please select at least one service',
         variant: 'destructive',
       });
       return;
@@ -270,15 +352,22 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     // Determine if manual approval is required (outside service area with override)
     const requiresManualApproval = bookingDraft?.inServiceArea === false && override;
     
+    // Prepare vehicles data (remove temp IDs)
+    const vehiclesData = formData.vehicles
+      .filter(v => v.year || v.make || v.model) // Only include vehicles with some data
+      .map(({ year, make, model }) => ({ year, make, model }));
+    
     saveAppointmentMutation.mutate({
       customerId: customerId,
-      serviceId: formData.serviceId,
+      serviceId: formData.serviceIds[0], // Primary service for backward compatibility
+      serviceIds: formData.serviceIds,   // All selected services
       scheduledTime: formData.scheduledTime,
       address: formData.address,
       addressLat: formData.addressLat,
       addressLng: formData.addressLng,
       additionalRequests: additionalRequestsArray,
       addOns: appointment?.addOns || null,
+      vehicles: vehiclesData,
       requiresManualApproval,
     });
   };
@@ -310,12 +399,13 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                 setIsOpen(true); // Open the panel when creating
                 // Initialize form with empty values
                 setFormData({
-                  serviceId: services[0]?.id || 0,
+                  serviceIds: [],
                   scheduledTime: '',
                   address: '',
                   addressLat: null,
                   addressLng: null,
                   additionalRequests: '',
+                  vehicles: [{ id: crypto.randomUUID(), year: '', make: '', model: '' }], // Start with one empty vehicle
                 });
               }}
               className="w-full"
@@ -348,23 +438,133 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
           <CardContent className="px-4 pb-4 pt-4 space-y-4">
             {/* Create Mode - Same form as edit mode */}
             <div className="space-y-3">
+              {/* Multi-Select Services with Checkboxes */}
               <div>
-                <Label htmlFor="service-create" className="text-xs">Service</Label>
-                <Select
-                  value={formData.serviceId.toString()}
-                  onValueChange={(value) => setFormData({ ...formData, serviceId: parseInt(value) })}
-                >
-                  <SelectTrigger id="service-create" className="mt-1" data-testid="select-service">
-                    <SelectValue placeholder="Select a service" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {services.map((service) => (
-                      <SelectItem key={service.id} value={service.id.toString()}>
-                        {service.name} ({service.priceRange})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs">Services</Label>
+                <Popover open={servicePopoverOpen} onOpenChange={setServicePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between mt-1 font-normal"
+                      data-testid="select-services-trigger"
+                    >
+                      <span className="truncate">{getSelectedServicesText()}</span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0 bg-popover border shadow-lg" align="start">
+                    <ScrollArea className="h-[200px]">
+                      <div className="p-2 space-y-1">
+                        {services.map((service) => (
+                          <div
+                            key={service.id}
+                            className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                            onClick={() => toggleService(service.id)}
+                            data-testid={`service-option-${service.id}`}
+                          >
+                            <Checkbox
+                              id={`service-${service.id}`}
+                              checked={formData.serviceIds.includes(service.id)}
+                              onCheckedChange={() => toggleService(service.id)}
+                            />
+                            <label
+                              htmlFor={`service-${service.id}`}
+                              className="text-sm flex-1 cursor-pointer"
+                            >
+                              {service.name}
+                              <span className="text-muted-foreground ml-1">({service.priceRange})</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+                {/* Selected services as chips */}
+                {formData.serviceIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {formData.serviceIds.map(id => {
+                      const service = services.find(s => s.id === id);
+                      return service ? (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs"
+                        >
+                          {service.name}
+                          <button
+                            type="button"
+                            onClick={() => toggleService(id)}
+                            className="hover:bg-primary/20 rounded-full p-0.5"
+                            data-testid={`remove-service-${id}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Vehicle Data Collection */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Vehicle(s)</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={addVehicle}
+                    className="h-6 text-xs"
+                    data-testid="button-add-vehicle"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Vehicle
+                  </Button>
+                </div>
+                <div className="space-y-2 mt-1">
+                  {formData.vehicles.map((vehicle, index) => (
+                    <div key={vehicle.id} className="flex gap-2 items-start p-2 border rounded-md bg-muted/30">
+                      <Car className="h-4 w-4 mt-2 text-muted-foreground shrink-0" />
+                      <div className="flex-1 grid grid-cols-3 gap-2">
+                        <Input
+                          placeholder="Year"
+                          value={vehicle.year}
+                          onChange={(e) => updateVehicle(vehicle.id, 'year', e.target.value)}
+                          className="h-8 text-sm"
+                          data-testid={`input-vehicle-year-${index}`}
+                        />
+                        <Input
+                          placeholder="Make"
+                          value={vehicle.make}
+                          onChange={(e) => updateVehicle(vehicle.id, 'make', e.target.value)}
+                          className="h-8 text-sm"
+                          data-testid={`input-vehicle-make-${index}`}
+                        />
+                        <Input
+                          placeholder="Model"
+                          value={vehicle.model}
+                          onChange={(e) => updateVehicle(vehicle.id, 'model', e.target.value)}
+                          className="h-8 text-sm"
+                          data-testid={`input-vehicle-model-${index}`}
+                        />
+                      </div>
+                      {formData.vehicles.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeVehicle(vehicle.id)}
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          data-testid={`button-remove-vehicle-${index}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -512,23 +712,145 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                 <>
                   {/* Edit Mode */}
                   <div className="space-y-3">
+                    {/* Multi-Select Services with Checkboxes */}
                     <div>
-                      <Label htmlFor="service" className="text-xs">Service</Label>
-                      <Select
-                        value={formData.serviceId.toString()}
-                        onValueChange={(value) => setFormData({ ...formData, serviceId: parseInt(value) })}
-                      >
-                        <SelectTrigger id="service" className="mt-1" data-testid="select-service">
-                          <SelectValue placeholder="Select a service" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {services.map((service) => (
-                            <SelectItem key={service.id} value={service.id.toString()}>
-                              {service.name} ({service.priceRange})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label className="text-xs">Services</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between mt-1 font-normal"
+                            data-testid="select-services-trigger-edit"
+                          >
+                            <span className="truncate">{getSelectedServicesText()}</span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0 bg-popover border shadow-lg" align="start">
+                          <ScrollArea className="h-[200px]">
+                            <div className="p-2 space-y-1">
+                              {services.map((service) => (
+                                <div
+                                  key={service.id}
+                                  className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                                  onClick={() => toggleService(service.id)}
+                                  data-testid={`service-option-edit-${service.id}`}
+                                >
+                                  <Checkbox
+                                    id={`service-edit-${service.id}`}
+                                    checked={formData.serviceIds.includes(service.id)}
+                                    onCheckedChange={() => toggleService(service.id)}
+                                  />
+                                  <label
+                                    htmlFor={`service-edit-${service.id}`}
+                                    className="text-sm flex-1 cursor-pointer"
+                                  >
+                                    {service.name}
+                                    <span className="text-muted-foreground ml-1">({service.priceRange})</span>
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </PopoverContent>
+                      </Popover>
+                      {/* Selected services as chips */}
+                      {formData.serviceIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {formData.serviceIds.map(id => {
+                            const service = services.find(s => s.id === id);
+                            return service ? (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs"
+                              >
+                                {service.name}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleService(id)}
+                                  className="hover:bg-primary/20 rounded-full p-0.5"
+                                  data-testid={`remove-service-edit-${id}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Vehicle Data Collection */}
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Vehicle(s)</Label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={addVehicle}
+                          className="h-6 text-xs"
+                          data-testid="button-add-vehicle-edit"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Vehicle
+                        </Button>
+                      </div>
+                      <div className="space-y-2 mt-1">
+                        {formData.vehicles.map((vehicle, index) => (
+                          <div key={vehicle.id} className="flex gap-2 items-start p-2 border rounded-md bg-muted/30">
+                            <Car className="h-4 w-4 mt-2 text-muted-foreground shrink-0" />
+                            <div className="flex-1 grid grid-cols-3 gap-2">
+                              <Input
+                                placeholder="Year"
+                                value={vehicle.year}
+                                onChange={(e) => updateVehicle(vehicle.id, 'year', e.target.value)}
+                                className="h-8 text-sm"
+                                data-testid={`input-vehicle-year-edit-${index}`}
+                              />
+                              <Input
+                                placeholder="Make"
+                                value={vehicle.make}
+                                onChange={(e) => updateVehicle(vehicle.id, 'make', e.target.value)}
+                                className="h-8 text-sm"
+                                data-testid={`input-vehicle-make-edit-${index}`}
+                              />
+                              <Input
+                                placeholder="Model"
+                                value={vehicle.model}
+                                onChange={(e) => updateVehicle(vehicle.id, 'model', e.target.value)}
+                                className="h-8 text-sm"
+                                data-testid={`input-vehicle-model-edit-${index}`}
+                              />
+                            </div>
+                            {formData.vehicles.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeVehicle(vehicle.id)}
+                                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                data-testid={`button-remove-vehicle-edit-${index}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        {formData.vehicles.length === 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addVehicle}
+                            className="w-full"
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Vehicle
+                          </Button>
+                        )}
+                      </div>
                     </div>
 
                     <div>
@@ -649,28 +971,61 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                 <>
                   {/* View Mode */}
                   <div className="space-y-2 text-sm">
+                    {/* Services - show multiple if available */}
                     <div className="flex items-start gap-2">
                       <Wrench className="h-4 w-4 text-muted-foreground mt-0.5" />
                       <div>
-                        <p className="font-medium">{appointment.service?.name}</p>
-                        <p className="text-xs text-muted-foreground">{appointment.service?.priceRange}</p>
+                        {formData.serviceIds.length > 0 ? (
+                          <div className="space-y-1">
+                            {formData.serviceIds.map(id => {
+                              const service = services.find(s => s.id === id);
+                              return service ? (
+                                <div key={id}>
+                                  <p className="font-medium">{service.name}</p>
+                                  <p className="text-xs text-muted-foreground">{service.priceRange}</p>
+                                </div>
+                              ) : null;
+                            })}
+                          </div>
+                        ) : appointment?.service ? (
+                          <>
+                            <p className="font-medium">{appointment.service.name}</p>
+                            <p className="text-xs text-muted-foreground">{appointment.service.priceRange}</p>
+                          </>
+                        ) : (
+                          <p className="text-muted-foreground">No service selected</p>
+                        )}
                       </div>
                     </div>
+
+                    {/* Vehicles */}
+                    {formData.vehicles.length > 0 && formData.vehicles.some(v => v.year || v.make || v.model) && (
+                      <div className="flex items-start gap-2">
+                        <Car className="h-4 w-4 text-muted-foreground mt-0.5" />
+                        <div className="space-y-1">
+                          {formData.vehicles.filter(v => v.year || v.make || v.model).map((vehicle, idx) => (
+                            <p key={vehicle.id || idx} className="font-medium">
+                              {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ')}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex items-start gap-2">
                       <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
                       <div>
-                        <p>{format(new Date(appointment.scheduledTime), 'EEEE, MMMM d, yyyy')}</p>
-                        <p className="text-xs text-muted-foreground">{format(new Date(appointment.scheduledTime), 'h:mm a')}</p>
+                        <p>{appointment ? format(new Date(appointment.scheduledTime), 'EEEE, MMMM d, yyyy') : 'Not scheduled'}</p>
+                        <p className="text-xs text-muted-foreground">{appointment ? format(new Date(appointment.scheduledTime), 'h:mm a') : ''}</p>
                       </div>
                     </div>
 
                     <div className="flex items-start gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                      <p>{appointment.address}</p>
+                      <p>{appointment?.address || 'No address'}</p>
                     </div>
 
-                    {appointment.additionalRequests && appointment.additionalRequests.length > 0 && (
+                    {appointment?.additionalRequests && appointment.additionalRequests.length > 0 && (
                       <div className="pt-2 border-t">
                         <p className="text-xs font-medium text-muted-foreground mb-1">Additional Requests:</p>
                         <ul className="text-xs space-y-1">
