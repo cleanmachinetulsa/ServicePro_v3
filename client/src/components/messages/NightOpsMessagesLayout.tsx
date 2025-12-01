@@ -141,7 +141,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
             )}
           </div>
 
-          <div className="nightops-scroll flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-hidden min-h-0">
             {threadView}
           </div>
         </motion.section>
@@ -260,7 +260,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
                   </SheetContent>
                 </Sheet>
               </div>
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0">
                 {threadView}
               </div>
             </motion.div>
