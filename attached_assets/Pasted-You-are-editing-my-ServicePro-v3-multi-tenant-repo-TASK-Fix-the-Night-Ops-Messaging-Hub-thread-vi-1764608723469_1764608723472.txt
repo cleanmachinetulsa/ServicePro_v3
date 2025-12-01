@@ -1,0 +1,189 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Fix the Night Ops Messaging Hub thread view UX:
+1) Stop aggressively auto-scrolling to the bottom so I can read old messages.
+2) Make the AI tools / suggestion deck accessible near the bottom of the thread instead of buried at the very top.
+3) Add a small header inside the thread view showing key customer info (name + phone at minimum) so I’m not “blind” when reading a conversation.
+
+IMPORTANT CONSTRAINTS
+- Do NOT change any multi-tenant DB logic.
+- Do NOT add heavy new test suites or npm dependencies.
+- Keep styling consistent with the existing dark “Night Ops v2” theme and design system.
+- Keep mobile responsiveness intact.
+
+========================================
+STEP 1 – FIND THE NIGHT OPS THREAD VIEW
+========================================
+
+1. Use ripgrep to locate the Night Ops / Messaging Hub components:
+   - Search for “Night Ops”, “Messaging Hub v2”, “Conversations & Dispatch”, and “Create Appointment” in the client code.
+   - Likely files include something like:
+     - client/src/pages/messages/*
+     - client/src/components/messages/*
+     - client/src/features/messages/*
+   - Identify the main components:
+     - Conversation list
+     - Thread view (where the chat bubbles show)
+     - Context / sidebar panel
+     - Any “tools” or “AI suggestions” panel that renders inside the thread.
+
+2. Once you find the thread view component (the one that renders the actual list of messages and the message input):
+   - Note the scroll container element (the div that should scroll).
+   - Note any calls to functions like scrollToBottom, scrollToLatestMessage, etc.
+   - Note where the AI tools/suggestions deck is rendered relative to the message list.
+
+========================================
+STEP 2 – FIX SCROLLING BEHAVIOR
+========================================
+
+Goal: 
+- On initial open, it’s fine to scroll to the bottom.
+- But once I scroll up to read older messages, DO NOT yank me back to the bottom every time the thread re-renders.
+- New messages should only auto-scroll if I’m already at (or near) the bottom.
+
+Implement the following pattern in the thread view:
+
+1. In the thread view component:
+   - Wrap the message list in a dedicated scroll container, e.g.:
+
+     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto ...">
+       {messages.map(...)}
+     </div>
+
+   - Make sure this container, not a parent, owns the vertical scroll (no overflow-hidden up the tree that prevents scrolling).
+
+2. Track whether the user is at the bottom:
+   - Add a piece of state like `const [isAtBottom, setIsAtBottom] = useState(true);`
+   - Add a scroll handler on the container that:
+     - Checks the scroll position:
+       - e.g. `const isNearBottom = scrollTop + clientHeight >= scrollHeight - 40;`
+     - Updates `setIsAtBottom(isNearBottom);`
+
+3. Adjust any existing “scroll to bottom” logic:
+   - If you find a useEffect that calls scrollToBottom on every render or whenever messages change, update it so that:
+     - On initial mount: still scroll to bottom once.
+     - On message changes: ONLY scroll to bottom if `isAtBottom` is true (meaning the user was at the bottom before the new message arrived).
+   - Make sure the effect does NOT run on every re-render in a way that disregards isAtBottom.
+
+4. Add a “Scroll to latest” affordance (optional but nice):
+   - If `!isAtBottom`, show a small floating button near the bottom-right of the thread area:
+     - Example: “Jump to latest”.
+     - On click, call scrollToBottom() and set `isAtBottom(true)`.
+   - This should be visually subtle but easy to see.
+
+5. Verify:
+   - Open a long conversation in /messages.
+   - Manually scroll up.
+   - Confirm that:
+     - The thread does NOT auto-snap back to the bottom when you stop scrolling.
+     - Sending a message doesn’t yank you down unless you were already at the bottom.
+   - On mobile (DevTools iPhone emulation), confirm you can scroll and it behaves correctly.
+
+========================================
+STEP 3 – MOVE / DUPLICATE THE AI TOOLS DECK
+========================================
+
+Goal:
+- Right now, the AI tools / suggestions panel is only accessible at the *very top* of the thread, which is painful when there are years of history.
+- We want those tools accessible near the bottom of the conversation, where the operator actually works.
+
+1. Locate the component for the AI tools / suggestions deck in Night Ops:
+   - Search for things like:
+     - “AI Suggestions”, “Suggestions”, “Tools”, “Night Ops tower deck”, etc.
+   - This may be a component used in the thread view or in a sidebar.
+
+2. Once found, adjust how/where it’s rendered:
+   - It should be reachable near the current message composer area, not only above the first message in the thread.
+   - You can choose one of these approaches (pick the cleanest, based on the existing structure):
+
+   Option A – Pin it just above the message input:
+   - Render the tools deck in a section that sits above the message composer at the bottom of the thread column.
+   - e.g.:
+
+     <div className="flex flex-col h-full">
+       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto ...">
+         {/* messages */}
+       </div>
+       <ToolsDeck ... />   // AI suggestions, etc.
+       <MessageComposer ... />
+     </div>
+
+   Option B – Make it a collapsible panel near the bottom:
+   - Render a small “AI Tools” toggle bar just above the message input.
+   - When the user clicks, slide the tools deck up from the bottom.
+
+3. Make sure the deck:
+   - Still has access to the selected conversation and last message.
+   - Works on both desktop and mobile layouts.
+   - Does NOT break the layout or overflow the screen on smaller devices (use max-height with internal scroll if needed).
+
+========================================
+STEP 4 – ADD CUSTOMER INFO HEADER IN THREAD VIEW
+========================================
+
+Goal:
+- When I’m looking at a thread, I should see at least:
+  - Customer name
+  - Phone number
+  - Potentially a tag like “New lead / Repeat / VIP” if that’s easy.
+- This header should stay visible at the top of the thread view, even while scrolling messages.
+
+Implementation:
+
+1. In the thread view component:
+   - Identify how the selected conversation and customer data are passed in.
+     - e.g. selectedConversation, customer, participant, etc.
+   - Add a header above the scroll container, something like:
+
+     <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-background/80 backdrop-blur-sm">
+       <div className="flex flex-col">
+         <span className="text-sm font-medium">{customerName || 'Unknown Contact'}</span>
+         <span className="text-xs text-muted-foreground">
+           {formattedPhoneNumber}
+         </span>
+       </div>
+       {/* optional: quick actions like Call, View Client, Open in CRM */}
+     </div>
+
+   - Keep it visually lightweight and consistent with the existing Night Ops styling.
+
+2. For mobile:
+   - Ensure the header is still visible and doesn’t take too much vertical space.
+   - The scrollable messages area should start immediately under this header.
+
+3. If customer data isn’t directly available in this component:
+   - Either:
+     - Plumb the necessary fields down through props, OR
+     - Use the same hook / selector the context panel uses to get the customer info.
+   - DO NOT fetch anything directly from the server in this component; use existing query state.
+
+========================================
+STEP 5 – QUICK RESPONSIVENESS CHECK
+========================================
+
+Run a light pass (no new automated tests, just manual QA):
+
+1. On desktop (normal width):
+   - Open /messages.
+   - Select a conversation.
+   - Confirm:
+     - Thread header shows name + number.
+     - Messages scroll correctly.
+     - AI tools deck is usable near the bottom of the thread.
+     - Message composer and scroll behave normally.
+
+2. On narrower screens (DevTools iPhone emulation):
+   - Confirm:
+     - You can still scroll the thread.
+     - Header and tools deck don’t cover the entire view.
+     - Input is usable when the on-screen keyboard appears.
+
+3. Summarize in your reply:
+   - Which files you changed.
+   - How you implemented:
+     - The new scroll behavior,
+     - The tools deck repositioning,
+     - The customer info header.
+   - Any limitations or TODOs you left in comments.
+
+Do NOT add new backend routes or migrations for this task.
