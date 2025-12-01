@@ -1348,14 +1348,15 @@ export default function ThreadView({
             </div>
           </div>
           
-          {/* Messages - Native scrollable div with MutationObserver for hydration detection */}
+          {/* Messages - Relative wrapper for scroll container + floating Jump button */}
           <div className="relative flex-1 min-h-0">
             <div 
               ref={containerRef}
               onScroll={handleScroll}
-              className="absolute inset-0 overflow-y-auto bg-gray-50 dark:bg-gray-900/50"
+              className="absolute inset-0 overflow-y-auto min-h-0 bg-gray-50 dark:bg-gray-900/50"
+              style={{ WebkitOverflowScrolling: 'touch' }}
             >
-            <div ref={contentRef} className="max-w-4xl mx-auto py-6 px-4">
+              <div ref={contentRef} className="max-w-4xl mx-auto py-6 px-4">
               {filteredMessages && filteredMessages.length > 0 ? (
                 <>
                   {/* Load More Button */}
@@ -1450,13 +1451,13 @@ export default function ThreadView({
             </div>
             </div>
 
-            {/* Jump to Latest Button - Shows when user has scrolled up (reading history) */}
+            {/* Jump to Latest Button - Absolutely positioned inside relative wrapper */}
             {!isAtBottom && filteredMessages.length > 0 && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+              <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center z-20">
                 <Button
                   onClick={() => scrollToBottom('smooth')}
                   size="sm"
-                  className="gap-2 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white px-4"
+                  className="pointer-events-auto gap-2 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white px-4"
                   data-testid="button-jump-to-latest"
                 >
                   <ArrowDown className="h-4 w-4" />
