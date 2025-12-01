@@ -1,0 +1,163 @@
+You are editing my Servicepro-v3-base repo.
+
+GOAL
+Fix the Night Ops message thread scrolling ONCE AND FOR ALL.
+
+Right now in the /messages "Night Ops → Conversations & Dispatch" view:
+- When I scroll up to read older messages, the view keeps snapping back to the bottom.
+- It appears to auto-scroll on every refetch / new message.
+- There is a "Jump to latest" attempt and some ScrollArea changes, but the behavior is still wrong.
+
+I want PREMIUM, PREDICTABLE behavior, exactly like iMessage / WhatsApp:
+
+DESIRED BEHAVIOR
+
+1) Auto-scroll ONLY when the user is at (or near) the bottom:
+   - If I'm at the bottom of the thread and a new message arrives, scroll to bottom so I see it.
+   - "At the bottom" = scroll position within ~48px of the bottom of the scroll container.
+
+2) If I have scrolled up (reading history):
+   - DO NOT move my scroll position when new messages arrive or when polling/refetch runs.
+   - Instead, show a small "Jump to latest" pill/button somewhere near the bottom-right of the message area.
+   - Clicking "Jump to latest" scrolls smoothly to the bottom and marks me as "atBottom" again.
+
+3) No hidden auto-scroll logic anywhere else:
+   - There must be exactly ONE place responsible for auto-scrolling: a single effect that runs when messages change AND the user is currently atBottom.
+   - Remove or disable any old useEffect hooks or helpers that blindly call scrollToBottom on every render or every message fetch.
+
+4) This must work on:
+   - Desktop (large screen)
+   - Smaller laptop/tablet widths
+   - Mobile width (DevTools responsive)
+   The logic itself is the same; the layout can adapt but scrolling behavior must remain correct.
+
+CONSTRAINTS
+
+- You MUST touch only the relevant components, not start a big refactor.
+- Keep the visual style as-is; this is purely behavior + the “Jump to latest” affordance.
+- Do not break Night Ops routing or any tenant/multi-tenant logic.
+- Leave comments in the code explaining the new scroll logic clearly.
+
+FILES TO FOCUS ON
+
+1) client/src/components/ThreadView.tsx
+   - This is the main message thread component.
+   - It currently has some auto-scroll logic and likely a "Jump to latest" attempt.
+   - It renders a ScrollArea or similar for the messages list.
+
+2) client/src/components/ui/scroll-area.tsx
+   - This wraps the actual scrollable viewport.
+   - There were earlier attempts to add onScroll / onViewportScroll props.
+   - Make sure the API here is clean and used properly by ThreadView.
+
+IMPLEMENTATION PLAN (FOLLOW STEP BY STEP)
+
+1) CLEAN UP OLD AUTO-SCROLL CODE
+   - In ThreadView.tsx, find ALL places that:
+     - call `scrollToBottom`, `scrollIntoView`, `scrollHeight`, `scrollTop` directly on mount or on every messages change
+     - or use a useEffect with dependencies like [messages] that always force scrolling.
+   - Remove or rewrite them so they no longer force scroll when the user has scrolled up.
+
+2) INTRODUCE SIMPLE STATE + REFS
+
+   In ThreadView.tsx:
+
+   - Add:
+     - `const [isAtBottom, setIsAtBottom] = useState(true);`
+     - `const scrollContainerRef = useRef<HTMLDivElement | null>(null);`
+
+   - Make sure the actual scrollable viewport (inside ScrollArea) forwards its ref to this `scrollContainerRef`.
+
+3) HOOK UP A SINGLE onScroll HANDLER
+
+   - In scroll-area.tsx:
+     - Ensure that the ScrollArea component accepts a prop like `onViewportScroll?: (event: React.UIEvent<HTMLDivElement>) => void`.
+     - Pass that prop down to the actual `<div>` that is scrollable (the viewport).
+     - If this is already present, keep it — just make sure it’s correctly typed and used.
+
+   - In ThreadView.tsx:
+     - Implement an `handleScroll` function that:
+       - Reads `scrollTop`, `scrollHeight`, and `clientHeight` from the event target.
+       - Computes the distance from bottom: `scrollHeight - (scrollTop + clientHeight)`.
+       - Sets `isAtBottom` to true if that distance <= 48 (pixels), otherwise false.
+
+     - Pass this handler to the ScrollArea as `onViewportScroll={handleScroll}` (or the correct prop name you just defined).
+
+4) SINGLE AUTO-SCROLL EFFECT
+
+   - In ThreadView.tsx, add ONE useEffect like this (pseudo-code, adapt to actual types):
+
+     ```ts
+     const previousMessageCountRef = useRef<number>(0);
+
+     useEffect(() => {
+       const container = scrollContainerRef.current;
+       if (!container) return;
+
+       const currentCount = messages.length;
+       const previousCount = previousMessageCountRef.current;
+       previousMessageCountRef.current = currentCount;
+
+       // Only auto-scroll when:
+       // - there were fewer messages before, and now there are more (new messages)
+       // - AND the user was at the bottom
+       if (currentCount > previousCount && isAtBottom) {
+         container.scrollTop = container.scrollHeight;
+       }
+     }, [messages, isAtBottom]);
+     ```
+
+   - IMPORTANT:
+     - `messages` should be the *ordered* array of message objects for this thread.
+     - Do NOT also auto-scroll in other effects. This should be the ONLY effect moving the scroll position.
+
+5) "JUMP TO LATEST" BUTTON
+
+   - In ThreadView.tsx, render a floating button ONLY when `!isAtBottom`.
+     - Position it absolutely at bottom-right of the message area, above the input.
+     - Something compact like a small rounded pill: "Jump to latest" with a down-arrow icon is fine.
+   - On click:
+     - Scroll to bottom: `container.scrollTop = container.scrollHeight;`
+     - Set `isAtBottom(true);`
+
+   - Make sure the scroll container is in a relatively positioned parent so the absolute position is correct.
+
+6) REMOVE / REPLACE ANY HACKS
+
+   - If there is any code that tries to compensate for polling/refetch (e.g., setTimeouts that scroll after fetch), REMOVE them.
+   - The only intelligence should be:
+     - onScroll → update isAtBottom
+     - useEffect → if new messages & isAtBottom → scroll to bottom
+     - "Jump to latest" button → explicit scroll to bottom.
+
+7) QUICK MANUAL TEST PLAN (YOU MUST RUN THIS BEFORE SAYING YOU'RE DONE)
+
+   After changes, restart the dev server and:
+
+   1. Open /messages in Night Ops.
+   2. Pick a conversation with several messages (or send yourself enough messages to have scroll).
+   3. Scroll 20–30 messages up:
+      - Wait 10–20 seconds (so the refetch / polling runs).
+      - CONFIRM: The scroll position does NOT move.
+      - CONFIRM: A "Jump to latest" button is visible.
+   4. Click "Jump to latest":
+      - You should immediately scroll to the bottom.
+      - `isAtBottom` should now be true and the button should disappear.
+   5. From the bottom:
+      - Send yourself another message from your phone.
+      - When it arrives, the thread should automatically scroll to keep the newest message in view.
+   6. Repeat the above on a narrow viewport (DevTools mobile width) to confirm behavior is identical.
+
+   If ANY of the above fails, FIX IT before marking the task complete.
+
+8) REPORT BACK
+
+   In your final summary to me, include:
+   - Which exact files you changed (full paths).
+   - A short explanation of:
+     - Where the old auto-scroll logic lived and what you removed.
+     - How the new isAtBottom + previousMessageCount logic works.
+   - Confirmation that you personally ran the manual test steps and what the results were.
+
+Do NOT skip the tests and do NOT leave multiple conflicting scroll effects around.
+This change should be small, focused, and rock-solid.
