@@ -140,8 +140,7 @@ export default function ThreadView({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const draftRestoredRef = useRef(false); // Track if draft has been restored for current conversation
   const initialLoadRef = useRef(true); // Track if this is the first load
   const previousMessageCountRef = useRef(0); // Track message count for new message detection
@@ -487,21 +486,23 @@ export default function ThreadView({
   // Guard to ignore scroll events during pagination restoration
   const isRestoringScrollRef = useRef(false);
 
-  // Helper to get the Radix viewport element via DOM query
-  const getViewport = (): HTMLDivElement | null => {
-    return scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
+  // Scroll to bottom helper using viewport ref
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior });
   };
 
   // Handle scroll events from the viewport - updates isAtBottom state
   const handleViewportScroll = () => {
     if (isRestoringScrollRef.current) return;
     
-    const viewport = getViewport();
+    const viewport = viewportRef.current;
     if (!viewport) return;
     
     const { scrollTop, scrollHeight, clientHeight } = viewport;
     const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
-    setIsAtBottom(distanceFromBottom < 24);
+    setIsAtBottom(distanceFromBottom < 48);
   };
 
   // Reset scroll state when conversation changes
@@ -514,23 +515,22 @@ export default function ThreadView({
   // SINGLE AUTO-SCROLL EFFECT: scroll to bottom on load + when new messages arrive (if at bottom)
   useEffect(() => {
     if (!isAtBottom) return;
-    if (!bottomRef.current) return;
     
     const messages = conversation?.messages || [];
     const currentCount = messages.length;
     
-    // On initial load, scroll immediately (no animation)
+    // On initial load, scroll immediately (no animation) after a brief delay for DOM
     if (initialLoadRef.current && currentCount > 0) {
       initialLoadRef.current = false;
       previousMessageCountRef.current = currentCount;
-      bottomRef.current.scrollIntoView({ behavior: "auto", block: "end" });
+      requestAnimationFrame(() => scrollToBottom('auto'));
       return;
     }
     
     // New messages arrived + user is at bottom: scroll smoothly
     const previousCount = previousMessageCountRef.current;
     if (currentCount > previousCount) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+      scrollToBottom('smooth');
     }
     previousMessageCountRef.current = currentCount;
   }, [conversation?.messages, isAtBottom]);
@@ -636,7 +636,7 @@ export default function ThreadView({
   const handleLoadMore = async () => {
     if (!conversation?.messages || conversation.messages.length === 0 || isLoadingMore) return;
     
-    const viewport = getViewport();
+    const viewport = viewportRef.current;
     if (!viewport) return;
     
     // Find the ACTUAL first visible message at the top of the viewport
@@ -694,15 +694,14 @@ export default function ThreadView({
         
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            const liveViewport = getViewport();
             const anchorAfter = document.querySelector(`[data-message-id="${anchorMessageId}"]`);
             
-            if (liveViewport && anchorAfter) {
+            if (viewport && anchorAfter) {
               const anchorOffsetAfter = anchorAfter.getBoundingClientRect().top;
-              const viewportTopAfter = liveViewport.getBoundingClientRect().top;
+              const viewportTopAfter = viewport.getBoundingClientRect().top;
               const currentRelativeOffset = anchorOffsetAfter - viewportTopAfter;
               const scrollAdjustment = relativeOffset - currentRelativeOffset;
-              liveViewport.scrollTop += scrollAdjustment;
+              viewport.scrollTop += scrollAdjustment;
             }
             
             isRestoringScrollRef.current = false;
@@ -1260,8 +1259,8 @@ export default function ThreadView({
           
           {/* Messages */}
           <ScrollArea 
-            ref={scrollAreaRef}
             className="flex-1 bg-gray-50 dark:bg-gray-900/50"
+            viewportRef={viewportRef}
             viewportProps={{
               onScroll: handleViewportScroll,
             }}
@@ -1349,8 +1348,7 @@ export default function ThreadView({
                     </div>
                   )}
                   
-                  <div ref={messagesEndRef} />
-                  <div ref={bottomRef} data-testid="thread-bottom-anchor" />
+                  <div ref={messagesEndRef} data-testid="thread-bottom-anchor" />
                 </>
               ) : (
                 <div className="text-center text-muted-foreground py-8">
@@ -1366,11 +1364,7 @@ export default function ThreadView({
           {!isAtBottom && filteredMessages.length > 0 && (
             <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-10">
               <Button
-                onClick={() => {
-                  if (bottomRef.current) {
-                    bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-                  }
-                }}
+                onClick={() => scrollToBottom('smooth')}
                 size="sm"
                 className="gap-2 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white px-4"
                 data-testid="button-jump-to-latest"
