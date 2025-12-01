@@ -1,0 +1,104 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+GOAL: Add a small SMS diagnostics CLI (similar to diagnoseVoiceConfig.ts) so I can verify SMS configuration for any tenant, especially Clean Machine (tenantSlug=cleanmachine / tenantId=root).
+
+DO NOT change any existing SMS send logic that is already working.
+
+====================================================
+STEP 1 – CREATE scripts/diagnoseSmsConfig.ts
+====================================================
+
+Create a new script at:
+
+- scripts/diagnoseSmsConfig.ts
+
+Requirements:
+
+1) CLI interface
+- Accepts an argument: --tenantSlug=<slug>
+- If not provided, default to "cleanmachine"
+- In main(), parse process.argv to get tenantSlug.
+
+2) Tenant resolution (REUSE EXISTING LOGIC)
+- Import and reuse the **same helper** you used for SMS routing / telephony for resolving tenantId from tenantSlug.
+- DO NOT reintroduce the "tenantDb.select is not a function" bug.
+- If resolution fails, log a clear error and exit with process.exit(1).
+
+3) Use the SAME SMS config logic as the live system
+- Import the helper you created to determine the outbound SMS config, something like:
+  - getSmsFromConfig(tenantDb, tenantId) OR whatever you named it.
+- This script must use the EXACT same logic the app uses when sending real SMS:
+  - Prefer tenant_phone_config.sms_number
+  - Or MAIN_PHONE_NUMBER env
+  - Or MessagingServiceSid, etc.
+- The point is: when this says “FROM number will be X”, that’s what the live system will actually use.
+
+4) Output format
+Print a clear, human-readable report, similar to diagnoseVoiceConfig:
+
+- Header:
+  === SMS Configuration Diagnostics ===
+
+- Tenant:
+  Tenant ID: <id>
+  Tenant Slug: <slug>
+  Tenant Name: <name>
+
+- Env vars:
+  TWILIO_ACCOUNT_SID: ✓/✗
+  TWILIO_AUTH_TOKEN: ✓/✗
+  MAIN_PHONE_NUMBER: <value or "not set">
+  Any SMS-related envs you rely on (TWILIO_TEST_SMS_NUMBER, etc.)
+
+- DB config (from tenant_phone_config):
+  SMS Enabled: YES/NO (if you have a flag)
+  SMS Number: <sms_number or "not set">
+  Messaging Service SID: <sid or "not set">
+
+- Effective outbound config (using your helper):
+  Effective FROM mode: <"messaging_service" | "phone_number" | "test" | etc.>
+  Effective FROM identifier:
+    - If messaging service: SID + a note like "(Messaging Service)"
+    - If phone number: E.164 number + a note like "(Direct number)"
+
+- Final status line:
+  SMS Configured: YES / NO
+  And if NO, list 1–3 bullet suggestions:
+  - e.g., "Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Secrets"
+  - "Configure tenant_phone_config.sms_number for this tenant", etc.
+
+Make sure the script:
+- Uses await main().catch(...) pattern
+- Logs stack traces for unexpected errors
+- Exits with process.exit(1) on fatal failure
+
+====================================================
+STEP 2 – OPTIONAL NPM SCRIPT
+====================================================
+
+If allowed to modify package.json, add an npm script:
+
+- "sms:diagnose": "tsx scripts/diagnoseSmsConfig.ts --tenantSlug=cleanmachine"
+
+If package.json is locked by Replit policy, then just:
+- Add a comment at the bottom of scripts/diagnoseSmsConfig.ts explaining the command to run:
+  // Usage:
+  //   npx tsx scripts/diagnoseSmsConfig.ts --tenantSlug=cleanmachine
+
+====================================================
+STEP 3 – SELF-TEST
+====================================================
+
+1) Run in the Replit shell:
+   npx tsx scripts/diagnoseSmsConfig.ts --tenantSlug=cleanmachine
+
+2) Confirm it prints:
+   - Tenant info for Clean Machine
+   - The correct FROM number (should be +1 918 856 5304 or its MessagingServiceSid)
+   - SMS Configured: YES
+
+3) If any unexpected error occurs, FIX THE SCRIPT until this runs cleanly, but DO NOT change working production SMS logic in the main app.
+
+When you’re done, give me:
+- The exact command I should run.
+- A short sample of the output for tenantSlug=cleanmachine.
