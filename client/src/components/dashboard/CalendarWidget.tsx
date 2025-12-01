@@ -109,45 +109,43 @@ export function CalendarWidget({
         transition={{ duration: 0.6, delay: 0.2 }}
       >
         <Card className="rounded-xl backdrop-blur-xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 shadow-xl overflow-hidden" data-testid="calendar-card">
-          <CardHeader className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-md text-white pb-6 border-b border-white/20">
-            <CardTitle className="flex items-center justify-between text-2xl">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 w-9 p-0 bg-white/10 hover:bg-white/20 text-white transition-all"
-                    onClick={() => {
-                      const newMonth = new Date(currentMonth);
-                      newMonth.setMonth(newMonth.getMonth() - 1);
-                      onMonthChange(newMonth);
-                    }}
-                    data-testid="button-prev-month"
-                    aria-label="Previous month"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </Button>
-                  <div className="px-2">
-                    <div className="text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</div>
-                    <div className="text-sm text-blue-100 font-normal">
-                      {appointmentCounts && Object.values(appointmentCounts).reduce((a, b) => a + b, 0)} appointments this month
-                    </div>
+          <CardHeader className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-md text-white pb-4 sm:pb-6 border-b border-white/20 px-3 sm:px-6">
+            <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center justify-center sm:justify-start gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-white/10 hover:bg-white/20 text-white transition-all"
+                  onClick={() => {
+                    const newMonth = new Date(currentMonth);
+                    newMonth.setMonth(newMonth.getMonth() - 1);
+                    onMonthChange(newMonth);
+                  }}
+                  data-testid="button-prev-month"
+                  aria-label="Previous month"
+                >
+                  <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+                <div className="px-1 sm:px-2 text-center sm:text-left">
+                  <div className="text-lg sm:text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</div>
+                  <div className="text-xs sm:text-sm text-blue-100 font-normal">
+                    {appointmentCounts && Object.values(appointmentCounts).reduce((a, b) => a + b, 0)} appointments
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 w-9 p-0 bg-white/10 hover:bg-white/20 text-white transition-all"
-                    onClick={() => {
-                      const newMonth = new Date(currentMonth);
-                      newMonth.setMonth(newMonth.getMonth() + 1);
-                      onMonthChange(newMonth);
-                    }}
-                    data-testid="button-next-month"
-                    aria-label="Next month"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </Button>
                 </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 sm:h-9 sm:w-9 p-0 bg-white/10 hover:bg-white/20 text-white transition-all"
+                  onClick={() => {
+                    const newMonth = new Date(currentMonth);
+                    newMonth.setMonth(newMonth.getMonth() + 1);
+                    onMonthChange(newMonth);
+                  }}
+                  data-testid="button-next-month"
+                  aria-label="Next month"
+                >
+                  <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
               </div>
               <div className="flex gap-1 sm:gap-2">
                 <Button

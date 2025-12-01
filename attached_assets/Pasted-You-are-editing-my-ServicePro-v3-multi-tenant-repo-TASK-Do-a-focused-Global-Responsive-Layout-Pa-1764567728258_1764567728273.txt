@@ -1,0 +1,73 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+TASK: Do a focused "Global Responsive Layout Pass" to ensure the app feels premium and usable across phone, tablet, laptop, and large desktop. This should NOT change any core business logic or routing. It should only improve layout/responsiveness and small visual polish.
+
+Overall principles:
+- We use Tailwind-style responsive breakpoints consistently:
+  - Mobile: base / sm
+  - Tablet: md
+  - Laptop: lg
+  - Large desktop: xl/2xl
+- No horizontal scrollbars on normal content pages.
+- Keep the existing visual style (colors, glassmorphism, etc.) – just make it adapt cleanly.
+- Don’t invent new layout systems in random pages; prefer shared layout patterns.
+
+PHASE R SCOPE (Responsive Pass):
+1) App Shell (main layout)
+   - Confirm the main sidebar + header layout is responsive:
+     - Sidebar pinned and visible on lg+.
+     - Sidebar collapses or becomes a slide-over / drawer on md and below.
+   - Ensure main content has reasonable max-width and padding at all breakpoints.
+   - Fix any layout that causes horizontal scrolling.
+
+2) Night Ops Messaging Hub
+   - KEEP the existing Night Ops v2 logic and design.
+   - Verify breakpoints:
+     - On lg+: 3-column layout (list, conversation, context).
+     - On md: maybe 2-pane with toggle for context.
+     - On small mobile: stacked views with clear navigation (list -> thread -> context).
+   - Ensure the header and filter tabs don’t overflow on small screens.
+
+3) Phone / Dialer page
+   - Make the dialer comfortably usable on mobile:
+     - Big enough buttons, good spacing, no clipped content.
+   - On desktop, keep it from looking tiny: use centering and max-width patterns.
+   - Ensure call history / logs wrap nicely and don’t overflow.
+
+4) Dashboard / Home page
+   - Make sure cards wrap gracefully:
+     - 1 column on small mobile, 2 on tablet, 3–4 on desktop depending on width.
+   - Ensure there is no horizontal scroll.
+
+5) Admin Tenants / Admin pages
+   - Admin Tenants list: ensure table is scrollable vertically and doesn’t cause horizontal overflow on mobile.
+   - Where necessary, convert wide tables into stacked card-like displays on very small screens (or at least make them horizontally scrollable in a neat way with overflow-x-auto and clear padding).
+   - Verify the Tenant Readiness panel and new Setup Copilot entry look good on mobile.
+
+6) Public website templates
+   - Check the main public site route(s) (Phase 9 implementation):
+     - Hero sections, pricing cards, service sections.
+   - Ensure they render cleanly on phone, tablet, and desktop.
+   - Fix any obvious layout bugs (overlapping, unreadable text, unbounded widths).
+
+Constraints:
+- DO NOT change any backend APIs, DB schema, or route paths.
+- DO NOT rewrite major components or rename routes.
+- DO NOT add new libraries – use the existing stack (React, Tailwind, etc.).
+- Favor small, surgical CSS/layout tweaks in existing components.
+- Keep all tests passing.
+
+What I want when you’re done:
+- A summary of which files you changed.
+- Confirmation that the following routes were manually checked in both mobile and desktop breakpoints:
+  - /dashboard
+  - /night-ops
+  - /phone
+  - /admin/tenants
+  - public site route(s) (e.g. /site/cleanmachine or equivalent)
+- Call out any remaining screens that still need a separate deep-dive.
+
+If any layout looks questionable and you’re unsure what I’d prefer, pick the option that:
+- Looks closest to an Apple-quality SaaS product,
+- Avoids cramming too much into one tiny view,
+- Prioritizes clarity and easy tapping / clicking over raw information density.

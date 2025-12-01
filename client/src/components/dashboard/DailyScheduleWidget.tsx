@@ -108,50 +108,50 @@ export function DailyScheduleWidget({
                           {appointment.phone}
                         </div>
                       </CardContent>
-                      <CardFooter className="flex justify-between pt-2 flex-wrap gap-2">
+                      <CardFooter className="flex flex-col sm:flex-row sm:justify-between pt-2 gap-2">
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
+                          className="w-full sm:w-auto bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
                           onClick={() => onViewHistory(appointment.phone)}
                         >
                           History
                         </Button>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
+                            className="h-9 sm:h-auto bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white text-xs sm:text-sm"
                             onClick={() => onCall(appointment.phone)}
                           >
-                            <Phone className="h-4 w-4 mr-2" />
+                            <Phone className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                             Call
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
+                            className="h-9 sm:h-auto bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white text-xs sm:text-sm"
                             onClick={() => onChat(appointment.phone, appointment.customerName)}
                           >
-                            <MessageSquare className="h-4 w-4 mr-2" />
+                            <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                             Chat
                           </Button>
                           <Button 
                             variant="default" 
                             size="sm"
-                            className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white"
+                            className="h-9 sm:h-auto bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white text-xs sm:text-sm"
                             onClick={() => onNavigate(appointment.address, appointment.phone)}
                           >
-                            <Navigation className="h-4 w-4 mr-2" />
+                            <Navigation className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                             Navigate
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="bg-green-50 dark:bg-green-500/20 border-green-300 dark:border-green-400/30 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-500/30"
+                            className="h-9 sm:h-auto bg-green-50 dark:bg-green-500/20 border-green-300 dark:border-green-400/30 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-500/30 text-xs sm:text-sm"
                             onClick={() => onSendInvoice(appointment)}
                           >
-                            <FileText className="h-4 w-4 mr-2" />
+                            <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                             Invoice
                           </Button>
                         </div>

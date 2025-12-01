@@ -226,11 +226,11 @@ export default function AdminTenants() {
 
   return (
     <AppShell title="Tenant Management">
-      <div className="space-y-6 p-6">
-        <div className="flex justify-between items-center">
+      <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6 max-w-[1800px] mx-auto">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Tenant Management</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">Tenant Management</h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
               Manage all tenants on the ServicePro platform
             </p>
           </div>
@@ -498,33 +498,33 @@ export default function AdminTenants() {
             </Button>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {tenantsData?.tenants.map((tenant) => (
               <Card
                 key={tenant.id}
-                className="p-6 hover:shadow-lg transition-shadow cursor-pointer"
+                className="p-4 sm:p-6 hover:shadow-lg transition-shadow cursor-pointer"
                 onClick={() => navigate(`/admin/tenants/${tenant.id}`)}
                 data-testid={`card-tenant-${tenant.id}`}
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <div className="p-1.5 sm:p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg flex-shrink-0">
                       {tenant.isRoot ? (
-                        <Shield className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                        <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
                       ) : (
-                        <Building2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                        <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
                       )}
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2 text-sm sm:text-base truncate">
                         {tenant.name}
                         {tenant.isRoot && (
-                          <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300 rounded">
+                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300 rounded flex-shrink-0">
                             ROOT
                           </span>
                         )}
                       </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">
                         {tenant.businessName || 'No business name'}
                       </p>
                     </div>
