@@ -119,7 +119,7 @@ export function AppShell({
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50 dark:bg-gray-950">
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Desktop Sidebar (≥lg) */}
       <aside className="hidden lg:flex lg:w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex-col shadow-sm">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
@@ -183,7 +183,7 @@ export function AppShell({
       </Sheet>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Impersonation Banner */}
         <ImpersonationBanner />
         
