@@ -1,0 +1,207 @@
+TASK: Fix Night Ops ThreadView scrolling & header layout PROPERLY (no more thrash)
+
+Context (from the user):
+- In the Night Ops / Messages "Thread" view:
+  - I cannot scroll through the conversation at all (or it snaps back).
+  - It used to auto-scroll to bottom but now starts at the top.
+  - Every attempt so far has either broken scrolling or kept auto-snapping.
+- I want PREMIUM behavior:
+  1) When I first open a thread, it should start at the BOTTOM (latest message visible).
+  2) If I scroll up to read history, it should NOT auto-scroll back down when new messages come in.
+  3) When I’m near the bottom, new messages SHOULD auto-scroll into view.
+  4) There should be a “Jump to latest” button that appears when I’m scrolled up.
+- I also want a small header in the thread showing:
+  - Customer name
+  - Phone number
+  - Basic status badges (e.g. source channel, AI/manual mode)
+
+FILES TO TOUCH (ONLY THESE unless absolutely necessary):
+- client/src/components/ThreadView.tsx
+- client/src/components/ui/scroll-area.tsx (ONLY IF NEEDED for scroll events)
+
+GOAL: Replace the current messy scroll logic with a SIMPLE, RELIABLE implementation.
+
+====================================================
+STEP 1 – RESET ScrollArea TO A SIMPLE, STABLE VERSION
+====================================================
+
+1. Open client/src/components/ui/scroll-area.tsx.
+2. Make sure it matches the standard shadcn/ui ScrollArea pattern:
+   - Exports a single `ScrollArea` component.
+   - Internally renders:
+     <ScrollAreaPrimitive.Root ...>
+       <ScrollAreaPrimitive.Viewport className="h-full w-full">
+         {children}
+       </ScrollAreaPrimitive.Viewport>
+       <ScrollAreaPrimitive.Scrollbar ... />
+       <ScrollAreaPrimitive.Thumb ... />
+     </ScrollAreaPrimitive.Root>
+   - NO custom viewportRef props, NO weird callback refs.
+3. Add ONE optional prop:
+   - `viewportProps?: React.HTMLAttributes<HTMLDivElement>`
+   and spread it onto the Viewport:
+   - `<ScrollAreaPrimitive.Viewport ref={viewportRef} {...viewportProps}>`
+4. Ensure:
+   - No warnings about “Unexpected return value from a callback ref”.
+   - No extra custom ref composition. Use a normal `useRef` or `forwardRef` if needed, but keep it SIMPLE.
+
+====================================================
+STEP 2 – IMPLEMENT CLEAN SCROLL LOGIC IN ThreadView
+====================================================
+
+1. Open client/src/components/ThreadView.tsx.
+2. Find the main message list inside the ScrollArea (where individual messages are rendered).
+3. Implement the following state + refs at the top of the component:
+
+   - `const viewportRef = useRef<HTMLDivElement | null>(null);`
+   - `const [isAtBottom, setIsAtBottom] = useState(true);`
+
+4. Add a small invisible “anchor” div at the very bottom of the messages:
+
+   ```tsx
+   const bottomRef = useRef<HTMLDivElement | null>(null);
+   ...
+   <div ref={bottomRef} data-testid="thread-bottom-anchor" />
+Add a scroll handler that:
+
+Reads scrollTop, scrollHeight, and clientHeight from the viewport.
+
+Sets isAtBottom to true if the user is within ~24px of the bottom.
+
+Example:
+
+tsx
+Copy code
+const handleViewportScroll = useCallback(() => {
+  const viewport = viewportRef.current;
+  if (!viewport) return;
+
+  const { scrollTop, scrollHeight, clientHeight } = viewport;
+  const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+
+  setIsAtBottom(distanceFromBottom < 24); // tweak threshold as needed
+}, []);
+In the useEffect that runs when messages change:
+
+If isAtBottom is true, scroll to bottom using the anchor:
+
+tsx
+Copy code
+useEffect(() => {
+  if (!isAtBottom) return;
+  if (!bottomRef.current) return;
+
+  bottomRef.current.scrollIntoView({ behavior: "auto", block: "end" });
+}, [messages, isAtBottom]);
+IMPORTANT:
+
+DO NOT auto-scroll when isAtBottom is false.
+
+This is what lets me read old messages without being yanked down.
+
+Wire the ScrollArea to use the viewport ref and scroll handler:
+
+tsx
+Copy code
+<ScrollArea
+  className="h-full"
+  viewportProps={{
+    ref: (el) => {
+      viewportRef.current = el;
+    },
+    onScroll: handleViewportScroll,
+  }}
+>
+  {/* messages... */}
+  {messages.map(...)}
+  <div ref={bottomRef} data-testid="thread-bottom-anchor" />
+</ScrollArea>
+NOTE:
+
+If TypeScript complains about the ref type, fix the types PROPERLY instead of using any. Use React.RefCallback<HTMLDivElement> or similar.
+
+Do NOT re-introduce callback ref weirdness that returns non-void values.
+
+====================================================
+STEP 3 – “JUMP TO LATEST” BUTTON
+Still inside ThreadView, conditionally render a floating button when !isAtBottom:
+
+Place it inside the ThreadView layout but visually at the bottom-right corner of the message area (not covering the composer).
+
+Example:
+
+tsx
+Copy code
+{ !isAtBottom && (
+  <button
+    type="button"
+    className="absolute bottom-24 right-4 rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs shadow-md hover:bg-primary/90"
+    onClick={() => {
+      if (bottomRef.current) {
+        bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+      }
+    }}
+  >
+    Jump to latest
+  </button>
+)}
+Ensure this button:
+
+ONLY appears when isAtBottom === false.
+
+Disappears once I scroll back down or after I tap it.
+
+====================================================
+STEP 4 – CUSTOMER HEADER + SUGGESTION DECK POSITION
+At the TOP of the thread view (above the ScrollArea), add a small header bar with:
+
+Customer name (or phone if name missing).
+
+Phone number.
+
+Source badge (SMS / Web / etc. if available).
+
+AI/manual mode badge if that data is already present in the conversation model.
+
+Keep it visually light, matching the existing Night Ops styling.
+
+Move or duplicate the AI suggestion deck so that:
+
+It appears NEAR THE BOTTOM of the thread UI, above the composer, not all the way at the top of the history.
+
+It stays handy when I’m dealing with the latest messages (most common case).
+
+====================================================
+STEP 5 – MANUAL TEST (DO NOT SKIP)
+
+After making changes, you MUST:
+
+Restart the dev server if needed.
+
+Open the Night Ops / Messages UI in the dev preview.
+
+Pick a conversation with MANY messages (or quickly seed one).
+
+Test:
+
+When opening the thread, does it start at the bottom?
+
+Can you scroll UP through the history normally?
+
+While scrolled up, does the “Jump to latest” button show?
+
+While scrolled up, send or simulate new incoming messages:
+
+Confirm it does NOT yank you back down.
+
+Click “Jump to latest”:
+
+It should scroll smoothly to the end.
+
+ONLY after confirming these behaviors are correct:
+
+Summarize what you changed.
+
+Confirm the behavior you observed in the dev preview.
+
+If ANY of the above tests fail, say so and FIX them instead of claiming success
