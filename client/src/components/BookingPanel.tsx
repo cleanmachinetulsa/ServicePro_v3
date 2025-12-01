@@ -466,11 +466,13 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                             <Checkbox
                               id={`service-${service.id}`}
                               checked={formData.serviceIds.includes(service.id)}
+                              onClick={(e) => e.stopPropagation()}
                               onCheckedChange={() => toggleService(service.id)}
                             />
                             <label
                               htmlFor={`service-${service.id}`}
                               className="text-sm flex-1 cursor-pointer"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               {service.name}
                               <span className="text-muted-foreground ml-1">({service.priceRange})</span>
@@ -740,11 +742,13 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                                   <Checkbox
                                     id={`service-edit-${service.id}`}
                                     checked={formData.serviceIds.includes(service.id)}
+                                    onClick={(e) => e.stopPropagation()}
                                     onCheckedChange={() => toggleService(service.id)}
                                   />
                                   <label
                                     htmlFor={`service-edit-${service.id}`}
                                     className="text-sm flex-1 cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
                                     {service.name}
                                     <span className="text-muted-foreground ml-1">({service.priceRange})</span>
