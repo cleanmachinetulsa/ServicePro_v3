@@ -461,13 +461,13 @@ export default function Dashboard() {
         {isLoadingData ? (
           <div className="space-y-4 p-6">
             {/* Statistics Bar Skeleton */}
-            <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
+            <Card className="backdrop-blur-xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 shadow-xl">
               <div className="py-4 px-6">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className="text-center space-y-2">
-                      <Skeleton className="h-8 w-16 mx-auto bg-white/20" />
-                      <Skeleton className="h-3 w-20 mx-auto bg-white/20" />
+                      <Skeleton className="h-8 w-16 mx-auto bg-gray-200 dark:bg-white/20" />
+                      <Skeleton className="h-3 w-20 mx-auto bg-gray-200 dark:bg-white/20" />
                     </div>
                   ))}
                 </div>
@@ -477,12 +477,12 @@ export default function Dashboard() {
             {/* Calendar and Schedule Skeleton */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-4">
-                <Skeleton className="h-[500px] rounded-xl bg-white/10" />
-                <Skeleton className="h-[300px] rounded-xl bg-white/10" />
+                <Skeleton className="h-[500px] rounded-xl bg-gray-100 dark:bg-white/10" />
+                <Skeleton className="h-[300px] rounded-xl bg-gray-100 dark:bg-white/10" />
               </div>
               <div className="space-y-4">
-                <Skeleton className="h-[250px] rounded-xl bg-white/10" />
-                <Skeleton className="h-[250px] rounded-xl bg-white/10" />
+                <Skeleton className="h-[250px] rounded-xl bg-gray-100 dark:bg-white/10" />
+                <Skeleton className="h-[250px] rounded-xl bg-gray-100 dark:bg-white/10" />
               </div>
             </div>
           </div>

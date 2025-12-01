@@ -50,11 +50,11 @@ export function DailyScheduleWidget({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.3 }}
     >
-      <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 text-gray-800 dark:text-gray-100 shadow-xl">
+      <Card className="backdrop-blur-xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 text-gray-800 dark:text-gray-100 shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center">
-            <CalendarClock className="mr-2 h-5 w-5 text-cyan-400" />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+            <CalendarClock className="mr-2 h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            <span className="text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-blue-400 dark:to-cyan-300">
               {format(todayDate, 'MMM d, yyyy') === format(new Date(), 'MMM d, yyyy') 
                 ? "Today's Schedule" 
                 : `Schedule for ${format(todayDate, 'MMM d, yyyy')}`} ({appointments.length})
@@ -81,30 +81,30 @@ export function DailyScheduleWidget({
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.4, delay: index * 0.1 }}
                   >
-                    <Card className={`backdrop-blur-xl bg-white/5 border border-white/20 hover:bg-white/10 transition-all duration-300 relative overflow-hidden group`}>
+                    <Card className={`backdrop-blur-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 transition-all duration-300 relative overflow-hidden group`}>
                       <div className={`absolute top-0 left-0 w-1 h-full bg-gradient-to-b ${gradientClass}`}></div>
                       <CardHeader className="pb-2">
                         <div className="flex justify-between items-start">
                           <div>
-                            <CardTitle className="text-lg bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">{appointment.customerName}</CardTitle>
-                            <CardDescription className="text-gray-300">{appointment.service}</CardDescription>
+                            <CardTitle className="text-lg text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-blue-400 dark:to-cyan-300">{appointment.customerName}</CardTitle>
+                            <CardDescription className="text-gray-600 dark:text-gray-300">{appointment.service}</CardDescription>
                           </div>
-                          <Badge variant="outline" className="font-mono backdrop-blur-md bg-white/10 border-white/20 text-cyan-300">
+                          <Badge variant="outline" className="font-mono bg-blue-50 dark:bg-white/10 border-blue-200 dark:border-white/20 text-blue-700 dark:text-cyan-300">
                             {formatDate(appointment.time).split(',')[1]}
                           </Badge>
                         </div>
                       </CardHeader>
                       <CardContent className="pb-2 space-y-2">
-                        <div className="flex items-center text-sm text-gray-300">
-                          <Car className="mr-2 h-4 w-4 text-cyan-400" />
+                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                          <Car className="mr-2 h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                           {appointment.vehicleInfo || "Vehicle info not available"}
                         </div>
-                        <div className="flex items-center text-sm text-gray-300">
-                          <Navigation className="mr-2 h-4 w-4 text-blue-400" />
+                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                          <Navigation className="mr-2 h-4 w-4 text-blue-600 dark:text-blue-400" />
                           {appointment.address}
                         </div>
-                        <div className="flex items-center text-sm text-gray-300">
-                          <Phone className="mr-2 h-4 w-4 text-purple-400" />
+                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                          <Phone className="mr-2 h-4 w-4 text-purple-600 dark:text-purple-400" />
                           {appointment.phone}
                         </div>
                       </CardContent>
@@ -112,7 +112,7 @@ export function DailyScheduleWidget({
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="backdrop-blur-md bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                          className="bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
                           onClick={() => onViewHistory(appointment.phone)}
                         >
                           History
@@ -121,7 +121,7 @@ export function DailyScheduleWidget({
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="backdrop-blur-md bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                            className="bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
                             onClick={() => onCall(appointment.phone)}
                           >
                             <Phone className="h-4 w-4 mr-2" />
@@ -130,7 +130,7 @@ export function DailyScheduleWidget({
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="backdrop-blur-md bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                            className="bg-gray-100 dark:bg-white/5 border-gray-300 dark:border-white/20 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-700 dark:text-white"
                             onClick={() => onChat(appointment.phone, appointment.customerName)}
                           >
                             <MessageSquare className="h-4 w-4 mr-2" />
@@ -139,7 +139,7 @@ export function DailyScheduleWidget({
                           <Button 
                             variant="default" 
                             size="sm"
-                            className="backdrop-blur-md bg-gradient-to-r from-blue-500/80 to-cyan-500/80 hover:from-blue-600/80 hover:to-cyan-600/80 border-white/20 text-white"
+                            className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white"
                             onClick={() => onNavigate(appointment.address, appointment.phone)}
                           >
                             <Navigation className="h-4 w-4 mr-2" />
@@ -148,7 +148,7 @@ export function DailyScheduleWidget({
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="backdrop-blur-md bg-green-500/20 border-green-400/30 text-green-300 hover:bg-green-500/30"
+                            className="bg-green-50 dark:bg-green-500/20 border-green-300 dark:border-green-400/30 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-500/30"
                             onClick={() => onSendInvoice(appointment)}
                           >
                             <FileText className="h-4 w-4 mr-2" />
@@ -162,10 +162,10 @@ export function DailyScheduleWidget({
               })}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-300">
-              <Sparkles className="h-12 w-12 mx-auto mb-3 text-cyan-400/50" />
+            <div className="text-center py-8 text-gray-600 dark:text-gray-300">
+              <Sparkles className="h-12 w-12 mx-auto mb-3 text-cyan-600/50 dark:text-cyan-400/50" />
               <p className="text-lg">No appointments scheduled for this date</p>
-              <p className="text-sm text-gray-400 mt-1">Select a different date to view appointments</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Select a different date to view appointments</p>
             </div>
           )}
         </CardContent>

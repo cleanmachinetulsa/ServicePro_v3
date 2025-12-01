@@ -13,18 +13,18 @@ export function QuickActionsWidget() {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.6, delay: 0.5 }}
     >
-      <Card className="backdrop-blur-xl bg-white/10 dark:bg-white/5 border border-white/20 shadow-xl">
+      <Card className="backdrop-blur-xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center">
-            <Sparkles className="mr-2 h-5 w-5 text-cyan-400" />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+            <Sparkles className="mr-2 h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+            <span className="text-gray-900 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-blue-400 dark:to-cyan-300">
               Quick Actions
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <Button 
-            className="w-full justify-start backdrop-blur-md bg-gradient-to-r from-blue-500/80 to-cyan-500/80 hover:from-blue-600/80 hover:to-cyan-600/80 border-white/20 text-white transition-all duration-300" 
+            className="w-full justify-start bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white transition-all duration-300" 
             onClick={() => setLocation('/service-history')}
           >
             <User className="mr-2 h-4 w-4" />
@@ -32,7 +32,7 @@ export function QuickActionsWidget() {
           </Button>
 
           <Button 
-            className="w-full justify-start backdrop-blur-md bg-gradient-to-r from-purple-500/80 to-pink-500/80 hover:from-purple-600/80 hover:to-pink-600/80 border-white/20 text-white transition-all duration-300" 
+            className="w-full justify-start bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white transition-all duration-300" 
             onClick={() => setLocation('/user-management')}
           >
             <Users className="mr-2 h-4 w-4" />
