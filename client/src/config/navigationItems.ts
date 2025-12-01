@@ -249,6 +249,13 @@ export const navigationItems: NavigationItem[] = [
     badge: 'Owner',
   },
   {
+    id: 'setup-copilot',
+    label: 'Setup Copilot',
+    icon: MessageCircle,
+    path: '/admin/setup-copilot',
+    badge: 'Beta',
+  },
+  {
     id: 'tenants',
     label: 'Tenant Management',
     icon: Building2,

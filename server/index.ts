@@ -36,6 +36,7 @@ import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
 import agentContextRouter from "./routes/agentContextRouter";
+import setupAssistantRouter from "./routes/setupAssistantRouter";
 import emailTestRouter from "./routes/emailTestRouter";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
@@ -312,6 +313,8 @@ app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 app.use('/api/sms-templates', smsTemplatesRouter);
 // Register agent context routes (Phase 10 - AI Setup & Support Agent)
 app.use('/api/agent', agentContextRouter);
+// Register setup assistant routes (Phase 12 - Setup & Support Copilot)
+app.use('/api/ai', setupAssistantRouter);
 // Register email test routes (Phase 11 - Email v1 SendGrid Plumbing)
 app.use('/api/email', emailTestRouter);
 // Register referral invoice routes (validation public, apply requires auth)
