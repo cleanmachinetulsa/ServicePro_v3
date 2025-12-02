@@ -68,6 +68,7 @@ interface CategoryWithTemplates extends QuickReplyCategory {
 interface ThreadViewProps {
   conversationId: number;
   onBack?: () => void;
+  hideHeader?: boolean;
   
   messageReactionSlot?: (message: Message) => React.ReactNode;
   scheduledMetaSlot?: (message: Message) => React.ReactNode;
@@ -111,6 +112,7 @@ function groupMessagesByDate(messages: Message[]): Array<{ date: Date; messages:
 export default function ThreadView({ 
   conversationId,
   onBack,
+  hideHeader = false,
   messageReactionSlot,
   scheduledMetaSlot,
   deliveryIndicatorSlot,
@@ -1300,53 +1302,55 @@ export default function ThreadView({
           )}
           
           {/* Customer Info Header - Always visible at top of thread (outside scroll area) */}
-          <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" data-testid="thread-customer-header">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                {(conversation.customerName || conversation.customerPhone || '?')[0].toUpperCase()}
+          {!hideHeader && (
+            <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" data-testid="thread-customer-header">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                  {(conversation.customerName || conversation.customerPhone || '?')[0].toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 truncate" data-testid="thread-customer-name">
+                      {conversation.customerName || 'Unknown Contact'}
+                    </span>
+                    {conversation.starred && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                        Starred
+                      </Badge>
+                    )}
+                    {conversation.needsHumanAttention && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-300 dark:border-red-700">
+                        Needs Attention
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                    <Phone className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate" data-testid="thread-customer-phone">{conversation.customerPhone || 'No phone'}</span>
+                    {conversation.platform && conversation.platform !== 'sms' && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {conversation.platform}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900 dark:text-gray-100 truncate" data-testid="thread-customer-name">
-                    {conversation.customerName || 'Unknown Contact'}
-                  </span>
-                  {conversation.starred && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-300 dark:border-amber-700">
-                      Starred
-                    </Badge>
-                  )}
-                  {conversation.needsHumanAttention && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-300 dark:border-red-700">
-                      Needs Attention
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                  <Phone className="h-3 w-3 flex-shrink-0" />
-                  <span className="truncate" data-testid="thread-customer-phone">{conversation.customerPhone || 'No phone'}</span>
-                  {conversation.platform && conversation.platform !== 'sms' && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                      {conversation.platform}
-                    </Badge>
-                  )}
-                </div>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                {conversation.controlMode === 'manual' && (
+                  <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+                    <User className="h-3 w-3 mr-1" />
+                    Manual
+                  </Badge>
+                )}
+                {conversation.controlMode === 'auto' && (
+                  <Badge className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0">
+                    <Bot className="h-3 w-3 mr-1" />
+                    AI
+                  </Badge>
+                )}
               </div>
             </div>
-            <div className="flex-shrink-0 flex items-center gap-2">
-              {conversation.controlMode === 'manual' && (
-                <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
-                  <User className="h-3 w-3 mr-1" />
-                  Manual
-                </Badge>
-              )}
-              {conversation.controlMode === 'auto' && (
-                <Badge className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0">
-                  <Bot className="h-3 w-3 mr-1" />
-                  AI
-                </Badge>
-              )}
-            </div>
-          </div>
+          )}
           
           {/* Messages - Pure flexbox scroll container */}
           <div 
