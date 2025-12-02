@@ -99,6 +99,7 @@ export function NightOpsThreadView({
         <ThreadView
           conversationId={conversationId}
           onBack={undefined}
+          hideHeader={true}
         />
       </div>
     </div>
