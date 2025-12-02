@@ -95,7 +95,7 @@ export function NightOpsThreadView({
         />
       </div>
 
-      <div className="flex-1 overflow-hidden flex flex-col nightops-threadview-container">
+      <div className="flex-1 min-h-0 flex flex-col nightops-threadview-container">
         <ThreadView
           conversationId={conversationId}
           onBack={undefined}
