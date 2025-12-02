@@ -43,7 +43,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
   const hasSelectedConversation = selectedConversationId !== null && selectedConversationId !== undefined;
 
   return (
-    <div className="h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black text-slate-100 flex flex-col overflow-hidden">
+    <div className="h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black text-slate-100 flex flex-col">
       <header className="flex-shrink-0 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl z-40">
         <div className="mx-auto flex max-w-[1800px] items-center justify-between px-3 py-2 md:px-6 md:py-3">
           <div className="flex items-center gap-3">
@@ -141,7 +141,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
             )}
           </div>
 
-          <div className="flex-1 overflow-hidden min-h-0">
+          <div className="relative flex-1 min-h-0">
             {threadView}
           </div>
         </motion.section>
@@ -178,7 +178,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
         </AnimatePresence>
       </main>
 
-      <div className="lg:hidden flex-1 flex flex-col overflow-hidden">
+      <div className="lg:hidden flex-1 flex flex-col min-h-0">
         <AnimatePresence mode="wait">
           {mobileView === 'inbox' && (
             <motion.div
@@ -187,7 +187,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
-              className="flex-1 overflow-hidden flex flex-col"
+              className="flex-1 min-h-0 flex flex-col"
             >
               <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3 bg-slate-950/80">
                 <div>
@@ -219,7 +219,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.2 }}
-              className="flex-1 overflow-hidden flex flex-col bg-slate-950"
+              className="flex-1 min-h-0 flex flex-col bg-slate-950"
             >
               <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3 bg-slate-950/80">
                 <div className="flex items-center gap-3">
@@ -260,7 +260,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
                   </SheetContent>
                 </Sheet>
               </div>
-              <div className="flex-1 overflow-hidden min-h-0">
+              <div className="relative flex-1 min-h-0">
                 {threadView}
               </div>
             </motion.div>

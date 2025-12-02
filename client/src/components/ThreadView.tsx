@@ -1268,9 +1268,9 @@ export default function ThreadView({
         )}
       </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* Main Message Area */}
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+        <div className="flex-1 flex flex-col min-h-0 relative">
           {/* Scheduled Banner Slot - Extension point for Phase 2 scheduled message summaries */}
           {scheduledBannerSlot && (
             <div className="border-b dark:border-gray-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3">
@@ -1348,15 +1348,14 @@ export default function ThreadView({
             </div>
           </div>
           
-          {/* Messages - Relative wrapper for scroll container + floating Jump button */}
-          <div className="relative flex-1 min-h-0">
-            <div 
-              ref={containerRef}
-              onScroll={handleScroll}
-              className="absolute inset-0 overflow-y-auto min-h-0 bg-gray-50 dark:bg-gray-900/50"
-              style={{ WebkitOverflowScrolling: 'touch' }}
-            >
-              <div ref={contentRef} className="max-w-4xl mx-auto py-6 px-4">
+          {/* Messages - Pure flexbox scroll container */}
+          <div 
+            ref={containerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto min-h-0 bg-gray-50 dark:bg-gray-900/50 relative"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <div ref={contentRef} className="max-w-4xl mx-auto py-6 px-4">
               {filteredMessages && filteredMessages.length > 0 ? (
                 <>
                   {/* Load More Button */}
@@ -1449,11 +1448,10 @@ export default function ThreadView({
                 </div>
               )}
             </div>
-            </div>
 
-            {/* Jump to Latest Button - Absolutely positioned inside relative wrapper */}
+            {/* Jump to Latest Button - Absolutely positioned inside scroll container */}
             {!isAtBottom && filteredMessages.length > 0 && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center z-20">
+              <div className="pointer-events-none sticky bottom-4 inset-x-0 flex justify-center z-20 -mt-12">
                 <Button
                   onClick={() => scrollToBottom('smooth')}
                   size="sm"
@@ -1847,7 +1845,7 @@ export default function ThreadView({
                 </Button>
               </div>
             </div>
-        </div>
+          </div>
 
         {/* Right Sidebar - Professional Controls & Quick Replies */}
         {conversation.controlMode === 'manual' && (
