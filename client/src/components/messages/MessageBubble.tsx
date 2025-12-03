@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Volume2 } from 'lucide-react';
+import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Pause, Volume2, VolumeX, Download } from 'lucide-react';
 import type { Message } from '@shared/schema';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +8,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
+import { useState, useRef, useEffect } from 'react';
 
 /**
  * MessageBubble Component - Extensible message display with render-prop slots
@@ -82,6 +83,175 @@ interface MessageBubbleProps {
    * @example messageActionSlot={(msg) => <MessageActions onEdit={...} onDelete={...} />}
    */
   messageActionSlot?: (message: Message) => React.ReactNode;
+}
+
+/**
+ * Inline Voicemail Audio Player Component
+ * Provides play/pause, progress bar, time display, and download
+ */
+function VoicemailPlayer({ audioUrl, isCustomer }: { audioUrl: string; isCustomer: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleDurationChange = () => setDuration(audio.duration || 0);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      if (audio) {
+        audio.currentTime = 0;
+      }
+    };
+    const handleLoadedMetadata = () => setDuration(audio.duration || 0);
+    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => setIsPlaying(true);
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('durationchange', handleDurationChange);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('play', handlePlay);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('durationchange', handleDurationChange);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('play', handlePlay);
+    };
+  }, []);
+
+  const togglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    try {
+      if (isPlaying) {
+        audio.pause();
+      } else {
+        await audio.play();
+      }
+    } catch (error) {
+      console.warn('Audio playback failed:', error);
+      setIsPlaying(false);
+    }
+  };
+
+  const toggleMute = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = !audio.muted;
+    setIsMuted(!isMuted);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const time = parseFloat(e.target.value);
+    audio.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  const formatTime = (time: number) => {
+    if (!time || isNaN(time)) return '0:00';
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const baseClasses = isCustomer 
+    ? 'bg-gray-300/50 dark:bg-gray-600/50' 
+    : 'bg-white/15';
+
+  const accentClasses = isCustomer
+    ? 'text-cyan-700 dark:text-cyan-300'
+    : 'text-white';
+
+  return (
+    <div className={`rounded-lg p-2 ${baseClasses}`} data-testid="voicemail-player">
+      <audio ref={audioRef} src={audioUrl} preload="metadata" />
+      
+      <div className="flex items-center gap-2">
+        {/* Play/Pause Button */}
+        <button
+          onClick={togglePlay}
+          className={`flex items-center justify-center w-8 h-8 rounded-full transition-colors ${
+            isCustomer 
+              ? 'bg-cyan-500/30 hover:bg-cyan-500/50 text-cyan-700 dark:text-cyan-300'
+              : 'bg-white/20 hover:bg-white/30 text-white'
+          }`}
+          data-testid="button-voicemail-play-pause"
+        >
+          {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+        </button>
+
+        {/* Progress Bar */}
+        <div className="flex-1 flex flex-col gap-0.5">
+          <div className="relative h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+            <div 
+              className={`absolute left-0 top-0 h-full rounded-full transition-all ${
+                isCustomer ? 'bg-cyan-500' : 'bg-white/70'
+              }`}
+              style={{ width: `${progress}%` }}
+            />
+            <input
+              type="range"
+              min="0"
+              max={duration || 0}
+              value={currentTime}
+              onChange={handleSeek}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              data-testid="voicemail-progress-slider"
+            />
+          </div>
+          <div className={`flex justify-between text-[10px] ${accentClasses} opacity-70`}>
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+
+        {/* Mute Button */}
+        <button
+          onClick={toggleMute}
+          className={`p-1.5 rounded-full transition-colors ${
+            isCustomer 
+              ? 'hover:bg-gray-400/30 text-gray-600 dark:text-gray-300'
+              : 'hover:bg-white/20 text-white/80'
+          }`}
+          data-testid="button-voicemail-mute"
+        >
+          {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+        </button>
+
+        {/* Download Button */}
+        <a
+          href={audioUrl}
+          download
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`p-1.5 rounded-full transition-colors ${
+            isCustomer 
+              ? 'hover:bg-gray-400/30 text-gray-600 dark:text-gray-300'
+              : 'hover:bg-white/20 text-white/80'
+          }`}
+          data-testid="button-voicemail-download"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </a>
+      </div>
+    </div>
+  );
 }
 
 export default function MessageBubble({
@@ -244,32 +414,24 @@ export default function MessageBubble({
           }
           ${isVoicemail ? 'border-l-4 border-cyan-500 dark:border-cyan-400' : ''}
         `}>
-          {/* Voicemail Header */}
+          {/* Voicemail Header + Inline Audio Player */}
           {isVoicemail && (
-            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-300/50 dark:border-gray-600/50">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 dark:bg-cyan-400/20">
-                <Mic className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-              </div>
-              <div className="flex-1">
-                <span className="text-xs font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-                  Voicemail Transcription
-                </span>
+            <div className="mb-2 pb-2 border-b border-gray-300/50 dark:border-gray-600/50">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 dark:bg-cyan-400/20">
+                  <Mic className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+                    Voicemail
+                  </span>
+                </div>
               </div>
               {voicemailRecordingUrl && (
-                <a
-                  href={voicemailRecordingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                    isCustomer 
-                      ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-300'
-                      : 'bg-white/20 hover:bg-white/30 text-white'
-                  }`}
-                  data-testid="button-play-voicemail"
-                >
-                  <Play className="h-3 w-3" />
-                  Play
-                </a>
+                <VoicemailPlayer 
+                  audioUrl={voicemailRecordingUrl} 
+                  isCustomer={isCustomer}
+                />
               )}
             </div>
           )}
@@ -366,9 +528,20 @@ export default function MessageBubble({
           )}
         </div>
         
-        {/* Timestamp + Delivery Status - Below bubble */}
+        {/* Timestamp + Delivery Status + AI Attribution - Below bubble */}
         <div className={`flex flex-col ${isCustomer ? 'items-start' : 'items-end'} gap-0.5 mt-0.5 px-1`}>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            {/* AI Attribution Badge */}
+            {message.sender === 'ai' && (
+              <div 
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"
+                data-testid="ai-attribution-badge"
+              >
+                <Bot className="h-2.5 w-2.5" />
+                <span className="text-[10px] font-medium">AI</span>
+              </div>
+            )}
+            
             {/* Delivery Indicator for sent messages - Production-grade checkmarks */}
             {isSent && (
               <div className="flex items-center" data-testid={`delivery-status-${message.deliveryStatus || 'sent'}`}>
