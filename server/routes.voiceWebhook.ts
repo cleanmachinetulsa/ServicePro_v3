@@ -7,6 +7,7 @@ import { sendSMS } from './notifications';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { getWebSocketServer } from './websocketService';
 import { requireTechnician } from './technicianMiddleware';
+import { sendPushToAllUsers } from './pushNotificationService';
 
 const router = Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -479,15 +480,39 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
 
   const twiml = new VoiceResponse();
 
-  // Handle missed calls - send automatic SMS
+  // Handle missed calls - send automatic SMS and push notification
   if (dialCallStatus === 'no-answer' || dialCallStatus === 'busy' || dialCallStatus === 'failed') {
-    console.log(`[VOICE] Missed call from ${callerPhone} - sending automatic SMS`);
+    console.log(`[VOICE] Missed call from ${callerPhone} - sending automatic SMS and push notification`);
 
     // Send automatic SMS response
     try {
       await sendMissedCallSMS(req, callerPhone);
     } catch (error) {
       console.error('[VOICE] Failed to send missed call SMS:', error);
+    }
+
+    // Send push notification for missed call
+    try {
+      await sendPushToAllUsers({
+        title: '📞 Missed Call',
+        body: `Missed call from ${callerPhone}`,
+        tag: `missed-call-legacy-${callSid}`,
+        requireInteraction: true,
+        data: {
+          type: 'missed_call',
+          callerPhone,
+          callSid,
+          status: dialCallStatus,
+          url: '/messages',
+        },
+        actions: [
+          { action: 'view', title: 'View' },
+          { action: 'call_back', title: 'Call Back' },
+        ],
+      });
+      console.log(`[VOICE] Push notification sent for missed call from ${callerPhone}`);
+    } catch (pushError) {
+      console.error('[VOICE] Failed to send missed call push notification:', pushError);
     }
 
     // Offer voicemail
