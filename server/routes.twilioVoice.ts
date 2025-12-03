@@ -869,12 +869,13 @@ router.post('/voice/voice-dial-status', verifyTwilioSignature, async (req: Reque
     // no-answer, busy, failed, canceled - route to voicemail
     console.log(`[VOICE] Call not answered (${dialCallStatus}), routing to voicemail`);
     
-    // Send push notification for missed call (dial status)
+    // Send push notification for missed call
+    // Note: Use same tag pattern as call-status handler so service worker deduplicates
     try {
       await sendPushToAllUsers({
         title: '📞 Missed Call',
-        body: `Missed call from ${callerPhone} (${dialCallStatus})`,
-        tag: `missed-call-dial-${callSid}`,
+        body: `Missed call from ${callerPhone}`,
+        tag: `missed-call-${callSid}`,
         requireInteraction: true,
         data: {
           type: 'missed_call',
