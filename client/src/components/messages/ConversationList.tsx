@@ -12,9 +12,11 @@ import {
   Pin,
   Mail,
   Mic,
+  AlertTriangle,
+  Timer,
 } from 'lucide-react';
 import { FaFacebook, FaInstagram } from 'react-icons/fa';
-import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns';
+import { format, isToday, isYesterday, formatDistanceToNow, differenceInMinutes } from 'date-fns';
 
 interface Conversation {
   id: number;
@@ -148,6 +150,56 @@ function getStatusBadge(conversation: Conversation) {
   }
 }
 
+function getResponseTimeIndicator(conversation: Conversation) {
+  if (!conversation.latestMessage || conversation.latestMessage.sender !== 'customer') {
+    return null;
+  }
+  
+  const minutesWaiting = differenceInMinutes(new Date(), new Date(conversation.latestMessage.timestamp));
+  
+  if (minutesWaiting < 15) {
+    return null;
+  }
+  
+  if (minutesWaiting >= 60) {
+    const hours = Math.floor(minutesWaiting / 60);
+    return (
+      <Badge 
+        variant="outline" 
+        className="text-[10px] px-1.5 py-0.5 gap-1 font-medium bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800"
+        data-testid="response-time-urgent"
+      >
+        <AlertTriangle className="h-2.5 w-2.5" />
+        {hours}h wait
+      </Badge>
+    );
+  }
+  
+  if (minutesWaiting >= 30) {
+    return (
+      <Badge 
+        variant="outline" 
+        className="text-[10px] px-1.5 py-0.5 gap-1 font-medium bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+        data-testid="response-time-warning"
+      >
+        <Timer className="h-2.5 w-2.5" />
+        {minutesWaiting}m wait
+      </Badge>
+    );
+  }
+  
+  return (
+    <Badge 
+      variant="outline" 
+      className="text-[10px] px-1.5 py-0.5 gap-1 font-medium bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700"
+      data-testid="response-time-normal"
+    >
+      <Timer className="h-2.5 w-2.5" />
+      {minutesWaiting}m
+    </Badge>
+  );
+}
+
 export default function ConversationList({
   conversations,
   selectedId,
@@ -271,7 +323,7 @@ export default function ConversationList({
                     </p>
                   )}
                   
-                  {/* Unread Badge + Status */}
+                  {/* Unread Badge + Status + Response Time */}
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     {isUnread && (
                       <Badge
@@ -282,6 +334,7 @@ export default function ConversationList({
                         {conversation.unreadCount}
                       </Badge>
                     )}
+                    {getResponseTimeIndicator(conversation)}
                     {getStatusBadge(conversation)}
                   </div>
                 </div>

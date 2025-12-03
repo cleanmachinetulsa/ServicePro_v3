@@ -17,13 +17,19 @@ import {
   ChevronUp,
   MessageSquare,
   Edit3,
-  Save
+  Save,
+  Gift,
+  Zap,
+  Send,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useToast } from '@/hooks/use-toast';
 
 interface CustomerInfo {
   id: number;
@@ -117,9 +123,36 @@ export function NightOpsContextPanel({
   onBookAppointment,
   onSaveNotes
 }: NightOpsContextPanelProps) {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('customer');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState(customerInfo?.notes || '');
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        toast({ title: `${label} copied!`, duration: 2000 });
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          toast({ title: `${label} copied!`, duration: 2000 });
+        } catch {
+          toast({ title: `${label}: ${text}`, description: 'Copy manually', duration: 5000 });
+        }
+        document.body.removeChild(textarea);
+      }
+    } catch (error) {
+      toast({ title: `${label}: ${text}`, description: 'Copy manually', duration: 5000 });
+    }
+  };
 
   const getInitials = (name: string | null, phone: string) => {
     if (name) {
@@ -406,6 +439,65 @@ export function NightOpsContextPanel({
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Quick Actions Section */}
+      <div className="nightops-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Zap className="h-4 w-4 text-cyan-400" />
+          <span className="nightops-section-title">Quick Actions</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => copyToClipboard(customerInfo.phone, 'Phone')}
+            className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+            data-testid="button-copy-phone"
+          >
+            <Copy className="h-3.5 w-3.5 mr-1.5" />
+            Copy Phone
+          </Button>
+          {customerInfo.email && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.open(`mailto:${customerInfo.email}`, '_blank');
+              }}
+              className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+              data-testid="button-send-email"
+            >
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              Email
+            </Button>
+          )}
+          {customerInfo.address && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.open(`https://maps.google.com/?q=${encodeURIComponent(customerInfo.address || '')}`, '_blank');
+              }}
+              className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+              data-testid="button-view-map"
+            >
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+              Map
+            </Button>
+          )}
+          {(customerInfo.loyaltyPoints ?? 0) > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 text-xs bg-purple-900/30 border-purple-700/60 hover:bg-purple-800/40 text-purple-300"
+              data-testid="button-redeem-points"
+            >
+              <Gift className="h-3.5 w-3.5 mr-1.5" />
+              Redeem Points
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="pt-2">
         <Button
