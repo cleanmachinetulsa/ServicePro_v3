@@ -109,6 +109,10 @@ async function handleVoicemailComplete(req: Request, res: Response) {
   
   console.log(`[VOICEMAIL COMPLETE] CallSid=${CallSid}, From=${From}, RecordingSid=${RecordingSid}`);
   
+  // Note: Push notification is handled by recording-status callback (handleRecordingStatus)
+  // when RecordingStatus=completed. This avoids duplicate notifications and ensures
+  // proper tenant scoping through notifyVoicemail().
+  
   // Send confirmation TwiML
   const twiml = buildVoicemailCompleteTwiml();
   res.type('text/xml');

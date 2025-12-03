@@ -492,11 +492,12 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
     }
 
     // Send push notification for missed call
+    // Use consistent tag pattern so service worker deduplicates across handlers
     try {
       await sendPushToAllUsers({
         title: '📞 Missed Call',
         body: `Missed call from ${callerPhone}`,
-        tag: `missed-call-legacy-${callSid}`,
+        tag: `missed-call-${callSid}`,
         requireInteraction: true,
         data: {
           type: 'missed_call',
