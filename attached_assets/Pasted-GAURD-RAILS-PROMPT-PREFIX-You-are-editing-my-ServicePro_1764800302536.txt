@@ -1,0 +1,58 @@
+GAURD-RAILS PROMPT PREFIX
+
+You are editing my ServicePro v3 multi-tenant repo.
+
+ABSOLUTE RULES (DO NOT IGNORE):
+- Do NOT refactor anything large.
+- Make the smallest change that solves the immediate bug.
+- If you cannot fully fix it, clearly tell me what the error is and where it originates.
+
+TASK: Debug the Twilio voice error that causes Twilio to say:
+"We're sorry, the application has encountered an error"
+when calling my main number **+1 918 856 5304**.
+
+Canonical facts (DO NOT OVERRIDE):
+- Production base URL: https://servicepro-v-3-base-cleanmachinetul.replit.app
+- Voice webhook configured in Twilio (A call comes in) SHOULD be:
+  POST https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/incoming
+- Main entry route should be implemented in server/routes.twilioVoice.ts (or similar).
+
+What I want you to do:
+
+1) Verify that the route `/twilio/voice/incoming` is:
+   - Registered in server/routes.ts (or equivalent)
+   - Exported correctly from server/routes.twilioVoice.ts (or equivalent)
+   - Returning valid TwiML (NOT JSON, NOT HTML) on a normal inbound call.
+
+2) From the Replit shell, simulate Twilio hitting this endpoint by doing a curl POST with realistic params, e.g.:
+
+   curl -X POST \
+     https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/incoming \
+     -d "From=+19185551234" \
+     -d "To=+19188565304" \
+     -d "CallSid=CA_TESTDEBUG123" \
+     -d "Digits="
+
+   - Watch the server logs and show me:
+     - The HTTP status code
+     - Any stack trace or error message
+     - The raw response body (so we can confirm it's valid TwiML)
+
+3) If you see an error (e.g. missing env var, DB error, thrown exception):
+   - Identify the exact line/file causing it.
+   - Apply the smallest possible fix.
+   - Re-run the curl test and confirm:
+     - Status is 200
+     - Response is valid TwiML (starts with <?xml ... <Response>...).
+
+4) Summarize clearly:
+   - What was broken.
+   - What file/lines you changed.
+   - What the /twilio/voice/incoming TwiML looks like now in the “happy path”.
+   - Any remaining TODOs (if you could not fully fix it).
+
+Do NOT move on to IVR options or voicemail / push notifications yet.
+First priority is:
+“Call → /twilio/voice/incoming → no error, valid TwiML back to Twilio”.
+
+End of instructions.
