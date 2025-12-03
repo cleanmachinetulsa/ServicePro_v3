@@ -10,6 +10,7 @@ import { handleConversationalScheduling } from './conversationalScheduling';
 import { sendSMS } from './notifications';
 import { requireTechnician } from './technicianMiddleware';
 import { TWILIO_TEST_SMS_NUMBER } from './twilioClient';
+import { sendPushToAllUsers } from './pushNotificationService';
 
 const router = express.Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -784,15 +785,39 @@ router.post('/voice/call-status', verifyTwilioSignature, async (req: Request, re
 
   const twiml = new VoiceResponse();
 
-  // Handle missed calls - send automatic SMS
+  // Handle missed calls - send automatic SMS and push notification
   if (dialCallStatus === 'no-answer' || dialCallStatus === 'busy' || dialCallStatus === 'failed') {
-    console.log(`[VOICE] Missed call from ${callerPhone} - sending automatic SMS`);
+    console.log(`[VOICE] Missed call from ${callerPhone} - sending automatic SMS and push notification`);
 
     // Send automatic SMS response
     try {
       await sendMissedCallSMS(callerPhone);
     } catch (error) {
       console.error('[VOICE] Failed to send missed call SMS:', error);
+    }
+
+    // Send push notification for missed call
+    try {
+      await sendPushToAllUsers({
+        title: '📞 Missed Call',
+        body: `Missed call from ${callerPhone}`,
+        tag: `missed-call-${callSid}`,
+        requireInteraction: true,
+        data: {
+          type: 'missed_call',
+          callerPhone,
+          callSid,
+          status: dialCallStatus,
+          url: '/messages',
+        },
+        actions: [
+          { action: 'view', title: 'View' },
+          { action: 'call_back', title: 'Call Back' },
+        ],
+      });
+      console.log(`[VOICE] Push notification sent for missed call from ${callerPhone}`);
+    } catch (pushError) {
+      console.error('[VOICE] Failed to send missed call push notification:', pushError);
     }
 
     // Offer voicemail
@@ -843,6 +868,30 @@ router.post('/voice/voice-dial-status', verifyTwilioSignature, async (req: Reque
   } else {
     // no-answer, busy, failed, canceled - route to voicemail
     console.log(`[VOICE] Call not answered (${dialCallStatus}), routing to voicemail`);
+    
+    // Send push notification for missed call (dial status)
+    try {
+      await sendPushToAllUsers({
+        title: '📞 Missed Call',
+        body: `Missed call from ${callerPhone} (${dialCallStatus})`,
+        tag: `missed-call-dial-${callSid}`,
+        requireInteraction: true,
+        data: {
+          type: 'missed_call',
+          callerPhone,
+          callSid,
+          status: dialCallStatus,
+          url: '/messages',
+        },
+        actions: [
+          { action: 'view', title: 'View' },
+          { action: 'call_back', title: 'Call Back' },
+        ],
+      });
+      console.log(`[VOICE] Push notification sent for missed dial to ${callerPhone}`);
+    } catch (pushError) {
+      console.error('[VOICE] Failed to send missed call push notification:', pushError);
+    }
     
     // Get voicemail greeting for this phone line
     try {

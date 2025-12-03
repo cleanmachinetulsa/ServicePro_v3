@@ -62,7 +62,7 @@ export function buildVoicemailTwiml(callbackBaseUrl: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Please leave your name, vehicle, and what you're looking to get done, and we'll text you back. Press any key when you're finished.</Say>
-  <Record maxLength="120" playBeep="true" action="${callbackBaseUrl}/twilio/voice/voicemail-complete" method="POST" recordingStatusCallback="${callbackBaseUrl}/twilio/voice/recording-status" recordingStatusCallbackMethod="POST" finishOnKey="any"/>
+  <Record maxLength="120" playBeep="true" transcribe="true" action="${callbackBaseUrl}/twilio/voice/voicemail-complete" method="POST" recordingStatusCallback="${callbackBaseUrl}/twilio/voice/recording-status" recordingStatusCallbackMethod="POST" transcribeCallback="${callbackBaseUrl}/twilio/voice/voicemail-transcribed" finishOnKey="any"/>
   <Say voice="alice">We didn't receive your message. Goodbye.</Say>
   <Hangup/>
 </Response>`;

@@ -1,0 +1,52 @@
+You are editing my ServicePro v3 multi-tenant repo.
+
+ABSOLUTE RULES (DO NOT IGNORE):
+
+1. DO NOT wander or refactor large files unless explicitly asked.
+   - Make the smallest change that solves the problem.
+   - If you find multiple issues, FIX THE ONE I ASKED ABOUT FIRST.
+
+2. For any UX / behavior change:
+   - AFTER your changes, you MUST:
+     - Restart the dev server if needed.
+     - Open the relevant page or flow in the dev preview.
+     - MANUALLY TEST the exact thing I’m complaining about.
+   - If the behavior is STILL BROKEN:
+     - SAY SO in your summary.
+     - DO NOT claim “it should work now.”
+
+3. Minimize expensive loops:
+   - Avoid repeatedly editing the same file 10+ times in one run.
+
+4. When you finish:
+   - Summarize EXACTLY what you changed (files + main behaviors).
+   - Tell me how you tested it and what you observed.
+
+TASK:
+
+1. Find ALL Twilio Voice / IVR handlers in this repo. Look for:
+   - Express routes like /api/twilio/voice, /api/twilio/ivr, /voice/ivr, etc.
+   - Any TwiML generation using new twilio.twiml.VoiceResponse().
+   - Any mention of "press 1", "press 2", "IVR" in the server code or docs.
+
+2. Identify WHERE the logic for handling the caller’s DTMF choice (Digits) is implemented.
+
+3. Modify ONLY the handler that maps to the current production IVR “main menu” so that:
+   - When the caller presses "2", Twilio DIALS my SIP URI:
+     sip:jody@cleanmacinetulsa.sip.twilio.com
+
+   Implementation requirement:
+   - Use Twilio’s VoiceResponse and:
+       twiml.dial().sip("sip:jody@cleanmacinetulsa.sip.twilio.com");
+   - Keep all existing options for other digits (1, 3, etc.) working as they are.
+
+4. If the SIP URI is currently pointing to something else (like my cell), REPLACE that target with the SIP URI above.
+
+5. In your summary, tell me:
+   - The exact file and function you changed.
+   - The TwiML you now output for digit "2".
+   - Any environment variables or Twilio Console settings I must verify for this to work
+     (e.g. which route/url must be set as the Voice webhook on my main Twilio number).
+
+DO NOT touch SMS handlers, AI logic, or unrelated files.
+Focus ONLY on the IVR → SIP path for “press 2 to talk to someone”.
