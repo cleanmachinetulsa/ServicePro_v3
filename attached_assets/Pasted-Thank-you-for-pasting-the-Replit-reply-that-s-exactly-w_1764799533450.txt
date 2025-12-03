@@ -1,0 +1,220 @@
+Thank you for pasting the Replit reply — that’s exactly what we needed.
+
+We’re all on the same page now:
+
+✅ Canonical, correct, future-proof SIP domain:
+cleanmachinetulsa.sip.twilio.com
+❌ Do NOT use: cleanmachinetulsa.sip.us1.twilio.com
+
+Replit literally said:
+
+“GPT is correct… I was wrong… canonical configuration is cleanmachinetulsa.sip.twilio.com.”
+
+So there’s no more “AI vs AI” conflict — both sides are aligned now.
+
+1. What you should do RIGHT NOW
+A. Fix Groundwire (if you changed it)
+
+On your Android phone, in Groundwire, for your Clean Machine account:
+
+SIP Server / Domain:
+cleanmachinetulsa.sip.twilio.com
+
+Username: jody
+
+Password: your Twilio SIP credential
+
+Transport: UDP (totally fine for now)
+
+➡️ After saving, the account should show Registered / green.
+If it’s already green with exactly that domain, don’t touch it.
+
+B. Twilio phone number webhooks (just confirm)
+
+For +1 918 856 5304 in the Twilio console:
+
+Voice & Fax
+
+A call comes in:
+Webhook →
+
+https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/incoming
+
+
+Method: HTTP POST
+
+Call status callback URL:
+
+https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/call-status
+
+
+Method: HTTP POST
+
+Messaging
+
+A message comes in:
+
+https://servicepro-v-3-base-cleanmachinetul.replit.app/api/twilio/sms/inbound
+
+
+Method: HTTP POST
+
+Once those are set, all the plumbing from Twilio → ServicePro v3 is pointed correctly.
+
+2. Test plan (voice + voicemail + push + SMS)
+
+Here’s your clean checklist. You can literally walk down this list and tick things off.
+
+✅ Test 1 – Groundwire registration
+
+What you do:
+
+Open Groundwire → Account list → tap the Clean Machine account.
+
+Expected:
+
+Status shows Registered / green.
+
+If it’s not registered:
+
+Double-check:
+
+Domain exactly: cleanmachinetulsa.sip.twilio.com
+
+Username: jody
+
+Password: matches Twilio credentials
+
+✅ Test 2 – Incoming call → live ring
+
+What you do:
+
+From a different phone, call +1 918 856 5304.
+
+Just listen and watch Groundwire.
+
+Expected behavior:
+
+You hear your greeting / IVR (depending on business-hours/ivr_mode).
+
+Your Groundwire app rings.
+
+If you answer on Groundwire:
+
+You can talk both ways.
+
+In ServicePro v3, the call should show up in recent calls / logs.
+
+If the call never rings Groundwire but you hear IVR, tell me:
+“IVR plays, but 2 doesn’t ring Groundwire” vs “Straight to voicemail” etc. That distinction matters.
+
+✅ Test 3 – Missed call → voicemail → push notification
+
+What you do:
+
+Call +1 918 856 5304 again.
+
+Let it ring on Groundwire, do not answer.
+
+When IVR plays, choose the voicemail path (whatever key the menu says, typically 3).
+
+Leave a clear 10–15s voicemail, then hang up.
+
+Expected:
+
+Within a few seconds, on your ServicePro PWA:
+
+You see a push notification like “New voicemail from +1…”.
+
+In the app:
+
+On the Messages / Phone view, a voicemail entry appears with:
+
+Audio player (play/pause)
+
+Metadata/type voicemail
+
+After ~30–60 seconds:
+
+Transcription text appears on that voicemail message.
+
+✅ Test 4 – IVR options (including “press 2 to talk to someone”)
+
+What you do:
+
+Call +1 918 856 5304.
+
+When IVR menu plays, press:
+
+1 → pricing SMS
+
+2 → talk to someone (SIP dial)
+
+3 → voicemail
+
+Expected:
+
+Press 1 → you get an SMS with pricing info.
+
+Press 2 → Groundwire rings (dials sip:jody@cleanmachinetulsa.sip.twilio.com).
+
+Press 3 → voicemail flow from Test 3.
+
+If 2 doesn’t ring Groundwire but everything else works, we know the problem is specifically in the SIP dial leg, not webhooks in general.
+
+✅ Test 5 – SMS integration
+
+What you do:
+
+From another phone, send an SMS to +1 918 856 5304.
+
+Watch the ServicePro app.
+
+Expected:
+
+A conversation appears on the Messages/Night Ops view.
+
+AI responds (per your Clean Machine behavior rules).
+
+If the AI marks it as needing attention, you should get a push notification in the PWA.
+
+3. Extra little thing you asked about: “Caller Name Lookup”
+
+That Caller Name Lookup $0.01 thing in Twilio:
+
+It is not the same as Caller ID passthrough.
+
+Caller ID passthrough = you see the caller’s number.
+
+Caller Name Lookup (CNAM) = Twilio goes out and looks up the name associated with the number (like “JOHN SMITH” or the business name) and charges per lookup.
+
+You do not need Caller Name Lookup for SIP / Groundwire / IVR to work. It’s just an optional lookup for extra info.
+
+4. Where we stand now
+
+✅ You + Replit + me are finally aligned:
+cleanmachinetulsa.sip.twilio.com is the only domain we should use.
+
+✅ Your code and DB already use that form everywhere.
+
+✅ Replit explicitly admitted the .us1 thing was their mistake.
+
+So now it’s not “who do I trust?” — it’s:
+
+We have one canonical config, and now we just need to test the actual behavior.
+
+Once you’ve:
+
+Confirmed Groundwire is Registered with cleanmachinetulsa.sip.twilio.com, and
+
+Updated the Twilio number to the ServicePro v3 URLs,
+
+you can walk through those tests and then tell me:
+
+Which steps passed,
+
+Which one (if any) broke, and
+
+What you saw/heard (e.g., “IVR played but 2 = silence,” “no voicemail push,” etc.).
+
+From there we’ll surgically fix only the failing piece instead of you being stuck in three-way AI telephone.
