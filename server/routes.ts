@@ -52,6 +52,7 @@ import notificationRoutes from './routes.notifications';
 import twilioStatusCallbackRoutes from './routes.twilioStatusCallback';
 import { twilioTestSmsRouter } from './routes/twilioTestSms';
 import { twilioTestVoiceRouter } from './routes/twilioTestVoice';
+import { twilioMediaRouter } from './routes.twilioMedia';
 import { debugEnvRouter } from './routes/debugEnv';
 import { twilioDebugSmsRouter } from './routes/twilioDebugSms';
 import facebookRoutes from './routes.facebook';
@@ -3468,6 +3469,10 @@ Follow up with this lead to set up their 14-day trial!
   app.use('/api/twilio/sms', twilioTestSmsRouter);
   app.use('/api/twilio/voice', twilioTestVoiceRouter);
   console.log('[TWILIO TEST] Routes registered: /api/twilio/sms/inbound, /api/twilio/voice/inbound, /api/twilio/sms/debug-send, /api/debug/env/twilio');
+  
+  // Register Twilio media proxy (for voicemail recordings without exposing credentials)
+  app.use('/api/twilio', twilioMediaRouter);
+  console.log('[TWILIO MEDIA] Proxy route registered: /api/twilio/media/:recordingSid');
   
   // Register TwiML routes for technician WebRTC calling
   app.use('/twiml', twilmlRoutes);
