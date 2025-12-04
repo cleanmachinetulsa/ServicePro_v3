@@ -1,0 +1,182 @@
+You are the lead engineer on the ServicePro v3 codebase. I need you to implement a **tenant-facing A2P Campaign Assistant** so that each tenant can self-file their SMS A2P campaign with AI assistance.
+
+High-level goals:
+
+- Tenant goes to `/settings/a2p` (or similar).
+- They see a wizard-style form that collects:
+  - Business details (pre-filled from tenant config).
+  - Use case / campaign type.
+  - Sample messages.
+  - Compliance details (opt-in / opt-out language).
+- An AI helper button auto-generates good, compliant copy for them based on:
+  - Their industry (industry pack).
+  - Their existing SMS templates / FAQ / website content.
+- Data is saved per-tenant in the database.
+- For now, we **do NOT** actually call Twilio TrustHub; just store a "campaign draft" and show “Ready to file” so I can manually submit to Twilio later.
+
+Please implement the following:
+
+1) Database: `a2p_campaigns` table
+
+Create a migration for a new table `a2p_campaigns` with at least:
+
+- id (PK)
+- tenant_id (FK)
+- status: enum or text (`'draft' | 'ready_to_submit' | 'submitted' | 'approved' | 'rejected'`)
+- brand_name: text
+- website_url: text
+- use_case_category: text   // e.g., 'appointment_notifications', 'marketing', etc.
+- campaign_description: text
+- sample_messages: jsonb    // array of strings
+- opt_in_description: text
+- opt_out_instructions: text
+- help_instructions: text   // what "HELP" replies do
+- message_frequency: text   // e.g., '1-2 per month'
+- terms_url: text
+- privacy_url: text
+- ai_generated: boolean     // if last edit came from AI helper
+- last_submitted_at: timestamp nullable
+- created_at, updated_at: timestamps
+
+Enforce tenant scoping (tenant_id + unique constraint so each tenant has at most 1 active campaign row).
+
+2) Backend service: `a2pCampaignService`
+
+Create `server/services/a2pCampaignService.ts` with helpers:
+
+- `getCampaignForTenant(tenantId)`
+- `upsertCampaignForTenant(tenantId, payload)` with safety checks.
+- `markStatus(tenantId, status)` – only valid transitions (e.g., draft → ready_to_submit → submitted).
+
+3) API routes (tenant-scoped)
+
+Create a new routes file `server/routes.a2pCampaign.ts` and register it in `server/routes.ts`. Endpoints:
+
+- `GET /api/a2p/campaign`  
+  → returns the current tenant's campaign draft (or sensible defaults).
+
+- `PUT /api/a2p/campaign`  
+  → updates the campaign fields for the current tenant.  
+  - Validate required fields.
+  - Ensure the campaign belongs to the authenticated tenant.
+
+- `POST /api/a2p/campaign/ai-suggest`  
+  → calls OpenAI (or the existing AI helper) to generate:
+    - campaign_description
+    - sample_messages (2–4 examples)
+    - opt_in_description
+    - opt_out_instructions
+    - help_instructions
+    - message_frequency
+  based on:
+    - tenant industry
+    - tenant name
+    - a few of the tenant’s existing SMS templates / FAQ entries if available.
+
+  This endpoint should:
+  - Return proposed fields in a JSON object.
+  - NOT overwrite the DB automatically; the frontend will let the user review/accept.
+
+DO NOT call Twilio TrustHub APIs yet. For now, this is just an internal campaign draft + AI helper.
+
+4) Frontend page: `/settings/a2p` (tenant UI)
+
+Create a new page component (e.g. `client/src/pages/SettingsA2P.tsx`) and add a route in the app router, linked from the settings sidebar (“SMS Compliance” or “A2P Campaign”).
+
+The UI should:
+
+- Load existing campaign via `GET /api/a2p/campaign`.
+- Show a multi-section form:
+
+  Section 1 – Business & Brand
+  - Brand Name (prefill from tenant / business name)
+  - Website URL (prefill from tenant config if available)
+  - Industry / Use Case Category (dropdown, prefilled based on industry pack)
+
+  Section 2 – Campaign Description & Use Case
+  - Textarea for campaign description.
+  - Dropdown for high-level use case (transactional, marketing, mixed).
+  - AI helper button: “Suggest Description & Use Case”.
+
+  Section 3 – Sample Messages
+  - 3–4 multiline fields or a dynamic list to hold sample messages.
+  - AI button: “Generate Sample Messages from my real SMS templates”.
+
+  Section 4 – Compliance Details
+  - Opt-in description (how customers join).
+  - Opt-out instructions (must mention “Reply STOP to unsubscribe”).
+  - Help instructions (what happens when they reply HELP).
+  - Message frequency.
+  - Terms URL / Privacy URL (prefill from tenant config if we have them; otherwise from ServicePro defaults).
+
+- At the top or bottom, show a **status pill**:
+  - `Draft / Ready to Submit / Submitted / Approved / Rejected`.
+
+- Buttons:
+  - “Save Draft” → PUT /api/a2p/campaign.
+  - “Mark Ready to Submit” → POST to mark status `ready_to_submit`.
+  - (In future we’ll add “Submit to Twilio”; leave a TODO).
+
+5) AI helper behavior
+
+Use the existing OpenAI integration (the same one used for voicemail summaries) to implement the `ai-suggest` endpoint:
+
+- System prompt should be focused on:
+  - US A2P / carrier rules.
+  - No SHAFT content.
+  - Always include opt-out language like: “Reply STOP to unsubscribe, HELP for help.”
+  - Tone: professional, clear, non-spammy.
+- Use inputs:
+  - tenant business name
+  - industry
+  - example services / prices if available
+  - existing SMS templates (if any) from this tenant
+
+Return proposed fields as:
+
+```json
+{
+  "campaign_description": "...",
+  "sample_messages": ["...", "..."],
+  "opt_in_description": "...",
+  "opt_out_instructions": "...",
+  "help_instructions": "...",
+  "message_frequency": "1-2 messages per month"
+}
+Multi-tenant safety
+
+All DB operations must be tenant-scoped.
+
+Admins of one tenant must not see or modify another tenant’s A2P campaign.
+
+The existing wrapTenantDb / tenant resolution logic must be reused.
+
+UX polish
+
+Mobile-first responsive layout, consistent with other settings pages.
+
+Show small helper tooltips explaining:
+
+What A2P is.
+
+Why opt-out language is required.
+
+That “Ready to Submit” means I (the platform owner) can now review/submit to Twilio.
+
+Final output
+
+After implementation, run through:
+
+Create a brand new tenant via onboarding.
+
+Log in as that tenant.
+
+Visit /settings/a2p.
+
+Use AI helper to populate fields.
+
+Save draft, mark as Ready to Submit.
+
+Confirm DB row is created and scoped to that tenant.
+
+Then respond with a short “How to use the A2P Campaign Assistant” guide for the app owner.

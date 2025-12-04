@@ -1,0 +1,60 @@
+You are the lead engineer on the ServicePro v3 codebase. I need a one-time **Google Voice SMS import** tool that backfills my old texts into the existing `conversations` and `messages` tables, WITHOUT triggering any outbound SMS or AI replies.
+
+Context / requirements:
+
+- DB tables (from codebase):
+  - `conversations`: { id, tenantId, customerPhone, channel, needsHumanAttention, lastMessageAt, ... }
+  - `messages`: { id, conversationId, direction, content, metadata, createdAt, ... }
+
+- Target tenant for this import: the root / Clean Machine tenant. Use whatever tenantId is currently used for Clean Machine in the existing backfill tools (customer backfill etc).
+
+- I will upload a **Google Voice export** into the repo, likely under `google-voice-export/`. It may be HTML or JSON. You must:
+  - Detect whether we have JSON or HTML.
+  - For JSON: parse threads/messages directly.
+  - For HTML: use a simple parser (e.g. cheerio) to extract phone number, direction, text, and timestamp.
+
+- For each message:
+  - Normalize the customer phone to E.164 (US) using our existing phone utilities if available (search `normalizePhone` or similar).
+  - Determine direction: customer → `inbound`, me → `outbound`.
+  - Preserve `createdAt` from the original timestamp.
+  - Store in `metadata`:
+    - `source: 'google_voice_import'`
+    - `googleVoiceId` or some stable identifier (per message if available, or hash of [phone, timestamp, content]).
+
+- For each unique customer phone:
+  - Find or create a `conversations` row for that tenant + phone + `channel = 'sms'`.
+  - Update `lastMessageAt` to the newest timestamp for that phone.
+
+- For each message in that conversation:
+  - INSERT into `messages` WITHOUT sending any Twilio SMS and WITHOUT invoking the AI reply pipeline.
+  - That means:
+    - Do NOT call the normal inbound SMS webhook handler.
+    - Instead, write a dedicated **backfill helper** that uses `tenantDb` or the existing backfill tooling (similar to the customer backfill you already implemented).
+    - Ensure no side effects like push notifications or AI runs.
+
+- The tool should live at: `tools/importGoogleVoiceSms.cjs`.
+
+- It must support:
+  - `--dry-run` (just log what it WOULD import, don’t write to DB)
+  - `--limit` (maximum number of messages to import, for testing)
+  - Optional `--since` / `--until` date filters (ISO date strings) to restrict to a port-window if desired.
+
+- The script must:
+  - Log a clear summary at the end: number of conversations created, messages inserted, messages skipped (duplicates).
+  - Be idempotent:
+    - If run twice, it should skip messages whose `metadata.googleVoiceId` already exists in `messages`.
+
+- Assume I will run it like:
+  - `node tools/importGoogleVoiceSms.cjs --dry-run`
+  - then
+  - `node tools/importGoogleVoiceSms.cjs`
+
+Deliverables:
+
+1. Create `tools/importGoogleVoiceSms.cjs` with all of the above behavior implemented.
+2. Wire it into the existing DB access layer in the safest way (no Twilio, no AI).
+3. Add comments at the top explaining:
+   - How to place the Google Voice export
+   - Example commands
+   - Any limitations.
+4. After you’re done, print a short “How to use this importer” guide in your final message.
