@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
 import { VoicemailSkeleton } from './SkeletonLoader';
+import { getProxiedAudioUrl } from '@/lib/twilioMediaProxy';
 
 interface VoicemailMessage {
   id: number;
@@ -310,7 +311,7 @@ export default function VoicemailInbox() {
                 {/* Audio Player */}
                 {playingId === voicemail.id ? (
                   <AudioPlayer 
-                    url={voicemail.recordingUrl}
+                    url={getProxiedAudioUrl(voicemail.recordingUrl) || ''}
                     onEnded={() => setPlayingId(null)}
                   />
                 ) : (
@@ -362,7 +363,7 @@ export default function VoicemailInbox() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => window.open(voicemail.recordingUrl, '_blank')}
+                    onClick={() => window.open(getProxiedAudioUrl(voicemail.recordingUrl) || '', '_blank')}
                     className="gap-2 transition-all duration-200 hover:scale-105"
                     data-testid={`button-download-${voicemail.id}`}
                   >

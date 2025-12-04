@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useRef, useEffect } from 'react';
+import { getProxiedAudioUrl } from '@/lib/twilioMediaProxy';
 
 /**
  * MessageBubble Component - Extensible message display with render-prop slots
@@ -324,7 +325,7 @@ export default function MessageBubble({
   
   const metadata = message.metadata as Record<string, any> | null;
   const isVoicemail = metadata?.type === 'voicemail' || (message.content && (message.content as string).startsWith('🎙️ Voicemail:'));
-  const voicemailRecordingUrl = metadata?.recordingUrl || null;
+  const voicemailRecordingUrl = getProxiedAudioUrl(metadata?.recordingUrl);
   const voicemailSummary = metadata?.voicemailSummary || null;
 
   return (

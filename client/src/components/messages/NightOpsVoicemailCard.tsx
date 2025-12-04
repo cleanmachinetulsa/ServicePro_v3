@@ -1,4 +1,5 @@
 import { Voicemail, Play, Bot } from "lucide-react";
+import { getProxiedAudioUrl } from "@/lib/twilioMediaProxy";
 
 type NightOpsVoicemailCardProps = {
   fromLabel: string;
@@ -45,7 +46,7 @@ export const NightOpsVoicemailCard: React.FC<NightOpsVoicemailCardProps> = ({
       <div className="flex items-center justify-between gap-3">
         {recordingUrl ? (
           <a
-            href={recordingUrl}
+            href={getProxiedAudioUrl(recordingUrl) || '#'}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-2 rounded-full bg-cyan-500/15 px-3 py-1.5 text-[0.7rem] font-medium text-cyan-300 ring-1 ring-cyan-500/50 hover:bg-cyan-500/25 transition-all duration-200 hover:shadow-[0_0_12px_rgba(34,211,238,0.3)]"

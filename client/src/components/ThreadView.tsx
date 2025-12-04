@@ -38,8 +38,21 @@ import {
   Search,
   XCircle,
   ArrowLeft,
-  Smartphone
+  Smartphone,
+  MoreVertical,
+  CheckCircle2,
+  UserCheck
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { format, formatDistanceToNow, isToday, isYesterday, isSameDay } from 'date-fns';
 import io from 'socket.io-client';
@@ -1062,216 +1075,188 @@ export default function ThreadView({
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-950">
-      {/* Conversation Controls Toolbar */}
-      <div className="border-b dark:border-gray-800 bg-white dark:bg-gray-900 px-6 py-4 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* MOBILE BACK BUTTON - ALWAYS VISIBLE ON MOBILE */}
-            {onBack && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onBack}
-                className="md:hidden flex items-center gap-2 -ml-2 hover:bg-gray-100 dark:hover:bg-gray-800"
-                data-testid="button-back-mobile"
-              >
-                <ArrowLeft className="h-5 w-5" />
-                <span className="font-medium">Back</span>
-              </Button>
-            )}
-            <div className="flex items-center gap-2">
-              <Phone className="h-5 w-5 text-primary" />
-              <div>
-                <h2 className="font-semibold" data-testid="text-customer-name">
-                  {conversation.customerName || conversation.customerPhone}
-                </h2>
-                {conversation.customerName && (
-                  <p className="text-sm text-muted-foreground" data-testid="text-customer-phone">
-                    {conversation.customerPhone}
-                  </p>
-                )}
-              </div>
-            </div>
-            {getStatusBadge()}
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap max-w-full">
-            {/* Assign to Me */}
-            {!conversation.assignedAgent && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => assignToMeMutation.mutate()}
-                disabled={assignToMeMutation.isPending}
-                className="gap-2"
-                data-testid="button-assign-to-me"
-              >
-                {assignToMeMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <User className="h-4 w-4" />
-                )}
-                Assign to Me
-              </Button>
-            )}
-
-            {/* Snooze */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  data-testid="button-snooze"
-                >
-                  <Clock className="h-4 w-4" />
-                  Snooze
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-48 p-2">
-                <div className="space-y-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      const snoozeUntil = new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString();
-                      snoozeMutation.mutate(snoozeUntil);
-                    }}
-                  >
-                    1 hour
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      const snoozeUntil = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
-                      snoozeMutation.mutate(snoozeUntil);
-                    }}
-                  >
-                    4 hours
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      const tomorrow = new Date();
-                      tomorrow.setDate(tomorrow.getDate() + 1);
-                      tomorrow.setHours(9, 0, 0, 0);
-                      snoozeMutation.mutate(tomorrow.toISOString());
-                    }}
-                  >
-                    Tomorrow 9 AM
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      const nextWeek = new Date();
-                      nextWeek.setDate(nextWeek.getDate() + 7);
-                      nextWeek.setHours(9, 0, 0, 0);
-                      snoozeMutation.mutate(nextWeek.toISOString());
-                    }}
-                  >
-                    Next week
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            {/* Mark as Resolved */}
-            {conversation.status !== 'closed' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => resolveMutation.mutate()}
-                disabled={resolveMutation.isPending}
-                className="gap-2"
-                data-testid="button-resolve"
-              >
-                {resolveMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MessageSquare className="h-4 w-4" />
-                )}
-                Mark Resolved
-              </Button>
-            )}
-
-            {conversation.controlMode === 'manual' && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => returnToAIMutation.mutate()}
-                disabled={returnToAIMutation.isPending}
-                className="gap-2 bg-blue-600 hover:bg-blue-700"
-                data-testid="button-hand-to-ai"
-              >
-                {returnToAIMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Bot className="h-4 w-4" />
-                )}
-                Return to AI
-              </Button>
-            )}
-            
-            {/* Search Messages */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowSearch(!showSearch)}
-              className="gap-2"
-              data-testid="button-search-messages"
-            >
-              {showSearch ? (
-                <XCircle className="h-4 w-4" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-              {showSearch ? 'Close' : 'Search'}
-            </Button>
-          </div>
-        </div>
+      {/* COMPACT HEADER - Google Messages style */}
+      <div className="flex-shrink-0 flex items-center gap-2 px-2 py-2 border-b dark:border-gray-800 bg-white dark:bg-gray-900">
+        {/* Back button - mobile only */}
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onBack}
+            className="h-10 w-10 md:hidden"
+            data-testid="button-back-mobile"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        )}
         
-        {/* Search Input Row */}
-        {showSearch && (
-          <div className="px-6 py-3 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+        {/* Avatar + Name (click for details) */}
+        <div className="flex-1 flex items-center gap-3 min-w-0 px-1">
+          <div className="flex-shrink-0 w-9 h-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+            {(conversation.customerName || conversation.customerPhone || '?')[0].toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search messages..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  data-testid="input-search-messages"
-                  autoFocus
-                />
-              </div>
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchQuery('')}
-                  data-testid="button-clear-search"
-                >
-                  Clear
-                </Button>
+              <h2 className="font-semibold text-[15px] truncate" data-testid="text-customer-name">
+                {conversation.customerName || conversation.customerPhone}
+              </h2>
+              {/* Inline status badge - compact */}
+              {conversation.controlMode === 'manual' && (
+                <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                  <User className="h-2.5 w-2.5" />
+                  Manual
+                </span>
+              )}
+              {conversation.controlMode === 'auto' && (
+                <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                  <Bot className="h-2.5 w-2.5" />
+                  AI
+                </span>
               )}
             </div>
-            {searchQuery && (
-              <p className="text-xs text-muted-foreground mt-2">
-                {filteredMessages.length} {filteredMessages.length === 1 ? 'result' : 'results'} found
+            {conversation.customerName && (
+              <p className="text-xs text-muted-foreground truncate" data-testid="text-customer-phone">
+                {conversation.customerPhone}
               </p>
             )}
           </div>
-        )}
+        </div>
+        
+        {/* Search icon */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowSearch(!showSearch)}
+          className="h-10 w-10 flex-shrink-0"
+          data-testid="button-search-messages"
+        >
+          {showSearch ? <XCircle className="h-5 w-5" /> : <Search className="h-5 w-5" />}
+        </Button>
+        
+        {/* Overflow menu - all actions here */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0" data-testid="button-overflow-menu">
+              <MoreVertical className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {/* Assign to Me */}
+            {!conversation.assignedAgent && (
+              <DropdownMenuItem
+                onClick={() => assignToMeMutation.mutate()}
+                disabled={assignToMeMutation.isPending}
+                data-testid="menu-assign-to-me"
+              >
+                <UserCheck className="h-4 w-4 mr-2" />
+                Assign to Me
+              </DropdownMenuItem>
+            )}
+            
+            {/* Return to AI (when in manual mode) */}
+            {conversation.controlMode === 'manual' && (
+              <DropdownMenuItem
+                onClick={() => returnToAIMutation.mutate()}
+                disabled={returnToAIMutation.isPending}
+                className="text-blue-600 dark:text-blue-400"
+                data-testid="menu-return-to-ai"
+              >
+                <Bot className="h-4 w-4 mr-2" />
+                Return to AI
+              </DropdownMenuItem>
+            )}
+            
+            {/* Mark Resolved */}
+            {conversation.status !== 'closed' && (
+              <DropdownMenuItem
+                onClick={() => resolveMutation.mutate()}
+                disabled={resolveMutation.isPending}
+                data-testid="menu-resolve"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Mark Resolved
+              </DropdownMenuItem>
+            )}
+            
+            <DropdownMenuSeparator />
+            
+            {/* Snooze submenu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Clock className="h-4 w-4 mr-2" />
+                Snooze
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => snoozeMutation.mutate(new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString())}>
+                  1 hour
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => snoozeMutation.mutate(new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString())}>
+                  4 hours
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  tomorrow.setHours(9, 0, 0, 0);
+                  snoozeMutation.mutate(tomorrow.toISOString());
+                }}>
+                  Tomorrow 9 AM
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  const nextWeek = new Date();
+                  nextWeek.setDate(nextWeek.getDate() + 7);
+                  nextWeek.setHours(9, 0, 0, 0);
+                  snoozeMutation.mutate(nextWeek.toISOString());
+                }}>
+                  Next week
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            
+            {/* Toggle AI Suggestions visibility */}
+            {conversation.controlMode === 'manual' && suggestions.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setSuggestionsCollapsed(!suggestionsCollapsed)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {suggestionsCollapsed ? 'Show' : 'Hide'} AI Suggestions ({suggestions.length})
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+      
+      {/* Search bar - slides in when needed */}
+      {showSearch && (
+        <div className="flex-shrink-0 px-3 py-2 border-b dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search messages..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-full bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              data-testid="input-search-messages"
+              autoFocus
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                data-testid="button-clear-search"
+              >
+                <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <p className="text-[11px] text-muted-foreground mt-1 pl-3">
+              {filteredMessages.length} {filteredMessages.length === 1 ? 'result' : 'results'}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* Main Message Area */}
@@ -1301,57 +1286,6 @@ export default function ThreadView({
                   <span className="font-medium">Reconnecting to server...</span>
                 </>
               )}
-            </div>
-          )}
-          
-          {/* Customer Info Header - Always visible at top of thread (outside scroll area) */}
-          {!hideHeader && (
-            <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" data-testid="thread-customer-header">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                  {(conversation.customerName || conversation.customerPhone || '?')[0].toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-900 dark:text-gray-100 truncate" data-testid="thread-customer-name">
-                      {conversation.customerName || 'Unknown Contact'}
-                    </span>
-                    {conversation.starred && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-300 dark:border-amber-700">
-                        Starred
-                      </Badge>
-                    )}
-                    {conversation.needsHumanAttention && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-300 dark:border-red-700">
-                        Needs Attention
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                    <Phone className="h-3 w-3 flex-shrink-0" />
-                    <span className="truncate" data-testid="thread-customer-phone">{conversation.customerPhone || 'No phone'}</span>
-                    {conversation.platform && conversation.platform !== 'sms' && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {conversation.platform}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex-shrink-0 flex items-center gap-2">
-                {conversation.controlMode === 'manual' && (
-                  <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
-                    <User className="h-3 w-3 mr-1" />
-                    Manual
-                  </Badge>
-                )}
-                {conversation.controlMode === 'auto' && (
-                  <Badge className="text-[10px] bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0">
-                    <Bot className="h-3 w-3 mr-1" />
-                    AI
-                  </Badge>
-                )}
-              </div>
             </div>
           )}
           
@@ -1472,90 +1406,45 @@ export default function ThreadView({
             )}
           </div>
 
-          {/* AI Suggestions - Enhanced UI with Mobile Collapse */}
-          {conversation.controlMode === 'manual' && suggestions.length > 0 && (
-            <div className="shrink-0 border-t dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
-              {/* Header - Always Visible */}
-              <button
-                onClick={() => setSuggestionsCollapsed(!suggestionsCollapsed)}
-                className="w-full flex items-center gap-2 px-4 py-3 hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
-                data-testid="button-toggle-suggestions"
-              >
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-1.5 rounded-lg">
-                  <Sparkles className="h-3.5 w-3.5 text-white" />
-                </div>
-                <span className="text-sm font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  AI-Powered Suggestions
-                </span>
-                <Badge variant="secondary" className="text-xs">
-                  {suggestions.length}
-                </Badge>
-                <div className="ml-auto">
-                  <ChevronDown
-                    className={`h-4 w-4 text-blue-600 dark:text-blue-400 transition-transform ${
-                      suggestionsCollapsed ? '-rotate-180' : ''
-                    }`}
-                  />
-                </div>
-              </button>
-              
-              {/* Suggestions - Collapsible */}
-              {!suggestionsCollapsed && (
-                <div className="px-4 pb-3">
-                  <div className="flex flex-wrap gap-2 max-w-4xl mx-auto">
-                    {suggestions.map((suggestion, index) => (
-                      <Button
-                        key={suggestion.id}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSuggestionClick(suggestion.content)}
-                        className="text-xs h-auto py-2.5 px-4 whitespace-normal text-left bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800 transition-all hover:scale-105 hover:shadow-md"
-                        data-testid={`suggestion-${suggestion.id}`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="font-mono text-blue-600 dark:text-blue-400 text-[10px] mt-0.5">
-                            {index + 1}
-                          </span>
-                          <span className="flex-1">{suggestion.content}</span>
-                          {suggestion.confidence >= 0.9 && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                              High
-                            </Badge>
-                          )}
-                        </div>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {/* AI Suggestions - Compact inline version (hidden by default for mobile) */}
+          {conversation.controlMode === 'manual' && suggestions.length > 0 && !suggestionsCollapsed && (
+            <div className="shrink-0 border-t dark:border-gray-800 px-3 py-2 bg-blue-50/50 dark:bg-blue-950/20">
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                {suggestions.slice(0, 3).map((suggestion, index) => (
+                  <button
+                    key={suggestion.id}
+                    onClick={() => handleSuggestionClick(suggestion.content)}
+                    className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                    data-testid={`suggestion-${suggestion.id}`}
+                  >
+                    <span className="font-mono text-blue-600 dark:text-blue-400 text-[10px]">{index + 1}</span>
+                    <span className="truncate max-w-[180px]">{suggestion.content}</span>
+                  </button>
+                ))}
+                {suggestions.length > 3 && (
+                  <span className="flex-shrink-0 inline-flex items-center px-2 text-[10px] text-muted-foreground">
+                    +{suggestions.length - 3} more
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Booking Status Banner - Shows readiness for appointment creation */}
+          {/* Booking Status - Compact inline indicator */}
           {bookingStatus !== 'not_ready' && (
-            <div className="shrink-0 border-t dark:border-gray-800 px-4 py-3 bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20">
-              <div className="flex items-center gap-3 max-w-4xl mx-auto">
+            <div className="shrink-0 border-t dark:border-gray-800 px-3 py-1.5 bg-emerald-50/80 dark:bg-emerald-950/20">
+              <div className="flex items-center gap-2">
                 {bookingStatus === 'ready_for_draft' && (
-                  <>
-                    <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" data-testid="badge-ready-to-book">
-                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 animate-pulse" />
-                      Ready to book
-                    </span>
-                    <span className="text-xs text-emerald-700 dark:text-emerald-300">
-                      All required information collected. Click "Create Appointment" to submit.
-                    </span>
-                  </>
+                  <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" data-testid="badge-ready-to-book">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
+                    Ready to book
+                  </span>
                 )}
                 {bookingStatus === 'ready_for_human_review' && (
-                  <>
-                    <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" data-testid="badge-needs-approval">
-                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mr-1.5 animate-pulse" />
-                      Needs manual approval
-                    </span>
-                    <span className="text-xs text-amber-700 dark:text-amber-300">
-                      Customer may be outside service area or requires special review.
-                    </span>
-                  </>
+                  <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" data-testid="badge-needs-approval">
+                    <span className="w-1.5 h-1.5 bg-amber-500 rounded-full mr-1 animate-pulse" />
+                    Needs review
+                  </span>
                 )}
               </div>
             </div>
@@ -1616,112 +1505,33 @@ export default function ThreadView({
           )}
 
           {/* Message Input - Always Visible */}
-          <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 shadow-lg">
-              {/* Active Phone Line Indicator - Only for SMS conversations */}
-              {conversation?.platform === 'sms' && activeLine && (
-                <div className="mb-3 max-w-4xl mx-auto">
-                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
-                    conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId
-                      ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
-                      : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'
-                  }`}>
-                    <Smartphone className={`h-3.5 w-3.5 flex-shrink-0 ${
-                      conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId
-                        ? 'text-amber-600 dark:text-amber-400'
-                        : 'text-blue-600 dark:text-blue-400'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <span className={`font-medium ${
-                        conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId
-                          ? 'text-amber-900 dark:text-amber-100'
-                          : 'text-blue-900 dark:text-blue-100'
-                      }`}>
-                        Sending from: {activeLine.label} ({activeLine.phoneNumber})
-                      </span>
-                      {conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId && (
-                        <span className="text-amber-700 dark:text-amber-300 ml-1">
-                          • Different from conversation's original line
-                        </span>
-                      )}
-                    </div>
-                  </div>
+          <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-3">
+              {/* Phone line indicator - only show warning if mismatched */}
+              {conversation?.platform === 'sms' && activeLine && 
+                conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId && (
+                <div className="mb-2 flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                  <Smartphone className="h-3 w-3" />
+                  <span>Sending from different line: {activeLine.label}</span>
                 </div>
               )}
               
-              {/* File Attachment Preview */}
+              {/* File Attachment Preview - compact */}
               {selectedFiles.length > 0 && (
-                <div className="mb-3 max-w-4xl mx-auto">
-                  <div className={`flex items-center gap-2 p-2 rounded-lg border ${
-                    uploadError
-                      ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800'
-                      : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'
-                  }`}>
-                    {selectedFiles[0].type.startsWith('image/') ? (
-                      <ImageIcon className={`h-5 w-5 flex-shrink-0 ${
-                        uploadError ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
-                      }`} />
-                    ) : (
-                      <FileText className={`h-5 w-5 flex-shrink-0 ${
-                        uploadError ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
-                      }`} />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${
-                        uploadError ? 'text-red-900 dark:text-red-100' : 'text-blue-900 dark:text-blue-100'
-                      }`}>
-                        {selectedFiles[0].name}
-                      </p>
-                      <p className={`text-xs ${
-                        uploadError ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'
-                      }`}>
-                        {uploadError ? (
-                          uploadError
-                        ) : (
-                          <>
-                            {(selectedFiles[0].size / 1024).toFixed(1)} KB
-                            {uploadingAttachments && <span className="ml-2">• Uploading...</span>}
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex gap-1">
-                      {uploadingAttachments ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                      ) : uploadError ? (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleRetryUpload}
-                            className="h-6 px-2 text-xs hover:bg-red-100 dark:hover:bg-red-900"
-                            data-testid="button-retry-upload"
-                          >
-                            <RefreshCw className="h-3 w-3 mr-1" />
-                            Retry
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleRemoveAttachment}
-                            className="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-900"
-                            data-testid="button-remove-attachment"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleRemoveAttachment}
-                          className="h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900"
-                          data-testid="button-remove-attachment"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                <div className="mb-2 flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-xs">
+                  {selectedFiles[0].type.startsWith('image/') ? (
+                    <ImageIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  )}
+                  <span className="flex-1 truncate">{selectedFiles[0].name}</span>
+                  {uploadingAttachments ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : uploadError ? (
+                    <button onClick={handleRetryUpload} className="text-red-600 hover:underline" data-testid="button-retry-upload">Retry</button>
+                  ) : null}
+                  <button onClick={handleRemoveAttachment} className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded" data-testid="button-remove-attachment">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               )}
               
