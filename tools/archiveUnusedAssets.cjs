@@ -1,18 +1,29 @@
 /**
- * Archive Unused Assets & Documentation Tool
+ * Archive Unused Assets Tool
  * 
- * This script safely scans the repository for unused assets (images, media) and
- * non-essential markdown documentation, then MOVES them to timestamped archive
- * folders for review before manual deletion.
+ * This script safely scans the repository for truly unused image assets
+ * and MOVES them to a timestamped archive folder for review before manual deletion.
  * 
  * SAFETY RULES:
  * - NO automatic deletion - only moves files to archive/
- * - Protected files are never moved (README.md, LICENSE.md, etc.)
- * - Database, config, env, and build files are never touched
+ * - NO documentation files are moved (use --include-docs flag if desired)
+ * - Runtime asset directories are protected (public/uploads, attached_assets with references)
+ * - Database-referenced assets are NOT detected - manual review required
  * - Script is idempotent - safe to run multiple times
  * - Only operates within project root
  * 
- * Usage: npm run archive:unused
+ * PROTECTED DIRECTORIES (never touched):
+ * - public/uploads/      (runtime user uploads - may be DB-referenced)
+ * - public/icons/        (PWA icons)
+ * - public/favicon/      (browser favicons)
+ * - client/src/assets/   (frontend assets)
+ * - migrations/          (database migrations)
+ * - .github/             (CI/CD configs)
+ * 
+ * Usage: 
+ *   node tools/archiveUnusedAssets.cjs              (assets only, safe mode)
+ *   node tools/archiveUnusedAssets.cjs --include-docs  (also archive non-critical docs)
+ *   node tools/archiveUnusedAssets.cjs --dry-run    (preview what would be moved)
  * 
  * After running, review archive/ folder contents. Restore any incorrectly
  * classified files by moving them back to their original paths. Delete
@@ -43,19 +54,27 @@ const ignoreDirs = [
 
 const protectedDocs = [
   'readme.md', 'license.md', 'changelog.md', 'security.md',
-  'contributing.md', 'code_of_conduct.md'
+  'contributing.md', 'code_of_conduct.md', 'replit.md'
 ];
 
-const protectedPaths = [
-  '.github',
-  'migrations',
+const protectedAssetPaths = [
+  'public/uploads',
+  'public/icons',
   'public/favicon',
-  'public/icons'
+  'public/pwa',
+  'migrations',
+  '.github',
+  'client/src/assets'
 ];
 
 const archiveRoot = path.join(projectRoot, 'archive');
 
 const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1 MB max for text file scanning
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const DRY_RUN = args.includes('--dry-run');
+const INCLUDE_DOCS = args.includes('--include-docs');
 
 // ============================================================================
 // Helper Functions
@@ -89,12 +108,12 @@ function walk(dir) {
 }
 
 /**
- * Check if a path should be protected from archiving
+ * Check if a path is in a protected asset directory
  */
-function isProtectedPath(filePath) {
+function isProtectedAssetPath(filePath) {
   const relPath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
   
-  for (const protectedPath of protectedPaths) {
+  for (const protectedPath of protectedAssetPaths) {
     if (relPath.startsWith(protectedPath + '/') || relPath === protectedPath) {
       return true;
     }
@@ -108,17 +127,20 @@ function isProtectedPath(filePath) {
  */
 function isProtectedDoc(filePath) {
   const basename = path.basename(filePath).toLowerCase();
+  const relPath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
   
+  // Protected by name
   if (protectedDocs.includes(basename)) {
     return true;
   }
   
-  if (isProtectedPath(filePath)) {
+  // Protected by path (root level docs, .github, docs folder that might be important)
+  if (relPath.startsWith('.github/')) {
     return true;
   }
   
-  // Also protect replit.md specifically
-  if (basename === 'replit.md') {
+  // Protect all root-level .md files (important project docs)
+  if (!relPath.includes('/')) {
     return true;
   }
   
@@ -132,6 +154,10 @@ function moveFile(src, baseArchiveDir) {
   try {
     const rel = path.relative(projectRoot, src);
     const dest = path.join(baseArchiveDir, rel);
+    
+    if (DRY_RUN) {
+      return { success: true, dest, dryRun: true };
+    }
     
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.renameSync(src, dest);
@@ -179,10 +205,14 @@ function isAssetUsed(assetPath, textFiles) {
 function main() {
   console.log('');
   console.log('='.repeat(60));
-  console.log('  Archive Unused Assets & Documentation Tool');
+  console.log('  Archive Unused Assets Tool');
+  if (DRY_RUN) {
+    console.log('  [DRY RUN MODE - No files will be moved]');
+  }
   console.log('='.repeat(60));
   console.log('');
   console.log(`Project root: ${projectRoot}`);
+  console.log(`Include docs: ${INCLUDE_DOCS ? 'Yes' : 'No (use --include-docs to enable)'}`);
   console.log('');
   
   // Step 1: Walk the project and collect all files
@@ -239,14 +269,17 @@ function main() {
   
   console.log(`  Loaded ${loadedCount} text files for scanning`);
   
-  // Step 4: Find unused assets
+  // Step 4: Find unused assets (only from attached_assets, skip protected paths)
   console.log('[4/6] Detecting unused assets...');
+  console.log('  (Only scanning attached_assets/ - protected paths are skipped)');
   
   const unusedAssets = [];
+  let protectedCount = 0;
   
   for (const asset of assetFiles) {
-    // Skip protected paths
-    if (isProtectedPath(asset)) {
+    // Skip protected paths (uploads, icons, etc.)
+    if (isProtectedAssetPath(asset)) {
+      protectedCount++;
       continue;
     }
     
@@ -255,20 +288,23 @@ function main() {
     }
   }
   
-  console.log(`  Found ${unusedAssets.length} unused assets`);
+  console.log(`  Found ${unusedAssets.length} unused assets (${protectedCount} protected/skipped)`);
   
-  // Step 5: Find archivable docs
+  // Step 5: Find archivable docs (only if --include-docs flag is set)
   console.log('[5/6] Detecting archivable documentation...');
   
   const archivableDocs = [];
   
-  for (const doc of docFiles) {
-    if (!isProtectedDoc(doc)) {
-      archivableDocs.push(doc);
+  if (INCLUDE_DOCS) {
+    for (const doc of docFiles) {
+      if (!isProtectedDoc(doc)) {
+        archivableDocs.push(doc);
+      }
     }
+    console.log(`  Found ${archivableDocs.length} docs that could be archived`);
+  } else {
+    console.log('  Skipped (use --include-docs to enable doc archiving)');
   }
-  
-  console.log(`  Found ${archivableDocs.length} docs to archive`);
   
   // Step 6: Move files to archive
   console.log('[6/6] Moving files to archive...');
@@ -284,13 +320,16 @@ function main() {
   
   // Only create directories if we have files to move
   if (unusedAssets.length > 0) {
-    fs.mkdirSync(unusedAssetsDir, { recursive: true });
+    if (!DRY_RUN) {
+      fs.mkdirSync(unusedAssetsDir, { recursive: true });
+    }
     
     for (const asset of unusedAssets) {
       const result = moveFile(asset, unusedAssetsDir);
       if (result.success) {
         assetsMovedCount++;
-        console.log(`  Moved: ${path.relative(projectRoot, asset)}`);
+        const prefix = DRY_RUN ? '  [DRY RUN] Would move: ' : '  Moved: ';
+        console.log(`${prefix}${path.relative(projectRoot, asset)}`);
       } else {
         assetFailCount++;
         console.warn(`  Failed to move ${path.relative(projectRoot, asset)}: ${result.error}`);
@@ -299,13 +338,16 @@ function main() {
   }
   
   if (archivableDocs.length > 0) {
-    fs.mkdirSync(docsArchiveDir, { recursive: true });
+    if (!DRY_RUN) {
+      fs.mkdirSync(docsArchiveDir, { recursive: true });
+    }
     
     for (const doc of archivableDocs) {
       const result = moveFile(doc, docsArchiveDir);
       if (result.success) {
         docsMovedCount++;
-        console.log(`  Moved: ${path.relative(projectRoot, doc)}`);
+        const prefix = DRY_RUN ? '  [DRY RUN] Would move: ' : '  Moved: ';
+        console.log(`${prefix}${path.relative(projectRoot, doc)}`);
       } else {
         docFailCount++;
         console.warn(`  Failed to move ${path.relative(projectRoot, doc)}: ${result.error}`);
@@ -317,22 +359,30 @@ function main() {
   console.log('');
   console.log('='.repeat(60));
   console.log('  Summary');
+  if (DRY_RUN) {
+    console.log('  [DRY RUN - No files were actually moved]');
+  }
   console.log('='.repeat(60));
   console.log('');
   console.log(`  Total assets scanned: ${assetFiles.length}`);
-  console.log(`  Assets moved to archive: ${assetsMovedCount}`);
+  console.log(`  Assets in protected paths: ${protectedCount}`);
+  console.log(`  Assets ${DRY_RUN ? 'that would be' : ''} moved to archive: ${assetsMovedCount}`);
   if (assetFailCount > 0) {
     console.log(`  Assets failed to move: ${assetFailCount}`);
   }
   console.log('');
   console.log(`  Total docs scanned: ${docFiles.length}`);
-  console.log(`  Docs moved to archive: ${docsMovedCount}`);
-  if (docFailCount > 0) {
-    console.log(`  Docs failed to move: ${docFailCount}`);
+  if (INCLUDE_DOCS) {
+    console.log(`  Docs ${DRY_RUN ? 'that would be' : ''} moved to archive: ${docsMovedCount}`);
+    if (docFailCount > 0) {
+      console.log(`  Docs failed to move: ${docFailCount}`);
+    }
+  } else {
+    console.log('  Doc archiving: Disabled (use --include-docs to enable)');
   }
   console.log('');
   
-  if (assetsMovedCount > 0 || docsMovedCount > 0) {
+  if (!DRY_RUN && (assetsMovedCount > 0 || docsMovedCount > 0)) {
     console.log('  Archive locations:');
     if (assetsMovedCount > 0) {
       console.log(`    Assets: ${path.relative(projectRoot, unusedAssetsDir)}/`);
@@ -345,10 +395,15 @@ function main() {
     console.log('    1. Review the archive/ folder contents');
     console.log('    2. Restore any incorrectly classified files');
     console.log('    3. Delete the archive/ folder when satisfied');
+  } else if (DRY_RUN) {
+    console.log('  To actually move files, run without --dry-run flag');
   } else {
     console.log('  No files were moved. The project is clean!');
   }
   
+  console.log('');
+  console.log('  IMPORTANT: This tool cannot detect database-referenced assets.');
+  console.log('  Always review archive/ before deleting, especially for uploads.');
   console.log('');
   console.log('='.repeat(60));
   console.log('');
