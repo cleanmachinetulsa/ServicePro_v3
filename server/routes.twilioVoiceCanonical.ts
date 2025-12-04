@@ -260,6 +260,12 @@ export function registerCanonicalVoiceRoutes(app: Express) {
     verifyTwilioSignature,
     tenantResolverForTwilio,
     async (req, res, next) => {
+      // DEBUG: Log incoming webhook for troubleshooting
+      console.log(`[/twilio/voice/incoming] WEBHOOK RECEIVED - Method: ${req.method}`);
+      console.log(`[/twilio/voice/incoming] CallSid: ${req.body.CallSid}, From: ${req.body.From}, To: ${req.body.To}`);
+      console.log(`[/twilio/voice/incoming] Direction: ${req.body.Direction}, CallStatus: ${req.body.CallStatus}`);
+      console.log(`[/twilio/voice/incoming] AccountSid: ${req.body.AccountSid}`);
+      
       try {
         await handleIncomingVoice(req, res);
       } catch (error: any) {

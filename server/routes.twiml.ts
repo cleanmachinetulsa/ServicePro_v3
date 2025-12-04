@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import twilio from 'twilio';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
+import { wrapTenantDb } from './tenantDb';
+import { db } from './db';
 
 const router = Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -31,6 +33,12 @@ function getBaseUrl(req: Request): string {
 router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response) => {
   const twiml = new VoiceResponse();
   
+  // DEBUG: Log incoming webhook for troubleshooting
+  console.log(`[TWIML /voice] WEBHOOK RECEIVED - Method: ${req.method}`);
+  console.log(`[TWIML /voice] CallSid: ${req.body.CallSid}, From: ${req.body.From}, To: ${req.body.To}`);
+  console.log(`[TWIML /voice] Direction: ${req.body.Direction}, CallStatus: ${req.body.CallStatus}`);
+  console.log(`[TWIML /voice] Caller: ${req.body.Caller}, AccountSid: ${req.body.AccountSid}`);
+  
   try {
     const customerPhone = req.body.To;
     const techIdentity = req.body.Caller; // e.g., "tech:123"
@@ -39,6 +47,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
     const baseUrl = getBaseUrl(req);
 
     if (!customerPhone) {
+      console.warn(`[TWIML /voice] ERROR: No customer phone provided`);
       twiml.say({ voice: 'alice' }, 'Error: Customer phone number not provided.');
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
@@ -47,12 +56,13 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
     // Extract technician ID from identity (format: "tech:123")
     const techId = techIdentity ? parseInt(techIdentity.split(':')[1]) : null;
 
-    console.log(`[VOICE] Technician ${techId} initiating call to ${customerPhone}, CallSid: ${callSid}`);
+    console.log(`[TWIML /voice] Technician ${techId} initiating call to ${customerPhone}, CallSid: ${callSid}`);
 
-    // Log the technician outbound call
+    // Log the technician outbound call (use root tenant for technician calls)
     try {
+      const tenantDb = wrapTenantDb(db, 'root');
       const { logCallEvent } = await import('./callLoggingService');
-      await logCallEvent({
+      await logCallEvent(tenantDb, {
         callSid,
         direction: 'technician_outbound',
         from: twilioPhone || 'technician',
@@ -61,7 +71,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
         technicianId: techId || undefined,
       });
     } catch (error) {
-      console.error('[VOICE] Failed to log technician call event:', error);
+      console.error('[TWIML /voice] Failed to log technician call event:', error);
     }
 
     // Dial the customer with business phone as caller ID

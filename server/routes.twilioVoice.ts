@@ -777,6 +777,12 @@ router.post('/voice/recording-status', verifyTwilioSignature, async (req: Reques
  * Determines if call was answered, busy, or no-answer
  */
 router.post('/voice/call-status', verifyTwilioSignature, async (req: Request, res: Response) => {
+  // DEBUG: Log incoming webhook for troubleshooting
+  console.log(`[/twilio/voice/call-status] WEBHOOK RECEIVED - Method: ${req.method}`);
+  console.log(`[/twilio/voice/call-status] CallSid: ${req.body.CallSid}, From: ${req.body.From}, To: ${req.body.To}`);
+  console.log(`[/twilio/voice/call-status] DialCallStatus: ${req.body.DialCallStatus}, CallStatus: ${req.body.CallStatus}`);
+  console.log(`[/twilio/voice/call-status] DialCallDuration: ${req.body.DialCallDuration}, CallDuration: ${req.body.CallDuration}`);
+  
   const dialCallStatus = req.body.DialCallStatus;
   const callerPhone = req.body.From;
   const callSid = req.body.CallSid;
