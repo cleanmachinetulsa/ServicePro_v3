@@ -20,6 +20,9 @@
  * - migrations/          (database migrations)
  * - .github/             (CI/CD configs)
  * 
+ * PROTECTED FILES (never touched):
+ * - public/qr-logo.png   (QR code branding asset)
+ * 
  * Usage: 
  *   node tools/archiveUnusedAssets.cjs              (assets only, safe mode)
  *   node tools/archiveUnusedAssets.cjs --include-docs  (also archive non-critical docs)
@@ -67,6 +70,10 @@ const protectedAssetPaths = [
   'client/src/assets'
 ];
 
+const protectedAssetFiles = [
+  'public/qr-logo.png'
+];
+
 const archiveRoot = path.join(projectRoot, 'archive');
 
 const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1 MB max for text file scanning
@@ -108,15 +115,21 @@ function walk(dir) {
 }
 
 /**
- * Check if a path is in a protected asset directory
+ * Check if a path is in a protected asset directory or is a specifically protected file
  */
 function isProtectedAssetPath(filePath) {
   const relPath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
   
+  // Check protected directories
   for (const protectedPath of protectedAssetPaths) {
     if (relPath.startsWith(protectedPath + '/') || relPath === protectedPath) {
       return true;
     }
+  }
+  
+  // Check specifically protected files
+  if (protectedAssetFiles.includes(relPath)) {
+    return true;
   }
   
   return false;
@@ -213,6 +226,11 @@ function main() {
   console.log('');
   console.log(`Project root: ${projectRoot}`);
   console.log(`Include docs: ${INCLUDE_DOCS ? 'Yes' : 'No (use --include-docs to enable)'}`);
+  console.log('');
+  console.log('Protected files:');
+  for (const file of protectedAssetFiles) {
+    console.log(`  - ${file}`);
+  }
   console.log('');
   
   // Step 1: Walk the project and collect all files
