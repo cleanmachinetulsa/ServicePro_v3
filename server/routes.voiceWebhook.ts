@@ -548,6 +548,11 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
  * Routes to voicemail if call wasn't answered
  */
 router.post('/voice-dial-status', verifyTwilioSignature, async (req: Request, res: Response) => {
+  // DEBUG: Log incoming webhook for troubleshooting
+  console.log(`[/api/voice/voice-dial-status] WEBHOOK RECEIVED - Method: ${req.method}`);
+  console.log(`[/api/voice/voice-dial-status] CallSid: ${req.body.CallSid}, From: ${req.body.From}, To: ${req.body.To}`);
+  console.log(`[/api/voice/voice-dial-status] DialCallStatus: ${req.body.DialCallStatus}, CallStatus: ${req.body.CallStatus}`);
+  
   const dialCallStatus = req.body.DialCallStatus;
   const callerPhone = req.body.From;
   const twilioPhone = req.body.To;

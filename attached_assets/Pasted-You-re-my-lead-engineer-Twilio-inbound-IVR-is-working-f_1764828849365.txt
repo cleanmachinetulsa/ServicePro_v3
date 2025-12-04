@@ -1,0 +1,62 @@
+You’re my lead engineer. Twilio inbound IVR is working for Clean Machine, but:
+
+- SMS is failing with 11210 HTTP bad host name for `servicepro-v3-base.cleanmachinetul.repl.co/api/twilio/sms/inbound`
+- Outbound calls from the /phone page ring my cell, but when I answer I hear “We’re sorry, an application error has occurred” and the call drops.
+- Twilio shows 11200 and 15003 errors pointing at `https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/incoming` with HTTP 404.
+
+I need you to do three very specific things:
+
+1) VERIFY AND FIX THE SERVER ROUTES
+
+- Open all Twilio-related route files:
+  - `server/routes.twilioVoice.ts`
+  - `server/routes.twilioVoiceCanonical.ts`
+  - `server/routes.calls.ts`
+  - anything else with `/twilio/voice` or `/api/twilio/sms`
+- Confirm EXACTLY which Express routes exist for:
+  - inbound voice: `POST /twilio/voice/incoming`
+  - outbound-from-web handler (the one used by the browser dialer)
+  - call status: `/twilio/voice/call-status` and `/twilio/voice/voice-dial-status`
+  - inbound SMS: `POST /api/twilio/sms/inbound`
+- Make sure:
+  - there **is** a `POST /twilio/voice/incoming` route exported and mounted in `server/routes.ts`
+  - it returns valid TwiML both for inbound phone-number calls and for outbound web calls, or
+  - if we use a separate outbound route (for the TwiML App), make that crystal clear and document the URL for me.
+
+If there is any mismatch like `/api/twilio/voice/incoming` vs `/twilio/voice/incoming`, add a small alias so both paths work, but keep `/twilio/voice/incoming` as the canonical one for Twilio.
+
+Also make sure inbound SMS is wired to `POST /api/twilio/sms/inbound` and that route returns 200 quickly.
+
+2) ADD DEBUG LOGGING FOR THESE WEBHOOKS
+
+For:
+- `/twilio/voice/incoming`
+- the outbound voice handler (whatever route TwiML App should call)
+- `/twilio/voice/call-status`
+- `/twilio/voice/voice-dial-status`
+- `/api/twilio/sms/inbound`
+
+add very clear `console.log` statements at the top that log:
+- the route name
+- `req.method`
+- key Twilio params (`CallSid`, `From`, `To`, `Direction`, `CallStatus`, etc. for voice; `MessageSid`, `From`, `To`, `Body` for SMS)
+
+That way, when I trigger a call or SMS, I can look in the Replit logs and see exactly which handler was or wasn’t hit.
+
+3) OUTPUT A FRESH TWILIO CONSOLE CHECKLIST
+
+At the end, print a short markdown summary for me that includes:
+
+- The **base URL** I must use in Twilio (`https://servicepro-v-3-base-cleanmachinetul.replit.app`)
+- The exact path for:
+  - Inbound voice webhook (phone number “A call comes in”)
+  - TwiML App Voice URL for the web dialer
+  - Call status callback URL
+  - Inbound SMS webhook URL (either on the number or the Messaging Service)
+
+Assume I will paste those URLs manually into Twilio Console.
+
+IMPORTANT:
+- Do NOT change any multi-tenant logic; keep everything scoped to Clean Machine (root tenant) exactly as it already is.
+- Do NOT rip out the existing IVR behavior, voicemail behavior, or push notification logic. Only fix routing, logging, and documentation.
+- When you’re done, restart the app so the new routes and logs are active.

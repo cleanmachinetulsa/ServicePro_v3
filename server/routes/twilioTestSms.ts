@@ -118,6 +118,12 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
 }
 
 twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
+  // DEBUG: Log incoming webhook for troubleshooting
+  console.log(`[/api/twilio/sms/inbound] WEBHOOK RECEIVED - Method: ${req.method}`);
+  console.log(`[/api/twilio/sms/inbound] MessageSid: ${req.body.MessageSid}, From: ${req.body.From}, To: ${req.body.To}`);
+  console.log(`[/api/twilio/sms/inbound] Body: ${req.body.Body?.substring(0, 100) || '(empty)'}`);
+  console.log(`[/api/twilio/sms/inbound] AccountSid: ${req.body.AccountSid}, MessagingServiceSid: ${req.body.MessagingServiceSid || 'none'}`);
+  
   console.log("[TWILIO SMS INBOUND] Raw body:", req.body);
 
   try {
