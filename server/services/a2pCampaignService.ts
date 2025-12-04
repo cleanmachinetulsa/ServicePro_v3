@@ -282,8 +282,9 @@ Requirements:
 - All content must be carrier-compliant`;
 
   try {
+    // Use GPT-5.1 for better compliance-aware copy generation
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.1',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
