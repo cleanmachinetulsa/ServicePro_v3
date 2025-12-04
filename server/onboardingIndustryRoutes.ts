@@ -432,7 +432,141 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
     console.log("[ONBOARDING] DEV route registered: POST /api/dev/test-ai-bootstrap");
   }
 
+  // GET /api/onboarding/progress
+  // Returns current setup wizard progress for authenticated user's tenant
+  app.get(
+    "/api/onboarding/progress",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const tenantId = getTenantId(req);
+        
+        if (!tenantId) {
+          res.status(401).json({
+            success: false,
+            message: "Authentication required",
+          });
+          return;
+        }
+
+        // Fetch tenant config for progress data
+        const [config] = await db
+          .select({
+            businessName: tenantConfig.businessName,
+            subdomain: tenantConfig.subdomain,
+            industry: tenantConfig.industry,
+            businessSetupDone: tenantConfig.onboardingBusinessSetupDone,
+            phoneSetupDone: tenantConfig.onboardingPhoneSetupDone,
+            sitePublished: tenantConfig.onboardingSitePublished,
+            heroTitle: tenantConfig.heroTitle,
+            heroSubtitle: tenantConfig.heroSubtitle,
+            ctaButtonText: tenantConfig.ctaButtonText,
+            twilioPhoneNumber: tenantConfig.twilioPhoneNumber,
+          })
+          .from(tenantConfig)
+          .where(eq(tenantConfig.tenantId, tenantId))
+          .limit(1);
+
+        if (!config) {
+          res.status(404).json({
+            success: false,
+            message: "Tenant configuration not found",
+          });
+          return;
+        }
+
+        // Build website URL if subdomain is set
+        const websiteUrl = config.subdomain
+          ? `https://${req.get("host")}/site/${config.subdomain}`
+          : null;
+
+        res.json({
+          success: true,
+          progress: {
+            businessSetupDone: config.businessSetupDone ?? false,
+            phoneSetupDone: config.phoneSetupDone ?? false,
+            sitePublished: config.sitePublished ?? false,
+            businessName: config.businessName || "Your Business",
+            subdomain: config.subdomain,
+            industry: config.industry,
+            phoneConfigured: !!config.twilioPhoneNumber,
+            phoneNumber: config.twilioPhoneNumber,
+            websiteUrl,
+            heroTitle: config.heroTitle,
+            heroSubtitle: config.heroSubtitle,
+            ctaButtonText: config.ctaButtonText,
+          },
+        });
+      } catch (error) {
+        console.error("[ONBOARDING_PROGRESS] Error fetching progress:", error);
+        res.status(500).json({
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+  );
+
+  // POST /api/onboarding/progress
+  // Updates setup wizard progress for authenticated user's tenant
+  app.post(
+    "/api/onboarding/progress",
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const tenantId = getTenantId(req);
+        
+        if (!tenantId) {
+          res.status(401).json({
+            success: false,
+            message: "Authentication required",
+          });
+          return;
+        }
+
+        const { businessSetupDone, phoneSetupDone, sitePublished } = req.body;
+
+        // Build update object with only provided fields
+        const updates: Record<string, any> = {};
+        if (typeof businessSetupDone === "boolean") {
+          updates.onboardingBusinessSetupDone = businessSetupDone;
+        }
+        if (typeof phoneSetupDone === "boolean") {
+          updates.onboardingPhoneSetupDone = phoneSetupDone;
+        }
+        if (typeof sitePublished === "boolean") {
+          updates.onboardingSitePublished = sitePublished;
+        }
+
+        if (Object.keys(updates).length === 0) {
+          res.status(400).json({
+            success: false,
+            message: "No valid fields to update",
+          });
+          return;
+        }
+
+        // Update tenant config
+        await db
+          .update(tenantConfig)
+          .set(updates)
+          .where(eq(tenantConfig.tenantId, tenantId));
+
+        console.log(`[ONBOARDING_PROGRESS] Updated progress for tenant ${tenantId}:`, updates);
+
+        res.json({
+          success: true,
+          message: "Progress updated successfully",
+        });
+      } catch (error) {
+        console.error("[ONBOARDING_PROGRESS] Error updating progress:", error);
+        res.status(500).json({
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+  );
+
   console.log(
-    "[ONBOARDING] Routes registered: POST /api/onboarding/industry (Phase 8C)"
+    "[ONBOARDING] Routes registered: POST /api/onboarding/industry (Phase 8C), GET/POST /api/onboarding/progress"
   );
 }
