@@ -91,6 +91,7 @@ import LaunchPage from "./pages/launch";
 import SetupCopilot from "./pages/SetupCopilot";
 import SetupWizard from "./pages/SetupWizard";
 import SettingsA2P from "./pages/SettingsA2P";
+import AdminPortRecovery from "./pages/AdminPortRecovery";
 
 // 🆕 Industry onboarding page
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
@@ -198,6 +199,11 @@ function Router() {
       <Route path="/settings/a2p">
         <AuthGuard>
           <SettingsA2P />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/port-recovery">
+        <AuthGuard>
+          <AdminPortRecovery />
         </AuthGuard>
       </Route>
       <Route path="/settings/:section?/:item?">

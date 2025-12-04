@@ -33,7 +33,8 @@ import {
   MessageCircle,
   History,
   Wallet,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -402,6 +403,13 @@ export const navigationItems: NavigationItem[] = [
     label: 'SMS Compliance',
     icon: Shield,
     path: '/settings/a2p',
+  },
+  {
+    id: 'port-recovery',
+    label: 'Port Recovery',
+    icon: RefreshCw,
+    path: '/admin/port-recovery',
+    badge: 'Campaign',
   },
   {
     id: 'facebook-settings',
