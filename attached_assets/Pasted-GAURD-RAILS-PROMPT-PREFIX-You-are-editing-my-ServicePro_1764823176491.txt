@@ -1,0 +1,173 @@
+GAURD-RAILS PROMPT PREFIX
+
+You are editing my ServicePro v3 multi-tenant repo.
+
+ABSOLUTE RULES (DO NOT IGNORE):
+
+1. DO NOT wander or refactor large files unless explicitly asked.
+   - Make the smallest change that solves the problem.
+   - If you find multiple issues, FIX THE ONE I ASKED ABOUT FIRST.
+
+2. For any UX / behavior change:
+   - AFTER your changes, you MUST:
+     - Restart the dev server if needed.
+     - Open the relevant page in the dev preview.
+     - MANUALLY TEST the exact thing I’m complaining about.
+   - If the behavior is STILL BROKEN:
+     - SAY SO in your summary.
+     - DO NOT claim “it should work now.”
+     - Either fix it or stop and clearly explain what’s blocking you.
+
+3. Minimize expensive loops:
+   - Avoid repeatedly editing the same file 10+ times in one run.
+   - Prefer a CLEAN IMPLEMENTATION over incremental band-aids.
+
+4. When you touch React UI components:
+   - Keep layout & design consistent with existing shadcn/ui setup.
+   - Do NOT introduce new UI libraries.
+
+5. When you finish:
+   - Summarize EXACTLY what you changed (files + main behaviors).
+   - Tell me how you tested it in the dev preview and what you observed.
+
+-----------------------------------------------------
+TASK: FIX SMS (INBOUND + OUTBOUND) AND OUTBOUND CALL BRIDGING
+FOR CLEAN MACHINE (ROOT TENANT) WITHOUT BREAKING CURRENT IVR
+-----------------------------------------------------
+
+Context you MUST respect:
+
+- Clean Machine is the ROOT tenant and MUST keep working.
+- IVR is already behaving correctly for inbound:
+  - Call → IVR prompt
+  - Press 2 → SIP dial to Groundwire (jody@cleanmachinetulsa.sip.twilio.com)
+  - Press 3 → voicemail path
+- SIP registration is now GOOD and inbound calling works.
+- PROBLEMS TO SOLVE NOW:
+  1) SMS is not working (no inbound messages showing; outbound replies fail).
+  2) Outbound calls from the /phone dialer ring my phone BUT when I answer I hear “We’re sorry, an application error has occurred” and the call drops. The app is not connecting me to the customer.
+
+IMPORTANT:
+- You MUST respect multi-tenant patterns (tenantDb / wrapTenantDb).
+- You MUST NOT hard-code tenant IDs except where existing code explicitly treats Clean Machine as the root tenant (e.g. for now).
+- DO NOT redesign the IVR. Only touch SMS + outbound bridge behavior.
+
+-----------------------------------------------------
+STEP 1 – DIAGNOSE AND FIX SMS INBOUND/OUTBOUND
+-----------------------------------------------------
+
+1. Find the Twilio SMS inbound route(s).
+   - Likely something like:
+     - server/routes.twilioSms.ts
+     - server/routes.twilioMessaging.ts
+     - or server/routes.twilio.ts with /api/twilio/sms/inbound
+   - Confirm **which Express route path** Twilio should POST to.
+     - My Twilio Messaging webhook is currently configured to:
+       - https://servicepro-v-3-base-cleanmachinetul.replit.app/api/twilio/sms/inbound
+
+2. Verify the Express app actually registers that route:
+   - Check server/routes.ts (or whatever central router) to ensure:
+     - app.post('/api/twilio/sms/inbound', ...) exists and is exported
+   - If there is a mismatch between /twilio/sms/inbound and /api/twilio/sms/inbound, FIX IT by:
+     - choosing one canonical path (prefer /api/twilio/sms/inbound)
+     - adjusting the routes accordingly WITHOUT breaking signature validation.
+
+3. Add temporary logging and local test:
+   - In the inbound SMS handler, add a concise log (console.log) with:
+     - from, to, body
+   - Use a test helper or curl inside the repl to POST a fake Twilio SMS payload to /api/twilio/sms/inbound and confirm:
+     - It returns HTTP 200
+     - It does NOT throw an error
+     - It creates or updates a conversation entry for Clean Machine
+
+4. Verify outbound SMS:
+   - Find the service used for sending SMS replies (likely something like smsService.ts, twilioMessagingService.ts, etc.).
+   - Confirm it uses TWILIO_MESSAGING_SERVICE_SID + MAIN_PHONE_NUMBER correctly.
+   - In the browser UI (Messages page), send a test outbound message and:
+     - Confirm no errors in the server logs.
+     - Confirm Twilio’s message log receives the outbound message.
+   - If outbound fails due to mis-constructed “From” or messaging service SID, fix just that.
+
+5. When done with SMS:
+   - Report:
+     - Which file(s) you changed.
+     - What the final inbound webhook path is (exact string).
+     - Exactly what you did to verify inbound and outbound SMS behavior.
+
+-----------------------------------------------------
+STEP 2 – FIX OUTBOUND CALL BRIDGE (APP → CUSTOMER)
+-----------------------------------------------------
+
+Behavior today:
+- From the /phone page dialer:
+  - I enter a customer phone number.
+  - I click “Call”.
+  - My phone (Groundwire SIP client) RINGS.
+  - When I answer, Twilio plays “We’re sorry, an application error has occurred” and hangs up.
+  - This means the **briding TwiML** (or outbound voice route) is ERRORING.
+
+Your job is to:
+
+1. Locate the outbound call flow:
+   - Find:
+     - The route that generates Twilio Voice AccessTokens (e.g. /twilio/voice/token).
+     - The route that Twilio hits when placing the outbound leg from the app to the customer.
+       - Often something like /twilio/voice/outbound or /twilio/voice/client.
+   - Confirm what **Application SID** and/or Voice URL is configured in TWILIO_VOICE_FROM_NUMBER or TwiML App.
+
+2. Identify the failing endpoint:
+   - Based on existing docs in the repo (TWILIO_INTEGRATION_GUIDE.md) and the routes, figure out:
+     - Which URL Twilio is calling when the app tries to dial out.
+   - Add a minimal log at the top of that route to confirm Twilio is hitting it during a test call.
+   - Reproduce the problem by:
+     - Running the dev server, using the phone dialer in the app, and watching the logs.
+
+3. Fix the TwiML for outbound bridging:
+   - The goal: **connect my SIP client to the customer’s phone number**.
+   - The typical pattern:
+     - First leg: Twilio calls my SIP endpoint (Groundwire) OR Twilio Client.
+     - Second leg: Twilio bridges that call to the destination PSTN number.
+   - Ensure the TwiML in the outbound route:
+     - Is valid XML
+     - Returns HTTP 200 (no server-side crash)
+     - Uses <Dial> with the correct <Number> (customer) or <Sip> target as needed.
+   - If we currently dial SIP only (just my Groundwire) and never bridge to the customer, fix that so:
+     - The app call → Twilio → connects *me* to *customer*, not just me → dead end.
+
+4. Test behavior end-to-end:
+   - From /phone dialer:
+     - Enter a real test number (e.g. your personal cell).
+     - Click “Call”.
+   - Expected:
+     - My Groundwire rings.
+     - I answer.
+     - I am connected to the customer (two-way audio).
+     - No “application error” message.
+   - If you cannot fully test audio, at least verify:
+     - TwiML route returns 200 with valid TwiML.
+     - Twilio Call Logs show the outbound leg completing or ringing the destination number.
+
+5. Maintain IVR behavior:
+   - DO NOT change the inbound IVR flow we already established.
+   - Do NOT change press-2 routing.
+   - This step is ONLY about the /phone dialer initiating outbound calls.
+
+-----------------------------------------------------
+STEP 3 – SUMMARY & NEXT TESTS
+-----------------------------------------------------
+
+At the end, you MUST:
+
+1. Provide a clear summary with:
+   - Files changed.
+   - Final canonical paths:
+     - SMS inbound webhook URL (relative path).
+     - Outbound call bridge URL (relative path).
+   - Any config I need to confirm in Twilio Console (phone number / messaging service / TwiML app URLs).
+
+2. Give me a HUMAN-FRIENDLY TEST CHECKLIST I can run manually:
+   - “Test A: Send SMS to the business number – expect X.”
+   - “Test B: Reply from inside Messages – expect Y.”
+   - “Test C: Make outbound call from /phone – expect Z.”
+
+Remember: DO NOT over-refactor. Fix these two areas cleanly and stop.
