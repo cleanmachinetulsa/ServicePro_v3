@@ -1473,7 +1473,7 @@ export default function ThreadView({
 
           {/* AI Suggestions - Enhanced UI with Mobile Collapse */}
           {conversation.controlMode === 'manual' && suggestions.length > 0 && (
-            <div className="border-t dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
+            <div className="shrink-0 border-t dark:border-gray-800 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20">
               {/* Header - Always Visible */}
               <button
                 onClick={() => setSuggestionsCollapsed(!suggestionsCollapsed)}
@@ -1532,7 +1532,7 @@ export default function ThreadView({
 
           {/* Booking Status Banner - Shows readiness for appointment creation */}
           {bookingStatus !== 'not_ready' && (
-            <div className="border-t dark:border-gray-800 px-4 py-3 bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20">
+            <div className="shrink-0 border-t dark:border-gray-800 px-4 py-3 bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20">
               <div className="flex items-center gap-3 max-w-4xl mx-auto">
                 {bookingStatus === 'ready_for_draft' && (
                   <>
@@ -1573,7 +1573,7 @@ export default function ThreadView({
 
           {/* Message Send Error Banner with Retry */}
           {failedMessage && conversation.controlMode === 'manual' && (
-            <div className="border-t border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3">
+            <div className="shrink-0 border-t border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 px-4 py-3">
               <div className="flex items-center justify-between gap-3 max-w-4xl mx-auto">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
@@ -1615,7 +1615,7 @@ export default function ThreadView({
           )}
 
           {/* Message Input - Always Visible */}
-          <div className="border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 shadow-lg">
+          <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 shadow-lg">
               {/* Active Phone Line Indicator - Only for SMS conversations */}
               {conversation?.platform === 'sms' && activeLine && (
                 <div className="mb-3 max-w-4xl mx-auto">
