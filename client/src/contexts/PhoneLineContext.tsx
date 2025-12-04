@@ -23,10 +23,10 @@ export function PhoneLineProvider({ children }: { children: ReactNode }) {
     return saved ? (saved === 'null' ? null : parseInt(saved)) : null; // Default to "All Lines"
   });
 
-  // SENDER: Which line to send from (ALWAYS has value - defaults to Line 2 since Line 1 is broken)
+  // SENDER: Which line to send from (ALWAYS has value - defaults to Line 1 = Main Business Line)
   const [activeSendLineId, setActiveSendLineIdState] = useState<number>(() => {
     const saved = localStorage.getItem('activeSendLineId');
-    return saved ? parseInt(saved) : 2; // Default to Jody's Line (working Twilio number)
+    return saved ? parseInt(saved) : 1; // Default to Main Business Line (918-856-5304)
   });
 
   const setConversationFilter = (id: number | null) => {
