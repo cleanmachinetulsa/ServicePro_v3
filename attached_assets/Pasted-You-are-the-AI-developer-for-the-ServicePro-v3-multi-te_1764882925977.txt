@@ -1,0 +1,199 @@
+You are the AI developer for the ServicePro v3 multi-tenant SaaS app.
+
+We just finished major IVR + phone work and a Messages performance pass.  
+Now we want to ship a **coherent, self-service onboarding flow** for new tenants.
+
+Your job in this block is to implement a **complete, high-quality funnel**:
+
+- Public Landing → Industry Onboarding → Setup Wizard → Dashboard
+
+…while reusing the existing building blocks you already found:
+
+- /onboarding/industry
+- /setup-copilot
+- /dashboard
+- /site/:subdomain
+- existing industry packs and tenant bootstrap logic
+
+Do NOT break existing tenants or the root “Clean Machine” business.
+
+------------------------------------------------------------
+HIGH-LEVEL PRODUCT REQUIREMENTS
+------------------------------------------------------------
+
+### 1) Public Landing Page at “/”
+
+Create a proper marketing landing page and route it as the default root:
+
+- URL: `/`
+- Component: `client/src/pages/LandingPage.tsx` (you’ve started this; now finish it properly)
+- Router: ensure `App.tsx` (or equivalent router file) routes `/` → `LandingPage` and that `/onboarding/industry` remains the CTA.
+
+Landing page content:
+
+- Hero section:
+  - Big headline: “ServicePro – AI-powered automation for service businesses”
+  - Subheading: “Bookings, messages, and follow-ups handled for you – so you can focus on the work.”
+  - Primary CTA button: “Get Started” → navigates to `/onboarding/industry`
+  - Secondary CTA: “View demo site” → links to a safe sample like `/site/demo-detailing` if available, or disabled/placeholder.
+
+- “How it works” section:
+  - 3–4 steps, visually:
+    1. “Pick your industry”
+    2. “Answer a few questions”
+    3. “Connect your phone & SMS”
+    4. “Launch your AI-powered booking site”
+
+- “Supported industries” section:
+  - Show cards for some industries (auto detailing, lawn care, house cleaning, photography, HVAC, etc.) using the same labels used in `/onboarding/industry`.
+
+- Simple footer:
+  - Links: “Login”, “Privacy”, “Terms”
+  - “Powered by ServicePro”
+
+Use the same design language as the existing app (Tailwind, gradients, glass cards, etc.). This page should feel premium, not thrown together.
+
+### 2) Refine /onboarding/industry -> redirect into Setup Wizard
+
+You already know:
+
+- File: `client/src/pages/OnboardingIndustry.tsx`
+- Flow: select industry → (optional photography specializations) → username/email/password → POST `/api/onboarding/complete` → currently redirect to `/dashboard` (or similar).
+
+Change this so that AFTER a successful onboarding:
+
+- The user is auto-logged in (keep existing behavior).
+- Instead of going straight to `/dashboard`, redirect them to:
+
+  - `/setup-copilot` (Setup Wizard page)
+
+You mentioned this route already exists – we’ll enhance it in the next step.
+
+Also:
+
+- Improve copy on the success path to make it clear:
+  - “Account created! Next we’ll walk you through a 3-step setup to get your phone, website, and AI assistant ready.”
+
+Do NOT change the backend behavior of `/api/onboarding/complete` (tenant creation + industry pack seeding) other than minimal tweaks if strictly necessary.
+
+### 3) Setup Wizard (“Setup Copilot”) at /setup-copilot
+
+We want `/setup-copilot` to become the **central post-signup funnel**.
+
+- File (or create if not present): `client/src/pages/SetupCopilot.tsx`
+- Route: `/setup-copilot` (must be auth-protected, owner role only).
+
+This page should show a **3-step checklist** with progress:
+
+1. **Step 1: Business Basics & Services**
+   - Status: “Done” if the tenant’s industry pack + services are already seeded (likely always true), but let them:
+     - See their business name and primary industry.
+     - Edit displayed business name (e.g. “Clean Machine Auto Detail”).
+     - Confirm services/pricing imported from the industry pack (link to the existing Services/Settings page in a button: “Review services & pricing”).
+   - Action button: “Mark as Complete” if they’ve visited/reviewed (or auto-mark as complete if data present).
+
+2. **Step 2: Phone & SMS Setup**
+   - Status should reflect backend data:
+     - “Not Configured” if there is no main phone / messaging config for this tenant.
+     - “Partially Configured” if Twilio SID/messaging service exists but tests fail.
+     - “Ready” if your existing phone config for tenant passes a simple health check.
+   - UI:
+     - Show a short explanation: “ServicePro uses your Twilio config to send/receive calls and SMS via the AI agent.”
+     - Show key fields pulled from backend (masked where needed): phone number, SIP domain, messaging service SID, etc.
+     - Buttons:
+       - “Open Phone Settings” → link to the existing admin phone config page (whatever route you already use to configure phone for the root tenant).
+       - “Send Test SMS” – optional; if trivial, wire a small test endpoint that sends a “Test message from ServicePro” SMS to the owner phone (root tenant only for now).
+   - For non-root tenants in this v1:
+     - You can show guidance text + a button that says “Contact Support to Connect Phone” or similar, if full multi-tenant Twilio is not ready yet.
+   - Keep this step read-only for now except for simple actions; the goal is primarily feedback and linking to the proper settings screen.
+
+3. **Step 3: Public Website & Booking Link**
+   - Leverage your existing website generator for `/site/:subdomain`.
+   - From Setup Wizard:
+     - Show:
+       - Current business name
+       - Current tagline
+       - Current primary CTA text (e.g. “Book Now”)
+       - The generated public URL (e.g. `https://servicepro-v-3-base-cleanmachinetul.replit.app/site/{subdomain}`).
+     - Provide a “Preview Site” button that opens `/site/:subdomain` in a new tab.
+     - Provide a button “Edit Website Copy” → link into your existing website config/editor page (if already created), or show inline fields for:
+       - hero title
+       - hero subtitle
+       - primary CTA button text.
+   - Include a “Mark as Published” toggle/checkbox so the tenant can indicate “Yes, I’m ready for customers to see this.”
+
+#### Backend tracking: setup progress
+
+Add a small, non-invasive tracking mechanism for these 3 steps.
+
+- In `tenant_config` (or equivalent tenant settings table), add:
+
+  - `onboarding_business_setup_done` (boolean, default false)
+  - `onboarding_phone_setup_done` (boolean, default false)
+  - `onboarding_site_published` (boolean, default false)
+
+- Create lightweight endpoints:
+
+  - `GET /api/onboarding/progress`
+    - Returns the current tenant’s flags and any derived status (e.g., infer phone_ready from phone config if you can).
+  
+  - `POST /api/onboarding/progress`
+    - Accepts optional booleans to update:
+      - `{ businessSetupDone?: boolean; phoneSetupDone?: boolean; sitePublished?: boolean }`
+    - Auth: owner-only, tenant-scoped.
+
+`SetupCopilot.tsx` should:
+
+- Use `GET /api/onboarding/progress` to drive the UI.
+- Use `POST /api/onboarding/progress` when the user clicks “Mark as complete” / “Mark as published”.
+
+Keep logic simple and robust. If you can infer a “Done” status from actual config (e.g. phone is already working), that’s great, but never crash if the inference fails – default to “Not configured” and show guidance.
+
+### 4) Dashboard “Finish Setup” Banner
+
+On the main owner/tenant dashboard (`/dashboard`):
+
+- Add a small, unobtrusive **banner card** at the top that appears only when **any of the three onboarding flags are not done**.
+
+Banner behavior:
+
+- If all flags true → banner hidden.
+- If not, show:
+  - Title: “Finish setting up your ServicePro workspace”
+  - Text: e.g. “You’re almost there! Complete 3 quick steps to start taking bookings with AI.”
+  - Progress indicator:
+    - Show 0/3, 1/3, 2/3, 3/3 completed.
+  - Button: “Open Setup Copilot” → navigate to `/setup-copilot`.
+
+Implementation details:
+
+- Reuse the `GET /api/onboarding/progress` endpoint.
+- Prefer TanStack Query or whatever caching system you already use for user/tenant data.
+- Make sure this is tenant-scoped and not leaking root tenant data.
+
+------------------------------------------------------------
+TECHNICAL CONSTRAINTS & SAFETY
+------------------------------------------------------------
+
+- Do NOT break existing tenant creation logic in `/api/onboarding/complete`.
+- Do NOT change existing Twilio / phone behavior, only surface its status.
+- Multi-tenant safety:
+  - All onboarding/progress endpoints MUST be tenant-scoped, using the same auth and `wrapTenantDb` patterns used elsewhere.
+- Treat non-root tenants gracefully:
+  - If full phone integration isn’t ready per-tenant, show guidance text/instructional UI instead of advanced actions.
+- No removal of existing routes like `/admin/concierge-setup` – those remain as internal tools.
+
+------------------------------------------------------------
+DELIVERABLE SUMMARY
+------------------------------------------------------------
+
+When you’re done, summarize:
+
+1. Files created/modified (paths + a short line per file).
+2. Schema changes:
+   - New flags in tenant_config (or equivalent) and any new API routes.
+3. How the tenant onboarding funnel works now, end-to-end:
+   - From `/` to `/onboarding/industry` to `/setup-copilot` to `/dashboard` and `/site/:subdomain`.
+4. Any caveats / TODOs (e.g. future Stripe/billing, fully automated phone provisioning, etc.).
+
+Ensure everything builds and the app boots cleanly before finishing.
