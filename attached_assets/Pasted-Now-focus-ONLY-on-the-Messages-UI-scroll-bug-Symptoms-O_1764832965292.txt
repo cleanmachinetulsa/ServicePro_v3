@@ -1,0 +1,48 @@
+Now focus ONLY on the Messages UI scroll bug.
+
+Symptoms:
+- On the /messages page, the center third "thread" panel does not scroll.
+- I cannot scroll down to the bottom of the conversation.
+- For some numbers, I cannot even reach the text input box to type a reply.
+- This feels like the same scroll-container issue we previously had when using ScrollArea, but it has reappeared in ServicePro v3.
+
+Goal:
+Make the center thread panel fully scrollable again so:
+- I can scroll up to see history.
+- I can scroll down to the latest messages.
+- I can always see and use the text input at the bottom.
+
+Steps:
+1. Open the main messages layout components, likely:
+   - client/src/pages/MessagesPage.tsx (or similar)
+   - client/src/components/messages/ThreadPane.tsx
+   - client/src/components/messages/ThreadView.tsx
+2. Inspect the layout:
+   - The outer layout should be a flex container (3 columns).
+   - The center column should have `flex: 1` and `min-height: 0`.
+   - The inner scrollable area should be a `<div>` with `overflow-y: auto`, full height, and NOT wrapped in a Radix ScrollArea that resets scroll on re-render.
+
+3. If you find a Radix `<ScrollArea>` around the thread content:
+   - Replace it with a plain `<div>` scroll container.
+   - Ensure we use a ref-based "scroll to bottom" pattern that does not fight browser scrolling.
+
+4. Fix any CSS/Tailwind issues:
+   - The column that holds the thread should have classes like:
+     `flex flex-col min-h-0`
+   - The messages list should have:
+     `flex-1 overflow-y-auto`
+   - The composer (text input) should sit in a non-scrolling footer with `shrink-0`.
+
+5. Test behavior:
+   - Long conversation: can scroll all the way up and down.
+   - New message: view scrolls to bottom once (unless user has manually scrolled far up).
+   - Input box is always visible at bottom.
+
+6. Keep changes minimal:
+   - Do not redesign the entire Messages page.
+   - Just fix the scroll behavior and visibility of the input box.
+
+At the end, summarize:
+- Which files were changed.
+- Before vs after behavior.
+- Any gotchas (like needing `min-h-0` on a parent flex container).
