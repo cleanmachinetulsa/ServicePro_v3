@@ -148,6 +148,7 @@ export function useReadReceipts({
   }, [socket, conversationId, queryClient, enabled]);
 
   // Observe eligible messages (only those not authored by the reader)
+  // Note: This is used as a callback ref, so it must NOT return a function
   const observeMessage = useCallback((element: HTMLElement | null, message: Message) => {
     if (!element || !observerRef.current || !enabled) return;
 
@@ -163,13 +164,7 @@ export function useReadReceipts({
     if (shouldObserve && notYetRead) {
       observerRef.current.observe(element);
     }
-
-    // Return cleanup function
-    return () => {
-      if (observerRef.current && element) {
-        observerRef.current.unobserve(element);
-      }
-    };
+    // Cleanup is handled by the IntersectionObserver.disconnect() in the useEffect above
   }, [readerRole, enabled]);
 
   return {
