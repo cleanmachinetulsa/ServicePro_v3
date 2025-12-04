@@ -90,6 +90,7 @@ import DownloadExportPage from "./pages/download-export";
 import LaunchPage from "./pages/launch";
 import SetupCopilot from "./pages/SetupCopilot";
 import SetupWizard from "./pages/SetupWizard";
+import SettingsA2P from "./pages/SettingsA2P";
 
 // 🆕 Industry onboarding page
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
@@ -192,6 +193,11 @@ function Router() {
       <Route path="/quick-replies">
         <AuthGuard>
           <SettingsPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/a2p">
+        <AuthGuard>
+          <SettingsA2P />
         </AuthGuard>
       </Route>
       <Route path="/settings/:section?/:item?">

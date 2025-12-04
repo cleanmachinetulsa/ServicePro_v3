@@ -398,6 +398,12 @@ export const navigationItems: NavigationItem[] = [
     path: '/phone-settings',
   },
   {
+    id: 'a2p-campaign',
+    label: 'SMS Compliance',
+    icon: Shield,
+    path: '/settings/a2p',
+  },
+  {
     id: 'facebook-settings',
     label: 'Facebook Settings',
     icon: MessagesSquare,

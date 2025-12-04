@@ -29,6 +29,7 @@ import twilioVoiceRouter from "./routes.twilioVoice";
 import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
+import a2pCampaignRouter from "./routes.a2pCampaign";
 import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
@@ -311,6 +312,8 @@ app.use('/api/campaigns', campaignsRouter);
 app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 // Register SMS templates routes (requires auth)
 app.use('/api/sms-templates', smsTemplatesRouter);
+// Register A2P Campaign Assistant routes (Phase - A2P 10DLC Registration)
+app.use('/api/a2p', a2pCampaignRouter);
 // Register agent context routes (Phase 10 - AI Setup & Support Agent)
 app.use('/api/agent', agentContextRouter);
 // Register setup assistant routes (Phase 12 - Setup & Support Copilot)
