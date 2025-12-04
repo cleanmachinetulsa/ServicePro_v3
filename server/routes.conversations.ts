@@ -434,7 +434,7 @@ export function registerConversationRoutes(app: Express) {
       if (conversation.platform === 'sms') {
         // Check if customer has opted out of SMS
         const { isOptedOut } = await import('./smsConsentService');
-        const optedOut = await isOptedOut(conversationId);
+        const optedOut = await isOptedOut(req.tenantDb!, conversationId);
         
         if (optedOut) {
           return res.status(403).json({
@@ -777,10 +777,10 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
-      const updated = await db
+      const updated = await req.tenantDb!
         .update(conversations)
         .set({ unreadCount: 0 })
-        .where(eq(conversations.id, conversationId))
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
         .returning();
 
       if (updated.length === 0) {
