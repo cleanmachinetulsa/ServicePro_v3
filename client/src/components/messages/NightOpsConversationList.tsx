@@ -85,11 +85,14 @@ export function NightOpsConversationList({
   const listRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const getInitials = (name: string | null, phone: string) => {
+  const getInitials = (name: string | null, phone: string | null) => {
     if (name) {
       return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     }
-    return phone.slice(-2);
+    if (phone) {
+      return phone.slice(-2);
+    }
+    return '??';
   };
 
   const getPlatformIcon = (platform: string) => {
