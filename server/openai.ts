@@ -650,53 +650,93 @@ export async function generateAIResponse(
         // Add current user message
         messages.push({ role: "user", content: userMessage });
         
-        // AI BEHAVIOR V2: Wrap OpenAI call in try-catch for safety fallback
-        let completion;
-        try {
-          // Make OpenAI call with SMS-optimized settings
-          // NOTE: Tools disabled for SMS to ensure customers always get text responses
-          // The AI can still recommend scheduling but won't block on function calls
-          completion = await openai!.chat.completions.create({
-            model: SMS_AGENT_MODEL,
-            messages,
-            max_completion_tokens: 300, // Shorter for SMS (GPT-5.1 uses max_completion_tokens)
-          });
-        } catch (openaiError) {
-          console.error('[AI BEHAVIOR V2] OpenAI API error:', openaiError);
-          
-          // AI BEHAVIOR V2: Safety fallback
-          const { SAFETY_FALLBACK_MESSAGE } = await import('@shared/ai/smsAgentConfig');
-          
-          // TODO: Set needsHumanAttention flag on conversation in database
-          console.log('[AI BEHAVIOR V2] OpenAI error - returning safety fallback and flagging for human attention');
-          
-          return SAFETY_FALLBACK_MESSAGE;
-        }
+        // SMS iterative tool-call loop (same pattern as main path)
+        let currentMessages = [...messages];
+        const MAX_SMS_ITERATIONS = 5; // Limit iterations for SMS to control costs
+        let iterations = 0;
+        let finalResponse = "";
         
-        // Log usage
-        try {
-          const { logApiUsage } = await import('./usageTracker');
-          const inputTokens = completion.usage?.prompt_tokens || 0;
-          const outputTokens = completion.usage?.completion_tokens || 0;
-          const totalCost = (inputTokens / 1000000) * 2.50 + (outputTokens / 1000000) * 10.00;
+        while (iterations < MAX_SMS_ITERATIONS) {
+          iterations++;
           
-          await logApiUsage(
-            'openai',
-            'tokens',
-            inputTokens + outputTokens,
-            totalCost,
-            {
+          // AI BEHAVIOR V2: Wrap OpenAI call in try-catch for safety fallback
+          let completion;
+          try {
+            // Make OpenAI call with SMS-optimized settings
+            completion = await openai!.chat.completions.create({
               model: SMS_AGENT_MODEL,
-              input_tokens: inputTokens,
-              output_tokens: outputTokens,
-              platform: 'sms',
-            }
-          );
-        } catch (err) {
-          console.error('[SMS AI USAGE LOG] Error:', err);
+              messages: currentMessages,
+              tools: SCHEDULING_FUNCTIONS,
+              tool_choice: "auto",
+              max_completion_tokens: 300, // Shorter for SMS
+            });
+          } catch (openaiError) {
+            console.error('[AI BEHAVIOR V2] OpenAI API error:', openaiError);
+            
+            // AI BEHAVIOR V2: Safety fallback
+            const { SAFETY_FALLBACK_MESSAGE } = await import('@shared/ai/smsAgentConfig');
+            console.log('[AI BEHAVIOR V2] OpenAI error - returning safety fallback');
+            
+            return SAFETY_FALLBACK_MESSAGE;
+          }
+          
+          // Log usage
+          try {
+            const { logApiUsage } = await import('./usageTracker');
+            const inputTokens = completion.usage?.prompt_tokens || 0;
+            const outputTokens = completion.usage?.completion_tokens || 0;
+            const totalCost = (inputTokens / 1000000) * 2.50 + (outputTokens / 1000000) * 10.00;
+            
+            await logApiUsage(
+              'openai',
+              'tokens',
+              inputTokens + outputTokens,
+              totalCost,
+              {
+                model: SMS_AGENT_MODEL,
+                input_tokens: inputTokens,
+                output_tokens: outputTokens,
+                platform: 'sms',
+                iteration: iterations,
+              }
+            );
+          } catch (err) {
+            console.error('[SMS AI USAGE LOG] Error:', err);
+          }
+          
+          const responseMessage = completion.choices[0].message;
+          currentMessages.push(responseMessage);
+          
+          // If no tool calls, we have final response - break the loop
+          if (!responseMessage.tool_calls || responseMessage.tool_calls.length === 0) {
+            finalResponse = responseMessage.content || "I apologize, but I didn't generate a proper response. Please try again.";
+            console.log(`[SMS AI] Final response after ${iterations} iteration(s)`);
+            break;
+          }
+          
+          // Execute tool calls
+          console.log(`[SMS AI] Executing ${responseMessage.tool_calls.length} tool call(s) in iteration ${iterations}`);
+          for (const toolCall of responseMessage.tool_calls) {
+            const functionName = toolCall.function.name;
+            const functionArgs = JSON.parse(toolCall.function.arguments);
+            
+            console.log(`[SMS AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
+            
+            const functionResult = await executeFunctionCall(functionName, functionArgs);
+            
+            currentMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: functionResult
+            });
+          }
         }
         
-        let finalResponse = completion.choices[0].message.content || "I apologize, but I didn't generate a proper response. Please try again.";
+        // Safety fallback if loop exhausted
+        if (!finalResponse) {
+          console.warn(`[SMS AI] Reached max iterations (${MAX_SMS_ITERATIONS}) without final response`);
+          finalResponse = "Thanks for your message! I'm working on your request. A team member will follow up shortly.";
+        }
         
         // SMS length optimization: trim whitespace
         finalResponse = finalResponse.trim();
