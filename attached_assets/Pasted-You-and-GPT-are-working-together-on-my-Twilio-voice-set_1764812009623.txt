@@ -1,0 +1,74 @@
+You and GPT are working together on my Twilio voice setup.
+
+Goal: Make all calls to +1 918 856 5304 go through the IVR first (press 2 to ring my SIP softphone, press 3 for voicemail), instead of the current “simple direct SIP dial” behavior.
+
+Right now:
+- SIP is registered and working (Groundwire now rings).
+- When I call the number, it rings my phone directly and then hangs up if I don’t answer.
+- I never hear the IVR menu and it doesn’t go to voicemail.
+- Twilio webhooks for the number are already set to:
+  - Voice: POST https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/incoming
+  - Status callback: POST https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/call-status
+
+Your job:
+1. **Inspect voice mode / IVR settings**
+   - Open the relevant voice routing files:
+     - `server/routes.twilioVoice.ts`
+     - `server/routes.twilioVoiceCanonical.ts`
+     - `server/routes.twilioVoiceIvr.ts`
+     - `server/services/ivrHelper.ts`
+   - Find how `/twilio/voice/incoming` decides between:
+     - “simple/direct SIP” mode, and
+     - “ivr/interactive menu” mode.
+   - Also inspect `tenant_phone_config` (or equivalent) in the DB to see what `ivr_mode` (or similar flag) is set to for the root/clean machine tenant. Print that record so I can see it.
+
+2. **Switch Clean Machine to IVR-first mode**
+   - For the tenant that owns the number `+19188565304` (root Clean Machine tenant):
+     - Set the voice mode / ivr_mode to **IVR** (whatever the app expects, e.g. `'ivr'`, `'menu'`, etc.).
+   - Ensure that `/twilio/voice/incoming` will:
+     - ALWAYS start in IVR for Clean Machine:
+       - Play the greeting.
+       - Offer “Press 1 for pricing, 2 to talk to someone, 3 for voicemail, 7 for easter egg” (or whatever our latest copy is).
+       - When the caller presses 2 → `<Dial><Sip>sip:jody@cleanmachinetulsa.sip.twilio.com</Sip></Dial>`
+       - When they press 3 → go straight to voicemail (with recordingStatus and transcription callbacks wired to the existing handlers).
+   - Keep the existing SIP domain, username, and credentials as they are now (they’re working).
+
+3. **Make sure voicemail still works**
+   - Confirm that the “press 3 for voicemail” path in the IVR uses:
+     - `recordingStatusCallback="/twilio/voice/recording-status"`
+     - `transcriptionCallback="/twilio/voice/voicemail-transcribed"`
+   - Confirm that:
+     - `recording-status` triggers:
+       - conversation sync via `syncVoicemailIntoConversation`
+       - push notification via `notifyVoicemail` (or equivalent)
+     - `voicemail-transcribed` updates the same conversation message with transcription text and sends a push notification with the transcription.
+
+4. **Business hours logic**
+   - Check any business-hours logic in the voice handler.
+   - If current logic is “OPEN → direct SIP, CLOSED → IVR”, CHANGE it so that for the Clean Machine tenant:
+     - ALL calls go IVR-first, regardless of business hours.
+   - If you need to make this tenant-specific, that’s fine; just hard-code the root/Clean Machine tenant to IVR-first for now.
+
+5. **Restart and give me a test plan**
+   - Restart the server.
+   - Print out:
+     - The final DB row for `tenant_phone_config` (or equivalent) for the Clean Machine tenant, including:
+       - `phone_number`
+       - `sip_domain`
+       - `sip_username`
+       - `ivr_mode` (or similar)
+     - Which exact route is mounted at `/twilio/voice/incoming`.
+     - A short step-by-step “What will happen when Jody calls the number now” description.
+   - DO NOT change any Twilio webhooks in the console; assume they are already correct as listed above.
+
+6. **If anything is unclear**
+   - If there are multiple modes or flags, choose the configuration that:
+     - Starts with IVR menu
+     - Press 2 → rings SIP
+     - Press 3 → voicemail
+   - Prefer minimal code changes; only adjust what’s needed to force IVR-first mode for Clean Machine.
+
+At the end, summarise:
+- What you changed (files + DB updates).
+- What the Clean Machine voice flow is now.
+- Anything I still need to do manually in Twilio (if anything; ideally nothing).
