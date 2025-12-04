@@ -60,7 +60,7 @@ interface BookingPanelProps {
 }
 
 export default function BookingPanel({ conversationId }: BookingPanelProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false); // Collapsed by default for better mobile UX
   const [isEditing, setIsEditing] = useState(false);
   const [override, setOverride] = useState(false);
   const { toast } = useToast();

@@ -136,7 +136,8 @@ export default function ThreadView({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [suggestionsCollapsed, setSuggestionsCollapsed] = useState(false);
+  const [suggestionsCollapsed, setSuggestionsCollapsed] = useState(true); // Collapsed by default for better mobile UX
+  const [proControlsCollapsed, setProControlsCollapsed] = useState(true); // Collapsed by default for better mobile UX
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -1854,93 +1855,131 @@ export default function ThreadView({
           </div>
 
         {/* Right Sidebar - Professional Controls & Quick Replies */}
+        {/* In NightOps mode (hideHeader=true): renders as collapsible panel above input to save space */}
+        {/* In standard mode: renders as right sidebar */}
         {conversation.controlMode === 'manual' && (
-          <div className="lg:w-80 border-t lg:border-t-0 lg:border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto max-h-[400px] lg:max-h-full">
-            <div className="p-4 space-y-4">
-              {/* Phase 12: Professional Conversation Management */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Professional Controls
-                </h3>
-                
-                <ConversationMetaBar
-                  controlMode={conversation.controlMode}
-                  assignedAgent={conversation.assignedAgent}
-                  lastHandoffAt={conversation.lastHandoffAt}
-                  manualModeStartedAt={conversation.manualModeStartedAt}
-                />
-                
-                <HandoffControls
-                  conversationId={conversationId}
-                  controlMode={conversation.controlMode}
-                />
-                
-                <SmartSchedulePanel conversationId={conversationId} />
-                
-                <HandbackAnalysisPanel conversationId={conversationId} />
-              </div>
-
-              {/* Quick Reply Templates */}
-              {quickReplyCategories.length > 0 && (
-                <div className="pt-4 border-t dark:border-gray-800">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <div className="bg-primary/10 p-1.5 rounded-lg">
-                        <MessageSquare className="h-4 w-4 text-primary" />
-                      </div>
-                      Quick Replies
-                    </h3>
-                    <Badge variant="outline" className="text-xs">
-                      {quickReplyCategories.reduce((sum, cat) => sum + cat.templates.length, 0)} templates
-                    </Badge>
+          hideHeader ? (
+            /* NightOps Mode: Collapsible panel integrated into thread flow */
+            <div className="shrink-0 border-t dark:border-gray-800">
+              <Collapsible open={!proControlsCollapsed} onOpenChange={() => setProControlsCollapsed(!proControlsCollapsed)}>
+                <CollapsibleTrigger asChild>
+                  <button className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-100 dark:bg-slate-800/60 hover:bg-slate-200 dark:hover:bg-slate-700/60 transition-colors">
+                    <div className="bg-blue-500/20 p-1.5 rounded-lg">
+                      <ArrowLeftRight className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400" />
+                    </div>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                      Professional Controls
+                    </span>
+                    <ChevronDown className={`h-4 w-4 ml-auto text-slate-500 transition-transform ${proControlsCollapsed ? '-rotate-180' : ''}`} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-900/60 space-y-3 max-h-[300px] overflow-y-auto">
+                    <ConversationMetaBar
+                      controlMode={conversation.controlMode}
+                      assignedAgent={conversation.assignedAgent}
+                      lastHandoffAt={conversation.lastHandoffAt}
+                      manualModeStartedAt={conversation.manualModeStartedAt}
+                    />
+                    <HandoffControls
+                      conversationId={conversationId}
+                      controlMode={conversation.controlMode}
+                    />
+                    <SmartSchedulePanel conversationId={conversationId} />
+                    <HandbackAnalysisPanel conversationId={conversationId} />
                   </div>
-                  
-                  <div className="space-y-2">
-                    {quickReplyCategories.map((category) => (
-                      <Collapsible
-                        key={category.id}
-                        open={expandedCategories.has(category.id)}
-                        onOpenChange={() => toggleCategory(category.id)}
-                      >
-                        <CollapsibleTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-between"
-                            data-testid={`category-${category.id}`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {category.icon && <span>{category.icon}</span>}
-                              {category.name}
-                            </span>
-                            {expandedCategories.has(category.id) ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="space-y-1 mt-1">
-                          {category.templates.map((template) => (
-                            <Button
-                              key={template.id}
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleQuickReplyClick(template.id, template.content)}
-                              className="w-full text-left justify-start text-xs h-auto py-2 px-3 whitespace-normal"
-                              disabled={sendMessageMutation.isPending}
-                              data-testid={`template-${template.id}`}
-                            >
-                              {template.content}
-                            </Button>
-                          ))}
-                        </CollapsibleContent>
-                      </Collapsible>
-                    ))}
-                  </div>
-                </div>
-              )}
+                </CollapsibleContent>
+              </Collapsible>
             </div>
-          </div>
+          ) : (
+            /* Standard Mode: Right sidebar */
+            <div className="lg:w-80 border-t lg:border-t-0 lg:border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto max-h-[400px] lg:max-h-full">
+              <div className="p-4 space-y-4">
+                {/* Phase 12: Professional Conversation Management */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Professional Controls
+                  </h3>
+                  
+                  <ConversationMetaBar
+                    controlMode={conversation.controlMode}
+                    assignedAgent={conversation.assignedAgent}
+                    lastHandoffAt={conversation.lastHandoffAt}
+                    manualModeStartedAt={conversation.manualModeStartedAt}
+                  />
+                  
+                  <HandoffControls
+                    conversationId={conversationId}
+                    controlMode={conversation.controlMode}
+                  />
+                  
+                  <SmartSchedulePanel conversationId={conversationId} />
+                  
+                  <HandbackAnalysisPanel conversationId={conversationId} />
+                </div>
+
+                {/* Quick Reply Templates */}
+                {quickReplyCategories.length > 0 && (
+                  <div className="pt-4 border-t dark:border-gray-800">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <div className="bg-primary/10 p-1.5 rounded-lg">
+                          <MessageSquare className="h-4 w-4 text-primary" />
+                        </div>
+                        Quick Replies
+                      </h3>
+                      <Badge variant="outline" className="text-xs">
+                        {quickReplyCategories.reduce((sum, cat) => sum + cat.templates.length, 0)} templates
+                      </Badge>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {quickReplyCategories.map((category) => (
+                        <Collapsible
+                          key={category.id}
+                          open={expandedCategories.has(category.id)}
+                          onOpenChange={() => toggleCategory(category.id)}
+                        >
+                          <CollapsibleTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="w-full justify-between"
+                              data-testid={`category-${category.id}`}
+                            >
+                              <span className="flex items-center gap-2">
+                                {category.icon && <span>{category.icon}</span>}
+                                {category.name}
+                              </span>
+                              {expandedCategories.has(category.id) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="space-y-1 mt-1">
+                            {category.templates.map((template) => (
+                              <Button
+                                key={template.id}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleQuickReplyClick(template.id, template.content)}
+                                className="w-full text-left justify-start text-xs h-auto py-2 px-3 whitespace-normal"
+                                disabled={sendMessageMutation.isPending}
+                                data-testid={`template-${template.id}`}
+                              >
+                                {template.content}
+                              </Button>
+                            ))}
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
         )}
       </div>
     </div>
