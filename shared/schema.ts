@@ -929,6 +929,11 @@ export const callEvents = pgTable("call_events", {
   technicianId: integer("technician_id").references(() => technicians.id, { onDelete: "set null" }), // For technician_outbound calls
   appointmentId: integer("appointment_id").references(() => appointments.id, { onDelete: "set null" }), // Link to appointment if call is job-related
   readAt: timestamp("read_at"), // When voicemail was marked as read
+  
+  // AI-generated voicemail intelligence (Phone Intelligence v1)
+  aiSummary: text("ai_summary"), // Short AI-generated summary of voicemail content
+  aiPriority: varchar("ai_priority", { length: 20 }), // 'HIGH' or 'NORMAL' - urgency assessment
+  
   createdAt: timestamp("created_at").defaultNow(), // When call was initiated
   startedAt: timestamp("started_at"), // When call was answered
   endedAt: timestamp("ended_at"), // When call ended

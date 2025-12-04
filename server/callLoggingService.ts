@@ -22,6 +22,9 @@ export interface CallEventData {
   endedAt?: Date;
   technicianId?: number;
   appointmentId?: number;
+  // AI-generated voicemail intelligence (Phone Intelligence v1)
+  aiSummary?: string;
+  aiPriority?: 'HIGH' | 'NORMAL';
 }
 
 /**
@@ -107,6 +110,9 @@ export async function updateCallEvent(
     if (updates.price !== undefined) updateData.price = updates.price;
     if (updates.startedAt !== undefined) updateData.startedAt = updates.startedAt;
     if (updates.endedAt !== undefined) updateData.endedAt = updates.endedAt;
+    // AI-generated voicemail intelligence
+    if (updates.aiSummary !== undefined) updateData.aiSummary = updates.aiSummary;
+    if (updates.aiPriority !== undefined) updateData.aiPriority = updates.aiPriority;
     
     // Only update if there are fields to update
     if (Object.keys(updateData).length > 0) {

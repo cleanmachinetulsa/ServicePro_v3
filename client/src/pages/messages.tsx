@@ -60,6 +60,15 @@ function MessagesPageContent() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Get current user for takeover functionality
+  const { data: currentUserData } = useQuery<{
+    success: boolean;
+    user: { id: number; username: string; role: string };
+  }>({
+    queryKey: ['/api/users/me'],
+  });
+  const currentUser = currentUserData?.user;
+
   const { data: conversationsData, isLoading } = useQuery<{ success: boolean; data: Conversation[] }>({
     queryKey: ['/api/conversations', filter, conversationFilter],
     queryFn: async () => {
@@ -132,7 +141,11 @@ function MessagesPageContent() {
     if (!selectedConversation) return;
 
     try {
-      await apiRequest('POST', `/api/conversations/${selectedConversation}/takeover`, {});
+      // Pass the current user's username for agent assignment
+      const agentUsername = currentUser?.username || 'admin';
+      await apiRequest('POST', `/api/conversations/${selectedConversation}/takeover`, {
+        agentUsername,
+      });
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
       toast({
         title: 'Control taken',

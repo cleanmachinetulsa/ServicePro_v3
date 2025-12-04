@@ -621,7 +621,7 @@ export function registerCallRoutes(app: Router) {
         .where(req.tenantDb!.withTenantFilter(callEvents, sql`${callEvents.recordingUrl} IS NOT NULL`))
         .orderBy(desc(callEvents.createdAt));
 
-      // Transform to match frontend interface
+      // Transform to match frontend interface (includes AI intelligence fields)
       const formattedVoicemails = voicemails.map(call => ({
         id: call.id,
         from: call.from,
@@ -630,6 +630,9 @@ export function registerCallRoutes(app: Router) {
         transcription: call.transcriptionText,
         recordingUrl: call.recordingUrl,
         isNew: call.readAt === null,
+        // AI-generated voicemail intelligence (Phone Intelligence v1)
+        aiSummary: (call as any).aiSummary || null,
+        aiPriority: (call as any).aiPriority || null,
       }));
 
       res.json({
