@@ -45,9 +45,13 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
 
   // Construct the full URL that Twilio used to make the request
   // Must match exactly what Twilio signed
-  const protocol = req.protocol;
+  // IMPORTANT: Behind Replit proxy, use X-Forwarded-Proto or default to https for production
+  const forwardedProto = req.get('x-forwarded-proto');
+  const protocol = forwardedProto || (process.env.NODE_ENV === 'production' ? 'https' : req.protocol);
   const host = req.get('host');
   const url = `${protocol}://${host}${req.originalUrl}`;
+  
+  console.log(`[TWILIO SECURITY] Validating signature for URL: ${url}`);
 
   // Get request body (for POST requests)
   const params = req.body || {};
@@ -100,7 +104,9 @@ export function verifyTwilioSignatureGET(req: Request, res: Response, next: Next
     return;
   }
 
-  const protocol = req.protocol;
+  // IMPORTANT: Behind Replit proxy, use X-Forwarded-Proto or default to https for production
+  const forwardedProto = req.get('x-forwarded-proto');
+  const protocol = forwardedProto || (process.env.NODE_ENV === 'production' ? 'https' : req.protocol);
   const host = req.get('host');
   const url = `${protocol}://${host}${req.originalUrl}`;
 

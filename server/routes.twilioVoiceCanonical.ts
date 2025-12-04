@@ -252,7 +252,18 @@ export function registerCanonicalVoiceRoutes(app: Express) {
     '/twilio/voice/incoming',
     verifyTwilioSignature,
     tenantResolverForTwilio,
-    handleIncomingVoice
+    async (req, res, next) => {
+      try {
+        await handleIncomingVoice(req, res);
+      } catch (error: any) {
+        console.error('[CANONICAL VOICE] CRITICAL ERROR:', error?.message || error);
+        console.error('[CANONICAL VOICE] Stack:', error?.stack);
+        const VoiceResp = new VoiceResponse();
+        VoiceResp.say({ voice: 'alice' }, 'We are experiencing technical difficulties. Please try again later.');
+        res.type('text/xml');
+        res.send(VoiceResp.toString());
+      }
+    }
   );
   
   console.log('[CANONICAL VOICE] Routes registered: POST /twilio/voice/incoming');
