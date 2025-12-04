@@ -1,0 +1,410 @@
+You are the AI developer for the ServicePro v3 multi-tenant app.
+
+## HIGH-LEVEL GOAL
+
+Replace the “hard-coded” IVR logic with a **config-driven, per-tenant IVR system** + an **admin IVR Configurator UI**, while:
+
+- Keeping the **current Clean Machine IVR behavior** exactly the same as today (as the default config).
+- Allowing each tenant to customize:
+  - Main greeting text
+  - Menu options (“press 1 for… press 2 for…”)
+  - Actions for each digit (SMS info, forward to SIP, voicemail, sub-menu, etc.)
+- Supporting **hidden digits** (e.g., the Clean Machine easter egg on 7).
+- Having **safe fallbacks** if config is missing/broken (never crash; always give caller *some* workable experience).
+- Respecting the **multi-tenant architecture**, using the same patterns as other tenant-scoped config (NO leaking or falling back to Clean Machine for other tenants).
+
+You MUST work with the existing architecture (routes.twilioVoice*, ivrHelper.ts, tenantDb / wrapTenantDb, etc.), not invent a separate new system.
+
+---
+
+## CONSTRAINTS & PRINCIPLES
+
+1. **Backward compatible**
+   - Root tenant (“Clean Machine”) call flow must behave as it does now:
+     - Greeting: “Thanks for calling Clean Machine Auto Detail. Press 1 for pricing and information by text message. Press 2 to speak with someone. Press 3 to leave a voicemail.”
+     - Hidden: Digit 7 = easter egg message (NOT spoken in the prompt).
+     - Press 2 → SIP dial jody@cleanmachinetulsa.sip.twilio.com
+     - No-input / invalid-input logic stays as already implemented (retry, then polite hangup).
+   - If the IVR config for a tenant is missing or invalid, **fallback** to the existing hard-coded IVR for that tenant (Clean Machine) or a **simple “direct dial + voicemail”** pattern for others.
+
+2. **Multi-tenant safety**
+   - Use the same tenant scoping patterns as other admin/config endpoints.
+   - Never assume “root” for non-root tenants.
+   - Do NOT read Clean Machine’s phone/SIP config when serving other tenants’ calls.
+   - If a tenant’s IVR config is broken, return a safe, generic IVR for that tenant (using their phone number or business name if available), NOT Clean Machine’s.
+
+3. **Minimal blast radius**
+   - Reuse existing files where possible:
+     - `server/services/ivrHelper.ts`
+     - `server/routes.twilioVoiceIvr.ts`
+     - `server/routes.twilioVoiceCanonical.ts` (or equivalent entrypoint)
+   - Introduce new files **alongside existing patterns** rather than reorganizing the whole voice stack.
+
+4. **Version 1 scope**
+   - IVR is still **Twilio <Say>/<Gather>-based** (TTS), not audio file uploads yet.
+   - Actions supported:
+     - `PLAY_MESSAGE` (just speak a message and return/loop)
+     - `SMS_INFO` (send info SMS + optionally hangup)
+     - `FORWARD_SIP` (dial SIP endpoint)
+     - `FORWARD_PHONE` (dial a PSTN phone)
+     - `VOICEMAIL` (go to voicemail flow you already implemented)
+     - `SUBMENU` (jump into another menu by ID)
+     - `REPLAY_MENU` (explicit replay)
+     - `EASTER_EGG` (play fun message, then either hangup or return to menu)
+   - No fancy “webhook-callback-per-option” yet; we can add that later if needed.
+
+5. **IVR Config UI**
+   - A **simple but useful v1 editor**:
+     - Allow editing:
+       - Main greeting line
+       - “No input” / “Invalid input” messages
+       - Menu options: digit (0–9, *, #), label, action type, target (SIP, phone, SMS text, etc.), hidden flag.
+     - Tenant sees and edits only **their own** menu.
+   - Keep UI design consistent with existing dashboard pages (use existing components, layout patterns, etc.).
+
+---
+
+## STEP 1 – ADD DATABASE STRUCTURE FOR IVR CONFIG
+
+Inspect the existing migration system (Prisma, Knex, SQL files, etc.). Then:
+
+1. Create a new migration to add three tables (names can be snake_case or camelCase, but be consistent with your DB):
+
+   - `ivr_menus`
+     - `id` (primary key, uuid or serial)
+     - `tenant_id` (string/varchar, FK to tenants or at least consistent with tenant scoping)
+     - `key` (string, optional – e.g., 'main' or 'after_hours')
+     - `name` (string, human-readable name, e.g., “Main IVR Menu”)
+     - `greeting_text` (text; used as the main <Say> intro)
+     - `no_input_message` (text; message when no digit pressed)
+     - `invalid_input_message` (text; message on invalid digit)
+     - `max_attempts` (int, default 3)
+     - `created_at` (timestamp)
+     - `updated_at` (timestamp)
+
+   - `ivr_menu_items`
+     - `id` (primary key)
+     - `menu_id` (FK to ivr_menus.id)
+     - `digit` (string, 1 char; '0'-'9', '*', or '#')
+     - `label` (string; e.g., “Pricing by SMS”)
+     - `action_type` (string; enum-like: 'PLAY_MESSAGE', 'SMS_INFO', 'FORWARD_SIP', 'FORWARD_PHONE', 'VOICEMAIL', 'SUBMENU', 'EASTER_EGG', 'REPLAY_MENU')
+     - `action_payload` (json or text; stores target SIP URI, phone number, SMS text, submenu_id, or custom message)
+     - `is_hidden` (boolean, default false; hidden digits like 7)
+     - `order_index` (int; for consistent ordering in UI)
+     - `created_at`
+     - `updated_at`
+
+   - `ivr_prompts` (optional for future; for now just basic)
+     - `id` (primary key)
+     - `tenant_id`
+     - `key` (string; e.g., 'voicemail_greeting')
+     - `text` (text; TTS content)
+     - (We will use this mostly for future audio/tts refactor; for now it can be minimal.)
+
+2. If there is already **some IVR-related schema**, adapt this, but keep the model concept the same (menus + menu_items).
+
+3. Ensure migrations are **idempotent**:
+   - If tables already exist, don’t recreate.
+   - Only add if missing.
+
+---
+
+## STEP 2 – ADD SHARED TYPES & LOADER SERVICE
+
+Create or update a shared type file for IVR models, e.g.:
+
+- `shared/ivrTypes.ts` (or similar)
+
+Add:
+
+- `export type IvrActionType = 'PLAY_MESSAGE' | 'SMS_INFO' | 'FORWARD_SIP' | 'FORWARD_PHONE' | 'VOICEMAIL' | 'SUBMENU' | 'EASTER_EGG' | 'REPLAY_MENU';`
+
+- `export interface IvrMenu { id: string; tenantId: string; key: string | null; name: string; greetingText: string; noInputMessage: string; invalidInputMessage: string; maxAttempts: number; items: IvrMenuItem[]; }`
+
+- `export interface IvrMenuItem { id: string; menuId: string; digit: string; label: string; actionType: IvrActionType; actionPayload: any; isHidden: boolean; orderIndex: number; }`
+
+Now create a backend service:
+
+- `server/services/ivrConfigService.ts`
+
+Responsibilities:
+
+1. `getActiveMenuForTenant(tenantId: string): Promise<IvrMenu | null>`
+   - Query `ivr_menus` where `tenant_id = tenantId` AND (key = 'main' OR is the default).
+   - Include `ivr_menu_items` ordered by `order_index`.
+   - If none found → return `null`.
+
+2. `getOrCreateDefaultMenuForTenant(tenantId: string): Promise<IvrMenu>`
+   - If a menu exists, return it.
+   - If not:
+     - For **root / Clean Machine tenant**:
+       - Seed menu that matches your **current IVR** precisely:
+
+         - greeting_text:
+           "Thanks for calling Clean Machine Auto Detail. Press 1 for pricing and information by text message. Press 2 to speak with someone. Press 3 to leave a voicemail."
+
+         - Items:
+           - Digit '1', label “Pricing by SMS”, action_type 'SMS_INFO', payload with default SMS body & maybe booking link.
+           - Digit '2', label “Speak to someone”, action_type 'FORWARD_SIP', payload with SIP URI jody@cleanmachinetulsa.sip.twilio.com (but DO NOT hardcode that in code; read from the tenant_phone_config / phone lines you already use).
+           - Digit '3', label “Leave voicemail”, action_type 'VOICEMAIL'.
+           - Digit '7', label “Easter egg”, action_type 'EASTER_EGG', is_hidden = true, payload with message text used in existing code.
+
+     - For other tenants:
+       - Seed a generic menu, e.g.:
+         - greeting_text: "Thanks for calling {tenantName}. Press 1 to speak with someone. Press 2 to leave a voicemail."
+         - Digit '1' = 'FORWARD_PHONE' to tenant’s configured main phone or fallback.
+         - Digit '2' = 'VOICEMAIL'.
+
+3. `updateMenuForTenant(tenantId: string, menuUpdate: { ... })`
+   - Upsert menu + menu_items in a transaction.
+   - Only allow modification for the calling tenant (respect auth like other admin endpoints).
+
+---
+
+## STEP 3 – MAKE IVR RUNTIME CONFIG-DRIVEN
+
+Open:
+
+- `server/services/ivrHelper.ts`
+- `server/routes.twilioVoiceIvr.ts`
+- `server/routes.twilioVoiceCanonical.ts` (or whatever is the main /twilio/voice/incoming entry)
+
+You’ve already got a fairly rich set of helper functions and retry logic. Now:
+
+### 3A. Update ivrHelper to accept an IvrMenu
+
+Refactor ivrHelper to:
+
+- Export a function like:
+  - `buildIvrMenuTwiml({ menu, attempt, fromNumber, toNumber, tenantId, ... }): string`
+- This function must:
+  - Use `menu.greetingText` as the main spoken intro for **attempt 1**.
+  - On subsequent attempts (no input / invalid), use `menu.noInputMessage` or `menu.invalidInputMessage` plus a shorter re-prompt.
+  - Use `<Gather>` with the same timings as your current implementation.
+  - After <Gather>, route digits to a handler that uses menu.items.
+
+Digit handling:
+
+- Find `IvrMenuItem` where `digit` matches.
+- If none:
+  - Use `invalid_input_message` and re-render menu, increment attempt, up to `max_attempts`.
+- For each action_type:
+
+  - `PLAY_MESSAGE`:
+    - Speak a custom message from `action_payload.message` then either:
+      - Hang up, or
+      - Replay menu (depending on payload flag, but for v1 just hang up or return to menu).
+
+  - `SMS_INFO`:
+    - Use your existing SMS-sending helpers to send a text to `fromNumber` with `action_payload.smsText` or default.
+    - Optionally say: "We just sent you a text with this information. Goodbye." then hang up.
+
+  - `FORWARD_SIP`:
+    - Dial `<Dial><Sip>{payload.sipUri}</Sip></Dial>` with appropriate timeout.
+    - On no-answer/busy/fail, go to voicemail (reusing your existing voicemail path).
+
+  - `FORWARD_PHONE`:
+    - `<Dial>{payload.phoneNumber}</Dial>`, same status callback behavior.
+
+  - `VOICEMAIL`:
+    - Reuse your existing voicemail TwiML building helpers (recordingStatusCallback, transcribeCallback, etc.).
+
+  - `SUBMENU`:
+    - Use ivrConfigService to load the submenu by id (`action_payload.submenuId`) and build TwiML for that, preserving attempt counts separately.
+
+  - `EASTER_EGG`:
+    - Play `action_payload.message` (fun fact) and then either:
+      - Replay the menu, or
+      - Hang up, based on a simple rule (for now, hang up after the joke to keep it easy).
+
+  - `REPLAY_MENU`:
+    - Just re-render the same menu with attempts reset or incremented (your choice; keep logic consistent).
+
+### 3B. Wire it into the actual routes
+
+1. In `routes.twilioVoiceCanonical.ts` (or whichever handles `/twilio/voice/incoming`):
+
+   - Determine `tenantId` from the incoming call context exactly as you already do.
+   - Call `getOrCreateDefaultMenuForTenant(tenantId)` to get an `IvrMenu` instance.
+   - For initial IVR entry (when you want IVR mode instead of direct SIP), call `buildIvrMenuTwiml({ menu, attempt: 1, ... })`.
+   - Ensure the `<Gather action=...>` points to your IVR selection route (`/twilio/voice/ivr-selection`), and passes the `menuId` and `attempt` as parameters.
+
+2. In `routes.twilioVoiceIvr.ts`:
+
+   - In the IVR selection handler, instead of hard-coded `if digit === '1'` etc., use:
+     - `const menu = await ivrConfigService.getOrCreateDefaultMenuForTenant(tenantId)` (or by `menuId` from the request if you pass it).
+     - Look up `menu.items` by digit and process action via ivrHelper.
+   - Ensure no regressions to voicemail path callbacks (recording-status, voicemail-transcribed) — reuse existing services.
+
+3. Fallback behavior:
+
+   - If any error occurs in IVR config loading or runtime:
+     - Log the error.
+     - Fall back to your previously hard-coded logic for that tenant:
+       - For root: your existing Clean Machine IVR.
+       - For others: simple "forward to main phone or go to voicemail" pattern.
+   - This is critical to avoid callers hearing “application error”.
+
+---
+
+## STEP 4 – ADD IVR CONFIG API (PER TENANT)
+
+Create new admin routes, e.g.:
+
+- `server/routes.adminIvr.ts` (or reuse an existing admin routes file).
+
+Add endpoints:
+
+1. `GET /api/admin/ivr/menu`
+   - Auth required (same as other admin config endpoints).
+   - Determine current tenant from auth context.
+   - Use `ivrConfigService.getOrCreateDefaultMenuForTenant(tenantId)` and return a JSON representation:
+     - `id, name, greetingText, noInputMessage, invalidInputMessage, maxAttempts, items[...]`
+
+2. `PUT /api/admin/ivr/menu`
+   - Auth required.
+   - Body accepts:
+     - `greetingText`, `noInputMessage`, `invalidInputMessage`, `maxAttempts`
+     - `items: { id?, digit, label, actionType, actionPayload, isHidden, orderIndex }[]`
+   - Validate digits (0–9, *, #).
+   - Validate actionType against allowed list.
+   - Use `ivrConfigService.updateMenuForTenant(tenantId, body)` to upsert menu + items.
+   - Respond with updated menu.
+
+Register this route file in `server/routes.ts` as needed.
+
+---
+
+## STEP 5 – IVR CONFIGURATOR UI (DASHBOARD)
+
+In the React frontend, add an IVR Config editor to the admin dashboard.
+
+1. Pick a location similar to other settings, e.g.:
+
+   - Route: `/settings/phone/ivr`
+   - Or a tab inside an existing phone/settings page.
+
+2. Create components:
+
+   - `client/src/components/settings/ivr/IvrMenuEditor.tsx`
+   - Optionally: `IvrMenuItemRow.tsx`, `IvrActionEditor.tsx`
+
+3. Behavior:
+
+   - On mount, call `GET /api/admin/ivr/menu` via your existing fetch/query utilities (e.g., TanStack Query).
+   - Render:
+     - Text inputs for:
+       - Greeting text
+       - No-input message
+       - Invalid-input message
+       - Max attempts (number input)
+     - A list/table of menu items:
+       - Columns:
+         - Digit (dropdown: 0–9, *, #)
+         - Label (text)
+         - Action Type (select from enum)
+         - Action-specific config:
+           - FORWARD_SIP → SIP URI input
+           - FORWARD_PHONE → phone number input
+           - SMS_INFO → SMS text/body input
+           - PLAY_MESSAGE / EASTER_EGG → message text input
+           - SUBMENU → submenu ID or disabled until we implement multiple menus.
+         - Hidden (checkbox)
+         - Order (number or drag handle)
+
+   - Buttons:
+     - Add Menu Item
+     - Remove Menu Item
+     - Save Changes
+
+4. UX polish:
+
+   - Show a short description at the top explaining:
+     - “This controls what callers hear when they call your main number, and what happens when they press a digit.”
+   - Provide a read-only preview of the spoken prompt:
+     - E.g., “We’ll say: {greetingText} Then we’ll listen for digits 1, 2, 3, etc.”
+
+5. Wire up save:
+
+   - On Save, send `PUT /api/admin/ivr/menu` with the edited menu.
+   - Show success/error toasts using existing notification patterns.
+
+---
+
+## STEP 6 – SEED CLEAN MACHINE DEFAULT MENU
+
+Add a small seeding helper or migration that:
+
+- Detects if `ivr_menus` is empty for the **root / Clean Machine tenant**.
+- If so, seeds the default menu corresponding to the existing IVR:
+  - Greeting text & digits (1,2,3,7) as described above.
+  - For `FORWARD_SIP`, look up the SIP endpoint from the existing phone config (do NOT hardcode inside the seed; use dynamic read).
+
+This ensures that after deploy:
+
+- Clean Machine behaves exactly as before.
+- Other tenants get a basic generic menu they can later override in the UI.
+
+---
+
+## STEP 7 – TESTING CHECKLIST (YOU RUN LOCALLY, BUT ENSURE CODE SUPPORTS IT)
+
+Make sure the code is in a state where I (the user) can run these tests:
+
+1. **Root tenant (Clean Machine) inbound call via IVR**
+   - Call main number.
+   - Hear same greeting as before.
+   - Press 2 → Groundwire rings; on no-answer → voicemail; voicemail appears in phone/voicemail inbox with AI summary.
+
+2. **Hidden easter egg**
+   - Call, press 7.
+   - Hear easter egg message; not mentioned in the main menu.
+
+3. **No input / invalid input**
+   - Call, stay silent.
+   - Hear no-input message, menu repeats, up to max_attempts.
+   - Enter an invalid digit; get invalidInputMessage and retry.
+   - After max attempts → graceful, polite hangup.
+
+4. **Edit IVR in dashboard**
+   - Go to IVR Config page in dashboard.
+   - Change greeting text and one of the digits (e.g., change digit 1 to a different SMS message).
+   - Save.
+   - Call again and verify the new behavior.
+
+5. **Non-root tenant**
+   - (If you have a test tenant) ensure calling that tenant’s number uses its own menu, not Clean Machine’s.
+
+---
+
+## STEP 8 – CLEANUP & COMMENTS
+
+- Add clear comments in:
+  - `ivrHelper.ts`
+  - `ivrConfigService.ts`
+  - `routes.twilioVoiceIvr.ts`
+  - `routes.twilioVoiceCanonical.ts` (or equivalent)
+  
+  Explaining:
+  - The config-driven IVR design.
+  - Fallback behavior.
+  - How per-tenant isolation is enforced.
+  - How to extend with more menus (e.g., after-hours menu) in the future.
+
+- Do NOT delete the old hard-coded IVR logic completely; keep it as a safe fallback path and clearly mark it as “legacy fallback”.
+
+---
+
+## DELIVERABLE
+
+When you’re done, summarize:
+
+1. Files created/modified (with paths).
+2. Schema changes applied.
+3. How the IVR flow now works end-to-end for:
+   - Clean Machine (root).
+   - Generic tenant.
+4. How to use the IVR Config UI in the dashboard.
+5. Any limitations or TODOs (e.g., audio prompts, multiple menus per tenant).
+
+Make sure all TypeScript/JS builds, tests, and the app run correctly before finishing.

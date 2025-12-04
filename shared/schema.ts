@@ -3524,3 +3524,115 @@ export interface PortalWelcomeConfig {
   ctas: WelcomeCTAs;
   trust: TrustSection;
 }
+
+// ============================================================
+// IVR CONFIGURATION SYSTEM - Per-Tenant Config-Driven IVR
+// ============================================================
+
+/**
+ * IVR Menus Table - Stores IVR menu configurations per tenant
+ * 
+ * Each tenant can have one or more menus (e.g., 'main', 'after_hours')
+ * The 'key' field identifies which menu is used for what purpose
+ */
+export const ivrMenus = pgTable("ivr_menus", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  key: varchar("key", { length: 50 }).default("main"), // 'main', 'after_hours', etc.
+  name: varchar("name", { length: 255 }).notNull(), // Human-readable: "Main IVR Menu"
+  greetingText: text("greeting_text").notNull(), // Main spoken intro
+  noInputMessage: text("no_input_message").notNull(), // Message when no digit pressed
+  invalidInputMessage: text("invalid_input_message").notNull(), // Message on invalid digit
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  voiceName: varchar("voice_name", { length: 50 }).default("alice"), // TTS voice
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("ivr_menus_tenant_id_idx").on(table.tenantId),
+  tenantKeyIdx: uniqueIndex("ivr_menus_tenant_key_unique_idx").on(table.tenantId, table.key),
+}));
+
+/**
+ * IVR Action Types - Supported actions for menu items
+ */
+export const ivrActionTypeEnum = pgEnum("ivr_action_type", [
+  "PLAY_MESSAGE",    // Just speak a message
+  "SMS_INFO",        // Send SMS with info
+  "FORWARD_SIP",     // Dial SIP endpoint
+  "FORWARD_PHONE",   // Dial PSTN phone
+  "VOICEMAIL",       // Go to voicemail
+  "SUBMENU",         // Jump to another menu
+  "REPLAY_MENU",     // Replay current menu
+  "EASTER_EGG",      // Hidden fun message
+]);
+
+/**
+ * IVR Menu Items Table - Individual menu options (digits)
+ * 
+ * Each row represents one menu option (e.g., "Press 1 for...")
+ * Supports hidden digits (like easter eggs) via is_hidden flag
+ */
+export const ivrMenuItems = pgTable("ivr_menu_items", {
+  id: serial("id").primaryKey(),
+  menuId: integer("menu_id").notNull().references(() => ivrMenus.id, { onDelete: "cascade" }),
+  digit: varchar("digit", { length: 1 }).notNull(), // '0'-'9', '*', '#'
+  label: varchar("label", { length: 255 }).notNull(), // "Pricing by SMS"
+  actionType: ivrActionTypeEnum("action_type").notNull(),
+  actionPayload: jsonb("action_payload").$type<{
+    message?: string;           // PLAY_MESSAGE, EASTER_EGG
+    smsText?: string;           // SMS_INFO
+    sipUri?: string;            // FORWARD_SIP
+    phoneNumber?: string;       // FORWARD_PHONE
+    submenuId?: number;         // SUBMENU
+    hangupAfter?: boolean;      // Whether to hangup after action
+    returnToMenu?: boolean;     // Whether to return to menu after action
+  }>(),
+  isHidden: boolean("is_hidden").default(false).notNull(), // Hidden digits (e.g., easter egg)
+  orderIndex: integer("order_index").default(0).notNull(), // For UI ordering
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  menuIdIdx: index("ivr_menu_items_menu_id_idx").on(table.menuId),
+  menuDigitIdx: uniqueIndex("ivr_menu_items_menu_digit_unique_idx").on(table.menuId, table.digit),
+}));
+
+/**
+ * IVR Prompts Table - Reusable voice prompts (for future audio file support)
+ * 
+ * Currently just TTS text, but designed for future audio file uploads
+ */
+export const ivrPrompts = pgTable("ivr_prompts", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  key: varchar("key", { length: 100 }).notNull(), // 'voicemail_greeting', 'hold_music', etc.
+  text: text("text").notNull(), // TTS content
+  audioUrl: text("audio_url"), // Future: URL to audio file
+  voiceName: varchar("voice_name", { length: 50 }).default("alice"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("ivr_prompts_tenant_id_idx").on(table.tenantId),
+  tenantKeyIdx: uniqueIndex("ivr_prompts_tenant_key_unique_idx").on(table.tenantId, table.key),
+}));
+
+// IVR Insert Schemas
+export const insertIvrMenuSchema = createInsertSchema(ivrMenus).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertIvrMenuItemSchema = createInsertSchema(ivrMenuItems).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertIvrPromptSchema = createInsertSchema(ivrPrompts).omit({ id: true, createdAt: true, updatedAt: true });
+
+// IVR Types
+export type IvrMenu = typeof ivrMenus.$inferSelect;
+export type InsertIvrMenu = z.infer<typeof insertIvrMenuSchema>;
+export type IvrMenuItem = typeof ivrMenuItems.$inferSelect;
+export type InsertIvrMenuItem = z.infer<typeof insertIvrMenuItemSchema>;
+export type IvrPrompt = typeof ivrPrompts.$inferSelect;
+export type InsertIvrPrompt = z.infer<typeof insertIvrPromptSchema>;
+
+// IVR Action Type as TypeScript type
+export type IvrActionType = "PLAY_MESSAGE" | "SMS_INFO" | "FORWARD_SIP" | "FORWARD_PHONE" | "VOICEMAIL" | "SUBMENU" | "REPLAY_MENU" | "EASTER_EGG";
+
+// IVR Menu with Items (joined type for API responses)
+export interface IvrMenuWithItems extends IvrMenu {
+  items: IvrMenuItem[];
+}
