@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { ConversationListSkeleton } from './MessagesSkeletons';
 
 interface Conversation {
   id: number;
@@ -222,11 +223,7 @@ export function NightOpsConversationList({
           tabIndex={0}
         >
           {isLoading ? (
-            <div className="space-y-2" data-testid="inbox-loading">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-20 rounded-xl bg-slate-800/40 animate-pulse" />
-              ))}
-            </div>
+            <ConversationListSkeleton count={6} />
           ) : conversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center p-6" data-testid="inbox-empty">
               <div className="w-16 h-16 rounded-full bg-slate-800/60 flex items-center justify-center mb-4">

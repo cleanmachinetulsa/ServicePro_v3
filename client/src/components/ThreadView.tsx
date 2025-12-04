@@ -66,6 +66,7 @@ import { ConversationMetaBar } from './conversations/ConversationMetaBar';
 import { SmartSchedulePanel } from './conversations/SmartSchedulePanel';
 import { HandoffControls } from './conversations/HandoffControls';
 import { HandbackAnalysisPanel } from './conversations/HandbackAnalysisPanel';
+import { ThreadViewSkeleton } from './messages/MessagesSkeletons';
 
 interface ReplySuggestion {
   id: string;
@@ -1058,11 +1059,7 @@ export default function ThreadView({
 
 
   if (conversationLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <ThreadViewSkeleton />;
   }
 
   if (!conversation) {
