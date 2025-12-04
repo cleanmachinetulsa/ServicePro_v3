@@ -229,23 +229,23 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
             <SophisticatedAnimatedLogo />
           </motion.div>
           
-          {/* About Text - Fade In Up */}
+          {/* Primary Tagline - Fade In Up */}
           <motion.div className="py-6">
             <motion.p 
               variants={getVariants(fadeInUp)}
               className="text-base md:text-lg text-gray-700 dark:text-blue-100/70 mb-8 max-w-3xl mx-auto leading-relaxed font-light"
               style={{ willChange: 'transform, opacity' }}
             >
-              {content?.aboutText || 'Clean Machine Auto Detail offers extensive detailing services ranging from Upholstery shampoo & Headlight restoration to Paint Correction & Ceramic Coatings, right in your driveway!'}
+              {content?.heroTaglinePrimary || 'Premium auto detailing services conveniently done right in your driveway!'}
             </motion.p>
             
-            {/* Tagline - Fade In Up (staggered) */}
+            {/* Secondary Tagline - Fade In Up (staggered) */}
             <motion.p 
               variants={getVariants(fadeInUp)}
               className="text-gray-600 dark:text-blue-200/90 mb-3 italic"
               style={{ willChange: 'transform, opacity' }}
             >
-              book anytime. chat with our floating assistant.
+              {content?.heroTaglineSecondary || 'book anytime. chat with our floating assistant.'}
             </motion.p>
             
             {/* CTA Buttons Container - Fade In Up */}
@@ -269,9 +269,9 @@ export default function CurrentTemplate({ content: propsContent }: CurrentTempla
                     }}
                     asChild
                   >
-                    <Link href="/schedule" className="relative z-10 flex items-center gap-2" data-testid="button-schedule">
+                    <Link href={content?.heroCtaLink || '/schedule'} className="relative z-10 flex items-center gap-2" data-testid="button-schedule">
                       <CalendarClock className="h-5 w-5 mr-1" />
-                      <span>Visual Scheduler</span>
+                      <span>{content?.heroCtaText || 'Visual Scheduler'}</span>
                       <span className="ml-1 group-hover:ml-2 transition-all duration-300">→</span>
                       <span className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-400/5 to-blue-600/0 w-[200%] h-full transform -translate-x-full group-hover:translate-x-0 transition-transform duration-1000"></span>
                     </Link>

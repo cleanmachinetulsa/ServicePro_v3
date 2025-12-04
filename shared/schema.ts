@@ -1912,9 +1912,13 @@ export const homepageContent = pgTable('homepage_content', {
   
   // Hero Section
   heroHeading: text('hero_heading').notNull().default('Clean Machine Auto Detail'),
-  heroSubheading: text('hero_subheading').notNull().default('Professional Mobile Auto Detailing'),
-  heroCtaText: text('hero_cta_text').notNull().default('Book Now'),
-  heroCtaLink: text('hero_cta_link').notNull().default('/booking'),
+  heroSubheading: text('hero_subheading').notNull().default('Mobile Auto Detailing In Tulsa And Surrounding Areas'),
+  heroCtaText: text('hero_cta_text').notNull().default('Visual Scheduler'),
+  heroCtaLink: text('hero_cta_link').notNull().default('/schedule'),
+  
+  // Hero Taglines (displayed below logo on homepage)
+  heroTaglinePrimary: text('hero_tagline_primary').notNull().default('Premium auto detailing services conveniently done right in your driveway!'),
+  heroTaglineSecondary: text('hero_tagline_secondary').notNull().default('book anytime. chat with our floating assistant.'),
   
   // About Section
   aboutHeading: text('about_heading').notNull().default('About Us'),
