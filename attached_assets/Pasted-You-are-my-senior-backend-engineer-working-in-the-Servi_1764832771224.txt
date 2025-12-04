@@ -1,0 +1,84 @@
+You are my senior backend engineer working in the **ServicePro v3** repo.
+
+**Goal:** Fix the SMS agent so inbound SMS to the main Clean Machine number returns a real AI-generated reply, instead of the generic fallback:
+
+"I apologize but I didn't generate a proper response. try again."
+
+We know:
+- Twilio is successfully delivering inbound SMS to:
+  POST /api/twilio/sms/inbound
+- Twilio logs show 2xx responses now.
+- The reply that is actually sent back to the customer is exactly that fallback sentence.
+- This means the problem is **inside our Express handler / SMS agent code**, not in Twilio.
+
+### Step 1 – Find the fallback
+1. Search the entire repo for the exact string:
+   "I apologize but I didn't generate a proper response"
+2. Open the file(s) where this is defined. It’s probably in an SMS agent service or Twilio controller, e.g.:
+   - server/ai/smsAgent.ts
+   - server/routes.twilioSms.ts
+   - server/services/smsAgentService.ts
+   or similar.
+
+### Step 2 – Instrument and inspect
+1. For every code-path that returns this fallback string, add robust logging:
+   - Log an error with a clear tag, e.g. `[SMS_AGENT_FALLBACK]`
+   - Include:
+     - tenantId
+     - from / to phone numbers
+     - the inbound message text
+     - the error object or reason we think we’re failing
+2. Make sure those logs go to the Replit console (console.error).
+
+Example pattern (adapt to existing style, don’t blindly paste):
+
+console.error("[SMS_AGENT_FALLBACK]", {
+  tenantId,
+  from: fromNumber,
+  to: toNumber,
+  lastMessageText: inboundBody,
+  reason: "OpenAI call failed",
+  error,
+});
+
+3. DO NOT change the fallback text or Twilio response format yet. Just make the failure reason visible.
+
+### Step 3 – Reproduce once and read logs
+1. Start the app normally in Replit so the logs stream.
+2. Simulate a real Twilio webhook call by hitting the inbound SMS route with test data, OR just rely on Jody texting the main line once.
+   - Assume Jody will send a simple SMS like: "test sms agent"
+3. Watch the logs when the fallback is used.
+   - Capture the **real underlying error** (e.g. OpenAI API error, missing env var, tenant lookup returning null, safety filter empty completion, etc).
+
+### Step 4 – FIX the root cause (not just the symptom)
+Once you see the real error, fix it. Typical causes to check:
+
+1. **Env var mismatch**
+   - Confirm OPENAI_API_KEY is present and correctly referenced wherever the AI client is created.
+   - Confirm the model name being used is valid for the OpenAI SDK version in this repo.
+
+2. **Tenant / config issue**
+   - Confirm the Clean Machine tenant and its phone number are correctly mapped to the tenant in whatever lookup is used in the inbound SMS handler.
+   - If the handler expects a tenantPhoneConfig row, make sure the main number is present and not pointing to the old Clean Machine repl.
+
+3. **Prompt builder / safety guard**
+   - If there is a "prompt builder" that can return an empty or null prompt, or if we drop the reply because of a safety check (like length 0), fix that logic so a normal inbound message produces a normal prompt and reply.
+
+Make minimal, surgical fixes:
+- Do NOT refactor unrelated parts of the SMS stack.
+- Do NOT change multi-tenant boundaries or DB schemas here.
+- Just fix whatever is causing the agent to fail internally.
+
+### Step 5 – Verify end-to-end
+1. After the fix, restart the app.
+2. Have Jody text the main business number again.
+3. Confirm in the logs that:
+   - There is NO [SMS_AGENT_FALLBACK] log.
+   - The OpenAI call (or AI engine) returns a valid reply string.
+4. Confirm Twilio sends that real reply back to the phone (not the generic apology).
+
+Finally, summarize for me:
+- Which file(s) you changed.
+- What the root cause was.
+- The exact code you added/modified.
+- A short “Before vs After” of the SMS flow.
