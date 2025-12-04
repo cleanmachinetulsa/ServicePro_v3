@@ -29,6 +29,12 @@ interface Service {
   durationHours: string;
 }
 
+interface AddOnService {
+  name: string;
+  price: string;
+  description: string;
+}
+
 interface Customer {
   id: number;
   name: string;
@@ -76,6 +82,11 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     queryKey: ['/api/services'],
   });
 
+  // Fetch add-on services
+  const { data: addOnsData } = useQuery<{ success: boolean; addOns: AddOnService[] }>({
+    queryKey: ['/api/addon-services'],
+  });
+
   // Fetch booking draft (AI Behavior V2 auto-fill)
   // Only fetch when creating new appointment (no existing appointment, and editing)
   const { data: bookingDraft, isLoading: draftLoading, error: draftError } = useQuery<BookingDraft>({
@@ -101,6 +112,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
   const appointment = appointmentData?.appointment;
   const conversation = conversationData?.data;
   const services = servicesData?.services || [];
+  const addOnServices = addOnsData?.addOns || [];
 
   // Form state - supports multiple services and vehicles
   const [formData, setFormData] = useState({
@@ -112,9 +124,29 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
     additionalRequests: '',
     vehicles: [] as VehicleData[],
   });
+
+  // State for selected add-ons
+  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([]);
   
   // State for service multi-select popover
   const [servicePopoverOpen, setServicePopoverOpen] = useState(false);
+  const [addOnPopoverOpen, setAddOnPopoverOpen] = useState(false);
+
+  // Toggle add-on selection
+  const toggleAddOn = (addOnName: string) => {
+    setSelectedAddOns(prev => 
+      prev.includes(addOnName)
+        ? prev.filter(name => name !== addOnName)
+        : [...prev, addOnName]
+    );
+  };
+
+  // Get selected add-ons display text
+  const getSelectedAddOnsText = () => {
+    if (selectedAddOns.length === 0) return 'Select add-ons (optional)...';
+    if (selectedAddOns.length === 1) return selectedAddOns[0];
+    return `${selectedAddOns.length} add-ons selected`;
+  };
   
   // Toggle service selection
   const toggleService = (serviceId: number) => {
@@ -170,6 +202,12 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       
       // Parse vehicles from appointment if available
       const existingVehicles = (appointment as any).vehicles || [];
+      
+      // Parse add-ons from appointment if available
+      const existingAddOns = appointment.addOns || [];
+      if (Array.isArray(existingAddOns)) {
+        setSelectedAddOns(existingAddOns.map((a: any) => a.name || a));
+      }
       
       setFormData({
         serviceIds: existingServiceIds,
@@ -357,6 +395,15 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       .filter(v => v.year || v.make || v.model) // Only include vehicles with some data
       .map(({ year, make, model }) => ({ year, make, model }));
     
+    // Prepare add-ons data for the appointment
+    // Use the current selectedAddOns state - send null if empty (backend expects null for "no add-ons")
+    const addOnsData = selectedAddOns.length > 0
+      ? selectedAddOns.map(name => {
+          const addon = addOnServices.find(a => a.name === name);
+          return addon ? { name: addon.name, price: addon.price, description: addon.description } : { name, price: '', description: '' };
+        })
+      : null;
+
     saveAppointmentMutation.mutate({
       customerId: customerId,
       serviceId: formData.serviceIds[0], // Primary service for backward compatibility
@@ -366,7 +413,7 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
       addressLat: formData.addressLat,
       addressLng: formData.addressLng,
       additionalRequests: additionalRequestsArray,
-      addOns: appointment?.addOns || null,
+      addOns: addOnsData,
       vehicles: vehiclesData,
       requiresManualApproval,
     });
@@ -505,6 +552,74 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                         </span>
                       ) : null;
                     })}
+                  </div>
+                )}
+              </div>
+
+              {/* Add-On Services Selection */}
+              <div>
+                <Label className="text-xs">Add-On Services</Label>
+                <Popover open={addOnPopoverOpen} onOpenChange={setAddOnPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between mt-1 font-normal"
+                      data-testid="select-addons-trigger"
+                    >
+                      <span className="truncate">{getSelectedAddOnsText()}</span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0 bg-popover border shadow-lg" align="start">
+                    <ScrollArea className="h-[200px]">
+                      <div className="p-2 space-y-1">
+                        {addOnServices.map((addon, index) => (
+                          <div
+                            key={addon.name}
+                            className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                            onClick={() => toggleAddOn(addon.name)}
+                            data-testid={`addon-option-${index}`}
+                          >
+                            <Checkbox
+                              id={`addon-${index}`}
+                              checked={selectedAddOns.includes(addon.name)}
+                              onClick={(e) => e.stopPropagation()}
+                              onCheckedChange={() => toggleAddOn(addon.name)}
+                            />
+                            <label
+                              htmlFor={`addon-${index}`}
+                              className="text-sm flex-1 cursor-pointer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {addon.name}
+                              <span className="text-muted-foreground ml-1">({addon.price})</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+                {/* Selected add-ons as chips */}
+                {selectedAddOns.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {selectedAddOns.map(name => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 text-purple-400 rounded-full text-xs"
+                      >
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => toggleAddOn(name)}
+                          className="hover:bg-purple-500/20 rounded-full p-0.5"
+                          data-testid={`remove-addon-${name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
@@ -781,6 +896,74 @@ export default function BookingPanel({ conversationId }: BookingPanelProps) {
                               </span>
                             ) : null;
                           })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Add-On Services Selection */}
+                    <div>
+                      <Label className="text-xs">Add-On Services</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between mt-1 font-normal"
+                            data-testid="select-addons-trigger-edit"
+                          >
+                            <span className="truncate">{getSelectedAddOnsText()}</span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0 bg-popover border shadow-lg" align="start">
+                          <ScrollArea className="h-[200px]">
+                            <div className="p-2 space-y-1">
+                              {addOnServices.map((addon, index) => (
+                                <div
+                                  key={addon.name}
+                                  className="flex items-center space-x-2 p-2 rounded-md hover:bg-accent cursor-pointer"
+                                  onClick={() => toggleAddOn(addon.name)}
+                                  data-testid={`addon-option-edit-${index}`}
+                                >
+                                  <Checkbox
+                                    id={`addon-edit-${index}`}
+                                    checked={selectedAddOns.includes(addon.name)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onCheckedChange={() => toggleAddOn(addon.name)}
+                                  />
+                                  <label
+                                    htmlFor={`addon-edit-${index}`}
+                                    className="text-sm flex-1 cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {addon.name}
+                                    <span className="text-muted-foreground ml-1">({addon.price})</span>
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </PopoverContent>
+                      </Popover>
+                      {/* Selected add-ons as chips */}
+                      {selectedAddOns.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {selectedAddOns.map(name => (
+                            <span
+                              key={name}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/10 text-purple-400 rounded-full text-xs"
+                            >
+                              {name}
+                              <button
+                                type="button"
+                                onClick={() => toggleAddOn(name)}
+                                className="hover:bg-purple-500/20 rounded-full p-0.5"
+                                data-testid={`remove-addon-edit-${name}`}
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
