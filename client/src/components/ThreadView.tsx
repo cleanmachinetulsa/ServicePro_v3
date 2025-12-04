@@ -262,7 +262,9 @@ export default function ThreadView({
         content: payload.content,
         channel: conversation?.platform || 'web',
         attachments: payload.attachments || [],
-        phoneLineId: conversation?.platform === 'sms' ? activeSendLineId : undefined
+        phoneLineId: conversation?.platform === 'sms' 
+          ? (conversation.phoneLineId || activeSendLineId) 
+          : undefined
       });
       return response.json();
     },
