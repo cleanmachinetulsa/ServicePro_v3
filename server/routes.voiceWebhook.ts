@@ -133,7 +133,7 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
   if (isInitialCall) {
     try {
       const { logCallEvent } = await import('./callLoggingService');
-      await logCallEvent({
+      await logCallEvent(req.tenantDb!, {
         callSid,
         direction: 'inbound',
         from: callerPhone,
@@ -456,7 +456,7 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
   // Update call event with final status
   try {
     const { updateCallEvent } = await import('./callLoggingService');
-    await updateCallEvent(callSid, {
+    await updateCallEvent(req.tenantDb!, callSid, {
       status: dialCallStatus,
       duration: callDuration,
       endedAt: new Date(),
@@ -618,7 +618,7 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
   // Update call event with transcription and recording
   try {
     const { updateCallEvent } = await import('./callLoggingService');
-    await updateCallEvent(callSid, {
+    await updateCallEvent(req.tenantDb!, callSid, {
       transcriptionText,
       transcriptionStatus,
       recordingUrl,
@@ -864,7 +864,7 @@ router.post('/click-to-call', async (req: Request, res: Response) => {
     // Log the outbound call
     try {
       const { logCallEvent } = await import('./callLoggingService');
-      await logCallEvent({
+      await logCallEvent(req.tenantDb!, {
         callSid: call.sid,
         direction: 'outbound',
         from: twilioPhone,
@@ -925,7 +925,7 @@ router.post('/click-to-call-status', verifyTwilioSignature, async (req: Request,
   // Update call event
   try {
     const { updateCallEvent } = await import('./callLoggingService');
-    await updateCallEvent(callSid, {
+    await updateCallEvent(req.tenantDb!, callSid, {
       status: callStatus,
       duration: callDuration ? parseInt(callDuration) : undefined,
       endedAt: callStatus === 'completed' ? new Date() : undefined,
