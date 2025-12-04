@@ -103,6 +103,7 @@ import {
 } from './emailService';
 import { registerAuthRoutes } from './routes.auth';
 import { registerWebAuthnRoutes } from './routes.webauthn';
+import { registerBootstrapRoutes } from './routes.bootstrap';
 import { registerSearchRoutes } from './routes.search';
 import { requireAuth } from './authMiddleware';
 import { checkPasswordChangeRequired } from './rbacMiddleware';
@@ -226,6 +227,9 @@ export async function registerRoutes(app: Express) {
   
   // Register WebAuthn biometric authentication routes
   registerWebAuthnRoutes(app);
+  
+  // Register bootstrap endpoint (lightweight initial load data)
+  registerBootstrapRoutes(app);
 
   // Port monitoring SMS delivery status callback (receives delivery confirmation from Twilio)
   app.post('/api/test/port-sms-status', async (req: Request, res: Response) => {

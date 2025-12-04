@@ -1,0 +1,256 @@
+You are working on the ServicePro v3 repo for my multi-tenant SaaS (Clean Machine is the root tenant). I need a focused Performance Pass v1 that:
+
+- Reduces white-screen time on initial load
+- Makes /messages and /phone feel snappy and usable quickly
+- Avoids blocking the whole app on heavy queries or AI calls
+- DOES NOT break existing voice/IVR/SMS behavior or tenant scoping
+
+🚫 DO NOT:
+- Change any Twilio IVR logic, call flow, or SIP config.
+- Change database schemas unrelated to performance (no big refactors).
+- Hard-code phone numbers or tenant IDs.
+- Remove any existing features.
+
+✅ YOU MAY:
+- Add new lightweight endpoints (like /api/bootstrap) if helpful.
+- Add caching or “fast path” queries.
+- Add skeleton UIs, loading states, Suspense, and lazy-loading.
+- Add indexes or query options to existing queries.
+
+---
+
+## GOAL 1 – Eliminate long white-screen + add app shell skeleton
+
+Right now the app sometimes sits on a blank screen while everything loads. I want a modern “instant shell” feel:
+
+- Sidebar / top bar frame appears almost immediately.
+- A skeleton or spinner shows while content loads.
+- Main navigation (sidebar/topbar) doesn’t wait on heavy data.
+
+### Tasks
+
+1. Find the main app layout & router:
+
+   - Likely files:
+     - `client/src/App.tsx`
+     - `client/src/routes/AppRoutes.tsx` or similar
+     - `client/src/layouts/DashboardLayout.tsx` or similar
+   - Identify whatever component renders the **global layout** (sidebar, top nav, content area).
+
+2. Create a lightweight `AppShellSkeleton`:
+
+   - New file: `client/src/components/layout/AppShellSkeleton.tsx`
+   - Requirements:
+     - Shows the basic layout frame:
+       - Left sidebar block (grey skeleton bars)
+       - Top bar or breadcrumb area
+       - Main content placeholder (big rounded rectangle)
+     - Very lightweight: no data fetching, just static skeleton UI.
+
+3. Wire in “shell-first” rendering:
+
+   - In the **root app / layout**, ensure:
+     - The shell frame (sidebar/topbar) can render **before** any large API calls.
+   - If you are using TanStack Query/React Query or similar:
+     - Show `AppShellSkeleton` while the very first critical queries (e.g. current user, tenant) load.
+   - Do NOT block the entire render on non-essential queries (e.g. analytics, Night Ops, etc.)
+
+4. Keep it mobile-safe:
+
+   - Ensure the shell uses the same responsive breakpoints we already use elsewhere.
+   - On mobile, the skeleton should still show a minimal nav header + content block, not a white page.
+
+---
+
+## GOAL 2 – Messages page: fast, non-blocking, and scrollable
+
+The `/messages` page is currently:
+- Slow
+- Overloaded in the center column
+- Sometimes not scrollable / broken
+
+I want `/messages` to:
+
+- Render a usable layout quickly (even if data is still loading).
+- Only fetch what it actually needs for the selected thread.
+- Have a rock-solid scrollable center column.
+
+### Tasks
+
+1. Locate Messages page & core components:
+
+   - Likely files:
+     - `client/src/pages/MessagesPage.tsx` or similar
+     - `client/src/components/messages/ThreadView.tsx`
+     - `client/src/components/messages/ConversationList.tsx`
+     - `client/src/components/messages/MessageBubble.tsx`
+   - Confirm which component controls the center “thread” panel scroll.
+
+2. Fix / verify scroll container:
+
+   - Ensure the center thread panel:
+     - Uses a **native `div` with `overflow-y: auto`** for scrolling (NOT Radix ScrollArea).
+     - Has a stable, fixed height (flex layout with `flex: 1` in a vertical container).
+   - The scroll must work:
+     - On desktop and mobile.
+     - For long threads with many messages.
+
+3. Split data fetching so it’s non-blocking:
+
+   - Conversation list:
+     - Fetch the list of conversations **separately** from the messages in a selected thread.
+     - Use pagination or limit (e.g. 25–50 conversations initially).
+   - Messages in a thread:
+     - Only fetch messages for the **selected conversation**.
+     - Use its own query key like `['conversation-messages', conversationId]`.
+   - The Messages page itself should NOT wait for all messages before rendering the layout.
+
+4. Add skeletons/loading states:
+
+   - Conversation list:
+     - While loading, show a vertical list of skeleton rows (e.g. 5–10 greys bars with avatar circles).
+   - Message thread:
+     - While loading, show a few grey “message bubble” placeholders.
+   - Use minimal CSS/utility classes to avoid extra bloat.
+
+5. Make sure manual vs AI control still works:
+
+   - The “Take Over / Hand Back to AI” buttons must still work as they do now.
+   - Do not remove or break any existing WebSocket/subscription logic.
+   - If you move API calls, ensure any hooks (like `useConversation` or `useMessages`) still receive correct props.
+
+---
+
+## GOAL 3 – Phone page feels snappy and doesn’t block
+
+The `/phone` section is feature-rich (dialer, recents, customers, voicemail). It should:
+
+- Show basic shell quickly.
+- Load tabs lazily or in parallel.
+- NOT block on voicemail + recents + customers simultaneously.
+
+### Tasks
+
+1. Locate Phone page:
+
+   - Likely files:
+     - `client/src/pages/PhonePage.tsx`
+     - `client/src/components/phone/Dialer.tsx`
+     - `client/src/components/phone/RecentCalls.tsx`
+     - `client/src/components/phone/VoicemailInbox.tsx`
+     - `client/src/components/phone/CustomersTab.tsx` or similar.
+
+2. Separate queries per tab:
+
+   - Each tab (Dialer, Recents, Voicemail, Customers) should:
+     - Have its own data hook/query.
+     - Only fetch when the tab is active, OR be lazy-loaded using `React.lazy` + `Suspense`.
+   - Do **not** fetch all phone data before the page is usable.
+
+3. Add tab-level loading states:
+
+   - For Recents & Voicemail:
+     - Show simple loading states (spinner or skeleton cards) inside the tab content **only**.
+   - Dialer:
+     - Should be nearly instant (no heavy query required to show the keypad).
+
+4. Optional but ideal: lazily load heavy tabs
+
+   - Consider using `React.lazy` and `Suspense` for:
+     - Voicemail inbox component
+     - Any Night Ops / advanced phone analytics panels
+   - Keep the boundaries clean: if lazy loading causes complexity, prioritize tab-based fetch separation instead.
+
+---
+
+## GOAL 4 – Reduce backend load / add light bootstrap endpoint
+
+The first load likely hits several heavy endpoints. I want a lightweight bootstrap to make initial render faster.
+
+### Tasks
+
+1. Add a **new** `GET /api/bootstrap` (or similar) endpoint:
+
+   - Preferred location: `server/routes.bootstrap.ts` (or use whichever pattern matches the repo).
+   - It should return:
+     - Current user basic info (id, name, role).
+     - Current tenant info (id, name, slug, logo URL, primary color).
+     - Basic feature flags (e.g. which modules are enabled: messages, phone, website, etc.).
+     - High-level counts (optional, if cheap): unread conversations count, number of open voicemails.
+   - Requirements:
+     - Must be multi-tenant aware.
+     - Must be very fast: only simple, indexed queries.
+     - No heavy joins or large lists (no full conversation histories, etc).
+
+2. Frontend hook for bootstrap:
+
+   - Create a hook: `useBootstrap()` in e.g. `client/src/hooks/useBootstrap.ts`.
+   - Use TanStack Query/React Query (if available) to fetch `/api/bootstrap`.
+   - The root layout should use `useBootstrap()` to:
+     - Quickly know who is logged in.
+     - Render the correct branding (logo, colors) early.
+   - If `/api/bootstrap` fails, the app should still render an error state gracefully (not a white screen).
+
+3. Keep existing endpoints unchanged for now:
+
+   - Do NOT remove existing endpoints.
+   - Do NOT change any Twilio voice or SMS routes.
+   - This bootstrap is additive and used only to accelerate the initial layout render.
+
+---
+
+## GOAL 5 – General performance hygiene & guardrails
+
+1. Avoid blocking UI on AI calls:
+
+   - Any OpenAI/AI analysis (e.g., voicemail summarization) should:
+     - Happen in the background (job/queue style) OR
+     - Only affect secondary UI (like a summary card), not the core availability of the page.
+   - Ensure the Messages and Phone pages **never** wait on AI analysis to render.
+
+2. Avoid giant payloads:
+
+   - Check the queries for:
+     - Conversations list
+     - Messages list
+     - Call logs
+   - Make sure they have sensible limits (e.g. limit 50 or pagination).
+   - If any endpoint returns hundreds/thousands of rows on first load, add pagination (cursor or page-based).
+
+3. Keep tenant isolation intact:
+
+   - Any new endpoints (like `/api/bootstrap`) must:
+     - Use the same tenant scoping pattern the app already uses.
+     - NEVER leak data across tenants.
+   - If in doubt, mirror the approach from existing tenant-scoped routes.
+
+---
+
+## Deliverables & Verification
+
+When you’re done, please:
+
+1. List all files you changed, grouped by:
+   - Layout/Shell
+   - Messages
+   - Phone
+   - Backend/API
+
+2. Explain:
+   - What you did to reduce initial white-screen time.
+   - How `/messages` now loads (what is fetched when).
+   - How `/phone` now loads (per-tab or lazy loading behavior).
+   - How `/api/bootstrap` works and how it’s used in the frontend.
+
+3. Confirm:
+   - Tenant isolation is preserved.
+   - No changes were made to IVR/voice routing or Twilio SIP logic.
+   - SMS/voice webhooks are untouched.
+
+4. Give me a simple manual test checklist, for example:
+   - Load `/` – confirm shell appears quickly, then content.
+   - Navigate to `/messages` – confirm layout appears quickly, skeletons while data loads, scroll works.
+   - Navigate to `/phone` – confirm dialer is instant, other tabs show their own loading states.
+   - Reload the app on slow network – confirm we no longer see a long white screen.
+
+Do NOT do any visual redesign beyond what’s minimally necessary for skeletons or layout fixes. Focus on performance and perceived responsiveness.

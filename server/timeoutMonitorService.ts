@@ -72,8 +72,8 @@ async function checkTimeouts() {
         try {
           console.log(`[TIMEOUT MONITOR] Tenant ${tenant.id}: Processing timeout for conversation ${conversation.id}`);
 
-          // Return to AI
-          const customerNotification = await returnToAI(conversation.id, 'system', true);
+          // Return to AI (pass tenantDb as first argument)
+          const customerNotification = await returnToAI(tenantDb, conversation.id, 'system', true);
 
           // Send notification to customer if they're on SMS
           if (conversation.platform === 'sms' && customerNotification && conversation.customerPhone) {
