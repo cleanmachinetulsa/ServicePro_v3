@@ -20,7 +20,7 @@
 import type { Express, Request, Response } from 'express';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
-import { tenantPhoneConfig, tenantConfig, users, phoneLines } from '../shared/schema';
+import { tenantPhoneConfig, tenantConfig, users, phoneLines, ivrMenus } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import {
   buildServicesOverviewTwiml,
@@ -33,7 +33,12 @@ import {
   buildNoInputTwiml,
   getIvrConfigForTenant,
   VALID_IVR_DIGITS,
+  findMenuItemByDigit,
+  buildActionTwiml,
+  buildConfigDrivenInvalidTwiml,
+  buildConfigDrivenNoInputTwiml,
 } from './services/ivrHelper';
+import { getActiveMenuForTenant, getOrCreateDefaultMenuForTenant } from './services/ivrConfigService';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { TWILIO_TEST_SMS_NUMBER } from './twilioClient';
 import { syncVoicemailIntoConversation } from './services/voicemailConversationService';
@@ -92,15 +97,19 @@ export function registerIvrRoutes(app: Express) {
 }
 
 /**
- * Handle IVR digit selection
- * Valid digits: 1 (services/SMS), 2 (talk to person), 3 (voicemail), 7 (easter egg)
+ * Handle IVR digit selection (Config-Driven)
+ * 
+ * Phase 3: Now uses database-driven IVR configuration per tenant
+ * Looks up menu item by digit and processes the action
+ * Falls back to legacy hard-coded handlers if config loading fails
  */
 async function handleIvrSelection(req: Request, res: Response) {
   const { Digits, From, To, CallSid } = req.body;
   const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;
   const forced = req.query.forced as string || req.body.forced as string;
+  const menuId = parseInt(req.query.menuId as string) || parseInt(req.body.menuId as string);
   
-  console.log(`[IVR SELECTION] CallSid=${CallSid}, From=${From}, To=${To}, Digits=${Digits}, attempt=${attempt}, forced=${forced}`);
+  console.log(`[IVR SELECTION] CallSid=${CallSid}, From=${From}, To=${To}, Digits=${Digits}, attempt=${attempt}, forced=${forced}, menuId=${menuId}`);
   
   // Normalize phone number for lookup
   const normalizedTo = normalizePhoneNumber(To);
@@ -117,78 +126,139 @@ async function handleIvrSelection(req: Request, res: Response) {
   
   const tenantId = phoneConfig[0]?.tenantId || 'root';
   
-  // Get tenant business name
-  const tenantConfigData = await db
-    .select()
-    .from(tenantConfig)
-    .where(eq(tenantConfig.tenantId, tenantId))
-    .limit(1);
-  
-  const businessName = tenantConfigData[0]?.businessName;
-  
-  // Build IVR config
-  const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig[0] || {}, businessName);
-  
   // Get callback base URL
   const callbackBaseUrl = getCallbackBaseUrl(req);
   
-  let twiml: string;
-  
-  // Handle forced voicemail (from dial failure)
-  if (forced === 'voicemail' || Digits === '3') {
-    console.log(`[IVR SELECTION] tenant=${tenantId}, action=voicemail${forced ? ' (forced after dial failure)' : ''}`);
-    twiml = buildVoicemailTwiml(callbackBaseUrl);
+  // Handle forced voicemail (from dial failure) - always works same way
+  if (forced === 'voicemail') {
+    console.log(`[IVR SELECTION] tenant=${tenantId}, action=voicemail (forced after dial failure)`);
+    const twiml = buildVoicemailTwiml(callbackBaseUrl);
     res.type('text/xml');
     return res.send(twiml);
   }
   
-  switch (Digits) {
-    case '1':
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=services-overview`);
-      twiml = buildServicesOverviewTwiml(ivrConfig);
+  try {
+    // Load IVR menu from database
+    const menu = await getOrCreateDefaultMenuForTenant(tenantId);
+    
+    // Find menu item for the pressed digit
+    const menuItem = findMenuItemByDigit(menu, Digits);
+    
+    if (!menuItem) {
+      // Invalid digit - use config-driven invalid response
+      console.log(`[IVR SELECTION] tenant=${tenantId}, action=invalid-selection (config), digits=${Digits}, attempt=${attempt}`);
+      const twiml = buildConfigDrivenInvalidTwiml(menu, callbackBaseUrl, attempt);
+      res.type('text/xml');
+      return res.send(twiml);
+    }
+    
+    console.log(`[IVR SELECTION] tenant=${tenantId}, digit=${Digits}, action=${menuItem.actionType}, label="${menuItem.label}"`);
+    
+    // Handle SMS_INFO action - send SMS before building response
+    if (menuItem.actionType === 'SMS_INFO') {
+      const payload = menuItem.actionPayload || {};
+      const smsText = payload.smsText || `Thanks for calling! Here's our info.`;
       
-      // Trigger SMS with booking info (async, don't wait)
-      sendBookingInfoSms(From, ivrConfig).catch(err => {
-        console.error('[IVR SELECTION] Error sending booking SMS:', err);
+      sendConfigDrivenSms(From, smsText, tenantId).catch(err => {
+        console.error('[IVR SELECTION] Error sending SMS:', err);
       });
-      break;
+    }
     
-    case '2':
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=forward-to-person, SIP=${ivrConfig.sipUsername}@${ivrConfig.sipDomain}`);
-      twiml = buildForwardToPersonTwiml(ivrConfig, From, callbackBaseUrl);
-      break;
+    // Build TwiML for the action
+    const twiml = buildActionTwiml(menuItem, menu, From, callbackBaseUrl);
+    res.type('text/xml');
+    res.send(twiml);
     
-    case '7':
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=easter-egg`);
-      twiml = buildEasterEggTwiml();
-      break;
+  } catch (error) {
+    // Fallback to legacy hard-coded handlers
+    console.error(`[IVR SELECTION] Error loading IVR config, using legacy fallback:`, error);
     
-    default:
-      // Invalid digit - check if we should retry or hang up
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=invalid-selection, digits=${Digits}, attempt=${attempt}`);
-      twiml = buildInvalidSelectionTwiml(callbackBaseUrl, attempt);
-      break;
+    // Get tenant business name for legacy fallback
+    const tenantConfigData = await db
+      .select()
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    
+    const businessName = tenantConfigData[0]?.businessName;
+    const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig[0] || {}, businessName);
+    
+    let twiml: string;
+    
+    switch (Digits) {
+      case '1':
+        twiml = buildServicesOverviewTwiml(ivrConfig);
+        sendBookingInfoSms(From, ivrConfig).catch(err => {
+          console.error('[IVR SELECTION] Error sending booking SMS:', err);
+        });
+        break;
+      
+      case '2':
+        twiml = buildForwardToPersonTwiml(ivrConfig, From, callbackBaseUrl);
+        break;
+      
+      case '3':
+        twiml = buildVoicemailTwiml(callbackBaseUrl);
+        break;
+      
+      case '7':
+        twiml = buildEasterEggTwiml();
+        break;
+      
+      default:
+        twiml = buildInvalidSelectionTwiml(callbackBaseUrl, attempt);
+        break;
+    }
+    
+    res.type('text/xml');
+    res.send(twiml);
   }
-  
-  res.type('text/xml');
-  res.send(twiml);
 }
 
 /**
- * Handle no input from caller (timeout on <Gather>)
- * Replays menu up to 3 times, then politely hangs up
+ * Handle no input from caller (Config-Driven)
+ * Replays menu up to max attempts, then politely hangs up
  */
 async function handleNoInput(req: Request, res: Response) {
   const { From, To, CallSid } = req.body;
   const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;
+  const menuId = parseInt(req.query.menuId as string) || parseInt(req.body.menuId as string);
   
-  console.log(`[IVR NO-INPUT] CallSid=${CallSid}, From=${From}, To=${To}, attempt=${attempt}`);
+  console.log(`[IVR NO-INPUT] CallSid=${CallSid}, From=${From}, To=${To}, attempt=${attempt}, menuId=${menuId}`);
   
   const callbackBaseUrl = getCallbackBaseUrl(req);
-  const twiml = buildNoInputTwiml(callbackBaseUrl, attempt);
   
-  res.type('text/xml');
-  res.send(twiml);
+  // Normalize phone number for lookup
+  const normalizedTo = normalizePhoneNumber(To);
+  
+  // Look up tenant by phone number
+  let phoneConfig: any[] = [];
+  if (normalizedTo) {
+    phoneConfig = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.phoneNumber, normalizedTo))
+      .limit(1);
+  }
+  
+  const tenantId = phoneConfig[0]?.tenantId || 'root';
+  
+  try {
+    // Load IVR menu from database
+    const menu = await getOrCreateDefaultMenuForTenant(tenantId);
+    
+    // Use config-driven no-input response
+    const twiml = buildConfigDrivenNoInputTwiml(menu, callbackBaseUrl, attempt);
+    res.type('text/xml');
+    res.send(twiml);
+    
+  } catch (error) {
+    // Fallback to legacy handler
+    console.error(`[IVR NO-INPUT] Error loading IVR config, using legacy fallback:`, error);
+    const twiml = buildNoInputTwiml(callbackBaseUrl, attempt);
+    res.type('text/xml');
+    res.send(twiml);
+  }
 }
 
 /**
@@ -367,6 +437,45 @@ async function sendBookingInfoSms(toNumber: string, ivrConfig: { businessName: s
     console.log(`[IVR SMS] Sent booking info to ${toNumber}`);
   } catch (error) {
     console.error('[IVR SMS] Error sending booking info:', error);
+  }
+}
+
+/**
+ * Send config-driven SMS from IVR action
+ * Used by SMS_INFO action type in config-driven IVR
+ */
+async function sendConfigDrivenSms(toNumber: string, smsText: string, tenantId: string) {
+  try {
+    const twilioClient = await getTwilioClient();
+    
+    if (!twilioClient) {
+      console.warn('[IVR SMS] Twilio client not configured, skipping SMS');
+      return;
+    }
+    
+    // Get tenant's phone number for sending
+    const [phoneConfig] = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.tenantId, tenantId))
+      .limit(1);
+    
+    const fromNumber = phoneConfig?.phoneNumber || process.env.MAIN_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    
+    if (!fromNumber) {
+      console.warn('[IVR SMS] No from number configured, skipping SMS');
+      return;
+    }
+    
+    await twilioClient.messages.create({
+      to: toNumber,
+      from: fromNumber,
+      body: smsText,
+    });
+    
+    console.log(`[IVR SMS] Sent config-driven SMS to ${toNumber} for tenant ${tenantId}`);
+  } catch (error) {
+    console.error('[IVR SMS] Error sending config-driven SMS:', error);
   }
 }
 

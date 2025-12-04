@@ -30,7 +30,12 @@ import { db } from './db';
 import { resolveTenantFromInbound } from './services/tenantCommRouter';
 import { tenantConfig } from '../shared/schema';
 import { eq } from 'drizzle-orm';
-import { buildMainMenuTwiml, getIvrConfigForTenant } from './services/ivrHelper';
+import { 
+  buildMainMenuTwiml, 
+  getIvrConfigForTenant,
+  buildConfigDrivenMenuTwiml,
+} from './services/ivrHelper';
+import { getOrCreateDefaultMenuForTenant } from './services/ivrConfigService';
 import { handleAiVoiceRequest } from './services/aiVoiceSession';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -159,7 +164,10 @@ async function handleSimpleMode(
 }
 
 /**
- * Handle IVR mode: Interactive voice menu (Phase 2.3)
+ * Handle IVR mode: Interactive voice menu (Config-Driven)
+ * 
+ * Phase 3: Now uses database-driven IVR configuration per tenant
+ * Falls back to legacy hard-coded menu if config loading fails
  * 
  * Supports retry logic via ?attempt= query parameter
  */
@@ -169,22 +177,12 @@ async function handleIvrMode(
   tenantId: string,
   phoneConfig: any
 ) {
-  // Get attempt number from query string (for retry after no-input or invalid digit)
+  // Get attempt number and retry flags from query string
   const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;
+  const noInputRetry = req.query.noInputRetry === 'true' || req.body.noInputRetry === 'true';
+  const invalidRetry = req.query.invalidRetry === 'true' || req.body.invalidRetry === 'true';
   
   console.log(`[CANONICAL VOICE] mode=ivr, tenant=${tenantId}, action=main-menu, attempt=${attempt}`);
-  
-  // Get tenant business name from config
-  const tenantConfigData = await db
-    .select()
-    .from(tenantConfig)
-    .where(eq(tenantConfig.tenantId, tenantId))
-    .limit(1);
-  
-  const businessName = tenantConfigData[0]?.businessName;
-  
-  // Build IVR config
-  const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig, businessName);
   
   // Get callback base URL from request host header (works in both dev and production)
   const protocol = req.headers['x-forwarded-proto'] || 'https';
@@ -193,11 +191,36 @@ async function handleIvrMode(
   
   console.log(`[CANONICAL VOICE] IVR callback base URL: ${callbackBaseUrl}`);
   
-  // Generate main menu TwiML with current attempt number
-  const twiml = buildMainMenuTwiml(ivrConfig, callbackBaseUrl, attempt);
-  
-  res.type('text/xml');
-  res.send(twiml);
+  try {
+    // Load IVR menu from database (or seed default if missing)
+    const menu = await getOrCreateDefaultMenuForTenant(tenantId);
+    
+    console.log(`[CANONICAL VOICE] Using config-driven IVR menu: ${menu.name} (id=${menu.id})`);
+    
+    // Generate menu TwiML from config
+    const twiml = buildConfigDrivenMenuTwiml(menu, callbackBaseUrl, attempt, noInputRetry, invalidRetry);
+    
+    res.type('text/xml');
+    res.send(twiml);
+  } catch (error) {
+    // Fallback to legacy hard-coded menu if config loading fails
+    console.error(`[CANONICAL VOICE] Error loading IVR config, using legacy fallback:`, error);
+    
+    // Get tenant business name for legacy fallback
+    const tenantConfigData = await db
+      .select()
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    
+    const businessName = tenantConfigData[0]?.businessName;
+    const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig, businessName);
+    
+    const twiml = buildMainMenuTwiml(ivrConfig, callbackBaseUrl, attempt);
+    
+    res.type('text/xml');
+    res.send(twiml);
+  }
 }
 
 /**
