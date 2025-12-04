@@ -181,10 +181,12 @@ async function handleIvrMode(
   // Build IVR config
   const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig, businessName);
   
-  // Get callback base URL
-  const callbackBaseUrl = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : 'https://your-domain.repl.co';
+  // Get callback base URL from request host header (works in both dev and production)
+  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['host'] || req.headers['x-forwarded-host'] || process.env.REPLIT_DEV_DOMAIN;
+  const callbackBaseUrl = `${protocol}://${host}`;
+  
+  console.log(`[CANONICAL VOICE] IVR callback base URL: ${callbackBaseUrl}`);
   
   // Generate main menu TwiML
   const twiml = buildMainMenuTwiml(ivrConfig, callbackBaseUrl);

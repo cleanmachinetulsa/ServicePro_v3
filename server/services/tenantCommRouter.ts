@@ -55,6 +55,9 @@ export async function resolveTenantFromInbound(
   db: DB
 ): Promise<TenantResolution> {
   const { To, MessagingServiceSid } = req.body;
+  
+  // Normalize phone number to E.164 format (+1NNNNNNNNN)
+  const normalizedTo = normalizePhoneNumber(To);
 
   // Strategy 1: Try MessagingServiceSid match (most specific for SMS)
   // This allows multiple phone numbers to route to the same tenant via Messaging Service
@@ -83,17 +86,18 @@ export async function resolveTenantFromInbound(
   // Strategy 2: Try To number match via tenantPhoneConfig (standard lookup)
   // This is the primary lookup for voice calls and SMS without Messaging Service
   // Phone numbers should be unique per the schema, but we order for consistency
-  if (To) {
+  if (normalizedTo) {
+    console.log(`[TENANT ROUTER] Looking up phoneNumber: ${normalizedTo} (original: ${To})`);
     const configs = await db
       .select()
       .from(tenantPhoneConfig)
-      .where(eq(tenantPhoneConfig.phoneNumber, To))
+      .where(eq(tenantPhoneConfig.phoneNumber, normalizedTo))
       .orderBy(desc(tenantPhoneConfig.id))
       .limit(1);
 
     const config = configs[0];
     if (config) {
-      console.log(`[TENANT ROUTER] Resolved tenant '${config.tenantId}' via phoneNumber: ${To}`);
+      console.log(`[TENANT ROUTER] Resolved tenant '${config.tenantId}' via phoneNumber: ${normalizedTo}, ivrMode: ${config.ivrMode}`);
       return {
         tenantId: config.tenantId,
         phoneConfig: config,
@@ -103,15 +107,77 @@ export async function resolveTenantFromInbound(
     }
   }
 
-  // Strategy 3: Fallback to root tenant for graceful degradation
-  // This ensures the system never crashes due to missing configuration
-  console.warn(`[TENANT ROUTER] No tenant config found for To=${To}, MessagingServiceSid=${MessagingServiceSid}, falling back to 'root'`);
+  // Strategy 3: Fallback to root tenant with phone config lookup
+  // Look up root tenant's phone config for IVR settings
+  console.warn(`[TENANT ROUTER] No tenant config found for To=${normalizedTo} (original: ${To}), MessagingServiceSid=${MessagingServiceSid}, trying root fallback`);
+  
+  // Try to get root tenant's default phone config
+  const rootConfigs = await db
+    .select()
+    .from(tenantPhoneConfig)
+    .where(eq(tenantPhoneConfig.tenantId, 'root'))
+    .orderBy(desc(tenantPhoneConfig.id))
+    .limit(1);
+  
+  const rootConfig = rootConfigs[0];
+  if (rootConfig) {
+    console.log(`[TENANT ROUTER] Using root tenant fallback with ivrMode: ${rootConfig.ivrMode}`);
+    return {
+      tenantId: 'root',
+      phoneConfig: rootConfig,
+      ivrMode: (rootConfig.ivrMode as 'simple' | 'ivr' | 'ai-voice') || 'simple',
+      resolvedBy: 'fallback',
+    };
+  }
+  
+  console.warn(`[TENANT ROUTER] No root tenant config found, using defaults`);
   return {
     tenantId: 'root',
     phoneConfig: null,
     ivrMode: 'simple',
     resolvedBy: 'fallback',
   };
+}
+
+/**
+ * Normalize phone number to E.164 format (+1NNNNNNNNN for US numbers)
+ * Handles common Twilio formats:
+ * - "+19188565304" (already E.164)
+ * - "19188565304" (missing +)
+ * - " 19188565304" (leading space)
+ * - "9188565304" (missing country code)
+ */
+function normalizePhoneNumber(phone: string | undefined): string | null {
+  if (!phone) return null;
+  
+  // Remove all non-digit characters except leading +
+  let cleaned = phone.trim();
+  const hasPlus = cleaned.startsWith('+');
+  cleaned = cleaned.replace(/\D/g, '');
+  
+  if (!cleaned) return null;
+  
+  // If 10 digits, assume US and add country code
+  if (cleaned.length === 10) {
+    return `+1${cleaned}`;
+  }
+  
+  // If 11 digits starting with 1, add +
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+${cleaned}`;
+  }
+  
+  // Already has + prefix from original, return with it
+  if (hasPlus) {
+    return `+${cleaned}`;
+  }
+  
+  // Return as-is with + if it looks like a valid number
+  if (cleaned.length >= 10) {
+    return `+${cleaned}`;
+  }
+  
+  return null;
 }
 
 /**
