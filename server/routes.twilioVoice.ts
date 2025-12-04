@@ -226,6 +226,8 @@ May I answer any questions or get your vehicle scheduled?`;
 
 /**
  * Send voicemail notification to business phone
+ * NOTE: Recording URLs are NOT included in SMS as they require Twilio auth.
+ * Use push notifications with deep links to access recordings in the app.
  */
 async function sendVoicemailNotification(toPhone: string, fromPhone: string, transcription: string, recordingUrl: string) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -238,13 +240,38 @@ async function sendVoicemailNotification(toPhone: string, fromPhone: string, tra
 
   const client = twilio(accountSid, authToken);
 
-  const message = `New voicemail from ${fromPhone}:\n\n"${transcription}"\n\nListen: ${recordingUrl}`;
+  // NOTE: We no longer include the Twilio recording URL as it requires Twilio auth credentials.
+  // The user can listen to recordings via push notifications that deep-link to the app.
+  const message = `New voicemail from ${fromPhone}:\n\n"${transcription}"\n\nOpen the app to listen to the recording.`;
 
   await client.messages.create({
     body: message,
     from: twilioPhone,
     to: toPhone,
   });
+
+  // Also send a push notification with deep link to voicemails
+  try {
+    const { sendPushToAllUsers } = await import('./pushNotificationService');
+    await sendPushToAllUsers({
+      title: '🎙️ New Voicemail',
+      body: `From ${fromPhone}: "${transcription.substring(0, 50)}${transcription.length > 50 ? '...' : ''}"`,
+      tag: `voicemail-${Date.now()}`,
+      requireInteraction: true,
+      data: {
+        type: 'voicemail',
+        callerPhone: fromPhone,
+        url: '/calls',
+      },
+      actions: [
+        { action: 'view', title: 'Listen' },
+        { action: 'call_back', title: 'Call Back' },
+      ],
+    });
+    console.log(`[VOICE] Push notification sent for voicemail from ${fromPhone}`);
+  } catch (pushError) {
+    console.error('[VOICE] Failed to send voicemail push notification:', pushError);
+  }
 
   console.log(`[VOICE] Sent voicemail notification to ${toPhone}`);
 }
