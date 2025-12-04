@@ -1,0 +1,206 @@
+You are working on the Servicepro-v3-base project (Clean Machine / ServicePro multi-tenant comms hub).
+
+Core context:
+- Root tenant is Clean Machine. Do NOT break existing IVR behavior or current Twilio plumbing.
+- Inbound voice and voicemail are already working.
+- Inbound SMS and replies are working after the last set of fixes.
+- Visual voicemail UI exists under /phone (Voicemail tab) and in the Messages thread as voicemail bubbles.
+- Conversations have needsHumanAttention / Attention badges in the inbox.
+
+I want you to implement “Phone Intelligence v1” with three concrete goals:
+
+1) AI voicemail summaries + priority tagging
+2) Smarter “Attention” handling for inbox
+3) Fix AI ↔ Manual control mode (“Failed to take control” toast)
+
+Do all work with small, focused changes. Preserve multi-tenant isolation and the existing Clean Machine behavior.
+
+--------------------------------
+TASK 1 – AI Voicemail summaries & priority
+--------------------------------
+
+Goal: Every voicemail should get:
+- A short AI-generated summary (1–2 sentences, customer-friendly).
+- A priority/urgency flag (e.g. HIGH vs NORMAL) so we can easily see which ones need fast follow-up.
+
+Where to wire it:
+
+1. FIND VOICEMAIL PIPELINE
+   - Locate the server code that handles:
+     - /twilio/voice/recording-status
+     - /twilio/voice/voicemail-transcribed
+   - Identify where we:
+     - Store voicemail metadata (recordingSid, recordingUrl, duration, transcription, etc.).
+     - Sync it into conversations/messages and/or any callEvents/callLogs tables.
+
+2. ADD STORAGE FOR SUMMARY & PRIORITY
+   - Identify the main table that represents a voicemail/call event. (In earlier design we referred to “callEvents” or “callLogs” – use whatever actually exists.)
+   - Add appropriate columns/fields, for example:
+     - ai_summary (text)
+     - ai_priority (string, e.g. 'HIGH' | 'NORMAL' or similar)
+   - If voicemail is represented via a message metadata JSON instead, you can store:
+     - metadata.aiSummary
+     - metadata.aiPriority
+   - Add a database migration if needed, following the project’s existing migration pattern.
+
+3. GENERATE SUMMARY ON TRANSCRIPTION
+   - In the /twilio/voice/voicemail-transcribed handler (or wherever the transcription is saved):
+     - After we store the transcription, call an internal helper that:
+       - Uses the existing OpenAI client (do NOT hardcode API keys; use OPENAI_API_KEY / existing wrapper).
+       - Sends a prompt that includes:
+         - Business: Clean Machine mobile auto detailing in Tulsa
+         - Full transcription text
+         - Basic context like call duration if available
+       - Asks OpenAI to return a JSON object with:
+         - "summary": short 1–2 sentence voicemail summary
+         - "priority": "HIGH" or "NORMAL"
+       - Parse and validate the JSON; fall back to an empty summary / NORMAL priority on error.
+     - Save summary + priority into the voicemail/call record and/or message metadata.
+     - Also update the conversation’s needsHumanAttention flag if priority is HIGH.
+
+   - Keep this robust:
+     - Try/catch around the OpenAI call.
+     - Log failures sensibly (tenantId, callSid, short error message).
+
+4. UPDATE PUSH NOTIFICATIONS
+   - Wherever we currently send push notifications for new voicemails (likely in voicemailConversationService or pushNotificationService):
+     - If an ai_summary is available, include a short snippet in the push payload, e.g.:
+       - Title: “New voicemail (HIGH priority)” or “New voicemail”
+       - Body: ai_summary (truncated as needed).
+     - If not yet available (transcription/summary delayed), keep existing behavior.
+
+5. UPDATE UI – Voicemail Inbox & Thread
+   - Locate:
+     - Phone voicemail UI component (e.g. client/src/components/phone/VoicemailInbox.tsx).
+     - Voicemail bubble / message component in the Messages thread view.
+   - Add visual display of:
+     - AI summary: show as text at the top of the voicemail card/bubble, with a small “AI summary” label.
+     - Priority:
+       - If HIGH, show a small badge or colored dot (e.g. red/orange) with text like “Needs callback”.
+       - If NORMAL, either show a subtle neutral chip or nothing special.
+   - Make sure this looks good on both:
+     - The Voicemail tab in /phone.
+     - The voicemail bubble in the Messages thread.
+
+6. VERIFY
+   - Leave yourself a fresh voicemail with clear intent (e.g. urgent vs casual).
+   - Confirm:
+     - Transcription appears as before.
+     - AI summary field is populated in DB.
+     - UI shows the summary + priority badge.
+     - Push notification includes the summary snippet.
+
+--------------------------------
+TASK 2 – Smarter “Attention” behavior
+--------------------------------
+
+Goal: Inbox “Attention” tags should align with real needs:
+- New SMS or voicemail from a customer should automatically mark the conversation as needsHumanAttention when appropriate.
+- HIGH-priority voicemails should always be flagged Attention.
+
+Steps:
+
+1. FIND CONVERSATION ATTENTION LOGIC
+   - Search for needsHumanAttention or any “Attention” logic in:
+     - Server conversation service(s)
+     - API routes that create/update conversations
+   - Understand current rules for when we set or clear Attention.
+
+2. UPDATE RULES
+   - Update server-side code so that:
+     - New inbound SMS:
+       - If handled by AI successfully, and AI sends a clear reply, we can leave needsHumanAttention = false.
+       - If AI fails or we hit a fallback, set needsHumanAttention = true.
+     - New voicemail:
+       - Always set needsHumanAttention = true initially.
+       - If ai_priority === 'HIGH', keep it true until a human explicitly marks resolved.
+   - Make sure manual actions from the UI (Mark Resolved, taking manual control, etc.) can clear Attention in the same way they already do.
+
+3. UI FILTERS (LIGHT TOUCH)
+   - If there is already an “Attention” filter tab or chip in the Inbox sidebar, ensure it correctly filters conversations by needsHumanAttention.
+   - If not, add an “Attention” filter tab alongside All / Unread / SMS / Web so you can quickly see all conversations that need follow-up.
+
+4. VERIFY
+   - Test flows:
+     - Inbound SMS where AI responds normally → should not clutter Attention list.
+     - Inbound SMS with error/fallback → should show in Attention.
+     - Voicemail HIGH priority → should show in Attention with badge.
+     - Mark Resolved → should clear Attention and move out of that filter.
+
+--------------------------------
+TASK 3 – Fix AI ↔ Manual control mode (“Failed to take control”)
+--------------------------------
+
+Problem: On the Messages page, clicking “Take Over” sometimes shows a red toast:
+   “Failed to take control – Could not switch to manual mode”
+
+Goal: Ensure that:
+- Clicking **Take Over** reliably switches the conversation to Manual mode.
+- Clicking **Return to AI** reliably hands control back to the bot.
+- The UI stays in sync with the actual control state in the database.
+
+Steps:
+
+1. FIND CONTROL MODE API + STATE
+   - Search for:
+     - “controlMode”, “ManualControl”, “AI Mode”, “AI Autopilot”, “Take Over”, “Return to AI”.
+   - Identify:
+     - The DB field(s) that store control state (e.g. controlMode, assignedAgent, isAiActive).
+     - The API routes the frontend calls when:
+       - Take Over is clicked.
+       - Return to AI is clicked.
+
+2. DEBUG FAILURE PATH
+   - In the API route that backs “Take Over”, add a bit of logging around errors.
+   - Check for common causes:
+     - Missing tenantId or conversationId.
+     - DB constraint issues.
+     - Returning a non-2xx status code that triggers the red toast.
+
+3. FIX THE FLOW
+   - Ensure “Take Over”:
+     - Validates the current user.
+     - Sets controlMode (or the equivalent) to “manual” for that conversation.
+     - Sets assignedAgent to the current user (e.g. admin) if that’s how the system is designed.
+     - Returns a success response with the updated conversation state.
+   - Ensure “Return to AI”:
+     - Sets controlMode back to “ai” (or whatever field represents AI autopilot).
+     - Keeps assignedAgent or clears it per the existing design.
+     - Returns an updated conversation state.
+   - Update the frontend so it:
+     - Uses the returned state to update local UI (banner text, buttons, tags).
+     - Does NOT rely on stale local state.
+
+4. UI FEEDBACK
+   - Maintain the existing banners, e.g.:
+     - “AI Autopilot Active – AI is handling this conversation” when AI is in control.
+     - “Manual Control – You are handling this conversation” when in manual.
+   - Ensure the buttons:
+     - Show “Take Over” in AI mode.
+     - Show “Return to AI” in manual mode.
+   - Only show the error toast when there is a real API error; not on simple mismatch.
+
+5. VERIFY
+   - In Messages:
+     - Pick a thread currently in AI mode.
+     - Click “Take Over”:
+       - Banner should change to Manual mode.
+       - No error toast.
+       - Outgoing messages should be marked as from the human agent.
+     - Click “Return to AI”:
+       - Banner returns to AI mode.
+       - Fresh inbound SMS for that conversation should be handled by the AI.
+
+--------------------------------
+DELIVERABLE
+--------------------------------
+
+When finished, please:
+
+1. List all files changed.
+2. For each Task (1, 2, 3), describe:
+   - Previous behavior
+   - New behavior
+3. Note any follow-up recommendations for:
+   - Future “Phone Intelligence v2” (like more detailed tags, sentiment, etc.).
+   - Future “Messages layout v2” or IVR Configurator, but do NOT start them yet.
