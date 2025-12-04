@@ -373,7 +373,7 @@ export function registerCallRoutes(app: Router) {
       // Log the outbound call with admin user info and customer phone for bridge preservation
       try {
         const { logCallEvent } = await import('./callLoggingService');
-        await logCallEvent({
+        await logCallEvent(req.tenantDb!, {
           callSid: call.sid,
           direction: 'outbound',
           from: twilioPhone,

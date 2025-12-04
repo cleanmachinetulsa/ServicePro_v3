@@ -117,8 +117,8 @@ function MessagesPageContent() {
     const searchLower = searchQuery.toLowerCase();
     return (
       conv.customerName?.toLowerCase().includes(searchLower) ||
-      conv.customerPhone.includes(searchLower) ||
-      conv.latestMessage?.content.toLowerCase().includes(searchLower)
+      conv.customerPhone?.includes(searchLower) ||
+      conv.latestMessage?.content?.toLowerCase().includes(searchLower)
     );
   });
 
