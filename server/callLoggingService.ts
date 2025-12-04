@@ -1,6 +1,7 @@
 import type { TenantDb } from './tenantDb';
 import { callEvents, conversations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { db } from './db';
 
 export interface CallEventData {
   callSid: string;
@@ -138,5 +139,32 @@ export async function getCallEventsForConversation(tenantDb: TenantDb, conversat
   } catch (error) {
     console.error('[CALL LOG] Error fetching call events:', error);
     return [];
+  }
+}
+
+/**
+ * Resolves the tenant ID from a CallSid by looking up the call event record.
+ * Used by Twilio webhook callbacks that don't have user session context.
+ * Falls back to 'root' if the call event is not found.
+ */
+export async function resolveTenantFromCallSid(callSid: string): Promise<string> {
+  try {
+    // Query the raw database without tenant filter since we're looking up across tenants
+    const [callEvent] = await db
+      .select({ tenantId: callEvents.tenantId })
+      .from(callEvents)
+      .where(eq(callEvents.callSid, callSid))
+      .limit(1);
+    
+    if (callEvent?.tenantId) {
+      console.log(`[CALL LOG] Resolved tenant '${callEvent.tenantId}' from CallSid ${callSid}`);
+      return callEvent.tenantId;
+    }
+    
+    console.log(`[CALL LOG] No call event found for CallSid ${callSid}, defaulting to 'root'`);
+    return 'root';
+  } catch (error) {
+    console.error('[CALL LOG] Error resolving tenant from CallSid:', error);
+    return 'root';
   }
 }

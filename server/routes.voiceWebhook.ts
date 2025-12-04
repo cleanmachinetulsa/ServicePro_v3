@@ -8,6 +8,8 @@ import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { getWebSocketServer } from './websocketService';
 import { requireTechnician } from './technicianMiddleware';
 import { sendPushToAllUsers } from './pushNotificationService';
+import { db } from './db';
+import { wrapTenantDb } from './tenantDb';
 
 const router = Router();
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -442,6 +444,8 @@ router.post('/voice', verifyTwilioSignature, async (req: Request, res: Response)
 /**
  * Call Status Webhook - Triggered after dial attempt
  * Determines if call was answered, busy, or no-answer
+ * 
+ * NOTE: This is a Twilio webhook without user session - resolves tenant from CallSid
  */
 router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Response) => {
   const dialCallStatus = req.body.DialCallStatus;
@@ -453,10 +457,17 @@ router.post('/call-status', verifyTwilioSignature, async (req: Request, res: Res
 
   console.log(`[VOICE] Call status: ${dialCallStatus} from ${callerPhone}, CallSid: ${callSid}, Duration: ${callDuration}`);
 
+  // Twilio callbacks don't have user session - resolve tenant from CallSid
+  if (!req.tenantDb) {
+    const { resolveTenantFromCallSid } = await import('./callLoggingService');
+    const tenantId = await resolveTenantFromCallSid(callSid);
+    req.tenantDb = wrapTenantDb(db, tenantId);
+  }
+
   // Update call event with final status
   try {
     const { updateCallEvent } = await import('./callLoggingService');
-    await updateCallEvent(req.tenantDb!, callSid, {
+    await updateCallEvent(req.tenantDb, callSid, {
       status: dialCallStatus,
       duration: callDuration,
       endedAt: new Date(),
@@ -609,6 +620,8 @@ router.post('/voice-dial-status', verifyTwilioSignature, async (req: Request, re
 /**
  * Voicemail Transcription Webhook
  * Receives transcribed voicemail text and sends through AI agent for intelligent response
+ * 
+ * NOTE: This is a Twilio webhook without user session - resolves tenant from CallSid
  */
 router.post('/transcription', verifyTwilioSignature, async (req: Request, res: Response) => {
   const transcriptionText = req.body.TranscriptionText;
@@ -620,10 +633,17 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
 
   console.log(`[VOICE] Voicemail transcription from ${callerPhone}: ${transcriptionText}`);
 
+  // Twilio callbacks don't have user session - resolve tenant from CallSid
+  if (!req.tenantDb) {
+    const { resolveTenantFromCallSid } = await import('./callLoggingService');
+    const tenantId = await resolveTenantFromCallSid(callSid);
+    req.tenantDb = wrapTenantDb(db, tenantId);
+  }
+
   // Update call event with transcription and recording
   try {
     const { updateCallEvent } = await import('./callLoggingService');
-    await updateCallEvent(req.tenantDb!, callSid, {
+    await updateCallEvent(req.tenantDb, callSid, {
       transcriptionText,
       transcriptionStatus,
       recordingUrl,
@@ -638,10 +658,10 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
     const { users } = await import('@shared/schema');
     const { shouldSendNotification } = await import('./notificationHelper');
     
-    const owner = await req.tenantDb!
+    const owner = await req.tenantDb
       .select()
       .from(users)
-      .where(req.tenantDb!.withTenantFilter(users, eq(users.role, 'owner')))
+      .where(req.tenantDb.withTenantFilter(users, eq(users.role, 'owner')))
       .limit(1)
       .then(results => results[0]);
     
@@ -919,6 +939,8 @@ router.post('/connect-customer', verifyTwilioSignature, async (req: Request, res
 
 /**
  * Click-to-Call Status Callback
+ * 
+ * NOTE: This is a Twilio webhook without user session - resolves tenant from CallSid
  */
 router.post('/click-to-call-status', verifyTwilioSignature, async (req: Request, res: Response) => {
   const callSid = req.body.CallSid;
@@ -927,10 +949,17 @@ router.post('/click-to-call-status', verifyTwilioSignature, async (req: Request,
 
   console.log(`[VOICE] Click-to-call status: ${callStatus}, CallSid: ${callSid}, Duration: ${callDuration}`);
 
+  // Twilio callbacks don't have user session - resolve tenant from CallSid
+  if (!req.tenantDb) {
+    const { resolveTenantFromCallSid } = await import('./callLoggingService');
+    const tenantId = await resolveTenantFromCallSid(callSid);
+    req.tenantDb = wrapTenantDb(db, tenantId);
+  }
+
   // Update call event
   try {
     const { updateCallEvent } = await import('./callLoggingService');
-    await updateCallEvent(req.tenantDb!, callSid, {
+    await updateCallEvent(req.tenantDb, callSid, {
       status: callStatus,
       duration: callDuration ? parseInt(callDuration) : undefined,
       endedAt: callStatus === 'completed' ? new Date() : undefined,
