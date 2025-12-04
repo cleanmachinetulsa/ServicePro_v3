@@ -3735,3 +3735,112 @@ export const A2P_USE_CASE_CATEGORIES = [
   { value: "security_alerts", label: "Security / Fraud Alerts" },
   { value: "2fa", label: "Two-Factor Authentication" },
 ] as const;
+
+// ==========================================
+// PORT RECOVERY CAMPAIGN (One-Time Blast)
+// ==========================================
+
+export const portRecoveryCampaignStatusEnum = pgEnum("port_recovery_campaign_status", [
+  "draft",
+  "scheduled",
+  "running",
+  "completed",
+  "cancelled"
+]);
+
+export const portRecoveryMessageStatusEnum = pgEnum("port_recovery_message_status", [
+  "pending",
+  "sent",
+  "failed",
+  "skipped"
+]);
+
+// Campaign tracking table
+export const portRecoveryCampaigns = pgTable("port_recovery_campaigns", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(), // e.g., '2024-number-port-recovery'
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  status: portRecoveryCampaignStatusEnum("status").notNull().default("draft"),
+  
+  // Campaign stats
+  totalTargets: integer("total_targets").default(0),
+  totalSmsSent: integer("total_sms_sent").default(0),
+  totalEmailSent: integer("total_email_sent").default(0),
+  totalPointsGranted: integer("total_points_granted").default(0),
+  
+  // Points configuration
+  pointsPerCustomer: integer("points_per_customer").notNull().default(500),
+  
+  // Message content
+  smsTemplate: text("sms_template"),
+  emailSubject: text("email_subject"),
+  emailTemplate: text("email_template"),
+  
+  // Timestamps
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("port_recovery_campaigns_tenant_id_idx").on(table.tenantId),
+  statusIdx: index("port_recovery_campaigns_status_idx").on(table.status),
+}));
+
+// Individual targets for the campaign
+export const portRecoveryTargets = pgTable("port_recovery_targets", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => portRecoveryCampaigns.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id),
+  
+  // Customer info
+  customerId: integer("customer_id").references(() => customers.id), // May be null if inferred from phone/email
+  phone: varchar("phone", { length: 20 }),
+  email: text("email"),
+  customerName: text("customer_name"),
+  
+  // Status tracking
+  smsStatus: portRecoveryMessageStatusEnum("sms_status").notNull().default("pending"),
+  emailStatus: portRecoveryMessageStatusEnum("email_status").notNull().default("pending"),
+  pointsGranted: integer("points_granted").default(0),
+  
+  // Error tracking
+  smsErrorMessage: text("sms_error_message"),
+  emailErrorMessage: text("email_error_message"),
+  twilioSid: text("twilio_sid"), // Track the SMS SID for debugging
+  
+  // Timestamps
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  campaignIdIdx: index("port_recovery_targets_campaign_id_idx").on(table.campaignId),
+  tenantPhoneIdx: index("port_recovery_targets_tenant_phone_idx").on(table.tenantId, table.phone),
+  smsStatusIdx: index("port_recovery_targets_sms_status_idx").on(table.smsStatus),
+}));
+
+// Insert schemas
+export const insertPortRecoveryCampaignSchema = createInsertSchema(portRecoveryCampaigns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  startedAt: true,
+  completedAt: true,
+  totalTargets: true,
+  totalSmsSent: true,
+  totalEmailSent: true,
+  totalPointsGranted: true,
+});
+
+export const insertPortRecoveryTargetSchema = createInsertSchema(portRecoveryTargets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  processedAt: true,
+});
+
+// Types
+export type PortRecoveryCampaign = typeof portRecoveryCampaigns.$inferSelect;
+export type InsertPortRecoveryCampaign = z.infer<typeof insertPortRecoveryCampaignSchema>;
+export type PortRecoveryTarget = typeof portRecoveryTargets.$inferSelect;
+export type InsertPortRecoveryTarget = z.infer<typeof insertPortRecoveryTargetSchema>;
