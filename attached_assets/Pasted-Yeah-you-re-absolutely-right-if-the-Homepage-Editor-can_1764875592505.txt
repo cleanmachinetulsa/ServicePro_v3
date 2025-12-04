@@ -1,0 +1,294 @@
+Yeah, you’re absolutely right: if the Homepage Editor can’t actually control the hero/taglines that are live on the site, it’s just cosplay-CMS. Let’s fix that properly and wire it into the actual site content.
+
+Below is a **single big “drop-in” prompt** you can paste into Replit for the agent. It tells it exactly what to inspect and then implement so:
+
+* The **Hero / subheading / taglines on the public homepage** come from the DB.
+* The **Homepage Editor** can edit those exact fields.
+* The **preview on the right** in the editor uses the **same component** as the real homepage, so what you see really is what you get.
+* It’s all **per-tenant**, with safe fallbacks (industry pack defaults / current text).
+
+---
+
+### 👉 Prompt to paste into Replit (for Homepage Editor ↔ Homepage wiring)
+
+Paste everything between the lines into Replit:
+
+````text
+You are working in the `Servicepro-v3-base` Replit project.
+
+Goal
+====
+
+The **Homepage Editor** at `/admin/homepage-editor` must actually control the text shown on the **public marketing site** hero section (like the main Clean Machine homepage and `/site/:subdomain`).
+
+Right now:
+
+- The public homepage hero shows:
+  - Large hero line: e.g. “Premium auto detailing services conveniently done right in your driveway!”
+  - Smaller tagline like “book anytime. chat with our floating assistant.”
+- The **Homepage Editor** shows fields like:
+  - Hero Heading
+  - Hero Subheading
+  - CTA Button Text
+  - etc.
+
+But those inputs **do not actually drive** the text on the public site. The editor is mostly a façade.
+
+We need to:
+
+1. **Wire up the CMS → DB → public site** so the hero text, subheading, and taglines are fully controlled by the Homepage Editor.
+2. Make the **Live Preview** pane on the editor reuse the *same React component* as the real public page hero so it is truly WYSIWYG.
+3. Keep this **multi-tenant safe** and still seed reasonable defaults from the existing industry pack content.
+
+Implementation Plan
+===================
+
+Please follow this plan, updating the actual file paths as needed if they differ.
+
+Step 0 – Discover existing structures
+-------------------------------------
+
+1. Find the homepage editor React page:
+   - Look for something like:  
+     - `client/src/pages/admin/HomepageEditor.tsx`  
+     - OR `client/src/pages/admin/homepage-editor.tsx`  
+     - OR `client/src/components/admin/homepage/HomepageEditor.tsx`
+   - It’s the one that renders the “Homepage Editor” UI with tabs `Hero | About | Services | Colors | Logo | SEO | Template` and a **Live Preview** panel on the right.
+
+2. Find the **public marketing site** hero implementation:
+   - Look at:
+     - `client/src/pages/index.tsx` (root marketing page)
+     - `client/src/pages/site/[subdomain].tsx` or similar
+     - Any shared hero component like `client/src/components/site/Hero.tsx` or `SiteHero.tsx`
+   - Confirm where the two lines currently visible on the real homepage come from:
+     - “Premium auto detailing services conveniently done right in your driveway!”
+     - “book anytime. chat with our floating assistant.”
+
+3. Find the **backend storage** for homepage/site settings:
+   - Check `server/routes.website.ts`, `server/routes.publicSite.ts`, or similar routes that back:
+     - `GET /api/public/site/:subdomain`
+     - Any admin endpoints like `GET/PUT /api/admin/homepage` or `GET/PUT /api/admin/site-settings`
+   - Find the DB table / model used:
+     - e.g. `tenant_homepage_settings`, `tenant_website_settings`, or a JSON field on `tenants`.
+
+4. Confirm current data model:
+   - Identify what fields already exist for hero content, e.g.:
+     - `heroHeading`
+     - `heroSubheading`
+     - `heroCtaText`
+     - `heroCtaLink`
+   - Note if the two tagline lines are **missing** or hard-coded.
+
+Step 1 – Define the canonical hero config
+-----------------------------------------
+
+Create / confirm a **shared TypeScript type** that represents the hero configuration for each tenant. Put it in a shared file used by both client and server, such as `shared/siteConfig.ts` (or create a new module under `shared/` if needed).
+
+Add (or confirm) something like:
+
+```ts
+export interface HeroConfig {
+  heroHeading: string;        // main hero headline (big text)
+  heroSubheading: string;     // secondary line under the hero heading
+  heroTaglinePrimary: string; // e.g. "Premium auto detailing services conveniently done right in your driveway!"
+  heroTaglineSecondary: string; // e.g. "Book anytime. Chat with our floating assistant."
+  heroCtaText: string;        // button label
+  heroCtaLink: string;        // internal link path, e.g. "/booking"
+}
+````
+
+Then ensure your tenant/site config type includes `hero: HeroConfig`.
+
+## Step 2 – Make sure the DB can store all fields
+
+1. In the backend, locate the table that stores homepage/site settings, e.g. `tenant_homepage_settings` or similar.
+
+2. Add columns if they are missing:
+
+   * `hero_tagline_primary` (text)
+   * `hero_tagline_secondary` (text)
+
+   Use your existing migration pattern (SQL file or Prisma migration). Make sure this is **tenant scoped**.
+
+3. If there is a JSON column for `site_config` instead of individual columns, extend the JSON schema to include the new hero fields.
+
+4. Seed sensible defaults:
+
+   * For the root Clean Machine tenant, seed:
+
+     * `heroHeading`: “Clean Machine Auto Detail” or whatever your hero heading is
+     * `heroSubheading`: “Mobile Auto Detailing In Tulsa And Surrounding Areas”
+     * `heroTaglinePrimary`: “Premium auto detailing services conveniently done right in your driveway!”
+     * `heroTaglineSecondary`: “Book anytime. Chat with our floating assistant.”
+     * `heroCtaText`: “Visual Scheduler” or “Book Now” (whichever matches the current design)
+     * `heroCtaLink`: `/booking` or the existing CTA target
+
+   * For other tenants, fall back to industry pack defaults if no custom config is set.
+
+## Step 3 – Wire backend endpoints
+
+1. Admin API:
+
+   * Implement or update an endpoint like:
+
+     * `GET /api/admin/homepage`
+     * `PUT /api/admin/homepage`
+
+   Behavior:
+
+   * Scoped to the **current tenant**.
+   * `GET` returns the `HeroConfig` plus other homepage editor fields (about/sections/etc.).
+   * `PUT` accepts a payload that includes `hero` (with the fields above) and persists it.
+
+   Make sure:
+
+   * Validation is in place (trim strings, limit lengths).
+   * If any hero fields are missing in the payload, they are either preserved from existing config or defaulted (no accidental nuking of config).
+
+2. Public site API:
+
+   * Update `GET /api/public/site/:subdomain` to include the hero fields from the same source used by the admin endpoint.
+   * That means the **public site and the editor preview read from the same canonical config**.
+
+## Step 4 – Homepage Editor: bind inputs to real data
+
+In the Homepage Editor React component:
+
+1. Ensure it **loads** the current homepage config via React Query or your data hook:
+
+   * Example: `const { data: homepageConfig } = useQuery(['/api/admin/homepage'], ...)`.
+
+2. Bind the **Hero** tab inputs to `homepageConfig.hero`:
+
+   * `Hero Heading` → `hero.heroHeading`
+
+   * `Hero Subheading` → `hero.heroSubheading`
+
+   * Add two new inputs if needed:
+
+     * `Primary Tagline` → `hero.heroTaglinePrimary`
+     * `Secondary Tagline` → `hero.heroTaglineSecondary`
+
+   * `CTA Button Text` → `hero.heroCtaText`
+
+   * `CTA Button Link` → `hero.heroCtaLink`
+
+3. On save:
+
+   * `PUT /api/admin/homepage` with the updated hero object (plus any other sections).
+   * Show the existing toast/notification on success.
+
+## Step 5 – Make the Live Preview truly WYSIWYG
+
+In the same Homepage Editor page, the **Live Preview** panel should not have its own hard-coded hero markup.
+
+1. Extract the existing hero section used on the public site into a **shared component**, if it isn’t already:
+
+   * Example: `client/src/components/site/Hero.tsx`:
+
+   ```tsx
+   interface HeroProps {
+     hero: HeroConfig;
+   }
+
+   export function SiteHero({ hero }: HeroProps) {
+     // Use the exact same layout / styling as the current real homepage hero.
+     // Replace hard-coded text with:
+     //   hero.heroHeading
+     //   hero.heroSubheading
+     //   hero.heroTaglinePrimary
+     //   hero.heroTaglineSecondary
+     //   hero.heroCtaText on the button
+     //   hero.heroCtaLink for the CTA link target
+   }
+   ```
+
+2. On the **public site** (index and `/site/:subdomain`):
+
+   * Fetch the site config (including hero) from the public API.
+   * Render `<SiteHero hero={siteConfig.hero} />`.
+
+3. In the **Homepage Editor Live Preview**:
+
+   * Reuse **the same `SiteHero` component**.
+   * Pass the **currently edited** hero state so changes reflect in real time:
+
+   ```tsx
+   <SiteHero hero={currentDraftHeroConfig} />
+   ```
+
+   * Where `currentDraftHeroConfig` is the local state built from the form fields (so changes are visible before saving).
+
+4. Ensure the preview is visually close to the actual homepage (fonts, spacing, colors), but it can use a simpler container so it fits nicely in the right panel.
+
+## Step 6 – Fallback / safety behavior
+
+Implement the following safety behavior:
+
+1. If a tenant has **no homepage config** yet:
+
+   * The public site should **not crash**.
+   * It should fall back to sensible defaults pulled from:
+
+     * The industry pack for that tenant, OR
+     * The current hard-coded Clean Machine values as a last resort.
+
+2. The admin editor should:
+
+   * Initialize its form with those defaults when there is no saved config.
+   * After the user clicks **Save**, the config is persisted and subsequent loads use the DB values.
+
+3. Multi-tenant isolation:
+
+   * All homepage config reads/writes must be **scoped by tenant_id** derived from the auth context.
+   * The public site route `GET /api/public/site/:subdomain` must resolve the tenant and then read only that tenant’s homepage config.
+
+## Step 7 – Clean-up and verification
+
+1. Remove any **duplicate or dead hero text constants** that are no longer needed (old strings that were hard-coded).
+
+2. Avoid circular imports: keep shared types in `shared/` and frontend components under `client/`.
+
+3. Run through this manual QA checklist:
+
+   * Open `/admin/homepage-editor` for the Clean Machine tenant.
+
+     * Change the hero heading, subheading, both tagline lines, and CTA text.
+     * The **Live Preview** updates live as you type.
+     * Click **Save Changes** → no errors.
+   * Open the public marketing page (root or `/site/clean-machine-subdomain`):
+
+     * Refresh the page.
+     * Confirm the hero heading, subheading, tagline lines, and CTA text match exactly what you set in the editor.
+   * Create a test tenant (if you have a seed or onboarding flow):
+
+     * Confirm that a fresh tenant gets default hero content from the industry pack.
+     * Update its homepage editor values and confirm the public site for that tenant updates correctly.
+
+4. Leave clear comments in the key places so future work (like deeper Homepage Editor features) can hook into this structure easily, for example:
+
+   * In the shared `HeroConfig` type
+   * In the admin homepage route
+   * In `SiteHero` explaining it is the canonical hero used across:
+
+     * Public marketing site
+     * Homepage Editor preview
+
+When you’re done, please summarize:
+
+* The final data model for `hero`.
+* Which endpoints now serve and save the config.
+* Which React components render the hero on:
+
+  * Public homepage(s)
+  * Homepage Editor preview.
+
+```
+
+---
+
+Once you run that in Replit and it reports back, we’ll:
+
+1. Verify you can change those lines from the editor and see them live on the real homepage.
+2. Then move on to the IVR Configurator v1 as the next “big block” upgrade.
+```
