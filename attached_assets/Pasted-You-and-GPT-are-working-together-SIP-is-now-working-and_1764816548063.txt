@@ -1,0 +1,161 @@
+You and GPT are working together. SIP is now working and my Groundwire softphone rings, but the IVR behavior needs to be fixed and polished.
+
+Current symptoms:
+- When I call the number, I DO get the IVR and pressing 2 DOES ring my Groundwire softphone.
+- If I reject the call and then try to leave voicemail via the IVR, I sometimes get “invalid option” and the menu restarts.
+- If I don’t press anything, the system hangs up instead of politely replaying the menu a few times.
+- The spoken IVR prompt currently mentions the easter egg digit, which I want to keep secret.
+
+Goal: Fix the IVR + voicemail behavior for the Clean Machine tenant (root) so it behaves like a premium, production-ready menu.
+
+Please do the following, step-by-step:
+
+1️⃣ Inspect the current IVR implementation
+
+- Open:
+  - `server/routes.twilioVoice.ts`
+  - `server/routes.twilioVoiceIvr.ts`
+  - `server/services/ivrHelper.ts`
+- Confirm:
+  - Which function builds the main IVR `<Gather>` TwiML (the initial menu).
+  - Which handler receives the digit after the caller presses a number (likely `/twilio/voice/ivr-selection`).
+  - How “press 2 to talk to a person” currently routes to SIP.
+
+Summarize what you find in a comment or short note at the top of `ivrHelper.ts` (for future reference).
+
+2️⃣ Update the IVR menu text (hide the easter egg)
+
+For the **Clean Machine** tenant:
+
+- Change the spoken/TTS IVR text so it says something like:
+
+  “Thanks for calling Clean Machine Auto Detail.  
+   Press 1 for pricing and information by text message.  
+   Press 2 to speak with someone.  
+   Press 3 to leave a voicemail.”
+
+- IMPORTANT: Do **not** mention the digit 7 or any easter egg in the spoken text.
+- Keep the existing language style and voice if there is already a helper for that, just change the content.
+
+3️⃣ Define the digit → action behavior
+
+In the IVR selection handler (likely `handleIvrSelection` in `routes.twilioVoiceIvr.ts`):
+
+- Make sure the digits behave as follows:
+
+  - `1` → Existing “send pricing by SMS” behavior (whatever you already implemented for pricing).
+  - `2` → `<Dial>` the SIP endpoint:
+
+      `<Dial action="/twilio/voice/voice-dial-status" timeout="25">`
+        `<Sip>sip:jody@cleanmachinetulsa.sip.twilio.com</Sip>`
+      `</Dial>`
+
+    - Use the existing action/status callbacks if you already have them; don’t invent new endpoints.
+    - A 20–30 second timeout is fine; pick something sane and consistent with current logic.
+
+  - `3` → Go straight to voicemail:
+    - Call the existing helper that builds the voicemail TwiML, or create one if needed.
+    - The `<Record>` MUST include:
+      - `recordingStatusCallback="/twilio/voice/recording-status"`
+      - `transcriptionCallback="/twilio/voice/voicemail-transcribed"`
+    - Make sure this path works *both* when the caller presses 3 from the main menu AND when we explicitly redirect to voicemail after a no-answer or rejected SIP leg.
+
+  - `7` → Keep whatever “easter egg” behavior you already implemented, BUT:
+    - Don’t mention it in the spoken IVR prompt.
+    - Treat it as a valid digit in the gather so it still works for people who know it.
+
+- Ensure the IVR selection handler **does not** respond with “invalid option” when the digit is 1, 2, 3, or 7.
+
+4️⃣ Fix “invalid option” and no-input behavior
+
+Update the main IVR `<Gather>` logic in `ivrHelper.ts` so that:
+
+- It accepts digits `1`, `2`, `3`, and `7`.
+- It sets a reasonable timeout, e.g. `timeout="7"` seconds.
+- It supports up to **3 attempts** per call:
+  - Keep track of attempt count using:
+    - either Twilio `<Gather>` with a `redirect` back to the menu and a `tries` query param, OR
+    - by encoding attempt state into the `action` URL.
+  - On each no-input:
+    - Replay the menu.
+  - After 3rd no-input:
+    - Play a short polite goodbye:
+      “We didn’t receive any input, so we’re ending this call. You’re always welcome to text this number as well.”
+    - Then `<Hangup>`.
+
+- For truly invalid digits (not 1/2/3/7):
+  - Play: “Sorry, that’s not a valid option.”
+  - Re-present the menu (increment attempt count).
+  - After 3 invalid attempts, behave like the no-input case: short goodbye and hang up.
+
+Make sure this logic is implemented in a clean helper function so it can be reused for other tenants in the future.
+
+5️⃣ Voicemail path after missed / rejected SIP call
+
+Right now, when I:
+- Press 2 to ring my SIP softphone, and
+- Reject the call on Groundwire,
+
+I sometimes get kicked back to IVR or an “invalid option” message.
+
+Change the call flow so that:
+
+- The SIP `<Dial>`’s `action` or status callback (whichever you are using) detects:
+  - `no-answer`
+  - `busy`
+  - `failed`
+- In these cases, it should **skip the IVR entirely** and go straight to the voicemail TwiML, exactly as if the caller had pressed 3.
+- Only on `answered` should the call be considered complete.
+
+Make sure this uses the **same** voicemail builder function you wired in step 3, so voicemail recording, conversation sync, and push notifications all work consistently.
+
+6️⃣ Double-check voicemail → conversation → push behavior
+
+Inspect:
+
+- `server/services/voicemailConversationService.ts`
+- Any push notification helpers (e.g. `pushNotificationService.ts`).
+
+Verify:
+
+- When the `recordingStatusCallback` fires, we:
+  - Create/update the correct conversation for the caller number.
+  - Save the voicemail recording URL and metadata.
+  - Send a push notification with a `tag` like `voicemail:{CallSid}`.
+- When `voicemail-transcribed` fires, we:
+  - Attach transcription text to the same message or metadata.
+  - Send a second push notification (transcription available), using the same tag pattern so duplicates are deduplicated.
+
+Do not change the push logic unless it’s clearly broken; just ensure the voicemail path we fixed uses these existing handlers.
+
+7️⃣ Look for any existing IVR configurator / UI
+
+Do a quick search for any existing IVR configuration tooling:
+
+- Search for things like:
+  - “IVR” in:
+    - `client/src`
+    - `docs/`
+  - Fields such as `ivr_prompt`, `ivr_menu`, `ivr_config` in the code or schema.
+- If you find an existing IVR settings UI:
+  - Ensure that changing IVR text or digit mappings there actually flows through to the helpers in `ivrHelper.ts` and `routes.twilioVoiceIvr.ts` for the Clean Machine tenant.
+  - If it’s partially implemented, wire it up enough so that basic edits (prompt text and mapping for 1/2/3) work.
+
+If you do NOT find a configurator, just leave a short TODO comment in `ivrHelper.ts` describing how you’d hook up a per-tenant IVR config in the future. Do NOT start building a whole UI in this pass.
+
+8️⃣ Restart + summarize
+
+- Restart the server.
+- Then, in a final message, print a concise summary that includes:
+  - Which files you changed.
+  - The exact behavior now for:
+    - Press 1
+    - Press 2 (including what happens on no-answer/reject)
+    - Press 3
+    - Press 7
+    - No input / invalid input
+  - Confirmation that the voicemail path still uses:
+    - `/twilio/voice/recording-status`
+    - `/twilio/voice/voicemail-transcribed`
+
+Don’t change any Twilio Console webhooks; assume they’re already correct.

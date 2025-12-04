@@ -3,6 +3,14 @@
  * 
  * Handles DTMF selections from the IVR menu and generates appropriate TwiML responses.
  * 
+ * ROUTE SUMMARY:
+ * - POST /twilio/voice/ivr-selection - Handle digit pressed (1/2/3/7)
+ * - POST /twilio/voice/ivr-no-input - Handle no input (replay menu)
+ * - POST /twilio/voice/dial-status - Handle SIP dial outcome (answered/no-answer/busy/failed)
+ * - POST /twilio/voice/voicemail-complete - Voicemail recording finished
+ * - POST /twilio/voice/recording-status - Recording status callback (sync to conversation)
+ * - POST /twilio/voice/voicemail-transcribed - Transcription callback (update conversation)
+ * 
  * Phase 3: Enhanced with:
  * - Voicemail sync to conversations
  * - Push notifications for voicemails
@@ -21,33 +29,91 @@ import {
   buildVoicemailCompleteTwiml,
   buildEasterEggTwiml,
   buildInvalidSelectionTwiml,
+  buildDialStatusTwiml,
+  buildNoInputTwiml,
   getIvrConfigForTenant,
+  VALID_IVR_DIGITS,
 } from './services/ivrHelper';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { TWILIO_TEST_SMS_NUMBER } from './twilioClient';
 import { syncVoicemailIntoConversation } from './services/voicemailConversationService';
 import { sendPushToAllUsers, sendPushNotification } from './pushNotificationService';
 
+/**
+ * Normalize phone number to E.164 format for consistent lookups
+ */
+function normalizePhoneNumber(phone: string | undefined): string | null {
+  if (!phone) return null;
+  
+  let cleaned = phone.trim();
+  const hasPlus = cleaned.startsWith('+');
+  cleaned = cleaned.replace(/\D/g, '');
+  
+  if (!cleaned) return null;
+  
+  if (cleaned.length === 10) {
+    return `+1${cleaned}`;
+  }
+  
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+${cleaned}`;
+  }
+  
+  if (hasPlus) {
+    return `+${cleaned}`;
+  }
+  
+  if (cleaned.length >= 10) {
+    return `+${cleaned}`;
+  }
+  
+  return null;
+}
+
+/**
+ * Get callback base URL from request headers
+ * Works correctly in both development and production
+ */
+function getCallbackBaseUrl(req: Request): string {
+  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['host'] || req.headers['x-forwarded-host'] || process.env.REPLIT_DEV_DOMAIN;
+  return `${protocol}://${host}`;
+}
+
 export function registerIvrRoutes(app: Express) {
   app.post('/twilio/voice/ivr-selection', verifyTwilioSignature, handleIvrSelection);
+  app.post('/twilio/voice/ivr-no-input', verifyTwilioSignature, handleNoInput);
+  app.post('/twilio/voice/dial-status', verifyTwilioSignature, handleDialStatus);
   app.post('/twilio/voice/voicemail-complete', verifyTwilioSignature, handleVoicemailComplete);
   app.post('/twilio/voice/recording-status', verifyTwilioSignature, handleRecordingStatus);
   app.post('/twilio/voice/voicemail-transcribed', verifyTwilioSignature, handleVoicemailTranscribed);
   
-  console.log('[IVR ROUTES] Routes registered: POST /twilio/voice/ivr-selection, /voicemail-complete, /recording-status, /voicemail-transcribed');
+  console.log('[IVR ROUTES] Routes registered: POST /twilio/voice/ivr-selection, /ivr-no-input, /dial-status, /voicemail-complete, /recording-status, /voicemail-transcribed');
 }
 
+/**
+ * Handle IVR digit selection
+ * Valid digits: 1 (services/SMS), 2 (talk to person), 3 (voicemail), 7 (easter egg)
+ */
 async function handleIvrSelection(req: Request, res: Response) {
   const { Digits, From, To, CallSid } = req.body;
+  const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;
+  const forced = req.query.forced as string || req.body.forced as string;
   
-  console.log(`[IVR SELECTION] CallSid=${CallSid}, From=${From}, To=${To}, Digits=${Digits}`);
+  console.log(`[IVR SELECTION] CallSid=${CallSid}, From=${From}, To=${To}, Digits=${Digits}, attempt=${attempt}, forced=${forced}`);
+  
+  // Normalize phone number for lookup
+  const normalizedTo = normalizePhoneNumber(To);
   
   // Look up tenant by phone number
-  const phoneConfig = await db
-    .select()
-    .from(tenantPhoneConfig)
-    .where(eq(tenantPhoneConfig.phoneNumber, To))
-    .limit(1);
+  let phoneConfig: any[] = [];
+  if (normalizedTo) {
+    phoneConfig = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.phoneNumber, normalizedTo))
+      .limit(1);
+  }
   
   const tenantId = phoneConfig[0]?.tenantId || 'root';
   
@@ -63,12 +129,18 @@ async function handleIvrSelection(req: Request, res: Response) {
   // Build IVR config
   const ivrConfig = getIvrConfigForTenant(tenantId, phoneConfig[0] || {}, businessName);
   
-  // Get callback base URL from request host header (works in both dev and production)
-  const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers['host'] || req.headers['x-forwarded-host'] || process.env.REPLIT_DEV_DOMAIN;
-  const callbackBaseUrl = `${protocol}://${host}`;
+  // Get callback base URL
+  const callbackBaseUrl = getCallbackBaseUrl(req);
   
   let twiml: string;
+  
+  // Handle forced voicemail (from dial failure)
+  if (forced === 'voicemail' || Digits === '3') {
+    console.log(`[IVR SELECTION] tenant=${tenantId}, action=voicemail${forced ? ' (forced after dial failure)' : ''}`);
+    twiml = buildVoicemailTwiml(callbackBaseUrl);
+    res.type('text/xml');
+    return res.send(twiml);
+  }
   
   switch (Digits) {
     case '1':
@@ -82,13 +154,8 @@ async function handleIvrSelection(req: Request, res: Response) {
       break;
     
     case '2':
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=forward-to-person`);
-      twiml = buildForwardToPersonTwiml(ivrConfig, From);
-      break;
-    
-    case '3':
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=voicemail`);
-      twiml = buildVoicemailTwiml(callbackBaseUrl);
+      console.log(`[IVR SELECTION] tenant=${tenantId}, action=forward-to-person, SIP=${ivrConfig.sipUsername}@${ivrConfig.sipDomain}`);
+      twiml = buildForwardToPersonTwiml(ivrConfig, From, callbackBaseUrl);
       break;
     
     case '7':
@@ -97,10 +164,44 @@ async function handleIvrSelection(req: Request, res: Response) {
       break;
     
     default:
-      console.log(`[IVR SELECTION] tenant=${tenantId}, action=invalid-selection, digits=${Digits}`);
-      twiml = buildInvalidSelectionTwiml(callbackBaseUrl);
+      // Invalid digit - check if we should retry or hang up
+      console.log(`[IVR SELECTION] tenant=${tenantId}, action=invalid-selection, digits=${Digits}, attempt=${attempt}`);
+      twiml = buildInvalidSelectionTwiml(callbackBaseUrl, attempt);
       break;
   }
+  
+  res.type('text/xml');
+  res.send(twiml);
+}
+
+/**
+ * Handle no input from caller (timeout on <Gather>)
+ * Replays menu up to 3 times, then politely hangs up
+ */
+async function handleNoInput(req: Request, res: Response) {
+  const { From, To, CallSid } = req.body;
+  const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;
+  
+  console.log(`[IVR NO-INPUT] CallSid=${CallSid}, From=${From}, To=${To}, attempt=${attempt}`);
+  
+  const callbackBaseUrl = getCallbackBaseUrl(req);
+  const twiml = buildNoInputTwiml(callbackBaseUrl, attempt);
+  
+  res.type('text/xml');
+  res.send(twiml);
+}
+
+/**
+ * Handle SIP dial status callback
+ * Routes to voicemail for no-answer, busy, failed, canceled
+ */
+async function handleDialStatus(req: Request, res: Response) {
+  const { DialCallStatus, DialCallSid, CallSid, From, To } = req.body;
+  
+  console.log(`[DIAL STATUS] CallSid=${CallSid}, DialCallSid=${DialCallSid}, Status=${DialCallStatus}, From=${From}`);
+  
+  const callbackBaseUrl = getCallbackBaseUrl(req);
+  const twiml = buildDialStatusTwiml(DialCallStatus, callbackBaseUrl);
   
   res.type('text/xml');
   res.send(twiml);
@@ -110,10 +211,6 @@ async function handleVoicemailComplete(req: Request, res: Response) {
   const { RecordingUrl, RecordingSid, CallSid, From, To } = req.body;
   
   console.log(`[VOICEMAIL COMPLETE] CallSid=${CallSid}, From=${From}, RecordingSid=${RecordingSid}`);
-  
-  // Note: Push notification is handled by recording-status callback (handleRecordingStatus)
-  // when RecordingStatus=completed. This avoids duplicate notifications and ensures
-  // proper tenant scoping through notifyVoicemail().
   
   // Send confirmation TwiML
   const twiml = buildVoicemailCompleteTwiml();
@@ -126,14 +223,20 @@ async function handleRecordingStatus(req: Request, res: Response) {
   
   console.log(`[RECORDING STATUS] CallSid=${CallSid}, RecordingSid=${RecordingSid}, Status=${RecordingStatus}`);
   
-  // Look up tenant
-  const phoneConfig = await db
-    .select()
-    .from(tenantPhoneConfig)
-    .where(eq(tenantPhoneConfig.phoneNumber, To))
-    .limit(1);
+  // Normalize phone number for lookup
+  const normalizedTo = normalizePhoneNumber(To);
   
-  const tenantId = phoneConfig[0]?.tenantId || 'root';
+  // Look up tenant
+  let phoneConfigResult: any[] = [];
+  if (normalizedTo) {
+    phoneConfigResult = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.phoneNumber, normalizedTo))
+      .limit(1);
+  }
+  
+  const tenantId = phoneConfigResult[0]?.tenantId || 'root';
   
   if (RecordingStatus === 'completed') {
     console.log(`[RECORDING STATUS] Recording completed: ${RecordingUrl}`);
@@ -143,7 +246,7 @@ async function handleRecordingStatus(req: Request, res: Response) {
     const [phoneLine] = await tenantDb
       .select()
       .from(phoneLines)
-      .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, To)))
+      .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, normalizedTo || To)))
       .limit(1);
     
     const phoneLineId = phoneLine?.id || 1;
@@ -189,21 +292,27 @@ async function handleVoicemailTranscribed(req: Request, res: Response) {
     return res.sendStatus(200);
   }
   
-  // Look up tenant
-  const phoneConfig = await db
-    .select()
-    .from(tenantPhoneConfig)
-    .where(eq(tenantPhoneConfig.phoneNumber, To))
-    .limit(1);
+  // Normalize phone number for lookup
+  const normalizedTo = normalizePhoneNumber(To);
   
-  const tenantId = phoneConfig[0]?.tenantId || 'root';
+  // Look up tenant
+  let phoneConfigResult: any[] = [];
+  if (normalizedTo) {
+    phoneConfigResult = await db
+      .select()
+      .from(tenantPhoneConfig)
+      .where(eq(tenantPhoneConfig.phoneNumber, normalizedTo))
+      .limit(1);
+  }
+  
+  const tenantId = phoneConfigResult[0]?.tenantId || 'root';
   const tenantDb = wrapTenantDb(db, tenantId);
   
   // Get phone line ID
   const [phoneLine] = await tenantDb
     .select()
     .from(phoneLines)
-    .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, To)))
+    .where(tenantDb.withTenantFilter(phoneLines, eq(phoneLines.phoneNumber, normalizedTo || To)))
     .limit(1);
   
   const phoneLineId = phoneLine?.id || 1;
