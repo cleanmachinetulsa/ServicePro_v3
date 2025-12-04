@@ -185,6 +185,7 @@ export default function HomepageEditor() {
                   <Input
                     value={formData.heroHeading || ''}
                     onChange={(e) => setFormData({ ...formData, heroHeading: e.target.value })}
+                    placeholder="Clean Machine Auto Detail"
                     data-testid="input-hero-heading"
                   />
                 </div>
@@ -193,14 +194,37 @@ export default function HomepageEditor() {
                   <Input
                     value={formData.heroSubheading || ''}
                     onChange={(e) => setFormData({ ...formData, heroSubheading: e.target.value })}
+                    placeholder="Mobile Auto Detailing In Tulsa And Surrounding Areas"
                     data-testid="input-hero-subheading"
                   />
+                </div>
+                <div>
+                  <Label>Primary Tagline</Label>
+                  <Textarea
+                    rows={2}
+                    value={formData.heroTaglinePrimary || ''}
+                    onChange={(e) => setFormData({ ...formData, heroTaglinePrimary: e.target.value })}
+                    placeholder="Premium auto detailing services conveniently done right in your driveway!"
+                    data-testid="input-tagline-primary"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Main description shown below the logo</p>
+                </div>
+                <div>
+                  <Label>Secondary Tagline</Label>
+                  <Input
+                    value={formData.heroTaglineSecondary || ''}
+                    onChange={(e) => setFormData({ ...formData, heroTaglineSecondary: e.target.value })}
+                    placeholder="book anytime. chat with our floating assistant."
+                    data-testid="input-tagline-secondary"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Italic text shown below the primary tagline</p>
                 </div>
                 <div>
                   <Label>CTA Button Text</Label>
                   <Input
                     value={formData.heroCtaText || ''}
                     onChange={(e) => setFormData({ ...formData, heroCtaText: e.target.value })}
+                    placeholder="Visual Scheduler"
                     data-testid="input-cta-text"
                   />
                 </div>
@@ -209,6 +233,7 @@ export default function HomepageEditor() {
                   <Input
                     value={formData.heroCtaLink || ''}
                     onChange={(e) => setFormData({ ...formData, heroCtaLink: e.target.value })}
+                    placeholder="/schedule"
                     data-testid="input-cta-link"
                   />
                 </div>
@@ -407,7 +432,7 @@ export default function HomepageEditor() {
             <CardTitle>Live Preview</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6 p-4 border rounded bg-background">
+            <div className="space-y-6 p-4 border rounded bg-gradient-to-b from-gray-50 via-blue-50/10 to-white dark:from-gray-900 dark:via-blue-950/10 dark:to-black">
               {/* Logo */}
               {logoPreview && (
                 <div className="flex justify-center">
@@ -415,42 +440,49 @@ export default function HomepageEditor() {
                 </div>
               )}
 
-              {/* Hero */}
-              <div className="text-center space-y-2">
-                <h1 className="text-3xl font-bold" style={{ color: `hsl(${formData.primaryColor})` }}>
-                  {formData.heroHeading || 'Hero Heading'}
-                </h1>
-                <p className="text-lg text-muted-foreground">
-                  {formData.heroSubheading || 'Hero Subheading'}
+              {/* Hero Section */}
+              <div className="text-center space-y-4">
+                {/* Primary Tagline */}
+                <p className="text-base text-muted-foreground leading-relaxed font-light max-w-xl mx-auto">
+                  {formData.heroTaglinePrimary || 'Premium auto detailing services conveniently done right in your driveway!'}
                 </p>
+                
+                {/* Secondary Tagline */}
+                <p className="text-sm text-muted-foreground/80 italic">
+                  {formData.heroTaglineSecondary || 'book anytime. chat with our floating assistant.'}
+                </p>
+                
+                {/* CTA Button */}
                 <Button
+                  variant="outline"
+                  className="mt-4"
                   style={{
-                    backgroundColor: `hsl(${formData.primaryColor})`,
-                    color: 'white',
+                    borderColor: `hsl(${formData.accentColor || '340 80% 55%'})`,
+                    backgroundColor: `hsl(${formData.accentColor || '340 80% 55%'} / 0.1)`,
                   }}
                 >
-                  {formData.heroCtaText || 'CTA Button'}
+                  {formData.heroCtaText || 'Visual Scheduler'}
                 </Button>
               </div>
 
-              {/* About */}
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold" style={{ color: `hsl(${formData.secondaryColor})` }}>
-                  {formData.aboutHeading || 'About Heading'}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  {formData.aboutText || 'About text goes here...'}
-                </p>
-              </div>
-
-              {/* Services */}
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold" style={{ color: `hsl(${formData.accentColor})` }}>
-                  {formData.servicesHeading || 'Services Heading'}
+              {/* Services Section */}
+              <div className="space-y-2 p-4 rounded-lg bg-muted/50">
+                <h2 className="text-xl font-bold text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-800 via-blue-600 to-blue-800 dark:from-blue-200 dark:via-blue-400 dark:to-blue-200">
+                  {formData.servicesHeading || 'Premium Auto Detailing Services'}
                 </h2>
                 {formData.servicesSubheading && (
-                  <p className="text-sm text-muted-foreground">{formData.servicesSubheading}</p>
+                  <p className="text-sm text-muted-foreground text-center">{formData.servicesSubheading}</p>
                 )}
+              </div>
+
+              {/* About Section */}
+              <div className="space-y-2 p-4 rounded-lg border border-dashed">
+                <h3 className="text-lg font-semibold" style={{ color: `hsl(${formData.secondaryColor || '280 80% 60%'})` }}>
+                  {formData.aboutHeading || 'About Us'}
+                </h3>
+                <p className="text-sm text-muted-foreground line-clamp-3">
+                  {formData.aboutText || 'Premium auto detailing services...'}
+                </p>
               </div>
             </div>
           </CardContent>
