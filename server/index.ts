@@ -31,6 +31,7 @@ import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
 import a2pCampaignRouter from "./routes.a2pCampaign";
 import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
+import portRecoveryRouter from "./routes.portRecovery";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { setupGoogleOAuth } from "./googleOAuth";
@@ -314,6 +315,8 @@ app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 app.use('/api/sms-templates', smsTemplatesRouter);
 // Register A2P Campaign Assistant routes (Phase - A2P 10DLC Registration)
 app.use('/api/a2p', a2pCampaignRouter);
+// Register Port Recovery Campaign routes (one-time recovery blast)
+app.use('/api/port-recovery', portRecoveryRouter);
 // Register agent context routes (Phase 10 - AI Setup & Support Agent)
 app.use('/api/agent', agentContextRouter);
 // Register setup assistant routes (Phase 12 - Setup & Support Copilot)
