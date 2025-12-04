@@ -1,0 +1,93 @@
+NEW PHASE: IVR CONFIGURATOR v1 (multi-tenant, configurable, no hard-coded digits)
+
+Goal:
+Replace the hard-coded IVR behavior in ivrHelper.ts with a proper multi-tenant IVR engine, backed by database tables and a UI editor in the dashboard, WITHOUT breaking the Clean Machine IVR that is currently working.
+
+Use this as the source of truth for the design (from GPT):
+- We need:
+  - ivr_menus table
+  - ivr_menu_items table
+  - ivr_prompts table
+- Each menu is per-tenant, with entry_point = 'main' or 'after_hours'.
+- menu_items map digits (1-9, 0, *, #) to actions:
+  - PLAY_MESSAGE, SMS_INFO, FORWARD_SIP, FORWARD_NUMBER, VOICEMAIL, GO_TO_MENU, TRANSFER_AGENT
+- Prompts can be TTS text or uploaded audio.
+- Max attempts and timeout should be stored per menu.
+- Hidden items (like the secret “7” easter egg) exist but are not read aloud.
+
+Part 1 – Data Models
+1. Add new tables / schema:
+   - ivr_menus
+   - ivr_menu_items
+   - ivr_prompts
+2. Migrations must be safe for existing data.
+3. Seed a default IVR config for the root Clean Machine tenant that matches my current behavior:
+   - Main Menu (entry_point = 'main'):
+     - 1 → SMS_INFO (pricing/booking link)
+     - 2 → FORWARD_SIP (current jody@cleanmachinetulsa.sip.twilio.com endpoint)
+     - 3 → VOICEMAIL
+     - 7 → hidden easter egg (PLAY_MESSAGE)
+   - Prompts:
+     - main menu prompt text should match the current script.
+     - invalid and no-input prompts similar to current behavior.
+
+Part 2 – Runtime Engine
+1. Update ivrHelper.ts to:
+   - Load the active ivr_menu based on:
+     - tenant_id
+     - entry_point ('main' or 'after_hours')
+   - Use Gather to play:
+     - Either TTS (from ivr_prompts.tts_text) OR audio file if present.
+   - On digit:
+     - Look up matching ivr_menu_item for that digit.
+     - Execute behavior by action_type:
+       - PLAY_MESSAGE → Say or Play
+       - SMS_INFO → send SMS + Say confirmation
+       - FORWARD_SIP → Dial <Sip>
+       - FORWARD_NUMBER → Dial <Number>
+       - VOICEMAIL → route to existing voicemail flow
+       - GO_TO_MENU → load that menu and render another prompt
+   - Respect:
+     - max_attempts
+     - timeout seconds
+   - Keep:
+     - secret easter egg (7) as a hidden menu item (is_hidden = true) so it isn’t read aloud, but still works.
+
+2. Keep the existing IVR public behavior for Clean Machine EXACTLY the same (same words, same digits) but now powered through the DB.
+
+Part 3 – Admin UI (tenant dashboard)
+1. Add an “IVR / Phone Menu” section to the tenant dashboard.
+2. Features:
+   - See list of IVR menus (Main, After Hours).
+   - Configure digits 0–9, *, # for each menu:
+     - Choose action from a dropdown.
+     - Enter label and payload (e.g. phone number, SIP URI).
+     - Toggle “hidden” for secret options like 7.
+   - Configure prompts:
+     - Menu Prompt (TTS text field, plus a display of any audio file if we integrate uploads later).
+     - No Input Prompt.
+     - Invalid Option Prompt.
+   - Basic controls for:
+     - max_attempts
+     - timeout
+
+3. For now, audio upload can be left as a TODO/comment, but the UI and model must be ready to support either TTS or audio.
+
+Part 4 – Safety and Fallbacks
+1. If a tenant has no IVR config:
+   - Bypass IVR and go straight to current default behavior (e.g. ring phone then voicemail).
+2. If the IVR config is broken (no menu, invalid action_type):
+   - Fallback to tenant voicemail.
+3. Add TODOs/comments for a future global “ServicePro fallback” IVR that catches catastrophic errors without ever using Clean Machine’s numbers.
+
+Constraints:
+- DO NOT break current working SIP registration or Clean Machine IVR routing.
+- Minimize churn in existing routes.twilioVoiceIvr.ts – just adapt it to call the new engine.
+- Summarize:
+  - New tables
+  - New components
+  - How a tenant’s IVR is loaded and executed at runtime.
+
+When you finish:
+- Tell me exactly what files were added/changed.
+- Confirm that Clean Machine’s current IVR behavior is preserved.
