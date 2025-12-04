@@ -55,6 +55,7 @@ import AdminTenants from "./pages/AdminTenants";
 import AdminTenantDetail from "./pages/AdminTenantDetail";
 import AdminPromos from "./pages/AdminPromos";
 import AdminPhoneConfig from "./pages/AdminPhoneConfig";
+import AdminIvrConfig from "./pages/AdminIvrConfig";
 import AdminConciergeSetup from "./pages/AdminConciergeSetup";
 import PlatformSuggestions from "./pages/PlatformSuggestions";
 import TenantSuggestions from "./pages/TenantSuggestions";
@@ -314,6 +315,11 @@ function Router() {
       <Route path="/admin/phone-config">
         <AuthGuard>
           <AdminPhoneConfig />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/ivr-config">
+        <AuthGuard>
+          <AdminIvrConfig />
         </AuthGuard>
       </Route>
       <Route path="/admin/concierge-setup">
