@@ -1,0 +1,180 @@
+You are working in the `Servicepro-v3-base` project.
+
+Goal
+====
+
+Create a safe cleanup tool that:
+
+1. Scans the repo for **assets** (images/media) and **Markdown docs**.
+2. Detects which assets are *unused* (no references anywhere in the code).
+3. Moves:
+   - Unused assets to: `archive/unused-assets-YYYY-MM-DD/...`
+   - Non-essential `.md` docs to: `archive/docs-YYYY-MM-DD/...`
+4. Leaves all critical files and config in place (no breaking changes).
+5. Adds an npm script so I can run: `npm run archive:unused`.
+
+This is for manual cleanup: I’ll review/download `archive/` and then delete from the repo once I’m comfortable.
+
+Important Safety Rules
+======================
+
+- **Do NOT touch**:
+  - Any env/secret files or sample envs (`.env*`, `env.example`, etc.)
+  - Database migrations, seed scripts, or schema files
+  - `package.json`, build config, tsconfig, vite/webpack configs (beyond adding the new npm script)
+  - Anything under `.github/`, `.vscode/`, or CI config
+- Do NOT delete anything automatically. Only **move** files into `archive/`.
+- The script must be **idempotent** (running it twice should not crash).
+- Only operate within the project root (no parent directories).
+
+Step 1 – Add the Node cleanup script
+====================================
+
+Create a new file:
+
+- `tools/archiveUnusedAssets.js`
+
+Implement it as a plain CommonJS Node script using only Node core modules (`fs`, `path`).
+
+Behavior:
+
+1. Set up basic config at the top:
+
+   - `projectRoot`: `path.resolve(__dirname, '..')`
+   - `assetExtensions`:  
+     `['.png', '.jpg', '.jpeg', '.svg', '.gif', '.webp', '.mp3', '.mp4', '.mov', '.avi', '.pdf']`
+   - `docExtensions`: `['.md', '.mdx']`
+   - `ignoreDirs`:  
+     `['node_modules', '.git', 'dist', 'build', '.next', '.cache', '.turbo', 'coverage', '.repl', '.replit']`  
+     (add any build/output dirs specific to this project if they exist).
+   - `archiveRoot`: `path.join(projectRoot, 'archive')`
+
+2. Implement a recursive `walk(dir)` helper that returns an array of **absolute file paths** under `dir`, skipping any folder in `ignoreDirs`.
+
+3. Build a list of **all files** in the project (except ignored dirs).
+
+4. Split into:
+
+   - `assetFiles`: files whose extension is in `assetExtensions`.
+   - `docFiles`: files whose extension is in `docExtensions`.
+
+5. Determine which files are **searchable text**:
+
+   - `searchableFiles`: all files **excluding**:
+     - anything in `assetExtensions`
+     - anything in `docExtensions`
+     - very large files (> 1 MB) to avoid heavy memory use  
+       (you can skip them by filesize check).
+
+6. Read all `searchableFiles` once into memory:
+
+   ```js
+   const textFiles = [];
+
+   for (const file of searchableFiles) {
+     try {
+       const content = fs.readFileSync(file, 'utf8');
+       textFiles.push({ file, content });
+     } catch (err) {
+       // Skip binary / unreadable files
+     }
+   }
+For each assetFile:
+
+Compute:
+
+basename = path.basename(assetFile)
+
+relPath = path.relative(projectRoot, assetFile).replace(/\\/g, '/')
+
+Consider the asset used if any textFile.content includes:
+
+basename, OR
+
+relPath
+
+Otherwise mark it unused.
+
+For docs:
+
+Treat most .md as archival candidates, but keep some in place:
+
+Never move any file whose basename.toLowerCase() is in:
+['readme.md', 'license.md', 'changelog.md', 'security.md'].
+
+Never move markdown under .github/ (issue/PR templates).
+
+All other .md/.mdx files should be moved to the docs archive.
+
+Prepare timestamped archive directories:
+
+js
+Copy code
+const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+const unusedAssetsDir = path.join(archiveRoot, `unused-assets-${today}`);
+const docsArchiveDir = path.join(archiveRoot, `docs-${today}`);
+fs.mkdirSync(unusedAssetsDir, { recursive: true });
+fs.mkdirSync(docsArchiveDir, { recursive: true });
+Implement a helper moveFile(src, baseArchiveDir):
+
+Compute rel = path.relative(projectRoot, src)
+
+dest = path.join(baseArchiveDir, rel)
+
+fs.mkdirSync(path.dirname(dest), { recursive: true })
+
+fs.renameSync(src, dest) (move the file)
+
+For each unused asset, call moveFile(assetFile, unusedAssetsDir).
+
+For each archived doc, call moveFile(docFile, docsArchiveDir).
+
+At the end, log a clear summary:
+
+Total assets scanned
+
+Number of assets moved
+
+Total docs scanned
+
+Number of docs moved
+
+Archive locations
+
+Handle errors gracefully:
+
+Wrap fs.renameSync in try/catch and log failures, but don’t crash the whole script.
+
+Step 2 – Add npm script
+In package.json, under "scripts", add a new entry:
+
+"archive:unused": "node tools/archiveUnusedAssets.js"
+
+Ensure you don’t remove any existing scripts.
+
+Step 3 – Quick sanity checks
+Run the script (from the Replit shell):
+
+npm run archive:unused
+
+Confirm behavior:
+
+It creates archive/unused-assets-YYYY-MM-DD/ and archive/docs-YYYY-MM-DD/.
+
+The folder structure under archive/ mirrors the original paths (so it’s easy to understand / restore).
+
+Critical markdown files (README.md, LICENSE.md, etc.) are still in place.
+
+No code or config files have been moved.
+
+Make sure the app still:
+
+Installs dependencies
+
+Builds
+
+Runs the dev server without errors
+
+If any asset turns out to be misclassified as unused, it can be restored manually by moving it back from archive/ to its original path.
+
+When you’re done, please leave a short summary comment at the top of tools/archiveUnusedAssets.js describing what it does and the safety rules (no deletes, only moves)
