@@ -369,6 +369,10 @@ app.use((req, res, next) => {
   const { seedTenantPhone } = await import('./seed/seedTenantPhone');
   await seedTenantPhone(db);
   
+  // Phase 3: Seed IVR menus for all tenants (idempotent - only seeds if missing)
+  const { seedIvrMenus } = await import('./seed/seedIvrMenus');
+  await seedIvrMenus(db);
+  
   // Initialize SMS templates (idempotent - safe to run multiple times)
   const { initializeSmsTemplates } = await import('./initSmsTemplates');
   await initializeSmsTemplates();
