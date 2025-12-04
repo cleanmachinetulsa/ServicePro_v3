@@ -654,11 +654,11 @@ export async function generateAIResponse(
         let completion;
         try {
           // Make OpenAI call with SMS-optimized settings
+          // NOTE: Tools disabled for SMS to ensure customers always get text responses
+          // The AI can still recommend scheduling but won't block on function calls
           completion = await openai!.chat.completions.create({
             model: SMS_AGENT_MODEL,
             messages,
-            tools: SCHEDULING_FUNCTIONS,
-            tool_choice: "auto",
             max_completion_tokens: 300, // Shorter for SMS (GPT-5.1 uses max_completion_tokens)
           });
         } catch (openaiError) {
