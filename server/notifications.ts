@@ -141,7 +141,7 @@ export async function sendSMS(
     // Check opt-out status if we have a conversation
     if (effectiveConversationId) {
       const { isOptedOut } = await import('./smsConsentService');
-      const optedOut = await isOptedOut(effectiveConversationId);
+      const optedOut = await isOptedOut(tenantDb, effectiveConversationId);
       
       if (optedOut) {
         console.warn(`[SMS COMPLIANCE] ⚠️ Blocked SMS to ${formattedPhone} - Customer opted out via STOP keyword (Conversation ID: ${effectiveConversationId})`);

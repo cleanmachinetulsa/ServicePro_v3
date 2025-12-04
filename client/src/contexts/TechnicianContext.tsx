@@ -101,7 +101,14 @@ export function TechnicianProvider({ children, demoMode = false, demoJobs = [] }
   useEffect(() => {
     const initDevice = async () => {
       try {
-        const { token } = await apiRequest('POST', '/twilio/voice/token', {});
+        const response = await fetch('/twilio/voice/token', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error('Failed to get voice token');
+        }
+        const { token } = await response.json();
         const newDevice = new Device(token, {
           codecPreferences: ['opus', 'pcmu'],
           edge: 'roaming',
