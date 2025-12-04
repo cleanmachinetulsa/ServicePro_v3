@@ -160,6 +160,8 @@ async function handleSimpleMode(
 
 /**
  * Handle IVR mode: Interactive voice menu (Phase 2.3)
+ * 
+ * Supports retry logic via ?attempt= query parameter
  */
 async function handleIvrMode(
   req: Request,
@@ -167,7 +169,10 @@ async function handleIvrMode(
   tenantId: string,
   phoneConfig: any
 ) {
-  console.log(`[CANONICAL VOICE] mode=ivr, tenant=${tenantId}, action=main-menu`);
+  // Get attempt number from query string (for retry after no-input or invalid digit)
+  const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;
+  
+  console.log(`[CANONICAL VOICE] mode=ivr, tenant=${tenantId}, action=main-menu, attempt=${attempt}`);
   
   // Get tenant business name from config
   const tenantConfigData = await db
@@ -188,8 +193,8 @@ async function handleIvrMode(
   
   console.log(`[CANONICAL VOICE] IVR callback base URL: ${callbackBaseUrl}`);
   
-  // Generate main menu TwiML
-  const twiml = buildMainMenuTwiml(ivrConfig, callbackBaseUrl);
+  // Generate main menu TwiML with current attempt number
+  const twiml = buildMainMenuTwiml(ivrConfig, callbackBaseUrl, attempt);
   
   res.type('text/xml');
   res.send(twiml);
