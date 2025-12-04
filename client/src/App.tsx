@@ -21,6 +21,7 @@ import BannerDisplay from "@/components/BannerDisplay";
 import DamageAssessmentPage from "@/pages/damage-assessment";
 import DemoPage from "@/pages/demo";
 import HomePage from "@/pages/home";
+import LandingPage from "@/pages/LandingPage";
 import SchedulePage from "@/pages/Schedule";
 import QuickBookingPage from "@/pages/quick-booking";
 import LoyaltyPointsPage from "@/pages/rewards";
@@ -88,6 +89,7 @@ import GalleryManagementPage from "./pages/gallery-management";
 import DownloadExportPage from "./pages/download-export";
 import LaunchPage from "./pages/launch";
 import SetupCopilot from "./pages/SetupCopilot";
+import SetupWizard from "./pages/SetupWizard";
 
 // 🆕 Industry onboarding page
 import OnboardingIndustryPage from "./pages/OnboardingIndustry";
@@ -377,6 +379,13 @@ function Router() {
           <SetupCopilot />
         </AuthGuard>
       </Route>
+      
+      {/* Setup Wizard - post-signup onboarding flow */}
+      <Route path="/setup-wizard">
+        <AuthGuard>
+          <SetupWizard />
+        </AuthGuard>
+      </Route>
 
       <Route path="/technician">
         <AuthGuard>
@@ -446,7 +455,11 @@ function Router() {
       <Route path="/portal/settings" component={CustomerSettings} />
       <Route path="/portal" component={CustomerPortalDashboard} />
 
-      <Route path="/" component={HomePage} />
+      {/* Customer-facing homepage for Clean Machine (tenant booking site) */}
+      <Route path="/home" component={HomePage} />
+      
+      {/* Public landing page for ServicePro platform */}
+      <Route path="/" component={LandingPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -280,6 +280,11 @@ export const tenantConfig = pgTable("tenant_config", {
   serviceAreaMaxMinutes: integer("service_area_max_minutes").default(25), // Max allowed travel time from home base
   serviceAreaSoftDeclineMessage: text("service_area_soft_decline_message"), // Custom message for out-of-area requests
   
+  // Onboarding progress tracking (Phase: Self-Service Onboarding)
+  onboardingBusinessSetupDone: boolean("onboarding_business_setup_done").default(false),
+  onboardingPhoneSetupDone: boolean("onboarding_phone_setup_done").default(false),
+  onboardingSitePublished: boolean("onboarding_site_published").default(false),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
