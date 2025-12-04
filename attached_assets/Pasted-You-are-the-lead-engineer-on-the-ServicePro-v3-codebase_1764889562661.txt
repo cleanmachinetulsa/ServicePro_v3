@@ -1,0 +1,180 @@
+You are the lead engineer on the ServicePro v3 codebase. I want to implement a ONE-TIME “Port Recovery Campaign” system to apologize for any messages lost during number porting and to grant 500 loyalty points to each customer, with guardrails.
+
+Goals:
+
+- Consolidate all customers (phone + email) from:
+  - Existing customers table(s)
+  - Existing conversations/messages
+  - Imported Google Voice SMS (source = 'google_voice_import')
+- Let the root owner run a ONE-TIME blast (per tenant or just root for now) that:
+  - Grants 500 points to each eligible customer
+  - Sends an SMS (and email if email infra exists) with:
+    - apology + explanation
+    - 500-point offer
+    - booking link
+  - Tracks who was contacted and when
+- Points rules:
+  - 500 points cannot be used to book a “free-only tiny add-on”
+  - Must be attached to a real paid service on that ticket, OR
+  - Require a minimum cart total before applying all 500 points
+
+Important: If a formal loyalty/points system already exists in this codebase, USE IT. If not, create a minimal, clean implementation but leave TODOs for deeper gamification later.
+
+Please implement the following:
+
+1) Database: campaign tracking + (optional) points infrastructure
+
+a) Create table `port_recovery_campaigns`:
+
+- id (PK)
+- tenant_id (FK, nullable – for now focus on root tenant)
+- name (text)  // e.g. '2024-number-port-recovery'
+- created_by_user_id (FK)
+- created_at, updated_at
+- status: 'draft' | 'scheduled' | 'running' | 'completed' | 'cancelled'
+- total_targets (int)
+- total_sms_sent (int)
+- total_email_sent (int)
+- total_points_granted (int)
+
+b) Create table `port_recovery_targets`:
+
+- id (PK)
+- campaign_id (FK)
+- tenant_id
+- customer_id (nullable if we infer from phone/email only)
+- phone (text)
+- email (text nullable)
+- sms_status: 'pending' | 'sent' | 'failed' | 'skipped'
+- email_status: same enum
+- points_granted (int default 0)
+- error_message (text nullable)
+- created_at, updated_at
+
+c) Loyalty / points:
+
+- If a points/credits system already exists (e.g. loyalty_points, customer_rewards, etc.), integrate with it.
+- If NO such system exists, create a minimal `customer_points` table:
+
+  - id (PK)
+  - tenant_id
+  - customer_id
+  - balance (int)
+  - last_updated_at
+
+  and a `points_transactions` table:
+
+  - id (PK)
+  - tenant_id
+  - customer_id
+  - delta (int)  // +/- points change
+  - campaign_id nullable
+  - reason (text)
+  - created_at
+
+2) Service layer: customer consolidation + points handling
+
+Create `server/services/portRecoveryService.ts` with:
+
+- `buildTargetListForPortRecovery(tenantId)`:
+  - Pulls all distinct customers from:
+    - customers table
+    - conversation participants (SMS)
+    - imported Google Voice messages (source = 'google_voice_import')
+  - Dedupes by normalized phone and email.
+  - Respects opt-out flags if they exist.
+  - Returns a list of potential targets.
+
+- `createPortRecoveryCampaign(tenantId, createdByUserId)`:
+  - Calls the function above, creates a `port_recovery_campaigns` row.
+  - Inserts `port_recovery_targets` rows.
+
+- `grantPointsForTarget(target)`:
+  - If points infra exists, credit 500 points to that customer.
+  - Otherwise, use the minimal `customer_points` approach.
+  - Record a transaction with reason = 'port_recovery_500_points'.
+
+3) SMS + email sending
+
+Reuse existing SMS and email infrastructure if present:
+
+- For SMS:
+  - Use the same Twilio send function used for normal outbound messages.
+  - Template for SMS (adjust copy to my tone):
+
+    "Hey this is Jody with Clean Machine Auto Detail. We recently upgraded our phone & text system, and there’s a small chance we missed a message from you. I’m really sorry if that happened. To make it right, we’ve added 500 reward points to your account – you can use them toward interior protection, engine bay cleaning, or save them up toward a maintenance detail. Tap here to view options & book: {{magicBookingUrl}}. Reply STOP to unsubscribe."
+
+- For Email:
+  - If there is already an email service (SendGrid, etc.), send a matching email version.
+  - If there is no email service, leave a clear TODO and skip email sending gracefully.
+
+Create a small job-style function:
+
+- `runPortRecoveryBatch(campaignId, limit = 100)`:
+  - Fetches N pending targets.
+  - For each:
+    - Grants points if not already granted.
+    - Sends SMS.
+    - Sends email if possible.
+    - Updates sms_status/email_status and points_granted.
+  - Updates campaign status when finished.
+
+4) Admin UI: `/admin/port-recovery`
+
+Create `client/src/pages/AdminPortRecovery.tsx` (owner-only) and route it from the admin menu.
+
+The UI should allow:
+
+- Creating a new campaign:
+  - Show a preview: total unique customers, how many have phones/emails.
+  - “Create Draft Campaign” button.
+
+- Viewing a campaign:
+  - Top summary: name, status, counts (targets, sent, failed, points granted).
+  - Table of targets with:
+    - phone, email, sms_status, email_status, points_granted, error_message
+
+- Actions:
+  - “Send Test SMS to Me First” (uses BUSINESS_OWNER_PERSONAL_PHONE).
+  - “Start Sending to All” → triggers `runPortRecoveryBatch` on the backend (ideally via an API that runs several batches, or a simple loop with progress reporting).
+  - Basic filtering: show failed-only, sent-only, etc.
+
+5) Points usage guardrails (checkout / booking rules)
+
+If a booking/cart system already exists:
+
+- Add a guardrail that **PREVENTS** a booking where:
+  - total_cash = 0 AND
+  - total_points_used > 0 AND
+  - the only service in the cart is in the “small add-on” category.
+
+If there is a service catalog with categories like “Add-on”, “Core Service”, etc., use that. If not, add a simple boolean flag `is_add_on_only` or similar to the services table and enforce:
+
+- To use the 500-point promo, require:
+  - Either at least one non-add-on/core service in the cart, OR
+  - A minimum total before points of, e.g., $X (use a sensible default and a TODO to make it configurable later).
+
+6) Multi-tenant safety
+
+For now, this campaign is primarily for the root tenant (Clean Machine), but:
+
+- All tables must be tenant-scoped (tenant_id everywhere).
+- The admin UI should initially show only root tenant data or the current tenant.
+- Leave a clear TODO to allow each tenant to run their own recovery campaign in the future.
+
+7) Final check
+
+After implementing:
+
+- Spin up the app.
+- As root owner:
+  - Go to `/admin/port-recovery`.
+  - Create a draft campaign.
+  - Verify target count looks sane.
+  - Send test SMS to owner phone and verify message + link content.
+  - Run a very small batch (e.g., limit 5) to confirm:
+    - Points are granted.
+    - SMS logs look good in Twilio.
+    - Campaign status & counts update correctly.
+
+Then respond with a short “How to run the port recovery campaign” guide for me.

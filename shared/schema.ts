@@ -3641,3 +3641,97 @@ export type IvrActionType = "PLAY_MESSAGE" | "SMS_INFO" | "FORWARD_SIP" | "FORWA
 export interface IvrMenuWithItems extends IvrMenu {
   items: IvrMenuItem[];
 }
+
+// ============================================================
+// A2P CAMPAIGN MANAGEMENT - Tenant SMS Campaign Registration
+// ============================================================
+
+/**
+ * A2P Campaign Status - Tracks registration workflow
+ */
+export const a2pCampaignStatusEnum = pgEnum("a2p_campaign_status", [
+  "draft",           // Initial state, editing in progress
+  "ready_to_submit", // Tenant marked ready, awaiting platform owner review
+  "submitted",       // Submitted to Twilio TrustHub
+  "approved",        // Approved by carriers
+  "rejected",        // Rejected, needs revision
+]);
+
+/**
+ * A2P Campaigns Table - Stores campaign registration data per tenant
+ * 
+ * Each tenant has at most one active campaign row.
+ * Contains all information needed for Twilio A2P 10DLC registration.
+ */
+export const a2pCampaigns = pgTable("a2p_campaigns", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  status: a2pCampaignStatusEnum("status").notNull().default("draft"),
+  
+  // Brand & Business Info
+  brandName: text("brand_name").notNull(),
+  websiteUrl: text("website_url"),
+  
+  // Campaign Classification
+  useCaseCategory: varchar("use_case_category", { length: 100 }), // 'appointment_notifications', 'marketing', 'mixed', etc.
+  campaignDescription: text("campaign_description"), // What the campaign is for
+  
+  // Sample Messages (required by carriers)
+  sampleMessages: jsonb("sample_messages").$type<string[]>().default([]),
+  
+  // Compliance Details
+  optInDescription: text("opt_in_description"), // How customers opt-in
+  optOutInstructions: text("opt_out_instructions"), // Must include STOP keyword
+  helpInstructions: text("help_instructions"), // What HELP does
+  messageFrequency: text("message_frequency"), // e.g., "1-2 messages per month"
+  
+  // Legal URLs
+  termsUrl: text("terms_url"),
+  privacyUrl: text("privacy_url"),
+  
+  // AI Tracking
+  aiGenerated: boolean("ai_generated").default(false), // Last edit came from AI helper
+  
+  // Twilio Integration (for future use)
+  twilioProfileSid: text("twilio_profile_sid"), // Twilio Customer Profile SID
+  twilioBrandSid: text("twilio_brand_sid"), // Twilio Brand Registration SID
+  twilioCampaignSid: text("twilio_campaign_sid"), // Twilio Campaign SID
+  carrierRejectionReason: text("carrier_rejection_reason"), // If rejected
+  
+  // Timestamps
+  lastSubmittedAt: timestamp("last_submitted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("a2p_campaigns_tenant_id_idx").on(table.tenantId),
+  tenantIdUniqueIdx: uniqueIndex("a2p_campaigns_tenant_id_unique_idx").on(table.tenantId), // One campaign per tenant
+  statusIdx: index("a2p_campaigns_status_idx").on(table.status),
+}));
+
+// A2P Insert Schema
+export const insertA2pCampaignSchema = createInsertSchema(a2pCampaigns).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  lastSubmittedAt: true,
+  twilioProfileSid: true,
+  twilioBrandSid: true,
+  twilioCampaignSid: true,
+  carrierRejectionReason: true,
+});
+
+// A2P Types
+export type A2pCampaign = typeof a2pCampaigns.$inferSelect;
+export type InsertA2pCampaign = z.infer<typeof insertA2pCampaignSchema>;
+
+// A2P Use Case Categories
+export const A2P_USE_CASE_CATEGORIES = [
+  { value: "appointment_reminders", label: "Appointment Reminders" },
+  { value: "customer_care", label: "Customer Care / Support" },
+  { value: "delivery_notifications", label: "Delivery Notifications" },
+  { value: "account_notifications", label: "Account Notifications" },
+  { value: "marketing", label: "Marketing / Promotions" },
+  { value: "mixed", label: "Mixed (Transactional + Marketing)" },
+  { value: "security_alerts", label: "Security / Fraud Alerts" },
+  { value: "2fa", label: "Two-Factor Authentication" },
+] as const;
