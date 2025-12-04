@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,16 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
-import { Smartphone, MessageCircle, Mail } from 'lucide-react';
+import { Smartphone, MessageCircle, Mail, Phone } from 'lucide-react';
 import { FaFacebook, FaInstagram } from 'react-icons/fa';
 import { toE164, formatAsYouType, isValid } from '@/lib/phone';
+
+interface PhoneLine {
+  id: number;
+  phoneNumber: string;
+  label: string;
+  isActive?: boolean;
+}
 
 interface ComposerProps {
   isOpen: boolean;
@@ -27,14 +34,29 @@ interface ComposerProps {
 }
 
 export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerProps) {
-  const { selectedPhoneLineId } = usePhoneLine();
+  const { selectedPhoneLineId, setSelectedPhoneLineId } = usePhoneLine();
   const [platform, setPlatform] = useState<'sms' | 'web' | 'facebook' | 'instagram' | 'email'>('sms');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [socialId, setSocialId] = useState('');
   const [name, setName] = useState('');
+  const [localPhoneLineId, setLocalPhoneLineId] = useState<number>(selectedPhoneLineId);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Fetch phone lines for SMS platform
+  const { data: phoneLinesData } = useQuery<{ success: boolean; lines: PhoneLine[] }>({
+    queryKey: ['/api/phone-settings/lines'],
+    enabled: platform === 'sms',
+  });
+  const phoneLines = phoneLinesData?.lines?.filter(l => l.isActive !== false) || [];
+
+  // Sync local selection with context when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalPhoneLineId(selectedPhoneLineId);
+    }
+  }, [isOpen, selectedPhoneLineId]);
 
   // Reset form when dialog closes
   useEffect(() => {
@@ -133,13 +155,18 @@ export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerPr
 
     const e164Phone = platform === 'sms' ? toE164(phone) || undefined : undefined;
 
+    // Update context with selected line when creating conversation
+    if (platform === 'sms' && localPhoneLineId !== selectedPhoneLineId) {
+      setSelectedPhoneLineId(localPhoneLineId);
+    }
+
     createConversationMutation.mutate({ 
       phone: e164Phone,
       email: platform === 'email' ? email : undefined,
       socialId: (platform === 'facebook' || platform === 'instagram') ? socialId : undefined,
       name, 
       platform,
-      phoneLineId: platform === 'sms' ? (selectedPhoneLineId || undefined) : undefined
+      phoneLineId: platform === 'sms' ? (localPhoneLineId || undefined) : undefined
     });
   };
 
@@ -197,19 +224,47 @@ export default function Composer({ isOpen, onOpenChange, onSuccess }: ComposerPr
 
           {/* Conditional Contact Fields */}
           {platform === 'sms' && (
-            <div>
-              <Label htmlFor="phone" className="dark:text-gray-300">Phone Number *</Label>
-              <Input
-                id="phone"
-                placeholder="(918) 555-1234"
-                value={phone}
-                onChange={(e) => setPhone(formatAsYouType(e.target.value))}
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSubmit())}
-                data-testid="input-compose-phone"
-                className="dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                autoFocus
-              />
-            </div>
+            <>
+              <div>
+                <Label htmlFor="phone" className="dark:text-gray-300">Phone Number *</Label>
+                <Input
+                  id="phone"
+                  placeholder="(918) 555-1234"
+                  value={phone}
+                  onChange={(e) => setPhone(formatAsYouType(e.target.value))}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSubmit())}
+                  data-testid="input-compose-phone"
+                  className="dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  autoFocus
+                />
+              </div>
+              
+              {/* Phone Line Selector */}
+              {phoneLines.length > 1 && (
+                <div>
+                  <Label htmlFor="phoneLine" className="dark:text-gray-300">Send From</Label>
+                  <Select 
+                    value={localPhoneLineId.toString()} 
+                    onValueChange={(val) => setLocalPhoneLineId(parseInt(val))}
+                  >
+                    <SelectTrigger className="dark:bg-gray-700 dark:border-gray-600 dark:text-white" data-testid="select-phone-line">
+                      <SelectValue placeholder="Select phone line" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {phoneLines.map((line) => (
+                        <SelectItem key={line.id} value={line.id.toString()}>
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            <span>{line.label}</span>
+                            <span className="text-xs text-muted-foreground">({line.phoneNumber})</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </>
           )}
 
           {platform === 'email' && (
