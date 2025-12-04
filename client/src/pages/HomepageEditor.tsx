@@ -137,26 +137,6 @@ export default function HomepageEditor() {
 
   return (
     <AppShell title="Homepage Editor" pageActions={pageActions}>
-      <div className="p-6">
-        <div className="hidden flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => window.open('/', '_blank')}
-            data-testid="button-preview-hidden"
-          >
-            <ExternalLink className="w-4 h-4 mr-2" />
-            Preview
-          </Button>
-          <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            data-testid="button-save"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
-          </Button>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Editor Panel */}
