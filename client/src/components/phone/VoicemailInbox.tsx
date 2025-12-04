@@ -13,7 +13,9 @@ import {
   Phone,
   MessageCircle,
   Download,
-  Volume2
+  Volume2,
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -29,6 +31,9 @@ interface VoicemailMessage {
   transcription: string | null;
   recordingUrl: string;
   isNew: boolean;
+  // AI-generated voicemail intelligence (Phone Intelligence v1)
+  aiSummary?: string | null;
+  aiPriority?: 'HIGH' | 'NORMAL' | null;
 }
 
 function AudioPlayer({ url, onEnded }: { url: string; onEnded?: () => void }) {
@@ -297,6 +302,12 @@ export default function VoicemailInbox() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <p className="font-medium dark:text-white">{voicemail.from}</p>
+                    {voicemail.aiPriority === 'HIGH' && (
+                      <Badge className="bg-gradient-to-br from-red-600 to-orange-600 text-white border-0 text-xs gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Needs Callback
+                      </Badge>
+                    )}
                     {voicemail.isNew && (
                       <Badge className="bg-gradient-to-br from-blue-600 to-purple-600 text-white border-0 text-xs">
                         New
@@ -307,6 +318,17 @@ export default function VoicemailInbox() {
                     {format(new Date(voicemail.timestamp), 'MMM d, h:mm a')}
                   </p>
                 </div>
+
+                {/* AI Summary */}
+                {voicemail.aiSummary && (
+                  <div className="flex items-start gap-2 p-2.5 rounded-lg bg-gradient-to-br from-purple-50/50 to-blue-50/30 dark:from-purple-900/20 dark:to-blue-900/10 border border-purple-200/50 dark:border-purple-700/30">
+                    <Sparkles className="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-[0.65rem] font-medium text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-0.5">AI Summary</p>
+                      <p className="text-sm text-gray-700 dark:text-gray-300">{voicemail.aiSummary}</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Audio Player */}
                 {playingId === voicemail.id ? (

@@ -630,6 +630,7 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
   const callSid = req.body.CallSid;
   const recordingSid = req.body.RecordingSid;
   const transcriptionStatus = req.body.TranscriptionStatus;
+  const recordingDuration = req.body.RecordingDuration ? parseInt(req.body.RecordingDuration) : undefined;
 
   console.log(`[VOICE] Voicemail transcription from ${callerPhone}: ${transcriptionText}`);
 
@@ -640,7 +641,23 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
     req.tenantDb = wrapTenantDb(db, tenantId);
   }
 
-  // Update call event with transcription and recording
+  // AI Analysis: Generate summary and priority for the voicemail
+  let aiSummary: string | undefined;
+  let aiPriority: 'HIGH' | 'NORMAL' | undefined;
+  
+  if (transcriptionText && transcriptionText.trim().length > 0) {
+    try {
+      const { analyzeVoicemail } = await import('./services/voicemailAiService');
+      const analysis = await analyzeVoicemail(transcriptionText, callerPhone, recordingDuration);
+      aiSummary = analysis.summary;
+      aiPriority = analysis.priority;
+      console.log(`[VOICE] AI voicemail analysis complete - Priority: ${aiPriority}`);
+    } catch (error) {
+      console.error('[VOICE] Failed to analyze voicemail with AI:', error);
+    }
+  }
+
+  // Update call event with transcription, recording, and AI analysis
   try {
     const { updateCallEvent } = await import('./callLoggingService');
     await updateCallEvent(req.tenantDb, callSid, {
@@ -648,6 +665,8 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
       transcriptionStatus,
       recordingUrl,
       recordingSid,
+      aiSummary,
+      aiPriority,
     });
   } catch (error) {
     console.error('[VOICE] Failed to update call event with transcription:', error);
@@ -666,10 +685,10 @@ router.post('/transcription', verifyTwilioSignature, async (req: Request, res: R
       .then(results => results[0]);
     
     if (owner) {
-      // Send SMS notification with voicemail details
+      // Send SMS notification with voicemail details (includes AI summary if available)
       const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
       if (businessPhone && await shouldSendNotification(owner.id, 'voicemailSms')) {
-        await sendVoicemailNotification(businessPhone, callerPhone, transcriptionText, recordingUrl);
+        await sendVoicemailNotification(businessPhone, callerPhone, transcriptionText, recordingUrl, aiSummary, aiPriority);
       }
     }
   } catch (error) {
@@ -791,8 +810,18 @@ May I answer any questions or get your vehicle scheduled?`;
  * Send voicemail notification to business phone
  * NOTE: Recording URLs are NOT included in SMS as they require Twilio auth.
  * Use push notifications with deep links to access recordings in the app.
+ * 
+ * @param aiSummary - AI-generated summary of the voicemail (Phone Intelligence v1)
+ * @param aiPriority - AI-determined priority: 'HIGH' or 'NORMAL'
  */
-async function sendVoicemailNotification(toPhone: string, fromPhone: string, transcription: string, recordingUrl: string) {
+async function sendVoicemailNotification(
+  toPhone: string, 
+  fromPhone: string, 
+  transcription: string, 
+  recordingUrl: string,
+  aiSummary?: string,
+  aiPriority?: 'HIGH' | 'NORMAL'
+) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const twilioPhone = process.env.MAIN_PHONE_NUMBER;
@@ -803,9 +832,10 @@ async function sendVoicemailNotification(toPhone: string, fromPhone: string, tra
 
   const client = twilio(accountSid, authToken);
 
-  // NOTE: We no longer include the Twilio recording URL as it requires Twilio auth credentials.
-  // The user can listen to recordings via push notifications that deep-link to the app.
-  const message = `New voicemail from ${fromPhone}:\n\n"${transcription}"\n\nOpen the app to listen to the recording.`;
+  // Build SMS message - include AI summary if available
+  const priorityLabel = aiPriority === 'HIGH' ? '🔴 URGENT: ' : '';
+  const summarySection = aiSummary ? `\n\n📋 Summary: ${aiSummary}` : '';
+  const message = `${priorityLabel}New voicemail from ${fromPhone}:${summarySection}\n\n"${transcription}"\n\nOpen the app to listen to the recording.`;
 
   await client.messages.create({
     body: message,
@@ -813,16 +843,27 @@ async function sendVoicemailNotification(toPhone: string, fromPhone: string, tra
     to: toPhone,
   });
 
+  // Build push notification title with priority
+  const pushTitle = aiPriority === 'HIGH' 
+    ? '🔴 Urgent Voicemail' 
+    : '🎙️ New Voicemail';
+  
+  // Use AI summary for push body if available, otherwise use transcription snippet
+  const pushBody = aiSummary 
+    ? `${fromPhone}: ${aiSummary}`
+    : `From ${fromPhone}: "${transcription.substring(0, 50)}${transcription.length > 50 ? '...' : ''}"`;
+
   // Also send a push notification with deep link to voicemails
   try {
     await sendPushToAllUsers({
-      title: '🎙️ New Voicemail',
-      body: `From ${fromPhone}: "${transcription.substring(0, 50)}${transcription.length > 50 ? '...' : ''}"`,
+      title: pushTitle,
+      body: pushBody,
       tag: `voicemail-${Date.now()}`,
-      requireInteraction: true,
+      requireInteraction: aiPriority === 'HIGH', // Require interaction for HIGH priority
       data: {
         type: 'voicemail',
         callerPhone: fromPhone,
+        priority: aiPriority || 'NORMAL',
         url: '/calls',
       },
       actions: [
@@ -830,7 +871,7 @@ async function sendVoicemailNotification(toPhone: string, fromPhone: string, tra
         { action: 'call_back', title: 'Call Back' },
       ],
     });
-    console.log(`[VOICE] Push notification sent for voicemail from ${fromPhone}`);
+    console.log(`[VOICE] Push notification sent for voicemail from ${fromPhone} (priority: ${aiPriority || 'NORMAL'})`);
   } catch (pushError) {
     console.error('[VOICE] Failed to send voicemail push notification:', pushError);
   }
