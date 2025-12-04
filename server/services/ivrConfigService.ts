@@ -9,13 +9,13 @@
  * - Safe fallbacks when config is missing/broken
  * 
  * MULTI-TENANT SAFETY:
- * - Each tenant only sees/modifies their own IVR config
+ * - All functions require explicit tenantId parameter
+ * - Queries always filter by tenantId to prevent cross-tenant access
  * - No cross-tenant leaking or fallback to Clean Machine for other tenants
  * - Safe generic IVR when tenant's config is broken
  */
 
 import { db } from '../db';
-import { wrapTenantDb, type TenantDb } from '../tenantDb';
 import { 
   ivrMenus, 
   ivrMenuItems, 
@@ -31,6 +31,7 @@ import { eq, and, asc } from 'drizzle-orm';
 /**
  * Default Clean Machine IVR configuration
  * This matches the existing hard-coded IVR behavior exactly
+ * ONLY used for 'root' tenant
  */
 const CLEAN_MACHINE_DEFAULTS = {
   name: 'Main IVR Menu',
@@ -85,32 +86,53 @@ const CLEAN_MACHINE_DEFAULTS = {
 /**
  * Generate default IVR configuration for non-root tenants
  * Uses tenant's business name and configured phone settings
+ * NEVER includes Clean Machine branding or SIP endpoints
  */
 function generateGenericDefaults(businessName: string, phoneConfig?: { sipDomain?: string; sipUsername?: string; phoneNumber?: string }) {
   const greeting = `Thanks for calling ${businessName}. Press 1 to speak with someone. Press 2 to leave a voicemail.`;
   
-  const items: typeof CLEAN_MACHINE_DEFAULTS.items = [
-    {
+  // Determine forwarding method: SIP if configured, phone if available, otherwise just voicemail
+  let forwardItem: typeof CLEAN_MACHINE_DEFAULTS.items[0];
+  
+  if (phoneConfig?.sipDomain && phoneConfig?.sipUsername) {
+    forwardItem = {
       digit: '1',
       label: 'Speak to someone',
-      actionType: phoneConfig?.sipDomain && phoneConfig?.sipUsername 
-        ? 'FORWARD_SIP' as IvrActionType
-        : 'FORWARD_PHONE' as IvrActionType,
-      actionPayload: phoneConfig?.sipDomain && phoneConfig?.sipUsername
-        ? { sipUri: `${phoneConfig.sipUsername}@${phoneConfig.sipDomain}` }
-        : { phoneNumber: phoneConfig?.phoneNumber || '' },
+      actionType: 'FORWARD_SIP' as IvrActionType,
+      actionPayload: { sipUri: `${phoneConfig.sipUsername}@${phoneConfig.sipDomain}` },
       isHidden: false,
       orderIndex: 0,
-    },
-    {
-      digit: '2',
-      label: 'Leave voicemail',
-      actionType: 'VOICEMAIL' as IvrActionType,
-      actionPayload: {},
+    };
+  } else if (phoneConfig?.phoneNumber) {
+    forwardItem = {
+      digit: '1',
+      label: 'Speak to someone',
+      actionType: 'FORWARD_PHONE' as IvrActionType,
+      actionPayload: { phoneNumber: phoneConfig.phoneNumber },
       isHidden: false,
-      orderIndex: 1,
-    },
-  ];
+      orderIndex: 0,
+    };
+  } else {
+    // No forwarding configured - skip forward option, just voicemail
+    return {
+      name: 'Main IVR Menu',
+      greetingText: `Thanks for calling ${businessName}. Press 1 to leave a voicemail.`,
+      noInputMessage: "We didn't receive any input. Let me repeat the options.",
+      invalidInputMessage: "Sorry, that's not a valid option.",
+      maxAttempts: 3,
+      voiceName: 'alice',
+      items: [
+        {
+          digit: '1',
+          label: 'Leave voicemail',
+          actionType: 'VOICEMAIL' as IvrActionType,
+          actionPayload: {},
+          isHidden: false,
+          orderIndex: 0,
+        },
+      ],
+    };
+  }
 
   return {
     name: 'Main IVR Menu',
@@ -119,16 +141,29 @@ function generateGenericDefaults(businessName: string, phoneConfig?: { sipDomain
     invalidInputMessage: "Sorry, that's not a valid option.",
     maxAttempts: 3,
     voiceName: 'alice',
-    items,
+    items: [
+      forwardItem,
+      {
+        digit: '2',
+        label: 'Leave voicemail',
+        actionType: 'VOICEMAIL' as IvrActionType,
+        actionPayload: {},
+        isHidden: false,
+        orderIndex: 1,
+      },
+    ],
   };
 }
 
 /**
  * Get the active IVR menu for a tenant
  * Returns null if no menu configured
+ * 
+ * MULTI-TENANT: Always filters by tenantId to prevent cross-tenant access
  */
 export async function getActiveMenuForTenant(tenantId: string, menuKey: string = 'main'): Promise<IvrMenuWithItems | null> {
   try {
+    // CRITICAL: Always filter by tenantId for tenant isolation
     const [menu] = await db
       .select()
       .from(ivrMenus)
@@ -140,6 +175,12 @@ export async function getActiveMenuForTenant(tenantId: string, menuKey: string =
       .limit(1);
     
     if (!menu) {
+      return null;
+    }
+
+    // Double-check tenant ownership (defense in depth)
+    if (menu.tenantId !== tenantId) {
+      console.error(`[IVR CONFIG] SECURITY: Menu ${menu.id} tenantId mismatch - expected ${tenantId}, got ${menu.tenantId}`);
       return null;
     }
 
@@ -162,7 +203,9 @@ export async function getActiveMenuForTenant(tenantId: string, menuKey: string =
  * - For root tenant: Seeds Clean Machine's exact current IVR
  * - For other tenants: Seeds a generic menu using their business name
  * 
- * This is the main entry point for IVR runtime - it ensures a menu always exists
+ * MULTI-TENANT SAFETY:
+ * - Never returns Clean Machine config for non-root tenants
+ * - Safe generic fallback when errors occur
  */
 export async function getOrCreateDefaultMenuForTenant(tenantId: string): Promise<IvrMenuWithItems> {
   // First try to load existing menu
@@ -175,6 +218,7 @@ export async function getOrCreateDefaultMenuForTenant(tenantId: string): Promise
   console.log(`[IVR CONFIG] No menu found for tenant ${tenantId}, seeding default...`);
 
   try {
+    // CRITICAL: Only seed Clean Machine defaults for 'root' tenant
     if (tenantId === 'root') {
       return await seedCleanMachineDefaults();
     } else {
@@ -183,18 +227,25 @@ export async function getOrCreateDefaultMenuForTenant(tenantId: string): Promise
   } catch (error) {
     console.error(`[IVR CONFIG] Error seeding default menu for tenant ${tenantId}:`, error);
     // Return a safe in-memory fallback (not persisted)
+    // IMPORTANT: Never use Clean Machine branding for other tenants
     return getSafeFallbackMenu(tenantId);
   }
 }
 
 /**
  * Seed Clean Machine's default IVR menu
- * Reads SIP config from tenant_phone_config to avoid hardcoding
+ * ONLY for root tenant - reads SIP config from tenant_phone_config
  */
 async function seedCleanMachineDefaults(): Promise<IvrMenuWithItems> {
   const tenantId = 'root';
 
-  // Get SIP config from phone config (don't hardcode)
+  // Check if already seeded (prevent duplicates)
+  const existing = await getActiveMenuForTenant(tenantId, 'main');
+  if (existing) {
+    return existing;
+  }
+
+  // Get SIP config from phone config
   const [phoneConfig] = await db
     .select()
     .from(tenantPhoneConfig)
@@ -213,11 +264,11 @@ async function seedCleanMachineDefaults(): Promise<IvrMenuWithItems> {
     return item;
   });
 
-  // Insert menu
+  // Insert menu with explicit tenantId
   const [menu] = await db
     .insert(ivrMenus)
     .values({
-      tenantId,
+      tenantId, // CRITICAL: Always set tenantId
       key: 'main',
       name: CLEAN_MACHINE_DEFAULTS.name,
       greetingText: CLEAN_MACHINE_DEFAULTS.greetingText,
@@ -253,9 +304,23 @@ async function seedCleanMachineDefaults(): Promise<IvrMenuWithItems> {
 
 /**
  * Seed generic default IVR menu for non-root tenants
+ * 
+ * MULTI-TENANT: Uses tenant's own business name and phone config
+ * NEVER includes Clean Machine branding
  */
 async function seedGenericDefaults(tenantId: string): Promise<IvrMenuWithItems> {
-  // Get tenant business name
+  // Prevent accidental Clean Machine seeding
+  if (tenantId === 'root') {
+    throw new Error('seedGenericDefaults should not be called for root tenant');
+  }
+
+  // Check if already seeded (prevent duplicates)
+  const existing = await getActiveMenuForTenant(tenantId, 'main');
+  if (existing) {
+    return existing;
+  }
+
+  // Get tenant business name - filter by exact tenantId
   const [config] = await db
     .select()
     .from(tenantConfig)
@@ -264,20 +329,20 @@ async function seedGenericDefaults(tenantId: string): Promise<IvrMenuWithItems> 
 
   const businessName = config?.businessName || 'our business';
 
-  // Get phone config for forwarding
+  // Get phone config for forwarding - filter by exact tenantId
   const [phoneConfig] = await db
     .select()
     .from(tenantPhoneConfig)
     .where(eq(tenantPhoneConfig.tenantId, tenantId))
     .limit(1);
 
-  const defaults = generateGenericDefaults(businessName, phoneConfig);
+  const defaults = generateGenericDefaults(businessName, phoneConfig || undefined);
 
-  // Insert menu
+  // Insert menu with explicit tenantId
   const [menu] = await db
     .insert(ivrMenus)
     .values({
-      tenantId,
+      tenantId, // CRITICAL: Always set tenantId
       key: 'main',
       name: defaults.name,
       greetingText: defaults.greetingText,
@@ -307,7 +372,7 @@ async function seedGenericDefaults(tenantId: string): Promise<IvrMenuWithItems> 
     insertedItems.push(inserted);
   }
 
-  console.log(`[IVR CONFIG] Seeded generic menu for tenant ${tenantId} with ${insertedItems.length} items`);
+  console.log(`[IVR CONFIG] Seeded generic menu for tenant ${tenantId} (${businessName}) with ${insertedItems.length} items`);
   return { ...menu, items: insertedItems };
 }
 
@@ -315,17 +380,21 @@ async function seedGenericDefaults(tenantId: string): Promise<IvrMenuWithItems> 
  * Safe fallback menu when database operations fail
  * Returns a minimal in-memory menu that provides basic functionality
  * 
- * IMPORTANT: This is NOT persisted - just used to handle callers gracefully
+ * MULTI-TENANT: Never uses Clean Machine branding for any tenant
+ * Uses generic "Thank you for calling" greeting
  */
 function getSafeFallbackMenu(tenantId: string): IvrMenuWithItems {
   console.warn(`[IVR CONFIG] Using safe fallback menu for tenant ${tenantId}`);
+  
+  // Generic greeting - no business-specific branding
+  const greeting = "Thank you for calling. Press 1 to leave a voicemail.";
   
   return {
     id: -1, // Indicates this is a fallback
     tenantId,
     key: 'main',
     name: 'Fallback Menu',
-    greetingText: "Thank you for calling. Press 1 to leave a voicemail.",
+    greetingText: greeting,
     noInputMessage: "We didn't receive any input.",
     invalidInputMessage: "That's not a valid option.",
     maxAttempts: 2,
@@ -353,10 +422,12 @@ function getSafeFallbackMenu(tenantId: string): IvrMenuWithItems {
 /**
  * Update IVR menu for a tenant
  * 
+ * MULTI-TENANT: Validates tenantId ownership before update
  * Performs a transactional update:
- * 1. Updates menu properties
- * 2. Deletes old items
- * 3. Inserts new items
+ * 1. Validates ownership
+ * 2. Updates menu properties
+ * 3. Deletes old items
+ * 4. Inserts new items
  */
 export async function updateMenuForTenant(
   tenantId: string,
@@ -385,6 +456,11 @@ export async function updateMenuForTenant(
     menu = await getOrCreateDefaultMenuForTenant(tenantId);
   }
 
+  // CRITICAL: Verify ownership before update
+  if (menu.tenantId !== tenantId) {
+    throw new Error(`Tenant ${tenantId} cannot modify menu owned by ${menu.tenantId}`);
+  }
+
   // Update menu properties
   const menuValues: Partial<IvrMenu> = {};
   if (menuUpdate.greetingText !== undefined) menuValues.greetingText = menuUpdate.greetingText;
@@ -395,10 +471,14 @@ export async function updateMenuForTenant(
   menuValues.updatedAt = new Date();
 
   if (Object.keys(menuValues).length > 0) {
+    // CRITICAL: Filter by both id AND tenantId for defense in depth
     await db
       .update(ivrMenus)
       .set(menuValues)
-      .where(eq(ivrMenus.id, menu.id));
+      .where(and(
+        eq(ivrMenus.id, menu.id),
+        eq(ivrMenus.tenantId, tenantId)
+      ));
   }
 
   // Update items if provided
@@ -432,6 +512,40 @@ export async function updateMenuForTenant(
 
   console.log(`[IVR CONFIG] Updated menu for tenant ${tenantId}`);
   return updated;
+}
+
+/**
+ * Reset IVR menu to defaults for a tenant
+ * 
+ * Deletes existing menu and re-seeds with defaults
+ */
+export async function resetMenuToDefaults(tenantId: string): Promise<IvrMenuWithItems> {
+  console.log(`[IVR CONFIG] Resetting menu to defaults for tenant ${tenantId}`);
+  
+  // Get existing menu
+  const existing = await getActiveMenuForTenant(tenantId, 'main');
+  
+  if (existing) {
+    // Delete items first (foreign key constraint)
+    await db
+      .delete(ivrMenuItems)
+      .where(eq(ivrMenuItems.menuId, existing.id));
+    
+    // Delete menu
+    await db
+      .delete(ivrMenus)
+      .where(and(
+        eq(ivrMenus.id, existing.id),
+        eq(ivrMenus.tenantId, tenantId) // Defense in depth
+      ));
+  }
+  
+  // Re-seed defaults
+  if (tenantId === 'root') {
+    return await seedCleanMachineDefaults();
+  } else {
+    return await seedGenericDefaults(tenantId);
+  }
 }
 
 /**

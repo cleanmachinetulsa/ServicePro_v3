@@ -1,7 +1,8 @@
 import { 
   Home, 
   MessageSquare, 
-  Phone, 
+  Phone,
+  PhoneCall,
   Users, 
   Calendar, 
   TrendingUp, 
@@ -264,9 +265,16 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     id: 'phone-config',
-    label: 'Phone & IVR Config',
+    label: 'Phone Config',
     icon: Phone,
     path: '/admin/phone-config',
+    badge: 'Owner',
+  },
+  {
+    id: 'ivr-config',
+    label: 'IVR Configurator',
+    icon: PhoneCall,
+    path: '/admin/ivr-config',
     badge: 'Owner',
   },
   {
