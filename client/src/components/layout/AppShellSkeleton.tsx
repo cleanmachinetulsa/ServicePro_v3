@@ -149,7 +149,7 @@ export function ContentSkeleton() {
   );
 }
 
-export function MessagesPageSkeleton() {
+export function NightOpsMessagesPageSkeleton() {
   return (
     <div className="h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black flex flex-col">
       {/* Header skeleton */}

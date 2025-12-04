@@ -67,14 +67,11 @@ export function registerBootstrapRoutes(app: Express) {
         } as BootstrapResponse);
       }
 
-      const tenantId = session.impersonatedTenantId || session.tenantId || 'default';
+      const tenantId = session.impersonatedTenantId || session.tenantId || 'root';
 
       const [user, tenant] = await Promise.all([
         db.query.users.findFirst({
-          where: and(
-            eq(users.id, session.userId),
-            eq(users.tenantId, tenantId)
-          ),
+          where: eq(users.id, session.userId),
           columns: {
             id: true,
             username: true,

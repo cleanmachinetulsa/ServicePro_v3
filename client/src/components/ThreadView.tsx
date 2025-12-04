@@ -182,7 +182,7 @@ export default function ThreadView({
   type BookingStatus = 'not_ready' | 'ready_for_draft' | 'ready_for_human_review';
   
   // Fetch conversation details with messages
-  const { data: conversationData, isLoading: conversationLoading} = useQuery<{ 
+  const { data: conversationData, isLoading: conversationLoading, isError: conversationError, error: conversationErrorDetails } = useQuery<{ 
     success: boolean; 
     data: Conversation & { messages: Message[]; bookingStatus?: BookingStatus } 
   }>({
@@ -1060,6 +1060,29 @@ export default function ThreadView({
 
   if (conversationLoading) {
     return <ThreadViewSkeleton />;
+  }
+
+  if (conversationError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+        <AlertCircle className="h-12 w-12 text-red-500" />
+        <div>
+          <p className="font-medium text-lg">Failed to load conversation</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {conversationErrorDetails?.message || 'Please try again later'}
+          </p>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] })}
+          data-testid="button-retry-load"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Try Again
+        </Button>
+      </div>
+    );
   }
 
   if (!conversation) {
