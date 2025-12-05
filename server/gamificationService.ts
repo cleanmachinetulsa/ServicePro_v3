@@ -1,10 +1,12 @@
 import type { TenantDb } from "./db";
+import { db } from "./db";
 import { 
   loyaltyPoints, 
   pointsTransactions, 
   achievements, 
   customerAchievements,
   loyaltyTiers,
+  businessSettings,
   type InsertLoyaltyPoints,
   type InsertPointsTransaction,
   type InsertAchievement,
@@ -12,6 +14,135 @@ import {
   type InsertLoyaltyTier
 } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
+
+/**
+ * Loyalty Guardrail Result Type
+ * Used to enforce minimum cart total and core service requirements for point redemption
+ */
+export type LoyaltyGuardrailResult =
+  | { ok: true }
+  | {
+      ok: false;
+      code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED';
+      message: string;
+    };
+
+/**
+ * Line item for guardrail checking
+ */
+export interface LineItem {
+  id: string | number;
+  name: string;
+  price?: number;
+  tags?: string[];
+  isAddOn?: boolean;
+}
+
+/**
+ * Check loyalty guardrails before allowing point redemption
+ * Enforces min cart total and core service requirements based on business settings
+ */
+export async function checkLoyaltyGuardrails(args: {
+  tenantId: string;
+  cartTotal: number;
+  lineItems: LineItem[];
+}): Promise<LoyaltyGuardrailResult> {
+  try {
+    // Load business settings (global table - use db directly)
+    const [settings] = await db
+      .select()
+      .from(businessSettings)
+      .limit(1);
+    
+    if (!settings) {
+      // No settings found, allow redemption by default
+      return { ok: true };
+    }
+    
+    // 1) Check minimum cart total
+    const minTotal = settings.loyaltyMinCartTotal;
+    if (typeof minTotal === 'number' && minTotal > 0) {
+      if (args.cartTotal < minTotal) {
+        return {
+          ok: false,
+          code: 'MIN_CART_TOTAL',
+          message:
+            settings.loyaltyGuardrailMessage ??
+            `Points can only be used on orders of at least $${minTotal}.`,
+        };
+      }
+    }
+    
+    // 2) Check core service requirement
+    if (settings.loyaltyRequireCoreService) {
+      // Check if at least one line item is a core service (not an add-on)
+      const hasCore = args.lineItems.some((item) => {
+        // Check for core_service tag
+        if ((item.tags ?? []).includes('core_service')) {
+          return true;
+        }
+        // Check explicit isAddOn flag (core services have isAddOn = false or undefined)
+        if (item.isAddOn === false) {
+          return true;
+        }
+        // If no tags and not explicitly an add-on, treat as core
+        if (!item.tags?.length && item.isAddOn !== true) {
+          return true;
+        }
+        return false;
+      });
+      
+      if (!hasCore) {
+        return {
+          ok: false,
+          code: 'CORE_SERVICE_REQUIRED',
+          message:
+            settings.loyaltyGuardrailMessage ??
+            'Points can only be redeemed when booking a main/core service (not add-ons alone).',
+        };
+      }
+    }
+    
+    return { ok: true };
+  } catch (error) {
+    console.error('[LOYALTY GUARDRAILS] Error checking guardrails:', error);
+    // On error, allow redemption to avoid blocking legitimate transactions
+    return { ok: true };
+  }
+}
+
+/**
+ * Get current loyalty guardrail settings for display in UI
+ */
+export async function getLoyaltyGuardrailSettings(): Promise<{
+  minCartTotal: number | null;
+  requireCoreService: boolean;
+  guardrailMessage: string | null;
+}> {
+  try {
+    const [settings] = await db
+      .select({
+        minCartTotal: businessSettings.loyaltyMinCartTotal,
+        requireCoreService: businessSettings.loyaltyRequireCoreService,
+        guardrailMessage: businessSettings.loyaltyGuardrailMessage,
+      })
+      .from(businessSettings)
+      .limit(1);
+    
+    return {
+      minCartTotal: settings?.minCartTotal ?? null,
+      requireCoreService: settings?.requireCoreService ?? false,
+      guardrailMessage: settings?.guardrailMessage ?? null,
+    };
+  } catch (error) {
+    console.error('[LOYALTY GUARDRAILS] Error fetching settings:', error);
+    return {
+      minCartTotal: null,
+      requireCoreService: false,
+      guardrailMessage: null,
+    };
+  }
+}
 
 /**
  * Award points to a customer
