@@ -470,56 +470,96 @@ export default function SetupWizard() {
 
                 <Separator />
 
-                {/* Step Completion */}
-                {phoneSmsData?.hasPhoneNumber && phoneSmsData?.a2pStatus === 'approved' ? (
-                  <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    <div className="flex-1">
-                      <p className="font-medium text-green-700 dark:text-green-400 text-sm">
-                        Phone & SMS fully configured!
-                      </p>
-                    </div>
-                    {!progress?.phoneSetupDone && (
-                      <Button
-                        size="sm"
-                        onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
-                        disabled={updateProgressMutation.isPending}
-                        data-testid="button-mark-phone-complete"
-                      >
-                        {updateProgressMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : (
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                {/* Step Completion - phone configured is minimum, A2P submitted/approved is ideal */}
+                {(() => {
+                  const hasPhone = phoneSmsData?.hasPhoneNumber;
+                  const a2pReady = phoneSmsData?.a2pStatus === 'approved' || phoneSmsData?.a2pStatus === 'submitted';
+                  const fullyReady = hasPhone && phoneSmsData?.a2pStatus === 'approved';
+                  const canComplete = hasPhone; // Minimum: just phone configured
+                  
+                  if (fullyReady) {
+                    return (
+                      <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        <div className="flex-1">
+                          <p className="font-medium text-green-700 dark:text-green-400 text-sm">
+                            Phone & SMS fully configured!
+                          </p>
+                        </div>
+                        {!progress?.phoneSetupDone && (
+                          <Button
+                            size="sm"
+                            onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
+                            disabled={updateProgressMutation.isPending}
+                            data-testid="button-mark-phone-complete"
+                          >
+                            {updateProgressMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                            )}
+                            Mark Complete
+                          </Button>
                         )}
-                        Mark Complete
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-lg bg-muted/50 flex items-center gap-3">
-                    <AlertCircle className="w-5 h-5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <p className="text-sm text-muted-foreground">
-                        {!phoneSmsData?.hasPhoneNumber 
-                          ? 'Waiting for phone number assignment...' 
-                          : phoneSmsData?.a2pStatus === 'submitted' || phoneSmsData?.a2pTrusthubStatus === 'in_review'
-                          ? 'A2P registration is under review...'
-                          : 'Complete A2P registration to finish setup.'}
-                      </p>
+                      </div>
+                    );
+                  }
+                  
+                  if (hasPhone && a2pReady) {
+                    return (
+                      <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center gap-3">
+                        <MessageSquare className="w-5 h-5 text-blue-500" />
+                        <div className="flex-1">
+                          <p className="font-medium text-blue-700 dark:text-blue-400 text-sm">
+                            Phone ready! A2P review in progress...
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            You can proceed; we'll notify you when A2P is approved.
+                          </p>
+                        </div>
+                        {!progress?.phoneSetupDone && (
+                          <Button
+                            size="sm"
+                            onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
+                            disabled={updateProgressMutation.isPending}
+                            data-testid="button-mark-phone-complete"
+                          >
+                            {updateProgressMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                            )}
+                            Continue
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="p-3 rounded-lg bg-muted/50 flex items-center gap-3">
+                      <AlertCircle className="w-5 h-5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm text-muted-foreground">
+                          {!hasPhone 
+                            ? 'Waiting for phone number assignment...' 
+                            : 'Submit your A2P registration to unlock high-volume SMS.'}
+                        </p>
+                      </div>
+                      {canComplete && !progress?.phoneSetupDone && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
+                          disabled={updateProgressMutation.isPending}
+                          data-testid="button-skip-phone"
+                        >
+                          Skip for Now
+                        </Button>
+                      )}
                     </div>
-                    {phoneSmsData?.hasPhoneNumber && !progress?.phoneSetupDone && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
-                        disabled={updateProgressMutation.isPending}
-                        data-testid="button-skip-phone"
-                      >
-                        Skip for Now
-                      </Button>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
               </CardContent>
             </Card>
           </motion.div>
