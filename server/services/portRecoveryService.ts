@@ -106,7 +106,6 @@ export async function buildTargetListForPortRecovery(
   
   let totalFromCustomers = 0;
   let totalFromConversations = 0;
-  let totalFromGoogleVoice = 0;
   
   // 1. Pull from customers table
   const customerRows = await tenantDb
@@ -115,16 +114,16 @@ export async function buildTargetListForPortRecovery(
       phone: customers.phone,
       email: customers.email,
       name: customers.name,
-      smsOptIn: customers.smsOptIn,
+      smsConsent: customers.smsConsent,
     })
     .from(customers)
     .where(
       and(
         eq(customers.tenantId, tenantId),
-        // Respect opt-out if the flag exists
+        // Respect SMS consent - include customers who have consented or never responded
         or(
-          eq(customers.smsOptIn, true),
-          sql`${customers.smsOptIn} IS NULL`
+          eq(customers.smsConsent, true),
+          sql`${customers.smsConsent} IS NULL`
         )
       )
     );
@@ -185,32 +184,9 @@ export async function buildTargetListForPortRecovery(
     }
   }
   
-  // 3. Pull from messages with Google Voice import source
-  const googleVoiceMessages = await tenantDb
-    .select({
-      from_number: messages.from_number,
-    })
-    .from(messages)
-    .where(
-      and(
-        eq(messages.tenantId, tenantId),
-        eq(messages.source, 'google_voice_import')
-      )
-    );
-  
-  for (const m of googleVoiceMessages) {
-    const normalizedPhone = normalizePhone(m.from_number);
-    if (normalizedPhone && !uniqueByPhone.has(normalizedPhone)) {
-      totalFromGoogleVoice++;
-      uniqueByPhone.set(normalizedPhone, {
-        customerId: null,
-        phone: normalizedPhone,
-        email: null,
-        customerName: null,
-        source: 'google_voice_import',
-      });
-    }
-  }
+  // 3. Google Voice imports - Currently disabled as messages table doesn't have source/from_number columns
+  // Future: If Google Voice import tracking is needed, add a dedicated table or fields to messages schema
+  // For now, the target list is built from customers and conversations tables which cover most cases
   
   // Combine phone-based and email-only targets
   const targets = [
@@ -223,7 +199,7 @@ export async function buildTargetListForPortRecovery(
     stats: {
       totalFromCustomers,
       totalFromConversations,
-      totalFromGoogleVoice,
+      totalFromGoogleVoice: 0, // Disabled - would require schema changes to messages table
       totalUnique: targets.length,
       totalWithPhone: uniqueByPhone.size,
       totalWithEmail: targets.filter(t => t.email).length,

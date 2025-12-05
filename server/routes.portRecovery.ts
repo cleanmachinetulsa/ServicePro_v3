@@ -8,7 +8,8 @@
  */
 
 import { Router } from 'express';
-import { createTenantDb } from './tenantDb';
+import { wrapTenantDb } from './tenantDb';
+import { db } from './db';
 import {
   previewTargetList,
   createPortRecoveryCampaign,
@@ -35,7 +36,7 @@ const DEFAULT_SMS_TEMPLATE = `Hey this is Jody with Clean Machine Auto Detail. W
 router.get('/admin/preview', async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     
     const result = await previewTargetList(tenantDb, tenantId);
     
@@ -90,7 +91,7 @@ router.post('/admin/run', async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const userId = (req.session as any)?.userId;
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     const { dryRun } = req.body;
     
     // Check for run in progress (within last hour)
@@ -161,7 +162,7 @@ router.post('/admin/run', async (req, res) => {
 router.get('/admin/history', async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     
     const campaigns = await getCampaigns(tenantDb, tenantId);
     
@@ -210,7 +211,7 @@ function mapCampaignStatus(status: string): 'PENDING' | 'RUNNING' | 'COMPLETED' 
 router.get('/preview', async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     
     const result = await previewTargetList(tenantDb, tenantId);
     
@@ -235,7 +236,7 @@ router.post('/campaigns', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const userId = req.session?.userId;
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     
     const { name } = req.body;
     
@@ -267,7 +268,7 @@ router.post('/campaigns', async (req, res) => {
 router.get('/campaigns', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     
     const campaigns = await getCampaigns(tenantDb, tenantId);
     
@@ -291,7 +292,7 @@ router.get('/campaigns', async (req, res) => {
 router.get('/campaigns/:id', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     const campaignId = parseInt(req.params.id);
     
     const campaign = await getCampaign(tenantDb, campaignId);
@@ -327,7 +328,7 @@ router.get('/campaigns/:id', async (req, res) => {
 router.get('/campaigns/:id/targets', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     const campaignId = parseInt(req.params.id);
     const smsStatus = req.query.smsStatus as any;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -362,7 +363,7 @@ router.get('/campaigns/:id/targets', async (req, res) => {
 router.post('/campaigns/:id/run-batch', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     const campaignId = parseInt(req.params.id);
     const limit = parseInt(req.body.limit) || 100;
     
@@ -388,7 +389,7 @@ router.post('/campaigns/:id/run-batch', async (req, res) => {
 router.post('/campaigns/:id/test-sms', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
-    const tenantDb = createTenantDb(tenantId);
+    const tenantDb = wrapTenantDb(db, tenantId);
     const campaignId = parseInt(req.params.id);
     
     const result = await sendTestSms(tenantDb, campaignId);

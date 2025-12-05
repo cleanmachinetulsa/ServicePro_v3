@@ -1,0 +1,50 @@
+You are working in the Servicepro-v3-base Replit project.
+
+GOAL
+Restore my Clean Machine customer homepage as the default route, while keeping the new ServicePro marketing landing page available at a different path.
+
+DESIRED BEHAVIOR
+
+1) Routes:
+   - "/" (root) SHOULD show the Clean Machine booking site (same thing that is currently on "/home").
+   - "/home" should continue to work as an alias to the Clean Machine booking site.
+   - "/servicepro" should show the new ServicePro marketing landing page that you recently created.
+   - The new marketing page at "/" that you added earlier should NO LONGER be the default route.
+
+2) Redirect behavior:
+   - Visiting "/" should either:
+       a) directly render the same component used for "/home", OR
+       b) immediately redirect to "/home" using react-router's <Navigate replace to="/home" />.
+   - Pick whichever is cleaner given the current App.tsx structure, but DO NOT break authentication or tenant loading.
+
+3) Buttons / links:
+   - On the ServicePro landing page (the marketing page), keep the "Get Started Free" button pointing to the onboarding route (e.g. "/onboarding/industry" or whatever it currently uses).
+   - Update the "View Demo Site" button so that it opens my Clean Machine public customer site at "/home" (for now) instead of pointing to a non-working demo route.
+   - Make sure any hardcoded links that assumed "/" is the marketing page still work logically after this change.
+
+IMPLEMENTATION NOTES
+
+- The previous change added a LandingPage (or similar) component and wired it to the "/" route in client/src/App.tsx (or wherever routes are defined). 
+- You MUST:
+   1) Keep the Clean Machine route at "/home" exactly as it is now (same component, same behavior).
+   2) Add a route for "/servicepro" that renders the ServicePro marketing LandingPage.
+   3) Change the "/" route so it either:
+        - renders the same Clean Machine homepage component as "/home", OR
+        - uses <Navigate replace to="/home" /> so "/" redirects to "/home".
+
+- Confirm there are no duplicate routes for "/" after your changes.
+- Be careful with import changes: if you move the LandingPage component to "/servicepro", ensure the import path is still correct and remove any unused imports.
+
+TESTS TO RUN
+
+After changes, manually or via tests verify:
+
+1) Going to "/" shows the Clean Machine booking homepage.
+2) Going to "/home" shows the exact same Clean Machine booking homepage.
+3) Going to "/servicepro" shows the ServicePro marketing page.
+4) On the ServicePro marketing page:
+   - "Get Started Free" still goes to the onboarding/signup flow.
+   - "View Demo Site" opens "/home" in a new tab or current tab (either is fine as long as it works).
+5) No console errors on navigation between "/", "/home", "/servicepro", and the dashboard.
+
+Please make the routing changes, update any affected links, and then report back exactly what files you changed and how "/" is now wired.

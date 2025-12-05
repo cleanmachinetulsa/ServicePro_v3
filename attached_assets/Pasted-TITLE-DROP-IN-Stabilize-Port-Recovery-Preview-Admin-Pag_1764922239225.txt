@@ -1,0 +1,190 @@
+TITLE: DROP-IN: Stabilize Port Recovery Preview & Admin Page (no more circles)
+
+You are working in the Servicepro-v3-base project.
+The Replit agent has been looping on the Port Recovery feature: fixing one bug at a time, re-running tests, and hitting new runtime errors each cycle.
+I want you to STOP exploring and instead do a single, clean, end-to-end implementation pass for Port Recovery preview + send, using only fields that actually exist in the Drizzle schema.
+
+Goals
+
+Port Recovery Preview API works without any runtime errors.
+
+Admin Port Recovery page (/admin/port-recovery) shows:
+
+a live preview (audience size, points cost, etc.)
+
+a “Send Campaign” button that actually runs the campaign.
+
+No more references to non-existent columns like customers.smsOptIn, messages.from_number, or messages.source inside Port Recovery code.
+
+Hard constraints
+
+Do not change the Google Voice import tool (tools/importGoogleVoiceSms.cjs) or any existing migrations.
+
+Do not add new columns to the database in this task.
+
+Do not touch loyalty guardrail logic, A2P assistant, or other unrelated features.
+
+Use only columns that are already defined in shared/schema.ts.
+
+1. Clean up Port Recovery service
+
+Files to inspect:
+
+server/services/portRecoveryService.ts
+
+shared/schema.ts
+
+Requirements:
+
+Remove or rewrite any code in portRecoveryService.ts that:
+
+references customers.smsOptIn
+
+references messages.from_number
+
+references messages.source
+
+assumes Google Voice–specific columns that do not exist in shared/schema.ts
+
+Implement a simpler, schema-correct audience query, something like:
+
+Start from customers table (current tenant only).
+
+Filter to customers that:
+
+have a valid phone field (whatever the real column is, e.g. phone or phoneNumber)
+
+have SMS consent (use the real consent field, e.g. smsConsent or similar, as defined in shared/schema.ts).
+
+Optionally join appointments to compute “recent activity”, but only if you can do that with existing columns.
+
+Implement a clear preview return type, e.g.:
+
+export interface PortRecoveryPreview {
+  totalTargets: number;
+  smsEligibleCount: number;   // same as totalTargets if you don’t need extra filters
+  customersWithEmail: number; // only if easy to compute
+  estimatedPointsPerCustomer: number; // 500
+  estimatedTotalPointsCost: number;   // totalTargets * 500
+  lastRunAt: Date | null;
+  lastRunCount: number | null;
+}
+
+
+Make sure the service functions you expose are something like:
+
+async function getPortRecoveryPreview(db: TenantDb): Promise<PortRecoveryPreview> { ... }
+async function runPortRecoveryCampaign(db: TenantDb): Promise<PortRecoveryRunResult> { ... }
+async function listPortRecoveryHistory(db: TenantDb): Promise<PortRecoveryRun[]> { ... }
+
+
+Use the actual existing types / table names in this repo; the above shapes are guidelines.
+
+2. Fix Port Recovery routes to use wrapTenantDb
+
+File:
+
+server/routes.portRecovery.ts (or wherever Port Recovery routes are defined)
+
+Requirements:
+
+All Port Recovery routes must not call createTenantDb with a raw string.
+They should instead use the existing tenant helper, e.g.:
+
+import { wrapTenantDb } from "./tenantDb";
+
+router.get("/api/admin/port-recovery/preview", requireAuth, async (req, res) => {
+  const tenantInfo = req.tenant; // or however tenant info is attached
+  const db = wrapTenantDb(tenantInfo);
+  const preview = await portRecoveryService.getPortRecoveryPreview(db);
+  res.json(preview);
+});
+
+
+Ensure the following routes exist and are wired:
+
+GET /api/admin/port-recovery/preview
+
+POST /api/admin/port-recovery/run
+
+GET /api/admin/port-recovery/history
+
+All routes must be tenant-scoped and must not leak data across tenants.
+
+3. Admin Port Recovery UI: preview + send
+
+Files to inspect:
+
+client/src/pages/AdminPortRecovery*.tsx (search for Port Recovery and port-recovery)
+
+Any components used inside the Port Recovery page.
+
+Requirements:
+
+When I visit /admin/port-recovery as an authenticated owner:
+
+I should see the existing design (hero, “What Gets Sent”, Compliance Note, etc.).
+
+Under that, add a Preview & Send section that:
+
+Calls GET /api/admin/port-recovery/preview on mount.
+
+Shows audience size (totalTargets), estimated total points cost, and last-run info.
+
+Shows a loading state and a clear error state if the API fails.
+
+Add a primary button:
+
+Label: “Send Port Recovery Campaign”
+
+Action: POST /api/admin/port-recovery/run
+
+While the request is in progress, disable the button and show a spinner.
+
+On success, show a success toast and re-fetch preview/history.
+
+On failure, show an error toast with a friendly message.
+
+Add a small “History” block or table that lists recent runs using GET /api/admin/port-recovery/history:
+
+Show at least: run date/time, number of recipients, and status.
+
+Newest runs first (DESC by createdAt).
+
+Important UX notes:
+
+Do not change the SMS copy or loyalty logic here; just wire up the preview and send actions.
+
+Keep the mobile layout aligned with the rest of the admin UI.
+
+4. Testing checklist (MUST PASS)
+
+Please run through these checks before you stop:
+
+Start the app, log in as the root tenant (Clean Machine), and visit /admin/port-recovery.
+
+Confirm:
+
+The page loads without a 404.
+
+No “Internal Server Error” toast appears when the preview loads.
+
+Audience stats render (even if numbers are low).
+
+The “Send Port Recovery Campaign” button triggers a successful API call (or a clear, handled error if there are legitimately 0 eligible customers).
+
+Confirm that the server logs show no runtime exceptions from portRecoveryService.ts during preview or send.
+
+When you’re done, summarize:
+
+What you changed in portRecoveryService.ts
+
+Which columns you used for SMS consent and phone numbers
+
+The final JSON shape returned by the preview API
+
+A screenshot description of the updated /admin/port-recovery UI.
+
+Do not perform additional “exploratory” refactors beyond what is needed to achieve the above goals.
+
+This task is complete when the Port Recovery admin page works cleanly end-to-end without any schema-related crashes or circular debugging.

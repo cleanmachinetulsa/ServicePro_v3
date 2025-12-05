@@ -1,0 +1,90 @@
+You are working in the Servicepro-v3-base Replit project.
+
+GOAL
+Fix the current "Internal Server Error" and finalize routing for the three public entry points:
+
+- "/"          → Clean Machine public booking homepage
+- "/home"      → same Clean Machine homepage (alias)
+- "/servicepro"→ ServicePro marketing landing page
+
+We previously tried to rewire "/" and broke something. Repair this cleanly.
+
+STEP 1 – Find the routing definition
+1. Locate the main React router configuration (likely in client/src/App.tsx, client/src/router.tsx, or similar).
+2. Identify:
+   - The component that currently renders the Clean Machine public homepage (the one used for "/home").
+   - The ServicePro marketing landing page component (the one we recently added and wired to "/").
+
+Name them clearly in comments so it's obvious which is which.
+
+STEP 2 – Fix imports and components
+1. Ensure BOTH components are imported correctly at the top of the router file:
+   - CleanMachineHomePage (or whatever it's actually named)
+   - ServiceProLandingPage (or similar)
+2. Remove any unused/duplicate imports for older landing/home components that are no longer used.
+
+If the Clean Machine homepage is only defined inline for "/home" and not as a standalone component, refactor it into a named component so both "/" and "/home" can reuse it.
+
+STEP 3 – Define the routes EXACTLY like this (adjusting names to real component names)
+
+In the router JSX:
+
+- A redirect at root:
+
+   <Route
+     path="/"
+     element={<Navigate replace to="/home" />}
+   />
+
+- The Clean Machine homepage (existing behavior):
+
+   <Route
+     path="/home"
+     element={<CleanMachineHomePage />}
+   />
+
+- The ServicePro marketing page:
+
+   <Route
+     path="/servicepro"
+     element={<ServiceProLandingPage />}
+   />
+
+NOTES:
+- There must be **only one** Route for path="/" (the redirect).
+- Do NOT remove any auth-protected routes, dashboard routes, or tenant routes.
+- Keep any existing 404 / catch-all route in place.
+
+STEP 4 – Update “View Demo Site” on the marketing page
+1. Open the ServicePro marketing landing page component (the one with the big hero saying “ServicePro – AI-powered automation for service businesses”).
+2. Update the “View Demo Site” button so it links to "/home" (the Clean Machine site) in a new tab or current tab. For example:
+
+   - If using a <Link>:
+       <Link to="/home" target="_blank" rel="noreferrer">View Demo Site</Link>
+
+   - Or if using onClick with navigate, then navigate("/home").
+
+3. Make sure the “Get Started Free” button still points to the onboarding route (e.g. "/onboarding/industry") and still works.
+
+STEP 5 – Build & sanity checks
+1. Run the dev server / tests that Replit normally runs and ensure there are **no TypeScript or runtime errors**.
+2. Manually verify, in the running app:
+
+   - Going to "/" loads the Clean Machine homepage (or immediately redirects to "/home" which shows that page).
+   - Going to "/home" shows the same Clean Machine homepage.
+   - Going to "/servicepro" shows the ServicePro marketing landing page.
+   - On "/servicepro":
+       - "Get Started Free" opens the onboarding/signup flow.
+       - "View Demo Site" opens "/home".
+
+3. Confirm the "Internal Server Error" is resolved and pages render instead of a 500 screen.
+
+STEP 6 – Report back
+In a final comment at the bottom of the main router file, briefly note what changed, e.g.:
+
+// Routing NOTE (Dec 5):
+// "/" → redirects to "/home" (Clean Machine public site)
+// "/home" → CleanMachineHomePage
+// "/servicepro" → ServiceProLandingPage
+
+Do NOT change any phone, IVR, A2P, or backend API logic in this block unless absolutely required to fix the error.
