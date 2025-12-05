@@ -387,6 +387,10 @@ export async function registerRoutes(app: Express) {
       '/api/leads',             // Public lead capture for trial requests
       '/api/admin/demo-settings', // Public demo mode status check (GET only - PUT remains owner-protected)
       '/api/demo',              // Public demo session management
+      '/api/loyalty/points/phone', // Public loyalty points lookup by phone (Customer Rewards Portal V2)
+      '/api/loyalty/points/email', // Public loyalty points lookup by email (Customer Rewards Portal V2)
+      '/api/loyalty/rewards',   // Public rewards catalog (Customer Rewards Portal V2)
+      '/api/loyalty/guardrails', // Public redemption guardrails (Customer Rewards Portal V2)
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)

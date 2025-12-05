@@ -22,13 +22,23 @@ import { db } from './db';
 
 /**
  * Register loyalty program routes
+ * 
+ * Customer Rewards Portal V2 - Public endpoints for customer-facing rewards lookup:
+ * - GET /api/loyalty/points/phone/:phone - Phone lookup (public)
+ * - GET /api/loyalty/points/email/:email - Email lookup (public)
+ * - GET /api/loyalty/rewards - Rewards catalog (public)
+ * - GET /api/loyalty/guardrails - Redemption requirements (public)
  */
 export function registerLoyaltyRoutes(app: Express) {
-  // Get loyalty points by phone number
+  // Get loyalty points by phone number (PUBLIC - Customer Rewards Portal V2)
   app.get('/api/loyalty/points/phone/:phone', async (req: Request, res: Response) => {
     try {
       const { phone } = req.params;
-      const result = await getLoyaltyPointsByPhone(phone);
+      // Use session tenantId if authenticated, otherwise default to root for public access
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      
+      const result = await getLoyaltyPointsByPhone(tenantDb, phone);
       
       if (!result) {
         return res.status(404).json({ 
@@ -51,11 +61,15 @@ export function registerLoyaltyRoutes(app: Express) {
     }
   });
   
-  // Get loyalty points by email
+  // Get loyalty points by email (PUBLIC - Customer Rewards Portal V2)
   app.get('/api/loyalty/points/email/:email', async (req: Request, res: Response) => {
     try {
       const { email } = req.params;
-      const result = await getLoyaltyPointsByEmail(email);
+      // Use session tenantId if authenticated, otherwise default to root for public access
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      
+      const result = await getLoyaltyPointsByEmail(tenantDb, email);
       
       if (!result) {
         return res.status(404).json({ 
@@ -78,10 +92,14 @@ export function registerLoyaltyRoutes(app: Express) {
     }
   });
   
-  // Get available loyalty offers
-  app.get('/api/loyalty/rewards', async (_req: Request, res: Response) => {
+  // Get available loyalty offers (PUBLIC - Customer Rewards Portal V2)
+  app.get('/api/loyalty/rewards', async (req: Request, res: Response) => {
     try {
-      const rewards = await getAvailableRewardServices();
+      // Use session tenantId if authenticated, otherwise default to root for public access
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      
+      const rewards = await getAvailableRewardServices(tenantDb);
       
       res.json({ 
         success: true, 
