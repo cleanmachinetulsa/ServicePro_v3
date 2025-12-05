@@ -1,0 +1,388 @@
+🧱 DROP-IN PROMPT: Customer Rewards Portal V2 (Loyalty Journey Polish)
+
+Paste everything below into the Replit agent as a single message:
+
+You are working in the ServicePro v3 multi-tenant SaaS repo (Clean Machine is the root tenant).
+
+Your task in this block is to refine the existing customer-facing loyalty / rewards experience into a premium “Customer Rewards Portal v2” — not to rebuild from scratch.
+
+We already have:
+
+A page where customers enter their phone number to see loyalty points
+
+A page showing rewards / checkpoints / badges / milestones
+
+Loyalty data in the backend (points, reward rules, history, etc.)
+
+You must:
+
+Find and reuse these existing pages and APIs
+
+Upgrade the UX / UI / copy / flow, not rip out working logic
+
+Keep everything multi-tenant-safe (tenant isolation, no cross-tenant leaks)
+
+1. Discovery (DO NOT SKIP)
+
+Search the repo for existing loyalty / rewards features:
+
+Look for routes / pages / components with names like:
+
+Loyalty, Rewards, Points, Badges, Milestones, Checkpoints
+
+Paths like /rewards, /loyalty, /customer/rewards, /customer/points, /portal
+
+Search terms:
+
+"loyalty", "rewardPoints", "pointsBalance", "checkpoints", "badges", "milestone"
+
+"CustomerRewards", "RewardsPage", "LoyaltyPage", "RewardsPortal", "PointsLookup"
+
+Identify:
+
+Customer-facing routes (public or semi-public), e.g.:
+
+GET /rewards
+
+GET /customer/rewards
+
+APIs used by those pages, e.g.:
+
+GET /api/public/loyalty/...
+
+POST /api/public/loyalty/lookup (phone→points)
+
+Any existing components like:
+
+Phone lookup form
+
+Reward list / catalog
+
+Milestone / badge display
+
+Summarize (in comments in the code) what currently exists:
+
+Where the main customer points lookup page is
+
+Where the rewards catalog is
+
+Where the milestone / badge display is
+
+Which endpoints they call and what shape the data has
+
+Important: we already know there is a phone-based lookup & rewards page — do not assume they’re missing just because they’re a bit ugly. Find them and build on top.
+
+2. Design Goals – “Customer Rewards Portal v2”
+
+We’re not changing the business logic or the points math here.
+We’re upgrading UX, aesthetics, and the customer journey.
+
+2.1. Overall Experience
+
+We want a single, canonical, customer-facing Rewards Portal page that:
+
+Is mobile-first and looks premium, not “MVP dev UI”
+
+Uses the existing data & APIs
+
+Makes a great first impression (most customers will see this before anything else)
+
+Conceptual flow:
+
+Customer taps a link (from SMS/email/site) to open the Rewards Portal
+
+They enter their phone number
+
+They see:
+
+Their current points balance
+
+Next reward milestones and progress toward them
+
+A catalog of rewards they can redeem, with clear labels:
+
+“Available now”
+
+“X points away”
+
+Any earned badges / checkpoints (e.g. “3rd detail completed”, “VIP”, etc.)
+
+They understand:
+
+What they can get now
+
+What they’re close to unlocking
+
+How to redeem (high-level; underlying redemption logic already exists)
+
+3. Customer Rewards Portal – Implementation Details
+3.1 Route / Entry Point
+
+Choose a single canonical route for the customer rewards portal, e.g.:
+
+/rewards or /portal/rewards (use whichever already exists; if both exist, consolidate to one canonical and keep the other as a redirect)
+
+Ensure:
+
+It does not require tenant admin login
+
+It still remains tenant-scoped:
+
+Either via root tenant with a “brand” / site config
+
+Or via subdomain / path mapping (whatever the app already uses)
+
+This portal should be the primary link for:
+
+SMS campaigns (Port Recovery, winback, etc.)
+
+Email campaigns related to loyalty
+
+Any “View your rewards” link on the public website
+
+3.2 States & Layout
+
+Implement (or refactor to) three clear states:
+
+State A – Phone lookup (no customer selected yet)
+
+Big, friendly hero:
+
+Title: “Check your Clean Machine Rewards”
+
+Subtitle: “Enter your mobile number to see your points, perks, and rewards.”
+
+Phone number input:
+
+Single field, with basic validation
+
+E164 formatting helper if we have a utility for that; otherwise keep validation forgiving
+
+CTA button: “Show My Rewards”
+
+Subtle note: “We’ll never spam you. This just finds your existing account.”
+
+State B – Customer found / points loaded
+
+Top “balance” card:
+
+Shows:
+
+Customer name (if available) or “Hey there!” / “Valued Customer”
+
+Current points balance (big and readable)
+
+Small text: “Earn points every time you book with Clean Machine Auto Detail.”
+
+Milestones / checkpoints strip:
+
+Horizontal or vertical progress view that:
+
+Shows the next 2–3 meaningful milestones (e.g. 500 pts, 1000 pts, etc.)
+
+For each:
+
+Title (e.g. “Free Upholstery Protector”)
+
+Required points
+
+Progress (e.g. “350 / 500 points” with a small progress bar)
+
+If there are “badges” that already exist in the code, surface them here:
+
+e.g. “3rd Detail Badge”, “Interior Specialist”, etc.
+
+Rewards catalog section:
+
+Grid/list of rewards with cards:
+
+Reward name
+
+Points cost
+
+Short description (“Use on your next full detail”, etc.)
+
+Status chip:
+
+“Available now” (if balance meets points & passes guardrails)
+
+“X points away” otherwise
+
+If guardrails prevent redemption (min cart total, require core service), show:
+
+A small helper text like:
+
+“Redeemable when you book a core service (Interior/Exterior Detail)”
+
+Use the loyalty_guardrail_message if configured.
+
+How to redeem info:
+
+Simple explanatory block:
+
+e.g. “To redeem, just mention your reward when booking, or choose it in the booking form. We’ll confirm final eligibility at checkout.”
+
+State C – No customer found / error
+
+If the phone number lookup returns no match:
+
+Show a friendly message:
+
+“We couldn’t find any rewards for that number yet.”
+
+“If you’ve used Clean Machine before, make sure you typed the same number you text with us.”
+
+Optionally: suggest booking a service to start earning.
+
+3.3. Data Wiring
+
+Do NOT invent new APIs if there are already ones for loyalty lookup / rewards.
+Prefer reusing:
+
+Existing “phone → points” lookup endpoint.
+
+Existing “get rewards / checkpoints / milestones” endpoint.
+
+Only if absolutely necessary:
+
+Add lightweight read-only endpoints, like:
+
+GET /api/public/loyalty/summary?phone=...
+
+These should:
+
+Use proper tenant isolation (use wrapTenantDb)
+
+Never expose other tenants’ data
+
+If there are multiple overlapping endpoints:
+
+Standardize internally, but keep backward compatible responses if other parts of the app call them.
+
+4. Visual / UX Quality
+
+This should look and feel like v2 / v3, not like a bootstrap demo.
+
+Guidelines:
+
+Mobile-first:
+
+Cards stacked vertically on small screens
+
+Reasonable padding and font sizes
+
+Use existing design language:
+
+Same fonts, radius, shadow, gradient language used on newer pages (Setup Wizard, modern admin cards, etc.)
+
+Don’t overcomplicate:
+
+3–4 main sections:
+
+Hero + lookup (or greeting)
+
+Points balance + milestones
+
+Rewards catalog
+
+How-to-redeem note
+
+Microcopy:
+
+Keep tone friendly and non-robotic.
+
+Example texts are fine, but keep them generic enough to work for any tenant, not just Clean Machine (e.g. refer to {businessName} or use tenant branding where already available).
+
+5. Journey Integration & Links
+
+Once the portal is polished:
+
+Tie it into campaigns that mention points, especially:
+
+Port Recovery campaign messages
+
+Any apology/winback messaging that says “you have 500 free points”
+
+For Port Recovery template specifically (if safe to edit):
+
+Ensure the sample SMS includes the canonical Rewards Portal URL (e.g. {{rewardsPortalUrl}}).
+
+Keep logic multi-tenant-safe:
+
+Rewards link built using the tenant’s domain / subdomain config if available.
+
+Ensure the public Clean Machine site (or tenant sites) include a “Rewards” link in a sensible place:
+
+Navbar, footer, or a dedicated CTA card on the homepage that points to the portal route.
+
+6. Multi-Tenant & Safety Requirements
+
+All new or refactored APIs must:
+
+Use wrapTenantDb or the existing per-tenant DB helper.
+
+Never access another tenant’s loyalty data.
+
+The customer-facing portal:
+
+Should be brand-aware (use tenant logo/name if that’s already available in the global public site config).
+
+Must not leak internal admin details (no admin-only fields, no raw IDs that shouldn’t be public).
+
+Do not introduce any breaking changes to:
+
+Admin loyalty screens
+
+Existing loyalty redemption logic
+
+Existing points ledger mechanics
+
+We are only:
+
+Improving UI/UX
+
+Tightening the customer-facing flow
+
+Wiring canonical links for campaigns
+
+7. Testing & Sanity Checks
+
+Add or update tests as appropriate:
+
+At least one integration or unit test for the phone lookup + rewards summary handler (if touched).
+
+Frontend:
+
+Verify the portal can:
+
+Render with no phone entered
+
+Render a “customer found” state from mocked API
+
+Render a “no customer found” state
+
+Manual sanity checklist (please run):
+
+Open the Rewards Portal route on localhost:
+
+See the phone-lookup state.
+
+Enter a known test customer phone that has points:
+
+See balance, milestones, rewards list.
+
+Enter a bogus phone:
+
+See polite “no rewards yet” state.
+
+Verify Port Recovery preview still works and references are not broken.
+
+Verify nothing breaks on the admin side (dashboard loads, loyalty features still work).
+
+When done, leave a short code comment at the top of the main Rewards Portal component explaining:
+
+That this is “Customer Rewards Portal v2”
+
+That it builds on existing loyalty APIs
+
+That it’s intended as the primary entry point for customers to see their points & rewards
