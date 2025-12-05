@@ -155,9 +155,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
   
   // Get loyalty guardrail settings (for frontend to show requirements)
-  app.get('/api/loyalty/guardrails', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/guardrails', async (req: Request, res: Response) => {
     try {
-      const settings = await getLoyaltyGuardrailSettings();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const settings = await getLoyaltyGuardrailSettings(tenantId);
       res.json({ 
         success: true, 
         data: settings
