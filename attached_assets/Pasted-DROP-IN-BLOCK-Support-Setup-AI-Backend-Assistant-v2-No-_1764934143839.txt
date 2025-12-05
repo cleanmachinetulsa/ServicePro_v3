@@ -1,0 +1,366 @@
+DROP-IN BLOCK: Support / Setup AI – Backend Assistant v2 (No UI Yet)
+
+You are working inside the ServicePro v3 multi-tenant SaaS repo.
+
+Assume the previous block (Support / Setup AI Foundation v1) is complete, including:
+
+support_tickets table + service + routes
+
+support_kb_articles table + service + routes
+
+/api/support/ai/context/bootstrap
+
+/api/support/ai/kb/* endpoints
+
+Your goal in this block is to:
+
+Add a SupportAssistantService that:
+
+Pulls tenant + user context
+
+Pulls relevant KB articles
+
+Calls OpenAI using the existing OpenAI integration pattern
+
+Returns a safe, helpful answer
+
+Add a single backend route:
+
+POST /api/support/assistant/chat
+
+Keep this backend-only (no new frontend UI yet).
+
+Respect multi-tenant & security constraints at all times.
+
+1. BACKEND SERVICE: SupportAssistantService
+
+Create a new file:
+
+server/services/supportAssistantService.ts
+
+1.1 Responsibilities
+
+This service should:
+
+Build a compact context bundle for the assistant using existing helpers:
+
+Tenant info
+
+User info
+
+Telephony/email status if available
+
+Open support tickets (short list)
+
+Fetch a small set of KB articles:
+
+Based on an optional “topic hint” from the client
+
+OR based on simple keyword matching from the user’s message
+
+Call OpenAI using the same client / config style used for:
+
+SMS assistant
+
+Voicemail analysis
+
+Return:
+
+export interface SupportAssistantReply {
+  replyText: string;
+  usedArticles: Array<{
+    slug: string;
+    title: string;
+    scope: string;
+    category: string;
+  }>;
+  meta: {
+    model: string;
+    createdAt: string;
+  };
+}
+
+1.2 Implementation Details
+
+In supportAssistantService.ts:
+
+Import:
+
+wrapTenantDb / tenantDb helpers if needed
+
+getSupportKbArticles / supportKbService for KB lookup
+
+Whatever service or helper backs /api/support/ai/context/bootstrap
+
+If that logic currently lives inside the route handler, factor it out into a shared helper (e.g. supportContextService.ts) and reuse it here.
+
+Add a function like:
+
+export async function getSupportAssistantReply(options: {
+  tenantId: string;
+  userId: string;
+  userMessage: string;
+  currentRoute?: string;
+  topicHint?: string;
+}): Promise<SupportAssistantReply> {
+  // 1) Load tenant/user/context data
+  // 2) Decide on 2–5 KB articles to include
+  // 3) Build OpenAI prompt
+  // 4) Call OpenAI and map response
+}
+
+1.2.1 Context Data
+
+You can either:
+
+Reuse the same logic as /api/support/ai/context/bootstrap by extracting it into a supportContextService.ts with a function, e.g.:
+
+export async function getSupportContextForTenantUser(
+  tenantId: string,
+  userId: string,
+): Promise<SupportContext> {
+  // same shape as bootstrap endpoint returns
+}
+
+
+And then:
+
+In the bootstrap endpoint: call getSupportContextForTenantUser and return JSON.
+
+In the assistant service: call it again and embed in the prompt.
+
+SupportContext can be:
+
+export interface SupportContext {
+  tenant: {
+    id: string;
+    name: string;
+    slug?: string;
+    plan?: string;
+    features?: Record<string, boolean>;
+    telephonyStatus?: Record<string, any>;
+    emailStatus?: Record<string, any>;
+  };
+  user: {
+    id: string;
+    name?: string;
+    role: string;
+  };
+  openTickets: Array<{
+    id: string;
+    subject: string;
+    status: string;
+    priority: string;
+  }>;
+}
+
+1.2.2 KB Selection
+
+Use a simple strategy:
+
+If topicHint is provided, search by that in:
+
+title, category, and metadata (if easily accessible)
+
+Else, extract 2–3 keywords from the userMessage (quick & dirty: split, filter by length, maybe lower-case) and query for articles where:
+
+title ILIKE %keyword% OR category = 'telephony' / 'email' etc.
+
+Limit to max 5 articles, then in the actual OpenAI prompt only include top 3 (to keep tokens low).
+
+Return a list like:
+
+const usedArticles = articles.slice(0, 3).map(a => ({
+  slug: a.slug,
+  title: a.title,
+  scope: a.scope,
+  category: a.category,
+}));
+
+1.2.3 OpenAI Call
+
+Use the existing OpenAI integration in your codebase.
+(Whatever module is used for the SMS assistant; follow that pattern.)
+
+Model: use the same or better model (e.g. GPT-4.1 / GPT-5.1 Thinking depending on what you're already using).
+
+Temperature: lower (e.g. 0.2–0.4) — this is an assistant, not creative writing.
+
+System prompt (short version; adapt to your style):
+
+You are the ServicePro Setup & Support Assistant.
+You help service-business owners configure their ServicePro account, connect phone/SMS and email, understand A2P compliance, and use the app effectively.
+You have:
+
+The tenant and user context (plan, features, telephony/email status).
+
+A small internal knowledge base with product and integration docs.
+Rules:
+
+Explain in simple, friendly language.
+
+Prefer step-by-step instructions.
+
+If something clearly requires a human or is dangerous (like DNS, billing disputes, or destructive data changes), explain what they should do and suggest contacting support, rather than pretending you can perform it.
+
+Never invent specific secrets, API keys, or panel URLs. Use generic guidance like "Go to your Twilio Console" or "Go to your DNS provider dashboard".
+
+If you're not sure, say you're not sure and propose next steps for Jody or support to clarify.
+
+User prompt:
+
+Build a JSON-ish text containing:
+
+Tenant/user context (brief)
+
+Used KB article titles + short summaries (you can send 1–2 first paragraphs or a truncated version)
+
+Current route (if provided)
+
+The actual user message
+
+Example:
+
+[CONTEXT]
+Tenant:
+- Name: Clean Machine Auto Detail
+- Plan: Pro
+- TelephonyStatus: {"a2pStatus":"approved","number":"+1918..."}
+
+User:
+- Name: Jody
+- Role: owner
+
+Open tickets:
+- (0 tickets)
+
+Knowledge Articles:
+1) Twilio A2P Basics [integration/telephony]
+   Summary: ...
+2) Email v1 Overview [product/email]
+   Summary: ...
+
+[USER QUESTION]
+The user is currently on route: /setup-wizard/step-2
+
+User message:
+"How do I finish setting up A2P for my tenant and make sure new tenants don't break the rules?"
+
+
+The assistant’s reply text becomes replyText.
+
+2. ROUTE: /api/support/assistant/chat
+
+Create a new routes file if needed, e.g.:
+
+server/routes.supportAssistant.ts
+
+Or, if you already have a routes.support.ts from v1, extend it.
+
+2.1 Route Definition
+
+Add:
+
+// POST /api/support/assistant/chat
+// Auth required
+// Body: { message: string; currentRoute?: string; topicHint?: string }
+
+router.post('/api/support/assistant/chat', requireAuth, async (req, res, next) => {
+  try {
+    const { message, currentRoute, topicHint } = req.body ?? {};
+    const { tenantId, userId } = req.authContext; // follow existing pattern
+
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    const reply = await getSupportAssistantReply({
+      tenantId,
+      userId,
+      userMessage: message,
+      currentRoute,
+      topicHint,
+    });
+
+    return res.json({
+      success: true,
+      reply,
+    });
+  } catch (err) {
+    // Log safely, return generic error
+    console.error('Support assistant error', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Support assistant is currently unavailable. Please try again later or open a support ticket.',
+    });
+  }
+});
+
+
+Make sure:
+
+It uses the same auth middleware and authContext pattern as other tenant APIs.
+
+It never returns raw stack traces to the client.
+
+2.2 Wire Route into App
+
+Import this route module and attach it in the main server route registration file (where your other routes.*.ts are mounted).
+
+3. SAFETY & RATE LIMITING
+
+Add basic guardrails:
+
+Rate limit: If there’s already a global rate limiter in the app (for AI endpoints or sensitive routes), register /api/support/assistant/chat inside that limiter group.
+
+If not, add a simple per-IP or per-user rate limit that’s consistent with the rest of the app (e.g. 30–60 requests/hour per user).
+
+Input validation: trim messages, enforce a reasonable maximum length (e.g. 4000 characters).
+
+Logging: log:
+
+tenantId
+
+userId
+
+truncated message (like first 200 chars)
+
+but never log OpenAI raw responses or secrets.
+
+4. TESTING
+
+Add or update tests consistent with the repo patterns to verify:
+
+getSupportAssistantReply:
+
+Returns a structured reply object even when:
+
+No KB articles match.
+
+Telephony/email status is missing.
+
+Includes meta.model and meta.createdAt.
+
+/api/support/assistant/chat:
+
+Requires auth.
+
+400 when message missing.
+
+200 + success: true when message provided, with a reply.replyText string.
+
+Mock the OpenAI call in tests if you already do that for SMS or voicemail.
+
+5. WHAT TO REPORT BACK
+
+When this block is done, report:
+
+The name/path of the new service file(s) (e.g. supportAssistantService.ts, supportContextService.ts if you split context).
+
+Confirmation that:
+
+POST /api/support/assistant/chat is live.
+
+It correctly uses tenant/user context and KB articles.
+
+Any limitations or stubs you left (e.g. “telephonyStatus is currently {status: 'unknown'} until we add a dedicated helper”).

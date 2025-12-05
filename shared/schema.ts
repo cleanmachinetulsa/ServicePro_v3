@@ -3952,3 +3952,135 @@ export type PlatformSuggestion = typeof platformSuggestions.$inferSelect;
 export type InsertPlatformSuggestion = z.infer<typeof insertPlatformSuggestionSchema>;
 export type CustomerSuggestion = typeof customerSuggestions.$inferSelect;
 export type InsertCustomerSuggestion = z.infer<typeof insertCustomerSuggestionSchema>;
+
+// ============================================================
+// PHASE 26 - SUPPORT SYSTEM (SUPPORT TICKETS & KB)
+// ============================================================
+
+// Support ticket status enum
+export const supportTicketStatusEnum = pgEnum("support_ticket_status", [
+  "open",
+  "in_progress",
+  "resolved",
+  "closed"
+]);
+
+// Support ticket priority enum
+export const supportTicketPriorityEnum = pgEnum("support_ticket_priority", [
+  "low",
+  "normal",
+  "high",
+  "urgent"
+]);
+
+// Support ticket source enum
+export const supportTicketSourceEnum = pgEnum("support_ticket_source", [
+  "manual",
+  "ai_escalation",
+  "system"
+]);
+
+// Support KB scope enum
+export const supportKbScopeEnum = pgEnum("support_kb_scope", [
+  "product",
+  "integration"
+]);
+
+// Support Tickets Table
+export const supportTickets = pgTable("support_tickets", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id").references(() => users.id),
+  customerId: integer("customer_id").references(() => customers.id),
+  subject: text("subject").notNull(),
+  message: text("message").notNull(),
+  status: supportTicketStatusEnum("status").notNull().default("open"),
+  priority: supportTicketPriorityEnum("priority").notNull().default("normal"),
+  source: supportTicketSourceEnum("source").notNull().default("manual"),
+  assignedTo: integer("assigned_to").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
+  metadata: jsonb("metadata").$type<{
+    relatedFeature?: string;
+    browser?: string;
+    userAgent?: string;
+    tags?: string[];
+    internalNotes?: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("support_tickets_tenant_id_idx").on(table.tenantId),
+  tenantStatusIdx: index("support_tickets_tenant_status_idx").on(table.tenantId, table.status),
+  statusIdx: index("support_tickets_status_idx").on(table.status),
+  priorityIdx: index("support_tickets_priority_idx").on(table.priority),
+  createdAtIdx: index("support_tickets_created_at_idx").on(table.createdAt),
+}));
+
+// Support Knowledge Base Articles Table
+export const supportKbArticles = pgTable("support_kb_articles", {
+  id: serial("id").primaryKey(),
+  scope: supportKbScopeEnum("scope").notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  title: text("title").notNull(),
+  contentMarkdown: text("content_markdown").notNull(),
+  isPublic: boolean("is_public").default(true).notNull(),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  metadata: jsonb("metadata").$type<{
+    tags?: string[];
+    provider?: string; // twilio, sendgrid, cloudflare, etc.
+    relatedSlugs?: string[];
+    priority?: number; // for ordering
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  slugIdx: uniqueIndex("support_kb_articles_slug_idx").on(table.slug),
+  scopeCategoryIdx: index("support_kb_articles_scope_category_idx").on(table.scope, table.category),
+  isPublicIdx: index("support_kb_articles_is_public_idx").on(table.isPublic),
+}));
+
+// Support Ticket Insert Schema
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  resolvedAt: true,
+  resolvedByUserId: true,
+});
+
+export const updateSupportTicketStatusSchema = z.object({
+  status: z.enum(["open", "in_progress", "resolved", "closed"]),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  internalNotes: z.string().optional(),
+});
+
+// Support KB Article Insert Schema
+export const insertSupportKbArticleSchema = createInsertSchema(supportKbArticles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateSupportKbArticleSchema = z.object({
+  title: z.string().optional(),
+  contentMarkdown: z.string().optional(),
+  category: z.string().optional(),
+  isPublic: z.boolean().optional(),
+  lastVerifiedAt: z.string().datetime().optional(),
+  metadata: z.object({
+    tags: z.array(z.string()).optional(),
+    provider: z.string().optional(),
+    relatedSlugs: z.array(z.string()).optional(),
+    priority: z.number().optional(),
+  }).optional(),
+});
+
+// Support Types
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
+export type UpdateSupportTicketStatus = z.infer<typeof updateSupportTicketStatusSchema>;
+export type SupportKbArticle = typeof supportKbArticles.$inferSelect;
+export type InsertSupportKbArticle = z.infer<typeof insertSupportKbArticleSchema>;
+export type UpdateSupportKbArticle = z.infer<typeof updateSupportKbArticleSchema>;
