@@ -108,6 +108,10 @@ interface MultiVehicleAppointmentSchedulerProps {
   initialPhone?: string;
   initialService?: string;
   initialReferralCode?: string;
+  // Loyalty Redemption Journey v2 - reward context from Rewards Portal
+  initialRewardId?: number;
+  initialRewardName?: string;
+  initialRewardPoints?: number;
   onClose?: () => void;
   onSuccess?: (appointment: AppointmentDetails) => void;
 }
@@ -119,6 +123,9 @@ export default function MultiVehicleAppointmentScheduler({
   initialPhone,
   initialService,
   initialReferralCode,
+  initialRewardId,
+  initialRewardName,
+  initialRewardPoints,
 }: MultiVehicleAppointmentSchedulerProps = {}) {
   const [step, setStep] = useState<"address" | "mapConfirmation" | "accessVerification" | "service" | "addons" | "vehicle" | "date" | "time" | "details">("address");
   const [customerAddress, setCustomerAddress] = useState<string>("");
@@ -149,6 +156,23 @@ export default function MultiVehicleAppointmentScheduler({
     error?: string;
   } | null>(null);
   const referralCacheRef = useRef<Record<string, typeof referralStatus>>({});
+  
+  // Loyalty Redemption Journey v2 - pending reward to apply at checkout
+  const [pendingReward, setPendingReward] = useState<{
+    id: number;
+    name: string;
+    points: number;
+  } | null>(initialRewardId && initialRewardName && initialRewardPoints ? {
+    id: initialRewardId,
+    name: initialRewardName,
+    points: initialRewardPoints,
+  } : null);
+  const [rewardValidationStatus, setRewardValidationStatus] = useState<{
+    validated: boolean;
+    canRedeem: boolean;
+    reason?: string;
+    isValidating?: boolean;
+  } | null>(null);
 
   // Returning Customer Detection state
   const [returningCustomerData, setReturningCustomerData] = useState<{
@@ -417,6 +441,127 @@ export default function MultiVehicleAppointmentScheduler({
       setIsLoading(false);
     }
   };
+
+  // Loyalty Redemption Journey v2 - Validate reward when cart changes
+  // This effect triggers real-time validation to show guardrail messaging
+  useEffect(() => {
+    const validateReward = async () => {
+      if (!pendingReward) {
+        return;
+      }
+
+      // Set validating state while we check
+      setRewardValidationStatus(prev => prev ? { ...prev, isValidating: true } : { validated: false, canRedeem: false, isValidating: true });
+
+      // Helper: Parse price from priceRange string (e.g., "$50" or "$225-300")
+      const parsePrice = (priceRange: string): number => {
+        const priceMatch = priceRange.match(/\$?([\d,]+)/);
+        if (priceMatch) {
+          return parseInt(priceMatch[1].replace(/,/g, ''), 10);
+        }
+        return 0;
+      };
+
+      // Calculate service price
+      let servicePrice = 0;
+      if (selectedService?.priceRange) {
+        servicePrice = parsePrice(selectedService.priceRange);
+      }
+
+      // Build line items with accurate individual prices for guardrail check
+      const lineItems: Array<{ id: string; name: string; price: number; isAddOn: boolean }> = [];
+
+      // Add core service with its own price
+      if (selectedService) {
+        lineItems.push({
+          id: selectedService.name.toLowerCase().replace(/\s+/g, '-'),
+          name: selectedService.name,
+          price: servicePrice,
+          isAddOn: false,
+        });
+      }
+
+      // Add add-ons with their individual prices (important for min-total calculation)
+      selectedAddOns.forEach(addonName => {
+        const addon = addOnServices.find(a => a.name === addonName);
+        const addonPrice = addon?.priceRange ? parsePrice(addon.priceRange) : 0;
+        lineItems.push({
+          id: addonName.toLowerCase().replace(/\s+/g, '-'),
+          name: addonName,
+          price: addonPrice,
+          isAddOn: true,
+        });
+      });
+
+      // Calculate cart total as sum of all line item prices
+      const cartTotal = lineItems.reduce((sum, item) => sum + item.price, 0);
+
+      // If we have customer ID from phone lookup, validate with backend
+      if (returningCustomerData?.customer?.id) {
+        try {
+          const response = await fetch('/api/loyalty/validate-redemption', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customerId: returningCustomerData.customer.id,
+              rewardId: pendingReward.id,
+              cartTotal,
+              selectedServices: lineItems,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              setRewardValidationStatus({
+                validated: true,
+                canRedeem: data.data.canRedeem,
+                reason: data.data.reason,
+                isValidating: false,
+              });
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('[REWARD VALIDATION] Error:', error);
+        }
+      }
+      
+      // Fallback: Client-side validation when customer not yet identified
+      // This ensures immediate feedback before phone lookup completes
+      const hasCoreService = lineItems.some(item => !item.isAddOn);
+      
+      // If phone lookup is in progress, show pending state
+      if (isCheckingPhone) {
+        setRewardValidationStatus({
+          validated: false,
+          canRedeem: false,
+          reason: "Verifying your account...",
+          isValidating: true,
+        });
+        return;
+      }
+      
+      // Client-side guardrail check (mirrors backend logic)
+      // Default min total is $50 based on typical business settings
+      const MIN_CART_TOTAL = 50;
+      
+      setRewardValidationStatus({
+        validated: true,
+        canRedeem: hasCoreService && cartTotal >= MIN_CART_TOTAL,
+        reason: !selectedService
+          ? "Select a service to see if your reward applies."
+          : !hasCoreService 
+            ? "Select a core service (not just add-ons) to apply your reward." 
+            : cartTotal < MIN_CART_TOTAL 
+              ? `Minimum order value of $${MIN_CART_TOTAL} required. Current: $${cartTotal}.`
+              : undefined,
+        isValidating: false,
+      });
+    };
+
+    validateReward();
+  }, [pendingReward, selectedService, selectedAddOns, addOnServices, returningCustomerData, isCheckingPhone]);
 
   // Add a new vehicle to the list
   const addVehicle = () => {
@@ -1998,6 +2143,116 @@ export default function MultiVehicleAppointmentScheduler({
                 </div>
               )}
             </div>
+            
+            {/* Loyalty Redemption Journey v2 - Pending Reward Display */}
+            {pendingReward && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`rounded-xl p-4 border ${
+                  rewardValidationStatus?.isValidating
+                    ? "bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border-blue-500/40"
+                    : rewardValidationStatus?.canRedeem 
+                      ? "bg-gradient-to-r from-green-600/20 to-emerald-600/20 border-green-500/40" 
+                      : "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/40"
+                }`}
+                data-testid="pending-reward-display"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                      rewardValidationStatus?.isValidating
+                        ? "bg-gradient-to-br from-blue-500 to-indigo-500"
+                        : rewardValidationStatus?.canRedeem 
+                          ? "bg-gradient-to-br from-green-500 to-emerald-500" 
+                          : "bg-gradient-to-br from-purple-500 to-pink-500"
+                    }`}>
+                      {rewardValidationStatus?.isValidating ? (
+                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                      ) : rewardValidationStatus?.canRedeem ? (
+                        <CheckCircle2 className="w-5 h-5 text-white" />
+                      ) : (
+                        <Award className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <div>
+                      <p className={`font-semibold flex items-center gap-2 ${
+                        rewardValidationStatus?.isValidating
+                          ? "text-blue-100"
+                          : rewardValidationStatus?.canRedeem 
+                            ? "text-green-100" 
+                            : "text-purple-100"
+                      }`}>
+                        {rewardValidationStatus?.isValidating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 text-blue-300 animate-spin" />
+                            Checking Eligibility...
+                          </>
+                        ) : rewardValidationStatus?.canRedeem ? (
+                          <>
+                            <Check className="w-4 h-4 text-green-300" />
+                            Ready to Apply
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4 text-purple-300" />
+                            Reward Pending
+                          </>
+                        )}
+                      </p>
+                      <p className={`text-sm ${
+                        rewardValidationStatus?.isValidating
+                          ? "text-blue-200/80"
+                          : rewardValidationStatus?.canRedeem 
+                            ? "text-green-200/80" 
+                            : "text-purple-200/80"
+                      }`}>
+                        {pendingReward.name}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge className={
+                    rewardValidationStatus?.isValidating
+                      ? "bg-blue-500/20 text-blue-200 border-blue-500/30"
+                      : rewardValidationStatus?.canRedeem 
+                        ? "bg-green-500/20 text-green-200 border-green-500/30" 
+                        : "bg-purple-500/20 text-purple-200 border-purple-500/30"
+                  }>
+                    {pendingReward.points.toLocaleString()} pts
+                  </Badge>
+                </div>
+                
+                {rewardValidationStatus?.isValidating ? (
+                  <p className="mt-3 text-xs text-blue-300/70 pl-13">
+                    Verifying your reward eligibility...
+                  </p>
+                ) : rewardValidationStatus?.canRedeem ? (
+                  <p className="mt-3 text-xs text-green-300/70 pl-13">
+                    Your reward will be applied when you complete this booking. Points will be deducted automatically.
+                  </p>
+                ) : (
+                  <p className="mt-3 text-xs text-purple-300/70 pl-13">
+                    Your points will be deducted when you complete this booking. Make sure to book a qualifying service!
+                  </p>
+                )}
+                
+                {rewardValidationStatus && !rewardValidationStatus.isValidating && !rewardValidationStatus.canRedeem && rewardValidationStatus.reason && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg"
+                  >
+                    <p className="text-sm text-amber-200 flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{rewardValidationStatus.reason}</span>
+                    </p>
+                    <p className="text-xs text-amber-300/60 mt-1 pl-6">
+                      Your points are still saved - just adjust your selection to qualify.
+                    </p>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
 
             <div className="space-y-3">
               <p className="text-blue-300 text-sm">

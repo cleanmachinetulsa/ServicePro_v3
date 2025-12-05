@@ -36,8 +36,10 @@ import {
   Target,
   Clock,
   AlertCircle,
-  PartyPopper
+  PartyPopper,
+  Calendar
 } from 'lucide-react';
+import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
@@ -121,6 +123,7 @@ const formatPhone = (value: string): string => {
 const CustomerRewardsPortal = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [phoneInput, setPhoneInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -128,6 +131,26 @@ const CustomerRewardsPortal = () => {
   const [selectedReward, setSelectedReward] = useState<RewardService | null>(null);
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [optInDialogOpen, setOptInDialogOpen] = useState(false);
+  
+  /**
+   * Navigate to booking with reward context
+   * Loyalty Redemption Journey v2: "Use on my next booking" CTA
+   */
+  const navigateToBookingWithReward = (reward: RewardService) => {
+    const phone = phoneInput.replace(/\D/g, '');
+    const params = new URLSearchParams({
+      rewardId: reward.id.toString(),
+      rewardName: reward.name,
+      rewardPoints: reward.pointCost.toString(),
+    });
+    if (phone) {
+      params.set('phone', phone);
+    }
+    if (loyaltyData?.customer?.name) {
+      params.set('name', loyaltyData.customer.name);
+    }
+    setLocation(`/schedule?${params.toString()}`);
+  };
   
   const { data: rewardsData } = useQuery<{ success: boolean; data: RewardService[] }>({
     queryKey: ['/api/loyalty/rewards'],
@@ -540,15 +563,29 @@ const CustomerRewardsPortal = () => {
                                         </p>
                                         
                                         {isAvailable ? (
-                                          <div className="flex items-center gap-1.5 mt-2 text-green-400">
-                                            <Check className="w-4 h-4" />
-                                            <span className="text-sm font-medium">Available now</span>
+                                          <div className="mt-3 space-y-2">
+                                            <div className="flex items-center gap-1.5 text-green-400">
+                                              <Check className="w-4 h-4" />
+                                              <span className="text-sm font-medium">Available now</span>
+                                            </div>
+                                            <Button
+                                              data-testid={`button-use-reward-${reward.id}`}
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigateToBookingWithReward(reward);
+                                              }}
+                                              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium"
+                                            >
+                                              <Calendar className="w-4 h-4 mr-2" />
+                                              Use on my next booking
+                                            </Button>
                                           </div>
                                         ) : (
                                           <div className="flex items-center gap-1.5 mt-2 text-purple-300/60">
                                             <Zap className="w-4 h-4" />
                                             <span className="text-sm">
-                                              {pointsAway(reward).toLocaleString()} points away
+                                              {pointsAway(reward).toLocaleString()} points away – book another service to get closer!
                                             </span>
                                           </div>
                                         )}
@@ -582,15 +619,25 @@ const CustomerRewardsPortal = () => {
                   <Card className="bg-white/5 backdrop-blur-xl border-white/10">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base text-purple-200 flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
+                        <Calendar className="w-4 h-4" />
                         How to Redeem
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm text-purple-300/70">
-                        To redeem your reward, just mention it when booking or choose it in the booking form. 
-                        We'll confirm your eligibility at checkout.
-                      </p>
+                      <div className="space-y-3 text-sm text-purple-300/70">
+                        <div className="flex items-start gap-2">
+                          <span className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-xs text-purple-200 shrink-0">1</span>
+                          <span>Tap "Use on my next booking" on any available reward above</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-xs text-purple-200 shrink-0">2</span>
+                          <span>Book your service – we'll show your reward is being applied</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-xs text-purple-200 shrink-0">3</span>
+                          <span>At checkout, your points are deducted and the reward is applied!</span>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                   
