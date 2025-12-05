@@ -23,6 +23,113 @@ export class LoyaltyGuardrailError extends Error {
 }
 
 /**
+ * Loyalty Redemption Journey v2 - Validation Result Type
+ * 
+ * This is the canonical return shape for validateLoyaltyRedemption.
+ * Used by the frontend to show/hide guardrail messaging.
+ */
+export interface LoyaltyRedemptionValidation {
+  canRedeem: boolean;
+  reason?: string;
+  appliedValue?: number;
+  rewardName?: string;
+  pointsCost?: number;
+}
+
+/**
+ * Loyalty Redemption Journey v2 - Validate redemption without actually redeeming
+ * 
+ * This is a pure validation function that checks all guardrails and point requirements
+ * without making any mutations. Used by the booking flow to show real-time eligibility.
+ * 
+ * Guardrails enforced:
+ * - loyalty_min_cart_total: Minimum cart value required
+ * - loyalty_require_core_service: Must book a core service (not add-ons only)
+ * 
+ * Where guardrails are currently enforced:
+ * - checkLoyaltyGuardrails() in gamificationService.ts
+ * - redeemPointsForReward() in loyaltyService.ts (calls checkLoyaltyGuardrails)
+ * 
+ * @param args Validation parameters
+ * @returns LoyaltyRedemptionValidation result
+ */
+export async function validateLoyaltyRedemption(args: {
+  tenantDb: TenantDb;
+  tenantId: string;
+  customerId: number;
+  rewardId: number;
+  cartTotal: number;
+  selectedServices: LineItem[];
+}): Promise<LoyaltyRedemptionValidation> {
+  const { tenantDb, tenantId, customerId, rewardId, cartTotal, selectedServices } = args;
+  
+  try {
+    // 1. Get reward service details
+    const [rewardService] = await tenantDb
+      .select()
+      .from(rewardServices)
+      .where(
+        and(
+          eq(rewardServices.id, rewardId),
+          eq(rewardServices.active, true)
+        )
+      );
+    
+    if (!rewardService) {
+      return {
+        canRedeem: false,
+        reason: "This reward is no longer available.",
+      };
+    }
+    
+    // 2. Check customer has enough points
+    const [pointsRecord] = await tenantDb
+      .select()
+      .from(loyaltyPoints)
+      .where(eq(loyaltyPoints.customerId, customerId));
+    
+    if (!pointsRecord || pointsRecord.points < rewardService.pointCost) {
+      return {
+        canRedeem: false,
+        reason: `You need ${rewardService.pointCost} points to redeem this reward, but you have ${pointsRecord?.points || 0}.`,
+        rewardName: rewardService.name,
+        pointsCost: rewardService.pointCost,
+      };
+    }
+    
+    // 3. Check guardrails (min cart total, core service requirement)
+    const guardrailResult = await checkLoyaltyGuardrails({
+      tenantId,
+      cartTotal,
+      lineItems: selectedServices,
+    });
+    
+    if (!guardrailResult.ok) {
+      return {
+        canRedeem: false,
+        reason: guardrailResult.message,
+        rewardName: rewardService.name,
+        pointsCost: rewardService.pointCost,
+      };
+    }
+    
+    // 4. All checks passed - redemption is valid
+    return {
+      canRedeem: true,
+      appliedValue: rewardService.pointCost, // Could be monetary value if we track that
+      rewardName: rewardService.name,
+      pointsCost: rewardService.pointCost,
+    };
+  } catch (error) {
+    console.error('[LOYALTY VALIDATION] Error validating redemption:', error);
+    return {
+      canRedeem: false,
+      reason: "Unable to validate reward redemption. Please try again.",
+    };
+  }
+}
+
+/**
  * Normalize phone number for consistent lookup
  * Handles different formats: (123) 456-7890, 123-456-7890, 1234567890
  */

@@ -14,7 +14,8 @@ import {
   getAllCustomerAchievements,
   getAllRedeemedRewards,
   getRewardServicesForDashboard,
-  LoyaltyGuardrailError
+  LoyaltyGuardrailError,
+  validateLoyaltyRedemption
 } from './loyaltyService';
 import { getLoyaltyGuardrailSettings } from './gamificationService';
 import { wrapTenantDb } from './tenantDb';
@@ -28,6 +29,10 @@ import { db } from './db';
  * - GET /api/loyalty/points/email/:email - Email lookup (public)
  * - GET /api/loyalty/rewards - Rewards catalog (public)
  * - GET /api/loyalty/guardrails - Redemption requirements (public)
+ * 
+ * Loyalty Redemption Journey v2 - Validation and redemption:
+ * - POST /api/loyalty/validate-redemption - Validate before booking (public)
+ * - POST /api/loyalty/redeem - Finalize redemption (requires customer context)
  */
 export function registerLoyaltyRoutes(app: Express) {
   // Get loyalty points by phone number (PUBLIC - Customer Rewards Portal V2)
@@ -187,6 +192,51 @@ export function registerLoyaltyRoutes(app: Express) {
       res.status(500).json({ 
         success: false, 
         message: 'Failed to retrieve guardrail settings',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+  
+  /**
+   * Loyalty Redemption Journey v2 - Validate redemption eligibility
+   * 
+   * This endpoint checks if a reward can be redeemed given the current cart/service selection.
+   * It does NOT actually redeem - that happens at booking submission time.
+   * 
+   * Used by the booking flow to show real-time eligibility status and guardrail messaging.
+   */
+  app.post('/api/loyalty/validate-redemption', async (req: Request, res: Response) => {
+    try {
+      const { customerId, rewardId, cartTotal, selectedServices } = req.body;
+      
+      if (!customerId || !rewardId) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Customer ID and Reward ID are required'
+        });
+      }
+      
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      
+      const result = await validateLoyaltyRedemption({
+        tenantDb,
+        tenantId,
+        customerId: Number(customerId),
+        rewardId: Number(rewardId),
+        cartTotal: typeof cartTotal === 'number' ? cartTotal : 0,
+        selectedServices: Array.isArray(selectedServices) ? selectedServices : [],
+      });
+      
+      res.json({ 
+        success: true, 
+        data: result
+      });
+    } catch (error) {
+      console.error('Error validating redemption:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to validate redemption',
         error: error instanceof Error ? error.message : String(error)
       });
     }
