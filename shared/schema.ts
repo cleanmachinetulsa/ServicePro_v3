@@ -1713,6 +1713,11 @@ export const businessSettings = pgTable("business_settings", {
   smsFallbackPhone: text("sms_fallback_phone"), // Phone number to forward messages to when main system is down
   smsFallbackAutoReply: text("sms_fallback_auto_reply").default("Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."), // Auto-reply message sent to customers
   
+  // Loyalty Points Guardrails - Prevent abuse of points redemption
+  loyaltyMinCartTotal: integer("loyalty_min_cart_total").default(75), // Minimum cart total ($) to redeem points (0 = no minimum)
+  loyaltyRequireCoreService: boolean("loyalty_require_core_service").default(false), // Require a core service (not just add-ons) to redeem
+  loyaltyGuardrailMessage: text("loyalty_guardrail_message").default("To redeem your loyalty points, please book a qualifying service worth at least $75."),
+  
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
 });
