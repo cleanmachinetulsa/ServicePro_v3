@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,23 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+// Detect if device is mobile (iOS/Android)
+const isMobileDevice = (): boolean => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+};
+
 export default function Dialer() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const { toast} = useToast();
   const [, setLocation] = useLocation();
+  
+  // Determine calling mode based on device
+  const callingMode = useMemo(() => {
+    return isMobileDevice() ? 'direct' : 'click-to-call';
+  }, []);
 
   const callMutation = useMutation({
     mutationFn: async (number: string) => {
@@ -75,7 +87,7 @@ export default function Dialer() {
         title: 'Invalid number', 
         description: 'Please enter a valid phone number',
         variant: 'destructive',
-        duration: 8000, // 8 seconds for validation errors
+        duration: 8000,
       });
       return;
     }
@@ -86,12 +98,24 @@ export default function Dialer() {
         title: 'Invalid number', 
         description: 'Unable to process phone number',
         variant: 'destructive',
-        duration: 8000, // 8 seconds for validation errors
+        duration: 8000,
       });
       return;
     }
     
-    // Show confirmation dialog before calling
+    // Direct calling on mobile (Groundwire intercepts tel: links)
+    if (callingMode === 'direct') {
+      window.location.href = `tel:${e164Number}`;
+      toast({ 
+        title: 'Calling...', 
+        description: `Connecting to ${phoneNumber} via Groundwire`,
+        duration: 2000
+      });
+      setPhoneNumber('');
+      return;
+    }
+    
+    // Click-to-call on desktop/web
     setShowConfirmDialog(true);
   };
 
@@ -216,34 +240,37 @@ export default function Dialer() {
       </div>
 
       {/* Confirmation Dialog */}
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              Confirm Call
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-base">
-              Are you sure you want to call <span className="font-semibold text-foreground">{phoneNumber}</span>?
-              <br />
-              <br />
-              <span className="text-sm text-muted-foreground">You will receive a call first, then be connected to the customer.</span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-call">
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmCall}
-              className="bg-green-600 hover:bg-green-700"
-              data-testid="button-confirm-call"
-            >
-              Call Now
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Only show confirmation dialog for click-to-call mode (desktop/web) */}
+      {callingMode === 'click-to-call' && (
+        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Confirm Call
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-base">
+                Are you sure you want to call <span className="font-semibold text-foreground">{phoneNumber}</span>?
+                <br />
+                <br />
+                <span className="text-sm text-muted-foreground">You will receive a call first, then be connected to the customer.</span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-call">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleConfirmCall}
+                className="bg-green-600 hover:bg-green-700"
+                data-testid="button-confirm-call"
+              >
+                Call Now
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }
