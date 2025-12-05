@@ -36,7 +36,9 @@ import {
   Sparkles,
   RefreshCw,
   Lightbulb,
-  MessageSquarePlus
+  MessageSquarePlus,
+  HelpCircle,
+  Headphones
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -436,5 +438,28 @@ export const navigationItems: NavigationItem[] = [
     label: 'Customer Feedback',
     icon: MessageSquarePlus,
     path: '/admin/customer-suggestions',
+  },
+  
+  // HELP & SUPPORT
+  {
+    id: 'separator-support',
+    label: '',
+    icon: HelpCircle,
+    path: '',
+    separator: true,
+    sectionHeader: 'Help & Support',
+  },
+  {
+    id: 'support-center',
+    label: 'Help & Support',
+    icon: HelpCircle,
+    path: '/support',
+  },
+  {
+    id: 'admin-support-tickets',
+    label: 'Support Tickets',
+    icon: Headphones,
+    path: '/admin/support-tickets',
+    badge: 'Owner',
   },
 ];
