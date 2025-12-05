@@ -1,0 +1,353 @@
+BLOCK B – Loyalty Guardrails + Port Recovery Send Flow
+
+Here’s the “big, high-impact” drop-in you can paste into the Replit agent.
+
+🧱 BLOCK B – Loyalty Redemption Guardrails + Port Recovery “Prepare & Send” Flow
+
+GOAL:
+
+Actually enforce the new loyalty guardrail settings when customers redeem points.
+
+Turn /admin/port-recovery from a static info page into a real “prepare → preview → send” tool for the apology campaign.
+
+Please keep all existing behavior working for Clean Machine and respect multi-tenant isolation.
+
+PART 1 – Enforce Loyalty Redemption Guardrails
+
+Find the loyalty/points logic
+
+Locate the service that handles redeeming loyalty points.
+Likely candidates (names may differ, use search):
+
+server/services/loyaltyService.ts
+
+server/services/gamificationService.ts
+
+Any route like POST /api/loyalty/redeem or “apply points” during checkout/booking.
+
+Also locate where business_settings are loaded for the current tenant (often businessSettingsService or similar).
+
+Schema assumptions (don’t change schema, just use it)
+
+In business_settings (or equivalent) we now have fields similar to:
+
+loyalty_min_cart_total (number, nullable, default ~75)
+
+loyalty_require_core_service (boolean, default false)
+
+loyalty_guardrail_message (string, default generic explanation)
+
+If names differ slightly, use the existing field names – do not add new columns.
+
+Add a guardrail check helper
+
+In the main loyalty/gamification service, create a helper like:
+
+type LoyaltyGuardrailResult =
+  | { ok: true }
+  | {
+      ok: false
+      code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED'
+      message: string
+    }
+
+async function checkLoyaltyGuardrails(args: {
+  tenantId: string
+  businessSettings: BusinessSettings
+  cartTotal: number
+  lineItems: Array<{ id: string; name: string; tags?: string[] }>
+}): Promise<LoyaltyGuardrailResult> {
+  // 1) Minimum cart total
+  const minTotal = businessSettings.loyalty_min_cart_total
+  if (typeof minTotal === 'number' && minTotal > 0) {
+    if (cartTotal < minTotal) {
+      return {
+        ok: false,
+        code: 'MIN_CART_TOTAL',
+        message:
+          businessSettings.loyalty_guardrail_message ??
+          `Points can only be used on orders of at least $${minTotal}.`,
+      }
+    }
+  }
+
+  // 2) Require a core service
+  if (businessSettings.loyalty_require_core_service) {
+    const hasCore = lineItems.some((item) =>
+      (item.tags ?? []).includes('core_service'),
+    )
+
+    if (!hasCore) {
+      return {
+        ok: false,
+        code: 'CORE_SERVICE_REQUIRED',
+        message:
+          businessSettings.loyalty_guardrail_message ??
+          'Points can only be redeemed when booking a main/core service (not add-ons alone).',
+      }
+    }
+  }
+
+  return { ok: true }
+}
+
+
+Do not hardcode the min total; always use settings.
+
+Respect the tenant’s custom loyalty_guardrail_message if present.
+
+Wire it into redemption flow
+
+Wherever we actually redeem/apply points (the one spot that writes to the DB and/or reduces point balance):
+
+Before performing the redemption, call checkLoyaltyGuardrails with:
+
+businessSettings for that tenant
+
+The current cart total in dollars (after discounts but before points)
+
+The line items in the cart, including tags such as 'core_service' if we already have them
+
+If result.ok === false:
+
+Do NOT redeem points
+
+Return a 4xx response from the API, for example:
+
+return res.status(400).json({
+  error: 'LOYALTY_GUARDRAIL_BLOCKED',
+  code: result.code,
+  message: result.message,
+})
+
+
+Log a structured warning like:
+loyalty.guardrail_blocked with { tenantId, code, cartTotal, customerId }
+
+Only proceed with the existing redemption logic if ok === true.
+
+Important:
+
+Make sure existing happy-path redemptions keep working for existing tenants who haven’t set any guardrail values (null/undefined should mean “no guardrail”).
+
+Do not double-charge or double-deduct points even if the API is retried.
+
+UI feedback to the agent / customer
+
+Find the frontend location where the client calls the redemption/apply-points API (likely on the booking / checkout page):
+
+When the API returns 400 with error: 'LOYALTY_GUARDRAIL_BLOCKED':
+
+Show a toast with message from the payload.
+
+Also show a small inline hint under the “Apply points” control with the same text.
+
+For any other error, keep existing behavior.
+
+Result: when someone tries to book only a free engine bay clean with their 500 points, they’ll get a friendly explanation instead of a mysterious failure.
+
+PART 2 – Port Recovery UI: Prepare → Preview → Send
+
+We already have backend primitives: campaign tables, targets, and wiring to award 500 points and send SMS/email. Now we turn /admin/port-recovery into a usable tool.
+
+Backend: add simple API endpoints
+
+Under an admin route group like server/routes/adminPortRecovery.ts (or create it if missing), expose 3 endpoints scoped by tenant:
+
+GET /api/admin/port-recovery/preview
+
+Computes:
+
+Total number of distinct customers/phone numbers that would be targeted.
+
+Use the same consolidation logic you already wired for the port recovery foundation (combine from:
+
+Customer DB
+
+Service history
+
+Any Twilio logs or import sources you already use).
+
+A sample SMS message (the exact text the campaign will send, using the tenant’s name).
+
+A sample customer (optional) so the UI can show what personalization looks like.
+
+Returns JSON like:
+
+{
+  canRun: boolean
+  totalTargets: number
+  sampleSms: string
+  sampleCustomerName?: string
+  lastRun?: {
+    startedAt: string
+    finishedAt?: string
+    totalSent: number
+    totalFailed: number
+  }
+}
+
+
+Should not create any records or send anything; purely read-only.
+
+POST /api/admin/port-recovery/run
+
+Body: optionally empty, or { dryRun?: boolean }.
+
+Behavior:
+
+If dryRun === true, reuse the preview logic and return the same payload as preview (no sending).
+
+Otherwise:
+
+Create a new campaign run record linked to the tenant.
+
+Queue or trigger the actual sending logic that already exists:
+
+Award 500 points via the gamification service.
+
+Send SMS with the apology + reward text.
+
+Return:
+
+{
+  ok: true,
+  runId: string,
+  totalQueued: number
+}
+
+
+If there is already a recent run in progress (e.g., within the last hour), return a 409 with a clear message to avoid double-sending.
+
+GET /api/admin/port-recovery/history (lightweight)
+
+Returns the latest 3–5 runs for that tenant:
+
+{
+  runs: Array<{
+    id: string
+    startedAt: string
+    finishedAt?: string
+    totalTargets: number
+    totalSent: number
+    totalFailed: number
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+  }>
+}
+
+
+Use whatever existing schema you already created for campaigns/targets; don’t add new columns unless absolutely necessary.
+
+All of these must:
+
+Enforce that the current user is an owner/admin for this tenant.
+
+Respect multi-tenant isolation (no cross-tenant data leakage).
+
+Frontend: upgrade /admin/port-recovery page
+
+File is probably client/src/pages/AdminPortRecovery.tsx or similar. Upgrade it as follows:
+
+Top section (already there, keep it)
+
+Keep the existing “Port Recovery” hero card with message preview & points explanation.
+
+Add a “Prepare Campaign” panel
+
+Under the hero card, add a new card with:
+
+A “Check who we’ll contact” button that calls
+GET /api/admin/port-recovery/preview.
+
+When loaded:
+
+Show:
+
+X customers will receive this message
+
+A line like:
+“Sample: Hey Sarah, this is Jody with Clean Machine Auto Detail…”
+
+If lastRun exists, show a subtle “Last campaign: date, sent Y, failed Z”.
+
+Show proper loading states and friendly error messages.
+
+Add a “Send Campaign” control
+
+Below the preview:
+
+Show a danger-styled but clear confirmation block:
+
+Checkbox:
+[ ] I understand this will send one apology message + 500 points to all eligible customers.
+
+If not checked, disable the “Send Now” button.
+
+When clicking “Send Now”:
+
+Call POST /api/admin/port-recovery/run.
+
+On success:
+
+Show a success toast:
+“Port Recovery campaign launched to X customers. You can watch delivery stats on the Messaging Logs page.”
+
+Refresh the preview + history panels.
+
+On error (e.g., 409 because a run is in progress):
+
+Show the server’s error message in a toast.
+
+History ribbon
+
+At the bottom, show a simple timeline or table of the last few runs:
+
+Columns:
+
+Date
+
+Status
+
+Sent (success/failed)
+
+This should use GET /api/admin/port-recovery/history.
+
+Design constraints:
+
+Keep the existing dark gradient aesthetic.
+
+Ensure this page is mobile-friendly (stacked layout, buttons full width on small screens).
+
+Reuse existing layout primitives (cards, badges, icons) from other admin pages, don’t invent new ones.
+
+Safety & Testing
+
+Add unit/integration tests where appropriate, especially for:
+
+checkLoyaltyGuardrails behavior for:
+
+No guardrails set → redemption allowed
+
+Cart below min threshold → blocked
+
+No core service in line items when require_core_service = true → blocked
+
+Port Recovery preview & run endpoints with:
+
+Normal happy path
+
+“Run already in progress” scenario
+
+Manually verify with the root/Clean Machine tenant:
+
+You can preview the Port Recovery campaign.
+
+You see a plausible target count.
+
+The Send Now button works and records a run, but DO NOT actually send SMS to real customers in the dev environment – if needed, add an environment check to short-circuit sending when NODE_ENV !== 'production' or when a feature flag is off.
+
+Ensure no behavior changes for tenants who never touch:
+
+loyalty guardrail settings
+
+port recovery tools

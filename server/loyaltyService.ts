@@ -7,6 +7,20 @@ import { eq, gt, and, sql } from "drizzle-orm";
 import { sendRewardNotificationEmail } from "./emailService.rewards";
 import { addDays, addMonths } from "date-fns";
 import type { TenantDb } from './tenantDb';
+import { checkLoyaltyGuardrails, type LineItem, type LoyaltyGuardrailResult } from './gamificationService';
+
+/**
+ * Custom error class for loyalty guardrail blocks
+ */
+export class LoyaltyGuardrailError extends Error {
+  code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED';
+  
+  constructor(code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED', message: string) {
+    super(message);
+    this.code = code;
+    this.name = 'LoyaltyGuardrailError';
+  }
+}
 
 /**
  * Normalize phone number for consistent lookup
@@ -490,15 +504,50 @@ async function checkAndNotifyRewardEligibility(tenantDb: TenantDb, customerId: n
 
 /**
  * Redeem loyalty points for an offer
+ * Now includes guardrail checks for min cart total and core service requirements
+ * 
+ * @param tenantDb - Tenant database connection
+ * @param customerId - Customer ID
+ * @param rewardServiceId - Reward service ID
+ * @param quantity - Number of rewards to redeem (1-3)
+ * @param options - Optional guardrail parameters
+ * @param options.cartTotal - Current cart total for min cart check
+ * @param options.lineItems - Line items in cart for core service check
+ * @param options.skipGuardrails - Skip guardrail checks (for admin use only)
  */
 export async function redeemPointsForReward(
   tenantDb: TenantDb,
   customerId: number, 
   rewardServiceId: number,
-  quantity: number = 1
+  quantity: number = 1,
+  options?: {
+    cartTotal?: number;
+    lineItems?: LineItem[];
+    skipGuardrails?: boolean;
+    tenantId?: string;
+  }
 ) {
   if (quantity < 1 || quantity > 3) {
     throw new Error("You can redeem between 1 and 3 rewards at once");
+  }
+
+  // Check loyalty guardrails (unless explicitly skipped for admin operations)
+  if (!options?.skipGuardrails) {
+    const guardrailResult = await checkLoyaltyGuardrails({
+      tenantId: options?.tenantId || 'root',
+      cartTotal: options?.cartTotal ?? 0,
+      lineItems: options?.lineItems ?? [],
+    });
+    
+    if (!guardrailResult.ok) {
+      console.warn('[LOYALTY] Guardrail blocked redemption:', {
+        tenantId: options?.tenantId || 'root',
+        code: guardrailResult.code,
+        cartTotal: options?.cartTotal,
+        customerId,
+      });
+      throw new LoyaltyGuardrailError(guardrailResult.code, guardrailResult.message);
+    }
   }
 
   // Get the reward service

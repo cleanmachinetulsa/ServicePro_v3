@@ -13,8 +13,11 @@ import {
   getAllAchievements,
   getAllCustomerAchievements,
   getAllRedeemedRewards,
-  getRewardServicesForDashboard
+  getRewardServicesForDashboard,
+  LoyaltyGuardrailError
 } from './loyaltyService';
+import { getLoyaltyGuardrailSettings } from './gamificationService';
+import { createTenantDb } from './tenantDb';
 
 /**
  * Register loyalty program routes
@@ -94,9 +97,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
   
   // Redeem loyalty points for an offer
+  // Now includes guardrail checks for cart total and core service requirements
   app.post('/api/loyalty/redeem', async (req: Request, res: Response) => {
     try {
-      const { customerId, rewardServiceId, quantity } = req.body;
+      const { customerId, rewardServiceId, quantity, cartTotal, lineItems, skipGuardrails } = req.body;
       
       if (!customerId || !rewardServiceId) {
         return res.status(400).json({ 
@@ -105,10 +109,24 @@ export function registerLoyaltyRoutes(app: Express) {
         });
       }
       
+      // Get tenant context
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = createTenantDb(tenantId);
+      
+      // Check if user is admin (for skip guardrails permission)
+      const isAdmin = (req.session as any)?.role === 'owner' || (req.session as any)?.role === 'admin';
+      
       const result = await redeemPointsForReward(
+        tenantDb,
         Number(customerId), 
         Number(rewardServiceId),
-        quantity ? Number(quantity) : 1
+        quantity ? Number(quantity) : 1,
+        {
+          cartTotal: typeof cartTotal === 'number' ? cartTotal : undefined,
+          lineItems: Array.isArray(lineItems) ? lineItems : undefined,
+          skipGuardrails: isAdmin && skipGuardrails === true,
+          tenantId,
+        }
       );
       
       res.json({ 
@@ -117,9 +135,38 @@ export function registerLoyaltyRoutes(app: Express) {
       });
     } catch (error) {
       console.error('Error redeeming points:', error);
+      
+      // Handle guardrail blocks with specific error response
+      if (error instanceof LoyaltyGuardrailError) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'LOYALTY_GUARDRAIL_BLOCKED',
+          code: error.code,
+          message: error.message,
+        });
+      }
+      
       res.status(400).json({ 
         success: false, 
         message: error instanceof Error ? error.message : 'Failed to redeem points',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+  
+  // Get loyalty guardrail settings (for frontend to show requirements)
+  app.get('/api/loyalty/guardrails', async (_req: Request, res: Response) => {
+    try {
+      const settings = await getLoyaltyGuardrailSettings();
+      res.json({ 
+        success: true, 
+        data: settings
+      });
+    } catch (error) {
+      console.error('Error fetching guardrail settings:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to retrieve guardrail settings',
         error: error instanceof Error ? error.message : String(error)
       });
     }
