@@ -285,6 +285,9 @@ export const tenantConfig = pgTable("tenant_config", {
   onboardingPhoneSetupDone: boolean("onboarding_phone_setup_done").default(false),
   onboardingSitePublished: boolean("onboarding_site_published").default(false),
   
+  // Suggestion Box settings
+  suggestionsBoxEnabled: boolean("suggestions_box_enabled").default(true), // Enable/disable public customer suggestions
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3861,3 +3864,91 @@ export type PortRecoveryCampaign = typeof portRecoveryCampaigns.$inferSelect;
 export type InsertPortRecoveryCampaign = z.infer<typeof insertPortRecoveryCampaignSchema>;
 export type PortRecoveryTarget = typeof portRecoveryTargets.$inferSelect;
 export type InsertPortRecoveryTarget = z.infer<typeof insertPortRecoveryTargetSchema>;
+
+// ==========================================
+// SUGGESTION SYSTEM (Platform + Customer)
+// ==========================================
+
+// Platform suggestion categories
+export const platformSuggestionCategoryEnum = pgEnum("platform_suggestion_category", [
+  "feature",
+  "bug",
+  "improvement",
+  "ui",
+  "other"
+]);
+
+// Suggestion status enum (shared)
+export const suggestionStatusEnum = pgEnum("suggestion_status", [
+  "new",
+  "reviewing",
+  "planned",
+  "completed",
+  "declined"
+]);
+
+// Platform Suggestions - From tenants to ServicePro (you/Jody)
+export const platformSuggestions = pgTable("platform_suggestions", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  submittedByUserId: integer("submitted_by_user_id").references(() => users.id),
+  category: platformSuggestionCategoryEnum("category").notNull().default("feature"),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  status: suggestionStatusEnum("status").notNull().default("new"),
+  metadata: jsonb("metadata").$type<{
+    source: "platform";
+    tags: string[];
+    userAgent?: string;
+    submitterEmail?: string;
+    submitterName?: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("platform_suggestions_tenant_id_idx").on(table.tenantId),
+  statusIdx: index("platform_suggestions_status_idx").on(table.status),
+  categoryIdx: index("platform_suggestions_category_idx").on(table.category),
+  createdAtIdx: index("platform_suggestions_created_at_idx").on(table.createdAt),
+}));
+
+// Customer Suggestions - From tenant's customers to the tenant
+export const customerSuggestions = pgTable("customer_suggestions", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => customers.id), // Optional - may be anonymous
+  contactPhone: varchar("contact_phone", { length: 50 }), // Optional contact info
+  contactEmail: varchar("contact_email", { length: 255 }), // Optional contact info
+  message: text("message").notNull(),
+  metadata: jsonb("metadata").$type<{
+    source: "customer";
+    tags: string[];
+    userAgent?: string;
+    ipAddress?: string;
+    sessionId?: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index("customer_suggestions_tenant_id_idx").on(table.tenantId),
+  customerIdIdx: index("customer_suggestions_customer_id_idx").on(table.customerId),
+  createdAtIdx: index("customer_suggestions_created_at_idx").on(table.createdAt),
+}));
+
+// Insert schemas
+export const insertPlatformSuggestionSchema = createInsertSchema(platformSuggestions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+});
+
+export const insertCustomerSuggestionSchema = createInsertSchema(customerSuggestions).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Types
+export type PlatformSuggestion = typeof platformSuggestions.$inferSelect;
+export type InsertPlatformSuggestion = z.infer<typeof insertPlatformSuggestionSchema>;
+export type CustomerSuggestion = typeof customerSuggestions.$inferSelect;
+export type InsertCustomerSuggestion = z.infer<typeof insertCustomerSuggestionSchema>;

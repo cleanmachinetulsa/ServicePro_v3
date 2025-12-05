@@ -1,0 +1,418 @@
+DROP-IN BLOCK: Support / Setup AI Foundation (Phase 26 – v1)
+
+You are working inside the ServicePro v3 multi-tenant SaaS repo.
+
+Your goal in this block is to lay the foundation for the Support / Setup AI described in MASTER_PLAN_v3.6_SERVICEPRO.md — without trying to build a full chat AI yet.
+
+This block should:
+
+Add a support tickets system (for tenants to contact “ServicePro HQ” – Jody).
+
+Add a Support Knowledge Base (KB) data model + APIs (for product & integration docs).
+
+Add AI-friendly context endpoints so a future AI assistant can:
+
+Read tenant context
+
+Read KB content
+
+Create support tickets / escalations
+
+Add a simple in-app Support page so this is already useful even before AI.
+
+Do all of this without breaking existing flows and fully respecting the multi-tenant / root-tenant constraints already in the codebase.
+
+1. DATABASE & SCHEMA CHANGES
+
+Use the existing Drizzle / migration patterns in server/db/migrations and shared/schema.ts.
+
+1.1 support_tickets table
+
+Create a new table support_tickets with at least:
+
+id – uuid primary key
+
+tenant_id – references tenants (root tenant can be used for platform-wide tickets)
+
+created_by_user_id – nullable, uuid (logged-in tenant user if available)
+
+customer_id – nullable, uuid (for future use when a customer-facing flow escalates)
+
+subject – text
+
+message – text
+
+status – text enum: 'open' | 'in_progress' | 'resolved' | 'closed'
+
+priority – text enum: 'low' | 'normal' | 'high' | 'urgent'
+
+source – text enum: 'manual' | 'ai_escalation' | 'system'
+
+created_at – timestamptz default now
+
+updated_at – timestamptz default now
+
+metadata – jsonb (for arbitrary future fields like related_feature, browser, etc.)
+
+Constraints:
+
+Indexed by tenant_id
+
+Indexed by (tenant_id, status)
+
+Default status = 'open', priority = 'normal', source = 'manual'
+
+Update shared/schema.ts to include this table with proper Drizzle types.
+
+1.2 support_kb_articles table
+
+Create a knowledge base table for product + integration docs.
+
+New table: support_kb_articles:
+
+id – uuid primary key
+
+scope – text enum: 'product' | 'integration'
+
+category – text (e.g. 'telephony', 'email', 'billing', 'setup', 'dns', etc.)
+
+slug – text, unique
+
+title – text
+
+content_markdown – text (markdown body)
+
+is_public – boolean (whether safe to show directly in UI / public portal)
+
+last_verified_at – timestamptz (manual, updated when you confirm the article is up-to-date)
+
+created_at – timestamptz
+
+updated_at – timestamptz
+
+metadata – jsonb (tags, provider name like twilio, sendgrid, cloudflare, etc.)
+
+Indexes:
+
+Unique index on slug
+
+Index on (scope, category)
+
+Add to shared/schema.ts as well.
+
+1.3 Seed a couple of initial KB articles (optional but helpful)
+
+Create a small seeding migration (or seed script) that inserts 3 example KB records:
+
+telephony-overview (scope: product, category: telephony)
+
+High-level explanation of ServicePro telephony (trial vs Pro, A2P basics, IVR, etc.)
+
+twilio-a2p-basics (scope: integration, category: telephony)
+
+High-level (non-sensitive) explanation of A2P 10DLC, brand/campaign concepts, why approval is needed, etc.
+
+email-v1-overview (scope: product, category: email)
+
+Explains shared SendGrid domain, reply-to behavior, and future custom domain sending.
+
+Content can be short placeholder markdown (1–3 paragraphs each), but keep it real enough to be immediately useful.
+
+2. BACKEND SERVICES & ROUTES
+
+Follow existing patterns: server/services/*.ts and server/routes.*.ts.
+
+2.1 Support KB Service
+
+Create: server/services/supportKbService.ts
+
+Responsibilities:
+
+listArticles({ scope?, category?, limit? })
+
+getArticleBySlug(slug: string)
+
+Root-only functions for managing articles later (v1 can stub or keep private to admin routes):
+
+createOrUpdateArticle(...)
+
+Make sure:
+
+No tenantDb is needed here – KB is global, not per tenant.
+
+Returns only safe fields (content_markdown, title, slug, etc.)
+
+2.2 Support Ticket Service
+
+Create: server/services/supportTicketService.ts
+
+Responsibilities:
+
+createTicket({ tenantId, userId?, customerId?, subject, message, priority?, source?, metadata? })
+
+listTicketsForTenant(tenantId, filters?)
+
+listTicketsForRootAdmin(filters?) – root-tenant only
+
+updateTicketStatus({ ticketId, tenantId?, status, updatedByUserId? })
+
+Rules:
+
+Tenant scope:
+
+Non-root tenants can only see their own tickets (tenantId filter enforced).
+
+Root admin:
+
+Can see all tickets across tenants and filter by tenantId, status.
+
+2.3 New API Routes
+2.3.1 Tenant-side Support API
+
+Create a routes file if needed, or extend an appropriate existing one, e.g. server/routes.support.ts.
+
+Add:
+
+POST /api/support/tickets
+
+Auth required.
+
+Uses current tenant + user.
+
+Body: { subject, message, priority?, metadata? }
+
+Creates a ticket with source = 'manual'.
+
+GET /api/support/tickets
+
+Auth required.
+
+Returns current tenant’s tickets sorted by created_at DESC.
+
+PATCH /api/support/tickets/:id/status
+
+Auth required.
+
+For now, tenant admins can update their own ticket status (e.g. close it if resolved).
+
+Enforce (ticket.tenant_id === currentTenantId).
+
+2.3.2 Root Admin Support API
+
+For root tenant only (you / Jody):
+
+GET /api/admin/support/tickets
+
+Requires root owner/admin role.
+
+Query params: tenantId?, status?, limit?, offset?.
+
+Returns cross-tenant support tickets.
+
+PATCH /api/admin/support/tickets/:id/status
+
+Root admin only.
+
+Can update status and priority.
+
+Use the existing “root admin” guard pattern from other admin routes.
+
+2.3.3 AI Context / Bootstrap APIs (for future Support AI)
+
+Add two read-only endpoints to support the future AI assistant:
+
+GET /api/support/ai/context/bootstrap
+
+Auth required.
+
+Returns a compact object for the current tenant + user:
+
+{
+  "tenant": {
+    "id": "...",
+    "name": "...",
+    "slug": "...",
+    "plan": "...",            // Starter / Pro / etc if available
+    "features": { ... },      // feature flags if available
+    "telephonyStatus": { ... },
+    "emailStatus": { ... }
+  },
+  "user": {
+    "id": "...",
+    "name": "...",
+    "role": "owner" | "admin" | "staff"
+  },
+  "openTickets": [
+    { "id": "...", "subject": "...", "status": "open", "priority": "normal" }
+  ]
+}
+
+
+Use existing services to compute telephony/email status if possible (or stub for now with status: 'unknown' where needed — but keep the shape stable).
+
+GET /api/support/ai/kb/articles
+
+Auth required.
+
+Query params: scope?, category?, limit?.
+
+Returns:
+
+{
+  "articles": [
+    {
+      "slug": "twilio-a2p-basics",
+      "title": "Twilio A2P Basics",
+      "scope": "integration",
+      "category": "telephony",
+      "summary": "...",              // optional, can be truncated from content_markdown
+      "lastVerifiedAt": "..."
+    }
+  ]
+}
+
+
+GET /api/support/ai/kb/articles/:slug
+
+Returns full article including content_markdown.
+
+These are explicitly for the future AI assistant, but also usable by the UI.
+
+3. FRONTEND: SUPPORT PAGE & HOOKS
+
+We are not building a full chat assistant yet — just the UI foundation that uses the APIs and looks nice.
+
+3.1 Tenant “Help & Support” Page
+
+Create a new page component, for example:
+client/src/pages/SupportCenter.tsx
+
+Features:
+
+Uses the existing app shell layout.
+
+Sections:
+
+“Need help?” intro
+
+Short explanation of how support works.
+
+Shows plan badge (Starter/Pro/etc) if that is accessible in the frontend context.
+
+“Contact Support” form
+
+Inputs: subject, message, priority (select).
+
+Submits to POST /api/support/tickets.
+
+On success, show toast + clear form.
+
+“Your past tickets” list
+
+List of tickets from GET /api/support/tickets.
+
+Show status, created date, subject.
+
+(Optional) simple status filter tabs (Open, All).
+
+“Coming soon: Smart Setup & Support Assistant”
+
+A small card showing:
+
+“Soon you’ll be able to chat with an assistant that understands your settings, telephony, email, and more.”
+
+No functionality yet — just a good teaser.
+
+Design notes:
+
+Mobile-first.
+
+Use the same glass/gradient aesthetic you’ve been using for Night Ops and Rewards v2.
+
+Don’t bloat the page; keep it fast and snappy.
+
+Add a navigation item:
+
+“Help & Support” in the tenant sidebar/top nav (where appropriate).
+
+Route: /support (or /help if that better matches existing patterns).
+
+3.2 Simple KB Viewer Panel (Optional but Nice v1)
+
+On the Support page, add a small KB section:
+
+Calls GET /api/support/ai/kb/articles?scope=product&limit=5.
+
+Shows a list of links (title + category).
+
+Clicking a link can open a simple modal that fetches /api/support/ai/kb/articles/:slug and renders the markdown as HTML.
+
+This will prove that the KB model & APIs are wired correctly and already useful to human users before AI.
+
+4. ROOT ADMIN SUPPORT VIEW (LIGHT VERSION)
+
+Create a simple admin-only page at:
+/admin/support-tickets
+
+Component location:
+client/src/pages/AdminSupportTickets.tsx (or similar pattern)
+
+Features:
+
+Table of tickets from GET /api/admin/support/tickets.
+
+Columns: tenant name, subject, status, priority, created_at.
+
+Filters: dropdowns or simple input for status and tenant.
+
+Ability to update status with a simple select and PATCH /api/admin/support/tickets/:id/status.
+
+This is intentionally basic — just enough so Jody can see and manage tickets without touching the DB.
+
+5. PERMISSIONS & MULTI-TENANT SAFETY
+
+Ensure:
+
+All tenant routes derive tenantId from the auth/session context, not from query params.
+
+Root admin endpoints check isRootTenant / isPlatformAdmin using the same pattern as existing admin routes.
+
+No KB APIs leak any secret keys; KB is purely explanatory text.
+
+6. TESTING & VALIDATION
+
+Add / update tests (unit or integration style consistent with repo) to cover:
+
+support_tickets creation and tenant scoping.
+
+Root admin listing tickets across tenants vs tenant-level listing.
+
+support_kb_articles retrieval by slug and filters.
+
+Support Center page:
+
+Successful ticket creation
+
+Tickets list rendering
+
+The AI context bootstrap endpoint returns a stable JSON shape even if some underlying data is missing (e.g. telephony/email not configured yet).
+
+7. WHAT TO REPORT BACK
+
+When you’re done, please:
+
+Confirm:
+
+Tables created: support_tickets, support_kb_articles.
+
+New services: supportTicketService, supportKbService.
+
+New routes: /api/support/*, /api/admin/support/*, /api/support/ai/*.
+
+Confirm:
+
+Support Center page is reachable from the tenant dashboard.
+
+Root admin support tickets page is reachable from admin navigation.
+
+(Optional) Provide any screenshots of the Support page + admin view.

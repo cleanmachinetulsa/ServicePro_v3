@@ -1,0 +1,252 @@
+You are working inside the ServicePro v3 multi-tenant SaaS repo.
+This block adds two suggestion systems, fully multi-tenant safe, versioned, and AI-ready.
+
+🎯 OVERVIEW OF WHAT TO IMPLEMENT
+A. Platform-Level Suggestion Box (For ServicePro Users → You / Jody)
+
+Purpose:
+
+Let paying tenants suggest improvements, report bugs, request features
+
+Feed into your internal roadmap + eventually the Support AI training
+
+Location:
+
+Inside tenant dashboard → “Help & Feedback → Suggest a Feature”
+
+Storage:
+
+Global table: platform_suggestions
+
+Scoped by:
+
+tenantId
+
+submittedByUserId
+
+category
+
+status
+
+B. Tenant-Level Suggestion Box (For YOUR tenants’ customers → Them)
+
+Purpose:
+
+Clean Machine example:
+
+“I’d love a pet hair add-on”
+
+“Offer early morning slots”
+
+Gives tenants insights into customer expectations
+
+Feeds future customer portal AI
+
+Location:
+
+PUBLIC endpoint under each tenant’s site:
+/suggestions or /feedback (should not require login)
+
+Storage:
+
+Table: customer_suggestions
+
+Scoped by:
+
+tenantId
+
+optional customerId
+
+phone/email if present
+
+🗄️ 1. CREATE NEW TABLES (MIGRATIONS)
+platform_suggestions
+
+Fields:
+
+id (uuid)
+
+tenant_id
+
+submitted_by_user_id
+
+category (feature, bug, improvement, ui, other)
+
+title
+
+message
+
+created_at
+
+updated_at
+
+status (new, reviewing, planned, completed, declined)
+
+metadata (jsonb)
+
+customer_suggestions
+
+Fields:
+
+id (uuid)
+
+tenant_id
+
+customer_id (nullable)
+
+contact_phone (nullable)
+
+contact_email (nullable)
+
+message
+
+created_at
+
+metadata (jsonb)
+
+Add the migration using the existing pattern in /server/db/migrations.
+
+🧠 2. BACKEND: ROUTES & SERVICES
+
+Add new routes under:
+
+Platform suggestions (auth required):
+
+POST /api/platform/suggestions
+GET /api/platform/suggestions (admin only)
+PATCH /api/platform/suggestions/:id/status (admin only)
+
+Customer suggestions (public):
+
+POST /api/public/:tenantSlug/suggestions
+
+All routes must:
+
+Use wrapTenantDb
+
+Enforce tenant scope strictly
+
+Validate payloads
+
+Return sanitized data
+
+🎨 3. FRONTEND UI COMPONENTS
+A. Tenant Dashboard → Suggest a Feature Modal
+
+Create React component:
+
+TenantSuggestionModal.tsx
+
+Includes:
+
+Title
+
+Category select
+
+Freeform text
+
+Button: “Submit Suggestion”
+
+Toast success message
+
+Auto-insert tenant branding (logo/color)
+
+Place it under:
+
+Dashboard → Help & Feedback → Suggest a Feature
+
+B. Customer-Facing Public Suggestion Box
+
+Route:
+
+/suggestions or /feedback depending on tenant config.
+
+Component:
+
+PublicSuggestionBox.tsx
+
+Features:
+
+Tenant logo + theme
+
+One input box (“Your suggestion”)
+
+Optional contact fields
+
+Submit → animated success screen
+
+Mobile-first layout
+
+Looks like loyalty portal v2 (glassmorphism, gradients, framer motion)
+
+🔌 4. OPTIONAL TENANT SETTING
+
+Add to tenant_settings:
+
+suggestions_box_enabled: boolean
+
+
+Default true.
+
+Frontend:
+
+Shows/hides public suggestion page & dashboard widget.
+
+🤖 5. AI SUPPORT AGENT (PHASE 26 PREP) – REQUIRED METADATA
+
+Every suggestion (platform or customer) must attach:
+
+source: "platform" | "customer"
+tags: string[]
+
+
+To train future AI:
+
+“Pain points”
+
+“Feature requests”
+
+“Behavior requests”
+
+“Missing info”
+
+“Confusion triggers”
+
+Store this in metadata.
+
+📡 6. INTERNAL ADMIN VIEW FOR YOU
+
+Route:
+
+/admin/suggestions (root tenant only)
+
+Capabilities:
+
+List all suggestions sorted newest → oldest
+
+Filter by tenant
+
+Filter by status
+
+Update status (“planned”, “completed”, “declined”)
+
+Use the existing “Root Admin Only” permission guard.
+
+🧪 7. TESTING REQUIREMENTS
+Backend:
+
+Create suggestion
+
+Fetch tenant-only suggestions
+
+Public suggestion creation does NOT leak across tenants
+
+Root admin can update status; normal tenant cannot
+
+Frontend:
+
+Suggestion modal validation
+
+Submission success state
+
+Public suggestion UI on mobile
