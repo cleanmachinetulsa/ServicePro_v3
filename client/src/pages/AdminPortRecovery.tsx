@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Phone, 
   Mail, 
@@ -21,11 +22,16 @@ import {
   Target,
   Star,
   RefreshCw,
-  Beaker
+  Beaker,
+  History,
+  Clock,
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { PortRecoveryCampaign } from '@shared/schema';
+import { format } from 'date-fns';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-gray-500',
@@ -33,6 +39,10 @@ const STATUS_COLORS: Record<string, string> = {
   running: 'bg-blue-500',
   completed: 'bg-green-500',
   cancelled: 'bg-red-500',
+  PENDING: 'bg-yellow-500',
+  RUNNING: 'bg-blue-500',
+  COMPLETED: 'bg-green-500',
+  FAILED: 'bg-red-500',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -41,6 +51,10 @@ const STATUS_LABELS: Record<string, string> = {
   running: 'Running',
   completed: 'Completed',
   cancelled: 'Cancelled',
+  PENDING: 'Pending',
+  RUNNING: 'Running',
+  COMPLETED: 'Completed',
+  FAILED: 'Failed',
 };
 
 interface PreviewStats {
@@ -59,16 +73,47 @@ interface SampleTarget {
   source: string;
 }
 
+interface AdminPreviewData {
+  success: boolean;
+  canRun: boolean;
+  totalTargets: number;
+  sampleSms: string;
+  sampleCustomerName?: string;
+  runInProgress: boolean;
+  lastRun?: {
+    startedAt: string;
+    finishedAt?: string;
+    totalSent: number;
+    totalFailed: number;
+  };
+  stats: PreviewStats;
+  sampleTargets: SampleTarget[];
+}
+
+interface HistoryRun {
+  id: string;
+  startedAt: string;
+  finishedAt?: string;
+  totalTargets: number;
+  totalSent: number;
+  totalFailed: number;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+}
+
 export default function AdminPortRecovery() {
   const { toast } = useToast();
   const [isRunning, setIsRunning] = useState(false);
+  const [confirmSend, setConfirmSend] = useState(false);
 
-  const { data: previewData, isLoading: previewLoading, refetch: refetchPreview } = useQuery<{
+  const { data: previewData, isLoading: previewLoading, refetch: refetchPreview } = useQuery<AdminPreviewData>({
+    queryKey: ['/api/port-recovery/admin/preview'],
+  });
+
+  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<{
     success: boolean;
-    stats: PreviewStats;
-    sampleTargets: SampleTarget[];
+    runs: HistoryRun[];
   }>({
-    queryKey: ['/api/port-recovery/preview'],
+    queryKey: ['/api/port-recovery/admin/history'],
   });
 
   const { data: campaignsData, isLoading: campaignsLoading, refetch: refetchCampaigns } = useQuery<{
@@ -78,25 +123,29 @@ export default function AdminPortRecovery() {
     queryKey: ['/api/port-recovery/campaigns'],
   });
 
-  const createCampaignMutation = useMutation({
+  const runCampaignMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('POST', '/api/port-recovery/campaigns', {
-        name: `port-recovery-${new Date().toISOString().split('T')[0]}`,
-      });
+      setIsRunning(true);
+      return await apiRequest('POST', '/api/port-recovery/admin/run', {});
     },
     onSuccess: (data: any) => {
       toast({
-        title: 'Campaign Created',
-        description: `Created campaign with ${data.targetCount} targets`,
+        title: 'Port Recovery Campaign Launched!',
+        description: `Campaign started with ${data.totalQueued} customers queued. You can watch delivery stats on the Messaging Logs page.`,
       });
+      setConfirmSend(false);
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/preview'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/history'] });
       queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/campaigns'] });
+      setIsRunning(false);
     },
     onError: (error: any) => {
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to create campaign',
+        title: 'Campaign Failed',
+        description: error.message || 'Failed to start campaign',
         variant: 'destructive',
       });
+      setIsRunning(false);
     },
   });
 
@@ -132,6 +181,7 @@ export default function AdminPortRecovery() {
         description: `Sent ${data.smsSent} SMS, ${data.emailSent} emails, granted ${data.pointsGranted} points`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/history'] });
       setIsRunning(false);
     },
     onError: (error: any) => {
@@ -147,10 +197,20 @@ export default function AdminPortRecovery() {
   const stats = previewData?.stats;
   const campaigns = campaignsData?.campaigns || [];
   const activeCampaign = campaigns.find(c => c.status === 'draft' || c.status === 'running');
+  const runs = historyData?.runs || [];
 
   const formatPhone = (phone: string | null) => {
     if (!phone) return '—';
     return phone.replace(/^\+1/, '').replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+  };
+
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return '—';
+    try {
+      return format(new Date(dateStr), 'MMM d, h:mm a');
+    } catch {
+      return dateStr;
+    }
   };
 
   return (
@@ -166,6 +226,17 @@ export default function AdminPortRecovery() {
               Win back customers who may have been lost during number porting
             </p>
           </div>
+
+          {/* Run In Progress Warning */}
+          {previewData?.runInProgress && (
+            <Alert className="bg-yellow-900/30 border-yellow-700/50">
+              <AlertTriangle className="h-4 w-4 text-yellow-400" />
+              <AlertTitle className="text-yellow-300 text-sm">Campaign In Progress</AlertTitle>
+              <AlertDescription className="text-yellow-200/70 text-xs">
+                A campaign is currently running. Please wait for it to complete before starting another.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Stats Overview */}
           {previewLoading ? (
@@ -224,9 +295,52 @@ export default function AdminPortRecovery() {
                     </Badge>
                   </div>
                 </div>
+
+                {/* Last Run Info */}
+                {previewData?.lastRun && (
+                  <>
+                    <Separator className="bg-slate-700/50" />
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Last campaign: {formatDate(previewData.lastRun.startedAt)}
+                      </span>
+                      <span>
+                        {previewData.lastRun.totalSent} sent
+                        {previewData.lastRun.totalFailed > 0 && (
+                          <span className="text-red-400 ml-1">
+                            ({previewData.lastRun.totalFailed} failed)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : null}
+
+          {/* Sample SMS Preview */}
+          {previewData?.sampleSms && (
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-green-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-white text-sm flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-green-400" />
+                  Sample Message
+                </CardTitle>
+                <CardDescription className="text-gray-400 text-xs">
+                  How the message will appear to "{previewData.sampleCustomerName}"
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-slate-900/50 rounded-lg p-3">
+                  <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">
+                    {previewData.sampleSms}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Sample Targets Preview */}
           {previewData?.sampleTargets && previewData.sampleTargets.length > 0 && (
@@ -243,6 +357,7 @@ export default function AdminPortRecovery() {
                     <div 
                       key={idx} 
                       className="flex items-center justify-between py-2 px-3 bg-slate-900/50 rounded-lg"
+                      data-testid={`sample-recipient-${idx}`}
                     >
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center">
@@ -379,60 +494,108 @@ export default function AdminPortRecovery() {
                 </div>
               </CardContent>
             </Card>
-          ) : campaigns.length > 0 ? (
+          ) : null}
+
+          {/* Send Campaign Panel - NEW for Block B */}
+          {!activeCampaign && previewData?.canRun && stats && stats.totalUnique > 0 && (
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-2 border-dashed border-purple-500/50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-purple-400" />
+                  Send Campaign
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Ready to launch the port recovery campaign
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Confirmation Checkbox */}
+                <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="confirm-send"
+                      checked={confirmSend}
+                      onCheckedChange={(checked) => setConfirmSend(checked === true)}
+                      className="mt-0.5 border-red-500/50 data-[state=checked]:bg-red-600 data-[state=checked]:border-red-600"
+                      data-testid="checkbox-confirm-send"
+                    />
+                    <label 
+                      htmlFor="confirm-send" 
+                      className="text-sm text-red-200/90 cursor-pointer leading-relaxed"
+                    >
+                      I understand this will send one apology message + <span className="font-semibold text-yellow-400">500 points</span> to all {stats.totalUnique} eligible customers.
+                    </label>
+                  </div>
+                </div>
+
+                {/* Send Button */}
+                <Button
+                  size="lg"
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-6 rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => runCampaignMutation.mutate()}
+                  disabled={!confirmSend || runCampaignMutation.isPending || isRunning}
+                  data-testid="button-send-campaign"
+                >
+                  {runCampaignMutation.isPending || isRunning ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Launching Campaign...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-5 w-5 mr-2" />
+                      Send Now
+                      <Badge variant="secondary" className="ml-2 bg-white/20 text-white">
+                        {stats.totalUnique} recipients
+                      </Badge>
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* History Panel - NEW for Block B */}
+          {runs.length > 0 && (
             <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md">
               <CardHeader className="pb-2">
-                <CardTitle className="text-white text-sm">Completed Campaigns</CardTitle>
+                <CardTitle className="text-white text-sm flex items-center gap-2">
+                  <History className="h-4 w-4 text-blue-400" />
+                  Campaign History
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {campaigns.slice(0, 3).map((c) => (
+                  {runs.map((run) => (
                     <div 
-                      key={c.id} 
+                      key={run.id} 
                       className="flex items-center justify-between py-2 px-3 bg-slate-900/50 rounded-lg"
+                      data-testid={`history-run-${run.id}`}
                     >
                       <div>
-                        <div className="text-sm text-white">{c.name}</div>
+                        <div className="text-sm text-white flex items-center gap-2">
+                          <Clock className="h-3 w-3 text-gray-400" />
+                          {formatDate(run.startedAt)}
+                        </div>
                         <div className="text-xs text-gray-500">
-                          {c.totalSmsSent} SMS, {c.totalPointsGranted?.toLocaleString()} pts
+                          {run.totalSent} sent
+                          {run.totalFailed > 0 && (
+                            <span className="text-red-400 ml-1">
+                              / {run.totalFailed} failed
+                            </span>
+                          )}
                         </div>
                       </div>
                       <Badge 
-                        className={`${STATUS_COLORS[c.status]} text-white text-xs`}
+                        className={`${STATUS_COLORS[run.status]} text-white text-xs`}
                       >
-                        {STATUS_LABELS[c.status]}
+                        {STATUS_LABELS[run.status]}
                       </Badge>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
-          ) : null}
-
-          {/* Create Campaign Button */}
-          {!activeCampaign && stats && stats.totalUnique > 0 && (
-            <Button
-              size="lg"
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-6 rounded-xl shadow-lg"
-              onClick={() => createCampaignMutation.mutate()}
-              disabled={createCampaignMutation.isPending}
-              data-testid="button-create-campaign"
-            >
-              {createCampaignMutation.isPending ? (
-                <>
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                  Creating Campaign...
-                </>
-              ) : (
-                <>
-                  <Gift className="h-5 w-5 mr-2" />
-                  Create Recovery Campaign
-                  <Badge variant="secondary" className="ml-2 bg-white/20 text-white">
-                    {stats.totalUnique} recipients
-                  </Badge>
-                </>
-              )}
-            </Button>
           )}
 
           {/* What Gets Sent */}
