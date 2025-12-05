@@ -27,6 +27,10 @@ import {
   Loader2,
   AlertCircle,
   Rocket,
+  MessageSquare,
+  PhoneCall,
+  Shield,
+  RefreshCw,
 } from "lucide-react";
 
 interface OnboardingProgress {
@@ -44,12 +48,58 @@ interface OnboardingProgress {
   ctaButtonText: string | null;
 }
 
+interface PhoneSmsStatus {
+  success: boolean;
+  hasPhoneNumber: boolean;
+  phoneNumber: string | null;
+  hasMessagingService: boolean;
+  messagingServiceSid: string | null;
+  a2pStatus: string | null;
+  a2pTrusthubStatus: string | null;
+  a2pLastError: string | null;
+  missingPieces: string[];
+}
+
+const A2P_STATUS_DISPLAY: Record<string, { label: string; color: string; description: string }> = {
+  draft: { 
+    label: 'Draft', 
+    color: 'bg-gray-500', 
+    description: 'Fill out your campaign info on the A2P page.' 
+  },
+  ready_to_submit: { 
+    label: 'Ready', 
+    color: 'bg-yellow-500', 
+    description: 'Submit now from the A2P page to unlock high-volume SMS.' 
+  },
+  submitted: { 
+    label: 'Submitted', 
+    color: 'bg-blue-500', 
+    description: 'Under review. Most approvals take 1-3 business days.' 
+  },
+  approved: { 
+    label: 'Approved', 
+    color: 'bg-green-500', 
+    description: 'You\'re fully registered for A2P 10DLC!' 
+  },
+  rejected: { 
+    label: 'Rejected', 
+    color: 'bg-red-500', 
+    description: 'Review the rejection reason and resubmit.' 
+  },
+};
+
 export default function SetupWizard() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const { data, isLoading, refetch } = useQuery<{ success: boolean; progress: OnboardingProgress }>({
     queryKey: ["/api/onboarding/progress"],
+  });
+
+  // Fetch detailed phone/SMS status for Step 2
+  const { data: phoneSmsData, isLoading: phoneSmsLoading, refetch: refetchPhoneSms } = useQuery<PhoneSmsStatus>({
+    queryKey: ["/api/a2p/phone-sms-status"],
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   const updateProgressMutation = useMutation({
@@ -272,7 +322,7 @@ export default function SetupWizard() {
                           Complete
                         </Badge>
                       )}
-                      {progress?.phoneConfigured && !progress?.phoneSetupDone && (
+                      {phoneSmsData?.a2pStatus === 'approved' && !progress?.phoneSetupDone && (
                         <Badge variant="secondary" className="bg-blue-500/20 text-blue-700">
                           Ready
                         </Badge>
@@ -282,43 +332,156 @@ export default function SetupWizard() {
                       Connect your phone for AI-powered calls and SMS
                     </CardDescription>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => refetchPhoneSms()}
+                    disabled={phoneSmsLoading}
+                    data-testid="button-refresh-phone-status"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${phoneSmsLoading ? 'animate-spin' : ''}`} />
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {progress?.phoneConfigured ? (
-                  <>
-                    <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        <span className="font-medium text-green-700 dark:text-green-400">
-                          Phone Connected
-                        </span>
+                {/* Card 1: Business Line & SMS Number */}
+                <div className={`p-4 rounded-lg border ${
+                  phoneSmsData?.hasPhoneNumber 
+                    ? 'bg-green-500/10 border-green-500/30' 
+                    : 'bg-yellow-500/10 border-yellow-500/30'
+                }`}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      phoneSmsData?.hasPhoneNumber ? 'bg-green-500' : 'bg-yellow-500'
+                    }`}>
+                      <Phone className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <span className={`font-medium ${
+                        phoneSmsData?.hasPhoneNumber 
+                          ? 'text-green-700 dark:text-green-400' 
+                          : 'text-yellow-700 dark:text-yellow-400'
+                      }`}>
+                        Business Line & SMS Number
+                      </span>
+                    </div>
+                    {phoneSmsData?.hasPhoneNumber && (
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    )}
+                  </div>
+                  {phoneSmsData?.hasPhoneNumber ? (
+                    <div className="ml-11">
+                      <p className="text-sm font-mono">{phoneSmsData.phoneNumber}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {phoneSmsData.hasMessagingService 
+                          ? 'Messaging service connected' 
+                          : 'Messaging service pending setup'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="ml-11">
+                      <p className="text-sm text-muted-foreground">
+                        Phone provisioning is managed for you. We'll notify you once your line is ready.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Card 2: Inbound Routing & IVR */}
+                <div className="p-4 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center bg-primary/20">
+                      <PhoneCall className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-medium">Inbound Routing & IVR</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      data-testid="button-ivr-config"
+                    >
+                      <Link href="/admin/ivr-config">
+                        Configure
+                        <ChevronRight className="ml-1 w-3 h-3" />
+                      </Link>
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground ml-11">
+                    Set up how incoming calls are routed (IVR menu, voicemail, direct forward).
+                  </p>
+                </div>
+
+                {/* Card 3: A2P Registration Status */}
+                <div className={`p-4 rounded-lg border ${
+                  phoneSmsData?.a2pStatus === 'approved' 
+                    ? 'bg-green-500/10 border-green-500/30' 
+                    : phoneSmsData?.a2pStatus === 'rejected'
+                    ? 'bg-red-500/10 border-red-500/30'
+                    : 'bg-blue-500/10 border-blue-500/30'
+                }`}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      phoneSmsData?.a2pStatus === 'approved' 
+                        ? 'bg-green-500' 
+                        : phoneSmsData?.a2pStatus === 'rejected'
+                        ? 'bg-red-500'
+                        : 'bg-blue-500'
+                    }`}>
+                      <Shield className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-medium">A2P Registration Status</span>
+                    </div>
+                    {phoneSmsData?.a2pStatus && (
+                      <Badge className={`${A2P_STATUS_DISPLAY[phoneSmsData.a2pStatus]?.color || 'bg-gray-500'} text-white`}>
+                        {A2P_STATUS_DISPLAY[phoneSmsData.a2pStatus]?.label || phoneSmsData.a2pStatus}
+                      </Badge>
+                    )}
+                    {!phoneSmsData?.a2pStatus && (
+                      <Badge className="bg-gray-500 text-white">Not Started</Badge>
+                    )}
+                  </div>
+                  <div className="ml-11 space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      {phoneSmsData?.a2pStatus 
+                        ? A2P_STATUS_DISPLAY[phoneSmsData.a2pStatus]?.description 
+                        : 'Register your SMS campaign for high-volume messaging.'}
+                    </p>
+                    {phoneSmsData?.a2pStatus === 'rejected' && phoneSmsData?.a2pLastError && (
+                      <div className="p-2 rounded bg-red-500/10 text-sm text-red-700 dark:text-red-400">
+                        {phoneSmsData.a2pLastError}
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        Phone: {progress.phoneNumber || "Configured"}
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                      data-testid="button-a2p-settings"
+                    >
+                      <Link href="/settings/a2p">
+                        {phoneSmsData?.a2pStatus === 'approved' ? 'View A2P Status' : 'Go to A2P Page'}
+                        <ChevronRight className="ml-1 w-3 h-3" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Step Completion */}
+                {phoneSmsData?.hasPhoneNumber && phoneSmsData?.a2pStatus === 'approved' ? (
+                  <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    <div className="flex-1">
+                      <p className="font-medium text-green-700 dark:text-green-400 text-sm">
+                        Phone & SMS fully configured!
                       </p>
                     </div>
-
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground">
-                        Your Twilio phone is ready to receive calls and SMS.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        data-testid="button-phone-settings"
-                      >
-                        <Link href="/admin/phone-config">
-                          Phone Settings
-                          <Settings className="ml-1 w-4 h-4" />
-                        </Link>
-                      </Button>
-                    </div>
-
                     {!progress?.phoneSetupDone && (
                       <Button
-                        className="w-full"
+                        size="sm"
                         onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
                         disabled={updateProgressMutation.isPending}
                         data-testid="button-mark-phone-complete"
@@ -328,40 +491,34 @@ export default function SetupWizard() {
                         ) : (
                           <CheckCircle2 className="w-4 h-4 mr-2" />
                         )}
-                        Mark as Complete
+                        Mark Complete
                       </Button>
                     )}
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle className="w-4 h-4 text-yellow-500" />
-                        <span className="font-medium text-yellow-700 dark:text-yellow-400">
-                          Phone Not Configured
-                        </span>
-                      </div>
+                  <div className="p-3 rounded-lg bg-muted/50 flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-muted-foreground" />
+                    <div className="flex-1">
                       <p className="text-sm text-muted-foreground">
-                        ServicePro uses Twilio to send/receive calls and SMS via the AI agent.
+                        {!phoneSmsData?.hasPhoneNumber 
+                          ? 'Waiting for phone number assignment...' 
+                          : phoneSmsData?.a2pStatus === 'submitted' || phoneSmsData?.a2pTrusthubStatus === 'in_review'
+                          ? 'A2P registration is under review...'
+                          : 'Complete A2P registration to finish setup.'}
                       </p>
                     </div>
-
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      asChild
-                      data-testid="button-configure-phone"
-                    >
-                      <Link href="/admin/phone-config">
-                        Open Phone Settings
-                        <ChevronRight className="ml-1 w-4 h-4" />
-                      </Link>
-                    </Button>
-
-                    <p className="text-xs text-muted-foreground text-center">
-                      Need help? Contact support for phone setup assistance.
-                    </p>
-                  </>
+                    {phoneSmsData?.hasPhoneNumber && !progress?.phoneSetupDone && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateProgressMutation.mutate({ phoneSetupDone: true })}
+                        disabled={updateProgressMutation.isPending}
+                        data-testid="button-skip-phone"
+                      >
+                        Skip for Now
+                      </Button>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
