@@ -34,7 +34,9 @@ import {
   History,
   Wallet,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Lightbulb,
+  MessageSquarePlus
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -428,5 +430,11 @@ export const navigationItems: NavigationItem[] = [
     label: 'Reminders',
     icon: Clock,
     path: '/reminders',
+  },
+  {
+    id: 'customer-suggestions',
+    label: 'Customer Feedback',
+    icon: MessageSquarePlus,
+    path: '/admin/customer-suggestions',
   },
 ];

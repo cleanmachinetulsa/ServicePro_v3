@@ -60,6 +60,7 @@ import AdminIvrConfig from "./pages/AdminIvrConfig";
 import AdminConciergeSetup from "./pages/AdminConciergeSetup";
 import PlatformSuggestions from "./pages/PlatformSuggestions";
 import TenantSuggestions from "./pages/TenantSuggestions";
+import AdminCustomerSuggestions from "./pages/admin-customer-suggestions";
 import ThemeGallery from "./pages/ThemeGallery";
 import PayerApprovalPage from "./pages/payer-approval";
 import QuoteApprovalPage from "./pages/quote-approval";
@@ -349,6 +350,11 @@ function Router() {
       <Route path="/suggestions">
         <AuthGuard>
           <TenantSuggestions />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/customer-suggestions">
+        <AuthGuard>
+          <AdminCustomerSuggestions />
         </AuthGuard>
       </Route>
       <Route path="/admin/theme-gallery">
