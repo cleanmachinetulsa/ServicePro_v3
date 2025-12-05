@@ -41,6 +41,10 @@ export interface LineItem {
 /**
  * Check loyalty guardrails before allowing point redemption
  * Enforces min cart total and core service requirements based on business settings
+ * 
+ * NOTE: businessSettings is currently a singleton table.
+ * All tenants (including non-root) use the same root settings until multi-tenant settings are added.
+ * This ensures all tenants are protected by guardrails.
  */
 export async function checkLoyaltyGuardrails(args: {
   tenantId: string;
@@ -48,7 +52,8 @@ export async function checkLoyaltyGuardrails(args: {
   lineItems: LineItem[];
 }): Promise<LoyaltyGuardrailResult> {
   try {
-    // Load business settings (global table - use db directly)
+    // Load business settings (global singleton table - applies to all tenants)
+    // All tenants use root settings until tenant-specific businessSettings are implemented
     const [settings] = await db
       .select()
       .from(businessSettings)
@@ -113,13 +118,21 @@ export async function checkLoyaltyGuardrails(args: {
 
 /**
  * Get current loyalty guardrail settings for display in UI
+ * 
+ * NOTE: businessSettings is currently a singleton table.
+ * All tenants (including non-root) use the same root settings until multi-tenant settings are added.
+ * This ensures all tenants are protected and see the same guardrail requirements.
+ * 
+ * @param tenantId - Tenant ID (currently unused - all tenants use global settings)
  */
-export async function getLoyaltyGuardrailSettings(): Promise<{
+export async function getLoyaltyGuardrailSettings(_tenantId: string = 'root'): Promise<{
   minCartTotal: number | null;
   requireCoreService: boolean;
   guardrailMessage: string | null;
 }> {
   try {
+    // Load business settings (global singleton table - applies to all tenants)
+    // tenantId is accepted for future multi-tenant support but currently uses global settings
     const [settings] = await db
       .select({
         minCartTotal: businessSettings.loyaltyMinCartTotal,
