@@ -34,6 +34,7 @@ import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
 import portRecoveryRouter from "./routes.portRecovery";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
+import { registerSuggestionRoutes } from "./routes.suggestions";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
@@ -327,6 +328,8 @@ app.use('/api/email', emailTestRouter);
 registerReferralInvoiceRoutes(app);
 // Register industry onboarding routes (Phase 8B)
 registerOnboardingIndustryRoutes(app);
+// Register suggestion system routes (platform + customer suggestions)
+registerSuggestionRoutes(app);
 
 app.use((req, res, next) => {
   const start = Date.now();
