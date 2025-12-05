@@ -1,0 +1,333 @@
+You are working in the ServicePro v3 multi-tenant SaaS repo.
+Clean Machine (root tenant) is the flagship, but all logic must remain multi-tenant-safe.
+
+Your task in this block is to implement Loyalty Redemption Journey v2:
+
+Connect the new Customer Rewards Portal v2 to the actual booking / checkout flow
+
+Make it easy for customers to use points when booking, while:
+
+Enforcing existing guardrails (min cart total, require core service, etc.)
+
+Keeping all math + rules consistent with the existing loyalty system
+
+Do NOT blow up any existing logic; refine and extend instead.
+
+We already have:
+
+A Customer Rewards Portal v2 (phone lookup → points → milestones → rewards catalog)
+
+Existing loyalty points system, rewards, and guardrails:
+
+loyalty_min_cart_total
+
+loyalty_require_core_service
+
+loyalty_guardrail_message
+
+Redemption logic partially implemented on the backend (you previously added guardrail validation logic)
+
+We need:
+
+A smooth, understandable, customer-facing redemption flow
+
+A clear journey from:
+
+“I see my points & rewards” → “I start a booking” → “My points are applied”
+
+Minimal friction, max clarity
+
+1. Discovery (reuse, don’t reinvent)
+
+Find existing loyalty redemption pieces:
+
+Backend:
+
+Services / routes with names like:
+
+redeem, applyPoints, loyaltyRedemption, loyaltyCheckout, loyaltyGuardrails
+
+Look in:
+
+server/services/loyalty*.ts
+
+server/routes.loyalty*.ts
+
+Any functions where loyalty_min_cart_total, loyalty_require_core_service, or loyalty_guardrail_message are used
+
+Frontend:
+
+Booking / request pages/components:
+
+For Clean Machine’s customer booking journey
+
+Possibly shared “customer portal” booking components
+
+Any existing UI that references:
+
+“Use points”, “Apply reward”, “Loyalty”
+
+Identify:
+
+How points are currently redeemed / applied (even if it’s rough or admin-only)
+
+Where in the booking flow we decide:
+
+Cart total
+
+Selected services
+
+Whether a service is “core” (interior/exterior / full detail, etc.)
+
+How loyalty transactions are recorded (e.g. ledger table, loyalty_transactions)
+
+Add a brief comment in the main loyalty service file summarizing:
+
+Where guardrails are enforced now
+
+Where redemption currently happens (admin / internal)
+
+Any existing public endpoints relevant to loyalty redemption
+
+2. Target Journey – High-Level Flow
+
+We want a v2 journey like this:
+
+Customer hits the Rewards Portal.
+
+They enter phone → portal shows points + rewards.
+
+For any “Available now” reward, they see a CTA:
+
+“Use this on my next booking”
+
+When they tap that CTA:
+
+They’re taken into the booking / request flow with:
+
+Their phone prefilled if possible
+
+The reward pre-selected / flagged for redemption
+
+At review/checkout step, they see:
+
+Cart subtotal
+
+Reward being applied (e.g. “Engine bay cleaning – covered by 500 points” or a discount)
+
+Any guardrail messaging if it doesn’t qualify
+
+If guardrails fail at final validation, the messaging is clear but not harsh, e.g.:
+
+“This reward can be used when you book a core service (Interior/Exterior/Full Detail) and a minimum of $75. Your selection doesn’t qualify yet, but your points are still saved.”
+
+3. Concrete Implementation Tasks
+3.1 Rewards Portal → Booking “Use Reward” CTA
+
+In the Customer Rewards Portal v2:
+
+For each reward card that is eligible to redeem (balance meets points AND guardrails appear satisfied based on static rules):
+
+Add a primary CTA button:
+
+Label: “Use on my next booking”
+
+On click:
+
+Navigate to the appropriate booking/request route (reuse existing Clean Machine booking flow; don’t invent a new one)
+
+Pass along reward context, e.g. via:
+
+Query params: ?rewardId=XYZ&phone=...
+
+Or a small state object in router if that’s already standard
+
+For rewards that are “X points away”:
+
+Show a subtle inline message, not a CTA:
+
+“You’re 150 points away. Book another service to get closer.”
+
+Ensure the portal doesn’t assume Clean-Machine-specific URLs; if we already have per-tenant public site config (subdomain or base path), derive the booking URL properly.
+
+If a canonical booking route already exists for Clean Machine (e.g. /home, /book, /request), use that as the target.
+
+3.2 Booking Flow – Accepting Reward Context
+
+In the public booking / request flow:
+
+Detect incoming reward context:
+
+On page load, read from:
+
+Query string: rewardId, phone (if present)
+
+Save this into a local booking state, e.g. selectedReward or pendingRewardRedemption.
+
+If a phone number is present:
+
+Pre-fill the phone number field (if it exists in the booking form).
+
+Optionally try to auto-resolve the customer (if we already have such logic) but don’t block if not found.
+
+Show a small “Using Reward” banner early in the booking flow:
+
+e.g. above or below the service selection:
+
+“We’ll try to apply your reward: ‘Free Upholstery Protector (500 pts)’ on this booking.”
+
+3.3 Backend – Final Redemption Validation & Application
+
+We already have guardrail config in business_settings:
+
+loyalty_min_cart_total
+
+loyalty_require_core_service
+
+loyalty_guardrail_message
+
+You previously implemented guardrail validation logic; now we need to:
+
+Ensure there’s a single, canonical function like:
+
+validateLoyaltyRedemption({
+  tenantDb,
+  tenantId,
+  customerId,
+  rewardId,
+  cartTotal,
+  selectedServices,
+}): { canRedeem: boolean; reason?: string; appliedValue?: number; }
+
+
+If such a function already exists:
+
+Refactor to this shape but keep the same behavior.
+
+Don’t break existing callers.
+
+At the final booking submission stage:
+
+When the booking/appointment is created, if a rewardId is present in the payload:
+
+Call validateLoyaltyRedemption(...)
+
+If canRedeem === true:
+
+Apply the reward:
+
+Adjust price / mark a line item as covered.
+
+Record a loyalty transaction (points debited).
+
+Return the booking with a flag that the reward was successfully used.
+
+If canRedeem === false:
+
+Do NOT silently fail.
+
+Return a meaningful reason to the frontend using the existing loyalty_guardrail_message plus any specific reason (e.g. no core service, below minimum).
+
+Make sure:
+
+Points are only deducted once per booking.
+
+Redeeming is atomic: either the booking writes + loyalty write succeed, or they both roll back (transaction).
+
+3.4 Frontend – Checkout / Review UX
+
+On the booking confirmation / review step:
+
+Show a summary card when a reward is applied:
+
+“Reward Applied: Free Upholstery Protector (500 pts)”
+
+Show:
+
+Points before → after
+
+Monetary effect, if relevant (e.g. $45 value or “free add-on applied”)
+
+If redemption was blocked by guardrails:
+
+Show a clear message (from backend reason):
+
+Example:
+
+“We weren’t able to apply this reward yet: this reward requires a core service and at least $75 in services before tax. You selected a standalone engine bay cleaning. Your 500 points are still saved and can be used on a qualifying booking.”
+
+Do not scare the user.
+
+Do not zero out their points.
+
+Ensure we do not expose raw backend error messages to the user; only curated, safe messages from our validation layer.
+
+4. Multi-Tenant Safety & Clean Machine Defaults
+
+All new endpoints or service calls must use the existing wrapTenantDb / tenantDb pattern.
+
+Any “Clean Machine”-specific copy should:
+
+Either leverage tenant branding (if available), or
+
+Be phrased generically enough to work for other tenants.
+
+Where necessary, you can use:
+
+{businessName} from public site / tenant config.
+
+Make sure the Rewards Portal v2 + Redemption journey still work for the root / Clean Machine path configuration we already have, without breaking tenant isolation.
+
+5. Tests & Manual Checks
+
+Add or update tests to cover:
+
+Backend:
+
+validateLoyaltyRedemption:
+
+Can redeem when:
+
+Cart total >= min
+
+A core service is present (if required)
+
+Cannot redeem when:
+
+Below min total
+
+No core service but required
+
+Returns structured reason messages
+
+Booking submission:
+
+With a valid rewardId:
+
+Deduct points, record transaction, and flag booking as reward-applied.
+
+With invalid redemption:
+
+Booking still succeeds (if we choose that behavior), but redemption is rejected with a clear reason.
+
+Manual flow (please actually run this):
+
+Go to Rewards Portal as a customer:
+
+Enter a phone with known points & a redeemable reward.
+
+Click “Use on my next booking”.
+
+Complete a booking with a core service + enough value:
+
+Confirm the reward is applied.
+
+Try the same flow with a non-qualifying selection:
+
+Confirm you see a friendly message and points remain.
+
+When you finish this block, please leave a short comment at the top of the main loyalty redemption service file stating:
+
+“Loyalty Redemption Journey v2 – connects Rewards Portal to booking flow with guardrail-enforced redemption.”
+
+End of block.
