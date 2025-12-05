@@ -221,8 +221,8 @@ export function registerSupportRoutes(app: Express) {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const user = req.session.user;
-      if (!user || (user.role !== "owner" && user.role !== "admin")) {
+      const role = (req.session as any)?.role;
+      if (role !== "owner" && role !== "admin") {
         return res.status(403).json({ error: "Admin role required" });
       }
 
@@ -263,8 +263,8 @@ export function registerSupportRoutes(app: Express) {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const user = req.session.user;
-      if (!user || (user.role !== "owner" && user.role !== "admin")) {
+      const role = (req.session as any)?.role;
+      if (role !== "owner" && role !== "admin") {
         return res.status(403).json({ error: "Admin role required" });
       }
 
