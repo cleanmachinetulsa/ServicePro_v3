@@ -17,7 +17,8 @@ import {
   LoyaltyGuardrailError
 } from './loyaltyService';
 import { getLoyaltyGuardrailSettings } from './gamificationService';
-import { createTenantDb } from './tenantDb';
+import { wrapTenantDb } from './tenantDb';
+import { db } from './db';
 
 /**
  * Register loyalty program routes
@@ -111,7 +112,7 @@ export function registerLoyaltyRoutes(app: Express) {
       
       // Get tenant context
       const tenantId = (req.session as any)?.tenantId || 'root';
-      const tenantDb = createTenantDb(tenantId);
+      const tenantDb = wrapTenantDb(db, tenantId);
       
       // Check if user is admin (for skip guardrails permission)
       const isAdmin = (req.session as any)?.role === 'owner' || (req.session as any)?.role === 'admin';
