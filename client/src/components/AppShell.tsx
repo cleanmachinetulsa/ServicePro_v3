@@ -8,8 +8,9 @@ import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { navigationItems } from '@/config/navigationItems';
-import { Menu, Moon, Sun } from 'lucide-react';
+import { Menu, Moon, Sun, Lightbulb } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import TenantSuggestionModal from '@/components/TenantSuggestionModal';
 
 interface AuthContext {
   success: boolean;
@@ -42,6 +43,7 @@ export function AppShell({
   sidebarActions
 }: AppShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
   const [location, navigate] = useLocation();
   const { isDark, toggleTheme } = useTheme();
 
@@ -239,12 +241,29 @@ export function AppShell({
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950">
+        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950 relative">
           <div className="min-h-full">
             {children}
           </div>
+          
+          {/* Floating Feedback Button */}
+          <Button
+            variant="default"
+            size="sm"
+            className="fixed bottom-6 right-6 z-50 h-12 w-12 rounded-full shadow-lg bg-gradient-to-br from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white p-0 flex items-center justify-center"
+            onClick={() => setSuggestionModalOpen(true)}
+            data-testid="button-floating-feedback"
+          >
+            <Lightbulb className="h-5 w-5" />
+          </Button>
         </main>
       </div>
+      
+      {/* Suggestion Modal */}
+      <TenantSuggestionModal 
+        open={suggestionModalOpen} 
+        onOpenChange={setSuggestionModalOpen} 
+      />
     </div>
   );
 }
