@@ -25,7 +25,12 @@ import {
   Loader2,
   Plus,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  Send,
+  RefreshCw,
+  RotateCcw,
+  Clock,
+  CheckCircle2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -56,6 +61,24 @@ const STATUS_LABELS: Record<string, string> = {
   submitted: 'Submitted',
   approved: 'Approved',
   rejected: 'Rejected',
+};
+
+const TRUSTHUB_STATUS_LABELS: Record<string, string> = {
+  draft: 'Not Submitted',
+  pending: 'Pending Review',
+  in_review: 'Under Review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  suspended: 'Suspended',
+};
+
+const TRUSTHUB_STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-400',
+  pending: 'bg-yellow-500',
+  in_review: 'bg-blue-500',
+  approved: 'bg-green-500',
+  rejected: 'bg-red-500',
+  suspended: 'bg-orange-500',
 };
 
 interface CampaignFormData {
@@ -193,6 +216,77 @@ export default function SettingsA2P() {
       toast({ 
         title: 'AI suggestion failed', 
         description: error.message || 'Failed to generate suggestions', 
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Submit to Twilio TrustHub mutation
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', '/api/a2p/campaign/submit', {});
+    },
+    onSuccess: (data: any) => {
+      toast({ 
+        title: 'Campaign submitted', 
+        description: data.message || 'Campaign submitted to Twilio for review'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/a2p/campaign'] });
+    },
+    onError: (error: any) => {
+      const errorData = error.response?.data || error;
+      if (errorData.validationErrors) {
+        setValidationErrors(errorData.validationErrors);
+      }
+      toast({ 
+        title: 'Submission failed', 
+        description: errorData.error || error.message || 'Failed to submit campaign', 
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Refresh status from Twilio mutation
+  const refreshStatusMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', '/api/a2p/campaign/refresh-status', {});
+    },
+    onSuccess: (data: any) => {
+      toast({ 
+        title: 'Status refreshed', 
+        description: data.message || `Current status: ${data.trusthubStatus}`
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/a2p/campaign'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Refresh failed', 
+        description: error.message || 'Failed to refresh status', 
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  // Resubmit rejected campaign mutation
+  const resubmitMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', '/api/a2p/campaign/resubmit', {});
+    },
+    onSuccess: (data: any) => {
+      toast({ 
+        title: 'Campaign resubmitted', 
+        description: data.message || 'Campaign resubmitted for review'
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/a2p/campaign'] });
+    },
+    onError: (error: any) => {
+      const errorData = error.response?.data || error;
+      if (errorData.validationErrors) {
+        setValidationErrors(errorData.validationErrors);
+      }
+      toast({ 
+        title: 'Resubmission failed', 
+        description: errorData.error || error.message || 'Failed to resubmit campaign', 
         variant: 'destructive' 
       });
     },
@@ -591,42 +685,139 @@ export default function SettingsA2P() {
             </CardContent>
           </Card>
 
+          {/* TrustHub Status Panel - Only show if campaign has been submitted */}
+          {campaign?.twilioCampaignSid && (
+            <Card className="border-blue-200 bg-blue-50/30">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-blue-600" />
+                  Twilio TrustHub Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Badge 
+                      className={`${TRUSTHUB_STATUS_COLORS[campaign.trusthubStatus || 'draft']} text-white`}
+                      data-testid="badge-trusthub-status"
+                    >
+                      {TRUSTHUB_STATUS_LABELS[campaign.trusthubStatus || 'draft']}
+                    </Badge>
+                    {campaign.trusthubLastCheckedAt && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Last checked: {new Date(campaign.trusthubLastCheckedAt).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refreshStatusMutation.mutate()}
+                    disabled={refreshStatusMutation.isPending}
+                    data-testid="button-refresh-status"
+                  >
+                    {refreshStatusMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    <span className="ml-2 hidden sm:inline">Refresh</span>
+                  </Button>
+                </div>
+
+                {/* Timestamps */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                  {campaign.lastSubmittedAt && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Submitted</span>
+                      <p className="font-medium">{new Date(campaign.lastSubmittedAt).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {campaign.approvedAt && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Approved</span>
+                      <p className="font-medium text-green-600">{new Date(campaign.approvedAt).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {campaign.rejectedAt && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Rejected</span>
+                      <p className="font-medium text-red-600">{new Date(campaign.rejectedAt).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {campaign.twilioCampaignSid && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Campaign ID</span>
+                      <p className="font-mono text-xs truncate">{campaign.twilioCampaignSid}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Error/Rejection Details */}
+                {(campaign.trusthubLastError || campaign.carrierRejectionReason) && (
+                  <Accordion type="single" collapsible className="w-full">
+                    <AccordionItem value="error-details" className="border-red-200">
+                      <AccordionTrigger className="text-sm text-red-600 py-2">
+                        <span className="flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4" />
+                          View Rejection Details
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <div className="p-3 bg-red-50 rounded-md text-sm text-red-700">
+                          {campaign.trusthubLastError || campaign.carrierRejectionReason}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Actions */}
           <Card>
-            <CardContent className="pt-6">
-              <div className="flex flex-col sm:flex-row gap-4">
-                {isEditable && (
-                  <>
-                    <Button 
-                      onClick={handleSave}
-                      disabled={saveMutation.isPending}
-                      className="flex-1"
-                      data-testid="button-save-draft"
-                    >
-                      {saveMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4 mr-2" />
-                      )}
-                      Save Draft
-                    </Button>
-                    <Button 
-                      variant="default"
-                      onClick={handleMarkReady}
-                      disabled={statusMutation.isPending}
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      data-testid="button-mark-ready"
-                    >
-                      {statusMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                      )}
-                      Mark Ready to Submit
-                    </Button>
-                  </>
-                )}
-                {currentStatus === 'ready_to_submit' && (
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Draft/Edit Actions */}
+              {isEditable && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button 
+                    onClick={handleSave}
+                    disabled={saveMutation.isPending}
+                    className="flex-1"
+                    data-testid="button-save-draft"
+                  >
+                    {saveMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Save Draft
+                  </Button>
+                  <Button 
+                    variant="default"
+                    onClick={handleMarkReady}
+                    disabled={statusMutation.isPending}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    data-testid="button-mark-ready"
+                  >
+                    {statusMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                    )}
+                    Mark Ready to Submit
+                  </Button>
+                </div>
+              )}
+
+              {/* Ready to Submit Actions */}
+              {currentStatus === 'ready_to_submit' && (
+                <div className="flex flex-col sm:flex-row gap-3">
                   <Button 
                     variant="outline"
                     onClick={handleBackToDraft}
@@ -635,49 +826,110 @@ export default function SettingsA2P() {
                   >
                     Back to Draft
                   </Button>
-                )}
-              </div>
+                  <Button
+                    onClick={() => submitMutation.mutate()}
+                    disabled={submitMutation.isPending}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                    data-testid="button-submit-twilio"
+                  >
+                    {submitMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Submit to Twilio
+                  </Button>
+                </div>
+              )}
 
-              {currentStatus === 'ready_to_submit' && (
-                <Alert className="mt-4">
+              {/* Submitted Actions */}
+              {currentStatus === 'submitted' && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => refreshStatusMutation.mutate()}
+                    disabled={refreshStatusMutation.isPending}
+                    className="flex-1"
+                    data-testid="button-refresh-submitted"
+                  >
+                    {refreshStatusMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Refresh Status
+                  </Button>
+                </div>
+              )}
+
+              {/* Rejected Actions */}
+              {currentStatus === 'rejected' && (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button 
+                    variant="outline"
+                    onClick={handleBackToDraft}
+                    disabled={statusMutation.isPending}
+                    data-testid="button-edit-rejected"
+                  >
+                    Edit Campaign
+                  </Button>
+                  <Button
+                    onClick={() => resubmitMutation.mutate()}
+                    disabled={resubmitMutation.isPending}
+                    className="flex-1 bg-orange-600 hover:bg-orange-700"
+                    data-testid="button-resubmit"
+                  >
+                    {resubmitMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                    )}
+                    Resubmit with Fixes
+                  </Button>
+                </div>
+              )}
+
+              {/* Status Alerts */}
+              {currentStatus === 'ready_to_submit' && !campaign?.twilioCampaignSid && (
+                <Alert className="mt-2">
                   <CheckCircle className="h-4 w-4 text-green-600" />
-                  <AlertTitle>Ready for Review</AlertTitle>
+                  <AlertTitle>Ready for Submission</AlertTitle>
                   <AlertDescription>
-                    Your campaign is ready! The platform owner will review and submit it to Twilio for carrier approval.
-                    You'll be notified when it's approved.
+                    Your campaign is complete! Click "Submit to Twilio" to register for A2P 10DLC.
+                    Approval typically takes 1-3 business days.
                   </AlertDescription>
                 </Alert>
               )}
 
               {currentStatus === 'submitted' && (
-                <Alert className="mt-4">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                <Alert className="mt-2">
+                  <Clock className="h-4 w-4 text-blue-600" />
                   <AlertTitle>Under Review</AlertTitle>
                   <AlertDescription>
                     Your campaign has been submitted to carriers for approval. 
-                    This typically takes 1-2 business days.
+                    This typically takes 1-3 business days. Use "Refresh Status" to check for updates.
                   </AlertDescription>
                 </Alert>
               )}
 
               {currentStatus === 'approved' && (
-                <Alert className="mt-4 border-green-200 bg-green-50">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
+                <Alert className="mt-2 border-green-200 bg-green-50">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <AlertTitle className="text-green-800">Approved!</AlertTitle>
                   <AlertDescription className="text-green-700">
-                    Your A2P campaign has been approved. Your SMS messages will be delivered reliably.
+                    Your A2P campaign has been approved. Your SMS messages will now be delivered reliably at full volume.
                   </AlertDescription>
                 </Alert>
               )}
 
-              {currentStatus === 'rejected' && campaign?.carrierRejectionReason && (
-                <Alert variant="destructive" className="mt-4">
+              {currentStatus === 'rejected' && (
+                <Alert variant="destructive" className="mt-2">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Rejected</AlertTitle>
+                  <AlertTitle>Campaign Rejected</AlertTitle>
                   <AlertDescription>
-                    {campaign.carrierRejectionReason}
+                    {campaign?.carrierRejectionReason || campaign?.trusthubLastError || 'Your campaign was rejected by carriers.'}
                     <br />
-                    Please update your campaign details and try again.
+                    Please review the rejection details, update your campaign, and resubmit.
                   </AlertDescription>
                 </Alert>
               )}
