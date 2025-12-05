@@ -116,6 +116,10 @@ import PricingPage from "./pages/PricingPage";
 import BillingSuccess from "./pages/BillingSuccess";
 import SubscriptionPage from "./pages/subscription";
 
+// Phase 26: Support System
+import SupportCenter from "./pages/SupportCenter";
+import AdminSupportTickets from "./pages/AdminSupportTickets";
+
 function Router() {
   return (
     <Switch>
@@ -355,6 +359,17 @@ function Router() {
       <Route path="/admin/customer-suggestions">
         <AuthGuard>
           <AdminCustomerSuggestions />
+        </AuthGuard>
+      </Route>
+      {/* Phase 26: Support System */}
+      <Route path="/support">
+        <AuthGuard>
+          <SupportCenter />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/support-tickets">
+        <AuthGuard>
+          <AdminSupportTickets />
         </AuthGuard>
       </Route>
       <Route path="/admin/theme-gallery">
