@@ -1378,6 +1378,70 @@ export default function MultiVehicleAppointmentScheduler({
             transition={stepTransition}
             className="space-y-4"
           >
+            {/* Loyalty Redemption Journey v2 - Inline reward status during service selection */}
+            {pendingReward && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`rounded-xl p-3 border ${
+                  rewardValidationStatus?.isValidating
+                    ? "bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border-blue-500/40"
+                    : rewardValidationStatus?.canRedeem 
+                      ? "bg-gradient-to-r from-green-600/20 to-emerald-600/20 border-green-500/40" 
+                      : "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/40"
+                }`}
+                data-testid="reward-status-service-step"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      rewardValidationStatus?.isValidating
+                        ? "bg-gradient-to-br from-blue-500 to-indigo-500"
+                        : rewardValidationStatus?.canRedeem 
+                          ? "bg-gradient-to-br from-green-500 to-emerald-500" 
+                          : "bg-gradient-to-br from-purple-500 to-pink-500"
+                    }`}>
+                      {rewardValidationStatus?.isValidating ? (
+                        <Loader2 className="w-4 h-4 text-white animate-spin" />
+                      ) : rewardValidationStatus?.canRedeem ? (
+                        <CheckCircle2 className="w-4 h-4 text-white" />
+                      ) : (
+                        <Award className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    <div>
+                      <p className={`text-sm font-medium ${
+                        rewardValidationStatus?.isValidating
+                          ? "text-blue-100"
+                          : rewardValidationStatus?.canRedeem 
+                            ? "text-green-100" 
+                            : "text-purple-100"
+                      }`}>
+                        {rewardValidationStatus?.isValidating 
+                          ? "Checking Eligibility..." 
+                          : rewardValidationStatus?.canRedeem 
+                            ? "Ready to Apply" 
+                            : "Reward Pending"}
+                      </p>
+                      <p className="text-xs text-gray-300">{pendingReward.name}</p>
+                    </div>
+                  </div>
+                  <Badge className={
+                    rewardValidationStatus?.isValidating
+                      ? "bg-blue-500/20 text-blue-200 border-blue-500/30 text-xs"
+                      : rewardValidationStatus?.canRedeem 
+                        ? "bg-green-500/20 text-green-200 border-green-500/30 text-xs" 
+                        : "bg-purple-500/20 text-purple-200 border-purple-500/30 text-xs"
+                  }>
+                    {pendingReward.points.toLocaleString()} pts
+                  </Badge>
+                </div>
+                {rewardValidationStatus && !rewardValidationStatus.isValidating && !rewardValidationStatus.canRedeem && rewardValidationStatus.reason && (
+                  <p className="text-xs text-amber-300 mt-2 pl-10">{rewardValidationStatus.reason}</p>
+                )}
+              </motion.div>
+            )}
+            
             <div className={`${GLASS_CARD} rounded-xl p-6`}>
               <h3 className={`text-lg font-semibold mb-4 ${GRADIENT_TEXT}`}>
                 <Sparkles className="w-5 h-5 inline mr-2" />
@@ -1465,6 +1529,70 @@ export default function MultiVehicleAppointmentScheduler({
             transition={stepTransition}
             className="space-y-4"
           >
+            {/* Loyalty Redemption Journey v2 - Inline reward status during add-on selection */}
+            {pendingReward && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`rounded-xl p-3 border ${
+                  rewardValidationStatus?.isValidating
+                    ? "bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border-blue-500/40"
+                    : rewardValidationStatus?.canRedeem 
+                      ? "bg-gradient-to-r from-green-600/20 to-emerald-600/20 border-green-500/40" 
+                      : "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/40"
+                }`}
+                data-testid="reward-status-addons-step"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                      rewardValidationStatus?.isValidating
+                        ? "bg-gradient-to-br from-blue-500 to-indigo-500"
+                        : rewardValidationStatus?.canRedeem 
+                          ? "bg-gradient-to-br from-green-500 to-emerald-500" 
+                          : "bg-gradient-to-br from-purple-500 to-pink-500"
+                    }`}>
+                      {rewardValidationStatus?.isValidating ? (
+                        <Loader2 className="w-4 h-4 text-white animate-spin" />
+                      ) : rewardValidationStatus?.canRedeem ? (
+                        <CheckCircle2 className="w-4 h-4 text-white" />
+                      ) : (
+                        <Award className="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    <div>
+                      <p className={`text-sm font-medium ${
+                        rewardValidationStatus?.isValidating
+                          ? "text-blue-100"
+                          : rewardValidationStatus?.canRedeem 
+                            ? "text-green-100" 
+                            : "text-purple-100"
+                      }`}>
+                        {rewardValidationStatus?.isValidating 
+                          ? "Checking Eligibility..." 
+                          : rewardValidationStatus?.canRedeem 
+                            ? "Ready to Apply" 
+                            : "Reward Pending"}
+                      </p>
+                      <p className="text-xs text-gray-300">{pendingReward.name}</p>
+                    </div>
+                  </div>
+                  <Badge className={
+                    rewardValidationStatus?.isValidating
+                      ? "bg-blue-500/20 text-blue-200 border-blue-500/30 text-xs"
+                      : rewardValidationStatus?.canRedeem 
+                        ? "bg-green-500/20 text-green-200 border-green-500/30 text-xs" 
+                        : "bg-purple-500/20 text-purple-200 border-purple-500/30 text-xs"
+                  }>
+                    {pendingReward.points.toLocaleString()} pts
+                  </Badge>
+                </div>
+                {rewardValidationStatus && !rewardValidationStatus.isValidating && !rewardValidationStatus.canRedeem && rewardValidationStatus.reason && (
+                  <p className="text-xs text-amber-300 mt-2 pl-10">{rewardValidationStatus.reason}</p>
+                )}
+              </motion.div>
+            )}
+            
             <div className={`${GLASS_CARD} rounded-xl p-6`}>
               <div className="flex justify-between items-center mb-4">
                 <div>
