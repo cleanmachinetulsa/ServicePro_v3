@@ -35,6 +35,7 @@ import portRecoveryRouter from "./routes.portRecovery";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { registerSuggestionRoutes } from "./routes.suggestions";
+import { registerSupportRoutes } from "./routes.support";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
@@ -330,6 +331,8 @@ registerReferralInvoiceRoutes(app);
 registerOnboardingIndustryRoutes(app);
 // Register suggestion system routes (platform + customer suggestions)
 registerSuggestionRoutes(app);
+// Register support system routes (tickets, KB, AI context)
+registerSupportRoutes(app);
 
 app.use((req, res, next) => {
   const start = Date.now();
