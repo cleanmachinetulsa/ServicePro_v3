@@ -1,0 +1,373 @@
+TITLE: BLOCK-R1 – Loyalty Redemption Guardrails + Port Recovery Blast (Production-Ready)
+
+HIGH-LEVEL GOAL
+
+Loyalty redemption guardrails must actually be enforced anywhere points can be redeemed (customer booking / checkout).
+
+Port Recovery page must be fully usable:
+
+I can preview who will get the message and what they’ll get.
+
+I can run the campaign once.
+
+Each customer gets 500 points exactly once.
+
+All SMS are sent via the existing messaging pipeline with STOP/opt-out handled correctly.
+
+Please keep everything tenant-safe and backwards compatible with existing data.
+
+PART 1 – Loyalty Redemption Guardrails (Enforcement)
+
+Context
+
+We already have global businessSettings fields:
+
+loyalty_min_cart_total (number, default 75)
+
+loyalty_require_core_service (boolean)
+
+loyalty_guardrail_message (string)
+
+We already have a loyalty/points system and a way for customers to redeem points at checkout.
+
+What to do
+
+Find the booking/checkout code used by the customer portal, NOT the admin side.
+
+Look for:
+
+API routes like /api/portal/booking/quote, /api/portal/booking/confirm, or similar.
+
+Any code that:
+
+Calculates a cart total.
+
+Applies loyalty points (discounts or free add-ons).
+
+Creates invoices / appointments.
+
+Add comments where you hook into guardrail enforcement so it’s easy to find later.
+
+Add a small guardrail check function (in the server layer, not the frontend), something like:
+
+Input:
+
+businessSettings (for current tenant)
+
+The current “cart” (services, add-ons, totals)
+
+pointsToRedeem
+
+Logic:
+
+If pointsToRedeem <= 0, allow.
+
+If loyalty_min_cart_total is set and cart’s pre-discount total is below that, block redemption.
+
+If loyalty_require_core_service is true and the cart does not contain any “core service” (e.g. full detail, maintenance detail, exterior+interior) then block redemption.
+
+Re-use any existing notion of “core service” if we already have it (e.g. isCoreService, service_category = 'core', etc.).
+
+If there is no explicit field, use the best existing heuristic and add a clear TODO comment.
+
+Output:
+
+Either { ok: true } OR { ok: false, code: 'GUARDRAIL_MIN_TOTAL' | 'GUARDRAIL_CORE_REQUIRED', message }
+
+Wire this guardrail into the existing redemption path
+
+Anywhere we actually apply points:
+
+Call the guardrail function first.
+
+If the guardrail fails:
+
+Do NOT apply points.
+
+Return an HTTP 400 (or domain error) with:
+
+code as above.
+
+message = businessSettings.loyalty_guardrail_message if present, otherwise a sane default like:
+
+"Points can only be used on orders over $75 and when a core service is included."
+
+Don’t change the behavior of a booking with no points being redeemed.
+
+Frontend UX
+
+In the customer portal booking / checkout UI:
+
+Catch the guardrail error response.
+
+Show the error message near the points selector / redemption control in a clear warning style.
+
+Keep the cart intact; just don’t apply the discount.
+
+Do not show raw error codes to the customer.
+
+Tests / sanity
+
+Add unit/integration tests (or at least a small “spec” style test) covering:
+
+Redeeming points on a cart below loyalty_min_cart_total → blocked.
+
+Redeeming points with no core service when loyalty_require_core_service = true → blocked.
+
+Redeeming points with both conditions satisfied → allowed.
+
+Run the existing test suite and ensure nothing regresses.
+
+PART 2 – Port Recovery Campaign: Actually Send It
+
+Context
+
+We already have:
+
+Port Recovery page at /admin/port-recovery with nice UI.
+
+Database tables for:
+
+Port recovery campaign config.
+
+Runs / history.
+
+Targets (or similar).
+
+Loyalty system + points awarding.
+
+SMS sending pipeline and A2P compliance stack.
+
+Now we must make the Port Recovery tool something I can actually use:
+
+2.1 Backend: Port Recovery Service
+
+Create or finish a service like portRecoveryService.ts that handles:
+
+Target selection
+
+Define “eligible customers” (for now, keep it simple and safe):
+
+Customers belonging to the current tenant (root / Clean Machine for now).
+
+Have a valid mobile phone number.
+
+Have SMS consent according to our existing rules (e.g. sms_opt_in = true, or no recorded opt-out).
+
+Deduplicate by phone number so a given person only gets the blast once.
+
+Idempotency
+
+Ensure that a customer cannot receive multiple port recovery blasts accidentally.
+
+Options (choose one and document):
+
+A dedicated port_recovery_grant table keyed by customer_id or phone_number with a unique constraint.
+
+OR a flag on the customer like portRecoveryNotifiedAt.
+
+When building targets for a new run, exclude customers who already have:
+
+That flag set OR an existing port_recovery_grant.
+
+Run model
+
+A run entity with fields like:
+
+id
+
+tenantId
+
+startedAt
+
+finishedAt
+
+totalTargets
+
+sentCount
+
+failedCount
+
+status: draft | running | completed | error
+
+For each target:
+
+runId
+
+customerId or at least phoneNumber
+
+status: pending | sent | failed
+
+errorMessage (optional)
+
+Points awarding
+
+For each eligible customer in a new run:
+
+Use the existing loyalty/points service to add 500 points with a clear reason text, e.g.:
+
+"Port Recovery apology bonus (porting issue)".
+
+Must be idempotent. Respect whatever strategy you chose above (unique constraint / flag).
+
+Do not allow a second run to double-award the same customer.
+
+SMS sending
+
+Use the existing messaging / SMS service, not raw Twilio calls, so:
+
+A2P compliance, STOP handling, and logging all still work.
+
+Message copy should come from the current Port Recovery config that the admin sees in the UI (the apology message we just designed).
+
+Insert the booking link placeholder ([link]) with the correct URL:
+
+For now, use whatever “main booking URL” we’re already using elsewhere for Clean Machine (e.g. /portal or /booking).
+
+Add a comment if this should be tenant-configurable later.
+
+Safety
+
+Implement a “preview” mode: an API that returns:
+
+totalEligibleCustomers
+
+examplePhoneNumbers (first 5 obfuscated like 918-***-0103)
+
+Do not send anything in preview mode.
+
+In “real” mode:
+
+Send in batches (e.g. 100 per batch) to avoid hammering Twilio.
+
+If there’s an unhandled error, mark the run as error with a message but don’t crash the server.
+
+2.2 API Routes
+
+Under /api/admin/port-recovery (or wherever it already lives):
+
+GET /api/admin/port-recovery/preview
+
+Returns:
+
+totalEligible
+
+alreadyNotified
+
+eligibleThisRun
+
+sample targets, as described.
+
+POST /api/admin/port-recovery/run
+
+Body:
+
+{ dryRun?: boolean } (optional; defaults to false)
+
+Behavior:
+
+If dryRun = true, behave like the preview endpoint and don’t write any run records.
+
+Otherwise, create a run, targets, award points, and send SMS as described.
+
+Return:
+
+Run summary (ids, counts, status).
+
+GET /api/admin/port-recovery/runs
+
+Returns existing runs with high-level stats for the history table already shown in the UI.
+
+Make sure auth/tenant checks are in place so only owner/admin can trigger this.
+
+2.3 Admin UI Wiring
+
+Update the Port Recovery page at /admin/port-recovery:
+
+Top card
+
+Show:
+
+The apology SMS text (already there).
+
+Confirm that 500 points will be awarded (read from config, not hardcoded if possible).
+
+Preview section
+
+Add a small panel:
+
+Button: “Preview Recipients”
+
+Calls GET /api/admin/port-recovery/preview.
+
+Shows:
+
+Eligible this run: X
+
+Already notified before: Y
+
+3–5 example obfuscated numbers.
+
+Run campaign section
+
+Button: “Send Port Recovery Blast”
+
+Disabled while a run is in progress.
+
+On click:
+
+Confirm modal:
+
+“This will send to X customers and award 500 points each. This cannot be undone. Proceed?”
+
+Then call POST /api/admin/port-recovery/run.
+
+Show basic progress / success toast:
+
+On success: “Port Recovery campaign started for X customers.”
+
+On error: show error message from API.
+
+Run history
+
+Hook the existing history table to GET /api/admin/port-recovery/runs.
+
+Show:
+
+Date
+
+Total targets
+
+Sent / failed
+
+Status pill (running/completed/error).
+
+FINAL CHECKLIST
+
+Before you stop:
+
+Verify loyalty redemption from the customer portal:
+
+Try redeeming points on a tiny cart → should show guardrail message, no discount.
+
+Try redeeming on a valid core-service booking above threshold → discount applies.
+
+Verify Port Recovery:
+
+Hit preview endpoint from the UI and confirm counts look sane.
+
+Start a run with a very small test set if possible (or temporarily filter to your own number).
+
+Confirm:
+
+500 points added once per test customer.
+
+SMS sent with correct message + link.
+
+Run history updated.
+
+Don’t break:
+
+Normal bookings with no points redeemed.
+
+Existing loyalty behavior elsewhere in the app.
