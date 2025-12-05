@@ -1,0 +1,709 @@
+You are upgrading the ServicePro v3 base app. Implement **A2P campaign auto-submission + phone onboarding** so that a tenant can:
+
+1) Use the A2P Campaign Assistant to submit their campaign directly to Twilio TrustHub.
+2) See live campaign status, rejection reasons, and resubmit with one click.
+3) Complete Step 2 of the setup wizard (“Phone & SMS Setup”) with a clear, working flow that links their account to an SMS-capable phone number and messaging service.
+
+You MUST:
+- Read existing A2P + phone-related code before editing.
+- Respect multi-tenant isolation everywhere.
+- Follow the existing style for services, routes, and React components.
+- Add thorough comments for anything non-trivial.
+
+────────────────────────────────────────
+0. DISCOVERY – READ EXISTING IMPLEMENTATIONS
+────────────────────────────────────────
+
+First, scan these areas and summarize to yourself before touching anything:
+
+Backend:
+- server/** for:
+  - a2p / sms compliance: search for “A2P”, “a2p”, “sms compliance”, “Campaign Assistant”.
+  - Twilio integration: search for “twilioClient”, “twilio”, “voice/incoming”, “sms/inbound”.
+  - business settings + tenants: search for “business_settings”, “tenant_config”, “tenantSettings”, “phone_config”.
+
+Frontend:
+- client/src/pages/settings/ or similar for the A2P Campaign Assistant page (likely /settings/a2p).
+- client/src/pages/SetupWizard* or /setup-wizard for the stepper.
+- client/src/components/phone/ or /messages/ for any phone/SMS configuration UIs already present.
+
+DO NOT GUESS NAMES blindly – use search and follow the existing patterns.
+
+Once you understand the existing A2P assistant (draft creation, statuses, etc.), proceed.
+
+────────────────────────────────────────
+1. DATA MODEL: EXTEND A2P CAMPAIGNS FOR TRUSTHUB
+────────────────────────────────────────
+
+Goal: existing A2P campaign drafts can now be **submitted** and tracked against Twilio TrustHub.
+
+1.1. Locate the A2P campaign table/model (e.g., `a2p_campaigns`, `sms_campaigns`, or similar).
+
+Add **at least** these fields (names can be adjusted to match conventions):
+
+- twilio_brand_sid: string | null
+- twilio_campaign_sid: string | null
+- trusthub_status: string | null            // e.g., "draft", "submitted", "approved", "rejected", "suspended"
+- trusthub_last_checked_at: Date | null
+- trusthub_last_error: text | null          // store last rejection or error message
+- submitted_at: Date | null
+- approved_at: Date | null
+- rejected_at: Date | null
+
+Make sure:
+- All new fields are tenant-scoped in queries (always filter by tenantId).
+- Existing records get safe defaults (NULL / “draft”).
+- Migrations are added if you use a migration system.
+
+1.2. If there is already a status field (e.g. `status` enum like `DRAFT`, `READY_TO_SUBMIT`, `SUBMITTED`, `APPROVED`, `REJECTED`), keep using it and only add the new TrustHub-specific columns.
+
+────────────────────────────────────────
+2. TWILIO TRUSTHUB SERVICE LAYER
+────────────────────────────────────────
+
+Create or extend a dedicated service module, e.g.:
+
+- server/services/a2pTrustHubService.ts
+
+This module should:
+
+2.1. Use the existing Twilio client config.
+
+- Locate where Twilio is configured (Account SID, Auth Token, etc.), usually something like `server/lib/twilioClient.ts`.
+- Reuse that client; do NOT create ad-hoc fetches.
+
+2.2. Implement functions (pseudo-signatures, adapt to your stack):
+
+- `ensureBrandForTenant(tenantId): Promise<{ brandSid: string }>`
+  - Look up if this tenant already has a stored `twilio_brand_sid` somewhere (business_settings or a2p table).
+  - If not, create a brand in TrustHub using available tenant/business data (legal business name, EIN if present, address fields, etc.).
+  - Store the brand SID either in business settings or a2p table (pick the most consistent existing location).
+  - Use Twilio TrustHub APIs per official docs for brand creation; handle API errors gracefully and bubble them up.
+
+- `submitOrUpdateCampaign(tenantId, campaignId): Promise<{ campaignSid: string; status: string }>`
+  - Load the tenant + A2P campaign draft.
+  - Call `ensureBrandForTenant()` to get brand SID.
+  - Map the campaign draft fields (use case, description, sample messages, opt-out language, etc.) into Twilio’s campaign creation API.
+  - If `twilio_campaign_sid` already exists, try updating instead of re-creating, if the API supports it; otherwise, just re-use and skip creation.
+  - Update the DB record with:
+      - twilio_campaign_sid
+      - trusthub_status
+      - submitted_at (if first submission)
+      - trusthub_last_error = NULL on success
+  - On error, DO NOT throw an unhandled exception; record:
+      - trusthub_last_error
+      - trusthub_status = "error"
+    and then throw a controlled error for the caller.
+
+- `refreshCampaignStatus(tenantId, campaignId): Promise<{ status: string; rejectionReason?: string }>`
+  - If no twilio_campaign_sid exists, return an error.
+  - Call Twilio to fetch the current status for that campaign.
+  - Update:
+      - trusthub_status
+      - trusthub_last_checked_at
+      - approved_at / rejected_at as appropriate
+      - trusthub_last_error (rejection reason or last error)
+  - Return a summarized status object.
+
+2.3. Logging & safety:
+
+- Use existing logging utilities.
+- Catch and wrap Twilio errors with clear messages for the front end.
+- Ensure every Twilio call is constrained by the tenant’s context.
+
+────────────────────────────────────────
+3. API ROUTES – SUBMIT, REFRESH, RESUBMIT
+────────────────────────────────────────
+
+Create / extend routes in the admin/settings API (where A2P endpoints live). You can put them in a file like:
+
+- server/routes/admin/a2pRoutes.ts
+- or wherever the current `/settings/a2p` API endpoints are.
+
+Add endpoints (adjust URL structure to match existing conventions):
+
+1) `POST /api/admin/a2p/campaigns/:id/submit`
+   - Auth: admin/owner of that tenant only.
+   - Body: none (or optional override fields such as `force`).
+   - Logic:
+       - Ensure campaign belongs to the current tenant.
+       - Check that campaign status is READY_TO_SUBMIT (or similar).
+       - Call `submitOrUpdateCampaign`.
+       - Return the updated campaign record.
+
+2) `POST /api/admin/a2p/campaigns/:id/refresh-status`
+   - Auth: admin/owner.
+   - Logic:
+       - Call `refreshCampaignStatus`.
+       - Return updated fields needed by the UI.
+
+3) `POST /api/admin/a2p/campaigns/:id/resubmit`
+   - Auth: admin/owner.
+   - Logic:
+       - Only allowed if last status was REJECTED or ERROR.
+       - Re-run `submitOrUpdateCampaign`.
+       - Record a new submission attempt (if you have a history table, append to it).
+
+Add proper error responses with JSON:
+
+- { error: '...', code: 'A2P_TWILIO_ERROR' } etc.
+
+────────────────────────────────────────
+4. FRONTEND – A2P SETTINGS PAGE UPGRADE
+────────────────────────────────────────
+
+Locate the A2P Campaign Assistant page, likely:
+
+- client/src/pages/settings/A2PSettingsPage.tsx
+- or similar under client/src/pages/Settings*/.
+
+Enhance the UI to support:
+
+4.1. Status pill + TrustHub info
+
+- For the currently selected campaign, show:
+    - Status chip: Draft, Ready, Submitted, Approved, Rejected, Error.
+    - If rejected or error: show the most recent `trusthub_last_error` in a collapsible “Details” area.
+    - Show timestamps: `submitted_at`, `approved_at`, `rejected_at`, `trusthub_last_checked_at` in a small metadata panel.
+
+4.2. Action buttons
+
+Add buttons (respecting existing design system):
+
+- “Submit to Twilio”:
+    - Enabled only if status is READY_TO_SUBMIT.
+    - Calls `POST /api/admin/a2p/campaigns/:id/submit`.
+    - Shows loading state and toast on success/failure.
+- “Refresh Status”:
+    - Enabled if status is SUBMITTED, APPROVED, or REJECTED.
+    - Calls `POST /api/admin/a2p/campaigns/:id/refresh-status`.
+- “Resubmit with Fixes”:
+    - Enabled if status is REJECTED or ERROR.
+    - When clicked:
+        - Option A (simple): Just call resubmit endpoint.
+        - Option B (better): Open a small modal:
+            - Summarize Twilio rejection reason.
+            - Offer a button to “Let AI rewrite copy to address this reason”.
+            - On confirm, update the draft content fields before resubmitting.
+    - For now, implement Option A (simple) but structure the code so Option B is easy to add later.
+
+4.3. Loading / error UX
+
+- Whenever an action is in progress, disable buttons and show inline spinner.
+- Use existing toast system to show:
+    - “Campaign submitted to Twilio. Status: [status]”
+    - “Status refreshed. Current state: [status]”
+    - “Resubmission failed: [error message]”
+
+Make sure the component re-fetches the campaign payload after each mutation so state stays consistent.
+
+────────────────────────────────────────
+5. SETUP WIZARD – PHONE & SMS STEP
+────────────────────────────────────────
+
+Goal: Step 2 of `/setup-wizard` should actually reflect and drive phone/SMS readiness.
+
+5.1. Locate the setup wizard implementation:
+
+- client/src/pages/SetupWizard.tsx (or similar).
+- Identify the stepper component and the Step 2 screen.
+
+5.2. Add real phone/SMS status indicators
+
+Use existing APIs to detect:
+
+- Whether the tenant has a `phone_config` entry.
+- Whether there is a primary Twilio phone number assigned.
+- Whether a Messaging Service is linked to that number.
+- Whether an A2P campaign exists and its current status.
+
+Create a small typed “wizard bootstrap” endpoint if needed, e.g.:
+
+- `GET /api/admin/setup-wizard/status` (tenant scoped)
+- Returns:
+    - hasPhoneNumber: boolean
+    - phoneNumber: string | null
+    - hasMessagingService: boolean
+    - messagingServiceSid: string | null
+    - a2pStatus: string | null
+    - missingPieces: string[]  // e.g., ['PHONE_NUMBER', 'A2P_APPROVAL']
+
+Drive the Step 2 UI from this response.
+
+5.3. Step 2 UI structure
+
+Update Step 2 to show 3 stacked cards:
+
+1) “Business Line & SMS Number”
+   - Show current primary phone number if configured.
+   - If not configured:
+        - Show a clear message: “Your number is currently managed by the platform owner. Contact support to provision a line.” OR,
+        - If there is already infrastructure for auto-provisioning: offer a button:
+            - “Request Auto-Provisioned Number” → call an admin endpoint to create and assign a number.
+   - For now, **prefer to represent reality**:
+        - If the platform uses YOUR Twilio account only, say: “Phone provisioning is currently managed for you. We’ll notify you once your line is ready.”
+
+2) “Inbound Routing & IVR”
+   - Show whether inbound calls are routed to:
+        - IVR menu (from ivr_menus).
+        - Voicemail.
+        - Direct forward.
+   - Provide a “Go to IVR Config” button that links to `/admin/ivr-config`.
+
+3) “A2P Registration Status”
+   - Surface the same A2P trusthub_status as in Settings → A2P.
+   - Show copy like:
+        - Draft → “Fill out your campaign info on the A2P page.”
+        - Ready_to_submit → “Looks good! Submit now from the A2P page to unlock high-volume SMS.”
+        - Submitted → “Your campaign is under review. Most approvals take 1–3 business days.”
+        - Approved → “✅ You’re fully registered for A2P 10DLC.”
+        - Rejected/Error → Show last error + link to A2P page.
+
+5.4. Wizard step completion logic
+
+- The wizard already tracks per-step completion. Extend Step 2 completion rule to something like:
+
+    - If phone + messaging + A2P approved → mark step as COMPLETE.
+    - Otherwise, allow them to continue but show “Partially configured” status.
+
+Update the backend wizard status endpoint to include Step 2’s derived completion state.
+
+────────────────────────────────────────
+6. TESTING – E2E FLOW
+────────────────────────────────────────
+
+Implement or update tests (unit or integration) for:
+
+- A2P submission endpoint:
+    - Successful submission updates Twilio SIDs + status fields.
+    - Failed submission records `trusthub_last_error` and sets status to ERROR.
+- Status refresh endpoint:
+    - Calls the Twilio client with the expected campaign SID.
+    - Updates trusthub_status and timestamps.
+- Frontend A2P page:
+    - Buttons enable/disable according to status.
+    - Click “Submit” → calls correct endpoint and updates UI.
+- Setup Wizard:
+    - Fetches wizard status.
+    - Renders correct hints for each combination of `hasPhoneNumber`, `hasMessagingService`, and `a2pStatus`.
+
+If you cannot hit Twilio APIs in the test environment, isolate Twilio calls behind a small adapter that can be mocked.
+
+────────────────────────────────────────
+7. QUALITY + SAFETY
+────────────────────────────────────────
+
+- Do NOT change existing behavior for Clean Machine root tenant’s live phone number or messaging service.
+- All new features must be backwards compatible; if a tenant never touches A2P, nothing breaks.
+- Keep all strings user-friendly – this is a **premium app**; avoid raw error dumps in the UI.
+- Add clear comments around any Twilio-specific magic values or mappings so future devs (and the owner) can maintain them.
+
+When finished, re-run the app and manually verify:
+
+1) Settings → A2P:
+   - Draft → Ready → Submit → Refresh (status updates).
+2) Setup Wizard Step 2:
+   - Shows current phone/A2P status for Clean Machine.
+3) No runtime errors in server logs.
+🧱 BLOCK D – LOYALTY REDEMPTION FLOW (CUSTOMER & ADMIN)
+After Block C finishes and looks good, paste this whole block into the Replit agent.
+
+text
+Copy code
+You are extending the ServicePro v3 base app’s **loyalty and rewards** system.
+
+Currently:
+- Customers can EARN points (e.g., Port Recovery campaign gives +500 via the gamification service).
+- Global guardrail settings exist in `business_settings`:
+    - loyalty_min_cart_total
+    - loyalty_require_core_service
+    - loyalty_guardrail_message
+- Guardrails are not yet ENFORCED in the booking/checkout flow.
+- Customers do not have a clear “My Rewards” experience.
+
+Your job is to implement:
+
+1) Customer-facing rewards dashboard (“My Rewards”).
+2) Point redemption at booking, with full guardrail enforcement.
+3) Admin analytics for loyalty performance.
+
+Follow existing conventions for tenants, DB, services, and React.
+
+────────────────────────────────────────
+0. DISCOVERY – READ EXISTING LOYALTY IMPLEMENTATION
+────────────────────────────────────────
+
+Before changing anything:
+
+- Search backend for:
+  - “loyalty”, “points”, “gamificationService”, “rewards”.
+  - The Port Recovery campaign code and how it credits points.
+- Identify:
+  - Where points balances are stored (customer table? separate `loyalty_points` or `gamification_events` table?).
+  - How points are added (which service & route).
+- Find the booking/checkout flow:
+  - API endpoints for creating appointments / jobs.
+  - Any existing “coupon”, “discount”, or “credits” logic.
+
+On the frontend:
+
+- Find the **customer portal** routes:
+  - Something like `/portal/login`, `/portal/account`, `/portal/appointments`.
+- Find the **booking UI**:
+  - Customer-facing booking forms, likely under `/booking`, `/schedule`, or similar.
+- Find the admin side of loyalty:
+  - Any existing insights or “rewards” pages under `/admin`.
+
+Only after mapping the existing structure should you proceed.
+
+────────────────────────────────────────
+1. LOYALTY DATA MODEL – ENSURE WE CAN TRACK BALANCE & HISTORY
+────────────────────────────────────────
+
+1.1. Ensure customers have a **current points balance**.
+
+If not already present, extend the customer model (the one used across tenants) with:
+
+- loyalty_points_balance: integer (default 0)
+
+Make sure it respects tenant scoping and migration conventions.
+
+1.2. Ensure we have a **points ledger** / history table.
+
+If a proper ledger already exists (e.g., `loyalty_transactions` or `gamification_events`), reuse it. If not, create a table such as:
+
+- loyalty_transactions:
+    - id
+    - tenant_id
+    - customer_id
+    - type: enum('EARN', 'REDEEM', 'ADJUST')
+    - points: integer (positive for EARN, negative for REDEEM)
+    - reason: string (e.g., 'Port Recovery Bonus', 'Booking Discount', 'Manual Adjustment')
+    - metadata: jsonb (optional; can store campaignId, invoiceId, etc.)
+    - created_at
+
+Update the Port Recovery campaign code so that it:
+- Writes both:
+    - A transaction record.
+    - Updates the customer’s loyalty_points_balance accordingly (in a transaction).
+
+────────────────────────────────────────
+2. GUARDRAIL ENFORCEMENT SERVICE
+────────────────────────────────────────
+
+Create a dedicated service module, e.g.:
+
+- server/services/loyaltyRedemptionService.ts
+
+Responsibilities:
+
+- Read business-wide guardrail settings from `business_settings` for the current tenant:
+    - loyalty_min_cart_total (number)
+    - loyalty_require_core_service (boolean)
+    - loyalty_guardrail_message (string)
+
+- Provide core functions (adapt to your stack):
+
+```ts
+type RedemptionContext = {
+  tenantId: string;
+  customerId: string;
+  cartTotal: number;        // before loyalty discount
+  hasCoreService: boolean;  // true if at least one “core” service is in the cart
+  requestedPoints: number;  // how many points the customer wants to redeem
+};
+
+type RedemptionCheck = {
+  canRedeem: boolean;
+  allowedPoints: number;
+  reasonCode?: string;      // e.g. 'MIN_TOTAL_NOT_MET', 'NO_CORE_SERVICE', 'INSUFFICIENT_POINTS'
+  message?: string;         // user-readable
+};
+Implement:
+
+checkRedemptionEligibility(ctx: RedemptionContext): Promise<RedemptionCheck>
+
+Load customer’s current balance.
+
+If requestedPoints <= 0 → return canRedeem=false with reason INVALID_AMOUNT.
+
+If requestedPoints > balance → return canRedeem=false, reason INSUFFICIENT_POINTS.
+
+If loyalty_min_cart_total is set and cartTotal < loyalty_min_cart_total → canRedeem=false, reason MIN_TOTAL_NOT_MET, message = loyalty_guardrail_message if set, or a sensible default.
+
+If loyalty_require_core_service is true and hasCoreService is false → canRedeem=false, reason NO_CORE_SERVICE.
+
+If all guardrails pass:
+
+canRedeem=true
+
+allowedPoints = min(requestedPoints, balance).
+
+applyRedemption(ctx: RedemptionContext): Promise<{ discountAmount: number; pointsUsed: number }>
+
+Calls checkRedemptionEligibility.
+
+If cannot redeem → throw a controlled error with the reason.
+
+If can redeem:
+
+Convert pointsUsed to a monetary discount using existing business logic (if such a conversion rate exists; otherwise, assume 1 point = $0.10 or use a configured rate).
+
+In a DB transaction:
+
+Create a loyalty_transactions REDEEM record.
+
+Decrease loyalty_points_balance.
+
+Return the discount so booking logic can apply it.
+
+Make sure everything is tenant-scoped.
+
+────────────────────────────────────────
+3. BOOKING / CHECKOUT FLOW INTEGRATION
+────────────────────────────────────────
+
+Goal: When a customer books a service, they can optionally redeem points, and the guardrails are enforced.
+
+3.1. Backend: extend the booking endpoint
+
+Locate the endpoint that creates a new appointment/order (e.g., POST /api/booking, POST /api/appointments, etc.).
+
+Extend its request payload to accept an optional loyalty section:
+
+jsonc
+Copy code
+{
+  "services": [...],
+  "date": "...",
+  "time": "...",
+  // ...
+  "loyalty": {
+    "usePoints": true,
+    "pointsRequested": 500
+  }
+}
+In the handler:
+
+Compute cartTotal and detect hasCoreService based on the chosen services.
+
+If loyalty.usePoints is true and pointsRequested > 0:
+
+Call applyRedemption({ tenantId, customerId, cartTotal, hasCoreService, requestedPoints }).
+
+Subtract discountAmount from the invoice / booking total.
+
+Attach the discount details to the order metadata (for admin reporting).
+
+If redemption fails due to guardrails:
+
+Return a 400 with a structured error:
+{ error: 'LOYALTY_REDEMPTION_BLOCKED', reasonCode, message }
+
+Do NOT create the booking.
+
+If redemption passes:
+
+Proceed to create the booking as usual.
+
+3.2. Frontend: booking UI updates
+
+Locate the customer booking UI (public/customer side):
+
+Add a “Use Loyalty Points” panel in the price summary area that:
+
+Shows current points balance (fetched from a new endpoint, see below).
+
+Lets the customer toggle “Apply points to this booking”.
+
+Input: either:
+
+“Use maximum available points” (simple mode), or
+
+A number field for pointsRequested.
+
+Shows estimated discount before they confirm.
+
+Create an endpoint like:
+
+GET /api/portal/loyalty/summary
+
+Returns:
+
+pointsBalance
+
+approximateValue
+
+recentTransactions (last 3 events, optional)
+
+Use this data to render the UI.
+
+When the customer submits the booking form:
+
+Include the loyalty data.
+
+On 400 with LOYALTY_REDEMPTION_BLOCKED, display the message inline:
+
+Example: “To redeem 500 points, your total must be at least $75 and include a core service (e.g., Full Interior Detail).”
+
+Allow them to:
+
+Adjust services, OR
+
+Turn off point usage, and re-submit.
+
+────────────────────────────────────────
+4. CUSTOMER “MY REWARDS” PAGE
+────────────────────────────────────────
+
+Create a new customer portal page, for example:
+
+Route: /portal/rewards
+
+File: client/src/pages/portal/RewardsPage.tsx (or wherever portal pages live).
+
+Features:
+
+Header:
+
+“My Rewards”
+
+Short explanation of how points work.
+
+Top stats card:
+
+Current points balance.
+
+Approximate dollar value.
+
+Note: “Points can be redeemed on bookings with a total of at least $X” (use loyalty_min_cart_total value).
+
+Timeline / table of recent transactions (using the ledger table):
+
+Columns: Date, Type (Earned, Redeemed), Points, Description.
+
+Limit to the last 20 entries with pagination or infinite scroll.
+
+CTA button:
+
+“Book a service and use my points” → sends them to the booking page.
+
+Endpoints needed:
+
+GET /api/portal/loyalty/transactions
+
+tenant + authenticated customer.
+
+Supports pagination (page, pageSize).
+
+Ensure the page uses the same visual design system as the rest of the portal.
+
+────────────────────────────────────────
+5. ADMIN LOYALTY ANALYTICS
+────────────────────────────────────────
+
+Create an admin page to monitor loyalty performance:
+
+Route: /admin/loyalty-insights
+
+File: client/src/pages/admin/LoyaltyInsightsPage.tsx (or similar).
+
+Add navigation to the admin sidebar under Customer Management or Analytics.
+
+Backend endpoint, e.g.:
+
+GET /api/admin/loyalty/summary
+
+Returns metrics like:
+
+totalCustomersWithPoints
+
+totalPointsOutstanding
+
+totalPointsRedeemed
+
+totalPointsEarned (lifetime)
+
+top5CustomersByPoints
+
+pointsEarnedLast30Days
+
+pointsRedeemedLast30Days
+
+UI:
+
+Cards at top with key metrics.
+
+Simple chart (if charting library is already used; if not, use basic stacked cards) showing earned vs redeemed over time.
+
+Table of top customers by points balance.
+
+Make sure all queries are tenant-scoped (admin only sees their own tenant data).
+
+────────────────────────────────────────
+6. TESTING & SAFETY
+────────────────────────────────────────
+
+Add or update tests to cover:
+
+Port Recovery + points credit:
+
+When campaign runs, customer receives +500 points.
+
+Balance and ledger entry are correct.
+
+Guardrail enforcement:
+
+Below min cart total → redemption blocked with correct reason.
+
+No core service when required → blocked appropriately.
+
+Insufficient points → blocked.
+
+Successful redemption:
+
+Points deducted correctly.
+
+Discount applied to booking total.
+
+Ledger entry recorded.
+
+Frontend:
+
+Booking form:
+
+Shows correct balance.
+
+Handles 400 LOYALTY_REDEMPTION_BLOCKED gracefully.
+
+My Rewards page:
+
+Renders balance + last transactions.
+
+Admin loyalty insights:
+
+Renders summary metrics using mocked API data.
+
+Safety:
+
+Never allow points balance to go negative (enforce at DB and service level).
+
+Make all monetary/points conversions explicit and documented.
+
+Ensure performance: index ledger table on (tenant_id, customer_id, created_at).
+
+────────────────────────────────────────
+7. UX POLISH
+────────────────────────────────────────
+
+Keep copy customer-friendly, aligned with Clean Machine voice:
+
+“You have 500 points available (~$X in rewards).”
+
+“To use your points, your booking total must be at least $75 and include a qualifying service.”
+
+Make error states clear but non-technical:
+
+Avoid exposing internal reason codes directly to the customer.
+
+On the admin side, include a small info box describing the guardrails and where to edit them (link to the settings page where loyalty_min_cart_total etc. are stored).

@@ -3697,11 +3697,18 @@ export const a2pCampaigns = pgTable("a2p_campaigns", {
   // AI Tracking
   aiGenerated: boolean("ai_generated").default(false), // Last edit came from AI helper
   
-  // Twilio Integration (for future use)
+  // Twilio TrustHub Integration
   twilioProfileSid: text("twilio_profile_sid"), // Twilio Customer Profile SID
   twilioBrandSid: text("twilio_brand_sid"), // Twilio Brand Registration SID
   twilioCampaignSid: text("twilio_campaign_sid"), // Twilio Campaign SID
   carrierRejectionReason: text("carrier_rejection_reason"), // If rejected
+  
+  // TrustHub Status Tracking
+  trusthubStatus: varchar("trusthub_status", { length: 50 }), // draft, pending, in_review, approved, rejected, suspended
+  trusthubLastCheckedAt: timestamp("trusthub_last_checked_at"), // Last time status was fetched from Twilio
+  trusthubLastError: text("trusthub_last_error"), // Last error/rejection message from Twilio
+  approvedAt: timestamp("approved_at"), // When campaign was approved by carriers
+  rejectedAt: timestamp("rejected_at"), // When campaign was rejected
   
   // Timestamps
   lastSubmittedAt: timestamp("last_submitted_at"),
@@ -3723,6 +3730,11 @@ export const insertA2pCampaignSchema = createInsertSchema(a2pCampaigns).omit({
   twilioBrandSid: true,
   twilioCampaignSid: true,
   carrierRejectionReason: true,
+  trusthubStatus: true,
+  trusthubLastCheckedAt: true,
+  trusthubLastError: true,
+  approvedAt: true,
+  rejectedAt: true,
 });
 
 // A2P Types
