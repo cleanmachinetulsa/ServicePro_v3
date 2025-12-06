@@ -33,6 +33,17 @@ The platform utilizes a comprehensive multi-tenant architecture with full tenant
 #### Customer Identity & Login
 Customer authentication is separate from staff/owner authentication, utilizing OTP (One-Time Password) via phone/email with rate limiting and session management. Customer profiles support `profilePictureUrl`, `customerNotes`, and notification preferences.
 
+#### Billing & Usage Engine (SP-3)
+A comprehensive multi-tenant usage tracking and billing system with the following components:
+- **Usage Metrics Table**: `usage_metrics` tracks daily usage per tenant (SMS in/out, MMS in/out, voice minutes, emails, AI tokens in/out)
+- **Usage Rollups Table**: `usage_rollups_daily` stores aggregated daily data with estimated costs
+- **Usage Collector Service**: `server/services/usageCollectorService.ts` gathers usage data from various sources per tenant
+- **Usage Rollup Service**: `server/services/usageRollupService.ts` runs daily at midnight UTC to aggregate metrics
+- **Pricing Constants**: `shared/pricing/usagePricing.ts` defines per-unit costs (SMS: $0.0079, MMS: $0.02, Voice: $0.0085/min, Email: $0.00035, AI: $0.00001/$0.00003 per token)
+- **Tenant Dashboard**: `/admin/billing-usage` shows month-to-date usage, 30-day trends, cost breakdown, and daily history
+- **Root Admin Dashboard**: `/admin/system-usage` shows all tenant usage with charts, plan distribution, and manual rollup trigger
+- **API Routes**: `server/routes.billingUsage.ts` with endpoints for summary, daily, metrics, and root admin tenant overview
+
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business.
 

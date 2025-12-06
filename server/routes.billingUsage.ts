@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { getUsageMetricsForTenant, getUsageSummaryForTenant } from './services/usageCollectorService';
 import { getDailyRollups, getAllTenantsUsageSummary, rollupDailyUsage } from './services/usageRollupService';
 import { usagePricing } from '@shared/pricing/usagePricing';
+import { requireRole } from './rbacMiddleware';
 
 const router = express.Router();
 
@@ -11,7 +12,11 @@ router.get('/api/admin/usage/summary', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
     
-    const tenantId = req.tenant?.id || 'root';
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+    
     const summary = await getUsageSummaryForTenant(tenantId);
     
     res.json({
@@ -31,7 +36,11 @@ router.get('/api/admin/usage/daily', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
     
-    const tenantId = req.tenant?.id || 'root';
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+    
     const days = parseInt(req.query.days as string) || 30;
     
     const rollups = await getDailyRollups(tenantId, days);
@@ -53,7 +62,11 @@ router.get('/api/admin/usage/metrics', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
     
-    const tenantId = req.tenant?.id || 'root';
+    const tenantId = req.tenant?.id;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+    
     const days = parseInt(req.query.days as string) || 30;
     
     const endDate = new Date();
@@ -72,16 +85,8 @@ router.get('/api/admin/usage/metrics', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/api/root-admin/usage/tenants', async (req: Request, res: Response) => {
+router.get('/api/root-admin/usage/tenants', requireRole(['owner', 'root_admin']), async (req: Request, res: Response) => {
   try {
-    if (!req.session?.userId) {
-      return res.status(401).json({ success: false, error: 'Not authenticated' });
-    }
-    
-    if (req.session?.role !== 'root_admin' && req.session?.role !== 'owner') {
-      return res.status(403).json({ success: false, error: 'Root admin access required' });
-    }
-    
     const tenantsSummary = await getAllTenantsUsageSummary();
     
     res.json({
@@ -95,16 +100,8 @@ router.get('/api/root-admin/usage/tenants', async (req: Request, res: Response) 
   }
 });
 
-router.post('/api/root-admin/usage/rollup', async (req: Request, res: Response) => {
+router.post('/api/root-admin/usage/rollup', requireRole(['owner', 'root_admin']), async (req: Request, res: Response) => {
   try {
-    if (!req.session?.userId) {
-      return res.status(401).json({ success: false, error: 'Not authenticated' });
-    }
-    
-    if (req.session?.role !== 'root_admin' && req.session?.role !== 'owner') {
-      return res.status(403).json({ success: false, error: 'Root admin access required' });
-    }
-    
     const { date } = req.body;
     const targetDate = date ? new Date(date) : undefined;
     
