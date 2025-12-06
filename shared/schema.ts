@@ -3297,6 +3297,58 @@ export const usageSummary = pgTable('usage_summary', {
 });
 
 // ============================================================
+// BILLING & USAGE ENGINE (SP-3) TABLES
+// ============================================================
+
+// Usage Metrics - Raw per-tenant daily usage logs
+export const usageMetrics = pgTable('usage_metrics', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  date: date('date').notNull(),
+  smsOutboundCount: integer('sms_outbound_count').default(0).notNull(),
+  smsInboundCount: integer('sms_inbound_count').default(0).notNull(),
+  mmsOutboundCount: integer('mms_outbound_count').default(0).notNull(),
+  mmsInboundCount: integer('mms_inbound_count').default(0).notNull(),
+  voiceMinutes: integer('voice_minutes').default(0).notNull(),
+  emailsSent: integer('emails_sent').default(0).notNull(),
+  aiTokensIn: integer('ai_tokens_in').default(0).notNull(),
+  aiTokensOut: integer('ai_tokens_out').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  tenantDateIdx: index('usage_metrics_tenant_date_idx').on(table.tenantId, table.date),
+  dateIdx: index('usage_metrics_date_idx').on(table.date),
+}));
+
+// Usage Rollups Daily - Aggregated daily totals with estimated costs
+export const usageRollupsDaily = pgTable('usage_rollups_daily', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  date: date('date').notNull(),
+  smsTotal: integer('sms_total').default(0).notNull(),
+  mmsTotal: integer('mms_total').default(0).notNull(),
+  voiceTotalMinutes: integer('voice_total_minutes').default(0).notNull(),
+  emailTotal: integer('email_total').default(0).notNull(),
+  aiTotalTokens: integer('ai_total_tokens').default(0).notNull(),
+  estimatedCostUsd: numeric('estimated_cost_usd', { precision: 10, scale: 4 }).default('0').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  tenantDateIdx: index('usage_rollups_tenant_date_idx').on(table.tenantId, table.date),
+  tenantDateUnique: index('usage_rollups_tenant_date_unique').on(table.tenantId, table.date),
+  dateIdx: index('usage_rollups_date_idx').on(table.date),
+}));
+
+// Zod schemas for usage metrics
+export const insertUsageMetricsSchema = createInsertSchema(usageMetrics).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUsageRollupsDailySchema = createInsertSchema(usageRollupsDaily).omit({ id: true, createdAt: true });
+
+// Types for usage metrics
+export type UsageMetrics = typeof usageMetrics.$inferSelect;
+export type InsertUsageMetrics = z.infer<typeof insertUsageMetricsSchema>;
+export type UsageRollupsDaily = typeof usageRollupsDaily.$inferSelect;
+export type InsertUsageRollupsDaily = z.infer<typeof insertUsageRollupsDailySchema>;
+
+// ============================================================
 // SUGGESTIONS / FEEDBACK TABLE
 // ============================================================
 export const suggestions = pgTable('suggestions', {
