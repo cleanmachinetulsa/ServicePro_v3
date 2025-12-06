@@ -10,8 +10,11 @@
  */
 
 import { Express, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import { supportTicketService } from "./services/supportTicketService";
 import { supportKbService } from "./services/supportKbService";
+import { getSupportAssistantReply } from "./services/supportAssistantService";
+import { getSupportContextForTenantUser } from "./services/supportContextService";
 import { db } from "./db";
 import { tenants, tenantConfig, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -45,6 +48,31 @@ const updateTicketStatusSchema = z.object({
   status: z.enum(["open", "in_progress", "resolved", "closed"]),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   internalNotes: z.string().optional(),
+});
+
+const assistantChatSchema = z.object({
+  message: z.string().min(1, "Message is required").max(4000, "Message too long (max 4000 characters)"),
+  currentRoute: z.string().optional(),
+  topicHint: z.string().optional(),
+});
+
+// Rate limiter for AI assistant (30 requests per hour per user)
+const assistantRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 30,
+  message: { error: "Too many requests. Please try again later." },
+  keyGenerator: (req) => {
+    const authReq = req as AuthenticatedRequest;
+    // Use userId for rate limiting (authenticated users only)
+    if (authReq.session?.userId) {
+      return `user:${authReq.session.userId}`;
+    }
+    // Fallback to a constant for unauthenticated (will be rejected by auth check anyway)
+    return "unauthenticated";
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false }, // Disable IP validation since we use userId
 });
 
 export function registerSupportRoutes(app: Express) {
@@ -311,7 +339,7 @@ export function registerSupportRoutes(app: Express) {
   /**
    * GET /api/support/ai/context/bootstrap
    * Returns compact context object for the current tenant/user
-   * Used by future AI assistant to understand the user's situation
+   * Used by AI assistant to understand the user's situation
    */
   app.get("/api/support/ai/context/bootstrap", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -322,77 +350,8 @@ export function registerSupportRoutes(app: Express) {
       const tenantId = req.session.tenantId || "root";
       const userId = req.session.userId;
 
-      // Get tenant info
-      const [tenant] = await db
-        .select()
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .limit(1);
-
-      // Get tenant config for features
-      const [config] = await db
-        .select()
-        .from(tenantConfig)
-        .where(eq(tenantConfig.tenantId, tenantId))
-        .limit(1);
-
-      // Get user info
-      const [user] = await db
-        .select({
-          id: users.id,
-          username: users.username,
-          role: users.role,
-          fullName: users.fullName,
-        })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      // Get open tickets
-      const openTickets = await supportTicketService.getOpenTicketsForAI(tenantId);
-
-      // Build context response
-      const context = {
-        tenant: {
-          id: tenantId,
-          name: tenant?.name || "Unknown",
-          slug: tenant?.subdomain || null,
-          plan: config?.planTier || "free",
-          features: {
-            aiSmsAgent: config?.featureAiSmsAgent || false,
-            aiVoiceAgent: config?.featureAiVoiceAgent || false,
-            campaigns: config?.featureCampaigns || false,
-            dedicatedNumber: config?.featureDedicatedNumber || false,
-            customDomain: config?.featureCustomDomain || false,
-            crm: config?.featureCrm || false,
-            loyalty: config?.featureLoyalty || false,
-            multiUser: config?.featureMultiUser || false,
-            advancedAnalytics: config?.featureAdvancedAnalytics || false,
-            websiteGenerator: config?.featureWebsiteGenerator || false,
-            dataExport: config?.featureDataExport || false,
-            prioritySupport: config?.featurePrioritySupport || false,
-          },
-          telephonyStatus: {
-            status: config?.a2pStatus || "unknown",
-            hasNumber: !!config?.twilioPhoneNumber,
-          },
-          emailStatus: {
-            status: "active",
-            provider: "sendgrid",
-          },
-        },
-        user: {
-          id: user?.id || userId,
-          name: user?.fullName || user?.username || "Unknown",
-          role: user?.role || "staff",
-        },
-        openTickets: openTickets.map(t => ({
-          id: t.id,
-          subject: t.subject,
-          status: t.status,
-          priority: t.priority,
-        })),
-      };
+      // Use shared context service
+      const context = await getSupportContextForTenantUser(tenantId, userId);
 
       return res.json({ success: true, context });
     } catch (error) {
@@ -537,5 +496,62 @@ export function registerSupportRoutes(app: Express) {
     }
   });
 
-  console.log("[SUPPORT] Routes registered: /api/support/*, /api/admin/support/*, /api/support/ai/*");
+  // ============================================================
+  // SUPPORT ASSISTANT AI ROUTES
+  // ============================================================
+
+  /**
+   * POST /api/support/assistant/chat
+   * AI-powered support assistant chat endpoint
+   * Rate limited to 30 requests per hour per user
+   */
+  app.post("/api/support/assistant/chat", assistantRateLimiter, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!req.session?.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const parsed = assistantChatSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: "Validation failed",
+          details: parsed.error.errors,
+        });
+      }
+
+      const { message, currentRoute, topicHint } = parsed.data;
+      const tenantId = req.session.tenantId || "root";
+      const userId = req.session.userId;
+
+      // Log request (truncated for privacy)
+      console.log("[SUPPORT ASSISTANT] Chat request:", {
+        tenantId,
+        userId,
+        messagePreview: message.substring(0, 200),
+        currentRoute,
+        topicHint,
+      });
+
+      const reply = await getSupportAssistantReply({
+        tenantId,
+        userId,
+        userMessage: message,
+        currentRoute,
+        topicHint,
+      });
+
+      return res.json({
+        success: true,
+        reply,
+      });
+    } catch (error) {
+      console.error("[SUPPORT ASSISTANT] Error:", error);
+      return res.status(500).json({
+        success: false,
+        error: "Support assistant is currently unavailable. Please try again later or open a support ticket.",
+      });
+    }
+  });
+
+  console.log("[SUPPORT] Routes registered: /api/support/*, /api/admin/support/*, /api/support/ai/*, /api/support/assistant/*");
 }

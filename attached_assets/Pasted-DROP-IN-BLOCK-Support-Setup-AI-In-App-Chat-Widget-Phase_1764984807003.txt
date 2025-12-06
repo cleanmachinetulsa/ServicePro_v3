@@ -1,0 +1,477 @@
+DROP-IN BLOCK: Support / Setup AI – In-App Chat Widget (Phase 26 UI v1)
+
+For Replit agent:
+Implement an in-app “Support / Setup AI” chat widget that connects to the existing Phase 26 backend assistant (/api/support/assistant/chat).
+The widget should be visible on authenticated admin/tenant pages, pull route context, and feel premium/mobile-friendly.
+
+1) Shared Types for Support Assistant Messages
+
+Add file: shared/supportAssistantTypes.ts
+
+// shared/supportAssistantTypes.ts
+
+export type SupportAssistantRole = 'user' | 'assistant' | 'system';
+
+export interface SupportAssistantMessage {
+  id: string;
+  role: SupportAssistantRole;
+  content: string;
+  createdAt: string; // ISO string
+  // optional metadata for future use
+  source?: 'kb' | 'agent' | 'system';
+  kbArticleId?: string | null;
+}
+
+export interface SupportAssistantContext {
+  tenantId: string;
+  userId: string;
+  userName?: string | null;
+  userEmail?: string | null;
+  currentRoute: string;
+  isOwner: boolean;
+  isAdmin: boolean;
+  // optional: last error or page info if available
+  lastErrorMessage?: string | null;
+}
+
+export interface SupportAssistantChatRequest {
+  messages: SupportAssistantMessage[];
+  context: SupportAssistantContext;
+}
+
+export interface SupportAssistantChatResponse {
+  messages: SupportAssistantMessage[];
+  suggestedActions?: {
+    label: string;
+    description?: string;
+    payload?: Record<string, unknown>;
+  }[];
+  kbSuggestions?: {
+    id: string;
+    title: string;
+    slug?: string;
+    relevance: number;
+  }[];
+}
+
+2) Frontend Hook: useSupportAssistantChat
+
+Add file: client/src/hooks/useSupportAssistantChat.ts
+
+// client/src/hooks/useSupportAssistantChat.ts
+import { useState, useCallback } from 'react';
+import type {
+  SupportAssistantMessage,
+  SupportAssistantChatResponse,
+  SupportAssistantContext,
+} from '../../shared/supportAssistantTypes';
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+export function useSupportAssistantChat(initialContext: SupportAssistantContext | null) {
+  const [messages, setMessages] = useState<SupportAssistantMessage[]>(() => {
+    if (!initialContext) return [];
+    return [
+      {
+        id: 'welcome',
+        role: 'assistant',
+        createdAt: nowIso(),
+        content:
+          "Hi! I'm your ServicePro setup & support assistant.\n\n" +
+          "I can help you with onboarding, phone & SMS setup, A2P registration, website & booking, loyalty/points, and more.\n\n" +
+          "Tell me what you're working on, or tap one of these:\n" +
+          "• “Help me finish setup”\n" +
+          "• “Help me with phone & text messages”\n" +
+          "• “Explain my A2P campaign status”\n" +
+          "• “Help me customize my website/landing page”",
+        source: 'system',
+      },
+    ];
+  });
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggleOpen = useCallback(() => {
+    setIsOpen((prev) => !prev);
+  }, []);
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!initialContext || !text.trim()) return;
+      setError(null);
+
+      const userMessage: SupportAssistantMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: text.trim(),
+        createdAt: nowIso(),
+      };
+
+      const payloadMessages = [...messages, userMessage];
+
+      setMessages(payloadMessages);
+      setIsSending(true);
+
+      try {
+        const res = await fetch('/api/support/assistant/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: payloadMessages,
+            context: initialContext,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Assistant error: ${res.status}`);
+        }
+
+        const data = (await res.json()) as SupportAssistantChatResponse;
+
+        if (data?.messages && data.messages.length > 0) {
+          setMessages(data.messages);
+        } else {
+          // fallback: append a generic failure message
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `assistant-${Date.now()}`,
+              role: 'assistant',
+              createdAt: nowIso(),
+              content:
+                "I wasn't able to get a proper response from the support assistant service. Please try again or open a support ticket from the Help & Support page.",
+              source: 'system',
+            },
+          ]);
+        }
+      } catch (err: any) {
+        console.error('Support assistant error', err);
+        setError('Something went wrong talking to the assistant.');
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-error-${Date.now()}`,
+            role: 'assistant',
+            createdAt: nowIso(),
+            content:
+              "I hit an error reaching the assistant backend. Please check your internet connection or try again in a moment. If this keeps happening, use the Help & Support page to open a ticket.",
+            source: 'system',
+          },
+        ]);
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [initialContext, messages],
+  );
+
+  return {
+    isOpen,
+    toggleOpen,
+    messages,
+    isSending,
+    error,
+    sendMessage,
+  };
+}
+
+3) Support Assistant Widget Component
+
+Add file: client/src/components/SupportAssistantWidget.tsx
+
+Assumptions (adjust imports if names differ in your repo):
+
+You have useAuth or similar hook to get current user + tenant.
+
+You have useLocation from react-router-dom.
+
+Tailwind + Framer Motion + Lucide are already being used (as in other components).
+
+// client/src/components/SupportAssistantWidget.tsx
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { MessageCircle, X, Loader2, Sparkles } from 'lucide-react';
+import { useSupportAssistantChat } from '../hooks/useSupportAssistantChat';
+import type { SupportAssistantContext } from '../../shared/supportAssistantTypes';
+// Adjust this import to your actual auth/user hook
+import { useCurrentUser } from '../hooks/useCurrentUser';
+
+const ADMIN_MIN_ROLE = 'staff'; // adjust to your role model
+
+export const SupportAssistantWidget: React.FC = () => {
+  const location = useLocation();
+  const { user, tenant, isAuthenticated } = useCurrentUser(); // adapt to your actual hook
+  const [input, setInput] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const context: SupportAssistantContext | null = useMemo(() => {
+    if (!isAuthenticated || !user || !tenant) return null;
+
+    const isOwner = user.role === 'owner' || user.role === 'root_owner';
+    const isAdmin =
+      isOwner || user.role === 'admin' || user.role === 'root_admin';
+
+    return {
+      tenantId: tenant.id,
+      userId: user.id,
+      userName: user.name ?? user.username ?? null,
+      userEmail: user.email ?? null,
+      currentRoute: location.pathname,
+      isOwner,
+      isAdmin,
+      lastErrorMessage: null,
+    };
+  }, [isAuthenticated, user, tenant, location.pathname]);
+
+  const { isOpen, toggleOpen, messages, isSending, error, sendMessage } =
+    useSupportAssistantChat(context);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = messagesEndRef.current;
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [messages, isOpen]);
+
+  // Only show widget for authenticated users in tenant / admin area
+  if (!context) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isSending) return;
+    const text = input.trim();
+    setInput('');
+    void sendMessage(text);
+  };
+
+  return (
+    <>
+      {/* Floating FAB */}
+      <div className="fixed bottom-5 right-4 z-40 md:bottom-6 md:right-6">
+        <button
+          type="button"
+          onClick={toggleOpen}
+          className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-purple-500/40 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-purple-300"
+        >
+          <MessageCircle className="h-4 w-4" />
+          <span className="hidden sm:inline">
+            {isOpen ? 'Hide Assistant' : 'Need help?'}
+          </span>
+        </button>
+      </div>
+
+      {/* Chat Panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="fixed bottom-20 right-3 z-40 w-[92vw] max-w-md sm:bottom-24 sm:right-6"
+          >
+            <div className="flex h-[480px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/95 via-slate-900/90 to-slate-950/95 shadow-2xl backdrop-blur-xl">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-xs text-white shadow-md">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-violet-200/90">
+                      ServicePro Assistant
+                    </span>
+                    <span className="text-[11px] text-slate-300/80">
+                      Context-aware setup & support · {tenant?.name ?? 'Tenant'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleOpen}
+                  className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3 text-sm">
+                <div className="mb-1 rounded-lg bg-slate-800/60 px-3 py-2 text-[11px] text-slate-300/90">
+                  <span className="font-medium text-violet-200">
+                    You are on:{" "}
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-100">
+                    {location.pathname}
+                  </span>
+                </div>
+
+                {messages.map((m) => {
+                  const isUser = m.role === 'user';
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex w-full ${
+                        isUser ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      <div
+                        className={[
+                          'max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-snug shadow-sm',
+                          isUser
+                            ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-br-sm'
+                            : 'bg-slate-800/80 text-slate-100 rounded-bl-sm border border-white/5',
+                        ].join(' ')}
+                      >
+                        {!isUser && (
+                          <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wide text-violet-200/80">
+                            <Sparkles className="h-3 w-3" />
+                            <span>Assistant</span>
+                          </div>
+                        )}
+                        <div className="whitespace-pre-wrap">{m.content}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {isSending && (
+                  <div className="flex w-full justify-start">
+                    <div className="flex items-center gap-2 rounded-2xl border border-white/5 bg-slate-800/80 px-3 py-2 text-[12px] text-slate-200">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Thinking with your settings & docs…</span>
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="mt-2 rounded-md border border-rose-500/40 bg-rose-950/40 px-2.5 py-1.5 text-[11px] text-rose-100">
+                    {error}
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="border-t border-white/10 bg-slate-950/80 px-3 py-2">
+                <form
+                  onSubmit={handleSubmit}
+                  className="flex items-end gap-2"
+                >
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    className="max-h-24 min-h-[40px] flex-1 resize-none rounded-xl border border-slate-700/60 bg-slate-900/80 px-3 py-2 text-[13px] text-slate-100 placeholder:text-slate-500 focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400/60"
+                    placeholder="Ask how to finish setup, connect phone/SMS, A2P, website, loyalty, etc…"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSending || !input.trim()}
+                    className="inline-flex h-9 items-center justify-center rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-3 text-xs font-semibold text-white shadow-md shadow-purple-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                        Ask
+                      </>
+                    )}
+                  </button>
+                </form>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Pro tip: say what you&apos;re doing (&quot;Help me finish
+                  Step 2 of the Setup Wizard&quot;) for the best guidance.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
+
+4) Mount the Widget in the Main App Shell
+
+Now, include the widget so it appears across the admin app.
+
+Find your main authenticated layout, e.g.:
+
+client/src/layouts/AppLayout.tsx
+or
+
+client/src/App.tsx where the sidebar/topbar lives
+
+Add:
+
+// at top
+import { SupportAssistantWidget } from './components/SupportAssistantWidget'; // adjust path as needed
+
+
+Then, somewhere inside the authenticated shell, near the bottom of the JSX (but still inside the router / layout), add:
+
+<SupportAssistantWidget />
+
+
+Example (pseudo):
+
+// client/src/layouts/AppLayout.tsx
+export const AppLayout: React.FC = () => {
+  // ... existing code
+
+  return (
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 overflow-hidden">
+        <TopBar />
+        <div className="h-full overflow-y-auto bg-slate-950">
+          <Outlet />
+        </div>
+
+        {/* Support / Setup AI widget lives here so it's on every admin page */}
+        <SupportAssistantWidget />
+      </main>
+    </div>
+  );
+};
+
+5) Sanity Checks / Guardrails
+
+Ask Replit agent to:
+
+Adjust imports for your actual auth hook:
+
+Replace useCurrentUser with whatever you’re using now (e.g. useAuth, useSession, etc.), and map user, tenant, isAuthenticated.
+
+Confirm that /api/support/assistant/chat from the Backend Assistant v2 is:
+
+Tenant-aware (using wrapTenantDb / tenantDb correctly)
+
+Using the KB + tools we just built (support tickets, articles, integrations KB when you add it later)
+
+Returning SupportAssistantChatResponse shape (or Replit adjusts types if slightly different).
+
+Make sure this widget does not render on public pages like:
+
+/home (Clean Machine customer booking site)
+
+Rewards portal
+
+Customer portal (loyalty)
+
+If those share the same shell, add a simple guard like:
+
+const isPublicRoute = location.pathname.startsWith('/rewards') || location.pathname.startsWith('/site/');
+if (isPublicRoute) return null;
+
+
+inside SupportAssistantWidget.
