@@ -1,0 +1,223 @@
+CM-4 DROP-IN BLOCK — “Public Site, Booking, Rewards, Homepage Unification”
+
+Paste this whole block into the Replit AI Agent:
+
+You are updating the ServicePro / Clean Machine mono-repo.
+
+Objective: **CM-4 – Public Site Fixes, Homepage Unification, Rewards Entry, and Booking Stability**
+
+This is the FINAL PASS of Clean Machine v1.  
+No new features — only **fixes, polish, routing, and consistency**.
+
+────────────────────────────────────────
+PHASE OBJECTIVE (READ FIRST)
+────────────────────────────────────────
+
+Fix ALL Clean Machine public-facing entry points:
+
+1. `/site/cleanmachine` must load the public homepage correctly  
+2. Home page must show:
+   - Hero
+   - Services list
+   - CTAs: **Book Now** + **Check Rewards**
+   - Loyalty explainer (simple version)
+3. `/rewards` must tie into the public homepage  
+4. Homepage → Booking → Rewards → Confirmation must all be:
+   - working
+   - mobile-ready
+   - pointing to **Clean Machine tenant context**, not root
+5. Fix 401 error from `/api/public/site/:subdomain`  
+6. Clean up routing conflicts where the ServicePro homepage overrides CM
+7. Add a new “Public Site Settings” section in admin where the tenant can adjust:
+   - Hero headline
+   - Hero subheadline
+   - Primary color
+   - Secondary color
+   - Enable/disable Rewards CTA
+   - Enable/disable Gift Cards CTA (future)
+8. No other areas changed.
+
+────────────────────────────────────────
+STEP 1 — Fix `/api/public/site/:subdomain` 401
+────────────────────────────────────────
+
+Inspect:
+
+- `server/routes.publicSite.ts`
+- `server/services/publicSiteService.ts`
+
+Fixes required:
+
+1. **Remove auth middleware** if applied
+2. Ensure tenant lookup uses:
+   - `tenant = await globalDb("tenants").where("subdomain", params.subdomain).first()`
+3. If tenant exists AND `tenant.isSuspended !== true`  
+   → `return 200` with homepage config + services + allowed features  
+4. If not found:
+   → return **404**, NOT 401
+
+Ensure JSON shape is:
+
+
+
+{
+success: true,
+tenant: { name, logoUrl, brandColors… },
+services: [...],
+features: {...},
+loyalty: { enabled: boolean }
+}
+
+
+────────────────────────────────────────
+STEP 2 — Fix Frontend Routing / Homepage Override
+────────────────────────────────────────
+
+Check:
+
+- `client/src/App.tsx`
+- `client/src/pages/PublicSite.tsx`
+- `client/src/pages/PublicRoot.tsx` or equivalent
+- Any `Route path="*"` that may be eating tenant public routes
+
+Fixes:
+
+1. Add explicit high-priority route BEFORE wildcard:
+
+
+
+<Route path="/site/:subdomain" element={<PublicSite />} />
+
+
+2. Ensure `/` route shows the ServicePro marketing site — NOT CM
+3. Ensure `/site/cleanmachine` shows CM public site — NOT SP
+
+────────────────────────────────────────
+STEP 3 — Build Unified Public Homepage for Clean Machine
+────────────────────────────────────────
+
+Inside `client/src/pages/PublicSite.tsx` implement:
+
+Hero card:
+- Title: from tenant.publicSettings.heroTitle
+- Subtitle: tenant.publicSettings.heroSubtitle
+- Gradient background using tenant brand colors
+
+Sections:
+- **Services preview** (3–6 services)
+- **Check My Rewards** (button → `/rewards`)
+- **Book Now** (button → `/booking`)
+- **What You Get / Why Choose Us** simple text
+
+All must be mobile-first, glassmorphism styling.
+
+────────────────────────────────────────
+STEP 4 — Add Public Site Settings in Admin
+────────────────────────────────────────
+
+Add new page:
+
+`client/src/pages/PublicSiteSettings.tsx`
+
+Add link in:
+
+`client/src/navigation/navigationItems.ts`
+
+Label: **Public Website**
+
+Options on page:
+- Hero title
+- Hero subtitle
+- Primary color (color picker)
+- Secondary color (color picker)
+- Toggle: Enable Rewards CTA
+- Toggle: Enable Gift Cards CTA (hidden until future)
+
+Backend:
+Add new table or extend `tenants` table with:
+
+
+
+public_site_settings JSONB:
+{
+heroTitle,
+heroSubtitle,
+primaryColor,
+secondaryColor,
+showRewardsCTA,
+showGiftCardCTA
+}
+
+
+Build:
+
+- `GET /api/admin/public-site-settings`
+- `PUT /api/admin/public-site-settings`
+
+────────────────────────────────────────
+STEP 5 — Rewards Portal Integration Cleanup
+────────────────────────────────────────
+
+Fix:
+
+- Homepage → Rewards must pass tenant context  
+- Rewards → Booking must pass `rewardContext` correctly  
+- Remove any old routing from pre-v2 loyalty system  
+- Ensure achievements appear when available  
+- Ensure fallback text otherwise
+
+────────────────────────────────────────
+STEP 6 — Booking Calendar Final Stability Pass
+────────────────────────────────────────
+
+Verify:
+
+- Fallback (internal hours) mode works 100%  
+- Google calendar failures do NOT block flow  
+- CTA from Rewards to Booking carries:
+  - rewardId
+  - rewardName
+  - pointsUsed
+- Confirmation page shows discount applied (if any)
+
+Fix any missing pieces in:
+
+- `client/src/components/MultiVehicleAppointmentScheduler.tsx`
+- `server/services/calendarAvailability.ts`
+
+────────────────────────────────────────
+STEP 7 — Public Site E2E Tests
+────────────────────────────────────────
+
+Add or update quick tests:
+
+1. `/site/cleanmachine` returns 200  
+2. Page loads hero + services list  
+3. “Book Now” opens booking  
+4. “Check Rewards” opens /rewards  
+5. Rewards → Booking works  
+6. Booking calendar loads fallback if Google fails  
+7. Public Site Settings page loads and can save
+
+────────────────────────────────────────
+STEP 8 — Update replit.md
+────────────────────────────────────────
+
+Add section:
+
+### CM-4 – Public Site + Homepage + Rewards Integration
+- Summary of routes
+- Public site settings
+- JSON shape of `/api/public/site/:subdomain`
+- Booking fallback behavior
+- Notes for production deployment
+
+────────────────────────────────────────
+END OF OBJECTIVE
+────────────────────────────────────────
+
+When complete, output:
+- All updated files  
+- Any migrations  
+- Final JSON shape of `/api/public/site/cleanmachine`  
+- Final homepage sections present  
