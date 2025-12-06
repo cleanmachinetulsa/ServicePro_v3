@@ -146,6 +146,95 @@ function normalizePhoneNumber(phone: string): string[] {
   return [phone, digitsOnly, withHyphens];
 }
 
+/**
+ * Get customer achievements data
+ * Returns recent achievements (earned in last 30 days) and next milestones (not yet earned)
+ * Multi-tenant safe: filters by tenant to ensure proper data isolation
+ */
+async function getCustomerAchievementsData(tenantDb: TenantDb, customerId: number) {
+  try {
+    // Get all achievements for this tenant (tenant-scoped)
+    const allAchievements = await tenantDb
+      .select()
+      .from(achievements)
+      .where(tenantDb.withTenantFilter(achievements));
+    
+    // Get customer's earned achievements (tenant-scoped)
+    const earnedAchievements = await tenantDb
+      .select({
+        id: customerAchievements.id,
+        achievementId: customerAchievements.achievementId,
+        dateEarned: customerAchievements.dateEarned,
+        notified: customerAchievements.notified,
+        achievement: {
+          id: achievements.id,
+          name: achievements.name,
+          description: achievements.description,
+          pointValue: achievements.pointValue,
+          icon: achievements.icon,
+          level: achievements.level,
+          criteria: achievements.criteria,
+        }
+      })
+      .from(customerAchievements)
+      .innerJoin(achievements, eq(customerAchievements.achievementId, achievements.id))
+      .where(
+        and(
+          tenantDb.withTenantFilter(customerAchievements),
+          eq(customerAchievements.customerId, customerId)
+        )
+      )
+      .orderBy(sql`${customerAchievements.dateEarned} DESC`);
+    
+    // Get recent achievements (earned in last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentAchievements = earnedAchievements.filter(a => 
+      a.dateEarned && new Date(a.dateEarned) >= thirtyDaysAgo
+    ).slice(0, 5); // Limit to 5 most recent
+    
+    // Get earned achievement IDs for filtering next milestones
+    const earnedIds = new Set(earnedAchievements.map(a => a.achievementId));
+    
+    // Get next milestones (unearned achievements sorted by level/difficulty)
+    const nextMilestones = allAchievements
+      .filter(a => !earnedIds.has(a.id))
+      .sort((a, b) => (a.level ?? 1) - (b.level ?? 1))
+      .slice(0, 3); // Show top 3 achievable milestones
+    
+    return {
+      recentAchievements: recentAchievements.map(a => ({
+        id: a.id,
+        achievementId: a.achievementId,
+        name: a.achievement.name,
+        description: a.achievement.description,
+        pointValue: a.achievement.pointValue,
+        icon: a.achievement.icon,
+        level: a.achievement.level,
+        dateEarned: a.dateEarned,
+      })),
+      nextMilestones: nextMilestones.map(a => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        pointValue: a.pointValue,
+        icon: a.icon,
+        level: a.level,
+        criteria: a.criteria,
+      })),
+      totalEarned: earnedAchievements.length,
+      totalAvailable: allAchievements.length,
+    };
+  } catch (error) {
+    console.error('Error getting customer achievements data:', error);
+    return {
+      recentAchievements: [],
+      nextMilestones: [],
+      totalEarned: 0,
+      totalAvailable: 0,
+    };
+  }
+}
+
 export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string) {
   try {
     console.log(`Getting loyalty points for phone: ${phone}`);
@@ -182,7 +271,9 @@ export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string)
           return { 
             customer,
             loyaltyPoints: null,
-            message: "Not enrolled in loyalty program" 
+            transactions: [],
+            message: "Not enrolled in loyalty program",
+            achievements: null,
           };
         }
 
@@ -196,11 +287,15 @@ export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string)
           })
           .returning();
 
+        // Get achievements data for newly enrolled customer
+        const achievementsData = await getCustomerAchievementsData(tenantDb, customer.id);
+
         return { 
           customer,
           loyaltyPoints: newPoints,
           transactions: [],
-          message: "New loyalty account created"
+          message: "New loyalty account created",
+          achievements: achievementsData,
         };
       }
 
@@ -212,11 +307,15 @@ export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string)
         .orderBy(sql`${pointsTransactions.transactionDate} DESC`)
         .limit(10);
 
+      // Get achievements data for this customer
+      const achievementsData = await getCustomerAchievementsData(tenantDb, customer.id);
+
       return { 
         customer,
         loyaltyPoints: points,
         transactions,
-        message: "Loyalty points retrieved"
+        message: "Loyalty points retrieved",
+        achievements: achievementsData,
       };
     } 
     
@@ -259,7 +358,13 @@ export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string)
         },
         transactions: [], // No transaction history available from sheets
         message: "Loyalty points retrieved from Google Sheets",
-        source: 'sheets'
+        source: 'sheets',
+        achievements: {
+          recentAchievements: [],
+          nextMilestones: [],
+          totalEarned: 0,
+          totalAvailable: 0,
+        },
       };
     } catch (sheetsError) {
       console.error("Error getting customer data from Google Sheets:", sheetsError);
