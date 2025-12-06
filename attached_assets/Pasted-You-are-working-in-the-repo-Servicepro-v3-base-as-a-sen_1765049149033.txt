@@ -1,0 +1,158 @@
+You are working in the repo `Servicepro-v3-base` as a senior TypeScript/React/Node architect.
+
+GOAL
+Unify the loyalty program entry point and make the Rewards Portal feel more “alive” by:
+1) Repointing the main “Loyalty Program” CTA on the public/marketing side to the new Rewards Portal V2.
+2) Extending the Rewards Portal API + UI to show basic achievement info:
+   - Recent achievements for that customer.
+   - Next milestones (upcoming achievements).
+3) Adding a lightweight “Earn More Points” card in the portal so customers see clear ways to earn.
+
+IMPORTANT CONTEXT
+- Rewards Portal V2 already exists and is working (phone lookup → points → rewards → “Use on my next booking” → booking flow).
+- Loyalty configuration pages (Achievements, etc.) already exist in the admin dashboard.
+- Loyalty guardrails + redemption journey v2 are implemented and passing tests.
+- This task is **read-only** on achievements from the customer perspective. No new editing UIs.
+
+Please follow this sequence:
+
+--------------------------------------------------
+STEP 1 – FIND EXISTING LOYALTY ENTRY & REWARDS PORTAL
+--------------------------------------------------
+1. Find the public-facing homepage / marketing site for Clean Machine (root tenant). Likely files:
+   - `client/src/pages/Home.tsx` or similar
+   - Any “Loyalty Program” / “Rewards” CTAs on the public side.
+2. Find the Rewards Portal V2 implementation:
+   - The page that handles phone lookup and shows points/rewards.
+   - It may be under something like `client/src/pages/RewardsPortal.tsx` or similar.
+3. Confirm the public route/path for the portal (e.g. `/rewards`, `/rewards/lookup`, etc).
+
+Do **not** hard-code tenant IDs in the frontend. The portal should already resolve the correct tenant from domain / backend logic – keep using that.
+
+--------------------------------------------------
+STEP 2 – REPONT LOYALTY CTA → REWARDS PORTAL
+--------------------------------------------------
+1. Update the public homepage / marketing page so that the primary “Loyalty Program” / “Rewards” button links to the Rewards Portal route you found in step 1.
+2. Make sure:
+   - The link is a normal public link (no auth required).
+   - There are no stale links pointing at old loyalty config/admin URLs (like `/settings/customers/loyalty`) from public pages.
+3. Keep the button text and styling aligned with the existing design; we’re just changing the **destination**, not the brand.
+
+--------------------------------------------------
+STEP 3 – EXTEND BACKEND API: ACHIEVEMENTS DATA
+--------------------------------------------------
+1. Locate the backend endpoint the Rewards Portal page calls to fetch customer points/rewards.
+   - It will be something like `GET /api/public/rewards/lookup` or similar.
+2. Extend that endpoint’s response to include:
+   - `recentAchievements`: array of up to 3–5 recent achievements for that customer.
+     Each item should include at least:
+       - `name`
+       - `description`
+       - `points` (point value for that achievement, if available)
+       - `unlockedAt` (timestamp)
+   - `nextMilestones`: array of 2–3 upcoming achievement “goals” they haven’t hit yet.
+     Each item should include:
+       - `name`
+       - `description` or `criteriaSummary`
+       - `requiredPoints` or a reasonable numeric field if available
+       - OPTIONAL: a simple `badgeLevel` or `starLevel` if that already exists.
+3. Use the existing loyalty tables:
+   - The Achievements list you showed in the admin UI (“First Visit”, “Anniversary”, “Loyalty Silver”, etc.).
+   - Transactions table / achievement unlock table if present.
+4. Logic guidelines:
+   - “Recent achievements” = most recently unlocked achievements for that customer ordered by `unlockedAt` desc, limit 3–5.
+   - “Next milestones”:
+     - Filter achievements the customer has **not** unlocked.
+     - Prefer achievements that are realistically reachable (e.g. based on current points or spend).
+     - For v1, a simple approach is fine: pick 2–3 achievements ordered by `required_points` or similar.
+5. Preserve existing response fields to avoid breaking the current Rewards Portal UI.
+6. Make sure the endpoint remains **public** but includes tenant scoping and any existing protections (no leaking other tenants’ data).
+
+--------------------------------------------------
+STEP 4 – UPDATE REWARDS PORTAL UI
+--------------------------------------------------
+In the Rewards Portal V2 React page/component:
+
+1. Consume the new fields:
+   - `recentAchievements`
+   - `nextMilestones`
+   - (existing fields like `pointsBalance`, `rewards`, etc. must remain intact).
+
+2. Inside the “Customer Found” state (where points and rewards are shown), add two new sections:
+
+   A) Recent Achievements (only if there are any)
+      - A small card or section under the points balance, using the existing glassmorphism style.
+      - Title: something like “Recent Achievements”.
+      - Show each achievement as a compact pill or row:
+        - `name`
+        - `+{points} pts` if points > 0
+        - relative date like “Unlocked 2 weeks ago” or formatted date.
+      - Keep it mobile-first; limit to 3–4 items max.
+
+   B) Next Milestones (always show if any)
+      - Card titled “Next Milestones”.
+      - For each milestone:
+        - `name`
+        - short description/criteria (e.g. “Complete 5 services”, “Spend $1,000”).
+        - If you have `requiredPoints` and current `pointsBalance`, show:
+          - “{X} points away” where X = max(requiredPoints - pointsBalance, 0).
+      - Again, mobile-friendly; 2–3 items is enough.
+
+3. Do **not** add any new customer-editable controls yet. This is read-only / motivational.
+
+--------------------------------------------------
+STEP 5 – ADD “EARN MORE POINTS” CARD
+--------------------------------------------------
+Still in the Rewards Portal “Customer Found” state:
+
+1. Add a simple card near the bottom, titled something like “Earn More Points”.
+2. For v1, use static but meaningful items derived from your existing loyalty setup. Example bullets:
+   - “Book a detail → earn points on every service.”
+   - “Refer a friend → earn bonus points when they book.” (you already have a Referral Champion achievement).
+   - “Hit milestones like Silver / Gold / Platinum for extra rewards.”
+3. If there is already a dedicated `Referral Program` public route or landing page:
+   - Include a small secondary link/button: “See referral details”.
+   - Link it to the existing referral/QR landing page if one exists; otherwise omit the link for now.
+4. Keep styling consistent with existing portal cards (gradients, rounded corners, etc.).
+
+--------------------------------------------------
+STEP 6 – TESTING & SAFETY
+--------------------------------------------------
+Add or update tests as needed:
+
+1. Backend:
+   - Unit or integration tests for the rewards lookup endpoint:
+     - Returns `recentAchievements` and `nextMilestones` keys.
+     - Properly filters by tenant and customer phone.
+   - Ensure endpoint doesn’t blow up when a customer has:
+     - No achievements unlocked.
+     - No upcoming milestones (empty arrays are fine).
+
+2. Frontend:
+   - Confirm the portal still works for:
+     - Customer with points & achievements.
+     - Customer with points but no achievements.
+     - Customer not found.
+   - Verify:
+     - New sections render only when data is present.
+     - Layout stays clean on mobile (~393px width).
+
+3. Manual checks:
+   - Click “Loyalty Program” on the public homepage → should land on the Rewards Portal lookup.
+   - Run through:
+     - Enter phone → see points + rewards + achievements + milestones + “Earn More Points” card.
+   - Confirm no console errors and no 500s from the API.
+
+--------------------------------------------------
+CONSTRAINTS & STYLE
+--------------------------------------------------
+- Do NOT change any existing tenant isolation logic.
+- Keep code consistent with existing patterns (TypeScript types, React hooks, Drizzle usage, etc.).
+- Preserve all existing functionality of the Rewards Portal and loyalty redemption journey.
+- If you need to stub fields that don’t exist yet (e.g., `requiredPoints`), derive sensible values or document with clear TODO comments rather than breaking the flow.
+
+When you’re done, summarize:
+- Files touched.
+- New fields added to the API response.
+- How to reach the updated Rewards Portal from the homepage.
+- Any known limitations or TODOs for a future v2 loyalty UX.

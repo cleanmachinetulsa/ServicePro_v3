@@ -18,7 +18,9 @@ import {
   MapPin, 
   Phone, 
   Sparkles,
-  Star
+  Star,
+  Gift,
+  Trophy
 } from 'lucide-react';
 
 interface PublicSiteData {
@@ -365,6 +367,67 @@ export default function PublicSite() {
               <p className="text-slate-700 text-lg leading-relaxed text-center" data-testid="about-blurb">
                 {websiteContent.aboutBlurb}
               </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </section>
+
+      {/* Rewards Program Section */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-purple-50/50 to-pink-50/50" data-testid="rewards-section">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={fadeIn}
+          className="max-w-4xl mx-auto"
+        >
+          <Card className="backdrop-blur-md bg-gradient-to-br from-white/90 to-purple-50/60 border-purple-200/40 shadow-xl overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 pointer-events-none" />
+            <CardHeader className="text-center relative">
+              <div className="flex justify-center mb-4">
+                <div 
+                  className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
+                >
+                  <Gift className="w-8 h-8 text-white" />
+                </div>
+              </div>
+              <CardTitle className="text-3xl mb-2">Rewards Program</CardTitle>
+              <CardDescription className="text-base max-w-lg mx-auto">
+                Earn points on every service and unlock exclusive rewards! Check your balance and see available offers.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="relative pb-8">
+              <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+                <div className="flex items-center gap-3 text-sm text-slate-600">
+                  <div className="flex items-center gap-1">
+                    <Trophy className="w-4 h-4" style={{ color: primaryColor }} />
+                    <span>Earn points</span>
+                  </div>
+                  <span className="text-slate-300">•</span>
+                  <div className="flex items-center gap-1">
+                    <Star className="w-4 h-4" style={{ color: accentColor }} />
+                    <span>Unlock rewards</span>
+                  </div>
+                  <span className="text-slate-300">•</span>
+                  <div className="flex items-center gap-1">
+                    <Gift className="w-4 h-4" style={{ color: primaryColor }} />
+                    <span>Redeem perks</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-center mt-6">
+                <Button
+                  size="lg"
+                  className="text-white hover:opacity-90 shadow-lg"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})` }}
+                  onClick={() => window.location.href = '/rewards'}
+                  data-testid="rewards-cta-button"
+                >
+                  <Gift className="w-5 h-5 mr-2" />
+                  Check My Rewards
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </motion.div>

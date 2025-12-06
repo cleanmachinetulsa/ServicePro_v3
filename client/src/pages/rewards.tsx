@@ -62,6 +62,25 @@ const triggerCelebration = async () => {
   fire(0.1, { spread: 120, startVelocity: 45 });
 };
 
+interface Achievement {
+  id: number;
+  name: string;
+  description: string;
+  pointValue: number;
+  icon: string | null;
+  level: number | null;
+  criteria?: string;
+  achievementId?: number;
+  dateEarned?: string;
+}
+
+interface AchievementsData {
+  recentAchievements: Achievement[];
+  nextMilestones: Achievement[];
+  totalEarned: number;
+  totalAvailable: number;
+}
+
 interface LoyaltyPointsResponse {
   success: boolean;
   data: {
@@ -84,6 +103,7 @@ interface LoyaltyPointsResponse {
       transactionDate: string;
       transactionType: 'earn' | 'redeem' | 'expire';
     }>;
+    achievements?: AchievementsData | null;
     message: string;
     source?: string;
   };
@@ -482,6 +502,104 @@ const CustomerRewardsPortal = () => {
                             </span>
                           </div>
                         ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  {/* Recent Achievements Section */}
+                  {loyaltyData.achievements?.recentAchievements && loyaltyData.achievements.recentAchievements.length > 0 && (
+                    <Card className="bg-white/10 backdrop-blur-xl border-white/20">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg text-white flex items-center gap-2">
+                          <Trophy className="w-5 h-5 text-yellow-400" />
+                          Recent Achievements
+                        </CardTitle>
+                        <CardDescription className="text-purple-200/70">
+                          Earned in the last 30 days
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {loyaltyData.achievements.recentAchievements.map((achievement) => (
+                          <motion.div
+                            key={achievement.id}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="flex items-center gap-3 p-3 bg-gradient-to-r from-yellow-500/10 to-amber-500/10 rounded-lg border border-yellow-500/20"
+                            data-testid={`achievement-recent-${achievement.id}`}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center shrink-0">
+                              <Trophy className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-white truncate">{achievement.name}</h4>
+                              <p className="text-xs text-purple-200/70 line-clamp-1">{achievement.description}</p>
+                            </div>
+                            <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30 shrink-0">
+                              +{achievement.pointValue} pts
+                            </Badge>
+                          </motion.div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                  
+                  {/* Next Milestones Section */}
+                  {loyaltyData.achievements?.nextMilestones && loyaltyData.achievements.nextMilestones.length > 0 && (
+                    <Card className="bg-white/10 backdrop-blur-xl border-white/20">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg text-white flex items-center gap-2">
+                          <Zap className="w-5 h-5 text-blue-400" />
+                          Next Achievements
+                        </CardTitle>
+                        <CardDescription className="text-purple-200/70">
+                          Complete these to earn bonus points
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {loyaltyData.achievements.nextMilestones.map((milestone) => (
+                          <motion.div
+                            key={milestone.id}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/10 hover:border-blue-400/30 transition-colors"
+                            data-testid={`achievement-next-${milestone.id}`}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center shrink-0 opacity-70">
+                              <Target className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-white truncate">{milestone.name}</h4>
+                              <p className="text-xs text-purple-200/70 line-clamp-1">{milestone.description}</p>
+                            </div>
+                            <Badge variant="outline" className="text-blue-300 border-blue-400/30 shrink-0">
+                              +{milestone.pointValue} pts
+                            </Badge>
+                          </motion.div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                  
+                  {/* Earn More Points Card */}
+                  <Card className="bg-gradient-to-br from-emerald-600/20 to-teal-600/20 backdrop-blur-xl border-emerald-500/30">
+                    <CardContent className="p-5">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-6 h-6 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-white">Want More Points?</h3>
+                          <p className="text-sm text-emerald-200/70">Book a service and earn points automatically!</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white shrink-0"
+                          onClick={() => setLocation('/schedule')}
+                          data-testid="button-earn-more-points"
+                        >
+                          <Calendar className="w-4 h-4 mr-1" />
+                          Book Now
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
