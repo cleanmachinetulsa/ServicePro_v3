@@ -489,6 +489,11 @@ app.use((req, res, next) => {
   initializeCampaignScheduler();
   console.log('[SERVER] Email campaign scheduler started - processes campaigns hourly');
   
+  // Start usage rollup scheduler (daily at midnight UTC)
+  const { initializeUsageRollupScheduler } = await import('./services/usageRollupService');
+  initializeUsageRollupScheduler();
+  console.log('[SERVER] Usage rollup scheduler started - aggregates daily usage at midnight UTC');
+  
   // Start port monitoring (auto-disables when port completes)
   const { initializePortMonitoring } = await import('./portMonitoring');
   initializePortMonitoring();
