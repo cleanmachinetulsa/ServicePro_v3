@@ -303,6 +303,9 @@ export const tenantConfig = pgTable("tenant_config", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Telephony Mode type - controls how calls are routed (higher-level than ivrMode)
+export type TelephonyMode = 'FORWARD_ALL_CALLS' | 'AI_FIRST' | 'AI_ONLY' | 'TEXT_ONLY_BUSINESS';
+
 // Tenant phone configuration - telephony settings per tenant (Phase 2.2)
 export const tenantPhoneConfig = pgTable("tenant_phone_config", {
   id: varchar("id", { length: 50 }).primaryKey(),
@@ -313,6 +316,8 @@ export const tenantPhoneConfig = pgTable("tenant_phone_config", {
   sipUsername: varchar("sip_username", { length: 255 }), // e.g., jody
   sipPasswordEncrypted: varchar("sip_password_encrypted", { length: 255 }), // Encrypted SIP password (if needed)
   ivrMode: varchar("ivr_mode", { length: 50 }).default("simple"), // simple | ivr | ai-voice
+  telephonyMode: varchar("telephony_mode", { length: 30 }).default("AI_FIRST").notNull().$type<TelephonyMode>(), // FORWARD_ALL_CALLS | AI_FIRST | AI_ONLY | TEXT_ONLY_BUSINESS
+  allowVoicemailInTextOnly: boolean("allow_voicemail_in_text_only").default(false), // For TEXT_ONLY mode: allow voicemail fallback
   // Voice configuration fields
   voiceEnabled: boolean("voice_enabled").default(true), // Whether outbound voice is enabled
   voiceWebhookUrl: varchar("voice_webhook_url", { length: 500 }), // TwiML webhook URL for inbound calls

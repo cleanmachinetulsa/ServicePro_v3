@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'wouter';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Phone, History, Voicemail, Hash, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Phone, History, Voicemail, Hash, Users, Settings } from 'lucide-react';
 import Dialer from '@/components/phone/Dialer';
 import RecentCalls from '@/components/phone/RecentCalls';
 import VoicemailInbox from '@/components/phone/VoicemailInbox';
@@ -40,7 +42,8 @@ export default function PhonePage() {
     <AppShell title="Phone" showSearch={false}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
         <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-800 px-2 sm:px-4">
-          <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 bg-gray-100 dark:bg-gray-800 h-10 sm:h-auto">
+          <div className="flex items-center justify-center gap-2 py-1">
+            <TabsList className="grid w-full max-w-2xl grid-cols-4 bg-gray-100 dark:bg-gray-800 h-10 sm:h-auto">
             <TabsTrigger 
               value="dialer" 
               className="gap-2 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-700"
@@ -74,6 +77,12 @@ export default function PhonePage() {
               <span className="hidden sm:inline">Voicemail</span>
             </TabsTrigger>
           </TabsList>
+            <Link href="/phone-settings">
+              <Button variant="ghost" size="icon" className="shrink-0" data-testid="button-phone-settings">
+                <Settings className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0">

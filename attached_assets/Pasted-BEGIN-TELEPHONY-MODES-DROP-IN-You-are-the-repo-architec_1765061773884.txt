@@ -1,0 +1,405 @@
+BEGIN TELEPHONY MODES DROP-IN
+
+You are the repo architect for the ServicePro multi-tenant SaaS (Clean Machine is root tenant). Implement the “Telephony Mode Selector” feature, wired through backend + routing + IVR + UI, without breaking existing CM behavior.
+
+Goal: 
+Give each tenant a simple, unified way to choose how calls and texts are handled. The four modes:
+
+1) FORWARD_ALL_CALLS
+2) AI_FIRST
+3) AI_ONLY
+4) TEXT_ONLY_BUSINESS
+
+We already have:
+- Twilio integration, IVR menus, voicemail, AI SMS agent, and message routing.
+- Tenant config + business settings, IVR config UI, Setup Wizard Step 2, and Phone/SMS settings areas.
+
+We want:
+- A telephonyModes system that is **tenant-scoped**, easy to manage, and visible to the user in UI.
+- Clean Machine should stay effectively in its current behavior (AI + voicemail), but now via a well-defined mode.
+
+Please follow these constraints:
+- Maintain full multi-tenant isolation (use wrapTenantDb, etc.).
+- Don’t break existing routes or Clean Machine production behavior.
+- Prefer small, focused changes over mega-refactors.
+- Use existing patterns for Zod schemas, services, React hooks, etc.
+- Add tests / test-ability where reasonable.
+
+-----------------------------
+HIGH-LEVEL BEHAVIOR
+-----------------------------
+
+Define 4 modes:
+
+1) FORWARD_ALL_CALLS
+   - Incoming calls:
+     - Skip AI/IVR menus entirely (or use minimal greeting if required).
+     - Immediately forward to the tenant’s “human answer” destination:
+       - Usually a configured external number (like the owner’s cell).
+       - If no external number configured, fallback to existing IVR or voicemail.
+   - Incoming SMS:
+     - Behavior unchanged for now (use existing AI SMS agent & routing).
+   - Voicemail:
+     - If call is not answered / forwarding fails, fallback to voicemail (existing behavior).
+   - Goal: “I want my phone to just ring. Simple.”
+
+2) AI_FIRST
+   - Incoming calls:
+     - IVR / AI flow answers first (current Clean Machine style).
+     - AI/IVR collects info, optionally forwards to human when appropriate (like press 2 or transfer).
+   - Incoming SMS:
+     - Existing AI SMS agent handles conversations as now.
+   - Voicemail:
+     - Same as current: voicemail used when call not picked up or explicitly chosen.
+   - Goal: “AI buffers most calls, I answer only when needed.” (This is our default Pro mode.)
+
+3) AI_ONLY
+   - Incoming calls:
+     - AI/IVR handles everything.
+     - No human forwarding (except maybe emergency fallback for misconfig).
+   - Incoming SMS:
+     - AI SMS only.
+   - Voicemail:
+     - Still allowed, but no “press 0 to reach human” style flows.
+   - Goal: “Full AI receptionist, I almost never want the phone to ring.”
+
+4) TEXT_ONLY_BUSINESS
+   - Incoming calls:
+     - Do NOT ring to human or AI voice.
+     - Immediately play a short message and hang up OR route to voicemail:
+       - “We don’t answer calls on this line, but we just texted you a link / please text us.” 
+       - Send an immediate SMS with booking link.
+   - Incoming SMS:
+     - Primary channel. AI SMS + booking flows as usual.
+   - Voicemail:
+     - Optional, but we prefer NOT to encourage leaving voicemails here. (Configurable per-tenant via settings if needed.)
+   - Goal: “We run purely over SMS, no calls.”
+
+We’ll implement these as a combination of:
+- A stored enum on the tenant.
+- Routing decisions in the Twilio handlers (call + SMS).
+- Simple UI control in the admin + setup wizard.
+- Safe defaults.
+
+-----------------------------
+STEP 1: DATA MODEL & SHARED TYPES
+-----------------------------
+
+1. Add a TelephonyMode enum to the shared layer.
+
+Open: shared/types.ts (or wherever enums like A2P status / call routing modes live).
+- Add:
+
+  export type TelephonyMode = 
+    | 'FORWARD_ALL_CALLS'
+    | 'AI_FIRST'
+    | 'AI_ONLY'
+    | 'TEXT_ONLY_BUSINESS';
+
+If you already have a telephony settings type, extend it to include telephonyMode.
+
+2. Extend tenant / business settings to include telephonyMode.
+
+Preferred: add to business_settings table (or tenant_settings if that pattern exists).
+
+Open: shared/schema.ts
+- Find business_settings (or equivalent tenant-scoped settings table).
+- Add a column:
+
+  telephonyMode: text('telephony_mode')
+    .default('AI_FIRST')
+    .notNull(),
+
+Migrate accordingly using the project’s existing migration pattern.
+
+Notes:
+- Default should be 'AI_FIRST' to match current root behavior.
+- This should be non-null with a safe default.
+
+3. Add TS types for settings:
+
+Open: shared/configTypes.ts or wherever you model business settings.
+- Add `telephonyMode?: TelephonyMode;` where appropriate.
+
+Ensure any Zod schemas for settings include telephonyMode & validate the enum.
+
+-----------------------------
+STEP 2: TELEPHONY SETTINGS SERVICE
+-----------------------------
+
+Create a small service wrapper to get/set telephony mode for a tenant.
+
+File: server/services/telephonySettingsService.ts (new)
+
+Implementation:
+- Use wrapTenantDb(tenantId) or existing settings helper.
+- Implement:
+
+  - getTelephonySettings(tenantId): returns {
+      telephonyMode: TelephonyMode;
+      forwardingNumber?: string; // if already present elsewhere
+      allowVoicemail?: boolean; // if you want a flag, optional v1
+    }
+
+  - updateTelephonySettings(tenantId, partialSettings): 
+      - Accept telephonyMode, forwardingNumber, etc.
+      - Persist to business_settings (or equivalent).
+
+- Use proper multi-tenant isolation.
+- Log important changes for debugging (optional).
+
+-----------------------------
+STEP 3: TWILIO ROUTING INTEGRATION (CALLS)
+-----------------------------
+
+We need to change the inbound call handling path to branch by telephonyMode.
+
+Find the main inbound call route:
+
+- Likely in server/routes.twilioVoice.ts or similar.
+- There should be a handler for POST /twilio/voice/inbound or similar.
+
+Refactor the inbound handler to:
+
+1) Resolve tenant from the incoming call (existing behavior).
+2) Load telephonyMode via telephonySettingsService.getTelephonySettings(tenantId).
+3) Branch logic:
+
+Pseudo-code:
+
+  switch (telephonyMode) {
+    case 'FORWARD_ALL_CALLS':
+      return handleForwardAllCalls(tenant, settings, twilioRequest);
+
+    case 'AI_FIRST':
+      return handleAiFirstCall(tenant, settings, twilioRequest);
+
+    case 'AI_ONLY':
+      return handleAiOnlyCall(tenant, settings, twilioRequest);
+
+    case 'TEXT_ONLY_BUSINESS':
+      return handleTextOnlyBusinessCall(tenant, settings, twilioRequest);
+
+    default:
+      // fallback to AI_FIRST to be safe
+      return handleAiFirstCall(tenant, settings, twilioRequest);
+  }
+
+Implement these helpers in a telephonyRoutingService or within the same route file, keeping them focused.
+
+Behavior specifics:
+
+A) handleForwardAllCalls:
+   - If forwardingNumber is set on the tenant (e.g. business_settings.forward_to_number or tenant_phone_config.forwardingNumber):
+       - Generate TwiML <Dial> to that number.
+       - Optionally use a <Say> greeting first (“Connecting you now…”).
+   - If forwardingNumber NOT set:
+       - Fallback to AI_FIRST or IVR main menu (to avoid dead-end).
+   - Fail-safe:
+       - On dial failure, use voicemail route as final fallback.
+
+B) handleAiFirstCall:
+   - Use existing IVR / menu / AI voice flow:
+       - Likely call into ivrHelper.ts to build TwiML.
+   - This should preserve existing Clean Machine behavior.
+   - If existing flow already uses config-driven IVR, just treat this as the default.
+
+C) handleAiOnlyCall:
+   - Similar to AI_FIRST but:
+       - Disable / hide “press X to talk to a person” options.
+       - Or treat those options as “return to menu” or “leave voicemail.”
+   - Implementation v1: 
+       - You can add a flag to IVR config or pass a mode parameter to ivrHelper such that “forward/transfer” menu items are skipped or replaced.
+   - The goal is: no <Dial> to human numbers in this mode.
+
+D) handleTextOnlyBusinessCall:
+   - Behavior:
+       1. Immediately <Say> a short message, e.g.:
+
+          “Thanks for calling [Business Name]. We don’t answer calls on this line, but we just texted you a link. Please check your messages.”
+
+       2. In parallel (or via webhook logic), send an SMS to the caller’s number:
+          - Use our SMS sending service.
+          - SMS content: 
+            “Hey, this is [Business]. We handle everything by text. You can reply here or tap this link to book: [booking URL for tenant].”
+       3. Optionally redirect to voicemail depending on a boolean setting (allowVoicemailInTextOnly).
+   - Implementation details:
+       - You likely already have a “send templated SMS” helper; reuse it.
+       - For the “booking URL”, use the tenant’s public site URL (from public site settings) or fallback to root booking link.
+
+Make sure all Twilio routes still return valid TwiML and proper HTTP status codes.
+
+-----------------------------
+STEP 4: SMS ROUTING (NO MAJOR CHANGE)
+-----------------------------
+
+We DO NOT change SMS behavior per mode in v1 (keep it simple):
+- All modes continue using existing AI SMS agent, conversation threads, etc.
+
+We can add awareness later (e.g. TEXT_ONLY_BUSINESS can have more aggressive SMS responses).
+
+Just ensure the AI SMS agent runs as usual regardless of telephonyMode.
+
+-----------------------------
+STEP 5: ADMIN UI – TELEPHONY MODE SELECTOR
+-----------------------------
+
+We need a clear place where the tenant owner can select their telephony mode.
+
+Preferred locations:
+
+1) Phone / Telephony settings page (if exists).
+2) Setup Wizard Step 2 – Phone & SMS Setup (already present).
+
+Implement a shared UI component + hook.
+
+A) Shared hook:
+
+File: client/src/hooks/useTelephonySettings.ts (new)
+
+- Functions:
+  - useTelephonySettings() – fetch & expose telephonyMode, forwardingNumber, loading / saving state.
+  - load from API: GET /api/admin/telephony-settings
+  - save via PUT /api/admin/telephony-settings
+
+B) Backend API routes:
+
+File: server/routes.telephonySettings.ts (new)
+- GET /api/admin/telephony-settings
+- PUT /api/admin/telephony-settings
+
+Use existing auth middleware to require tenant owner/admin.
+
+Zod schemas:
+
+- telephonySettingsGetResponseSchema
+- telephonySettingsUpdateSchema with fields:
+  - telephonyMode: enum
+  - forwardingNumber?: string | null
+  - allowVoicemailInTextOnly?: boolean (optional v1)
+
+Apply to business_settings row.
+
+C) Telephony Settings UI card:
+
+File: client/src/pages/SettingsPhone.tsx (or similar)
+- Add a “Call Handling Mode” card with:
+
+  - Title: “Call Handling Mode”
+  - Description: short explanation for each mode.
+  - Radio buttons or segmented control:
+
+    [ Forward all calls ]
+    [ AI answers first ]
+    [ AI only ]
+    [ Text-only business ]
+
+  - Mode-specific options:
+    - If FORWARD_ALL_CALLS: show “Forward to number” input.
+    - If TEXT_ONLY_BUSINESS: show toggle “Allow voicemail backup” and text hint about automatic SMS follow-up.
+
+  - Save button (or auto-save on change).
+
+UX copy ideas:
+- FORWARD_ALL_CALLS: “Your calls will ring your number directly. Best if you answer most calls yourself.”
+- AI_FIRST: “AI or IVR answers first, then forwards to you as needed. Recommended.”
+- AI_ONLY: “AI handles calls entirely. You’ll see bookings and messages but your phone won’t ring.”
+- TEXT_ONLY_BUSINESS: “We don’t answer calls. Callers get a quick message and a text with a link.”
+
+-----------------------------
+STEP 6: SETUP WIZARD – INTEGRATION
+-----------------------------
+
+The Setup Wizard Step 2 (Phone & SMS Setup) currently shows setup status cards.
+
+Enhance it to:
+
+- Show current telephonyMode in the “Inbound Routing & IVR” card.
+- Provide a “Change call handling mode” link that opens the Phone Settings page or an inline selector.
+
+Details:
+
+File: client/src/pages/SetupWizard.tsx (or similar)
+- Fetch telephonySettings along with existing data (business line, A2P status).
+- On the card:
+
+  - Subtitle: e.g. “Current Mode: AI answers first” / “Forward all calls” / “Text-only business”.
+  - Button: “Configure call handling” linking to /settings/phone (or a dedicated route).
+
+This maintains a clear mental model: Wizard step shows status, actual editing lives in Settings.
+
+-----------------------------
+STEP 7: CLEAN MACHINE MIGRATION / DEFAULTS
+-----------------------------
+
+We must ensure the root tenant (Clean Machine) gets a sane default and doesn’t break.
+
+Implementation:
+
+- In a migration or a one-time script, set:
+  - Clean Machine telephonyMode = 'AI_FIRST'
+  - If they currently have a forwarding number set (via IVR/phone config), keep it as the target for any “press 2 to talk to someone” and for FORWARD_ALL_CALLS mode if you ever change it later.
+
+- For new tenants:
+  - Default telephonyMode = 'AI_FIRST' unless overridden by onboarding flow.
+  - Trial tenants can also use AI_FIRST by default.
+
+-----------------------------
+STEP 8: TESTING & VALIDATION
+-----------------------------
+
+Add at minimum:
+
+1) Unit / integration tests (where the project already has them) for:
+   - telephonySettingsService: reads/writes telephonyMode correctly.
+   - Twilio inbound call route: 
+      - returns correct TwiML for each mode (e.g. using string contains tests).
+      - Fallback behavior if telephonyMode undefined.
+
+2) Manual sanity checks (document in replit.md):
+
+   - Scenario A: Telephony mode = FORWARD_ALL_CALLS
+     - Call the number → rings configured forwarding number → if no answer, goes to voicemail.
+   - Scenario B: Telephony mode = AI_FIRST
+     - Call number → IVR/AI picks up as today.
+   - Scenario C: Telephony mode = AI_ONLY
+     - Call number → AI menu only, no human dial options.
+   - Scenario D: Telephony mode = TEXT_ONLY_BUSINESS
+     - Call number → hears short message → receives SMS with booking link.
+
+3) Confirm nothing breaks for:
+   - Voicemail transcription and AI SMS reply flows.
+   - A2P / SMS features.
+   - Other tenants (if you have test tenants in the DB).
+
+-----------------------------
+STEP 9: DOCUMENTATION
+-----------------------------
+
+Update replit.md or docs/MASTER_PLAN_v3.6_SERVICEPRO.md with:
+
+Section: Telephony Modes v1
+
+- List the 4 modes and behavior.
+- Note where to configure (Settings → Phone, Setup Wizard step 2).
+- Mention that AI/SMS behavior still applies in all modes.
+- Mention that Clean Machine defaults to AI_FIRST.
+
+-----------------------------
+ACCEPTANCE CRITERIA
+-----------------------------
+
+- Each tenant has a stored telephonyMode.
+- Inbound call routing branches correctly for all 4 modes.
+- Clean Machine behavior is unchanged day-to-day, but now explicitly represented as AI_FIRST.
+- Admin can change telephony mode via UI.
+- Setup Wizard step 2 shows current mode and links to configuration.
+- No regressions for SMS / voicemail / IVR.
+- Docs updated.
+
+Please implement this end-to-end and then summarize:
+- Files touched
+- Rough diff of key files
+- How to test each mode manually.
+
+END TELEPHONY MODES DROP-IN
