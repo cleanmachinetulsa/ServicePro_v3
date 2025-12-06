@@ -2,7 +2,7 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Loader2, Sparkles, Send } from 'lucide-react';
+import { MessageCircle, X, Loader2, Sparkles, Send, AlertCircle } from 'lucide-react';
 import { useSupportAssistantChat } from '../hooks/useSupportAssistantChat';
 import type { SupportAssistantContext } from '@shared/supportAssistantTypes';
 
@@ -207,8 +207,9 @@ export function SupportAssistantWidget() {
                 )}
 
                 {error && (
-                  <div className="rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2 text-[11px] text-rose-200">
-                    {error}
+                  <div className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-950/40 px-3 py-2.5 text-[12px] text-rose-200">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 text-rose-400 mt-0.5" />
+                    <span>{error}</span>
                   </div>
                 )}
 

@@ -63,10 +63,19 @@ A complete support ticket system with multi-tenant isolation. Users can submit t
 Global KB articles organized by scope (product/integration) and category. Articles are searchable and used by both users and the AI assistant.
 
 ### Support AI Assistant (v2)
-Backend-only AI assistant service using OpenAI GPT-4o:
+Backend AI assistant service using OpenAI GPT-4o:
 - **POST /api/support/assistant/chat**: Main chat endpoint (rate limited: 30/hour per user)
 - **supportContextService.ts**: Extracts tenant/user context for AI prompts
 - **supportAssistantService.ts**: Orchestrates context, KB articles, and OpenAI calls
 - Uses Replit AI Integrations for OpenAI (AI_INTEGRATIONS_OPENAI_API_KEY)
 - Safe fallbacks when OpenAI unavailable
 - Returns structured responses with article references
+
+### Support AI Chat Widget (Phase 26 UI v1)
+A global floating chat widget for in-app AI assistance:
+- **SupportAssistantWidget.tsx**: Premium glassmorphism chat panel with FAB at bottom-left
+- **useSupportAssistantChat.ts**: Custom hook managing chat state and API communication
+- Mounted globally in App.tsx, visible on all authenticated (non-public) routes
+- Features: Welcome message, current route context, typing indicator, error banners
+- Rate limit handling with specific messaging for HTTP 429 responses
+- Test IDs: button-support-assistant-fab, support-assistant-panel, input-assistant-message, button-send-assistant-message, button-close-assistant
