@@ -1,7 +1,12 @@
 # Clean Machine Auto Detail / ServicePro Platform
 
+## Canonical Roadmap
+**See `/docs/MASTER_PLAN_v3.7_SERVICEPRO.md`** for the complete architecture, roadmap, and delivery blueprint. This is the single source of truth for all ServicePro development.
+
 ## Overview
 ServicePro is a multi-tenant, white-label SaaS platform designed to transform service businesses into AI-powered web applications. It streamlines operations by providing comprehensive management for customers, appointments, loyalty programs, and payments. The platform integrates multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs) and leverages AI (OpenAI) and Google Workspace APIs for intelligent automation, aiming to enhance efficiency and customer engagement. The business vision is to provide a highly automated and scalable solution for service businesses, starting with Clean Machine Auto Detail.
+
+**Vision**: "The Shopify of service businesses."
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
