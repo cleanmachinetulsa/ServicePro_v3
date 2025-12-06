@@ -41,6 +41,11 @@ const PUBLIC_ROUTE_PREFIXES = [
   '/quote-approval',
 ];
 
+const HIDDEN_ROUTES: string[] = [
+  // Empty for now - widget should be available on all authenticated pages
+  // If specific pages need hiding, add them here
+];
+
 export function SupportAssistantWidget() {
   const [location] = useLocation();
   const [input, setInput] = useState('');
@@ -86,9 +91,10 @@ export function SupportAssistantWidget() {
   }, [messages, isOpen]);
 
   const isPublicRoute = PUBLIC_ROUTE_PREFIXES.some(prefix => location.startsWith(prefix));
+  const isHiddenRoute = HIDDEN_ROUTES.some(route => location.startsWith(route));
   
   if (authLoading) return null;
-  if (!context || isPublicRoute) return null;
+  if (!context || isPublicRoute || isHiddenRoute) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,17 +113,17 @@ export function SupportAssistantWidget() {
 
   return (
     <>
-      <div className="fixed bottom-5 left-4 z-50 md:bottom-6 md:left-6">
+      <div className="fixed bottom-4 left-3 z-40 sm:bottom-5 sm:left-4 md:bottom-6 md:left-6" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <button
           type="button"
           onClick={toggleOpen}
           data-testid="button-support-assistant-fab"
-          className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/30 hover:shadow-xl hover:scale-105 transition-all focus:outline-none focus:ring-2 focus:ring-purple-300"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-2.5 sm:px-4 sm:py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/30 hover:shadow-xl hover:scale-105 transition-all focus:outline-none focus:ring-2 focus:ring-purple-300"
         >
           {isOpen ? (
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5 sm:h-4 sm:w-4" />
           ) : (
-            <MessageCircle className="h-4 w-4" />
+            <MessageCircle className="h-5 w-5 sm:h-4 sm:w-4" />
           )}
           <span className="hidden sm:inline">
             {isOpen ? 'Close' : 'AI Help'}
@@ -132,10 +138,11 @@ export function SupportAssistantWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.95 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="fixed bottom-20 left-3 z-50 w-[92vw] max-w-md sm:bottom-24 sm:left-6"
+            className="fixed bottom-16 left-2 z-40 w-[94vw] max-w-md sm:bottom-20 sm:left-4 md:bottom-24 md:left-6"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
             data-testid="support-assistant-panel"
           >
-            <div className="flex h-[480px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/98 via-slate-900/95 to-slate-950/98 shadow-2xl backdrop-blur-xl">
+            <div className="flex max-h-[min(420px,calc(100vh-140px))] min-h-[320px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/98 via-slate-900/95 to-slate-950/98 shadow-2xl backdrop-blur-xl sm:max-h-[480px]">
               <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-pink-500 text-xs text-white shadow-md">
