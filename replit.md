@@ -10,22 +10,22 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 ## System Architecture
 
 ### UI/UX Decisions
-The application features a modern, mobile-responsive 3-column layout built with shadcn/ui. It includes a hexagonal shield logo, visual channel indicators, gradient backgrounds, numbered buttons for AI suggestions, confidence badges, gamification elements, glass-morphism containers, Framer Motion animations, premium step indicators, and Google Voice-level polish on messaging. PWA enhancements provide branded install prompts, app shortcuts, badge notifications, and offline mode. The public website features a glassmorphism design with gradients and animations, industry-specific content, a services grid, about section, FAQ accordion, and CTA sections for booking, all with mobile responsiveness.
+The application features a modern, mobile-responsive 3-column layout built with shadcn/ui, including a hexagonal shield logo, visual channel indicators, gradient backgrounds, and gamification elements. PWA enhancements provide branded install prompts, app shortcuts, badge notifications, and offline mode. The public website features a glassmorphism design with gradients, animations, industry-specific content, and mobile responsiveness.
 
 ### Technical Implementations
-The system supports production-ready message attachments with Google Drive, TCPA/CTIA-compliant SMS consent, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Recurring service management integrates with Google Calendar. Twilio Voice integration provides voicemail, missed call auto-SMS, comprehensive call logging, and PWA push notifications. Security is enforced through Twilio webhook verification, E.164 normalization, request validation, and RBAC middleware. Database performance is optimized with indexes and real-time WebSocket updates. An iMessage-quality messaging suite offers read receipts, typing indicators, reactions, search, and offline drafts. The platform includes service limits, maintenance mode, dynamic banner management, and auto-failover protection. A branded invoice email system offers professional, mobile-responsive invoices with upsell recommendations and HMAC-signed payment links. A centralized SMS template system allows dynamic editing with versioning and variable interpolation. Smart address validation with interactive map confirmation allows customers to verify their location using Google Maps. A referral management system provides admin tools for code generation, tracking, and SMS invites. A comprehensive referral system with 9 reward types is implemented. A dual phone line switching system supports two numbers with Google Voice-style UI and Twilio routing. An "Ask for Jody" VIP escalation system is present. A QR Code Security System with HMAC-SHA256 tokens is used for secure customer identification. Customer intelligence includes returning customer tracking and a GPT personalization service. Phone system enhancements include caller ID passthrough, configurable notifications, and a Recent Callers widget. Cash payment tracking includes manual entry and daily deposit widgets. A customizable dashboard system with drag-and-drop widgets is implemented for personalized user layouts.
+The system supports production-ready message attachments with Google Drive, TCPA/CTIA-compliant SMS consent, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Recurring service management integrates with Google Calendar. Twilio Voice integration provides voicemail, missed call auto-SMS, and comprehensive call logging. Security is enforced through Twilio webhook verification, E.164 normalization, request validation, and RBAC middleware. An iMessage-quality messaging suite offers read receipts, typing indicators, reactions, and search. The platform includes service limits, maintenance mode, dynamic banner management, and auto-failover protection. A branded invoice email system offers professional, mobile-responsive invoices with upsell recommendations and HMAC-signed payment links. A centralized SMS template system allows dynamic editing with versioning and variable interpolation. Smart address validation with interactive map confirmation uses Google Maps. A comprehensive referral system with 9 reward types is implemented, including admin tools for code generation, tracking, and SMS invites. A dual phone line switching system supports two numbers with Google Voice-style UI and Twilio routing. A QR Code Security System with HMAC-SHA256 tokens is used for secure customer identification. Customer intelligence includes returning customer tracking and a GPT personalization service. Cash payment tracking includes manual entry and daily deposit widgets. A customizable dashboard system with drag-and-drop widgets is implemented for personalized user layouts.
 
 #### Industry-Specific AI & Messaging Bootstrap
-An automated bootstrap system initializes new tenants with industry-specific AI behavior rules, SMS templates, and FAQ entries based on their selected industry during onboarding. This ensures multi-tenant isolation and idempotent upsert logic across 22 supported industries.
+An automated bootstrap system initializes new tenants with industry-specific AI behavior rules, SMS templates, and FAQ entries based on their selected industry, ensuring multi-tenant isolation and idempotent upsert logic across 22 supported industries.
 
 #### Multi-Tenant Architecture
-The platform utilizes a comprehensive multi-tenant architecture with full tenant isolation across ~70+ database tables. An admin interface supports tenant CRUD operations and owner impersonation. A canonical voice entry-point provides standardized webhook handling for multi-tenant telephony, dynamically resolving tenants via a `tenantPhoneConfig` table, supporting per-tenant SIP configuration, fallback, and IVR modes. A Tenant Communication Routing Engine centralizes inbound communication routing for SMS, Voice, and IVR based on MessagingServiceSid, phone number, or fallback, ensuring proper tenant context. An AI Voice Concierge entry point provides provider-agnostic AI voice infrastructure. Public sites are accessed via subdomain (`https://yoursite.serviceproapp.com/site/your-subdomain`) with global subdomain uniqueness and secure data isolation. Tenant isolation is enforced with a `tenantId` column on most tables and controlled via `tenantDb.withTenantFilter()`.
+The platform utilizes a comprehensive multi-tenant architecture with full tenant isolation across ~70+ database tables. An admin interface supports tenant CRUD operations and owner impersonation. A canonical voice entry-point provides standardized webhook handling for multi-tenant telephony. A Tenant Communication Routing Engine centralizes inbound communication routing for SMS, Voice, and IVR. An AI Voice Concierge entry point provides provider-agnostic AI voice infrastructure. Public sites are accessed via subdomain (`https://yoursite.serviceproapp.com/site/your-subdomain`) with global subdomain uniqueness and secure data isolation. Tenant isolation is enforced with a `tenantId` column on most tables.
 
 #### Customer Identity & Login
 Customer authentication is separate from staff/owner authentication, utilizing OTP (One-Time Password) via phone/email with rate limiting and session management. Customer profiles support `profilePictureUrl`, `customerNotes`, and notification preferences.
 
 ### Feature Specifications
-Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. Admin referral management allows managers to generate unique referral codes, track statistics, and send invites. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features including AI SMS Agent, AI Voice Agent, Campaigns, Dedicated Number, Custom Domain, CRM, Loyalty, Multi-User, Advanced Analytics, Website Generator, Data Export, and Priority Support. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components using loss aversion psychology to drive conversions. A dual suggestion system enables tenant owners to submit platform feedback (feature requests, bugs, UI improvements) to ServicePro via a floating feedback button, while customers can submit suggestions to their tenant's business through a public suggestion box on the public site (toggleable per-tenant).
+Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business.
 
 ### System Design Choices
 The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, shadcn/ui, TanStack React Query, React Hook Form with Zod, Stripe) and an Express.js backend with TypeScript. Core patterns include a monolithic service layer, multi-channel response formatting for AI, a customer memory system, and Google Sheets integration as a dynamic knowledge base. Data is stored in PostgreSQL (Neon serverless) with Drizzle ORM, Google Sheets, and Google Drive. Authentication is session-based. The Express server uses `app.set('trust proxy', true)` for correct handling of Replit's multi-layer proxy infrastructure.
@@ -53,44 +53,3 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
-
-## Support System (Phase 26)
-
-### Support Tickets
-A complete support ticket system with multi-tenant isolation. Users can submit tickets from `/support`, and root admins manage all tickets at `/admin/support-tickets`. Features include AI-powered categorization, priority levels (low/normal/high/urgent), and status tracking (open/in_progress/waiting/resolved/closed).
-
-### Knowledge Base
-Global KB articles organized by scope (product/integration) and category. Articles are searchable and used by both users and the AI assistant.
-
-### Support AI Assistant (v2)
-Backend AI assistant service using OpenAI GPT-4o:
-- **POST /api/support/assistant/chat**: Main chat endpoint (rate limited: 30/hour per user)
-- **supportContextService.ts**: Extracts tenant/user context for AI prompts
-- **supportAssistantService.ts**: Orchestrates context, KB articles, and OpenAI calls
-- Uses Replit AI Integrations for OpenAI (AI_INTEGRATIONS_OPENAI_API_KEY)
-- Safe fallbacks when OpenAI unavailable
-- Returns structured responses with article references
-
-### Support AI Chat Widget (Phase 26 UI v1)
-A global floating chat widget for in-app AI assistance:
-- **SupportAssistantWidget.tsx**: Premium glassmorphism chat panel with FAB at bottom-left
-- **useSupportAssistantChat.ts**: Custom hook managing chat state and API communication
-- Mounted globally in App.tsx, visible on all authenticated (non-public) routes
-- Features: Welcome message, current route context, typing indicator, error banners
-- Rate limit handling with specific messaging for HTTP 429 responses
-- Test IDs: button-support-assistant-fab, support-assistant-panel, input-assistant-message, button-send-assistant-message, button-close-assistant
-
-## Email System (Phase 10)
-
-### Tenant Email Settings (v1)
-Per-tenant email profile configuration with shared SendGrid domain:
-- **Route**: /settings/email - Email settings page in sidebar under "Settings & Administration"
-- **API Endpoints**:
-  - GET /api/settings/email - Get tenant email settings (fromName, replyToEmail, status)
-  - PUT /api/settings/email - Update tenant email settings
-  - POST /api/settings/email/test - Send test email to verify configuration
-- **Database**: `tenantEmailProfiles` table stores per-tenant fromName, replyToEmail, status
-- **Architecture**: Shared SendGrid domain (SENDGRID_FROM_EMAIL), per-tenant display name and reply-to address
-- **Status tracking**: not_configured, needs_verification, healthy, error
-- **Service**: `server/services/tenantEmailService.ts` - sendTenantEmail, createTenantEmailProfile, hasGlobalSendGridConfig
-- **Test IDs**: text-email-settings-title, input-from-name, input-reply-to-email, button-save-email-settings, button-send-test-email

@@ -100,28 +100,27 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
     const tenantDb = wrapTenantDb(db, tenant.tenantId);
 
     // Fetch services for this tenant (with tenant isolation)
-    const tenantServices = await tenantDb.db
+    const tenantServices = await tenantDb
       .select({
         id: services.id,
         name: services.name,
-        description: services.description,
-        category: services.category,
-        startingPrice: services.startingPrice,
-        durationMinutes: services.durationMinutes,
-        isAddon: services.isAddon,
-        highlight: services.highlight,
+        overview: services.overview,
+        priceRange: services.priceRange,
+        duration: services.duration,
+        detailedDescription: services.detailedDescription,
+        imageUrl: services.imageUrl,
       })
       .from(services)
-      .where(tenantDb.filter(services));
+      .where(tenantDb.withTenantFilter(services));
 
     // Fetch FAQs for this tenant (with tenant isolation)
-    const tenantFaqs = await tenantDb.db
+    const tenantFaqs = await tenantDb
       .select({
         question: faqEntries.question,
         answer: faqEntries.answer,
       })
       .from(faqEntries)
-      .where(tenantDb.filter(faqEntries));
+      .where(tenantDb.withTenantFilter(faqEntries));
 
     // Get Industry Pack content if available
     const industryPack = tenant.industryPackId 

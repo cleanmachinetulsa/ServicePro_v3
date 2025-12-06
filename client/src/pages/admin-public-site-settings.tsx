@@ -38,6 +38,19 @@ interface PublicSiteSettings {
   showGiftCardCTA: boolean;
 }
 
+interface DefaultSettings {
+  heroTitle: string;
+  heroSubtitle: string;
+  primaryColor: string;
+  secondaryColor: string;
+}
+
+interface ApiResponse {
+  success: boolean;
+  settings: PublicSiteSettings;
+  defaults?: DefaultSettings;
+}
+
 export default function AdminPublicSiteSettings() {
   const { toast } = useToast();
   const [settings, setSettings] = useState<PublicSiteSettings>({
@@ -49,9 +62,15 @@ export default function AdminPublicSiteSettings() {
     showBookingCTA: true,
     showGiftCardCTA: false,
   });
+  const [defaults, setDefaults] = useState<DefaultSettings>({
+    heroTitle: 'Welcome to Your Business',
+    heroSubtitle: 'Professional service you can trust',
+    primaryColor: '#6366f1',
+    secondaryColor: '#a855f7',
+  });
   const [hasChanges, setHasChanges] = useState(false);
 
-  const { data, isLoading, error } = useQuery<{ success: boolean; settings: PublicSiteSettings }>({
+  const { data, isLoading, error } = useQuery<ApiResponse>({
     queryKey: ['/api/admin/public-site-settings'],
   });
 
@@ -59,6 +78,9 @@ export default function AdminPublicSiteSettings() {
     if (data?.settings) {
       setSettings(data.settings);
       setHasChanges(false);
+    }
+    if (data?.defaults) {
+      setDefaults(data.defaults);
     }
   }, [data]);
 
@@ -193,7 +215,7 @@ export default function AdminPublicSiteSettings() {
                   <Label htmlFor="heroTitle">Hero Title</Label>
                   <Input
                     id="heroTitle"
-                    placeholder="Welcome to Your Business"
+                    placeholder={defaults.heroTitle}
                     value={settings.heroTitle}
                     onChange={(e) => handleChange('heroTitle', e.target.value)}
                     data-testid="input-hero-title"
@@ -207,7 +229,7 @@ export default function AdminPublicSiteSettings() {
                   <Label htmlFor="heroSubtitle">Hero Subtitle</Label>
                   <Textarea
                     id="heroSubtitle"
-                    placeholder="Professional services you can trust"
+                    placeholder={defaults.heroSubtitle}
                     value={settings.heroSubtitle}
                     onChange={(e) => handleChange('heroSubtitle', e.target.value)}
                     rows={3}

@@ -7,12 +7,25 @@ import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { tenantConfig } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { getIndustryPack } from '@shared/industryPacks';
 
 const router = Router();
+
+const publicSiteSettingsSchema = z.object({
+  heroTitle: z.string().optional().nullable(),
+  heroSubtitle: z.string().optional().nullable(),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().nullable(),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().nullable(),
+  showRewardsCTA: z.boolean().optional(),
+  showBookingCTA: z.boolean().optional(),
+  showGiftCardCTA: z.boolean().optional(),
+});
 
 /**
  * GET /api/admin/public-site-settings
  * Get the current public site settings for the tenant
+ * Priority: tenant publicSiteSettings > industry pack > tenantConfig > defaults
  */
 router.get('/public-site-settings', async (req: Request, res: Response) => {
   try {
@@ -24,6 +37,7 @@ router.get('/public-site-settings', async (req: Request, res: Response) => {
         businessName: tenantConfig.businessName,
         primaryColor: tenantConfig.primaryColor,
         accentColor: tenantConfig.accentColor,
+        industryPackId: tenantConfig.industryPackId,
       })
       .from(tenantConfig)
       .where(eq(tenantConfig.tenantId, tenantId))
@@ -36,20 +50,30 @@ router.get('/public-site-settings', async (req: Request, res: Response) => {
       });
     }
     
-    // Merge with defaults
+    const storedSettings = config.publicSiteSettings || {};
+    const industryPack = config.industryPackId ? getIndustryPack(config.industryPackId) : null;
+    
     const settings = {
-      heroTitle: config.publicSiteSettings?.heroTitle || '',
-      heroSubtitle: config.publicSiteSettings?.heroSubtitle || '',
-      primaryColor: config.publicSiteSettings?.primaryColor || config.primaryColor || '#6366f1',
-      secondaryColor: config.publicSiteSettings?.secondaryColor || config.accentColor || '#a855f7',
-      showRewardsCTA: config.publicSiteSettings?.showRewardsCTA ?? true,
-      showBookingCTA: config.publicSiteSettings?.showBookingCTA ?? true,
-      showGiftCardCTA: config.publicSiteSettings?.showGiftCardCTA ?? false,
+      heroTitle: storedSettings.heroTitle || '',
+      heroSubtitle: storedSettings.heroSubtitle || '',
+      primaryColor: storedSettings.primaryColor || config.primaryColor || '#6366f1',
+      secondaryColor: storedSettings.secondaryColor || config.accentColor || '#a855f7',
+      showRewardsCTA: storedSettings.showRewardsCTA ?? true,
+      showBookingCTA: storedSettings.showBookingCTA ?? true,
+      showGiftCardCTA: storedSettings.showGiftCardCTA ?? false,
+    };
+    
+    const defaults = {
+      heroTitle: industryPack?.websiteSeed?.heroHeadline || `Welcome to ${config.businessName}`,
+      heroSubtitle: industryPack?.websiteSeed?.heroSubheadline || 'Professional service you can trust',
+      primaryColor: config.primaryColor || '#6366f1',
+      secondaryColor: config.accentColor || '#a855f7',
     };
     
     return res.json({
       success: true,
       settings,
+      defaults,
     });
   } catch (error) {
     console.error('[PUBLIC SITE ADMIN] Error fetching settings:', error);
@@ -67,6 +91,16 @@ router.get('/public-site-settings', async (req: Request, res: Response) => {
 router.put('/public-site-settings', async (req: Request, res: Response) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
+    
+    const parseResult = publicSiteSettingsSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid settings data',
+        errors: parseResult.error.errors,
+      });
+    }
+    
     const { 
       heroTitle, 
       heroSubtitle, 
@@ -75,23 +109,37 @@ router.put('/public-site-settings', async (req: Request, res: Response) => {
       showRewardsCTA,
       showBookingCTA,
       showGiftCardCTA,
-    } = req.body;
+    } = parseResult.data;
     
-    // Build the settings object
-    const publicSiteSettings = {
-      heroTitle: heroTitle || undefined,
-      heroSubtitle: heroSubtitle || undefined,
-      primaryColor: primaryColor || undefined,
-      secondaryColor: secondaryColor || undefined,
-      showRewardsCTA: showRewardsCTA ?? true,
-      showBookingCTA: showBookingCTA ?? true,
-      showGiftCardCTA: showGiftCardCTA ?? false,
-    };
+    const publicSiteSettings: Record<string, any> = {};
+    
+    if (heroTitle && heroTitle.trim() !== '') {
+      publicSiteSettings.heroTitle = heroTitle.trim();
+    }
+    if (heroSubtitle && heroSubtitle.trim() !== '') {
+      publicSiteSettings.heroSubtitle = heroSubtitle.trim();
+    }
+    if (primaryColor && primaryColor.trim() !== '') {
+      publicSiteSettings.primaryColor = primaryColor.trim();
+    }
+    if (secondaryColor && secondaryColor.trim() !== '') {
+      publicSiteSettings.secondaryColor = secondaryColor.trim();
+    }
+    
+    if (typeof showRewardsCTA === 'boolean') {
+      publicSiteSettings.showRewardsCTA = showRewardsCTA;
+    }
+    if (typeof showBookingCTA === 'boolean') {
+      publicSiteSettings.showBookingCTA = showBookingCTA;
+    }
+    if (typeof showGiftCardCTA === 'boolean') {
+      publicSiteSettings.showGiftCardCTA = showGiftCardCTA;
+    }
     
     await db
       .update(tenantConfig)
       .set({
-        publicSiteSettings,
+        publicSiteSettings: Object.keys(publicSiteSettings).length > 0 ? publicSiteSettings : null,
         updatedAt: new Date(),
       })
       .where(eq(tenantConfig.tenantId, tenantId));
