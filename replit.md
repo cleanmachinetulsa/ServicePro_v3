@@ -52,5 +52,21 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 - **Open-Meteo API**: Free weather forecasting.
 
 **AI & ML**:
-- **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, and service recommendations.
-```
+- **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
+
+## Support System (Phase 26)
+
+### Support Tickets
+A complete support ticket system with multi-tenant isolation. Users can submit tickets from `/support`, and root admins manage all tickets at `/admin/support-tickets`. Features include AI-powered categorization, priority levels (low/normal/high/urgent), and status tracking (open/in_progress/waiting/resolved/closed).
+
+### Knowledge Base
+Global KB articles organized by scope (product/integration) and category. Articles are searchable and used by both users and the AI assistant.
+
+### Support AI Assistant (v2)
+Backend-only AI assistant service using OpenAI GPT-4o:
+- **POST /api/support/assistant/chat**: Main chat endpoint (rate limited: 30/hour per user)
+- **supportContextService.ts**: Extracts tenant/user context for AI prompts
+- **supportAssistantService.ts**: Orchestrates context, KB articles, and OpenAI calls
+- Uses Replit AI Integrations for OpenAI (AI_INTEGRATIONS_OPENAI_API_KEY)
+- Safe fallbacks when OpenAI unavailable
+- Returns structured responses with article references
