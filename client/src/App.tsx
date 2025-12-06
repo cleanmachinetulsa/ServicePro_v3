@@ -119,6 +119,7 @@ import SubscriptionPage from "./pages/subscription";
 // Phase 26: Support System
 import SupportCenter from "./pages/SupportCenter";
 import AdminSupportTickets from "./pages/AdminSupportTickets";
+import { SupportAssistantWidget } from "./components/SupportAssistantWidget";
 
 function Router() {
   return (
@@ -534,6 +535,7 @@ function App() {
             !location.startsWith("/notifications-settings") && (
               <DashboardNavButton />
             )}
+          <SupportAssistantWidget />
         </PwaProvider>
       </ThemeProvider>
     </QueryClientProvider>
