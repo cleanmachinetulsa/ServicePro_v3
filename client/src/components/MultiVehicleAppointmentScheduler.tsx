@@ -222,6 +222,9 @@ export default function MultiVehicleAppointmentScheduler({
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [dailyTimeSlots, setDailyTimeSlots] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [usedFallback, setUsedFallback] = useState<boolean>(false);
+  const [preferredTimeWindow, setPreferredTimeWindow] = useState<string>("");
   const [services, setServices] = useState<Service[]>([]);
   const [addOnServices, setAddOnServices] = useState<AddOnService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState<boolean>(true);
@@ -368,20 +371,16 @@ export default function MultiVehicleAppointmentScheduler({
 
   const fetchAvailableSlots = async () => {
     setIsLoading(true);
+    setLoadError(null);
+    setUsedFallback(false);
+    
     try {
       const response = await fetch(`/api/available-slots?service=${encodeURIComponent(selectedService!.name)}`);
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch available time slots");
-      }
-
       const data = await response.json();
 
       if (data.success && data.slots && Array.isArray(data.slots)) {
-        // Use the slots returned from the API (from Google Calendar)
         const allSlots: string[] = data.slots;
 
-        // Group slots by date and create list of available dates
         const availableDatesList: Date[] = [];
         const timeSlotsByDay: Record<string, string[]> = {};
         const seenDates = new Set<string>();
@@ -390,50 +389,41 @@ export default function MultiVehicleAppointmentScheduler({
           const slotDate = parseISO(slotISO);
           const dateKey = format(slotDate, 'yyyy-MM-dd');
 
-          // Add to the specific day's slot list
           if (!timeSlotsByDay[dateKey]) {
             timeSlotsByDay[dateKey] = [];
           }
           timeSlotsByDay[dateKey].push(slotISO);
 
-          // Track unique dates
           if (!seenDates.has(dateKey)) {
             seenDates.add(dateKey);
             availableDatesList.push(slotDate);
           }
         });
 
-        // Sort dates chronologically
         availableDatesList.sort((a, b) => a.getTime() - b.getTime());
 
-        // Store available dates and daily time slots
         setAvailableSlots(allSlots);
         setAvailableDates(availableDatesList);
         setDailyTimeSlots(timeSlotsByDay);
+        
+        if (data.fallback || data.usedSource === 'internal_fallback') {
+          setUsedFallback(true);
+        }
 
         if (allSlots.length === 0) {
-          toast({
-            title: "No Available Slots",
-            description: "We don't have any available slots at this time. Please contact us directly to schedule.",
-          });
+          setLoadError("We couldn't find live time slots. You can still pick a date below and we'll confirm the closest available time by text.");
         }
+      } else if (!response.ok) {
+        throw new Error("Failed to fetch slots");
       } else {
         setAvailableSlots([]);
         setAvailableDates([]);
         setDailyTimeSlots({});
-        toast({
-          title: "Error",
-          description: "No available time slots found. Please try a different service or contact us directly.",
-          variant: "destructive",
-        });
+        setLoadError("We couldn't find live time slots. You can still pick a date below and we'll confirm the closest available time by text.");
       }
     } catch (error) {
       console.error("Error fetching time slots:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load available time slots. Please try again later.",
-        variant: "destructive",
-      });
+      setLoadError("We had trouble loading available times. You can try again, or pick a date and we'll follow up to confirm.");
       setAvailableSlots([]);
       setAvailableDates([]);
       setDailyTimeSlots({});
@@ -932,7 +922,9 @@ export default function MultiVehicleAppointmentScheduler({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name.trim() || !phone.trim() || !selectedService || !selectedTime) {
+    const hasTimeSelection = selectedTime || (selectedDate && availableDates.length === 0);
+    
+    if (!name.trim() || !phone.trim() || !selectedService || !hasTimeSelection) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -976,19 +968,23 @@ export default function MultiVehicleAppointmentScheduler({
         body: JSON.stringify({
           name,
           phone,
-          email: customerEmail, // Use the state variable for email
+          email: customerEmail,
           address: customerAddress,
           isExtendedAreaRequest,
           latitude: addressLatitude,
           longitude: addressLongitude,
           addressNeedsReview,
-          service: selectedService!.name, // Use the selected service name
+          service: selectedService!.name,
           addOns: selectedAddOns,
           vehicles,
-          notes,
-          time: selectedTime,
+          notes: preferredTimeWindow 
+            ? `${notes}${notes ? '\n' : ''}[Preferred time: ${preferredTimeWindow}]` 
+            : notes,
+          time: selectedTime || (selectedDate ? format(selectedDate, "yyyy-MM-dd'T'09:00:00") : ''),
           smsConsent,
           referralCode: referralStatus?.isValid ? referralCode : undefined,
+          needsTimeConfirmation: !selectedTime && selectedDate ? true : false,
+          preferredTimeWindow: preferredTimeWindow || undefined,
         }),
       });
 
@@ -1990,10 +1986,31 @@ export default function MultiVehicleAppointmentScheduler({
                   size="sm"
                   className="text-blue-200 hover:bg-blue-500/20"
                   onClick={() => setStep("vehicle")}
+                  data-testid="button-back-to-vehicle"
                 >
                   Back
                 </Button>
               </div>
+
+              {loadError && (
+                <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
+                  {loadError}
+                  <button
+                    type="button"
+                    onClick={fetchAvailableSlots}
+                    className="ml-2 text-amber-200 underline hover:text-amber-100"
+                    data-testid="button-retry-availability"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {usedFallback && !loadError && (
+                <div className="mb-4 rounded-lg border border-blue-500/40 bg-blue-950/40 px-3 py-2 text-xs text-blue-100">
+                  Showing estimated availability. We&apos;ll confirm your exact time by text.
+                </div>
+              )}
 
               {isLoading ? (
                 <div className="py-8 text-center">
@@ -2003,6 +2020,54 @@ export default function MultiVehicleAppointmentScheduler({
                     className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full mx-auto"
                   />
                   <p className="text-blue-200/70 mt-4">Loading available dates...</p>
+                </div>
+              ) : availableDates.length === 0 ? (
+                <div className="py-4 space-y-4">
+                  <div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-3 py-4 text-sm text-slate-200">
+                    We don&apos;t see any live time slots for the next two weeks.
+                    <br />
+                    Please pick a date that works best for you and we&apos;ll confirm the
+                    closest available time by text.
+                  </div>
+                  <div className="flex justify-center">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={handleDateSelect}
+                      disabled={(date) => {
+                        return (
+                          isBefore(date, new Date()) ||
+                          date.getDay() === 0
+                        );
+                      }}
+                      className="rounded-md border border-blue-400/30 p-2 bg-gray-800/40"
+                      data-testid="calendar-fallback"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-blue-100 text-sm">Preferred time window (optional)</Label>
+                    <Select value={preferredTimeWindow} onValueChange={setPreferredTimeWindow}>
+                      <SelectTrigger className="w-full border-blue-400/30 bg-gray-800/40 text-blue-100">
+                        <SelectValue placeholder="Select a time window..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="morning">Morning (9am - 12pm)</SelectItem>
+                        <SelectItem value="afternoon">Afternoon (12pm - 4pm)</SelectItem>
+                        <SelectItem value="anytime">Anytime works</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selectedDate && (
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={() => setStep("details")}
+                        className={`${GRADIENT_BUTTON} shadow-lg shadow-blue-500/30 transition-all hover:scale-105`}
+                        data-testid="button-skip-to-details"
+                      >
+                        Continue with {format(selectedDate, 'MMM d')} {preferredTimeWindow ? `(${preferredTimeWindow})` : ''}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="py-4 flex justify-center">
@@ -2020,6 +2085,7 @@ export default function MultiVehicleAppointmentScheduler({
                       );
                     }}
                     className="rounded-md border border-blue-400/30 p-2 bg-gray-800/40"
+                    data-testid="calendar-available"
                   />
                 </div>
               )}
