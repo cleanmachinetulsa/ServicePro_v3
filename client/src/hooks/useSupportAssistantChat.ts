@@ -61,6 +61,9 @@ export function useSupportAssistantChat(initialContext: SupportAssistantContext 
         });
 
         if (!res.ok) {
+          if (res.status === 429) {
+            throw new Error('rate_limit');
+          }
           throw new Error(`Assistant error: ${res.status}`);
         }
 
@@ -90,18 +93,36 @@ export function useSupportAssistantChat(initialContext: SupportAssistantContext 
         }
       } catch (err: unknown) {
         console.error('Support assistant error', err);
-        setError('Something went wrong talking to the assistant.');
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-error-${Date.now()}`,
-            role: 'assistant',
-            createdAt: nowIso(),
-            content:
-              "I hit an error reaching the assistant. Please check your connection or try again. If this keeps happening, use the Help & Support page to open a ticket.",
-            source: 'system',
-          },
-        ]);
+        
+        const isRateLimit = err instanceof Error && err.message === 'rate_limit';
+        
+        if (isRateLimit) {
+          setError('Rate limit reached. Try again in a few minutes.');
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `assistant-error-${Date.now()}`,
+              role: 'assistant',
+              createdAt: nowIso(),
+              content:
+                "You've reached the hourly limit for assistant requests. Please wait a few minutes and try again, or open a support ticket from the Help & Support page for immediate help.",
+              source: 'system',
+            },
+          ]);
+        } else {
+          setError('Something went wrong talking to the assistant.');
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `assistant-error-${Date.now()}`,
+              role: 'assistant',
+              createdAt: nowIso(),
+              content:
+                "I hit an error reaching the assistant. Please check your connection or try again. If this keeps happening, use the Help & Support page to open a ticket.",
+              source: 'system',
+            },
+          ]);
+        }
       } finally {
         setIsSending(false);
       }
