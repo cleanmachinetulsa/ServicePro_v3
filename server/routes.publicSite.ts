@@ -68,6 +68,8 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
         colorAccent: tenantConfig.accentColor,
         logoUrl: tenantConfig.logoUrl,
         businessNameFromConfig: tenantConfig.businessName,
+        // CM-4: Public site settings
+        publicSiteSettings: tenantConfig.publicSiteSettings,
       })
       .from(tenants)
       .leftJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
@@ -129,25 +131,33 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
     // Use business name from config if available, otherwise from tenant table
     const displayBusinessName = tenant.businessNameFromConfig || tenant.businessName;
 
+    // CM-4: Get public site settings with defaults
+    const siteSettings = tenant.publicSiteSettings || {};
+    
     // Build website content with merge logic:
-    // TODO Phase 23: Add website_config table for tenant-specific overrides
-    // Priority: tenant override > industry pack seed > smart defaults
+    // Priority: tenant publicSiteSettings > industry pack seed > smart defaults
     const websiteContent = {
       heroHeadline: 
-        industryPack?.websiteSeed?.heroHeadline 
-        ?? `Welcome to ${displayBusinessName}`,
+        siteSettings.heroTitle ||
+        (industryPack?.websiteSeed?.heroHeadline 
+        ?? `Welcome to ${displayBusinessName}`),
       heroSubheadline: 
-        industryPack?.websiteSeed?.heroSubheadline 
-        ?? `Professional ${tenant.industry || 'service'} you can trust`,
+        siteSettings.heroSubtitle ||
+        (industryPack?.websiteSeed?.heroSubheadline 
+        ?? `Professional ${tenant.industry || 'service'} you can trust`),
       primaryCtaLabel: 
         industryPack?.websiteSeed?.primaryCtaLabel 
-        ?? 'Get Started',
+        ?? 'Book Now',
       secondaryCtaLabel: 
         industryPack?.websiteSeed?.secondaryCtaLabel 
-        ?? 'View Services',
+        ?? 'Check My Rewards',
       aboutBlurb: 
         industryPack?.websiteSeed?.aboutBlurb 
         ?? `${displayBusinessName} provides high-quality ${tenant.industry || 'services'} ${tenant.city ? `in ${tenant.city}` : ''}.`,
+      // CM-4: CTA visibility flags
+      showRewardsCTA: siteSettings.showRewardsCTA !== false, // default true
+      showBookingCTA: siteSettings.showBookingCTA !== false, // default true
+      showGiftCardCTA: siteSettings.showGiftCardCTA ?? false, // default false (future)
     };
 
     // Feature flags based on plan tier
@@ -174,8 +184,9 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
         industryPackId: tenant.industryPackId,
       },
       branding: {
-        primaryColor: tenant.colorPrimary,
-        accentColor: tenant.colorAccent,
+        // CM-4: Priority: publicSiteSettings colors > tenantConfig colors
+        primaryColor: siteSettings.primaryColor || tenant.colorPrimary || '#6366f1',
+        accentColor: siteSettings.secondaryColor || tenant.colorAccent || '#a855f7',
         logoUrl: tenant.logoUrl,
       },
       websiteContent,

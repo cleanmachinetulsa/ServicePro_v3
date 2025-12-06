@@ -39,6 +39,7 @@ import { registerSupportRoutes } from "./routes.support";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
+import publicSiteAdminRouter from "./routes.publicSiteAdmin";
 import agentContextRouter from "./routes/agentContextRouter";
 import setupAssistantRouter from "./routes/setupAssistantRouter";
 import emailTestRouter from "./routes/emailTestRouter";
@@ -307,6 +308,8 @@ app.use(sendgridWebhookRouter);
 app.use('/api/public', publicSiteRouter);
 // Register public pricing routes (Phase 7B - Pricing & Tier Comparison)
 app.use('/api/public', publicPricingRouter);
+// Register public site admin routes (CM-4 - Public Site Entry Points)
+app.use('/api/admin', publicSiteAdminRouter);
 // Register billing routes (Phase 7C - Stripe Billing & Subscriptions, requires tenant auth)
 app.use(billingRouter);
 // Register campaign management routes (requires auth)

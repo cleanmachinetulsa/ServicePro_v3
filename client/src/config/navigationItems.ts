@@ -39,7 +39,8 @@ import {
   MessageSquarePlus,
   HelpCircle,
   Headphones,
-  Mail
+  Mail,
+  Globe
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -168,6 +169,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Website Design',
     icon: Palette,
     path: '/admin/homepage-editor',
+  },
+  {
+    id: 'public-site-settings',
+    label: 'Public Site Settings',
+    icon: Globe,
+    path: '/admin/public-site-settings',
   },
   {
     id: 'gallery-management',

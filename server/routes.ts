@@ -392,6 +392,8 @@ export async function registerRoutes(app: Express) {
       '/api/loyalty/rewards',   // Public rewards catalog (Customer Rewards Portal V2)
       '/api/loyalty/guardrails', // Public redemption guardrails (Customer Rewards Portal V2)
       '/api/loyalty/validate-redemption', // Loyalty Redemption Journey v2 - validate before booking
+      '/api/public/site',           // CM-4: Public site data endpoint for generated websites
+      '/api/public/pricing',        // Public pricing page data
     ];
 
     // CRITICAL: Use req.originalUrl (includes /api) instead of req.path (stripped)

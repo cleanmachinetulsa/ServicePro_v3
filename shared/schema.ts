@@ -288,6 +288,17 @@ export const tenantConfig = pgTable("tenant_config", {
   // Suggestion Box settings
   suggestionsBoxEnabled: boolean("suggestions_box_enabled").default(true), // Enable/disable public customer suggestions
   
+  // CM-4: Public Site Settings for generated website customization
+  publicSiteSettings: jsonb("public_site_settings").$type<{
+    heroTitle?: string;
+    heroSubtitle?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    showRewardsCTA?: boolean;
+    showGiftCardCTA?: boolean;
+    showBookingCTA?: boolean;
+  }>(),
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
