@@ -120,12 +120,19 @@ export default function PhoneSettings() {
   }, [selectedTelephonyMode, telephonyForwardingNumber, allowVoicemailInTextOnly, telephonySettings]);
   
   const handleSaveTelephonyMode = () => {
+    if (selectedTelephonyMode === 'FORWARD_ALL_CALLS' && !telephonyForwardingNumber.trim()) {
+      toast({
+        title: 'Forwarding number required',
+        description: 'Please enter a forwarding number for "Forward all calls" mode.',
+        variant: 'destructive',
+      });
+      return;
+    }
     updateTelephonySettings({
       telephonyMode: selectedTelephonyMode,
       forwardingNumber: telephonyForwardingNumber || null,
       allowVoicemailInTextOnly,
     });
-    setHasTelephonyChanges(false);
   };
 
   // Fetch phone lines with schedules

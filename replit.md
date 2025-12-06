@@ -18,6 +18,15 @@ The system supports production-ready message attachments with Google Drive, TCPA
 #### Industry-Specific AI & Messaging Bootstrap
 An automated bootstrap system initializes new tenants with industry-specific AI behavior rules, SMS templates, and FAQ entries based on their selected industry, ensuring multi-tenant isolation and idempotent upsert logic across 22 supported industries.
 
+#### Telephony Mode System
+A comprehensive telephony routing system allows tenant owners to control how incoming calls are handled. Four modes are available:
+- **FORWARD_ALL_CALLS**: Calls ring the owner's personal phone directly without AI intervention. Requires a forwarding number.
+- **AI_FIRST** (default, recommended): AI or IVR answers first to screen calls, then forwards to human staff as needed.
+- **AI_ONLY**: AI handles all calls autonomously. Owners see bookings and messages but phones never ring.
+- **TEXT_ONLY_BUSINESS**: Calls are politely declined with a brief message; callers automatically receive an SMS with booking link. Optional voicemail backup available.
+
+Settings stored in `tenantPhoneConfig` table with `telephonyMode` and `allowVoicemailInTextOnly` columns. The canonical voice handler (`server/routes.twilioVoiceCanonical.ts`) branches on telephonyMode BEFORE consulting IVR settings. UI accessible via Phone Settings page (`/phone-settings`) with radio button selector and mode-specific options.
+
 #### Multi-Tenant Architecture
 The platform utilizes a comprehensive multi-tenant architecture with full tenant isolation across ~70+ database tables. An admin interface supports tenant CRUD operations and owner impersonation. A canonical voice entry-point provides standardized webhook handling for multi-tenant telephony. A Tenant Communication Routing Engine centralizes inbound communication routing for SMS, Voice, and IVR. An AI Voice Concierge entry point provides provider-agnostic AI voice infrastructure. Public sites are accessed via subdomain (`https://yoursite.serviceproapp.com/site/your-subdomain`) with global subdomain uniqueness and secure data isolation. Tenant isolation is enforced with a `tenantId` column on most tables.
 

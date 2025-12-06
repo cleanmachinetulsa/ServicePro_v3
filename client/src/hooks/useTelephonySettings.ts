@@ -47,15 +47,14 @@ export function useTelephonySettings() {
 
   const updateMutation = useMutation({
     mutationFn: async (updates: UpdateTelephonySettings) => {
-      return apiRequest<{ success: boolean; settings: TelephonySettings; message: string }>(
-        '/api/admin/telephony-settings',
-        {
-          method: 'PUT',
-          body: JSON.stringify(updates),
-        }
-      );
+      const response = await apiRequest('PUT', '/api/admin/telephony-settings', updates);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update telephony settings');
+      }
+      return await response.json();
     },
-    onSuccess: (response) => {
+    onSuccess: (response: { success: boolean; settings: TelephonySettings; message: string }) => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/telephony-settings'] });
       toast({
         title: 'Settings saved',
