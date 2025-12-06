@@ -3786,16 +3786,23 @@ export const portRecoveryCampaigns = pgTable("port_recovery_campaigns", {
   // Campaign stats
   totalTargets: integer("total_targets").default(0),
   totalSmsSent: integer("total_sms_sent").default(0),
+  totalSmsFailed: integer("total_sms_failed").default(0),
   totalEmailSent: integer("total_email_sent").default(0),
   totalPointsGranted: integer("total_points_granted").default(0),
   
   // Points configuration
   pointsPerCustomer: integer("points_per_customer").notNull().default(500),
   
+  // Channel configuration
+  smsEnabled: boolean("sms_enabled").notNull().default(true),
+  emailEnabled: boolean("email_enabled").notNull().default(true),
+  
   // Message content
   smsTemplate: text("sms_template"),
   emailSubject: text("email_subject"),
   emailTemplate: text("email_template"),
+  emailHtmlTemplate: text("email_html_template"),
+  ctaUrl: text("cta_url"),
   
   // Timestamps
   startedAt: timestamp("started_at"),

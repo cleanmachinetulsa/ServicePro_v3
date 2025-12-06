@@ -29,11 +29,69 @@ import { eq, and, sql, ne, isNotNull, desc, or } from 'drizzle-orm';
 import { twilioClient } from '../twilioClient';
 import { awardPoints } from '../gamificationService';
 
-// Default SMS template for port recovery
-const DEFAULT_SMS_TEMPLATE = `Hey this is Jody with Clean Machine Auto Detail. We recently upgraded our phone & text system, and there's a small chance we missed a message from you. I'm really sorry if that happened. To make it right, we've added 500 reward points to your account – you can use them toward interior protection, engine bay cleaning, or save them up toward a maintenance detail. Tap here to view options & book: {{bookingUrl}}. Reply STOP to unsubscribe.`;
+// Default SMS template for port recovery (holiday gift-card campaign version)
+const DEFAULT_SMS_TEMPLATE = `Hey {{firstNameOrFallback}}, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed a message from you — I'm really sorry about that. To make it right, I've added 500 reward points to your account good toward protectants or future details. You can check your rewards or book here: {{ctaUrl}} P.S. We now offer digital gift cards – perfect last-minute gifts. Reply STOP to unsubscribe.`;
 
 // Default email subject
-const DEFAULT_EMAIL_SUBJECT = "We may have missed your message – here's 500 points to make it right";
+const DEFAULT_EMAIL_SUBJECT = "We're sorry if we missed you – 500 points added to your Clean Machine account";
+
+// Default CTA URL
+const DEFAULT_CTA_URL = 'https://cleanmachinetulsa.com/book';
+
+// Default email HTML template
+const DEFAULT_EMAIL_HTML_TEMPLATE = `
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+  <div style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 32px 24px; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Clean Machine Auto Detail</h1>
+  </div>
+  
+  <div style="padding: 32px 24px;">
+    <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">
+      Hey{{customerNameGreeting}}!
+    </p>
+    
+    <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 16px;">
+      We recently upgraded our phone & text system at Clean Machine Auto Detail, and there's a small chance we missed a message from you. I'm really sorry if that happened.
+    </p>
+    
+    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+      <div style="font-size: 48px; margin-bottom: 8px;">🎁</div>
+      <h2 style="color: white; margin: 0 0 8px; font-size: 22px; font-weight: 700;">500 Points Added!</h2>
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">
+        Use them toward interior protection, engine bay cleaning, or save them for a maintenance detail.
+      </p>
+    </div>
+    
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="{{ctaUrl}}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: white; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+        Check My Rewards & Book
+      </a>
+    </div>
+    
+    <div style="background-color: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px; padding: 20px; margin: 24px 0;">
+      <h3 style="color: #92400e; margin: 0 0 8px; font-size: 16px; font-weight: 600;">🎄 Perfect Last-Minute Gift!</h3>
+      <p style="color: #92400e; margin: 0; font-size: 14px; line-height: 1.5;">
+        Need a last-minute gift? Our digital gift cards are great for anyone whose car needs some love. Available instantly!
+      </p>
+    </div>
+    
+    <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 24px 0 0;">
+      Thank you for your patience!
+    </p>
+    <p style="color: #374151; font-size: 14px; margin: 8px 0 0;">
+      <strong>Jody</strong><br>
+      Clean Machine Auto Detail
+    </p>
+  </div>
+  
+  <div style="background-color: #f3f4f6; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+    <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+      Clean Machine Auto Detail • Tulsa, OK<br>
+      <a href="{{ctaUrl}}" style="color: #7c3aed;">Visit our website</a>
+    </p>
+  </div>
+</div>
+`;
 
 /**
  * Normalize phone number to E.164 format for deduplication
@@ -222,7 +280,7 @@ export async function createPortRecoveryCampaign(
   // Build target list
   const { targets, stats } = await buildTargetListForPortRecovery(tenantDb, tenantId);
   
-  // Create campaign
+  // Create campaign with all default templates
   const [campaign] = await tenantDb
     .insert(portRecoveryCampaigns)
     .values({
@@ -232,8 +290,12 @@ export async function createPortRecoveryCampaign(
       status: 'draft',
       totalTargets: stats.totalUnique,
       pointsPerCustomer: 500,
+      smsEnabled: true,
+      emailEnabled: true,
       smsTemplate: DEFAULT_SMS_TEMPLATE,
       emailSubject: DEFAULT_EMAIL_SUBJECT,
+      emailHtmlTemplate: DEFAULT_EMAIL_HTML_TEMPLATE,
+      ctaUrl: DEFAULT_CTA_URL,
     })
     .returning();
   
@@ -365,12 +427,45 @@ async function grantPortRecoveryPoints(
 }
 
 /**
+ * Helper to extract first name from full name
+ */
+function getFirstName(fullName: string | null): string {
+  if (!fullName) return '';
+  const firstName = fullName.split(' ')[0];
+  return firstName || '';
+}
+
+/**
+ * Interpolate template variables
+ */
+function interpolateTemplate(
+  template: string,
+  target: PortRecoveryTarget,
+  ctaUrl: string,
+  points: number
+): string {
+  const firstName = getFirstName(target.customerName);
+  const firstNameOrFallback = firstName || 'there';
+  const customerNameGreeting = target.customerName ? ` ${target.customerName}` : '';
+  
+  return template
+    .replace(/\{\{firstNameOrFallback\}\}/g, firstNameOrFallback)
+    .replace(/\{\{customerName\}\}/g, target.customerName || 'Valued Customer')
+    .replace(/\{\{customerNameGreeting\}\}/g, customerNameGreeting)
+    .replace(/\{\{ctaUrl\}\}/g, ctaUrl)
+    .replace(/\{\{bookingUrl\}\}/g, ctaUrl)
+    .replace(/\{\{points\}\}/g, points.toString());
+}
+
+/**
  * Send SMS for a target
  */
 async function sendPortRecoverySms(
   target: PortRecoveryTarget,
   template: string,
-  fromNumber: string
+  fromNumber: string,
+  ctaUrl: string,
+  points: number
 ): Promise<{ success: boolean; twilioSid?: string; error?: string }> {
   if (!target.phone) {
     return { success: false, error: 'No phone number' };
@@ -381,9 +476,7 @@ async function sendPortRecoverySms(
   }
   
   try {
-    // Replace placeholders in template
-    const bookingUrl = 'https://cleanmachinetulsa.com/book';
-    const messageBody = template.replace('{{bookingUrl}}', bookingUrl);
+    const messageBody = interpolateTemplate(template, target, ctaUrl, points);
     
     const message = await twilioClient.messages.create({
       to: target.phone,
@@ -404,14 +497,15 @@ async function sendPortRecoverySms(
 async function sendPortRecoveryEmail(
   target: PortRecoveryTarget,
   subject: string,
-  campaignId: number
+  htmlTemplate: string,
+  ctaUrl: string,
+  points: number
 ): Promise<{ success: boolean; error?: string }> {
   if (!target.email) {
     return { success: false, error: 'No email address' };
   }
   
   try {
-    // Import SendGrid dynamically
     const sgMail = (await import('@sendgrid/mail')).default;
     const apiKey = process.env.SENDGRID_API_KEY;
     
@@ -422,27 +516,19 @@ async function sendPortRecoveryEmail(
     sgMail.setApiKey(apiKey);
     
     const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'info@cleanmachinetulsa.com';
-    const bookingUrl = 'https://cleanmachinetulsa.com/book';
+    
+    const interpolatedSubject = interpolateTemplate(subject, target, ctaUrl, points);
+    const interpolatedHtml = interpolateTemplate(htmlTemplate, target, ctaUrl, points);
+    
+    const customerGreeting = target.customerName ? ` ${target.customerName}` : '';
+    const plainText = `Hey${customerGreeting}!\n\nWe recently upgraded our phone & text system at Clean Machine Auto Detail, and there's a small chance we missed a message from you. I'm really sorry if that happened.\n\nTo make it right, we've added ${points} reward points to your account – you can use them toward interior protection, engine bay cleaning, or save them up toward a maintenance detail.\n\nTap here to view options & book: ${ctaUrl}\n\nP.S. Need a last-minute gift? Our digital gift cards are great for anyone whose car needs some love!\n\nThank you for your patience!\n\nJody\nClean Machine Auto Detail`;
     
     await sgMail.send({
       to: target.email,
       from: fromEmail,
-      subject: subject,
-      text: `Hey${target.customerName ? ` ${target.customerName}` : ''}!\n\nWe recently upgraded our phone & text system at Clean Machine Auto Detail, and there's a small chance we missed a message from you. I'm really sorry if that happened.\n\nTo make it right, we've added 500 reward points to your account – you can use them toward interior protection, engine bay cleaning, or save them up toward a maintenance detail.\n\nTap here to view options & book: ${bookingUrl}\n\nThank you for your patience!\n\nJody\nClean Machine Auto Detail`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #7c3aed;">We May Have Missed Your Message</h2>
-          <p>Hey${target.customerName ? ` ${target.customerName}` : ''}!</p>
-          <p>We recently upgraded our phone & text system at Clean Machine Auto Detail, and there's a small chance we missed a message from you. I'm really sorry if that happened.</p>
-          <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="color: #059669; margin-top: 0;">🎁 500 Points Added!</h3>
-            <p>To make it right, we've added <strong>500 reward points</strong> to your account – you can use them toward interior protection, engine bay cleaning, or save them up toward a maintenance detail.</p>
-          </div>
-          <a href="${bookingUrl}" style="display: inline-block; background-color: #7c3aed; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 0;">View Options & Book</a>
-          <p style="margin-top: 30px;">Thank you for your patience!</p>
-          <p><strong>Jody</strong><br>Clean Machine Auto Detail</p>
-        </div>
-      `,
+      subject: interpolatedSubject,
+      text: plainText,
+      html: interpolatedHtml,
     });
     
     return { success: true };
@@ -505,11 +591,18 @@ export async function runPortRecoveryBatch(
   }
   
   let smsSent = 0;
+  let smsFailed = 0;
   let emailSent = 0;
   let totalPointsGranted = 0;
   let errors = 0;
   
   const fromNumber = process.env.MAIN_PHONE_NUMBER || process.env.TWILIO_TEST_SMS_NUMBER || '';
+  const ctaUrl = campaign.ctaUrl || DEFAULT_CTA_URL;
+  const smsTemplate = campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
+  const emailSubject = campaign.emailSubject || DEFAULT_EMAIL_SUBJECT;
+  const emailHtmlTemplate = campaign.emailHtmlTemplate || DEFAULT_EMAIL_HTML_TEMPLATE;
+  const smsEnabled = campaign.smsEnabled !== false;
+  const emailEnabled = campaign.emailEnabled !== false;
   
   for (const target of targets) {
     const updates: Partial<PortRecoveryTarget> = {
@@ -532,34 +625,50 @@ export async function runPortRecoveryBatch(
       }
     }
     
-    // 2. Send SMS if phone exists
-    if (target.phone && fromNumber) {
+    // Channel priority: SMS-first, email-only-fallback
+    // If target has phone + SMS enabled -> send SMS only
+    // If target has no phone/no consent but has email + email enabled -> send email
+    // Never send both to same person in same run
+    
+    let sentViaSms = false;
+    
+    // 2. Try SMS first if phone exists and SMS is enabled
+    if (smsEnabled && target.phone && fromNumber) {
       const smsResult = await sendPortRecoverySms(
         target,
-        campaign.smsTemplate || DEFAULT_SMS_TEMPLATE,
-        fromNumber
+        smsTemplate,
+        fromNumber,
+        ctaUrl,
+        campaign.pointsPerCustomer
       );
       
       if (smsResult.success) {
         updates.smsStatus = 'sent';
         updates.twilioSid = smsResult.twilioSid;
         smsSent++;
+        sentViaSms = true;
       } else {
         updates.smsStatus = 'failed';
         updates.smsErrorMessage = smsResult.error;
+        smsFailed++;
         errors++;
       }
+    } else if (!smsEnabled) {
+      updates.smsStatus = 'skipped';
+      updates.smsErrorMessage = 'SMS disabled for this campaign';
     } else {
       updates.smsStatus = 'skipped';
       updates.smsErrorMessage = !target.phone ? 'No phone number' : 'No from number configured';
     }
     
-    // 3. Send email if email exists
-    if (target.email) {
+    // 3. Send email only as fallback if SMS wasn't sent successfully
+    if (!sentViaSms && emailEnabled && target.email) {
       const emailResult = await sendPortRecoveryEmail(
         target,
-        campaign.emailSubject || DEFAULT_EMAIL_SUBJECT,
-        campaignId
+        emailSubject,
+        emailHtmlTemplate,
+        ctaUrl,
+        campaign.pointsPerCustomer
       );
       
       if (emailResult.success) {
@@ -569,6 +678,11 @@ export async function runPortRecoveryBatch(
         updates.emailStatus = 'failed';
         updates.emailErrorMessage = emailResult.error;
       }
+    } else if (!emailEnabled) {
+      updates.emailStatus = 'skipped';
+    } else if (sentViaSms) {
+      updates.emailStatus = 'skipped';
+      updates.emailErrorMessage = 'Skipped - SMS sent successfully';
     } else {
       updates.emailStatus = 'skipped';
     }
@@ -580,11 +694,12 @@ export async function runPortRecoveryBatch(
       .where(eq(portRecoveryTargets.id, target.id));
   }
   
-  // Update campaign stats
+  // Update campaign stats including failed counts
   await tenantDb
     .update(portRecoveryCampaigns)
     .set({
       totalSmsSent: sql`${portRecoveryCampaigns.totalSmsSent} + ${smsSent}`,
+      totalSmsFailed: sql`COALESCE(${portRecoveryCampaigns.totalSmsFailed}, 0) + ${smsFailed}`,
       totalEmailSent: sql`${portRecoveryCampaigns.totalEmailSent} + ${emailSent}`,
       totalPointsGranted: sql`${portRecoveryCampaigns.totalPointsGranted} + ${totalPointsGranted}`,
       updatedAt: new Date(),
@@ -650,9 +765,29 @@ export async function sendTestSms(
   }
   
   try {
-    const bookingUrl = 'https://cleanmachinetulsa.com/book';
-    const messageBody = (campaign.smsTemplate || DEFAULT_SMS_TEMPLATE)
-      .replace('{{bookingUrl}}', bookingUrl);
+    const ctaUrl = campaign.ctaUrl || DEFAULT_CTA_URL;
+    const smsTemplate = campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
+    
+    const testTarget: PortRecoveryTarget = {
+      id: 0,
+      campaignId,
+      tenantId: '',
+      customerId: null,
+      phone: ownerPhone,
+      email: null,
+      customerName: 'Test Customer',
+      smsStatus: 'pending',
+      emailStatus: 'pending',
+      pointsGranted: 0,
+      smsErrorMessage: null,
+      emailErrorMessage: null,
+      twilioSid: null,
+      processedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    const messageBody = interpolateTemplate(smsTemplate, testTarget, ctaUrl, campaign.pointsPerCustomer);
     
     await twilioClient.messages.create({
       to: ownerPhone,
@@ -666,6 +801,98 @@ export async function sendTestSms(
     console.error('[PORT RECOVERY] Test SMS failed:', error.message);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Update campaign settings
+ */
+export async function updateCampaign(
+  tenantDb: TenantDb,
+  campaignId: number,
+  updates: {
+    smsTemplate?: string;
+    emailSubject?: string;
+    emailHtmlTemplate?: string;
+    ctaUrl?: string;
+    smsEnabled?: boolean;
+    emailEnabled?: boolean;
+    pointsPerCustomer?: number;
+  }
+): Promise<PortRecoveryCampaign | null> {
+  const [campaign] = await tenantDb
+    .update(portRecoveryCampaigns)
+    .set({
+      ...updates,
+      updatedAt: new Date(),
+    })
+    .where(eq(portRecoveryCampaigns.id, campaignId))
+    .returning();
+  
+  return campaign || null;
+}
+
+/**
+ * Get recent run history for display in admin panel
+ */
+export async function getRecentRunHistory(
+  tenantDb: TenantDb,
+  tenantId: string,
+  limit: number = 5
+): Promise<Array<{
+  id: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  totalTargets: number;
+  totalSent: number;
+  totalFailed: number;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+}>> {
+  const campaigns = await tenantDb
+    .select()
+    .from(portRecoveryCampaigns)
+    .where(eq(portRecoveryCampaigns.tenantId, tenantId))
+    .orderBy(desc(portRecoveryCampaigns.createdAt))
+    .limit(limit);
+  
+  return campaigns.map(c => ({
+    id: c.id.toString(),
+    startedAt: c.startedAt?.toISOString() || c.createdAt?.toISOString() || null,
+    finishedAt: c.completedAt?.toISOString() || null,
+    totalTargets: c.totalTargets || 0,
+    totalSent: (c.totalSmsSent || 0) + (c.totalEmailSent || 0),
+    totalFailed: c.totalSmsFailed || 0,
+    status: mapStatus(c.status),
+  }));
+}
+
+function mapStatus(status: string): 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' {
+  switch (status) {
+    case 'draft': return 'PENDING';
+    case 'scheduled': return 'PENDING';
+    case 'running': return 'RUNNING';
+    case 'completed': return 'COMPLETED';
+    case 'cancelled': return 'FAILED';
+    default: return 'PENDING';
+  }
+}
+
+/**
+ * Get or create the current campaign configuration for a tenant
+ */
+export async function getOrCreateCampaignConfig(
+  tenantDb: TenantDb,
+  tenantId: string,
+  userId: number
+): Promise<PortRecoveryCampaign> {
+  const campaigns = await getCampaigns(tenantDb, tenantId);
+  const draftCampaign = campaigns.find(c => c.status === 'draft');
+  
+  if (draftCampaign) {
+    return draftCampaign;
+  }
+  
+  const { campaign } = await createPortRecoveryCampaign(tenantDb, tenantId, userId);
+  return campaign;
 }
 
 /**
