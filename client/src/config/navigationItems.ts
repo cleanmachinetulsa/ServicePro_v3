@@ -245,6 +245,12 @@ export const navigationItems: NavigationItem[] = [
     icon: Wallet,
     path: '/admin/usage-dashboard',
   },
+  {
+    id: 'billing-usage',
+    label: 'Billing & Usage',
+    icon: Activity,
+    path: '/admin/billing-usage',
+  },
 
   // MULTI-TENANT MANAGEMENT (Owner Only)
   {
@@ -288,6 +294,13 @@ export const navigationItems: NavigationItem[] = [
     label: 'IVR Configurator',
     icon: PhoneCall,
     path: '/admin/ivr-config',
+    badge: 'Owner',
+  },
+  {
+    id: 'system-usage',
+    label: 'System Usage',
+    icon: Activity,
+    path: '/admin/system-usage',
     badge: 'Owner',
   },
   {
