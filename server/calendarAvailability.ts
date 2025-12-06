@@ -26,6 +26,12 @@ interface CalendarDay {
   timeSlots?: TimeSlot[];
 }
 
+export interface AvailabilityResult {
+  days: CalendarDay[];
+  usedSource: 'google_calendar' | 'internal_fallback';
+  error?: string;
+}
+
 /**
  * Format hour and minute as 12-hour time string (e.g., "9:00 AM")
  */
@@ -112,16 +118,26 @@ function isWithinBusinessHours(
 }
 
 /**
- * Fetch Google Calendar events for date range
+ * Result type for getCalendarEvents - explicitly communicates success/failure
  */
-async function getCalendarEvents(startDate: Date, endDate: Date): Promise<calendar_v3.Schema$Event[]> {
+interface CalendarEventsResult {
+  success: boolean;
+  events: calendar_v3.Schema$Event[];
+  error?: string;
+}
+
+/**
+ * Fetch Google Calendar events for date range
+ * Returns a result object instead of throwing - caller decides how to handle failures
+ */
+async function getCalendarEvents(startDate: Date, endDate: Date): Promise<CalendarEventsResult> {
   try {
     const calendarService = await getGoogleCalendarClient();
     
     if (!calendarService) {
       console.log('[CALENDAR AVAILABILITY] Calendar service not initialized');
       await criticalMonitor.reportFailure('Google Calendar', 'Calendar service not initialized');
-      return [];
+      return { success: false, events: [], error: 'Calendar service not initialized' };
     }
 
     // Use configured calendar ID for production consistency
@@ -136,11 +152,11 @@ async function getCalendarEvents(startDate: Date, endDate: Date): Promise<calend
     });
 
     criticalMonitor.reportSuccess('Google Calendar');
-    return response.data.items || [];
+    return { success: true, events: response.data.items || [] };
   } catch (error: any) {
     console.error('[CALENDAR AVAILABILITY] Error fetching calendar events:', error);
     await criticalMonitor.reportFailure('Google Calendar', error.message || 'Failed to fetch events');
-    return [];
+    return { success: false, events: [], error: error.message || 'Failed to fetch events' };
   }
 }
 
@@ -229,31 +245,88 @@ function generateDayTimeSlots(
 }
 
 /**
- * Get calendar availability for a date range
+ * Generate internal fallback slots based on business hours (no Google Calendar)
+ */
+function generateInternalFallbackDays(
+  startDate: Date,
+  endDate: Date,
+  serviceDurationMinutes: number,
+  businessHours: { start: string; end: string; lunchStart: string; lunchEnd: string; hasLunchBreak: boolean }
+): CalendarDay[] {
+  const calendarDays: CalendarDay[] = [];
+  let currentDate = startDate;
+
+  while (isBefore(currentDate, addDays(endDate, 1))) {
+    if (currentDate.getDay() === 0) {
+      calendarDays.push({
+        date: format(currentDate, 'yyyy-MM-dd'),
+        isAvailable: false,
+        reason: 'closed',
+      });
+      currentDate = addDays(currentDate, 1);
+      continue;
+    }
+
+    const timeSlots = generateDayTimeSlots(
+      currentDate,
+      serviceDurationMinutes,
+      businessHours,
+      []
+    );
+
+    const hasAvailableSlots = timeSlots.some(slot => slot.available);
+
+    calendarDays.push({
+      date: format(currentDate, 'yyyy-MM-dd'),
+      isAvailable: hasAvailableSlots,
+      reason: hasAvailableSlots ? undefined : 'fully_booked',
+      timeSlots,
+    });
+
+    currentDate = addDays(currentDate, 1);
+  }
+
+  return calendarDays;
+}
+
+/**
+ * Get calendar availability for a date range - with graceful fallback
+ * Never throws - always returns a valid result
  */
 export async function getCalendarAvailability(
   tenantDb: TenantDb,
   request: AvailabilityRequest
-): Promise<CalendarDay[]> {
+): Promise<AvailabilityResult> {
+  const startDate = parse(request.startDate, 'yyyy-MM-dd', new Date());
+  const endDate = parse(request.endDate, 'yyyy-MM-dd', new Date());
+
+  let businessHours: { start: string; end: string; lunchStart: string; lunchEnd: string; hasLunchBreak: boolean };
+  
   try {
-    const startDate = parse(request.startDate, 'yyyy-MM-dd', new Date());
-    const endDate = parse(request.endDate, 'yyyy-MM-dd', new Date());
+    businessHours = await getBusinessHours(tenantDb);
+  } catch (err) {
+    console.warn('[CALENDAR AVAILABILITY] Failed to get business hours, using defaults');
+    businessHours = {
+      start: '9:00 AM',
+      end: '5:00 PM',
+      lunchStart: '12:00 PM',
+      lunchEnd: '1:00 PM',
+      hasLunchBreak: true,
+    };
+  }
 
-    // Get business hours
-    const businessHours = await getBusinessHours(tenantDb);
+  // Try to get events from Google Calendar
+  const calendarResult = await getCalendarEvents(
+    startOfDay(startDate),
+    endOfDay(endDate)
+  );
 
-    // Fetch calendar events
-    const events = await getCalendarEvents(
-      startOfDay(startDate),
-      endOfDay(endDate)
-    );
-
-    // Generate availability for each day
+  // If Google Calendar succeeded, use it
+  if (calendarResult.success) {
     const calendarDays: CalendarDay[] = [];
     let currentDate = startDate;
 
     while (isBefore(currentDate, addDays(endDate, 1))) {
-      // Skip Sundays (0 = Sunday)
       if (currentDate.getDay() === 0) {
         calendarDays.push({
           date: format(currentDate, 'yyyy-MM-dd'),
@@ -264,15 +337,13 @@ export async function getCalendarAvailability(
         continue;
       }
 
-      // Generate time slots for the day
       const timeSlots = generateDayTimeSlots(
         currentDate,
         request.serviceDurationMinutes,
         businessHours,
-        events
+        calendarResult.events
       );
 
-      // Check if any slots are available
       const hasAvailableSlots = timeSlots.some(slot => slot.available);
 
       calendarDays.push({
@@ -285,11 +356,41 @@ export async function getCalendarAvailability(
       currentDate = addDays(currentDate, 1);
     }
 
-    return calendarDays;
-  } catch (error) {
-    console.error('[CALENDAR AVAILABILITY] Error generating availability:', error);
-    throw new Error('Failed to generate calendar availability');
+    return {
+      days: calendarDays,
+      usedSource: 'google_calendar',
+    };
   }
+
+  // Google Calendar failed - use internal fallback
+  {
+    console.warn('[CALENDAR AVAILABILITY] Google Calendar unavailable, using internal fallback:', calendarResult.error);
+  }
+
+  console.log('[CALENDAR AVAILABILITY] Using internal fallback availability');
+  const fallbackDays = generateInternalFallbackDays(
+    startDate,
+    endDate,
+    request.serviceDurationMinutes,
+    businessHours
+  );
+
+  return {
+    days: fallbackDays,
+    usedSource: 'internal_fallback',
+    error: 'google_calendar_unavailable',
+  };
+}
+
+/**
+ * Legacy function for backward compatibility - returns CalendarDay[] directly
+ */
+export async function getCalendarAvailabilityLegacy(
+  tenantDb: TenantDb,
+  request: AvailabilityRequest
+): Promise<CalendarDay[]> {
+  const result = await getCalendarAvailability(tenantDb, request);
+  return result.days;
 }
 
 /**
@@ -309,10 +410,13 @@ export async function checkDatesAvailable(
     const minDate = new Date(Math.min(...parsedDates.map(d => d.getTime())));
     const maxDate = new Date(Math.max(...parsedDates.map(d => d.getTime())));
 
-    const events = await getCalendarEvents(
+    const calendarResult = await getCalendarEvents(
       startOfDay(minDate),
       endOfDay(maxDate)
     );
+
+    // Use events if available, otherwise use empty array (internal fallback)
+    const events = calendarResult.success ? calendarResult.events : [];
 
     // Check each date
     for (const dateStr of dates) {

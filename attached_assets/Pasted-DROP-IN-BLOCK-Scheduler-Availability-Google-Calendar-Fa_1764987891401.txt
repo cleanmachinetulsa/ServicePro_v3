@@ -1,0 +1,375 @@
+DROP-IN BLOCK: Scheduler Availability + Google Calendar Fallback Fix
+
+Goal:
+Make the booking calendar reliable:
+
+If Google Calendar is configured → use it for availability.
+
+If it’s not configured or fails → gracefully fall back to internal business hours / rule-based availability instead of 500-ing.
+
+Improve frontend UX (loading + error states) so customers never hit a dead end.
+
+0) High-Level Requirements
+
+No more hard failures in the Date/Time step.
+
+Availability API must:
+
+Be tenant-aware.
+
+Use Google Calendar events only if that tenant has valid GCal config.
+
+Fall back to internal availability if:
+
+No GCal config, or
+
+GCal call fails / times out / token invalid.
+
+Frontend booking step (used by:
+
+Main booking flow
+
+Loyalty “Use on my next booking” flow)
+must:
+
+Show a clear loading state.
+
+Show a friendly message + retry button on errors.
+
+Still let the user move forward when fallback slots exist.
+
+1) Backend: Availability Service Harden & Fallback
+
+Let Replit locate the files, then apply these changes:
+
+Find the availability service & routes
+
+Search for things like:
+
+availabilityService
+
+getAvailableSlots
+
+GET /api/availability
+
+GET /api/public/availability
+
+Likely files:
+
+server/services/availabilityService.ts
+
+server/routes.booking.ts or server/routes.publicBooking.ts
+
+Define a clear interface for availability
+
+In server/services/availabilityService.ts (or the equivalent), make sure you have something like:
+
+// Pseudo-interface – adapt to existing code
+export interface AvailabilityQuery {
+  tenantId: string;
+  dateFrom: Date;
+  dateTo: Date;
+  timezone: string;
+}
+
+export interface TimeSlot {
+  start: Date;
+  end: Date;
+  source: 'internal' | 'google_calendar';
+}
+
+export interface AvailabilityResult {
+  slots: TimeSlot[];
+  usedSource: 'google_calendar' | 'internal_fallback';
+  error?: string; // only for logging / debug
+}
+
+
+Implement “smart” availability with GCal + fallback
+
+Create or update a single function, e.g.:
+
+export async function getTenantAvailability(
+  tenantDb: ReturnType<typeof wrapTenantDb>,
+  query: AvailabilityQuery
+): Promise<AvailabilityResult> {
+  // 1) Load tenant booking / calendar config
+  const settings = await tenantDb.bookingSettings.findFirst(); // or whatever table you use
+
+  const useGoogleCalendar =
+    settings?.googleCalendarEnabled && !!settings?.googleCalendarCalendarId;
+
+  // 2) If GCal is enabled, try it first
+  if (useGoogleCalendar) {
+    try {
+      const gcalSlots = await getGoogleCalendarSlotsForTenant(
+        tenantDb,
+        query,
+        settings
+      );
+
+      if (gcalSlots && gcalSlots.length > 0) {
+        return {
+          slots: gcalSlots.map((s) => ({ ...s, source: 'google_calendar' as const })),
+          usedSource: 'google_calendar',
+        };
+      }
+
+      // No slots returned from calendar – fall through to fallback
+    } catch (err) {
+      console.error('[Availability] Google Calendar error for tenant', {
+        tenantId: query.tenantId,
+        error: err,
+      });
+      // fall through to fallback, do NOT throw
+    }
+  }
+
+  // 3) Fallback: internal rules / business hours
+  const internalSlots = await getInternalRuleBasedSlots(tenantDb, query);
+
+  return {
+    slots: internalSlots.map((s) => ({ ...s, source: 'internal' as const })),
+    usedSource: 'internal_fallback',
+  };
+}
+
+
+getGoogleCalendarSlotsForTenant:
+
+Wrap all GCal calls in try/catch.
+
+Enforce a timeout (e.g. 3–5 seconds) if you have a util for that.
+
+Never throw up to the route layer; return cleanly.
+
+getInternalRuleBasedSlots:
+
+Use business hours, service duration, and simple rules:
+
+E.g. 9–5, 1 job at a time, 60–90 minutes per job, etc.
+
+If no config is found, you can:
+
+Default to a safe window (e.g. next 7 days, 9–5),
+
+Or return [] but with usedSource: 'internal_fallback'.
+
+Update the availability route to use the new function
+
+In the route file (e.g. server/routes.publicBooking.ts):
+
+router.get('/api/public/availability', async (req, res) => {
+  try {
+    const { startDate, endDate, timezone } = req.query;
+    const tenantInfo = req.tenant; // however you’re passing tenant info
+    const tenantDb = wrapTenantDb(tenantInfo);
+
+    const query: AvailabilityQuery = {
+      tenantId: tenantInfo.id,
+      dateFrom: new Date(String(startDate)),
+      dateTo: new Date(String(endDate)),
+      timezone: String(timezone || tenantInfo.timezone || 'America/Chicago'),
+    };
+
+    const result = await getTenantAvailability(tenantDb, query);
+
+    res.json({
+      success: true,
+      slots: result.slots,
+      usedSource: result.usedSource,
+    });
+  } catch (err) {
+    console.error('[Availability] Fatal error', err);
+    res.status(200).json({
+      success: false,
+      slots: [],
+      usedSource: 'internal_fallback',
+      error: 'availability_failed',
+    });
+  }
+});
+
+
+Key point: even on failure, respond with 200 and { success: false, slots: [] } instead of a 500. The frontend will choose how to react.
+
+2) Frontend: Date/Time Step UX Upgrade
+
+Goal: Never leave the user stuck. Always show something understandable.
+
+Find the booking date component
+
+Search:
+
+BookingDateStep
+
+AppointmentDateStep
+
+StepDate
+
+Anything that calls /api/public/availability
+
+Likely file(s):
+
+client/src/components/booking/BookingDateStep.tsx
+
+client/src/pages/BookingFlow.tsx
+
+Add explicit states: loading / error / empty
+
+Inside the date step component:
+
+Track:
+
+isLoading
+
+loadError (string | null)
+
+slots (array)
+
+When calling the availability endpoint:
+
+setIsLoading(true);
+setLoadError(null);
+
+try {
+  const res = await fetch(
+    `/api/public/availability?startDate=${start}&endDate=${end}&timezone=${timezone}`
+  );
+  const data = await res.json();
+
+  if (!res.ok || data.success === false) {
+    setSlots([]);
+    setLoadError(
+      'We had trouble loading available times. You can try again, or pick a date and we’ll follow up to confirm.'
+    );
+  } else {
+    setSlots(data.slots || []);
+  }
+} catch (err) {
+  console.error('Availability error', err);
+  setSlots([]);
+  setLoadError(
+    'We had trouble loading available times. You can try again, or pick a date and we’ll follow up to confirm.'
+  );
+} finally {
+  setIsLoading(false);
+}
+
+
+Visual states (match your new V2 style)
+
+While isLoading:
+
+Show skeleton chips or a “Loading times…” shimmer.
+
+When loadError is set:
+
+Show a small banner:
+
+{loadError && (
+  <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
+    {loadError}
+    <button
+      type="button"
+      onClick={reloadAvailability}
+      className="ml-2 text-amber-200 underline"
+    >
+      Try again
+    </button>
+  </div>
+)}
+
+
+When !isLoading && slots.length === 0 && !loadError:
+
+Show something like:
+
+<div className="rounded-xl border border-slate-700/60 bg-slate-900/70 px-3 py-4 text-sm text-slate-200">
+  We don&apos;t see any live time slots for those days.
+  <br />
+  Please pick a date that works best for you and we&apos;ll confirm the
+  closest available time by text.
+</div>
+
+
+In that scenario, allow user to:
+
+Pick a date only (no specific time),
+
+Or submit a “preferred window” (morning / afternoon) via a dropdown.
+
+Store their preference with the appointment, so you can finalize manually.
+
+Make sure Loyalty Journey uses this same component
+
+The loyalty “Use on my next booking” flow should reuse the same date step component so you fix it once, globally.
+
+Confirm the route used in the test (/rewards → booking) points to the same BookingDateStep component or share a hook.
+
+3) Clean Machine Defaults (Safety Net)
+
+Because you’re the flagship tenant, we want to guarantee you always have some bookable slots.
+
+Ensure Clean Machine has internal hours configured
+
+In your booking settings / business settings table (whatever you use for service hours), ensure:
+
+workday_start and workday_end are set (e.g. 9:00–5:30).
+
+days_of_week_open includes the days you actually work.
+
+Internal fallback slots
+
+In getInternalRuleBasedSlots:
+
+If the DB has no rows or weird values:
+
+Default to something like:
+
+Mon–Sat (or whatever you actually want),
+
+next 7–14 days,
+
+2–3 slots/day.
+
+This is just a backup so the UI never ends up with nothing in the worst case.
+
+4) What to Tell Replit Agent
+
+You can paste something like this as the actual prompt:
+
+Use docs/MASTER_PLAN_v3.6_SERVICEPRO.md to respect multi-tenant rules.
+Fix the booking calendar availability so customers can always pick dates/times, even if Google Calendar is not configured or fails.
+
+Requirements:
+
+Implement a getTenantAvailability helper that:
+
+Loads tenant booking settings.
+
+Uses Google Calendar only if enabled and configured, with try/catch and timeout.
+
+Falls back to internal rule-based availability if GCal is unavailable or returns no slots.
+
+Update the public availability route to:
+
+Always return 200 with { success, slots, usedSource } (no more 500s).
+
+Update the Date/Time booking step (including loyalty redemption booking) to:
+
+Show explicit loading and error states.
+
+Never hard-fail the booking flow.
+
+Allow a fallback where the user can request a date (and optional time window) even if live slots are empty.
+
+Make sure the Clean Machine root tenant has safe fallback defaults so the calendar is usable even with no Google Calendar configured.
+
+Run end-to-end tests for:
+
+Normal booking.
+
+Loyalty “Use on my next booking” flow.
+
+Scenario where GCal is missing / misconfigured.
