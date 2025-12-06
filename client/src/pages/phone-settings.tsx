@@ -11,12 +11,21 @@ import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer, Settings, Upload } from 'lucide-react';
+import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, Info, AlertCircle, Loader2, Timer, Settings, Upload, Bot, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import CommunicationsNav from '@/components/CommunicationsNav';
 import { CustomRingtoneInstructions } from '@/components/phone/CustomRingtoneInstructions';
+import {
+  useTelephonySettings,
+  type TelephonyMode,
+  TELEPHONY_MODE_LABELS,
+  TELEPHONY_MODE_DESCRIPTIONS,
+} from '@/hooks/useTelephonySettings';
 
 interface PhoneLine {
   id: number;
@@ -56,6 +65,20 @@ interface LinesResponse {
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+const MODE_ICONS: Record<TelephonyMode, any> = {
+  FORWARD_ALL_CALLS: PhoneForwarded,
+  AI_FIRST: Bot,
+  AI_ONLY: Bot,
+  TEXT_ONLY_BUSINESS: MessageSquare,
+};
+
+const MODE_BADGES: Record<TelephonyMode, { text: string; variant: 'default' | 'secondary' | 'outline' }> = {
+  FORWARD_ALL_CALLS: { text: 'Simple', variant: 'outline' },
+  AI_FIRST: { text: 'Recommended', variant: 'default' },
+  AI_ONLY: { text: 'Automated', variant: 'secondary' },
+  TEXT_ONLY_BUSINESS: { text: 'SMS Focus', variant: 'secondary' },
+};
+
 export default function PhoneSettings() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -63,6 +86,47 @@ export default function PhoneSettings() {
   const [showLineConfigModal, setShowLineConfigModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<PhoneSchedule | null>(null);
+
+  // Telephony mode selector state
+  const {
+    settings: telephonySettings,
+    isLoading: telephonyLoading,
+    updateSettings: updateTelephonySettings,
+    isUpdating: telephonyUpdating,
+  } = useTelephonySettings();
+  
+  const [selectedTelephonyMode, setSelectedTelephonyMode] = useState<TelephonyMode>('AI_FIRST');
+  const [telephonyForwardingNumber, setTelephonyForwardingNumber] = useState('');
+  const [allowVoicemailInTextOnly, setAllowVoicemailInTextOnly] = useState(false);
+  const [hasTelephonyChanges, setHasTelephonyChanges] = useState(false);
+  
+  // Sync telephony settings when loaded
+  useEffect(() => {
+    if (telephonySettings) {
+      setSelectedTelephonyMode(telephonySettings.telephonyMode);
+      setTelephonyForwardingNumber(telephonySettings.forwardingNumber || '');
+      setAllowVoicemailInTextOnly(telephonySettings.allowVoicemailInTextOnly);
+    }
+  }, [telephonySettings]);
+  
+  // Track telephony changes
+  useEffect(() => {
+    if (telephonySettings) {
+      const modeChanged = selectedTelephonyMode !== telephonySettings.telephonyMode;
+      const numberChanged = telephonyForwardingNumber !== (telephonySettings.forwardingNumber || '');
+      const voicemailChanged = allowVoicemailInTextOnly !== telephonySettings.allowVoicemailInTextOnly;
+      setHasTelephonyChanges(modeChanged || numberChanged || voicemailChanged);
+    }
+  }, [selectedTelephonyMode, telephonyForwardingNumber, allowVoicemailInTextOnly, telephonySettings]);
+  
+  const handleSaveTelephonyMode = () => {
+    updateTelephonySettings({
+      telephonyMode: selectedTelephonyMode,
+      forwardingNumber: telephonyForwardingNumber || null,
+      allowVoicemailInTextOnly,
+    });
+    setHasTelephonyChanges(false);
+  };
 
   // Fetch phone lines with schedules
   const { data: linesData, isLoading } = useQuery<LinesResponse>({
@@ -602,6 +666,174 @@ export default function PhoneSettings() {
             Manage your business phone lines, call forwarding, and business hours schedules
           </p>
         </div>
+
+        {/* Call Handling Mode Selector */}
+        <Card className="mb-8" data-testid="card-call-handling-mode">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-primary" />
+                  Call Handling Mode
+                </CardTitle>
+                <CardDescription>
+                  Choose how your business phone handles incoming calls
+                </CardDescription>
+              </div>
+              <Button
+                onClick={handleSaveTelephonyMode}
+                disabled={!hasTelephonyChanges || telephonyUpdating}
+                size="sm"
+                data-testid="button-save-telephony-mode"
+              >
+                {telephonyUpdating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Mode
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {telephonyLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <RadioGroup
+                  value={selectedTelephonyMode}
+                  onValueChange={(value) => setSelectedTelephonyMode(value as TelephonyMode)}
+                  className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+                  data-testid="radio-telephony-mode"
+                >
+                  {(['FORWARD_ALL_CALLS', 'AI_FIRST', 'AI_ONLY', 'TEXT_ONLY_BUSINESS'] as TelephonyMode[]).map(
+                    (mode) => {
+                      const Icon = MODE_ICONS[mode];
+                      const badge = MODE_BADGES[mode];
+                      const isSelected = selectedTelephonyMode === mode;
+
+                      return (
+                        <div
+                          key={mode}
+                          className={`relative flex items-start gap-3 p-4 rounded-lg border-2 transition-all cursor-pointer ${
+                            isSelected
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                          onClick={() => setSelectedTelephonyMode(mode)}
+                          data-testid={`mode-option-${mode.toLowerCase()}`}
+                        >
+                          <RadioGroupItem
+                            value={mode}
+                            id={`telephony-${mode}`}
+                            className="mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Icon className="h-4 w-4 text-primary shrink-0" />
+                              <Label
+                                htmlFor={`telephony-${mode}`}
+                                className="text-sm font-medium cursor-pointer"
+                              >
+                                {TELEPHONY_MODE_LABELS[mode]}
+                              </Label>
+                              <Badge variant={badge.variant} className="text-xs">{badge.text}</Badge>
+                              {isSelected && (
+                                <CheckCircle2 className="h-4 w-4 text-primary ml-auto shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {TELEPHONY_MODE_DESCRIPTIONS[mode]}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </RadioGroup>
+
+                {selectedTelephonyMode === 'FORWARD_ALL_CALLS' && (
+                  <div className="mt-4 p-4 bg-muted/50 rounded-lg space-y-3">
+                    <Label htmlFor="telephonyForwardingNumber" className="text-sm font-medium">
+                      Forwarding Phone Number
+                    </Label>
+                    <Input
+                      id="telephonyForwardingNumber"
+                      type="tel"
+                      placeholder="+1 (555) 123-4567"
+                      value={telephonyForwardingNumber}
+                      onChange={(e) => setTelephonyForwardingNumber(e.target.value)}
+                      className="max-w-md"
+                      data-testid="input-telephony-forwarding-number"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the phone number where calls should be forwarded
+                    </p>
+                    {!telephonyForwardingNumber && (
+                      <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertDescription>
+                          A forwarding number is required. Without it, calls will fall back to AI mode.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                )}
+
+                {selectedTelephonyMode === 'TEXT_ONLY_BUSINESS' && (
+                  <div className="mt-4 p-4 bg-muted/50 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="allowVoicemailTextOnly" className="text-sm font-medium">
+                          Allow voicemail backup
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Let callers leave a voicemail after your text-only message
+                        </p>
+                      </div>
+                      <Switch
+                        id="allowVoicemailTextOnly"
+                        checked={allowVoicemailInTextOnly}
+                        onCheckedChange={setAllowVoicemailInTextOnly}
+                        data-testid="switch-allow-voicemail"
+                      />
+                    </div>
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertDescription>
+                        Callers hear a brief message and automatically receive an SMS with your booking link.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
+                {telephonySettings && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span>Current mode:</span>
+                      <Badge variant="outline">
+                        {TELEPHONY_MODE_LABELS[telephonySettings.telephonyMode]}
+                      </Badge>
+                      {telephonySettings.ivrMode && (
+                        <>
+                          <span className="hidden sm:inline">|</span>
+                          <span className="hidden sm:inline">IVR: <span className="capitalize">{telephonySettings.ivrMode}</span></span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Phone Lines Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">

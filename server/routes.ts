@@ -23,6 +23,7 @@ import { registerAdminReferralStatsRoutes } from './routes.adminReferralStats';
 import { registerPublicCustomerLookupRoutes } from './routes.publicCustomerLookup';
 import { registerAdminTenantRoutes } from './routes.adminTenants';
 import { registerAdminPhoneConfigRoutes } from './routes.adminPhoneConfig';
+import { registerTelephonySettingsRoutes } from './routes.telephonySettings';
 import { registerAdminConciergeSetupRoutes } from './routes.adminConciergeSetup';
 import { registerAdminIvrRoutes } from './routes.adminIvr';
 import adminTenantReadinessRouter from './routes/adminTenantReadinessRouter';
@@ -3000,6 +3001,7 @@ Follow up with this lead to set up their 14-day trial!
   registerAdminReferralStatsRoutes(app);
   registerAdminTenantRoutes(app);
   registerAdminPhoneConfigRoutes(app);
+  registerTelephonySettingsRoutes(app);
   registerAdminConciergeSetupRoutes(app);
   registerAdminIvrRoutes(app);
   app.use(adminTenantReadinessRouter);

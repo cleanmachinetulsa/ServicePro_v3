@@ -28,7 +28,7 @@ import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
 import { resolveTenantFromInbound } from './services/tenantCommRouter';
-import { tenantConfig } from '../shared/schema';
+import { tenantConfig, type TelephonyMode } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 import { 
   buildMainMenuTwiml, 
@@ -37,6 +37,7 @@ import {
 } from './services/ivrHelper';
 import { getOrCreateDefaultMenuForTenant } from './services/ivrConfigService';
 import { handleAiVoiceRequest } from './services/aiVoiceSession';
+import { sendSMS } from './notifications';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -75,10 +76,18 @@ async function tenantResolverForTwilio(req: Request, res: Response, next: NextFu
 /**
  * Canonical Inbound Voice Handler
  * 
- * Phase 2.3: Branches on ivrMode to provide different call experiences
+ * Phase 5: Branches on telephonyMode first, then ivrMode
+ * 
+ * Telephony Modes (routing strategy):
+ * - 'FORWARD_ALL_CALLS': Ring owner's phone directly, voicemail on no answer
+ * - 'AI_FIRST': AI/IVR answers first, forwards to human when needed (default)
+ * - 'AI_ONLY': AI handles everything, no human forwarding
+ * - 'TEXT_ONLY_BUSINESS': Play message, send SMS, no human or AI voice interaction
+ * 
+ * IVR Modes (within AI_FIRST/AI_ONLY):
  * - 'simple': Direct SIP forward (legacy behavior)
  * - 'ivr': Interactive voice menu
- * - 'ai-voice': AI-powered voice agent (future, falls back to simple for now)
+ * - 'ai-voice': AI-powered voice agent
  */
 async function handleIncomingVoice(req: Request, res: Response) {
   const response = new VoiceResponse();
@@ -91,21 +100,25 @@ async function handleIncomingVoice(req: Request, res: Response) {
     
     console.log(`[CANONICAL VOICE] Incoming call from ${fromNumber} to ${toNumber}, CallSid: ${callSid}, Tenant: ${tenantId}`);
     
-    // ✅ Phase 2.2: Get phone config from database (attached by middleware)
     const phoneConfig = (req as any).phoneConfig;
+    const telephonyMode = (phoneConfig?.telephonyMode as TelephonyMode) || 'AI_FIRST';
     const ivrMode = phoneConfig?.ivrMode || 'simple';
     
-    console.log(`[CANONICAL VOICE] tenant=${tenantId}, ivrMode=${ivrMode}`);
+    console.log(`[CANONICAL VOICE] tenant=${tenantId}, telephonyMode=${telephonyMode}, ivrMode=${ivrMode}`);
     
-    // ✅ Phase 2.3/Phase 4: Branch on IVR mode
-    if (ivrMode === 'ivr') {
-      return handleIvrMode(req, res, tenantId, phoneConfig);
-    } else if (ivrMode === 'ai-voice') {
-      // ✅ Phase 4: AI Voice mode - delegate to AI voice handler
-      return handleAiVoiceMode(req, res, tenantId, phoneConfig);
-    } else {
-      // Default: simple mode (direct SIP forward)
-      return handleSimpleMode(req, res, tenantId, phoneConfig, fromNumber);
+    switch (telephonyMode) {
+      case 'FORWARD_ALL_CALLS':
+        return handleForwardAllCalls(req, res, tenantId, phoneConfig, fromNumber);
+        
+      case 'TEXT_ONLY_BUSINESS':
+        return handleTextOnlyBusiness(req, res, tenantId, phoneConfig, fromNumber, toNumber);
+        
+      case 'AI_ONLY':
+        return handleAiOnly(req, res, tenantId, phoneConfig, ivrMode);
+        
+      case 'AI_FIRST':
+      default:
+        return handleAiFirst(req, res, tenantId, phoneConfig, ivrMode, fromNumber);
     }
     
   } catch (error) {
@@ -114,6 +127,150 @@ async function handleIncomingVoice(req: Request, res: Response) {
     response.hangup();
     res.type('text/xml');
     res.send(response.toString());
+  }
+}
+
+/**
+ * Handle FORWARD_ALL_CALLS mode: Ring owner's phone directly
+ * If no answer, falls back to voicemail
+ */
+async function handleForwardAllCalls(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any,
+  fromNumber: string
+) {
+  const response = new VoiceResponse();
+  const forwardingNumber = phoneConfig?.forwardingNumber;
+  const ringDuration = phoneConfig?.ringDuration || 20;
+  
+  console.log(`[CANONICAL VOICE] mode=FORWARD_ALL_CALLS, tenant=${tenantId}, forwardTo=${forwardingNumber ? '***' : 'none'}`);
+  
+  if (!forwardingNumber) {
+    console.log(`[CANONICAL VOICE] No forwarding number configured, falling back to AI_FIRST`);
+    return handleAiFirst(req, res, tenantId, phoneConfig, phoneConfig?.ivrMode || 'simple', fromNumber);
+  }
+  
+  response.say({ voice: 'alice' }, 'Please hold while we connect you.');
+  
+  const dial = response.dial({
+    callerId: fromNumber,
+    timeout: ringDuration,
+    action: '/twilio/voice/voicemail',
+  });
+  
+  dial.number(forwardingNumber);
+  
+  res.type('text/xml');
+  res.send(response.toString());
+}
+
+/**
+ * Handle TEXT_ONLY_BUSINESS mode: Play message, send SMS, optionally allow voicemail
+ * Callers get a quick message and a text with a booking link
+ */
+async function handleTextOnlyBusiness(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any,
+  fromNumber: string,
+  toNumber: string
+) {
+  const response = new VoiceResponse();
+  const allowVoicemail = phoneConfig?.allowVoicemailInTextOnly || false;
+  
+  console.log(`[CANONICAL VOICE] mode=TEXT_ONLY_BUSINESS, tenant=${tenantId}, allowVoicemail=${allowVoicemail}`);
+  
+  const tenantConfigData = await db
+    .select()
+    .from(tenantConfig)
+    .where(eq(tenantConfig.tenantId, tenantId))
+    .limit(1);
+  
+  const businessName = tenantConfigData[0]?.businessName || 'Our Business';
+  const subdomain = tenantConfigData[0]?.subdomain;
+  const bookingUrl = subdomain 
+    ? `https://${subdomain}.serviceproapp.com/site/${subdomain}` 
+    : 'our website';
+  
+  response.say(
+    { voice: 'alice' },
+    `Thanks for calling ${businessName}. We handle everything by text message for faster service. We just sent you a link. Please check your messages. Goodbye!`
+  );
+  
+  if (allowVoicemail) {
+    response.say({ voice: 'alice' }, 'If you prefer, you can leave a voicemail after the tone.');
+    response.record({
+      action: '/twilio/voice/voicemail-saved',
+      method: 'POST',
+      maxLength: 120,
+      timeout: 5,
+      trim: 'trim-silence',
+      transcribe: true,
+      transcribeCallback: '/twilio/voice/voicemail-transcribed',
+    });
+  }
+  
+  response.hangup();
+  
+  try {
+    const smsContent = `Hey! This is ${businessName}. We handle everything by text for faster service. Reply here or tap this link to book: ${bookingUrl}`;
+    
+    await sendSMS(req.tenantDb!, fromNumber, smsContent);
+    
+    console.log(`[CANONICAL VOICE] TEXT_ONLY SMS sent to ${fromNumber}`);
+  } catch (smsError) {
+    console.error(`[CANONICAL VOICE] Failed to send TEXT_ONLY SMS:`, smsError);
+  }
+  
+  res.type('text/xml');
+  res.send(response.toString());
+}
+
+/**
+ * Handle AI_ONLY mode: AI handles everything, no human forwarding
+ * Uses IVR/AI but with transfer options disabled
+ */
+async function handleAiOnly(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any,
+  ivrMode: string
+) {
+  console.log(`[CANONICAL VOICE] mode=AI_ONLY, tenant=${tenantId}, ivrMode=${ivrMode}`);
+  
+  if (ivrMode === 'ai-voice') {
+    return handleAiVoiceMode(req, res, tenantId, phoneConfig);
+  } else if (ivrMode === 'ivr') {
+    return handleIvrMode(req, res, tenantId, phoneConfig, { disableTransfer: true });
+  } else {
+    return handleIvrMode(req, res, tenantId, phoneConfig, { disableTransfer: true });
+  }
+}
+
+/**
+ * Handle AI_FIRST mode: AI/IVR answers first, then forwards to human
+ * This is the default mode and preserves existing Clean Machine behavior
+ */
+async function handleAiFirst(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  phoneConfig: any,
+  ivrMode: string,
+  fromNumber: string
+) {
+  console.log(`[CANONICAL VOICE] mode=AI_FIRST, tenant=${tenantId}, ivrMode=${ivrMode}`);
+  
+  if (ivrMode === 'ivr') {
+    return handleIvrMode(req, res, tenantId, phoneConfig, { disableTransfer: false });
+  } else if (ivrMode === 'ai-voice') {
+    return handleAiVoiceMode(req, res, tenantId, phoneConfig);
+  } else {
+    return handleSimpleMode(req, res, tenantId, phoneConfig, fromNumber);
   }
 }
 
@@ -170,12 +327,15 @@ async function handleSimpleMode(
  * Falls back to legacy hard-coded menu if config loading fails
  * 
  * Supports retry logic via ?attempt= query parameter
+ * 
+ * @param options.disableTransfer - If true, suppresses transfer-to-human options (for AI_ONLY mode)
  */
 async function handleIvrMode(
   req: Request,
   res: Response,
   tenantId: string,
-  phoneConfig: any
+  phoneConfig: any,
+  options: { disableTransfer?: boolean } = {}
 ) {
   // Get attempt number and retry flags from query string
   const attempt = parseInt(req.query.attempt as string) || parseInt(req.body.attempt as string) || 1;

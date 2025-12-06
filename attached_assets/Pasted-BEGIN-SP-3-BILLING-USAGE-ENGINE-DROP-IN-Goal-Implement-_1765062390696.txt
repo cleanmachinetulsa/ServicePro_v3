@@ -1,0 +1,168 @@
+BEGIN SP-3 BILLING & USAGE ENGINE DROP-IN
+
+Goal:
+Implement per-tenant usage metering for:
+• Twilio SMS/MMS/voice (via Twilio API polling)  
+• SendGrid email sends  
+• AI token usage (OpenAI cost tracking)  
+• Internal system events (optional: jobs executed, storage size)  
+
+And build:
+• usage_metrics table  
+• daily_usage_rollups table  
+• backend usageCollectorService  
+• tenant-facing /admin/billing-usage page  
+• root-admin /admin/system-usage page  
+
+CONSTRAINTS:
+• Must NOT break existing telephony or SMS flows.  
+• Must NOT require tenants to have Twilio accounts.  
+• Must NOT block CM operations.  
+• Should follow MASTER PLAN v3.6 Billing Phase (Phase 25).  
+• Multi-tenant isolation required.  
+• Sync costs with the plan tier (Starter/Pro/Elite).  
+• No Stripe billing yet — just usage visibility.  
+
+-------------------------------
+STEP 1 — DATABASE
+-------------------------------
+
+Add new tables:
+
+1) usage_metrics (raw logs)
+Columns:
+- id PK
+- tenant_id FK
+- date (UTC day)
+- sms_outbound_count
+- sms_inbound_count
+- mms_outbound_count
+- mms_inbound_count
+- voice_minutes
+- emails_sent
+- ai_tokens_in
+- ai_tokens_out
+- created_at
+- updated_at
+
+2) usage_rollups_daily
+Columns:
+- id PK
+- tenant_id FK
+- date
+- sms_total
+- mms_total
+- voice_total_minutes
+- email_total
+- ai_total_tokens
+- estimated_cost_usd   (calculated via pricing constants)
+- created_at
+
+Migrate using the existing project migration pattern.
+
+-------------------------------
+STEP 2 — CONST: PRICING MODEL v1
+-------------------------------
+
+Create shared/pricing/usagePricing.ts:
+
+export const usagePricing = {
+  sms: 0.014,  // $0.014 per SMS
+  mms: 0.02,
+  voiceMinute: 0.015,
+  email: 0.0005,
+  aiToken: 0.000002,
+};
+
+-------------------------------
+STEP 3 — SERVICES
+-------------------------------
+
+Create server/services/usageCollectorService.ts:
+
+Functions:
+• collectTwilioUsage(tenantId)
+  - Pull Twilio usage logs for the tenant’s number(s)
+• collectSendGridUsage(tenantId)
+• collectAiUsage(tenantId)
+  - Estimate tokens from AI logs
+• writeRawUsageMetrics(tenantId, data)
+
+Create server/services/usageRollupService.ts:
+• rollupDailyUsage()
+  - Aggregates raw logs into daily totals
+  - Saves into usage_rollups_daily
+
+Scheduled job:
+• Use node-cron or existing scheduler to run rollupDailyUsage at midnight UTC.
+
+-------------------------------
+STEP 4 — TENANT USAGE DASHBOARD
+-------------------------------
+
+Create page: client/src/pages/BillingUsagePage.tsx
+
+Features:
+• Usage summary cards (SMS, Email, Voice, AI)
+• Cost summary card (USD)
+• Line graph of last 30 days (just use simple chart library already in repo)
+• Table of daily usage
+• If tenant hasn’t sent anything yet:
+  - “Usage metrics will appear here once you begin messaging.”
+
+Route:
+Add to App.tsx:
+<Route path="/admin/billing-usage" element={<BillingUsagePage />} />
+
+Navigation:
+Add “Billing & Usage” under “Settings & Administration”.
+
+-------------------------------
+STEP 5 — ROOT ADMIN USAGE DASHBOARD
+-------------------------------
+
+Create: client/src/pages/SystemUsageAdminPage.tsx
+
+Displays:
+• List of all tenants with:
+  - SMS total
+  - Emails total
+  - Voice minutes
+  - AI tokens
+  - Estimated monthly cost
+• Sorting (highest usage first)
+
+-------------------------------
+STEP 6 — API ENDPOINTS
+-------------------------------
+
+Add:
+GET /api/admin/usage/daily
+GET /api/admin/usage/summary
+GET /api/root-admin/usage/tenants
+
+Use existing auth:
+• Tenant admin only
+• Root admin only for global page
+
+-------------------------------
+STEP 7 — DOCUMENTATION
+-------------------------------
+
+Update replit.md:
+• Add “Billing & Usage Engine v1”
+• Document tables, endpoints, and cost model
+• Add instructions for future Stripe integration
+
+-------------------------------
+ACCEPTANCE CRITERIA
+-------------------------------
+
+• Per-tenant usage tables exist
+• Backend can poll providers and log usage
+• Daily rollups work
+• Tenant sees clear usage page
+• Root admin sees global usage summary
+• No regressions across SMS/Email/AI systems
+
+END SP-3 BILLING & USAGE ENGINE DROP-IN
