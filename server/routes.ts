@@ -24,6 +24,7 @@ import { registerPublicCustomerLookupRoutes } from './routes.publicCustomerLooku
 import { registerAdminTenantRoutes } from './routes.adminTenants';
 import { registerAdminPhoneConfigRoutes } from './routes.adminPhoneConfig';
 import { registerTelephonySettingsRoutes } from './routes.telephonySettings';
+import { registerBillingUsageRoutes } from './routes.billingUsage';
 import { registerAdminConciergeSetupRoutes } from './routes.adminConciergeSetup';
 import { registerAdminIvrRoutes } from './routes.adminIvr';
 import adminTenantReadinessRouter from './routes/adminTenantReadinessRouter';
@@ -3002,6 +3003,7 @@ Follow up with this lead to set up their 14-day trial!
   registerAdminTenantRoutes(app);
   registerAdminPhoneConfigRoutes(app);
   registerTelephonySettingsRoutes(app);
+  registerBillingUsageRoutes(app);
   registerAdminConciergeSetupRoutes(app);
   registerAdminIvrRoutes(app);
   app.use(adminTenantReadinessRouter);
