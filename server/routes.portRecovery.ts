@@ -54,11 +54,21 @@ router.get('/admin/preview', async (req, res) => {
       new Date(c.startedAt) > oneHourAgo
     );
     
-    // Format sample SMS with personalization
+    // Get or create campaign config to use the saved template
+    const campaignConfig = await getOrCreateCampaignConfig(tenantDb, tenantId, 1);
+    const savedTemplate = campaignConfig.smsTemplate || DEFAULT_SMS_TEMPLATE;
+    const ctaUrl = campaignConfig.ctaUrl || 'https://cleanmachinetulsa.com/book';
+    const points = (campaignConfig.pointsPerCustomer || 500).toString();
+    
+    // Format sample SMS with personalization using saved template
     const sampleName = result.sampleTargets?.[0]?.customerName || 'Valued Customer';
-    const sampleSms = DEFAULT_SMS_TEMPLATE
-      .replace('Hey this is', `Hey ${sampleName}, this is`)
-      .replace('{{bookingUrl}}', 'https://cleanmachinetulsa.com/book');
+    const firstName = sampleName.split(' ')[0] || 'there';
+    const sampleSms = savedTemplate
+      .replace(/\{\{firstNameOrFallback\}\}/g, firstName)
+      .replace(/\{\{customerName\}\}/g, sampleName)
+      .replace(/\{\{ctaUrl\}\}/g, ctaUrl)
+      .replace(/\{\{bookingUrl\}\}/g, ctaUrl)
+      .replace(/\{\{points\}\}/g, points);
     
     res.json({
       success: true,
