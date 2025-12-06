@@ -19,6 +19,8 @@ import {
   runPortRecoveryBatch,
   sendTestSms,
   getRecentRunHistory,
+  updateCampaign,
+  getOrCreateCampaignConfig,
 } from './services/portRecoveryService';
 import { portRecoveryCampaigns } from '@shared/schema';
 import { eq, and, gte } from 'drizzle-orm';
@@ -148,6 +150,89 @@ router.post('/admin/run', async (req, res) => {
     });
   } catch (error: any) {
     console.error('[PORT RECOVERY] Error in admin run:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * Get campaign configuration for editing
+ * GET /api/admin/port-recovery/campaign
+ */
+router.get('/admin/campaign', async (req, res) => {
+  try {
+    const tenantId = (req.session as any)?.tenantId || 'root';
+    const userId = (req.session as any)?.userId || 1;
+    const tenantDb = wrapTenantDb(db, tenantId);
+    
+    const campaign = await getOrCreateCampaignConfig(tenantDb, tenantId, userId);
+    
+    res.json({
+      success: true,
+      campaign,
+    });
+  } catch (error: any) {
+    console.error('[PORT RECOVERY] Error fetching campaign config:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * Update campaign configuration
+ * PUT /api/admin/port-recovery/campaign
+ */
+router.put('/admin/campaign', async (req, res) => {
+  try {
+    const tenantId = (req.session as any)?.tenantId || 'root';
+    const userId = (req.session as any)?.userId || 1;
+    const tenantDb = wrapTenantDb(db, tenantId);
+    
+    const {
+      campaignId,
+      smsTemplate,
+      emailSubject,
+      emailHtmlTemplate,
+      ctaUrl,
+      smsEnabled,
+      emailEnabled,
+      pointsPerCustomer,
+    } = req.body;
+    
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Campaign ID is required',
+      });
+    }
+    
+    const updatedCampaign = await updateCampaign(tenantDb, campaignId, {
+      smsTemplate,
+      emailSubject,
+      emailHtmlTemplate,
+      ctaUrl,
+      smsEnabled,
+      emailEnabled,
+      pointsPerCustomer,
+    });
+    
+    if (!updatedCampaign) {
+      return res.status(404).json({
+        success: false,
+        error: 'Campaign not found',
+      });
+    }
+    
+    res.json({
+      success: true,
+      campaign: updatedCampaign,
+    });
+  } catch (error: any) {
+    console.error('[PORT RECOVERY] Error updating campaign:', error);
     res.status(500).json({
       success: false,
       error: error.message,

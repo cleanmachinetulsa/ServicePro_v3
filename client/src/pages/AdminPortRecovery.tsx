@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,12 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Label } from '@/components/ui/label';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   Phone, 
   Mail, 
@@ -26,7 +32,12 @@ import {
   History,
   Clock,
   AlertTriangle,
-  Sparkles
+  Sparkles,
+  Settings,
+  ChevronDown,
+  Save,
+  Eye,
+  Link as LinkIcon
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -104,6 +115,15 @@ export default function AdminPortRecovery() {
   const { toast } = useToast();
   const [isRunning, setIsRunning] = useState(false);
   const [confirmSend, setConfirmSend] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'sms' | 'email'>('sms');
+  
+  const [smsTemplate, setSmsTemplate] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailHtmlTemplate, setEmailHtmlTemplate] = useState('');
+  const [ctaUrl, setCtaUrl] = useState('');
+  const [smsEnabled, setSmsEnabled] = useState(true);
+  const [emailEnabled, setEmailEnabled] = useState(true);
 
   const { data: previewData, isLoading: previewLoading, refetch: refetchPreview } = useQuery<AdminPreviewData>({
     queryKey: ['/api/port-recovery/admin/preview'],
@@ -122,6 +142,25 @@ export default function AdminPortRecovery() {
   }>({
     queryKey: ['/api/port-recovery/campaigns'],
   });
+  
+  const { data: campaignConfigData, isLoading: configLoading } = useQuery<{
+    success: boolean;
+    campaign: PortRecoveryCampaign;
+  }>({
+    queryKey: ['/api/port-recovery/admin/campaign'],
+  });
+  
+  useEffect(() => {
+    if (campaignConfigData?.campaign) {
+      const c = campaignConfigData.campaign;
+      setSmsTemplate(c.smsTemplate || '');
+      setEmailSubject(c.emailSubject || '');
+      setEmailHtmlTemplate(c.emailHtmlTemplate || '');
+      setCtaUrl(c.ctaUrl || 'https://cleanmachinetulsa.com/book');
+      setSmsEnabled(c.smsEnabled !== false);
+      setEmailEnabled(c.emailEnabled !== false);
+    }
+  }, [campaignConfigData]);
 
   const runCampaignMutation = useMutation({
     mutationFn: async () => {
@@ -194,10 +233,41 @@ export default function AdminPortRecovery() {
     },
   });
 
+  const saveSettingsMutation = useMutation({
+    mutationFn: async () => {
+      if (!campaignConfigData?.campaign?.id) throw new Error('No campaign to update');
+      return await apiRequest('PUT', '/api/port-recovery/admin/campaign', {
+        campaignId: campaignConfigData.campaign.id,
+        smsTemplate,
+        emailSubject,
+        emailHtmlTemplate,
+        ctaUrl,
+        smsEnabled,
+        emailEnabled,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Settings Saved',
+        description: 'Campaign settings have been updated',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/campaign'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/preview'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to Save',
+        description: error.message || 'Could not save campaign settings',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const stats = previewData?.stats;
   const campaigns = campaignsData?.campaigns || [];
   const activeCampaign = campaigns.find(c => c.status === 'draft' || c.status === 'running');
   const runs = historyData?.runs || [];
+  const currentCampaign = campaignConfigData?.campaign;
 
   const formatPhone = (phone: string | null) => {
     if (!phone) return '—';
@@ -212,6 +282,20 @@ export default function AdminPortRecovery() {
       return dateStr;
     }
   };
+  
+  const interpolateSmsPreview = (template: string) => {
+    const sampleName = previewData?.sampleTargets?.[0]?.customerName || 'Sarah';
+    const firstName = sampleName.split(' ')[0] || 'there';
+    return template
+      .replace(/\{\{firstNameOrFallback\}\}/g, firstName)
+      .replace(/\{\{customerName\}\}/g, sampleName)
+      .replace(/\{\{ctaUrl\}\}/g, ctaUrl || 'https://cleanmachinetulsa.com/book')
+      .replace(/\{\{bookingUrl\}\}/g, ctaUrl || 'https://cleanmachinetulsa.com/book')
+      .replace(/\{\{points\}\}/g, '500');
+  };
+  
+  const smsCharCount = smsTemplate.length;
+  const smsSegments = Math.ceil(smsCharCount / 160);
 
   return (
     <AppShell>
@@ -388,6 +472,185 @@ export default function AdminPortRecovery() {
               </CardContent>
             </Card>
           )}
+
+          {/* Campaign Settings - Collapsible */}
+          <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md">
+              <CollapsibleTrigger asChild>
+                <CardHeader className="pb-2 cursor-pointer hover:bg-slate-700/30 transition-colors">
+                  <CardTitle className="text-white text-sm flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Settings className="h-4 w-4 text-amber-400" />
+                      Campaign Settings
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+                  </CardTitle>
+                  <CardDescription className="text-gray-400 text-xs">
+                    Configure templates, channels, and CTA URL
+                  </CardDescription>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="space-y-4 pt-2">
+                  {configLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                      <Loader2 className="h-6 w-6 animate-spin text-amber-400" />
+                    </div>
+                  ) : (
+                    <>
+                      {/* Channel Toggles */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg" data-testid="toggle-sms-enabled">
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-green-400" />
+                            <Label className="text-sm text-white">SMS</Label>
+                          </div>
+                          <Switch 
+                            checked={smsEnabled} 
+                            onCheckedChange={setSmsEnabled}
+                            data-testid="switch-sms-enabled"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg" data-testid="toggle-email-enabled">
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-4 w-4 text-blue-400" />
+                            <Label className="text-sm text-white">Email Fallback</Label>
+                          </div>
+                          <Switch 
+                            checked={emailEnabled} 
+                            onCheckedChange={setEmailEnabled}
+                            data-testid="switch-email-enabled"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* CTA URL */}
+                      <div className="space-y-2">
+                        <Label className="text-sm text-gray-300 flex items-center gap-2">
+                          <LinkIcon className="h-3 w-3" />
+                          CTA / Booking URL
+                        </Label>
+                        <Input
+                          value={ctaUrl}
+                          onChange={(e) => setCtaUrl(e.target.value)}
+                          placeholder="https://cleanmachinetulsa.com/book"
+                          className="bg-slate-900/50 border-slate-600 text-white text-sm"
+                          data-testid="input-cta-url"
+                        />
+                      </div>
+                      
+                      {/* Tabbed Template Editor */}
+                      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'sms' | 'email')}>
+                        <TabsList className="w-full bg-slate-900/50 border-slate-700">
+                          <TabsTrigger 
+                            value="sms" 
+                            className="flex-1 data-[state=active]:bg-green-600/20 data-[state=active]:text-green-400"
+                            data-testid="tab-sms-template"
+                          >
+                            <Phone className="h-3 w-3 mr-1" />
+                            SMS
+                          </TabsTrigger>
+                          <TabsTrigger 
+                            value="email" 
+                            className="flex-1 data-[state=active]:bg-blue-600/20 data-[state=active]:text-blue-400"
+                            data-testid="tab-email-template"
+                          >
+                            <Mail className="h-3 w-3 mr-1" />
+                            Email
+                          </TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="sms" className="space-y-3 mt-3">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm text-gray-300">SMS Template</Label>
+                              <span className={`text-xs ${smsCharCount > 320 ? 'text-red-400' : 'text-gray-500'}`}>
+                                {smsCharCount} chars · {smsSegments} segment{smsSegments !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <Textarea
+                              value={smsTemplate}
+                              onChange={(e) => setSmsTemplate(e.target.value)}
+                              placeholder="Enter SMS message template..."
+                              rows={5}
+                              className="bg-slate-900/50 border-slate-600 text-white text-sm resize-none"
+                              data-testid="input-sms-template"
+                            />
+                            <p className="text-xs text-gray-500">
+                              Variables: <code className="text-amber-400">{"{{firstNameOrFallback}}"}</code>, <code className="text-amber-400">{"{{ctaUrl}}"}</code>, <code className="text-amber-400">{"{{points}}"}</code>
+                            </p>
+                          </div>
+                          
+                          {/* SMS Live Preview */}
+                          {smsTemplate && (
+                            <div className="space-y-2">
+                              <Label className="text-sm text-gray-300 flex items-center gap-2">
+                                <Eye className="h-3 w-3" />
+                                Preview
+                              </Label>
+                              <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-3">
+                                <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap" data-testid="sms-preview">
+                                  {interpolateSmsPreview(smsTemplate)}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </TabsContent>
+                        
+                        <TabsContent value="email" className="space-y-3 mt-3">
+                          <div className="space-y-2">
+                            <Label className="text-sm text-gray-300">Email Subject</Label>
+                            <Input
+                              value={emailSubject}
+                              onChange={(e) => setEmailSubject(e.target.value)}
+                              placeholder="A Gift from Clean Machine..."
+                              className="bg-slate-900/50 border-slate-600 text-white text-sm"
+                              data-testid="input-email-subject"
+                            />
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label className="text-sm text-gray-300">Email HTML Template</Label>
+                            <Textarea
+                              value={emailHtmlTemplate}
+                              onChange={(e) => setEmailHtmlTemplate(e.target.value)}
+                              placeholder="<html>...</html>"
+                              rows={8}
+                              className="bg-slate-900/50 border-slate-600 text-white text-xs font-mono resize-none"
+                              data-testid="input-email-template"
+                            />
+                            <p className="text-xs text-gray-500">
+                              Variables: <code className="text-amber-400">{"{{customerNameGreeting}}"}</code>, <code className="text-amber-400">{"{{ctaUrl}}"}</code>, <code className="text-amber-400">{"{{points}}"}</code>
+                            </p>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                      
+                      {/* Save Button */}
+                      <Button
+                        onClick={() => saveSettingsMutation.mutate()}
+                        disabled={saveSettingsMutation.isPending}
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                        data-testid="button-save-settings"
+                      >
+                        {saveSettingsMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Save Settings
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
 
           {/* Active/Recent Campaign */}
           {campaignsLoading ? (

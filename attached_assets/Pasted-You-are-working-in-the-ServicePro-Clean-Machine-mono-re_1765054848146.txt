@@ -1,0 +1,328 @@
+You are working in the ServicePro / Clean Machine mono-repo.
+
+Objective: **CM-3 – Port Recovery + Holiday / Gift-Card Campaign polish**
+
+High-level goal:
+Turn the existing Port Recovery feature into a **production-ready “We’re back + 500 points + holiday gift-card push” campaign** that can be sent ONCE, cleanly, via both SMS and email, with good copy, clear targeting, and simple metrics — without breaking any existing flows, tests, or A2P compliance.
+
+This is **for Clean Machine root tenant first**, but must be multi-tenant safe by design.
+
+DO NOT:
+- Break or change the A2P Campaign Assistant.
+- Change core telephony plumbing, IVR config, or loyalty guardrail logic.
+- Remove existing data from port recovery tables.
+- Ship anything that would obviously violate A2P rules (ensure STOP language etc.).
+
+------------------------------------------------
+1) Get oriented (READ ONLY)
+------------------------------------------------
+
+1. Read these for context:
+
+   - Master plan / roadmap:
+     - `docs/MASTER_PLAN_v3.6_SERVICEPRO.md` (or the closest master plan doc you find)
+   - Port recovery backend & schema:
+     - `server/services/portRecoveryService.ts`
+     - `server/routes.portRecovery.ts`
+     - `shared/schema.ts` (port recovery tables, campaigns/runs/targets)
+   - Loyalty / rewards:
+     - `server/services/loyaltyService.ts` (or similarly named loyalty/points services)
+     - `server/routes.loyalty*.ts`
+   - Email + SMS sending:
+     - `server/services/emailService.ts` (or equivalent)
+     - `server/services/smsService.ts` or Twilio wrapper
+   - Admin UI for Port Recovery:
+     - `client/src/pages/AdminPortRecovery.tsx` (or similarly named)
+     - Any shared components used on that page.
+   - A2P system (read-only, do not modify unless absolutely needed for bugfix):
+     - `server/services/a2pTrustHubService.ts`
+     - `client/src/pages/SettingsA2P.tsx` or similar.
+
+2. Confirm the current behavior of `/admin/port-recovery`:
+   - It should already show:
+     - Target counts, sources (customers vs conversations), sample message, etc.
+   - Note any rough edges in:
+     - Copy, layout, missing email support, or metrics.
+
+------------------------------------------------
+2) Data model: campaign templates & channels
+------------------------------------------------
+
+Goal: The Port Recovery system should support **both SMS and Email channels** for a single “We’re back” campaign, with editable templates and safe defaults.
+
+1. In `shared/schema.ts` and related migration, add fields as needed to the **port recovery campaign config** (use existing table if present, don’t invent a totally new subsystem):
+
+   - For example (names are illustrative; adapt to actual schema):
+
+     - `port_recovery_campaigns`:
+       - `sms_template` (text)
+       - `sms_enabled` (boolean, default true)
+       - `email_enabled` (boolean, default true)
+       - `email_subject` (text, nullable)
+       - `email_html_template` (text, nullable)
+       - `cta_url` (text, nullable)  // booking/rewards landing link for this campaign
+       - `default_points_awarded` (int, nullable) // e.g. 500 loyalty points
+
+   - If a campaigns table does not yet exist and everything is hard-coded, introduce a **single row** configuration table keyed by `tenant_id` but keep it minimal and backwards-compatible.
+
+2. Ensure all new fields are:
+   - Tenant-scoped via `tenant_id`.
+   - Safe defaults (e.g. sms_enabled = true, email_enabled = true, etc.).
+   - Do NOT migrate or mutate existing runs data beyond what’s necessary.
+
+------------------------------------------------
+3) Default copy: “We’re back + 500 points + holiday gift cards”
+------------------------------------------------
+
+Goal: For the **root tenant (Clean Machine)**, seed **friendly, A2P-safe default copy** for both SMS and email that:
+
+- Acknowledges the recent port / missed messages issue.
+- Apologizes and reassures.
+- Announces the new system.
+- Grants **500 reward points**.
+- Soft-promotes **holiday gift cards** (last-minute gift angle).
+- Includes STOP language for SMS.
+
+1. In `server/services/portRecoveryService.ts` (or a related seeding helper):
+
+   - On first campaign creation for a tenant (especially for the root tenant), seed default templates like:
+
+   **SMS (example, adapt but keep tone concise and A2P-safe):**
+
+   > “Hey {{firstNameOrFallback}}, it’s Jody with Clean Machine Auto Detail. We had a phone system change and may have missed a message from you — I’m really sorry about that.  
+   > To make it right, I’ve added 500 reward points to your account good toward protectants or future details.  
+   > You can check your rewards or book here: {{ctaUrl}}  
+   > P.S. We now offer digital gift cards – perfect last-minute gifts.  
+   > Reply STOP to unsubscribe.”
+
+   - **Variables**: support at least:
+     - `{{customerName}}` or `{{firstNameOrFallback}}`
+     - `{{points}}`
+     - `{{ctaUrl}}`
+   - Make sure you ALWAYS append or include “Reply STOP to unsubscribe” somewhere for SMS (if not already enforced elsewhere).
+
+   **Email subject (example):**
+
+   > “We’re sorry if we missed you – 500 points added to your Clean Machine account”
+
+   **Email HTML body (example structure):**
+   - Short apology paragraph.
+   - Explanation of new system.
+   - Statement that 500 points were added.
+   - Big button: “Check my rewards & book a detail” → `cta_url`.
+   - Holiday angle for gift cards:
+     - “Need a last-minute gift? Our digital gift cards are great for anyone whose car needs some love.”
+   - A simple footer with your business info and unsubscribe/manage preferences text consistent with your SendGrid setup.
+
+2. Make sure these defaults:
+   - Are seeded only when config is missing, not on every run.
+   - Are editable via the admin UI (next section).
+
+------------------------------------------------
+4) Admin UI: Port Recovery Campaign editor + preview
+------------------------------------------------
+
+Goal: Turn `/admin/port-recovery` into a **campaign editor + preview** screen, not just a stats card.
+
+In `client/src/pages/AdminPortRecovery.tsx` (or the existing Port Recovery page):
+
+1. Layout:
+
+   - Keep the existing metrics and target cards (Total targets, with phone, with email, etc.).
+   - Add a **second row** or tabbed area for “Campaign Settings”:
+
+     Sections:
+
+     a) **Campaign Basics**
+        - Read-only or lightly editable:
+          - Campaign name (e.g. “Port Recovery & 500 Points Apology”).
+          - Default points to award (display, coming from backend).
+
+     b) **SMS Template**
+        - Textarea for `sms_template`.
+        - Character count / approximate segments.
+        - Read-only placeholders list:
+          - `{{firstNameOrFallback}}`, `{{points}}`, `{{ctaUrl}}`.
+        - A live preview that shows sample interpolation using the sample target from the preview API.
+
+     c) **Email Template**
+        - Input for `email_subject`.
+        - Large textarea for `email_html_template` (or a simple rich-text editor if already shared in the repo).
+        - HTML preview (can be simple, e.g. dangerouslySetInnerHTML from sanitized / encoded server preview).
+        - Show sample interpolation.
+
+     d) **Call-to-Action URL**
+        - Input for `cta_url`.
+        - Default suggestion: Clean Machine booking + rewards landing URL (you can prefill something like `/rewards?utm_source=port_recovery` or a full public URL if known in config).
+        - Basic validation that it’s a valid URL or relative path.
+
+2. Buttons:
+
+   - `Save Campaign Settings`:
+     - Calls a new or existing `PUT /api/admin/port-recovery/campaign` (or similar).
+     - Shows success/failure toast.
+   - `Preview Sample`:
+     - Refreshes the preview from the backend (similar to existing preview API).
+   - **Send Campaign**:
+     - Same “Send Now” button as before but:
+       - Disabled until:
+         - There are >0 targets,
+         - SMS or email is enabled,
+         - The user checks a confirmation box (e.g. “Yes, I understand this will send to all {{N}} contacts.”).
+       - Shows the counts by channel (e.g. “Will send SMS to 47 contacts, email to 30 contacts”).
+
+3. All UI must remain:
+
+   - Mobile-first responsive.
+   - Using your existing design system (gradient backgrounds, glass cards, etc.).
+   - With `data-testid` attributes for key elements so tests can be written/updated easily.
+
+------------------------------------------------
+5) Sending logic: SMS + Email, single pass, no double-spam
+------------------------------------------------
+
+Goal: When admin clicks “Send Campaign” for Port Recovery, the system:
+
+- Pulls all eligible targets (root code already exists).
+- For each target:
+  - If they have `phone` and `smsConsent = true` → send SMS.
+  - Else if they have `email` → send email.
+- Does NOT send both SMS and email to the same person in the same run (unless you explicitly detect and choose to allow it, but default is SMS-first, email-only fallback).
+- Logs metrics.
+
+1. In `server/services/portRecoveryService.ts`:
+
+   - Introduce or refine a method like:
+     - `runPortRecoveryCampaign(tenantId, options?)`.
+   - It should:
+     - Fetch latest campaign config.
+     - Fetch targets via existing logic (customers + conversations, deduped).
+     - Decide channel per target:
+       - Primary: SMS if `phone` + `smsConsent`.
+       - Fallback: email if no SMS or no consent but `email` present.
+     - Render templates:
+       - Interpolate placeholders for SMS & email.
+     - Call:
+       - `smsService.sendTransactional(...)` or equivalent.
+       - `emailService.sendTransactional(...)` with subject + HTML.
+     - Write a `port_recovery_runs` record with:
+       - `tenant_id`
+       - `started_at`, `completed_at`
+       - `total_targets`
+       - `sms_sent_count`
+       - `email_sent_count`
+       - `status` (success / partial / failed)
+       - maybe `error_summary` (limited length).
+
+2. Ensure this is multi-tenant safe:
+   - All queries must be scoped by `tenantId` via `wrapTenantDb` / `tenantDb` patterns already used.
+   - No cross-tenant leaks.
+
+3. Wire the existing `/admin/port-recovery/send` (or comparable route) to use this function.
+
+------------------------------------------------
+6) Admin metrics & history on Port Recovery page
+------------------------------------------------
+
+Goal: The admin can see **when** this campaign was last run and how it performed.
+
+On `/admin/port-recovery`:
+
+1. Add a **“Last Run” / history card**, showing:
+
+   - Last run date/time (local to admin).
+   - SMS sent count.
+   - Email sent count.
+   - Total recipients.
+   - Status (success/partial/failed).
+
+2. If there’s historical data:
+   - Display a small table or timeline of the last 3 runs:
+     - Date
+     - SMS sent
+     - Email sent
+     - Status
+
+3. Use the existing preview/stats API or create a small new endpoint to return `lastRun` summary plus a small history array.
+
+------------------------------------------------
+7) Safety, A2P & guardrails
+------------------------------------------------
+
+1. SMS copy:
+   - Ensure default SMS template includes:
+     - Identification (“it’s Jody with Clean Machine Auto Detail”).
+     - A short apology.
+     - Offer (500 points).
+     - Clear CTA with URL.
+     - “Reply STOP to unsubscribe.”
+
+2. Use `smsConsent` / opt-out enforcement:
+   - You already have `smsConsent` in `customers`.
+   - Make sure the target selection & sending respect that and **never** SMS someone without consent.
+   - If a target is in the DB only via past conversation and you do not have explicit consent, it’s safer to:
+     - Either:
+       - treat conversation history + STOP logic as consent for transactional re-contact, OR
+       - restrict to customers marked `smsConsent = true`.
+     - Keep it consistent with how you already handle general messaging — don’t invent a new rule here without checking existing practices.
+
+3. Do NOT modify A2P campaign registration logic:
+   - This feature just uses whatever messaging configuration and A2P campaign is already in place.
+   - No new TrustHub brands/campaigns should be created here.
+
+------------------------------------------------
+8) Tests & sanity checks
+------------------------------------------------
+
+1. Update or add tests (or at least `replit.md` notes) to cover:
+
+   - The admin Port Recovery page loads:
+     - Metrics cards.
+     - Campaign settings form.
+     - SMS & email previews.
+   - Saving campaign settings persists to the DB and survives reload.
+   - Running the campaign:
+     - Returns success from the send endpoint.
+     - Logs a `port_recovery_runs` record with correct counts.
+
+2. Run the existing test suite & smoke tests:
+   - Login as admin.
+   - Navigate to `/admin/port-recovery`.
+   - Confirm:
+     - Targets counts load.
+     - Default copy looks sane.
+     - “Send Now” button is disabled until confirmation box is checked.
+   - For a small dev environment:
+     - Test with 1–2 dummy targets.
+     - Ensure at least the send path executes without runtime errors.
+
+3. Update `replit.md`:
+   - Add a short “CM-3 – Port Recovery & Holiday Campaign” section that explains:
+     - What the feature does.
+     - Where the templates live.
+     - Where metrics live.
+     - That it’s A2P-safe but still subject to carrier filtering.
+
+------------------------------------------------
+9) Final checklist before you stop
+------------------------------------------------
+
+Before finishing:
+
+- Confirm `/admin/port-recovery`:
+  - Shows target stats + campaign editor + history.
+  - Lets admin customize SMS, email subject/body, and CTA URL.
+  - Lets admin send a single blast with a confirmation checkbox.
+- Confirm backend:
+  - Creates/updates campaign config per tenant.
+  - Sends SMS or email per target as described.
+  - Logs a run record with counts and status.
+- Confirm **no errors** appear in logs for:
+  - Missing fields.
+  - Null/undefined in portRecoveryService.
+- Do NOT change unrelated areas (e.g., A2P wizard, Setup Wizard steps, loyalty redemption guardrails).
+
+When done, summarize for me in the console output:
+- Which files you touched.
+- Any schema changes.
+- The final JSON shape of the Port Recovery preview + run summary JSON.
