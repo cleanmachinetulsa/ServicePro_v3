@@ -1,8 +1,8 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Loader2, Sparkles, Send, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { MessageCircle, X, Loader2, Sparkles, Send, AlertCircle, GripVertical } from 'lucide-react';
 import { useSupportAssistantChat } from '../hooks/useSupportAssistantChat';
 import type { SupportAssistantContext } from '@shared/supportAssistantTypes';
 
@@ -46,10 +46,36 @@ const HIDDEN_ROUTES: string[] = [
   // If specific pages need hiding, add them here
 ];
 
+const FAB_POSITION_KEY = 'support_assistant_fab_pos';
+
 export function SupportAssistantWidget() {
   const [location] = useLocation();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const constraintsRef = useRef<HTMLDivElement | null>(null);
+  
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(FAB_POSITION_KEY);
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return { x: 0, y: 0 };
+  });
+
+  const handleDragEnd = (_: unknown, info: { offset: { x: number; y: number } }) => {
+    const newOffset = { 
+      x: dragOffset.x + info.offset.x, 
+      y: dragOffset.y + info.offset.y 
+    };
+    setDragOffset(newOffset);
+    localStorage.setItem(FAB_POSITION_KEY, JSON.stringify(newOffset));
+  };
 
   const { data: authContext, isLoading: authLoading } = useQuery<AuthContext>({
     queryKey: ['/api/auth/context'],
@@ -113,23 +139,36 @@ export function SupportAssistantWidget() {
 
   return (
     <>
-      <div className="fixed bottom-4 left-3 z-40 sm:bottom-5 sm:left-4 md:bottom-6 md:left-6" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div ref={constraintsRef} className="fixed inset-0 pointer-events-none z-30" />
+      
+      <motion.div
+        drag
+        dragMomentum={false}
+        dragElastic={0.05}
+        dragConstraints={constraintsRef}
+        onDragEnd={handleDragEnd}
+        initial={{ x: dragOffset.x, y: dragOffset.y }}
+        className="fixed bottom-4 left-3 z-40 touch-none"
+        whileDrag={{ scale: 1.1 }}
+        data-testid="fab-container"
+      >
         <button
           type="button"
-          onClick={toggleOpen}
+          onClick={(e) => {
+            if (e.detail === 0) return;
+            toggleOpen();
+          }}
           data-testid="button-support-assistant-fab"
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-2.5 sm:px-4 sm:py-2.5 text-sm font-semibold text-white shadow-lg shadow-purple-500/30 hover:shadow-xl hover:scale-105 transition-all focus:outline-none focus:ring-2 focus:ring-purple-300"
+          className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 h-10 w-10 text-white shadow-md shadow-purple-500/20 hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-purple-300 cursor-grab active:cursor-grabbing"
+          title="AI Help - drag to move"
         >
           {isOpen ? (
-            <X className="h-5 w-5 sm:h-4 sm:w-4" />
+            <X className="h-4 w-4" />
           ) : (
-            <MessageCircle className="h-5 w-5 sm:h-4 sm:w-4" />
+            <MessageCircle className="h-4 w-4" />
           )}
-          <span className="hidden sm:inline">
-            {isOpen ? 'Close' : 'AI Help'}
-          </span>
         </button>
-      </div>
+      </motion.div>
 
       <AnimatePresence>
         {isOpen && (
