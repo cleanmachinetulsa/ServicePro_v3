@@ -1,0 +1,396 @@
+DROP-IN: SP-4 – Simple vs Advanced Dashboard Mode
+
+Goal: Per-tenant setting that controls whether the UI runs in Simple or Advanced mode, plus wiring that actually changes the sidebar + a couple of scary pages. No features removed, only hidden/softened in Simple mode.
+
+Paste this whole thing into the Replit agent:
+
+PROMPT FOR REPLIT AGENT (SP-4 – Simple vs Advanced Mode)
+
+You are modifying the existing ServicePro v3 codebase in the repo:
+
+https://github.com/cleanmachinetulsa/ServicePro_v3.git
+
+Use docs/MASTER_PLAN_v3.7_SERVICEPRO.md as the canonical roadmap and respect all existing multi-tenant, A2P, and telephony architecture.
+
+Implement SP-4 – Simple vs Advanced Dashboard Mode as described below.
+
+High-Level Requirements
+
+Add a per-tenant setting uiExperienceMode ('simple' | 'advanced', default 'simple').
+
+Expose this via a Settings → “Interface Mode” page where the owner can toggle modes.
+
+Make the sidebar & a few heavy pages respond to this mode:
+
+Simple: show core items, collapse/hide advanced tools.
+
+Advanced: current full behavior.
+
+Keep this presentation-only — no features are actually disabled; they’re just hidden/collapsed in Simple mode.
+
+Follow existing patterns for:
+
+Drizzle schema, tenant isolation (wrapTenantDb), Zod validation, TanStack Query hooks, and settings pages (like Email Settings, A2P page, Telephony Settings, etc.).
+
+1. Data Model – ui_experience_mode for Business Settings
+1.1 Schema
+
+Locate the per-tenant business settings table (this is the same table used for loyalty guardrails, e.g. business_settings in shared/schema.ts).
+
+Add a column:
+
+Name: uiExperienceMode
+
+DB column: ui_experience_mode
+
+Type: text / varchar
+
+Default: 'simple'
+
+Restricted to the two values 'simple' or 'advanced' at the TypeScript level.
+
+Example (adjust to match existing style):
+
+// shared/schema.ts (inside business_settings or equivalent)
+export const businessSettings = pgTable('business_settings', {
+  // ...existing columns...
+  uiExperienceMode: text('ui_experience_mode')
+    .notNull()
+    .default('simple'),
+});
+
+
+Update the corresponding TypeScript type so it narrows to:
+
+export type UiExperienceMode = 'simple' | 'advanced';
+
+1.2 Service Helpers
+
+If there is an existing businessSettingsService.ts or similar, extend it; otherwise create server/services/uiExperienceService.ts.
+
+Add:
+
+export async function getUiExperienceMode(tenantDb: TenantDb): Promise<UiExperienceMode> {
+  const settings = await getOrCreateBusinessSettings(tenantDb); // reuse existing helper
+  return (settings.uiExperienceMode as UiExperienceMode) ?? 'simple';
+}
+
+export async function updateUiExperienceMode(
+  tenantDb: TenantDb,
+  mode: UiExperienceMode
+): Promise<UiExperienceMode> {
+  if (mode !== 'simple' && mode !== 'advanced') {
+    throw new Error('Invalid UI experience mode');
+  }
+
+  const updated = await tenantDb.update(businessSettings)
+    .set({ uiExperienceMode: mode })
+    .where(eq(businessSettings.id, /* existing id lookup */))
+    .returning()
+    .then(firstOrThrow);
+
+  return (updated.uiExperienceMode as UiExperienceMode) ?? 'simple';
+}
+
+
+Use the same pattern as other business settings helpers (loyalty, guardrails, etc.) for getOrCreateBusinessSettings and firstOrThrow.
+
+2. API Routes – /api/settings/ui-mode
+
+Create a new route module, e.g.:
+
+server/routes.settings.uiMode.ts
+
+Use the same style as /api/settings/email or similar.
+
+2.1 Zod Schema
+
+Define a Zod schema:
+
+const UiModeUpdateSchema = z.object({
+  mode: z.enum(['simple', 'advanced']),
+});
+
+2.2 Handlers
+
+Add:
+
+GET /api/settings/ui-mode
+
+PUT /api/settings/ui-mode
+
+Behavior:
+
+Both require an authenticated tenant user.
+
+Only owner/admin can update (use same auth guard as other settings).
+
+Example (pseudocode):
+
+settingsRouter.get('/ui-mode', requireAuth, async (req, res) => {
+  const tenantInfo = requireTenant(req);
+  const tenantDb = wrapTenantDb(tenantInfo);
+  const mode = await getUiExperienceMode(tenantDb);
+
+  res.json({ success: true, mode });
+});
+
+settingsRouter.put('/ui-mode', requireAuth, requireOwnerOrAdmin, async (req, res) => {
+  const tenantInfo = requireTenant(req);
+  const tenantDb = wrapTenantDb(tenantInfo);
+
+  const parseResult = UiModeUpdateSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({ success: false, error: 'Invalid payload' });
+  }
+
+  const { mode } = parseResult.data;
+  const updatedMode = await updateUiExperienceMode(tenantDb, mode);
+
+  res.json({ success: true, mode: updatedMode });
+});
+
+
+Wire this router into the main settings router (e.g., routes.settings.ts) and ensure path prefix is /api/settings/ui-mode.
+
+3. Frontend Hook + Context – useUiExperienceMode
+3.1 Hook
+
+Create client/src/hooks/useUiExperienceMode.ts with TanStack Query:
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiClient } from '@/lib/apiClient';
+
+export type UiExperienceMode = 'simple' | 'advanced';
+
+export function useUiExperienceMode() {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['settings', 'ui-mode'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/settings/ui-mode');
+      return res.data.mode as UiExperienceMode;
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (mode: UiExperienceMode) => {
+      const res = await apiClient.put('/api/settings/ui-mode', { mode });
+      return res.data.mode as UiExperienceMode;
+    },
+    onSuccess: (newMode) => {
+      queryClient.setQueryData(['settings', 'ui-mode'], newMode);
+    },
+  });
+
+  return {
+    mode: query.data ?? 'simple',
+    isLoading: query.isLoading,
+    isSaving: mutation.isPending,
+    saveMode: mutation.mutateAsync,
+  };
+}
+
+3.2 Context Provider at App Shell
+
+Create a simple context so the sidebar and pages don’t each re-query:
+
+client/src/contexts/UiExperienceContext.tsx
+
+const UiExperienceContext = createContext<{
+  mode: UiExperienceMode;
+  isLoading: boolean;
+}>({ mode: 'simple', isLoading: false });
+
+export const UiExperienceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { mode, isLoading } = useUiExperienceMode();
+  return (
+    <UiExperienceContext.Provider value={{ mode, isLoading }}>
+      {children}
+    </UiExperienceContext.Provider>
+  );
+};
+
+export function useUiExperience() {
+  return useContext(UiExperienceContext);
+}
+
+
+Wrap the authenticated app shell (where you currently render Sidebar and main content) with this provider, e.g. in App.tsx or AppShell.tsx.
+
+4. New Settings Page – “Interface Mode”
+4.1 Page Component
+
+Create:
+
+client/src/pages/settings/UiModeSettingsPage.tsx
+
+Use the same design patterns as Email Settings and other settings pages (glass card, heading, description, buttons).
+
+Behavior:
+
+Show two cards or a radio group:
+
+Simple mode (recommended)
+Copy suggestion:
+
+“Best for busy owners. Hides advanced telephony, A2P, and developer tools. You still get full power, but with a cleaner, friendlier layout.”
+
+Advanced mode
+
+“Shows every setting and control, including detailed SMS compliance, IVR trees, and power-user tools. Great for technical users and agencies.”
+
+Show current selection based on mode from useUiExperienceMode.
+
+“Save” button calls saveMode(selectedMode) and shows a toast using the existing notification system.
+
+Pseudo-implementation:
+
+const UiModeSettingsPage: React.FC = () => {
+  const { mode, isLoading, isSaving, saveMode } = useUiExperienceMode();
+  const [localMode, setLocalMode] = useState<UiExperienceMode>('simple');
+
+  useEffect(() => {
+    if (!isLoading) setLocalMode(mode);
+  }, [mode, isLoading]);
+
+  const handleSave = async () => {
+    await saveMode(localMode);
+    showToast('Interface mode updated', 'success');
+  };
+
+  // Render loading skeleton if needed; otherwise cards for simple vs advanced
+};
+
+4.2 Routing & Navigation
+
+In client/src/App.tsx, add a route:
+
+<Route path="/settings/ui-mode" element={<UiModeSettingsPage />} />
+
+
+In client/src/config/navigationItems.ts, add a nav entry under Settings & Administration:
+
+{
+  id: 'settings-ui-mode',
+  label: 'Interface Mode',
+  path: '/settings/ui-mode',
+  icon: SlidersHorizontalIcon, // or existing icon lib
+  group: 'settings',
+  advancedOnly: false, // visible in both modes
+}
+
+
+Use whichever icon library is already in use (Lucide, etc.).
+
+5. Sidebar Filtering – Simple vs Advanced
+5.1 Mark Nav Items
+
+In client/src/config/navigationItems.ts, extend the nav item type to support a visibility flag:
+
+export type NavVisibility = 'always' | 'advancedOnly';
+
+export interface NavItem {
+  // ...existing fields...
+  visibility?: NavVisibility; // default 'always'
+}
+
+
+Mark obviously power-user items as advancedOnly, for example:
+
+A2P / SMS Compliance
+
+A2P Campaign Assistant
+
+Detailed IVR / telephony config pages
+
+Industry pack editor / concierge setup / developer settings
+
+Example:
+
+{
+  id: 'settings-a2p',
+  label: 'SMS Compliance',
+  path: '/settings/a2p',
+  icon: ShieldCheckIcon,
+  group: 'settings',
+  visibility: 'advancedOnly',
+}
+
+
+Leave everyday pages (Messages, Phone, Customers, Calendar, Loyalty Program, Website, Help & Support) as default visibility.
+
+5.2 Filter in Sidebar
+
+In client/src/components/Layout/Sidebar.tsx (or equivalent), use the context:
+
+const { mode } = useUiExperience();
+
+const filteredItems = navItems.filter((item) => {
+  if (mode === 'advanced') return true;
+  // simple mode:
+  if (item.visibility === 'advancedOnly') return false;
+  return true;
+});
+
+
+Render filteredItems instead of the full list.
+
+Optionally, you can add a small “Advanced tools” collapsible group in Simple mode for a subset of advanced items rather than hiding them completely; but v1 can just hide them from the sidebar while keeping deep links functional.
+
+6. Page-Level Softening (Light Touch)
+
+Apply small conditional tweaks to a couple of heavy pages:
+
+6.1 A2P Settings Page
+
+At top of the page, read const { mode } = useUiExperience();
+
+If mode === 'simple':
+
+Show a friendly info panel:
+
+“We’ll handle most of the SMS compliance details for you. Just fill out the basics on this page and we’ll guide the rest.”
+
+Wrap raw TrustHub IDs / detailed error JSON in an <Details> / accordion titled “Advanced details (for technical users)”.
+
+6.2 Telephony / IVR Config Page
+
+In Simple mode:
+
+Show a short summary above the full config:
+
+“You’re currently in AI answers first mode. You can still change what callers hear, but we’ll keep the defaults sensible.”
+
+Put the dense IVR action configuration table inside a collapsed “Advanced IVR Logic” accordion.
+
+No logic changes – only layout.
+
+7. Docs
+
+Update replit.md and docs/MASTER_PLAN_v3.7_SERVICEPRO.md:
+
+Mark SP-4 – Simple vs Advanced UI as Completed.
+
+Briefly describe:
+
+uiExperienceMode setting.
+
+/settings/ui-mode page.
+
+Sidebar filtering behavior.
+
+That this is presentation-only (no feature entitlements are changed).
+
+Run the existing test suite (including Playwright) and add a small Playwright test if desired:
+
+Login as admin
+
+Go to /settings/ui-mode
+
+Switch to advanced, save, verify advanced-only nav items appear
+
+Switch back to simple, verify they disappear
+
+End of SP-4 drop-in.
