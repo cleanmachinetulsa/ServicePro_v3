@@ -38,7 +38,8 @@ import {
   Lightbulb,
   MessageSquarePlus,
   HelpCircle,
-  Headphones
+  Headphones,
+  Mail
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -401,6 +402,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Phone Settings',
     icon: Phone,
     path: '/phone-settings',
+  },
+  {
+    id: 'email-settings',
+    label: 'Email Settings',
+    icon: Mail,
+    path: '/settings/email',
   },
   {
     id: 'a2p-campaign',

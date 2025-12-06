@@ -79,3 +79,18 @@ A global floating chat widget for in-app AI assistance:
 - Features: Welcome message, current route context, typing indicator, error banners
 - Rate limit handling with specific messaging for HTTP 429 responses
 - Test IDs: button-support-assistant-fab, support-assistant-panel, input-assistant-message, button-send-assistant-message, button-close-assistant
+
+## Email System (Phase 10)
+
+### Tenant Email Settings (v1)
+Per-tenant email profile configuration with shared SendGrid domain:
+- **Route**: /settings/email - Email settings page in sidebar under "Settings & Administration"
+- **API Endpoints**:
+  - GET /api/settings/email - Get tenant email settings (fromName, replyToEmail, status)
+  - PUT /api/settings/email - Update tenant email settings
+  - POST /api/settings/email/test - Send test email to verify configuration
+- **Database**: `tenantEmailProfiles` table stores per-tenant fromName, replyToEmail, status
+- **Architecture**: Shared SendGrid domain (SENDGRID_FROM_EMAIL), per-tenant display name and reply-to address
+- **Status tracking**: not_configured, needs_verification, healthy, error
+- **Service**: `server/services/tenantEmailService.ts` - sendTenantEmail, createTenantEmailProfile, hasGlobalSendGridConfig
+- **Test IDs**: text-email-settings-title, input-from-name, input-reply-to-email, button-save-email-settings, button-send-test-email

@@ -75,6 +75,7 @@ import SecuritySettingsPage from "./pages/security-settings";
 import TechnicianPage from "./pages/technician";
 import ReferralPage from "./pages/ReferralPage";
 import PhoneSettingsPage from "./pages/phone-settings";
+import EmailSettingsPage from "./pages/email-settings";
 import SipSetupGuide from "./pages/sip-setup-guide";
 import Billing from "./pages/billing";
 import EscalationsPage from "./pages/escalations";
@@ -205,6 +206,11 @@ function Router() {
       <Route path="/settings/a2p">
         <AuthGuard>
           <SettingsA2P />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/email">
+        <AuthGuard>
+          <EmailSettingsPage />
         </AuthGuard>
       </Route>
       <Route path="/admin/port-recovery">

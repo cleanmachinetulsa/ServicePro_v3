@@ -1,0 +1,157 @@
+DROP-IN BLOCK: Email v1 (Shared SendGrid Domain + Per-Tenant Reply-To)
+
+Goal:
+
+Make sure every tenant (starting with Clean Machine) can send solid, branded transactional emails: booking confirmations, “we got your request”, and reward confirmation.
+
+Use one shared ServicePro SendGrid domain (e.g. notify.servicepro.app) for all tenants.
+
+Let each tenant control From name + Reply-To email, so replies go to them, not you.
+
+Wire it into the booking + loyalty flows we just finished.
+
+Copy–paste this into the Replit agent:
+
+Use docs/MASTER_PLAN_v3.6_SERVICEPRO.md as canonical.
+
+Implement **Phase 10 – Email v1 (shared SendGrid domain)** with per-tenant email profiles and basic transactional templates, without touching custom-domain/DNS stuff yet (that’s Phase 10.2).
+
+### HIGH-LEVEL REQUIREMENTS
+
+1. Shared SendGrid domain:
+   - Use a single global SendGrid API key and sending domain (e.g. notify.servicepro.app).
+   - Outgoing emails should look like:
+     - From: "<Tenant Business Name> <something@notify.servicepro.app>"
+     - Reply-To: tenant’s own support/email address (from settings).
+   - Do NOT attempt to handle mailbox hosting or IMAP/POP; we are only sending, not receiving.
+
+2. Per-tenant email profile:
+   - Each tenant must be able to configure:
+     - default_from_name (e.g. "Clean Machine Auto Detail")
+     - default_reply_to_email (e.g. "jody@cleanmachinetulsa.com")
+   - Root tenant (Clean Machine) should have sensible defaults pre-seeded.
+   - Multi-tenant safety:
+     - All CRUD operations must be scoped by tenantId via wrapTenantDb / tenantDb helpers.
+     - No cross-tenant leaks.
+
+3. Email service abstraction:
+   - Create or upgrade a shared email service, something like:
+     - server/services/emailService.ts
+   - It should:
+     - Wrap SendGrid client usage in a single place.
+     - Expose high-level helpers like:
+       - sendBookingConfirmationEmail(tenantInfo, booking, customer)
+       - sendBookingRequestReceivedEmail(tenantInfo, bookingDraft, customer)
+       - sendRewardRedemptionEmail(tenantInfo, reward, customer)
+     - Respect tenant email profile for from_name + reply_to.
+     - Include structured logging on failure, but DO NOT throw in a way that breaks the main booking flow. Email failures should be non-fatal “best-effort”.
+
+4. UI: Tenant Email Settings page
+   - Add a new page in the admin UI (tenant-scoped), e.g.:
+     - Route: /settings/email
+   - It should:
+     - Show:
+       - Business/tenant name (read-only or prefilled)
+       - Default From Name (editable)
+       - Reply-To Email (editable)
+     - Validate email format.
+     - Save to tenant email profile table.
+     - Show a small preview card of what emails will look like.
+     - Include a “Send Test Email” button that:
+       - Sends a simple test email to the logged-in user’s email (or a user-entered test address).
+       - Uses sendgrid through emailService.
+   - Add navigation item:
+     - Under Settings or Communication, e.g. “Email Settings”.
+
+5. Transactional templates (v1, minimal but clean)
+   - DO NOT overcomplicate; v1 can be simple HTML with inline styles.
+   - At least implement these templates:
+     1) Booking Request Received (when a customer submits the booking form)
+        - Subject: "We received your request – {{tenantName}}"
+        - Body:
+          - Friendly greeting with customer name (if available).
+          - Summary of requested services, date preference, address city.
+          - “We’ll confirm your exact time by text/phone.”
+     2) Booking Confirmed (when appointment is actually confirmed/scheduled in the system)
+        - Subject: "Your appointment is confirmed – {{date}}"
+        - Body:
+          - Date & time.
+          - Services list.
+          - Basic prep instructions if we have them (just a single generic note is fine for now).
+     3) Reward Redemption (when a customer successfully applies a reward to their booking)
+        - Subject: "Reward applied to your next service 🎉"
+        - Body:
+          - Name of reward.
+          - Points spent and points remaining.
+          - Summary of booked service if available.
+
+   - Prefer a small template renderer over massive logic in the route:
+     - Either:
+       - Use something like a very small “template builder” function per email type, OR
+       - Use a light-weight templating approach already present in the repo.
+   - Do NOT introduce a heavy template engine dependency unless the repo already uses one (check first).
+
+6. Event wiring / when to send
+
+   **Booking Request Received:**
+   - Trigger: when a customer submits the public booking form (even before human confirmation).
+   - Implementation:
+     - Wherever the booking draft is saved / created, after success:
+       - If the customer has an email:
+         - Call sendBookingRequestReceivedEmail(...) in the background (don’t block the HTTP response).
+
+   **Booking Confirmed:**
+   - Trigger: when an appointment moves into a “confirmed/scheduled” status in the admin flow.
+   - Implementation:
+     - Find the place where appointments are updated/confirmed.
+     - After successful status change:
+       - If the customer has an email:
+         - Call sendBookingConfirmationEmail(...).
+
+   **Reward Redemption:**
+   - Trigger: when the loyalty redemption guardrail checks pass and a reward is actually applied to a booking/cart.
+   - Implementation:
+     - Hook into the same place where points are deducted and reward is attached to the booking.
+     - If customer has an email:
+       - Call sendRewardRedemptionEmail(...).
+
+   - IMPORTANT:
+     - All email calls should be “best-effort”:
+       - Wrap in try/catch, log errors, but never break the main flow (no unhandled exceptions bubbling back to the API response).
+       - Use background/promise fire-and-forget if your existing pattern allows.
+
+7. Environment & config
+
+   - Expect environment variables (or existing config system) like:
+     - SENDGRID_API_KEY
+     - SENDGRID_FROM_DOMAIN or a configured default like "notify.servicepro.app"
+   - If these are missing in development:
+     - Emails should log a warning and no-op, not crash.
+
+8. Tests & verification
+
+   - Add or update tests (or at least manual verification via agent replay) for:
+     - Email settings save + load for a tenant.
+     - “Send Test Email” from the email settings page.
+     - Booking request:
+       - Submitting a booking with email should hit emailService once with the correct template.
+     - Booking confirmation:
+       - Confirming appointment for a customer with email triggers confirmation email.
+     - Reward redemption:
+       - Applying a reward to a booking for a customer with email triggers the reward email.
+
+   - Confirm multi-tenant safety:
+     - Tenant A’s email settings do not show for Tenant B.
+     - From name and Reply-To are correctly used based on the tenant profile.
+
+9. Clean Machine defaults
+
+   - Seed or migrate so that the root tenant (Clean Machine) has:
+     - default_from_name: "Clean Machine Auto Detail"
+     - default_reply_to_email: use my current public business email if it is in the repo; if not obvious, default to "info@cleanmachinetulsa.com" and let me adjust later via UI.
+   - Verify that public bookings from Clean Machine’s existing public booking form send v1 emails successfully once SENDGRID_API_KEY is configured.
+
+Please implement all of the above in a single cohesive change-set, respecting existing project patterns and multi-tenant isolation. Then run the app and verify end-to-end:
+- Clean Machine public booking → “We received your request” email.
+- Admin confirms appointment → “Your appointment is confirmed” email.
+- Rewards portal “Use on my next booking” → reward gets applied → reward email sent.

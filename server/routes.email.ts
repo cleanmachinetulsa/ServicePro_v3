@@ -16,6 +16,14 @@ import {
   updateSubscription
 } from './emailCampaignService';
 import { sendBusinessEmail } from './emailService';
+import { 
+  sendTenantEmail, 
+  createTenantEmailProfile, 
+  hasGlobalSendGridConfig,
+  getGlobalEmailFromAddress
+} from './services/tenantEmailService';
+import { tenantEmailProfiles, tenantConfig, tenants } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 /**
@@ -405,6 +413,207 @@ export function registerEmailRoutes(app: Express) {
       return res.status(500).json({
         success: false,
         message: 'Unexpected error sending test email',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // =========================================================================
+  // TENANT EMAIL SETTINGS ROUTES (Phase 10)
+  // =========================================================================
+
+  const emailSettingsSchema = z.object({
+    fromName: z.string().min(1, 'From name is required').max(255),
+    replyToEmail: z.string().email('Invalid email address').max(255).optional().nullable(),
+  });
+
+  // GET /api/settings/email - Get tenant email settings
+  app.get('/api/settings/email', async (req: Request, res: Response) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      // Get email profile
+      const [emailProfile] = await req.tenantDb!.raw
+        .select()
+        .from(tenantEmailProfiles)
+        .where(eq(tenantEmailProfiles.tenantId, tenantId))
+        .limit(1);
+
+      // Get tenant info for defaults
+      const [tenantInfo] = await req.tenantDb!.raw
+        .select({
+          tenantName: tenants.name,
+          businessName: tenantConfig.businessName,
+          primaryContactEmail: tenantConfig.primaryContactEmail,
+        })
+        .from(tenants)
+        .leftJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+
+      const displayName = tenantInfo?.businessName || tenantInfo?.tenantName || 'Your Business';
+
+      res.json({
+        success: true,
+        data: {
+          fromName: emailProfile?.fromName || displayName,
+          replyToEmail: emailProfile?.replyToEmail || tenantInfo?.primaryContactEmail || null,
+          status: emailProfile?.status || 'not_configured',
+          lastVerifiedAt: emailProfile?.lastVerifiedAt || null,
+          lastError: emailProfile?.lastError || null,
+          globalFromEmail: getGlobalEmailFromAddress(),
+          isConfigured: hasGlobalSendGridConfig(),
+        }
+      });
+    } catch (error) {
+      console.error('[EMAIL SETTINGS] Error getting email settings:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve email settings',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // PUT /api/settings/email - Update tenant email settings
+  app.put('/api/settings/email', async (req: Request, res: Response) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const validation = emailSettingsSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: validation.error.errors.map(e => ({
+            field: e.path.join('.'),
+            message: e.message
+          }))
+        });
+      }
+
+      const { fromName, replyToEmail } = validation.data;
+
+      const result = await createTenantEmailProfile(req.tenantDb!, tenantId, {
+        fromName,
+        replyToEmail: replyToEmail || undefined,
+      });
+
+      if (!result.ok) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to update email settings',
+          error: result.error
+        });
+      }
+
+      console.log(`[EMAIL SETTINGS] Updated for tenant ${tenantId}: fromName="${fromName}", replyTo="${replyToEmail}"`);
+
+      res.json({
+        success: true,
+        message: 'Email settings updated successfully',
+        data: {
+          fromName,
+          replyToEmail,
+        }
+      });
+    } catch (error) {
+      console.error('[EMAIL SETTINGS] Error updating email settings:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to update email settings',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // POST /api/settings/email/test - Send test email using tenant profile
+  app.post('/api/settings/email/test', async (req: Request, res: Response) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      const { to } = req.body;
+      if (!to || !z.string().email().safeParse(to).success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid email address is required'
+        });
+      }
+
+      if (!hasGlobalSendGridConfig()) {
+        return res.status(503).json({
+          success: false,
+          message: 'Email service is not configured. Please contact support.'
+        });
+      }
+
+      // Get tenant display name for the test email
+      const [tenantInfo] = await req.tenantDb!.raw
+        .select({
+          businessName: tenantConfig.businessName,
+          tenantName: tenants.name,
+        })
+        .from(tenants)
+        .leftJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+
+      const businessName = tenantInfo?.businessName || tenantInfo?.tenantName || 'Your Business';
+
+      const testHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #333; margin-bottom: 20px;">Test Email from ${businessName}</h2>
+          <p style="font-size: 16px; color: #555; line-height: 1.6;">
+            This is a test email to verify your email settings are configured correctly.
+          </p>
+          <div style="background: #f4f4f4; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; font-size: 14px; color: #666;">
+              <strong>Sent via:</strong> ServicePro Email System<br>
+              <strong>From:</strong> ${businessName}<br>
+              <strong>Timestamp:</strong> ${new Date().toISOString()}
+            </p>
+          </div>
+          <p style="font-size: 14px; color: #999;">
+            If you received this email, your settings are working correctly!
+          </p>
+        </div>
+      `;
+
+      const result = await sendTenantEmail(req.tenantDb!, tenantId, {
+        to,
+        subject: `Test Email - ${businessName}`,
+        html: testHtml,
+        category: 'test_email',
+      });
+
+      if (result.ok) {
+        console.log(`[EMAIL SETTINGS] Test email sent successfully for tenant ${tenantId} to ${to}`);
+        return res.json({
+          success: true,
+          message: 'Test email sent successfully'
+        });
+      } else {
+        console.error(`[EMAIL SETTINGS] Test email failed for tenant ${tenantId}:`, result.errorMessage);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send test email',
+          error: result.errorMessage
+        });
+      }
+    } catch (error) {
+      console.error('[EMAIL SETTINGS] Error sending test email:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send test email',
         error: error instanceof Error ? error.message : String(error)
       });
     }
