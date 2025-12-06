@@ -286,12 +286,13 @@ export default function AdminPortRecovery() {
   const interpolateSmsPreview = (template: string) => {
     const sampleName = previewData?.sampleTargets?.[0]?.customerName || 'Sarah';
     const firstName = sampleName.split(' ')[0] || 'there';
+    const points = (currentCampaign?.pointsPerCustomer || 500).toString();
     return template
       .replace(/\{\{firstNameOrFallback\}\}/g, firstName)
       .replace(/\{\{customerName\}\}/g, sampleName)
       .replace(/\{\{ctaUrl\}\}/g, ctaUrl || 'https://cleanmachinetulsa.com/book')
       .replace(/\{\{bookingUrl\}\}/g, ctaUrl || 'https://cleanmachinetulsa.com/book')
-      .replace(/\{\{points\}\}/g, '500');
+      .replace(/\{\{points\}\}/g, points);
   };
   
   const smsCharCount = smsTemplate.length;
@@ -355,7 +356,7 @@ export default function AdminPortRecovery() {
                     <div className="text-xs text-gray-400">With Email</div>
                   </div>
                   <div className="bg-slate-900/50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-yellow-400">500</div>
+                    <div className="text-2xl font-bold text-yellow-400">{currentCampaign?.pointsPerCustomer || 500}</div>
                     <div className="text-xs text-gray-400">Points Each</div>
                   </div>
                 </div>
@@ -404,22 +405,22 @@ export default function AdminPortRecovery() {
             </Card>
           ) : null}
 
-          {/* Sample SMS Preview */}
-          {previewData?.sampleSms && (
+          {/* Sample SMS Preview - Uses local state for live preview */}
+          {(smsTemplate || previewData?.sampleSms) && smsEnabled && (
             <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-green-500">
               <CardHeader className="pb-2">
                 <CardTitle className="text-white text-sm flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-green-400" />
-                  Sample Message
+                  Live Message Preview
                 </CardTitle>
                 <CardDescription className="text-gray-400 text-xs">
-                  How the message will appear to "{previewData.sampleCustomerName}"
+                  How the message will appear to "{previewData?.sampleCustomerName || 'Customer'}"
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="bg-slate-900/50 rounded-lg p-3">
-                  <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap">
-                    {previewData.sampleSms}
+                  <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap" data-testid="live-sms-preview">
+                    {smsTemplate ? interpolateSmsPreview(smsTemplate) : previewData?.sampleSms}
                   </p>
                 </div>
               </CardContent>
