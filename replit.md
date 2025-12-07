@@ -69,6 +69,18 @@ A read-only billing and usage page accessible to all tenant users:
 - **Service Layer**: `server/services/usageOverviewService.ts` combines tenant plan info with 30-day usage metrics
 - **Hook**: `client/src/hooks/useBillingOverview.ts` for frontend data fetching
 
+#### Billing & Dunning Automation (SP-6)
+A comprehensive billing status and dunning system for handling payment failures and account suspension:
+- **Billing Status Fields**: `tenants` table extended with `billingStatusSince`, `cancelAtPeriodEnd`, `lastInvoiceStatus`, `lastInvoiceDueAt` columns
+- **Billing Status Service**: `server/services/billingStatusService.ts` maps Stripe subscription states to app billing statuses (trial, active, past_due, suspended, cancelled)
+- **Stripe Webhook Integration**: `invoice.payment_failed` and `invoice.payment_succeeded` handlers trigger billing status updates
+- **Cancel Subscription**: `POST /api/billing/cancel-at-period-end` toggles subscription cancellation at period end
+- **Past Due Warning Banner**: `client/src/components/billing/PastDueWarningBanner.tsx` displays yellow warning with link to update payment
+- **Account Suspended Screen**: `client/src/components/billing/AccountSuspendedScreen.tsx` full-screen lockout for suspended accounts
+- **Suspension Guard**: `client/src/components/AuthGuard.tsx` checks billing status and shows suspension screen except for `/settings/billing` and `/support` routes
+- **Billing Status Hook**: `client/src/hooks/useBillingStatus.ts` fetches and caches billing status from `/api/tenant/billing/status`
+- **Suspension Middleware**: `server/middleware/suspensionGuard.ts` blocks critical API routes for suspended tenants
+
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business.
 
