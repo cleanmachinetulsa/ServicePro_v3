@@ -135,7 +135,7 @@ router.post('/apply', async (req: Request, res: Response) => {
     });
 
     if (!result.success) {
-      return res.json({
+      return res.status(422).json({
         success: false,
         error: result.error,
       });

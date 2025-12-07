@@ -123,7 +123,16 @@ async function applyServices(
       `);
 
       if (existingResult.rows.length > 0) {
-        stats.skipped++;
+        const existingId = existingResult.rows[0].id;
+        await tenantDb.execute(sql`
+          UPDATE services
+          SET category = COALESCE(${category}, category),
+              description = COALESCE(${svc.description || null}, description),
+              starting_price = COALESCE(${svc.price || svc.starting_price || null}, starting_price),
+              duration_minutes = COALESCE(${svc.duration_minutes || svc.duration || null}, duration_minutes)
+          WHERE id = ${existingId} AND tenant_id = ${tenantId}
+        `);
+        stats.updated++;
         continue;
       }
 
@@ -141,7 +150,7 @@ async function applyServices(
       `);
       stats.created++;
     } catch (error: any) {
-      console.warn(`${LOG_PREFIX} Service insert error for ${name}:`, error.message);
+      console.warn(`${LOG_PREFIX} Service upsert error for ${name}:`, error.message);
       stats.skipped++;
     }
   }
@@ -184,7 +193,14 @@ async function applyFaqs(
       `);
 
       if (existingResult.rows.length > 0) {
-        stats.skipped++;
+        const existingId = existingResult.rows[0].id;
+        await tenantDb.execute(sql`
+          UPDATE support_kb_articles
+          SET content = ${answer},
+              category = COALESCE(${faq.category || null}, category)
+          WHERE id = ${existingId} AND tenant_id = ${tenantId}
+        `);
+        stats.updated++;
         continue;
       }
 
@@ -200,7 +216,7 @@ async function applyFaqs(
       `);
       stats.created++;
     } catch (error: any) {
-      console.warn(`${LOG_PREFIX} FAQ insert error:`, error.message);
+      console.warn(`${LOG_PREFIX} FAQ upsert error:`, error.message);
       stats.skipped++;
     }
   }
