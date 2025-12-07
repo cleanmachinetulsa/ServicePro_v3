@@ -10,7 +10,8 @@ import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { PastDueWarningBanner } from '@/components/billing/PastDueWarningBanner';
 import { navigationItems, NavigationItem } from '@/config/navigationItems';
-import { Menu, Moon, Sun, Lightbulb } from 'lucide-react';
+import { Menu, Moon, Sun, Lightbulb, Sparkles, Settings2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUiExperience } from '@/contexts/UiExperienceContext';
 import { useBillingStatus } from '@/hooks/useBillingStatus';
@@ -52,7 +53,7 @@ export function AppShell({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
   const [location, navigate] = useLocation();
   const { isDark, toggleTheme } = useTheme();
-  const { mode: uiMode } = useUiExperience();
+  const { mode: uiMode, toggleMode, isSaving: isModeSaving } = useUiExperience();
   const { isPastDue } = useBillingStatus();
   const { t } = useTranslation('common');
 
@@ -251,6 +252,39 @@ export function AppShell({
                 {pageActions}
               </div>
             )}
+
+            {/* UI Mode Toggle - SP-14 */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleMode}
+                    disabled={isModeSaving}
+                    className={`text-gray-700 dark:text-gray-300 flex-shrink-0 h-10 w-10 ${
+                      uiMode === 'advanced' 
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' 
+                        : ''
+                    }`}
+                    data-testid="button-ui-mode-toggle"
+                  >
+                    {uiMode === 'simple' ? (
+                      <Sparkles className="h-5 w-5" />
+                    ) : (
+                      <Settings2 className="h-5 w-5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-sm">
+                    {uiMode === 'simple' 
+                      ? 'Simple Mode - Click for Advanced' 
+                      : 'Advanced Mode - Click for Simple'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* Dark Mode Toggle */}
             <Button

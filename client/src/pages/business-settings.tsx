@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AppShell } from "@/components/AppShell";
+import { useUiExperience } from "@/contexts/UiExperienceContext";
 import { 
   Clock, 
   Calendar,
@@ -708,6 +709,8 @@ function MaintenanceModeTab() {
 export default function BusinessSettings() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const { mode } = useUiExperience();
+  const isSimpleMode = mode === 'simple';
   
   // Business hours state
   const [businessHours, setBusinessHours] = useState<BusinessHours>({
@@ -958,28 +961,34 @@ export default function BusinessSettings() {
         <TabsList className="flex flex-wrap justify-start gap-1 h-auto p-1 bg-muted">
           <TabsTrigger value="hours" className="flex items-center whitespace-nowrap">
             <Clock className="mr-2 h-4 w-4" />
-            Business Hours
+            {isSimpleMode ? 'Hours' : 'Business Hours'}
           </TabsTrigger>
           <TabsTrigger value="booking" className="flex items-center whitespace-nowrap">
             <Calendar className="mr-2 h-4 w-4" />
-            Booking Settings
+            {isSimpleMode ? 'Booking' : 'Booking Settings'}
           </TabsTrigger>
-          <TabsTrigger value="limits" className="flex items-center whitespace-nowrap">
-            <TrendingDown className="mr-2 h-4 w-4" />
-            Service Limits
-          </TabsTrigger>
-          <TabsTrigger value="google" className="flex items-center whitespace-nowrap">
-            <LinkIcon className="mr-2 h-4 w-4" />
-            Google Integration
-          </TabsTrigger>
+          {!isSimpleMode && (
+            <TabsTrigger value="limits" className="flex items-center whitespace-nowrap">
+              <TrendingDown className="mr-2 h-4 w-4" />
+              Service Limits
+            </TabsTrigger>
+          )}
+          {!isSimpleMode && (
+            <TabsTrigger value="google" className="flex items-center whitespace-nowrap">
+              <LinkIcon className="mr-2 h-4 w-4" />
+              Google Integration
+            </TabsTrigger>
+          )}
           <TabsTrigger value="branding" className="flex items-center whitespace-nowrap">
             <Settings className="mr-2 h-4 w-4" />
-            Branding
+            {isSimpleMode ? 'Look & Feel' : 'Branding'}
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center whitespace-nowrap">
-            <Shield className="mr-2 h-4 w-4" />
-            Maintenance
-          </TabsTrigger>
+          {!isSimpleMode && (
+            <TabsTrigger value="notifications" className="flex items-center whitespace-nowrap">
+              <Shield className="mr-2 h-4 w-4" />
+              Maintenance
+            </TabsTrigger>
+          )}
         </TabsList>
         
         {/* Business Hours Tab */}
@@ -1347,13 +1356,16 @@ export default function BusinessSettings() {
           </Card>
         </TabsContent>
         
-        {/* Service Limits Tab */}
-        <TabsContent value="limits" className="space-y-4">
-          <ServiceLimitsTab />
-        </TabsContent>
+        {/* Service Limits Tab - Advanced Mode Only */}
+        {!isSimpleMode && (
+          <TabsContent value="limits" className="space-y-4">
+            <ServiceLimitsTab />
+          </TabsContent>
+        )}
         
-        {/* Google Integration Tab */}
-        <TabsContent value="google" className="space-y-4">
+        {/* Google Integration Tab - Advanced Mode Only */}
+        {!isSimpleMode && (
+          <TabsContent value="google" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>
@@ -1411,7 +1423,8 @@ export default function BusinessSettings() {
               </Button>
             </CardFooter>
           </Card>
-        </TabsContent>
+          </TabsContent>
+        )}
 
         {/* Branding Tab */}
         <TabsContent value="branding" className="space-y-4">
@@ -1485,10 +1498,12 @@ export default function BusinessSettings() {
           </Card>
         </TabsContent>
 
-        {/* Maintenance Tab */}
-        <TabsContent value="notifications" className="space-y-4">
-          <MaintenanceModeTab />
-        </TabsContent>
+        {/* Maintenance Tab - Advanced Mode Only */}
+        {!isSimpleMode && (
+          <TabsContent value="notifications" className="space-y-4">
+            <MaintenanceModeTab />
+          </TabsContent>
+        )}
       </Tabs>
       </div>
     </AppShell>

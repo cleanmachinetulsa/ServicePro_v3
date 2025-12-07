@@ -125,6 +125,7 @@ export const navigationItems: NavigationItem[] = [
     label: 'Service History',
     icon: History,
     path: '/service-history',
+    visibility: 'advancedOnly',
   },
   {
     id: 'rewards',
@@ -159,6 +160,7 @@ export const navigationItems: NavigationItem[] = [
     label: 'Damage Assessment',
     icon: Camera,
     path: '/damage-assessment',
+    visibility: 'advancedOnly',
   },
 
   // MARKETING & CONTENT
@@ -200,6 +202,7 @@ export const navigationItems: NavigationItem[] = [
     label: 'Banner Management',
     icon: Megaphone,
     path: '/admin/banner-management',
+    visibility: 'advancedOnly',
   },
   {
     id: 'referrals',
@@ -228,6 +231,7 @@ export const navigationItems: NavigationItem[] = [
     label: 'Call Metrics',
     icon: BarChart3,
     path: '/call-metrics',
+    visibility: 'advancedOnly',
   },
 
   // FINANCE
@@ -250,12 +254,14 @@ export const navigationItems: NavigationItem[] = [
     label: 'Usage Dashboard',
     icon: Wallet,
     path: '/admin/usage-dashboard',
+    visibility: 'advancedOnly',
   },
   {
     id: 'billing-usage',
     label: 'Billing & Usage',
     icon: Activity,
     path: '/admin/billing-usage',
+    visibility: 'advancedOnly',
   },
 
   // MULTI-TENANT MANAGEMENT (Owner Only) - Advanced Mode
@@ -472,12 +478,14 @@ export const navigationItems: NavigationItem[] = [
     label: 'Phone Settings',
     icon: Phone,
     path: '/phone-settings',
+    visibility: 'advancedOnly',
   },
   {
     id: 'email-settings',
     label: 'Email Settings',
     icon: Mail,
     path: '/settings/email',
+    visibility: 'advancedOnly',
   },
   {
     id: 'a2p-campaign',
@@ -499,18 +507,21 @@ export const navigationItems: NavigationItem[] = [
     label: 'Facebook Settings',
     icon: MessagesSquare,
     path: '/facebook-settings',
+    visibility: 'advancedOnly',
   },
   {
     id: 'quick-replies',
     label: 'Quick Replies',
     icon: MessageCircle,
     path: '/quick-replies',
+    visibility: 'advancedOnly',
   },
   {
     id: 'reminders',
     label: 'Reminders',
     icon: Clock,
     path: '/reminders',
+    visibility: 'advancedOnly',
   },
   {
     id: 'customer-suggestions',
