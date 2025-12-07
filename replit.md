@@ -44,3 +44,67 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
+
+## SP-18 Parser Integration v1
+
+AI-powered phone history analysis and knowledge extraction for onboarding:
+
+**Files**:
+- `shared/schema.ts`: Extended `phoneHistoryImports` table with `parserConfig`, `knowledgeJson`, `analyticsJson`, `appliedAt`, `appliedFlags` fields
+- `server/services/parserIntegrationService.ts`: External Parser API proxy, import record creation, result storage
+- `server/services/parserApplyService.ts`: Apply extracted services, FAQs, and tone profile to tenant config
+- `server/services/knowledgeOnboardingService.ts`: Build complete AI setup from Knowledge JSON
+- `server/routes/parserRoutes.ts`: API routes at /api/onboarding/parser/*
+- `client/src/components/ParserImportStep.tsx`: Setup Wizard component for file upload, analysis, and AI setup
+
+**API Routes**:
+- POST /api/onboarding/parser/run: Upload files and run parser analysis
+- POST /api/onboarding/parser/apply: Apply extracted knowledge to tenant
+- POST /api/onboarding/parser/build-setup: Build complete AI setup from knowledge (services, FAQs, persona)
+- GET /api/onboarding/parser/latest: Get most recent parser import
+- GET /api/onboarding/parser/import/:id: Get specific import record
+- GET /api/onboarding/parser/preview/:id: Get preview of knowledge import
+- GET /api/onboarding/parser/history: Get import history
+- GET /api/onboarding/parser/health: Check parser API connectivity
+
+**Parser Config Options**:
+- businessName, businessPhone, threadGapMinutes
+- includeFaqs, includeToneProfile, includeServices, includeAnalytics
+
+**Build Setup Options**:
+- applyServices: Creates services from extracted service mentions
+- applyFaqs: Creates faq_entries from extracted FAQs
+- applyPersona: Configures AI behavior rules and agent preferences from style profile
+- applyProfile: Extracts business profile hints (name, tagline, industry)
+
+**Environment Variables**:
+- PARSER_API_URL: External parser service URL (defaults to https://sms-parse-output-cleanmachinetul.replit.app)
+
+**Flow**:
+1. User uploads SMS export files (HTML, CSV, ZIP, JSON)
+2. Files sent to external parser API for analysis
+3. Parser returns structured knowledgeJson with services, FAQs, tone profile
+4. User reviews preview (service count, FAQ count, tone snippets)
+5. User clicks "Build My Setup" to apply all knowledge
+6. System creates services, FAQs, configures AI persona, and shows summary
+
+## CRITICAL: Clean Machine Domain Routing (DO NOT CHANGE)
+
+**cleanmachinetulsa.com MUST always render the custom HomePage, NEVER the auto-generated PublicSite.**
+
+| Domain | Component | File | Description |
+|--------|-----------|------|-------------|
+| cleanmachinetulsa.com | `HomePage` | `client/src/pages/home.tsx` | Custom hand-built homepage with 7 templates |
+| All other domains | `LandingPage` | `client/src/pages/LandingPage.tsx` | ServicePro marketing page |
+
+**Key Files:**
+- `client/src/components/RootDomainHandler.tsx` - Controls domain-based routing (contains critical comments)
+- `client/src/pages/home.tsx` - The Clean Machine homepage with template system
+- `client/src/pages/templates/` - 7 template options (CurrentTemplate, LuminousConcierge, etc.)
+- `/admin/homepage-editor` - Admin page to edit homepage content and select templates
+
+**NEVER route cleanmachinetulsa.com to:**
+- `/site/cleanmachine` (auto-generated PublicSite)
+- `PublicSite.tsx` (tenant auto-generator)
+
+This was established after the CM-DNS work accidentally routed the domain to PublicSite instead of the custom homepage.

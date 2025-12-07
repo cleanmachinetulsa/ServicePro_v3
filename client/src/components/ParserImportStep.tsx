@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Upload, FileText, CheckCircle2, AlertCircle, Brain, ListPlus, MessageSquare, Sparkles, X } from 'lucide-react';
+import { Loader2, Upload, FileText, CheckCircle2, AlertCircle, Brain, ListPlus, MessageSquare, Sparkles, X, Wand2, Settings2, User } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 
@@ -39,6 +39,31 @@ interface ParserApplyResult {
   error?: string;
 }
 
+interface BuildSetupResult {
+  success: boolean;
+  result?: {
+    persona: {
+      title: string;
+      systemPrompt: string;
+      toneWords: string[];
+      formality: string;
+      emojisAllowed: boolean;
+      sampleGreeting?: string;
+      sampleSignoff?: string;
+    };
+    services: { created: number; updated: number; skipped: number };
+    faqs: { created: number; updated: number; skipped: number };
+    tenantProfile: {
+      appliedBusinessName?: string;
+      appliedTagline?: string;
+      appliedIndustry?: string;
+      notes: string[];
+    };
+    warnings: string[];
+  };
+  error?: string;
+}
+
 interface ParserImportStepProps {
   onComplete?: () => void;
   showSkip?: boolean;
@@ -55,6 +80,8 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
   const [applyFaqs, setApplyFaqs] = useState(false);
   const [applyServices, setApplyServices] = useState(false);
   const [applyTone, setApplyTone] = useState(false);
+  const [applyPersona, setApplyPersona] = useState(true);
+  const [buildSetupResult, setBuildSetupResult] = useState<BuildSetupResult | null>(null);
 
   const hasServices = (parserResult?.preview?.servicesCount || 0) > 0;
   const hasFaqs = (parserResult?.preview?.faqCount || 0) > 0;
@@ -65,6 +92,7 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
       setApplyServices(preview.servicesCount > 0);
       setApplyFaqs(preview.faqCount > 0);
       setApplyTone((preview.styleSnippets?.length || 0) > 0);
+      setApplyPersona(true);
     }
   };
 
@@ -159,6 +187,56 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
     },
   });
 
+  const buildSetupMutation = useMutation({
+    mutationFn: async () => {
+      if (!parserResult?.importId) throw new Error('No import to build from');
+      
+      return apiRequest('POST', '/api/onboarding/parser/build-setup', {
+        importId: parserResult.importId,
+        applyServices,
+        applyFaqs,
+        applyPersona,
+        applyProfile: true,
+      }) as Promise<BuildSetupResult>;
+    },
+    onSuccess: (result) => {
+      if (result.success && result.result) {
+        setBuildSetupResult(result);
+        const { services, faqs, persona } = result.result;
+        toast({
+          title: 'AI Setup Complete!',
+          description: `Created ${services.created} services, ${faqs.created} FAQs, and configured AI persona`,
+        });
+      } else {
+        toast({
+          title: 'Build setup failed',
+          description: result.error || 'Unknown error',
+          variant: 'destructive',
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/onboarding/parser/latest'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Build setup error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleBuildSetup = () => {
+    if (!applyFaqs && !applyServices && !applyPersona) {
+      toast({
+        title: 'Select at least one option',
+        description: 'Please select at least one type of data to apply',
+        variant: 'destructive',
+      });
+      return;
+    }
+    buildSetupMutation.mutate();
+  };
+
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -209,6 +287,92 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
   };
 
   const hasExistingImport = latestImport?.import?.status === 'success' && latestImport.import.applied_at;
+
+  if (buildSetupResult?.success && buildSetupResult.result) {
+    const { persona, services, faqs, tenantProfile, warnings } = buildSetupResult.result;
+    
+    return (
+      <Card className="border-green-500/50 border-solid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-green-500" />
+            AI Setup Complete
+          </CardTitle>
+          <CardDescription>
+            Your business has been configured based on your conversation history
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="w-4 h-4 text-purple-500" />
+                <span className="font-medium">AI Persona</span>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p className="mb-1"><strong>Style:</strong> {persona.toneWords.slice(0, 3).join(', ')}</p>
+                <p className="mb-1"><strong>Formality:</strong> {persona.formality}</p>
+                {persona.sampleGreeting && (
+                  <p className="text-xs italic mt-2">"{persona.sampleGreeting}"</p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <ListPlus className="w-4 h-4 text-blue-500" />
+                <span className="font-medium">Services</span>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p>{services.created} created</p>
+                {services.updated > 0 && <p>{services.updated} updated</p>}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare className="w-4 h-4 text-green-500" />
+                <span className="font-medium">FAQs</span>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                <p>{faqs.created} created</p>
+                {faqs.updated > 0 && <p>{faqs.updated} updated</p>}
+              </div>
+            </div>
+
+            {tenantProfile.notes.length > 0 && (
+              <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Settings2 className="w-4 h-4 text-amber-500" />
+                  <span className="font-medium">Business Profile</span>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {tenantProfile.notes.slice(0, 3).map((note, i) => (
+                    <p key={i} className="text-xs">{note}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {warnings.length > 0 && (
+            <Alert variant="default">
+              <AlertCircle className="w-4 h-4" />
+              <AlertTitle>Notes</AlertTitle>
+              <AlertDescription>
+                {warnings.map((w, i) => <p key={i} className="text-xs">{w}</p>)}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Button onClick={onComplete} className="w-full" data-testid="button-setup-complete">
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            Continue to Dashboard
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (hasExistingImport) {
     return (
@@ -342,24 +506,39 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
                 data-testid="switch-apply-tone"
               />
             </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-orange-500" />
+                <Label htmlFor="apply-persona">
+                  AI Persona & Behavior
+                </Label>
+              </div>
+              <Switch
+                id="apply-persona"
+                checked={applyPersona}
+                onCheckedChange={setApplyPersona}
+                data-testid="switch-apply-persona"
+              />
+            </div>
           </div>
 
           <div className="flex gap-3">
             <Button
-              onClick={handleApply}
-              disabled={applyMutation.isPending || (!applyFaqs && !applyServices && !applyTone)}
+              onClick={handleBuildSetup}
+              disabled={buildSetupMutation.isPending || (!applyFaqs && !applyServices && !applyPersona)}
               className="flex-1"
-              data-testid="button-apply-knowledge"
+              data-testid="button-build-setup"
             >
-              {applyMutation.isPending ? (
+              {buildSetupMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Applying...
+                  Building Setup...
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Apply Knowledge
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  Build My Setup
                 </>
               )}
             </Button>
