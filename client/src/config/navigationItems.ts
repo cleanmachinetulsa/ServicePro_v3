@@ -450,6 +450,13 @@ export const navigationItems: NavigationItem[] = [
     path: '/settings/billing',
   },
   {
+    id: 'settings-domains',
+    label: 'Custom Domains',
+    icon: Globe,
+    path: '/settings/domains',
+    visibility: 'advancedOnly',
+  },
+  {
     id: 'business-settings',
     label: 'Business Settings',
     icon: Building2,

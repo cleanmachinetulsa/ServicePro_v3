@@ -22,6 +22,8 @@ import {
   Gift,
   Trophy
 } from 'lucide-react';
+import { Seo } from '@/components/Seo';
+import { CLEAN_MACHINE_TENANT_SLUG } from '@shared/domainConfig';
 
 interface PublicSiteData {
   tenant: {
@@ -171,8 +173,19 @@ export default function PublicSite() {
     },
   };
 
+  const isCleanMachine = subdomain === CLEAN_MACHINE_TENANT_SLUG;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50/20 to-cyan-50/30">
+      {/* CM-DNS-3: SEO metadata for Clean Machine public site */}
+      {isCleanMachine && (
+        <Seo 
+          title="Premium Mobile Auto Detailing in Tulsa"
+          description="Clean Machine Auto Detail provides premium mobile interior and exterior detailing in Tulsa and surrounding areas. We come to you with dealership-level results."
+          canonicalPath="/"
+        />
+      )}
+      
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-white/70 border-b border-white/20 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">

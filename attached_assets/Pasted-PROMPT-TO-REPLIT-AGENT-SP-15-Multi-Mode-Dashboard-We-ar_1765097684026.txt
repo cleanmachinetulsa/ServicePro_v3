@@ -1,0 +1,127 @@
+PROMPT TO REPLIT AGENT — SP-15 Multi-Mode Dashboard
+
+We are working on the ServicePro v3 codebase.
+Implement SP-15 Multi-Mode Dashboard, enabling:
+
+GOALS
+
+A Simple Mode that hides advanced features and shows only essential controls.
+
+An Advanced Mode that shows the full dashboard as it exists now.
+
+A Customizer that allows tenants to choose which panels appear in Simple Mode.
+
+Persist these preferences per tenant using the tenant DB (wrapTenantDb).
+
+Add a toggle in the sidebar to switch modes instantly.
+
+Part A — Tenant DB Structure
+
+Create a new table in the tenant-scoped DB:
+
+dashboard_preferences
+
+Columns:
+
+id (uuid, pk)
+
+tenantId (fk)
+
+mode ("simple" | "advanced", default "simple")
+
+simpleVisiblePanels (json array of panel IDs)
+
+updatedAt timestamp
+
+NOTE:
+Panels are string IDs we define:
+
+"conversations", "calendar", "analytics", "campaigns",
+"rewards", "settings", "services", "automations", "ivr",
+"telephony", "billing", "imports"
+
+Part B — Global Dashboard Mode Toggle
+
+Add a toggle to the left sidebar:
+
+UI behavior:
+
+When in simple, sidebar shows:
+
+Conversations
+
+Calendar
+
+Booking Requests
+
+Customers
+
+Rewards
+
+Settings
+… plus any panels user added via Customizer
+
+When in advanced, sidebar shows everything.
+
+Store the tenant’s choice in:
+
+PUT /api/settings/dashboard/preferences
+GET /api/settings/dashboard/preferences
+
+
+Use Zod validation.
+
+Part C — Simple Mode Customizer UI
+
+Create a new settings page:
+
+Route:
+/settings/dashboard/customize
+
+Features:
+
+List every panel with a toggle checkbox.
+
+Only controls for Simple Mode.
+
+Save button that updates simpleVisiblePanels.
+
+Important:
+Even in Simple Mode, the user should always be able to reach the customizer page — never hide it.
+
+Part D — Apply Visibility Logic
+
+Modify sidebar & dashboard layout:
+
+At render time, check:
+
+const prefs = useTenantDashboardPreferences()
+if (prefs.mode === "simple") {
+    render only: prefs.simpleVisiblePanels
+} else {
+    render all panels
+}
+
+
+Keep all panels lazy-loaded like now.
+
+Part E — Docs
+
+Add a new section to replit.md:
+
+“SP-15 Multi-Mode Dashboard
+– How preferences are stored
+– How to add new panels
+– How tenants customize their Simple Mode”
+
+Acceptance Tests
+
+Switch mode → sidebar updates immediately.
+
+Add/remove panels in Simple Mode → sidebar changes.
+
+Advanced Mode unchanged.
+
+Hard reload preserves tenant mode.
+
+No impact on Clean Machine tenant routing.

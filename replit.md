@@ -45,7 +45,9 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
 
-## Clean Machine Custom Domain Behavior (CM-DNS-2)
+## Clean Machine Custom Domain Behavior
+
+### CM-DNS-2: Root Domain Routing
 
 The platform supports custom domain routing for the Clean Machine tenant specifically:
 
@@ -60,3 +62,45 @@ The platform supports custom domain routing for the Clean Machine tenant specifi
 - `shared/domainConfig.ts`: Exports `CLEAN_MACHINE_DOMAIN` and `CLEAN_MACHINE_TENANT_SLUG` constants
 - `client/src/components/RootDomainHandler.tsx`: Checks hostname on the root route and redirects if on the Clean Machine domain
 - This is a client-side redirect only; no server-side changes required for this feature
+
+### CM-DNS-3: HTTPS and Canonical Redirects
+
+Express middleware in `server/index.ts` handles HTTP-to-HTTPS and www-to-root redirects for the Clean Machine domain:
+
+- **http → https**: Redirects all HTTP traffic to HTTPS (301 permanent)
+- **www → root**: Redirects www.cleanmachinetulsa.com → cleanmachinetulsa.com (301 permanent)
+- Only applies in production mode (skipped when `NODE_ENV=development`)
+- Uses `x-forwarded-proto` header to detect protocol behind Replit's proxy
+
+**SEO Component** (`client/src/components/Seo.tsx`):
+- Sets document.title and meta tags dynamically
+- Supports: description, canonical URL, Open Graph (og:title, og:description, og:url)
+- Applied to PublicSite, rewards pages, and booking pages
+
+### SP-DOMAINS-1: Tenant Domain Management Foundation
+
+Multi-tenant custom domain infrastructure for future use:
+
+**Schema** (`shared/schema.ts`):
+- `tenant_domains` table with domain, tenant_id, isPrimary, status (pending/verified/inactive)
+- Foreign key cascade on tenant deletion
+- Insert and select types exported
+
+**Service Layer** (`server/services/tenantDomainService.ts`):
+- CRUD operations: create, getAll, getById, update, delete
+- setPrimary: Sets one domain as primary, unsets others
+- Domain validation and uniqueness checks
+
+**API Routes** (`server/routes.tenantDomains.ts`):
+- `GET /api/settings/domains`: List tenant domains
+- `POST /api/settings/domains`: Add new domain
+- `PUT /api/settings/domains/:id`: Update domain (set primary)
+- `DELETE /api/settings/domains/:id`: Remove domain
+- All routes require authentication
+
+**UI Page** (`client/src/pages/settings/DomainsPage.tsx`):
+- Add custom domains with validation
+- Set primary domain for tenant
+- Delete domains with confirmation dialog
+- Shows domain status badges (pending/verified/inactive)
+- Navigation: Settings > Custom Domains (Advanced mode only)
