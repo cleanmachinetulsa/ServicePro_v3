@@ -254,3 +254,28 @@ export async function setAddonStripeSubscriptionItemId(
   
   console.log(`[ADDON SERVICE] Set Stripe subscription item ID for ${addonKey} on tenant ${tenantId}: ${stripeSubscriptionItemId}`);
 }
+
+/**
+ * SP-20: Clear the Stripe subscription item ID for a tenant add-on
+ * Called when an add-on is canceled to remove Stripe linkage
+ */
+export async function clearAddonStripeSubscriptionItemId(
+  tenantId: string,
+  addonKey: AddonKey
+): Promise<void> {
+  const rootDb = wrapTenantDb(db, 'root');
+  
+  await rootDb
+    .update(tenantAddons)
+    .set({ 
+      externalSubscriptionId: null,
+    })
+    .where(
+      and(
+        eq(tenantAddons.tenantId, tenantId),
+        eq(tenantAddons.addonKey, addonKey)
+      )
+    );
+  
+  console.log(`[ADDON SERVICE] Cleared Stripe subscription item ID for ${addonKey} on tenant ${tenantId}`);
+}

@@ -20,6 +20,7 @@ import {
   cancelAddon,
   getTenantAddons,
   setAddonStripeSubscriptionItemId,
+  clearAddonStripeSubscriptionItemId,
 } from '../services/addonService';
 import { ADDONS_CATALOG, getAddonByKey, type AddonKey } from '@shared/addonsConfig';
 import { ADDON_KEYS, tenants } from '@shared/schema';
@@ -242,6 +243,9 @@ router.post('/my/toggle', requireOwner, async (req: Request, res: Response) => {
         if (!detachResult.success) {
           console.warn(`[ADDON ROUTES] Stripe detachment failed for ${addonKey}: ${detachResult.error}`);
           // Continue anyway - mark as canceled in our system
+        } else {
+          // Clear the Stripe subscription item ID from the database
+          await clearAddonStripeSubscriptionItemId(tenantId, addonKey as AddonKey);
         }
       }
       
