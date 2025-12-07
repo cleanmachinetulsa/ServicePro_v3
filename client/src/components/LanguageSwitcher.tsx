@@ -33,10 +33,7 @@ export function LanguageSwitcher({
 
   const updateLanguageMutation = useMutation({
     mutationFn: async (language: string) => {
-      return apiRequest('/api/settings/user-language', {
-        method: 'PUT',
-        body: JSON.stringify({ language }),
-      });
+      return apiRequest('PUT', '/api/settings/user-language', { language });
     },
     onSuccess: (_, language) => {
       setLanguage(language);
