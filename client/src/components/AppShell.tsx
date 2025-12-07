@@ -14,6 +14,7 @@ import { Menu, Moon, Sun, Lightbulb, Sparkles, Settings2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUiExperience } from '@/contexts/UiExperienceContext';
+import { useDashboardPreferencesContext, shouldShowNavItem } from '@/contexts/DashboardPreferencesContext';
 import { useBillingStatus } from '@/hooks/useBillingStatus';
 import TenantSuggestionModal from '@/components/TenantSuggestionModal';
 import { setLanguage } from '@/i18n';
@@ -54,6 +55,7 @@ export function AppShell({
   const [location, navigate] = useLocation();
   const { isDark, toggleTheme } = useTheme();
   const { mode: uiMode, toggleMode, isSaving: isModeSaving } = useUiExperience();
+  const { mode: dashboardMode, simpleVisiblePanels, isSaving: isDashboardSaving } = useDashboardPreferencesContext();
   const { isPastDue } = useBillingStatus();
   const { t } = useTranslation('common');
 
@@ -91,10 +93,22 @@ export function AppShell({
       ? navigationItems.filter(item => !ownerOnlyIds.includes(item.id))
       : [...navigationItems];
     
-    // Filter by UI experience mode
+    // Filter by UI experience mode (per-user SP-14)
     if (uiMode === 'simple') {
       // Remove advancedOnly items and their section headers when empty
       filteredItems = filteredItems.filter(item => item.visibility !== 'advancedOnly');
+    }
+    
+    // SP-15: Filter by dashboard preferences (tenant-level panel visibility)
+    if (dashboardMode === 'simple') {
+      filteredItems = filteredItems.filter(item => {
+        // Always show separators
+        if (item.separator) return true;
+        // Always show dashboard customize page so users can edit their preferences
+        if (item.id === 'dashboard-customize' || item.id === 'settings' || item.id === 'ui-mode') return true;
+        // Check if panel is visible based on dashboard preferences
+        return shouldShowNavItem(item.id, dashboardMode, simpleVisiblePanels);
+      });
     }
 
     return (

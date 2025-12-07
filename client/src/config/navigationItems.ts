@@ -44,6 +44,7 @@ import {
   SlidersHorizontal,
   CreditCard,
   FileArchive,
+  LayoutGrid,
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -442,6 +443,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Interface Mode',
     icon: SlidersHorizontal,
     path: '/settings/ui-mode',
+  },
+  {
+    id: 'dashboard-customize',
+    label: 'Customize Dashboard',
+    icon: LayoutDashboard,
+    path: '/settings/dashboard/customize',
   },
   {
     id: 'settings-billing',

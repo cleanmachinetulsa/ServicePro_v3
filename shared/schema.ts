@@ -4610,3 +4610,63 @@ export type TenantDomain = typeof tenantDomains.$inferSelect;
 export type InsertTenantDomain = z.infer<typeof insertTenantDomainSchema>;
 export type UpdateTenantDomain = z.infer<typeof updateTenantDomainSchema>;
 export type CreateTenantDomain = z.infer<typeof createTenantDomainSchema>;
+
+// ============================================================
+// SP-15: DASHBOARD PREFERENCES
+// ============================================================
+
+export const dashboardModeEnum = pgEnum('dashboard_mode', ['simple', 'advanced']);
+
+export const DASHBOARD_PANEL_IDS = [
+  'conversations',
+  'calendar',
+  'analytics',
+  'campaigns',
+  'rewards',
+  'settings',
+  'services',
+  'automations',
+  'ivr',
+  'telephony',
+  'billing',
+  'imports',
+  'customers',
+  'booking-requests',
+  'technician',
+  'employees',
+  'gallery',
+  'referrals',
+] as const;
+
+export type DashboardPanelId = typeof DASHBOARD_PANEL_IDS[number];
+
+export const dashboardPreferences = pgTable("dashboard_preferences", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().unique().references(() => tenants.id, { onDelete: "cascade" }),
+  mode: dashboardModeEnum("mode").notNull().default('simple'),
+  simpleVisiblePanels: jsonb("simple_visible_panels").$type<DashboardPanelId[]>().notNull().default([
+    'conversations',
+    'calendar',
+    'booking-requests',
+    'customers',
+    'rewards',
+    'settings',
+  ]),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: uniqueIndex("dashboard_preferences_tenant_id_idx").on(table.tenantId),
+}));
+
+export const insertDashboardPreferencesSchema = createInsertSchema(dashboardPreferences).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const updateDashboardPreferencesSchema = z.object({
+  mode: z.enum(['simple', 'advanced']).optional(),
+  simpleVisiblePanels: z.array(z.enum(DASHBOARD_PANEL_IDS)).optional(),
+});
+
+export type DashboardPreferences = typeof dashboardPreferences.$inferSelect;
+export type InsertDashboardPreferences = z.infer<typeof insertDashboardPreferencesSchema>;
+export type UpdateDashboardPreferences = z.infer<typeof updateDashboardPreferencesSchema>;
