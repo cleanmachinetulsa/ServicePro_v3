@@ -92,3 +92,46 @@ New page for platform-wide visibility:
 ### Navigation
 - Tenant page: Settings → Billing & Usage (`/settings/billing`)
 - Root admin page: Multi-Tenant Management → Usage Overview (`/admin/billing-overview`, Owner badge)
+
+## SP-12: Voicemail Playback Fix (No Twilio Login Popups)
+
+### Overview
+Fixes voicemail playback in the app by routing audio through a secure server-side proxy instead of exposing raw Twilio recording URLs to the browser.
+
+### Problem Solved
+- Previously, voicemail audio players used raw Twilio Recording URLs
+- These URLs require Twilio Console authentication, causing login popups
+- Twilio credentials were potentially exposed to the browser
+
+### Solution Architecture
+1. **Server-side Proxy Endpoint**: `GET /api/twilio/media/:recordingSid`
+   - Fetches recording from Twilio using server-side credentials
+   - Streams audio back to browser (Content-Type: audio/mpeg)
+   - Never exposes Twilio Account SID or Auth Token to frontend
+   - Requires authentication (user must be logged in)
+
+2. **Frontend Helper Function**: `getProxiedAudioUrl()` in `client/src/lib/twilioMediaProxy.ts`
+   - Extracts recordingSid from raw Twilio URLs
+   - Converts to proxy URL format: `/api/twilio/media/RExxxxxx`
+   - Used by all voicemail player components
+
+### Key Files
+- `server/routes.twilioMedia.ts`: Proxy endpoint implementation
+- `client/src/lib/twilioMediaProxy.ts`: URL conversion helper
+- `client/src/components/messages/MessageBubble.tsx`: Main conversation voicemail player
+- `client/src/components/messages/NightOpsVoicemailCard.tsx`: Night Ops voicemail card
+- `client/src/components/phone/VoicemailInbox.tsx`: Voicemail inbox player
+- `client/src/components/phone/CallDetailsModal.tsx`: Call details recording download
+
+### Troubleshooting Voicemail Playback
+If voicemail playback fails:
+1. **Check Twilio credentials**: Verify `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` are set
+2. **Check recordingSid**: Ensure the recording SID starts with "RE" prefix
+3. **Check network**: Look in browser dev tools for 403/404 errors on `/api/twilio/media/` requests
+4. **Check logs**: Server logs errors with `[TWILIO MEDIA PROXY]` prefix
+
+### Security
+- Server credentials never sent to browser
+- Raw Twilio URLs are never exposed to frontend
+- All proxy requests require user authentication
+- Errors don't leak sensitive information
