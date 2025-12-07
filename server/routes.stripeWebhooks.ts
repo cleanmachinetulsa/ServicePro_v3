@@ -18,6 +18,12 @@ import { getTierForPriceId } from './services/stripeService';
 import { createTenantDb, type TenantDb } from './tenantDb';
 import { db } from './db';
 import type { TenantInfo } from './tenantMiddleware';
+import {
+  mapStripeToBillingStatus,
+  updateTenantBillingStatus,
+  checkAndApplySuspension,
+  sendPaymentFailedEmail,
+} from './services/billingStatusService';
 
 const router = Router();
 
@@ -146,6 +152,15 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
 
       case 'customer.subscription.deleted':
         await handleSubscriptionDeleted(req, event.data.object as Stripe.Subscription);
+        break;
+
+      // SP-6: Invoice events for billing dunning
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
+      case 'invoice.payment_succeeded':
+        await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
         break;
 
       default:
@@ -537,6 +552,107 @@ async function handleSubscriptionDeleted(req: Request, subscription: Stripe.Subs
     console.log(`[STRIPE WEBHOOK] Tenant ${tenantId} downgraded to free tier (subscription cancelled)`);
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error handling subscription deletion:', error);
+  }
+}
+
+/**
+ * Handle invoice payment failed (SP-6)
+ * Updates tenant billing status and sends dunning email
+ */
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  console.log('[STRIPE WEBHOOK] Invoice payment failed:', invoice.id);
+
+  try {
+    const customerId = invoice.customer as string;
+    if (!customerId) {
+      console.warn('[STRIPE WEBHOOK] No customer ID in invoice');
+      return;
+    }
+
+    const [tenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.stripeCustomerId, customerId))
+      .limit(1);
+
+    if (!tenant) {
+      console.warn(`[STRIPE WEBHOOK] No tenant found for Stripe customer ${customerId}`);
+      return;
+    }
+
+    const subscriptionId = invoice.subscription as string | null;
+    let subscriptionStatus: string | null = null;
+
+    if (subscriptionId && stripe) {
+      try {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        subscriptionStatus = subscription.status;
+      } catch (err) {
+        console.warn(`[STRIPE WEBHOOK] Could not fetch subscription ${subscriptionId}`);
+      }
+    }
+
+    const isTrial = tenant.status === 'trialing';
+    const newStatus = mapStripeToBillingStatus(subscriptionStatus, 'past_due', isTrial);
+
+    await updateTenantBillingStatus(tenant.id, {
+      billingStatus: newStatus,
+      lastInvoiceStatus: 'past_due',
+      lastInvoiceDueAt: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
+    });
+
+    await sendPaymentFailedEmail(tenant.id);
+
+    await checkAndApplySuspension(tenant.id);
+
+    console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status updated to ${newStatus} after invoice payment failed`);
+  } catch (error) {
+    console.error('[STRIPE WEBHOOK] Error handling invoice payment failed:', error);
+  }
+}
+
+/**
+ * Handle invoice payment succeeded (SP-6)
+ * Updates tenant billing status back to active
+ */
+async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+  console.log('[STRIPE WEBHOOK] Invoice payment succeeded:', invoice.id);
+
+  try {
+    const customerId = invoice.customer as string;
+    if (!customerId) {
+      console.warn('[STRIPE WEBHOOK] No customer ID in invoice');
+      return;
+    }
+
+    const [tenant] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.stripeCustomerId, customerId))
+      .limit(1);
+
+    if (!tenant) {
+      console.warn(`[STRIPE WEBHOOK] No tenant found for Stripe customer ${customerId}`);
+      return;
+    }
+
+    if (tenant.status === 'past_due' || tenant.status === 'suspended') {
+      await updateTenantBillingStatus(tenant.id, {
+        billingStatus: 'active',
+        lastInvoiceStatus: 'paid',
+      });
+
+      console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status restored to active after successful payment`);
+    } else {
+      await db.update(tenants)
+        .set({
+          lastInvoiceStatus: 'paid',
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, tenant.id));
+    }
+  } catch (error) {
+    console.error('[STRIPE WEBHOOK] Error handling invoice payment succeeded:', error);
   }
 }
 

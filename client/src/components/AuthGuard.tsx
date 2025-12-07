@@ -1,14 +1,19 @@
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useSession } from '@/hooks/useSession';
+import { useBillingStatus } from '@/hooks/useBillingStatus';
+import { AccountSuspendedScreen } from '@/components/billing/AccountSuspendedScreen';
 
 interface AuthGuardProps {
   children: React.ReactNode;
 }
 
+const EXEMPT_PATHS = ['/settings/billing', '/support', '/login', '/logout'];
+
 export default function AuthGuard({ children }: AuthGuardProps) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { isAuthenticated, isLoading, isError } = useSession();
+  const { isSuspended, isLoading: isBillingLoading } = useBillingStatus();
 
   // Redirect to login when not authenticated
   useEffect(() => {
@@ -34,6 +39,12 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Don't render anything while redirecting
   if (!isAuthenticated) {
     return null;
+  }
+
+  // SP-6: Show suspension screen for suspended accounts (except billing/support pages)
+  const isExemptPath = EXEMPT_PATHS.some(path => location.startsWith(path));
+  if (isSuspended && !isExemptPath && !isBillingLoading) {
+    return <AccountSuspendedScreen />;
   }
 
   return <>{children}</>;

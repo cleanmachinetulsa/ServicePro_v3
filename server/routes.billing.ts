@@ -20,6 +20,7 @@ import {
   isValidUpgrade,
   isStripeConfigured,
 } from './services/stripeService';
+import { updateTenantBillingStatus } from './services/billingStatusService';
 
 const router = Router();
 
@@ -270,6 +271,91 @@ router.get('/api/tenant/billing/status', async (req: Request, res: Response) => 
     console.error('[BILLING] Error fetching billing status:', error);
     res.status(500).json({
       error: 'Failed to fetch billing status',
+      message: error.message,
+    });
+  }
+});
+
+const cancelAtPeriodEndSchema = z.object({
+  cancelAtPeriodEnd: z.boolean(),
+});
+
+/**
+ * POST /api/billing/cancel-at-period-end
+ * 
+ * Toggle subscription cancellation at end of billing period
+ * 
+ * Security: Requires authenticated tenant user with owner/admin role
+ */
+router.post('/api/billing/cancel-at-period-end', async (req: Request, res: Response) => {
+  try {
+    if (!isStripeConfigured() || !stripe) {
+      return res.status(503).json({
+        success: false,
+        error: 'Billing is not configured. Please contact support.',
+      });
+    }
+
+    if (!req.session?.userId) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    const tenantId = req.session.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+
+    const role = req.session.role;
+    if (role !== 'owner' && role !== 'admin' && role !== 'root') {
+      return res.status(403).json({ success: false, error: 'Owner or admin role required' });
+    }
+
+    const parseResult = cancelAtPeriodEndSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request body',
+        details: parseResult.error.errors,
+      });
+    }
+
+    const { cancelAtPeriodEnd } = parseResult.data;
+
+    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+
+    if (!tenant) {
+      return res.status(404).json({ success: false, error: 'Tenant not found' });
+    }
+
+    if (!tenant.stripeSubscriptionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'No active subscription found',
+        message: 'You need an active subscription to use this feature.',
+      });
+    }
+
+    const subscription = await stripe.subscriptions.update(tenant.stripeSubscriptionId, {
+      cancel_at_period_end: cancelAtPeriodEnd,
+    });
+
+    await updateTenantBillingStatus(tenantId, {
+      billingStatus: tenant.status as any,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    });
+
+    console.log(`[BILLING] Tenant ${tenantId} set cancel_at_period_end=${cancelAtPeriodEnd}`);
+
+    res.json({
+      success: true,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    });
+
+  } catch (error: any) {
+    console.error('[BILLING] Error updating cancel_at_period_end:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update subscription',
       message: error.message,
     });
   }
