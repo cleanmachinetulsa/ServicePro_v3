@@ -23,6 +23,7 @@ import {
   updateTenantBillingStatus,
   checkAndApplySuspension,
   sendPaymentFailedEmail,
+  sendPaymentRecoveredEmail,
 } from './services/billingStatusService';
 
 const router = Router();
@@ -613,7 +614,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
 /**
  * Handle invoice payment succeeded (SP-6)
- * Updates tenant billing status back to active
+ * Updates tenant billing status back to active, clears cancelAtPeriodEnd, sends recovery email
  */
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   console.log('[STRIPE WEBHOOK] Invoice payment succeeded:', invoice.id);
@@ -636,17 +637,23 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
       return;
     }
 
-    if (tenant.status === 'past_due' || tenant.status === 'suspended') {
+    const wasSuspendedOrPastDue = tenant.status === 'past_due' || tenant.status === 'suspended';
+
+    if (wasSuspendedOrPastDue) {
       await updateTenantBillingStatus(tenant.id, {
         billingStatus: 'active',
+        cancelAtPeriodEnd: false,
         lastInvoiceStatus: 'paid',
       });
+
+      await sendPaymentRecoveredEmail(tenant.id);
 
       console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status restored to active after successful payment`);
     } else {
       await db.update(tenants)
         .set({
           lastInvoiceStatus: 'paid',
+          cancelAtPeriodEnd: false,
           updatedAt: new Date(),
         })
         .where(eq(tenants.id, tenant.id));

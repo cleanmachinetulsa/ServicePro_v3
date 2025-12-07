@@ -9,6 +9,7 @@ import { sessionMiddleware } from './sessionMiddleware';
 import { tenantMiddleware } from './tenantMiddleware';
 import { wrapTenantDb } from './tenantDb';
 import { demoProtectionMiddleware } from "./demoProtection";
+import { ensureTenantNotSuspended, isSuspendedRoute } from './middleware/suspensionGuard';
 import { checkMaintenanceMode } from "./maintenanceMode";
 import loyaltyRouter from "./loyaltyApi";
 import techProfilesRouter from "./routes.techProfiles";
@@ -275,6 +276,14 @@ setupGoogleOAuth(app);
 
 // Apply tenant middleware (must be after session, before routes)
 app.use(tenantMiddleware);
+
+// SP-6: Apply suspension guard middleware for non-exempt routes
+app.use((req, res, next) => {
+  if (isSuspendedRoute(req.path)) {
+    return ensureTenantNotSuspended(req, res, next);
+  }
+  next();
+});
 
 // Apply demo protection middleware
 app.use(demoProtectionMiddleware);
