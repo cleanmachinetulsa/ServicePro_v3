@@ -62,6 +62,7 @@ import AdminConciergeSetup from "./pages/AdminConciergeSetup";
 import PlatformSuggestions from "./pages/PlatformSuggestions";
 import TenantSuggestions from "./pages/TenantSuggestions";
 import AdminCustomerSuggestions from "./pages/admin-customer-suggestions";
+import AdminIndustryPacks from "./pages/AdminIndustryPacks";
 import ThemeGallery from "./pages/ThemeGallery";
 import PayerApprovalPage from "./pages/payer-approval";
 import QuoteApprovalPage from "./pages/quote-approval";
@@ -390,6 +391,12 @@ function Router() {
       <Route path="/admin/customer-suggestions">
         <AuthGuard>
           <AdminCustomerSuggestions />
+        </AuthGuard>
+      </Route>
+      {/* Phase 5.2: Industry Pack Editor + Clone-a-Tenant Factory */}
+      <Route path="/admin/industry-packs">
+        <AuthGuard>
+          <AdminIndustryPacks />
         </AuthGuard>
       </Route>
       {/* Phase 26: Support System */}
