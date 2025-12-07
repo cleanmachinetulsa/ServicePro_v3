@@ -12,6 +12,7 @@ import { PastDueWarningBanner } from '@/components/billing/PastDueWarningBanner'
 import { navigationItems, NavigationItem, filterNavForMode } from '@/config/navigationItems';
 import { useSimpleModeConfig } from '@/hooks/useUiExperienceMode';
 import { Menu, Moon, Sun, Lightbulb, Sparkles, Settings2 } from 'lucide-react';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUiExperience } from '@/contexts/UiExperienceContext';
@@ -301,6 +302,9 @@ export function AppShell({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            {/* Language Switcher - SP-22 */}
+            <LanguageSwitcher variant="ghost" size="icon" showLabel={false} />
 
             {/* Dark Mode Toggle */}
             <Button

@@ -834,6 +834,9 @@ export const conversations = pgTable("conversations", {
   humanEscalationRequestedAt: timestamp("human_escalation_requested_at"),
   humanHandledAt: timestamp("human_handled_at"),
   humanHandledBy: integer("human_handled_by").references(() => users.id),
+  
+  // SP-22: Customer language tracking for AI multilingual responses
+  customerLanguage: varchar("customer_language", { length: 10 }), // Detected/stated customer language (en, es, etc.)
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),

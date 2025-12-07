@@ -26,6 +26,11 @@ const CustomerLanguageUpdateSchema = z.object({
   language: z.enum(['en', 'es']),
 });
 
+// SP-22: User language preference schema
+const UserLanguageUpdateSchema = z.object({
+  language: z.enum(['en', 'es']),
+});
+
 // SP-14: Get current user's UI experience mode (per-user, not per-tenant)
 router.get('/api/settings/ui-mode', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -230,6 +235,86 @@ router.put('/api/settings/simple-mode-config', requireAuth, async (req: Request,
   }
 });
 
+// SP-22: Get current user's language preference
+router.get('/api/settings/user-language', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    const tenantId = req.session?.tenantId;
+    
+    if (!userId || !tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User context required',
+      });
+    }
+
+    const { db } = await import('./db');
+    
+    const [user] = await db.select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+      .limit(1);
+
+    const language = user?.preferredLanguage ?? 'en';
+
+    res.json({
+      success: true,
+      language,
+    });
+  } catch (error: any) {
+    console.error('[USER LANGUAGE] Error fetching user language:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch user language',
+    });
+  }
+});
+
+// SP-22: Update current user's language preference
+router.put('/api/settings/user-language', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const parseResult = UserLanguageUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid payload. Language must be "en" or "es".',
+      });
+    }
+
+    const userId = req.session?.userId;
+    const tenantId = req.session?.tenantId;
+    
+    if (!userId || !tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User context required',
+      });
+    }
+
+    const { language } = parseResult.data;
+    const { db } = await import('./db');
+
+    await db.update(users)
+      .set({ 
+        preferredLanguage: language,
+      })
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)));
+
+    console.log(`[USER LANGUAGE] User ${userId} (tenant ${tenantId}): Updated to "${language}"`);
+
+    res.json({
+      success: true,
+      language,
+    });
+  } catch (error: any) {
+    console.error('[USER LANGUAGE] Error updating user language:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update user language',
+    });
+  }
+});
+
 // SP-8: Public endpoint for getting tenant's customer-facing default language (for public pages like booking/rewards)
 router.get('/api/public/:tenantId/language', async (req: Request, res: Response) => {
   try {
@@ -355,7 +440,7 @@ router.put('/api/settings/customer-language', requireAuth, requireRole(['owner',
 
 export function registerUiModeRoutes(app: express.Application) {
   app.use(router);
-  console.log('[UI MODE] Routes registered: GET/PUT /api/settings/ui-mode, GET/PUT /api/settings/simple-mode-config, GET/PUT /api/settings/customer-language');
+  console.log('[UI MODE] Routes registered: GET/PUT /api/settings/ui-mode, GET/PUT /api/settings/simple-mode-config, GET/PUT /api/settings/customer-language, GET/PUT /api/settings/user-language');
 }
 
 export default router;
