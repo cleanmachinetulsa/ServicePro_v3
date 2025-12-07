@@ -1,0 +1,133 @@
+DROP-IN: SP-8 – Full i18n + Spanish Pack v1
+
+Goal: Add a real internationalization layer + Spanish v1 for core owner UI and key customer-facing flows, with a language switcher and tenant language preferences.
+
+Prompt for Replit agent:
+
+You are editing ServicePro_v3.
+Implement SP-8 – Full i18n + Spanish Pack v1.
+Focus on:
+
+Owner app navigation, key pages, and headings.
+
+Customer-facing booking + rewards flows.
+
+A clean way to extend to future languages.
+
+1. Introduce i18n infrastructure
+
+In the client app root, add an i18n setup based on a standard library (e.g. i18next + react-i18next).
+
+Create a folder like client/src/i18n/ with:
+
+i18n.ts – initialization (default language en, fallback en).
+
+locales/en/common.json
+
+locales/es/common.json
+
+Wrap the app root (in client/src/main.tsx or equivalent) with the i18n provider.
+
+2. Language selector (owner UI)
+
+In the user profile / settings area, add a “Language” selector:
+
+Options: English, Español (beta).
+
+Persist the user preference:
+
+Add field to user profile (e.g. preferredLanguage).
+
+On login, set i18n language from that field.
+
+Also add a tenant-level default:
+
+In tenant_settings or similar, add defaultLanguage (default 'en').
+
+Used when a user has no preference yet.
+
+3. Language for customer-facing flows
+
+For public booking and rewards portal:
+
+Support ?lang=en / ?lang=es query param.
+
+If absent, infer from:
+
+Tenant default language.
+
+Or future customer preference (if present in DB).
+
+Load the correct locale before rendering:
+
+Ensure all visible strings use t('key') rather than hardcoded text.
+
+4. Spanish pack v1 – scope
+
+Populate locales/en/common.json and locales/es/common.json with keys for:
+
+App shell: nav labels, section titles, button labels.
+
+Booking flow: step titles, field labels, helper text, validation messages.
+
+Rewards portal: headings, “points”, “rewards”, “achievements”, CTAs.
+
+Support widget: “How can I help?”, “Send”, basic hints.
+
+The Spanish copy should be:
+
+Neutral Latin American Spanish.
+
+Friendly but professional.
+
+5. Tenant preference for customer language
+
+In tenant settings (admin UI), add:
+
+“Customer-facing default language” selector (English / Spanish).
+
+Description text explaining:
+
+This controls booking & rewards language defaults.
+
+Store in e.g. tenant_config.customerDefaultLanguage.
+
+Use this to choose default locale for public pages when ?lang is missing.
+
+6. Respect i18n in new UI components
+
+Update the most important pages to use t():
+
+Dashboard header
+
+Phone/Telephony settings
+
+Billing & Usage
+
+Loyalty/Rewards admin areas
+
+Don’t attempt to translate every string in the entire app right now; focus on:
+
+Critical navigation/routes.
+
+First-time experience.
+
+Customer-facing flows.
+
+7. Tests & docs
+
+Add a simple test (or Playwright flow) to:
+
+Switch owner UI to Spanish.
+
+Confirm nav labels change.
+
+Visit public booking with ?lang=es and see Spanish headings.
+
+Document in replit.md under LANG-1 / SP-8:
+
+Where translation files live.
+
+How to add a new language.
+
+How tenant + user preferences interact.

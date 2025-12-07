@@ -1,0 +1,131 @@
+DROP-IN: SP-10 – Industry Pack Editor + Clone-a-Tenant Factory
+
+Goal: Give you (root admin) a way to maintain industry packs (services/FAQs/AI rules) and clone existing tenants as templates, so onboarding for new industries is fast and consistent.
+
+Prompt for Replit agent:
+
+You are editing ServicePro_v3.
+Implement SP-10 – Industry Pack Editor + Clone-a-Tenant Factory.
+Use the existing industry pack system that powers the onboarding flow.
+
+1. Industry packs data model (if not already normalized)
+
+Inspect how industry packs are currently represented:
+
+They may be in a TS config (e.g. shared/industryPacks.ts).
+
+They may be partially in DB (services, FAQs seeded by industry).
+
+Introduce a DB representation if needed:
+
+industry_packs:
+
+id (string key, e.g. 'auto_detailing')
+
+name
+
+description
+
+isDefault
+
+industry_pack_services
+
+industry_pack_faqs
+
+industry_pack_ai_rules
+
+etc., matching whatever is currently in the TS config.
+
+Add a simple one-time migration script to sync existing TS configs → DB so current packs are editable.
+
+2. Root admin UI – Industry Pack Editor
+
+Add a new root-admin-only page, e.g. /admin/industry-packs.
+
+Features:
+
+Left sidebar: list of packs (Auto Detailing, Lawn Care, House Cleaning, etc.).
+
+Main panel with tabs:
+
+“Overview”: name, description, default flags.
+
+“Services”: list/add/edit services (name, category, default price, duration).
+
+“FAQs”: list/add/edit FAQs (question, answer, tags).
+
+“AI Behavior”: textarea or structured fields for AI instructions specific to this industry.
+
+Changes should update the DB tables, not the TS config.
+
+When onboarding uses industry packs, it should now pull from DB, with TS config only as a fallback.
+
+3. Clone-a-Tenant Factory
+
+Implement a backend service, e.g. tenantCloneService.ts, that can:
+
+Given a source tenant ID:
+
+Read core configuration:
+
+Services
+
+Pricing / add-ons
+
+Public site settings
+
+Telephony config (excluding PIIs like numbers if not reusable)
+
+AI behavior rules
+
+Create a new industry pack or pack variant from that.
+
+Add a root admin UI card on a tenant admin page (/admin/tenants/:id):
+
+Button: “Create Industry Pack from This Tenant”.
+
+Lets you:
+
+Enter a new industry pack ID + name.
+
+Confirm which categories to include (services, FAQs, AI rules, site content).
+
+After confirmation, the system populates the industry pack tables with this tenant’s config.
+
+4. Onboarding integration
+
+Update the industry selection step in the onboarding flow:
+
+It should read from industry_packs DB.
+
+Show human-friendly names and optional descriptions/badges.
+
+When an industry is selected:
+
+Bootstrap tenant data from the chosen pack using the DB definitions.
+
+5. Safety & multi-tenant isolation
+
+Only root admins can:
+
+Edit industry packs.
+
+Create packs from tenants.
+
+Regular tenants can benefit from packs during onboarding, but cannot see or edit the global library.
+
+6. Tests & docs
+
+Add basic tests:
+
+Editing an industry pack updates the values used in onboarding.
+
+Cloning from a tenant creates a new pack with expected content.
+
+Document in replit.md under SP-10:
+
+How to edit packs.
+
+How to generate a pack from an especially “perfect” tenant.
+
+How onboarding consumes these packs.

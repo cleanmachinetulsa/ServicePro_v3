@@ -16,8 +16,51 @@ export const usagePricing = {
   ai: {
     perInputToken: 0.00001,
     perOutputToken: 0.00003,
+    per1kInputTokens: 0.002,
+    per1kOutputTokens: 0.006,
   },
 };
+
+export type UsageChannel = 'sms' | 'mms' | 'voice' | 'email' | 'ai';
+export type UsageSource = 'twilio' | 'sendgrid' | 'openai' | 'internal';
+export type UsageDirection = 'inbound' | 'outbound';
+export type UsageFeature = 
+  | 'ai_sms' 
+  | 'ivr' 
+  | 'broadcast' 
+  | 'portal_email' 
+  | 'support_ai' 
+  | 'booking_email' 
+  | 'reminder_sms'
+  | 'voicemail_ai'
+  | 'customer_sms'
+  | 'staff_sms'
+  | 'general';
+
+export function getUnitCost(
+  channel: UsageChannel, 
+  direction: UsageDirection,
+  options?: { inputTokens?: number; outputTokens?: number }
+): number {
+  switch (channel) {
+    case 'sms':
+      return direction === 'inbound' ? usagePricing.sms.inbound : usagePricing.sms.outbound;
+    case 'mms':
+      return direction === 'inbound' ? usagePricing.mms.inbound : usagePricing.mms.outbound;
+    case 'voice':
+      return usagePricing.voice.perMinute;
+    case 'email':
+      return usagePricing.email.perEmail;
+    case 'ai':
+      if (options?.inputTokens && options?.outputTokens) {
+        return (options.inputTokens * usagePricing.ai.perInputToken) + 
+               (options.outputTokens * usagePricing.ai.perOutputToken);
+      }
+      return (usagePricing.ai.perInputToken + usagePricing.ai.perOutputToken) / 2;
+    default:
+      return 0;
+  }
+}
 
 export function calculateUsageCost(usage: {
   smsTotal: number;
