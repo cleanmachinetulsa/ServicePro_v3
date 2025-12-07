@@ -4714,3 +4714,55 @@ export const insertUsageLedgerSchema = createInsertSchema(usageLedger).omit({
 
 export type UsageLedgerEntry = typeof usageLedger.$inferSelect;
 export type InsertUsageLedgerEntry = z.infer<typeof insertUsageLedgerSchema>;
+
+// ============================================================
+// SP-16: TENANT ADD-ONS
+// ============================================================
+
+export const ADDON_KEYS = [
+  'extra_phone_number',
+  'extra_user_seats',
+  'ai_power_pack',
+  'priority_support',
+  'multi_location',
+  'white_label_plus',
+] as const;
+export type AddonKeyType = typeof ADDON_KEYS[number];
+
+export const addonStatusEnum = pgEnum('addon_status', ['active', 'pending_cancel', 'canceled']);
+export const addonBillingPeriodEnum = pgEnum('addon_billing_period', ['monthly', 'yearly']);
+
+export const tenantAddons = pgTable("tenant_addons", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  addonKey: varchar("addon_key", { length: 50 }).notNull().$type<AddonKeyType>(),
+  status: addonStatusEnum("status").notNull().default('active'),
+  billingPeriod: addonBillingPeriodEnum("billing_period").notNull().default('monthly'),
+  quantity: integer("quantity").notNull().default(1),
+  externalSubscriptionId: varchar("external_subscription_id", { length: 255 }),
+  activatedAt: timestamp("activated_at").notNull().defaultNow(),
+  canceledAt: timestamp("canceled_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tenantIdx: index("tenant_addons_tenant_id_idx").on(table.tenantId),
+  addonKeyIdx: index("tenant_addons_addon_key_idx").on(table.addonKey),
+  statusIdx: index("tenant_addons_status_idx").on(table.status),
+  tenantAddonUniqueIdx: uniqueIndex("tenant_addons_tenant_addon_unique_idx").on(table.tenantId, table.addonKey),
+}));
+
+export const insertTenantAddonSchema = createInsertSchema(tenantAddons).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const updateTenantAddonSchema = z.object({
+  status: z.enum(['active', 'pending_cancel', 'canceled']).optional(),
+  quantity: z.number().int().positive().optional(),
+  billingPeriod: z.enum(['monthly', 'yearly']).optional(),
+  externalSubscriptionId: z.string().optional(),
+  canceledAt: z.date().optional(),
+});
+
+export type TenantAddon = typeof tenantAddons.$inferSelect;
+export type InsertTenantAddon = z.infer<typeof insertTenantAddonSchema>;
+export type UpdateTenantAddon = z.infer<typeof updateTenantAddonSchema>;
