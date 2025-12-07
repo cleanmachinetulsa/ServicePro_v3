@@ -4530,3 +4530,38 @@ export const updateTrialTelephonyProfileSchema = z.object({
 export type TrialTelephonyProfile = typeof trialTelephonyProfiles.$inferSelect;
 export type InsertTrialTelephonyProfile = z.infer<typeof insertTrialTelephonyProfileSchema>;
 export type UpdateTrialTelephonyProfile = z.infer<typeof updateTrialTelephonyProfileSchema>;
+
+// ============================================================
+// INT-3: PHONE HISTORY IMPORT ENGINE
+// ============================================================
+
+export const phoneHistoryImportStatusEnum = pgEnum('phone_history_import_status', ['pending', 'processing', 'success', 'failed']);
+
+export const phoneHistoryImports = pgTable("phone_history_imports", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  status: phoneHistoryImportStatusEnum("status").notNull().default('pending'),
+  stats: jsonb("stats").$type<{
+    customersImported: number;
+    customersUpdated: number;
+    conversationsCreated: number;
+    messagesImported: number;
+    errorsCount: number;
+    errors?: string[];
+  }>(),
+  errorText: text("error_text"),
+  fileName: text("file_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  tenantIdIdx: index("phone_history_imports_tenant_id_idx").on(table.tenantId),
+  createdAtIdx: index("phone_history_imports_created_at_idx").on(table.createdAt),
+}));
+
+export const insertPhoneHistoryImportSchema = createInsertSchema(phoneHistoryImports).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PhoneHistoryImport = typeof phoneHistoryImports.$inferSelect;
+export type InsertPhoneHistoryImport = z.infer<typeof insertPhoneHistoryImportSchema>;
