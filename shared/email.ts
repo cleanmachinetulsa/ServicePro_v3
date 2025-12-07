@@ -27,6 +27,6 @@ export interface SendTenantEmailInput {
 
 export interface SendTenantEmailResult {
   ok: boolean;
-  reason?: 'missing_env' | 'send_failed' | 'invalid_recipient';
+  reason?: 'missing_env' | 'send_failed' | 'invalid_recipient' | 'account_suspended';
   errorMessage?: string;
 }

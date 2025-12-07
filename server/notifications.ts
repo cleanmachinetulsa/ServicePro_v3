@@ -1,7 +1,6 @@
 import { customerMemory } from './customerMemory';
 import { sendBookingConfirmationEmail, sendReminderEmail } from './emailService';
 import { WeatherCheckResult } from './weatherService';
-import { db } from './db';
 import { smsDeliveryStatus } from '@shared/schema';
 import type { TenantDb } from './tenantDb';
 import { phoneConfig } from './config/phoneConfig';
@@ -119,11 +118,12 @@ export async function sendSMS(
     let effectiveConversationId = conversationId;
     
     // If conversationId not provided, look up active conversation by phone
+    // Uses tenantDb for proper multi-tenant scoping
     if (!effectiveConversationId) {
       const { conversations } = await import('@shared/schema');
       const { eq, and, desc } = await import('drizzle-orm');
       
-      const [existingConversation] = await db
+      const [existingConversation] = await tenantDb
         .select({ id: conversations.id })
         .from(conversations)
         .where(
@@ -153,6 +153,19 @@ export async function sendSMS(
           messageSid: undefined
         };
       }
+    }
+
+    // SP-19: BILLING ENFORCEMENT - Block suspended tenants
+    const { isTenantSuspended } = await import('./middleware/billingEnforcement');
+    const isSuspended = await isTenantSuspended(tenantId);
+    
+    if (isSuspended) {
+      console.warn(`[BILLING ENFORCEMENT] ⚠️ Blocked SMS to ${formattedPhone} - Tenant ${tenantId} is suspended`);
+      return { 
+        success: false, 
+        error: 'account_suspended',
+        messageSid: undefined
+      };
     }
 
     // SP-9: TRIAL TELEPHONY SANDBOX ENFORCEMENT

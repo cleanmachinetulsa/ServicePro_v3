@@ -1,0 +1,233 @@
+DROP-IN BLOCK — SP-22: Global Language Framework (EN/ES i18n System)
+
+MASTER PLAN v4 → Phase 4.3
+“We don’t translate labels, we translate the entire experience.”
+
+This drop-in builds the whole localization infrastructure for Tenant + Customer + AI agent UX.
+
+🎯 Goals
+1. Full i18n Framework Across the App
+
+React client uses i18next with backend loader + language detector.
+
+Server returns localized strings for:
+
+SMS templates
+
+Email templates
+
+IVR prompts
+
+Public site content
+
+2. Tenant Language Preference
+
+New column on tenants table:
+
+default_language ("en" | "es", default "en")
+
+3. Per-User Language Preference
+
+New column users.language_preference
+
+If set → overrides tenant language
+
+4. Language Switcher (Header Dropdown)
+
+Visible in dashboard header
+
+Shows EN 🇺🇸 / ES 🇲🇽
+
+5. Public Site Auto-Language
+
+Detects browser language
+
+Uses tenant’s default language first
+
+Allows manual override (?lang=es)
+
+6. AI Agent Language Handling
+
+AI responds in customer’s language
+
+AI asks customer which language they prefer when unclear
+
+AI logs language to conversation metadata
+
+✔ DROP-IN FOR THE REPLIT AGENT — SP-22
+
+Paste this entire block:
+
+TASK: Implement SP-22 Language Framework (EN/ES, full-system i18n)
+
+SYSTEM GOAL:
+Add multi-language support across all client and server-facing UX:
+- Dashboard
+- Setup Wizard
+- SMS templates
+- Email templates
+- IVR prompts
+- Public Site
+- AI Agent behavior
+
+-------------------------------------
+1. DATABASE CHANGES
+-------------------------------------
+
+Add to tenants table:
+  default_language TEXT NOT NULL DEFAULT 'en';
+
+Add to users table:
+  language_preference TEXT NULL;
+
+Add to conversations table:
+  customer_language TEXT NULL;
+
+-------------------------------------
+2. CLIENT I18N FRAMEWORK
+-------------------------------------
+
+Install:
+  npm install i18next react-i18next i18next-browser-languagedetector
+
+Create:
+  client/src/i18n/index.ts
+  client/public/locales/en/common.json
+  client/public/locales/es/common.json
+
+Implement i18next setup:
+  - language detector
+  - fallback to 'en'
+  - load namespaces: ['common', 'dashboard', 'settings', 'ivr']
+
+Wrap <App /> in <I18nextProvider>.
+
+-------------------------------------
+3. LANGUAGE SWITCHER UI
+
+Add component:
+  client/src/components/LanguageSwitcher.tsx
+
+Add to dashboard header:
+  - Show EN/ES dropdown
+  - Save preference to server via:
+    PUT /api/settings/language
+
+-------------------------------------
+4. PUBLIC SITE LANGUAGE
+
+Modify:
+  client/src/pages/public/PublicSite.tsx
+
+Add:
+  - ?lang=es override
+  - auto-detect browser language
+  - pull correct locale file before rendering
+
+-------------------------------------
+5. SERVER: TRANSLATION ROUTES
+
+Add routes:
+  GET /api/lang/config
+  PUT /api/settings/language  (tenant-level)
+  PUT /api/settings/user-language  (user-level)
+
+-------------------------------------
+6. AI BEHAVIOR UPDATES
+
+Modify AI SMS + IVR handlers:
+  - Detect message language (use GPT function)
+  - Store in conversations.customer_language
+  - Respond using appropriate language file:
+       /locales/<lang>/agent.json
+  - If uncertain → ask customer politely which language they prefer.
+
+-------------------------------------
+7. TRANSLATION HELPER
+
+Create:
+  server/utils/translator.ts
+
+Functions:
+  t(key, lang)
+  loadLanguage(lang)
+  inferLanguageFromText(text)
+
+-------------------------------------
+8. TASK COMPLETION CHECKLIST
+
+- Dashboard UI fully switches between EN/ES
+- Public site switches language
+- AI agent replies in correct language
+- SMS/Email templates generated per language
+- IVR text-to-speech uses correct language voice
+- Tenant & user preferences persist
+- Clean Machine tenant unaffected unless manually switched
+
+END TASK
+
+🧩 DROP-IN BLOCK — SP-23: Performance Pass V2
+
+MASTER PLAN v4 → Phase 6.2
+“Make loading instant and navigation silky smooth.”
+
+You already did Performance v1, now we do the real optimization pass.
+
+🎯 Goals
+1. Actual Performance Profiling
+
+Add real browser performance monitoring:
+
+Web Vitals
+
+Time-to-first-byte (TTFB)
+
+Bundle size explorer
+
+React Profiler traces
+
+2. Code Splitting
+
+Lazy load heavy pages:
+
+Messages
+
+Calendar
+
+IVR
+
+Billing
+
+Setup Wizard
+
+Rewards Portal
+
+3. Cache Warmup / Bootstrap Data
+
+Cache high-frequency tenant configs
+
+Cache AI config, IVR config, public site config
+
+Prevent refetching on every page load
+
+4. API Response Speed
+
+Add Redis-like in-memory LRU cache for:
+
+IVR config
+
+A2P status
+
+Usage dashboard
+
+Tenant profile
+
+5. Mobile Performance Boost
+
+Reduce dashboard initial JS payload
+
+Replace heavy components with lightweight variants
+
+Ensure Messages page scroll never breaks again
+
+Preload conversation list only, not full messages
