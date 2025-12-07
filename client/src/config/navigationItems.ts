@@ -42,7 +42,8 @@ import {
   Mail,
   Globe,
   SlidersHorizontal,
-  CreditCard
+  CreditCard,
+  FileArchive,
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -320,6 +321,14 @@ export const navigationItems: NavigationItem[] = [
     label: 'Theme Gallery',
     icon: Palette,
     path: '/admin/theme-gallery',
+    visibility: 'advancedOnly',
+  },
+  {
+    id: 'import-history',
+    label: 'Data Import',
+    icon: FileArchive,
+    path: '/admin/import-history',
+    badge: 'Owner',
     visibility: 'advancedOnly',
   },
 
