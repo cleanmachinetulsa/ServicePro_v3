@@ -4557,6 +4557,26 @@ export const phoneHistoryImports = pgTable("phone_history_imports", {
   }>(),
   errorText: text("error_text"),
   fileName: text("file_name"),
+  parserConfig: jsonb("parser_config").$type<{
+    businessName?: string;
+    businessPhone?: string;
+    threadGapMinutes?: number;
+    includeFaqs?: boolean;
+    includeToneProfile?: boolean;
+    includeServices?: boolean;
+    includeAnalytics?: boolean;
+  }>(),
+  knowledgeJson: jsonb("knowledge_json"),
+  analyticsJson: jsonb("analytics_json").$type<{
+    calls?: { total?: number; missed?: number; received?: number };
+    conversations?: { total?: number; avgLength?: number };
+  }>(),
+  appliedAt: timestamp("applied_at"),
+  appliedFlags: jsonb("applied_flags").$type<{
+    faqs?: boolean;
+    services?: boolean;
+    toneProfile?: boolean;
+  }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 }, (table) => ({

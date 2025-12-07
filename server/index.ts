@@ -53,6 +53,7 @@ import dashboardPreferencesRouter from "./routes.dashboardPreferences";
 import usageLedgerRouter from "./routes.usageLedger";
 import addonRouter from "./routes/addonRoutes";
 import usageMeteringRouter from "./routes/usageMeteringRoutes";
+import parserRoutes from "./routes/parserRoutes";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -394,6 +395,8 @@ registerIndustryPackRoutes(app);
 app.use('/api/admin/import-history', importHistoryRouter);
 // Register parser tool hook (INT-5 - Parser Tool Hook Phase 1)
 app.use('/api/import-history', importHistoryParserRouter);
+// Register SP-18 Parser Integration routes (upload + apply knowledge)
+app.use('/api/onboarding/parser', parserRoutes);
 // Register root admin usage overview (SP-11 - Usage & Billing Foundation)
 app.use(adminUsageOverviewRouter);
 
