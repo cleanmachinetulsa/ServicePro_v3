@@ -130,7 +130,7 @@ export default function DashboardCustomizePage() {
   useEffect(() => {
     const currentNavItems = simpleModeConfig?.visibleNavItems || defaultNavItems;
     setSelectedNavItems([...currentNavItems]);
-  }, [simpleModeConfig]);
+  }, [simpleModeConfig, defaultNavItems]);
 
   useEffect(() => {
     const currentSet = new Set(simpleVisiblePanels);
@@ -149,7 +149,7 @@ export default function DashboardCustomizePage() {
       currentSet.size !== selectedSet.size || 
       [...currentSet].some(p => !selectedSet.has(p));
     setHasNavChanges(isDifferent);
-  }, [selectedNavItems, simpleModeConfig]);
+  }, [selectedNavItems, simpleModeConfig, defaultNavItems]);
 
   const handleTogglePanel = (panelId: DashboardPanelId) => {
     setSelectedPanels(prev => {
