@@ -1,0 +1,296 @@
+DROP-IN BLOCK: SP-21 – Simple vs Advanced Dashboard Mode
+
+MASTER PLAN v4 → Phase 5.1 Simple Mode vs Advanced Mode
+
+This is where we make the app feel simple but still powerful.
+
+0. Context (for the agent)
+
+You already have:
+
+A big sidebar nav with lots of items (messages, calendar, settings, pricing, IVR, campaigns, loyalty, etc.).
+
+Some partial work around “Simple vs Advanced” toggles, but not a coherent, global system.
+
+Support AI widget and Setup Wizard that can guide users.
+
+SP-21 introduces:
+
+A per-tenant dashboard_mode ("simple" or "advanced").
+
+A small mode switch toggle (header or sidebar).
+
+A nav registry where each item knows:
+
+Complexity level.
+
+Whether it should appear in Simple mode by default.
+
+A Simple Mode customizer where the owner chooses which items show up in Simple Mode.
+
+1. Goals
+
+Global Mode State
+
+Each tenant has a stored preference: simple or advanced.
+
+The current user can switch modes easily in the UI.
+
+Nav Driven by Metadata
+
+Central config for ALL nav items, including:
+
+complexity: "simple" | "advanced" | "expert"
+
+simpleDefault: boolean (whether shown in Simple mode)
+
+No more scattering nav definitions all over.
+
+Simple Mode Customizer
+
+Page: /settings/dashboard
+
+Owners can:
+
+Turn Simple Mode on/off.
+
+Choose which nav items appear in Simple Mode (from allowed list).
+
+“Reset to defaults” button.
+
+Behavioral Changes
+
+Simple Mode:
+
+Hides very technical / rarely used pages.
+
+Groups complex stuff under fewer “buckets”.
+
+Advanced Mode:
+
+Shows everything like today.
+
+2. Data Model
+
+Add to tenants table (global):
+
+dashboard_mode ("simple" | "advanced", default "simple")
+
+simple_mode_config (JSONB, nullable) – e.g.:
+
+{
+  "visibleNavItems": ["messages", "calendar", "loyalty", "support", "billing-settings"]
+}
+
+
+If simple_mode_config is null, fall back to defaults from nav config.
+
+3. Nav Registry Upgrade
+
+Open client/src/navigation/navigationItems.ts (or wherever the nav list lives).
+
+Refactor the nav items into a typed structure such as:
+
+export type ComplexityLevel = "simple" | "advanced" | "expert";
+
+export interface AppNavItem {
+  id: string;
+  label: string;
+  href: string;
+  icon: IconType;
+  section: string;
+  ownerOnly?: boolean;
+  complexity: ComplexityLevel;
+  simpleDefault?: boolean;
+}
+
+export const NAV_ITEMS: AppNavItem[] = [
+  {
+    id: "messages",
+    label: "Messages",
+    href: "/messages",
+    icon: MessageCircleIcon,
+    section: "Core",
+    complexity: "simple",
+    simpleDefault: true,
+  },
+  {
+    id: "ivr-config",
+    label: "IVR & Call Flows",
+    href: "/settings/ivr",
+    icon: PhoneCallIcon,
+    section: "Telephony",
+    complexity: "expert",
+    simpleDefault: false,
+  },
+  // ... etc
+];
+
+
+Then create a helper:
+
+export function filterNavForMode(
+  mode: "simple" | "advanced",
+  config: { visibleNavItems?: string[] } | null
+): AppNavItem[] {
+  if (mode === "advanced") return NAV_ITEMS;
+
+  const base = NAV_ITEMS.filter(item =>
+    item.complexity === "simple" || item.simpleDefault
+  );
+
+  if (config?.visibleNavItems?.length) {
+    const extraIds = new Set(config.visibleNavItems);
+    return NAV_ITEMS.filter(item =>
+      extraIds.has(item.id) ||
+      (item.complexity === "simple" && item.simpleDefault)
+    );
+  }
+
+  return base;
+}
+
+
+Use this in your sidebar component:
+
+const { tenantDashboardMode, simpleModeConfig } = useTenantUiPrefs();
+const items = filterNavForMode(tenantDashboardMode, simpleModeConfig);
+
+4. Backend – Saving Dashboard Mode & Config
+
+Add a controller file: server/routes/uiPreferencesRoutes.ts (or extend existing settings routes):
+
+GET /api/settings/dashboard-mode
+
+Returns: { mode: "simple" | "advanced", config: SimpleModeConfig | null }
+
+PUT /api/settings/dashboard-mode
+
+Body: { mode?: "simple" | "advanced"; visibleNavItems?: string[] }
+
+Updates tenants.dashboard_mode + tenants.simple_mode_config.
+
+Security:
+
+Only owner/admin of tenant can change these.
+
+Validate visibleNavItems against known NAV_ITEMS and maybe max length.
+
+5. Frontend – Mode Switch + Customizer Page
+5.1 Mode Switch
+
+In the main app shell (e.g. client/src/layout/AppShell.tsx):
+
+Fetch /api/settings/dashboard-mode on load.
+
+Show a compact toggle in the header or sidebar footer:
+
+Labels:
+
+“Simple” / “Advanced”
+
+When toggled:
+
+Call PUT /api/settings/dashboard-mode with new mode.
+
+Update local state + refetch.
+
+UI idea: a segmented control:
+
+<SegmentedControl
+  value={mode}
+  onChange={nextMode => updateModeMutation.mutate({ mode: nextMode })}
+  options={[
+    { label: "Simple", value: "simple" },
+    { label: "Advanced", value: "advanced" },
+  ]}
+/>
+
+5.2 Dashboard Settings Page
+
+New page: client/src/pages/settings/DashboardPreferencesPage.tsx
+
+Fetch:
+
+Current mode + config.
+
+Nav registry (or reuse NAV_ITEMS in client).
+
+Sections:
+
+Mode Selector
+
+Same segmented control as header.
+
+Description: “Simple Mode hides advanced tools; Advanced Mode shows everything.”
+
+Simple Mode Navigation
+
+If mode === "simple":
+
+Show list of nav items grouped by section.
+
+Checkbox next to each (only for items complexity !== "expert").
+
+“Reset to simple defaults” button that resets config to null.
+
+Save:
+
+On change, call PUT /api/settings/dashboard-mode with visibleNavItems.
+
+Clean Machine tenant:
+
+You might want to always allow both modes & full control. No special restrictions needed here.
+
+Navigation
+
+Add entry to navigationItems.ts:
+
+{
+  id: "dashboard-preferences",
+  label: "Dashboard Layout",
+  href: "/settings/dashboard",
+  icon: LayoutIcon,
+  section: "Settings & Administration",
+  ownerOnly: true,
+  complexity: "advanced",
+  simpleDefault: false,
+}
+
+6. Behavioral Touchpoints
+
+Setup Wizard
+
+In early steps, consider recommending Simple Mode for non-techy users.
+
+After wizard ends, optionally show a small card:
+
+“You’re in Simple Mode. You can switch to Advanced anytime from the top bar.”
+
+Support AI Widget
+
+Pass dashboardMode + visibleNavItems into its context (if not already).
+
+So it can answer: “Where do I find X?” in terms of the UI the user actually sees.
+
+Future: per-user vs per-tenant
+
+For now, keep it per-tenant (owner sets the default for all).
+
+Later, you can add per-user overrides if needed.
+
+7. Testing Checklist (Agent)
+
+ Simple mode hides expert/advanced items by default (IVR, deep billing config, A2P advanced screens, etc.).
+
+ Advanced mode shows full nav (matches today’s behavior).
+
+ Changing mode via header toggle persists across sessions.
+
+ Dashboard Preferences page:
+
+Can add/remove nav items from Simple mode.
+
+“Reset to defaults” works.
+
+ No impact on public site or customer-facing flows.

@@ -88,6 +88,33 @@ AI-powered phone history analysis and knowledge extraction for onboarding:
 5. User clicks "Build My Setup" to apply all knowledge
 6. System creates services, FAQs, configures AI persona, and shows summary
 
+## SP-PARSER-3 Tenant Protection
+
+Clean Machine tenant protection prevents experimental parser tools from affecting production data:
+
+**Key Files**:
+- `server/services/tenantGuards.ts`: `isCleanMachineTenant()` and `isCleanMachineTenantFromRequest()` functions
+- `server/routes/parserRoutes.ts`: 403 guards on /run, /apply, /build-setup routes
+- `client/src/pages/admin/ParserHistory.tsx`: Admin page for viewing import history
+- `client/src/components/ParserImportStep.tsx`: Protected tenant UI with status pill
+
+**Detection Logic**:
+- Matches tenant ID, slug, or name against: root, cleanmachine, clean-machine, clean machine, clean machine auto detail, cleanmachinetulsa
+- Uses `isCleanMachineTenantFromRequest(req)` to check all identification paths (tenantId, tenantSlug, tenantName, req.tenant)
+- Guard checks execute BEFORE tenantId validation to prevent bypass via slug/name-only requests
+
+**API Routes** (Protected):
+- GET /api/onboarding/parser/status: Returns status pill (online/degraded/offline) + `isProtectedTenant` flag
+- GET /api/onboarding/parser/admin/history: Enhanced import history with service/FAQ/persona counts
+
+**UI Behavior**:
+- Protected tenants see "Protected Tenant" card with link to history page
+- Status pill shows parser service health (online/degraded/offline)
+- Non-protected tenants can use full parser functionality
+
+**Navigation**:
+- "Parser History" added to Multi-Tenant Management section (advancedOnly, Owner badge)
+
 ## CRITICAL: Clean Machine Domain Routing (DO NOT CHANGE)
 
 **cleanmachinetulsa.com MUST always render the custom HomePage, NEVER the auto-generated PublicSite.**
