@@ -41,7 +41,8 @@ import {
   Headphones,
   Mail,
   Globe,
-  SlidersHorizontal
+  SlidersHorizontal,
+  CreditCard
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -410,6 +411,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Interface Mode',
     icon: SlidersHorizontal,
     path: '/settings/ui-mode',
+  },
+  {
+    id: 'settings-billing',
+    label: 'Billing & Usage',
+    icon: CreditCard,
+    path: '/settings/billing',
   },
   {
     id: 'business-settings',
