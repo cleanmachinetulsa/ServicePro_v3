@@ -86,17 +86,20 @@ export function AppShell({
   };
 
   const renderNavigationItems = (isMobile = false) => {
-    // Filter out owner-only items when impersonating
-    const ownerOnlyIds = ['concierge-setup', 'tenants', 'phone-config'];
     const isImpersonating = authContext?.impersonation?.isActive || false;
+    const userRole = authContext?.user?.role;
     
     // Start with base navigation items
-    let filteredItems: NavigationItem[] = isImpersonating
-      ? navigationItems.filter(item => !ownerOnlyIds.includes(item.id))
-      : [...navigationItems];
+    let filteredItems: NavigationItem[] = [...navigationItems];
     
-    // SP-21: Filter by UI experience mode using filterNavForMode with custom config
-    filteredItems = filterNavForMode(uiMode as 'simple' | 'advanced', simpleModeConfig, filteredItems);
+    // SP-21: Filter by UI experience mode using filterNavForMode with custom config and user role
+    // This handles both mode filtering AND role-based filtering (owner-only items, impersonation)
+    filteredItems = filterNavForMode(
+      uiMode as 'simple' | 'advanced', 
+      simpleModeConfig, 
+      filteredItems,
+      isImpersonating ? 'employee' : userRole // Treat impersonating users as employees for nav
+    );
     
     // SP-15: Additional filter by dashboard preferences (tenant-level panel visibility)
     if (dashboardMode === 'simple') {

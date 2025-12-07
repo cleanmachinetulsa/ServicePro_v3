@@ -1,0 +1,129 @@
+TASK: Implement SP-26 Usage Transparency v2 (Per-Channel Costs)
+
+GOAL:
+Give each tenant a clear, trustworthy usage + cost view by channel:
+- SMS, MMS, Voice, Email, AI tokens
+- Daily + monthly aggregates
+- Estimated cost per channel
+- Root admin “System Usage” view still works
+
+-------------------------------------
+1. DATA MODEL & AGGREGATION
+-------------------------------------
+
+If not present already, extend the usage engine to store:
+- Per-tenant, per-day aggregates:
+
+Table: tenant_usage_daily
+Columns (example):
+- id (pk)
+- tenant_id (uuid)
+- date (date)
+- sms_count int
+- sms_cost_cents int
+- mms_count int
+- mms_cost_cents int
+- voice_minutes decimal
+- voice_cost_cents int
+- email_count int
+- email_cost_cents int
+- ai_tokens int
+- ai_cost_cents int
+- created_at, updated_at
+
+If we already have a daily usage table, ADD missing per-channel columns instead of creating a new table.
+
+Create/extend a daily job:
+- Name: updateTenantDailyUsage()
+- Runs once per day (scheduled job or manual cron substitute)
+- Pulls raw events from:
+    - Twilio logs table / usage events
+    - SendGrid/email send logs
+    - AI usage logs (where we track tokens)
+- Writes/updates tenant_usage_daily rows with summed counts + cost.
+
+Cost calculation:
+- Use shared config in @shared/usagePricing.ts (or similar):
+    - export const USAGE_PRICING = {
+        sms: { costPerMessageCents: 1 },
+        mms: { costPerMessageCents: 3 },
+        voice: { costPerMinuteCents: 2 },
+        email: { costPerEmailCents: 0.1 },
+        aiTokens: { costPerThousandTokensCents: 15 },
+      };
+
+-------------------------------------
+2. TENANT USAGE DASHBOARD v2
+-------------------------------------
+
+Create page:
+- /admin/usage (if not present) OR enhance existing usage page.
+
+Add a new section:
+- “Usage & Costs (This Billing Period)”
+
+Features:
+- Date range selector (defaults to “This Month”).
+- Summary cards:
+    - Total Estimated Cost (all channels)
+    - SMS cost
+    - Voice cost
+    - Email cost
+    - AI cost
+- Table/grid:
+    - Channel | Count | Cost | Notes
+- Optional small chart:
+    - Daily total cost over the selected range (simple line chart).
+
+Backed by new API:
+- GET /api/admin/usage/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+    - Returns per-channel totals + estimated costs for the current tenant.
+
+-------------------------------------
+3. ROOT ADMIN VIEW
+-------------------------------------
+
+Enhance existing root-admin usage page (if present) or create:
+
+- /root/system-usage
+
+Features:
+- List of tenants with:
+    - Tenant name + slug
+    - Total cost this month
+    - SMS / Voice / Email / AI breakdown
+- Sort by highest total cost.
+
+API:
+- GET /api/root/usage/summary?from=...&to=...
+
+Must use wrapTenantDb or equivalent multi-tenant-safe access via the global DB.
+
+-------------------------------------
+4. BILLING INTEGRATION HOOKS
+-------------------------------------
+
+Add helper:
+- calculateTenantUsageForPeriod(tenantId, from, to) → { byChannel, totalCostCents }
+
+This will later be used by Billing v2 (Stripe) when generating invoices.
+
+-------------------------------------
+5. SAFETY / BACKFILL
+-------------------------------------
+
+- Backfill last 30 days of usage in a one-time job or script.
+- If pricing values change in USAGE_PRICING, keep historical daily rows as-is (they represent historical cost based on pricing at the time).
+
+-------------------------------------
+6. DONE WHEN
+-------------------------------------
+
+- Tenant can see:
+    - /admin/usage with clear per-channel counts + costs.
+- Root admin can see:
+    - /root/system-usage with per-tenant totals.
+- All queries run under proper tenant isolation.
+- No breaking changes to existing usage engine.
+
+END TASK

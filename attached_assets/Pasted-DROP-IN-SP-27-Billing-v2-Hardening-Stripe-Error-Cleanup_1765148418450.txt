@@ -1,0 +1,144 @@
+DROP-IN: SP-27 Billing v2 Hardening + Stripe Error Cleanup
+TASK: Implement SP-27 Billing v2 Hardening + Stripe Error Cleanup
+
+GOAL:
+Stabilize Stripe billing so:
+- No more noisy red errors in logs for normal operation.
+- Subscription invoices are created + paid (or dunned) correctly.
+- App handles webhooks safely and idempotently.
+
+-------------------------------------
+1. AUDIT STRIPE CONFIG
+-------------------------------------
+
+Add a small internal debug endpoint (root-admin only):
+
+- GET /api/root/billing/health
+
+Returns:
+- hasStripeApiKey: boolean
+- hasWebhookSecret: boolean
+- defaultPriceIdsPresent: boolean
+- missingConfig: string[]
+
+Use environment variables:
+- STRIPE_SECRET_KEY
+- STRIPE_WEBHOOK_SECRET
+- STRIPE_PRICE_ID_STARTER
+- STRIPE_PRICE_ID_PRO
+- STRIPE_PRICE_ID_PREMIUM
+(or whatever names are actually in the code – normalize if needed).
+
+-------------------------------------
+2. SUBSCRIPTION CREATION FLOW
+-------------------------------------
+
+Locate where tenant subscriptions are created (SP-6 work):
+
+- Ensure:
+    - We never call Stripe with undefined/null price IDs.
+    - We log a WARN (not ERROR) when required config is missing and skip Stripe step instead of throwing 500.
+
+Wrap subscription creation in a clearly named service:
+- billingService.createOrUpdateSubscriptionForTenant(tenantId, planKey)
+
+This should:
+- Validate planKey → priceId mapping.
+- If invalid:
+    - Return { success: false, code: "MISSING_PRICE_ID" }
+    - Avoid throwing.
+- If Stripe error:
+    - Return { success: false, code: "STRIPE_ERROR", message }
+
+-------------------------------------
+3. WEBHOOK HANDLING HARDENING
+-------------------------------------
+
+Find Stripe webhook route, e.g.:
+- POST /api/billing/stripe/webhook
+
+Improve it:
+
+- Use Stripe’s constructEvent with STRIPE_WEBHOOK_SECRET.
+- Catch signature errors explicitly and log as WARN (not fatal).
+- Ensure idempotency:
+    - Create a stripe_webhook_events table with:
+        - id (pk)
+        - event_id (from Stripe)
+        - type
+        - received_at
+    - Before processing an event, check if event_id is already in table.
+        - If so, skip processing, return 200.
+
+Handle at least:
+- invoice.payment_succeeded
+    - Mark tenant as “paid through” this period.
+- invoice.payment_failed
+    - Increment a dunning counter for the tenant.
+- customer.subscription.deleted / canceled
+    - Mark tenant subscription as inactive.
+
+-------------------------------------
+4. DUNNING LOGIC (MINIMUM VIABLE)
+-------------------------------------
+
+In tenant billing state (e.g. tenant_billing table or stripe_customers table):
+
+Add:
+- failed_attempts int (default 0)
+- delinquent_since date nullable
+
+On invoice.payment_failed:
+- Increment failed_attempts
+- If failed_attempts == 1:
+    - Set delinquent_since = today
+- If failed_attempts >= 3:
+    - Mark tenant as "suspended_for_billing"
+
+On invoice.payment_succeeded:
+- Reset failed_attempts = 0
+- Clear delinquent_since
+- Clear suspension, if any.
+
+-------------------------------------
+5. LOG NOISE REDUCTION
+-------------------------------------
+
+Wrap all Stripe calls in try/catch in a central helper, e.g.:
+
+- stripeSafeCall<T>(fn: () => Promise<T>, context: string): Promise<{ ok: boolean; result?: T; error?: string }>
+
+In catch:
+- Log:
+    - severity: "warn" for expected config issues
+    - severity: "error" only for truly unexpected failures
+
+Ensure the app:
+- Does NOT crash routes simply because Stripe config is missing in dev/test.
+- Returns a clear JSON error to the frontend instead.
+
+-------------------------------------
+6. TENANT BILLING STATUS UI
+-------------------------------------
+
+In ServicePro admin:
+- /admin/billing (or existing billing page)
+
+Show:
+- Current plan
+- Next billing date (if known)
+- Billing status:
+    - Active
+    - Payment Failed (X attempts)
+    - Suspended (billing)
+- A clear message if STRIPE is not fully configured (for root/admin only).
+
+-------------------------------------
+7. DONE WHEN
+-------------------------------------
+
+- Red Stripe-related errors in Replit logs are reduced to:
+    - Only truly unexpected failures.
+- Missing config leads to clear non-fatal behavior (warning + disabled billing).
+- Webhooks are idempotent and no longer spam errors.
+- Tenant billing status is visible in the UI.
