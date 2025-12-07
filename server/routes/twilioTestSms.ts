@@ -6,6 +6,7 @@ import { wrapTenantDb } from '../tenantDb';
 import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq, asc } from 'drizzle-orm';
 import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
+import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
 
 export const twilioTestSmsRouter = Router();
 
@@ -31,6 +32,18 @@ async function getOrCreateTestConversation(tenantDb: any, phone: string) {
   }
   
   return conversation;
+}
+
+async function updateConversationLanguage(tenantDb: any, conversationId: number, language: SupportedLanguage) {
+  try {
+    await tenantDb
+      .update(conversations)
+      .set({ customerLanguage: language })
+      .where(eq(conversations.id, conversationId));
+    console.log(`[TWILIO TEST SMS] Updated conversation ${conversationId} language to ${language}`);
+  } catch (error) {
+    console.error('[TWILIO TEST SMS] Error updating conversation language:', error);
+  }
 }
 
 async function getConversationHistory(tenantDb: any, conversationId: number) {
@@ -101,10 +114,28 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
     
     await addMessage(tenantDb, conversation.id, Body, 'customer');
     
+    // SP-22: Detect customer language from message
+    let customerLanguage: SupportedLanguage = conversation.customerLanguage || 'en';
+    if (!conversation.customerLanguage || conversation.customerLanguage === 'unknown') {
+      const detectedLang = await inferLanguageFromText(Body);
+      if (detectedLang !== 'unknown') {
+        customerLanguage = detectedLang;
+        await updateConversationLanguage(tenantDb, conversation.id, customerLanguage);
+        console.log(`[TWILIO TEST SMS] Detected customer language: ${customerLanguage}`);
+      }
+    } else {
+      customerLanguage = conversation.customerLanguage as SupportedLanguage;
+    }
+    
     const conversationHistory = await getConversationHistory(tenantDb, conversation.id);
     
+    // SP-22: Include language context in user message for AI
+    const languageContext = customerLanguage === 'es' 
+      ? '\n[SYSTEM: Customer prefers Spanish. Respond in Spanish.]' 
+      : '';
+    
     const aiReply = await generateAIResponse(
-      Body,
+      Body + languageContext,
       From,
       'sms',
       undefined,
