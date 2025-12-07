@@ -3,6 +3,7 @@ import { wrapTenantDb } from '../tenantDb';
 import { tenants } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { calculateUsageCost } from '@shared/pricing/usagePricing';
+import { getPlanLimits, type PlanLimits } from '@shared/pricing/planLimits';
 
 export type PlanStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'unknown';
 export type PlanTier = 'free' | 'starter' | 'pro' | 'elite' | 'internal';
@@ -14,9 +15,24 @@ export interface UsageSnapshot {
   aiRequestsLast30d: number;
 }
 
+export interface BillingPeriod {
+  startDate: string;
+  endDate: string;
+  label: string;
+}
+
+export interface DailyUsage {
+  date: string;
+  smsCount: number;
+  voiceMinutes: number;
+  emailCount: number;
+  aiRequests: number;
+}
+
 export interface BillingOverview {
   planId: string | null;
   planName: string;
+  planTier: string;
   planTierLabel: string;
   status: PlanStatus;
   trialEndsAt: string | null;
@@ -26,6 +42,9 @@ export interface BillingOverview {
   cancelAtPeriodEnd: boolean;
   usage: UsageSnapshot;
   estimatedCostLast30d: number;
+  planLimits: PlanLimits;
+  currentPeriod: BillingPeriod;
+  dailyUsage: DailyUsage[];
 }
 
 const tierLabels: Record<PlanTier, string> = {
@@ -63,6 +82,11 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
   }
   
   const now = new Date();
+  
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const periodLabel = periodStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   
@@ -76,7 +100,8 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
       COALESCE(SUM(ai_tokens_in + ai_tokens_out), 0) as ai_tokens_total
     FROM usage_metrics
     WHERE tenant_id = ${tenantId}
-      AND date >= ${thirtyDaysAgo.toISOString().split('T')[0]}::date
+      AND date >= ${periodStart.toISOString().split('T')[0]}::date
+      AND date <= ${periodEnd.toISOString().split('T')[0]}::date
   `);
   
   const usageRow = usageResult.rows[0] as any || {};
@@ -98,12 +123,35 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
     aiTotalTokens: aiTokensTotal,
   });
   
+  const dailyUsageResult = await rootDb.execute(sql`
+    SELECT 
+      date,
+      COALESCE(sms_outbound_count + sms_inbound_count, 0) as sms_count,
+      COALESCE(voice_minutes, 0) as voice_minutes,
+      COALESCE(emails_sent, 0) as email_count,
+      COALESCE(CEIL((ai_tokens_in + ai_tokens_out) / 1000.0), 0) as ai_requests
+    FROM usage_metrics
+    WHERE tenant_id = ${tenantId}
+      AND date >= ${thirtyDaysAgo.toISOString().split('T')[0]}::date
+    ORDER BY date ASC
+  `);
+  
+  const dailyUsage: DailyUsage[] = (dailyUsageResult.rows as any[]).map(row => ({
+    date: row.date,
+    smsCount: parseInt(row.sms_count) || 0,
+    voiceMinutes: parseInt(row.voice_minutes) || 0,
+    emailCount: parseInt(row.email_count) || 0,
+    aiRequests: parseInt(row.ai_requests) || 0,
+  }));
+  
   const planTier = (tenant.planTier || 'starter') as PlanTier;
   const planTierLabel = tierLabels[planTier] || 'Starter';
+  const planLimits = getPlanLimits(planTier);
   
   return {
     planId: tenant.stripeSubscriptionId || null,
     planName: `${planTierLabel} Plan`,
+    planTier,
     planTierLabel,
     status: mapStatusToEnum(tenant.status),
     trialEndsAt: null,
@@ -118,5 +166,12 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
       aiRequestsLast30d: aiRequestsEstimate,
     },
     estimatedCostLast30d: estimatedCost,
+    planLimits,
+    currentPeriod: {
+      startDate: periodStart.toISOString().split('T')[0],
+      endDate: periodEnd.toISOString().split('T')[0],
+      label: periodLabel,
+    },
+    dailyUsage,
   };
 }
