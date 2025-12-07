@@ -155,6 +155,21 @@ export async function sendSMS(
       }
     }
 
+    // SP-9: TRIAL TELEPHONY SANDBOX ENFORCEMENT
+    // Check if tenant is trial and enforce whitelist/cap restrictions
+    const { canSendTrialMessage, recordTrialMessageSent, isTrialTenant } = await import('./services/trialTelephonyService');
+    const isTrialTenantFlag = await isTrialTenant(tenantId);
+    const trialCheck = await canSendTrialMessage(tenantId, formattedPhone);
+    
+    if (!trialCheck.canSend) {
+      console.warn(`[TRIAL SANDBOX] ⚠️ Blocked SMS to ${formattedPhone} - ${trialCheck.reason} (Tenant: ${tenantId})`);
+      return { 
+        success: false, 
+        error: `trial_sandbox_${trialCheck.reason?.includes('whitelist') ? 'not_whitelisted' : 'cap_exceeded'}`,
+        messageSid: undefined
+      };
+    }
+
     // Get the status callback URL (uses the current deployment URL)
     const statusCallbackUrl = process.env.REPLIT_DEV_DOMAIN 
       ? `https://${process.env.REPLIT_DEV_DOMAIN}/api/twilio/status-callback`
@@ -230,6 +245,18 @@ export async function sendSMS(
     } catch (dbError) {
       console.error('[SMS TRACKING] Failed to log to database:', dbError);
       // Don't fail the SMS send if database logging fails
+    }
+
+    // SP-9: Track trial message usage after successful send
+    // Only track if this is a trial tenant
+    if (isTrialTenantFlag) {
+      try {
+        await recordTrialMessageSent(tenantId);
+        console.log(`[TRIAL SANDBOX] Recorded message for tenant ${tenantId}`);
+      } catch (trackError) {
+        console.error('[TRIAL SANDBOX] Failed to record message:', trackError);
+        // Don't fail the SMS send if tracking fails
+      }
     }
 
     return { success: true, messageSid: messageSid };

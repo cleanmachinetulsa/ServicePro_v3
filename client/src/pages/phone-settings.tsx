@@ -20,6 +20,7 @@ import { Phone, Clock, Edit, Trash2, Plus, Save, X, PhoneForwarded, Voicemail, I
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import CommunicationsNav from '@/components/CommunicationsNav';
 import { CustomRingtoneInstructions } from '@/components/phone/CustomRingtoneInstructions';
+import TrialTelephonySettings from '@/pages/settings/TrialTelephonySettings';
 import {
   useTelephonySettings,
   type TelephonyMode,
@@ -672,6 +673,11 @@ export default function PhoneSettings() {
           <p className="text-gray-600 dark:text-gray-300 mt-2">
             Manage your business phone lines, call forwarding, and business hours schedules
           </p>
+        </div>
+
+        {/* SP-9: Trial Telephony Sandbox Card - only shows for trial tenants */}
+        <div className="mb-8">
+          <TrialTelephonySettings />
         </div>
 
         {/* Call Handling Mode Selector */}

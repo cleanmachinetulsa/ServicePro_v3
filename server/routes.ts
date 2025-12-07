@@ -26,6 +26,7 @@ import { registerAdminPhoneConfigRoutes } from './routes.adminPhoneConfig';
 import { registerTelephonySettingsRoutes } from './routes.telephonySettings';
 import { registerBillingUsageRoutes } from './routes.billingUsage';
 import { registerUiModeRoutes } from './routes.settings.uiMode';
+import { registerTrialTelephonyRoutes } from './routes.trialTelephony';
 import { registerBillingOverviewRoutes } from './routes.settings.billingOverview';
 import { registerAdminConciergeSetupRoutes } from './routes.adminConciergeSetup';
 import { registerAdminIvrRoutes } from './routes.adminIvr';
@@ -3007,6 +3008,7 @@ Follow up with this lead to set up their 14-day trial!
   registerTelephonySettingsRoutes(app);
   registerBillingUsageRoutes(app);
   registerUiModeRoutes(app);
+  registerTrialTelephonyRoutes(app);
   registerBillingOverviewRoutes(app);
   registerAdminConciergeSetupRoutes(app);
   registerAdminIvrRoutes(app);
