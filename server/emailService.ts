@@ -1,6 +1,7 @@
 import sgMail from '@sendgrid/mail';
 import { RewardService } from "@shared/schema";
 import { phoneConfig, formatPhoneForDisplay } from './config/phoneConfig';
+import { recordEmailUsage, type UsageFeature } from './services/usageEventService';
 
 const DEMO_MODE = false; // PRODUCTION: Demo mode disabled for live customers
 
@@ -94,7 +95,6 @@ export async function sendBusinessEmail(
   htmlContent?: string
 ): Promise<{ success: boolean; error?: any }> {
   if (DEMO_MODE) {
-    // In demo mode, log the email but don't actually send it
     console.log(`[DEMO MODE] Email would be sent to ${to}`);
     console.log(`[DEMO MODE] Subject: ${subject}`);
     console.log(`[DEMO MODE] Content: ${textContent.substring(0, 100)}...`);
@@ -119,6 +119,31 @@ export async function sendBusinessEmail(
     console.error('Error sending email:', error);
     return { success: false, error };
   }
+}
+
+/**
+ * Send an email with usage tracking (SP-7)
+ * Use this when tenantId is available for granular usage metrics
+ */
+export async function sendTrackedEmail(
+  tenantId: string,
+  to: string,
+  subject: string,
+  textContent: string,
+  htmlContent?: string,
+  feature: UsageFeature = 'general'
+): Promise<{ success: boolean; error?: any }> {
+  const result = await sendBusinessEmail(to, subject, textContent, htmlContent);
+  
+  if (result.success) {
+    try {
+      await recordEmailUsage(tenantId, feature);
+    } catch (err) {
+      console.error('[EMAIL] Failed to record usage:', err);
+    }
+  }
+  
+  return result;
 }
 
 /**
