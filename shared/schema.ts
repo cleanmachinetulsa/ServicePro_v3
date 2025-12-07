@@ -243,6 +243,11 @@ export const tenants = pgTable("tenants", {
   status: tenantStatusEnum("status").default("trialing").notNull(),
   stripeCustomerId: text("stripe_customer_id"), // Phase 7C: Stripe customer ID for billing
   stripeSubscriptionId: text("stripe_subscription_id"), // Phase 7C: Active Stripe subscription ID
+  // SP-6: Billing & Dunning Automation fields
+  billingStatusSince: timestamp("billing_status_since", { withTimezone: true }).defaultNow(), // When billing status last changed
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false), // Stripe cancel_at_period_end flag
+  lastInvoiceStatus: text("last_invoice_status"), // e.g., 'paid', 'open', 'past_due', 'uncollectible'
+  lastInvoiceDueAt: timestamp("last_invoice_due_at", { withTimezone: true }), // Due date of last invoice
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
