@@ -108,3 +108,49 @@ A guided 4-step wizard UI built on top of the INT-3 import engine, designed to h
 Uses the same endpoints as INT-3:
 - POST `/api/admin/import-history/upload` - Upload ZIP bundle
 - GET `/api/admin/import-history/latest` - Get import status (with polling during processing)
+
+## INT-5: Parser Tool Hook (Phase 1)
+
+### Overview
+A minimal, secure API hook that allows future server-to-server automation between an external Parser Tool and ServicePro. This prepares the integration point without changing user flows yet.
+
+### Purpose
+In the future, the external Parser Tool can send a pre-signed URL or token to ServicePro, allowing automated data import without manual user uploads.
+
+### Database Schema
+Extended `phone_history_imports` table with:
+- **source**: Enum (`'manual_upload'` | `'parser_tool'`) - defaults to `'manual_upload'`
+- **remoteBundleUrl**: Text (nullable) - URL for the parser tool to push results
+- **externalJobId**: Text (nullable) - External parser job identifier
+
+### API Endpoint
+- **POST /api/import-history/parser-hook**
+  - Protected via `x-parser-secret` header (reads from `PARSER_TOOL_SHARED_SECRET` env var)
+  - Currently only allows `root` tenant (Clean Machine) in v1
+  - Creates a pending import job with `source = 'parser_tool'`
+
+### Request Body
+```json
+{
+  "tenantExternalId": "root",
+  "remoteBundleUrl": "https://example.com/bundle.zip",
+  "externalJobId": "job-12345" // optional
+}
+```
+
+### Environment Variables
+- **PARSER_TOOL_SHARED_SECRET**: Required for authenticating parser tool requests
+
+### Admin UI
+On `/admin/import-history`, a purple notice appears for imports with `source = 'parser_tool'`:
+> "This import came from the Parser Tool (job #...)"
+
+### Key Files
+- `shared/schema.ts`: Extended phoneHistoryImports schema
+- `server/routes.importHistoryParser.ts`: Parser hook API route
+- `client/src/pages/AdminImportHistory.tsx`: Parser tool notice UI
+
+### Future Work
+- Automated bundle download from `remoteBundleUrl`
+- Multi-tenant support via `tenantExternalId` lookup
+- Webhook callbacks for import completion
