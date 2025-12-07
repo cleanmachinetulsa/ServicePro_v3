@@ -116,3 +116,31 @@ A safe sandbox demo environment for potential customers to try the platform:
 - `requireDemoVerified`: Guards routes that need verified phone
 - `blockInDemoMode(actionName)`: Returns 403 for blocked actions
 - `simulateInDemoMode(fn)`: Returns simulated response in demo mode
+
+## SP-18: Usage Metering v2
+
+Comprehensive usage tracking with tier-based caps and cost estimates:
+
+**Files**:
+- `shared/usageCapsConfig.ts`: Tier-based usage cap defaults (sms, mms, ai, email, voice) with monthly limits
+- `shared/schema.ts`: `usage_caps` table with per-tenant overrides, `tenant_usage_status_v2` for status tracking
+- `server/services/usageMeteringService.ts`: Core service with aggregation, cap checking, status computation
+- `server/routes/usageMeteringRoutes.ts`: API routes at /api/billing/usage/v2/*
+- `client/src/pages/settings/UsageDashboardPage.tsx`: Tenant page at /settings/usage-caps
+- `client/src/pages/admin/AdminSystemUsagePage.tsx`: Admin page at /admin/system-usage-v2
+
+**API Routes**:
+- GET /api/billing/usage/v2/summary: Current period usage with caps and status
+- GET /api/billing/usage/v2/daily: Daily usage trend for charts
+- POST /api/billing/usage/v2/refresh: Force recalculation from ledger
+- GET /api/admin/usage/v2/tenants: All tenants usage overview
+- POST /api/admin/usage/v2/rebuild: Rebuild rollups from ledger
+
+**Usage Status Types**: ok, warning (80%+), critical (95%+), exceeded (100%+)
+
+**Features**:
+- Tier-based default caps (free/starter/pro/elite/internal)
+- Per-tenant cap overrides via admin interface
+- Daily usage rollups aggregated from usageLedger events
+- Cost estimation based on standard rates
+- Admin rebuild capability for data correction
