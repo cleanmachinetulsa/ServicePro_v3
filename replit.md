@@ -59,6 +59,16 @@ A Simple vs Advanced dashboard mode system that allows tenant owners to toggle b
 - **Navigation Filtering**: `client/src/config/navigationItems.ts` items with `visibility: 'advancedOnly'` are hidden in Simple mode
 - **Settings Page**: `/settings/ui-mode` provides a user-friendly toggle with descriptive cards
 
+#### Usage & Billing Overview (SP-5)
+A read-only billing and usage page accessible to all tenant users:
+- **Settings Page**: `/settings/billing` shows plan info, 30-day usage snapshot, and billing portal access
+- **Plan Display**: Shows current plan name, tier (Free/Starter/Pro/Elite/Internal), and status (Trial/Active/Past Due/Suspended)
+- **Usage Meters**: 4 tiles showing SMS sent, voice minutes, emails sent, and AI requests for the last 30 days
+- **Billing Portal**: "Manage Payment & Invoices" button opens Stripe billing portal (if configured)
+- **API Routes**: `server/routes.settings.billingOverview.ts` with GET `/api/settings/billing/overview`
+- **Service Layer**: `server/services/usageOverviewService.ts` combines tenant plan info with 30-day usage metrics
+- **Hook**: `client/src/hooks/useBillingOverview.ts` for frontend data fetching
+
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business.
 

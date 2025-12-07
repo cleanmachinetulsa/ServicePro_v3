@@ -78,6 +78,7 @@ import ReferralPage from "./pages/ReferralPage";
 import PhoneSettingsPage from "./pages/phone-settings";
 import EmailSettingsPage from "./pages/email-settings";
 import UiModeSettingsPage from "./pages/settings/UiModeSettingsPage";
+import SettingsBillingPage from "./pages/settings/BillingUsagePage";
 import SipSetupGuide from "./pages/sip-setup-guide";
 import Billing from "./pages/billing";
 import EscalationsPage from "./pages/escalations";
@@ -221,6 +222,11 @@ function Router() {
       <Route path="/settings/ui-mode">
         <AuthGuard>
           <UiModeSettingsPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/billing">
+        <AuthGuard>
+          <SettingsBillingPage />
         </AuthGuard>
       </Route>
       <Route path="/admin/port-recovery">

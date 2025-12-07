@@ -1,0 +1,69 @@
+2. NEXT DROP-IN: Phase 2.3 – Billing & Dunning Automation v1
+
+(This is what comes AFTER SP-6 / SP-5 in your queue.)
+
+This drop-in upgrades the system from:
+
+✔ Usage tracking
+✔ Usage dashboard
+✘ → Long-term revenue automation
+
+Into a fully SaaS-monetized system.
+
+🚀 DROP-IN PROMPT — Phase 2.3 Billing & Dunning Automation v1
+
+Copy/paste this into Replit:
+
+DROP-IN: Phase 2.3 – Billing & Dunning Automation v1
+
+Goal:
+Implement the foundation of ServicePro’s native billing system: monthly invoices, auto-charges via Stripe, overdue warnings, and account suspension rules.
+
+Deliverables:
+1. Stripe Integration:
+   - Add server/services/stripeBillingService.ts
+   - Create Stripe customers for new tenants (if not already present)
+   - Store stripeCustomerId in tenants table
+   - Add /api/admin/billing/customer endpoint to fetch billing status
+
+2. Monthly Invoice Generator:
+   - New cron job: jobs/generateMonthlyInvoice.cjs (runs 1st of each month)
+   - Generates invoice lines from previous month’s usage_rollups_daily
+   - Writes invoice to invoices table (tenant_id, period_start, period_end, amount_due, status)
+   - Calls Stripe to create an invoice & auto-charge
+
+3. Dunning Logic:
+   - Add overdue_days column to tenants table
+   - Nightly job increments overdue_days if invoice unpaid
+   - At 14 days overdue: send “Payment Reminder” email + admin banner
+   - At 30 days overdue: auto-suspend tenant (disable telephony, disable outbound SMS)
+   - At 45 days overdue: restrict admin login until payment
+
+4. Billing Page (tenant-facing):
+   - New route: /admin/billing
+   - Shows:
+       • Plan (from tenants.plan)
+       • Add-ons (placeholder for Phase 2.4)
+       • Next invoice date
+       • Last 6 invoices with status
+       • 'Update Payment Method' button (Stripe portal link)
+       • Banner if overdue
+
+5. Root Admin Billing Page:
+   - /admin/system-billing
+   - Shows all tenants with:
+       • Current balance
+       • Overdue status
+       • Quick link to force-run invoice
+
+6. Replit Documentation:
+   - Update replit.md with the Billing Automation v1 spec
+   - Include instructions for Stripe API keys and webhook setup
+
+Constraints:
+- Must maintain multi-tenant isolation
+- Must use Zod schemas for API validation
+- Code must not break existing usage rollup jobs
+
+After merge:
+Move on to Phase 2.4 “Add-On Marketplace Infrastructure”

@@ -1,0 +1,106 @@
+✅ 1. MASTER PLAN v4.0 — Unified, Canonical, Clean
+(Categories + Global Numbering)
+
+This replaces every old list.
+No more duplicates.
+No more confusion.
+This list is now THE TRUTH.
+
+🎯 MASTER PLAN v4.0
+PHASE 1 — TELEPHONY & COMMUNICATION (1.x)
+
+1.1 – Telephony Modes v1 (AI-first, Human-first, Hybrid, Text-only)
+✔ COMPLETE
+
+1.2 – A2P Assistant & Campaign Builder (regulatory helper, templates)
+✔ COMPLETE
+
+1.3 – A2P Auto-Submission + TrustHub Integration
+✔ COMPLETE
+
+1.4 – Trial Telephony Sandbox (test calls/texts before connecting Twilio)
+⚠ PLANNED (SP-9)
+
+1.5 – Phone Inbox v2 (improved layout, filtering, shortcuts)
+⚠ PLANNED (SP-11)
+
+PHASE 2 — BILLING & USAGE (2.x)
+
+2.1 – Usage Engine v1 (SMS, MMS, Voice, Email, AI Tokens)
+✔ COMPLETE (SP-3)
+
+2.2 – Tenant Usage Dashboard + System Usage (admin)
+✔ COMPLETE
+
+2.3 – Billing Automation v1 (Stripe, overdue logic, dunning emails)
+⚠ THIS IS SP-6 (next drop-in after SP-5)
+
+2.4 – Add-On Marketplace (upsells, optional features per tenant)
+⚠ PLANNED (SP-4) → not done yet
+
+2.5 – Usage Transparency v2 (detailed costs per channel: Twilio, SendGrid, GPT)
+⚠ PLANNED (SP-7)
+
+PHASE 3 — LOYALTY & CUSTOMER ENGAGEMENT (3.x)
+
+3.1 – Loyalty v2 (Rewards portal, achievements, guardrails, booking integration)
+✔ COMPLETE
+
+3.2 – Referral Program v1 (QR codes, share links, track conversions)
+⚠ PLANNED (LL-3)
+
+3.3 – Gift Cards v1 (Holiday campaigns, SMS/email templates, redemption flow)
+✔ PARTIAL — CM-3 delivered holiday campaign infra
+Final gift card UX still needed.
+
+3.4 – Identity Hardening v2 (OTP login for loyalty portal / secure claims)
+⚠ REVISIT LIST
+
+3.5 – Loyalty v3+ (deep gamification, badges, timelines, streaks)
+🌙 FUTURE
+
+PHASE 4 — PUBLIC SITE & MULTI-LANGUAGE (4.x)
+
+4.1 – Public Site v2 (tenant-editable hero, colors, CTA, services)
+✔ COMPLETE (CM-4)
+
+4.2 – Public Site v3 (template library, multiple themes, industry presets)
+⚠ PLANNED (SITE-2)
+
+4.3 – Full i18n System (English/Spanish complete, with hooks for expansion)
+⚠ PLANNED (SP-8 + LANG-1)
+
+4.4 – AI Site Generator (auto-generate website content from tenant’s business profile)
+🌙 FUTURE
+
+PHASE 5 — DASHBOARD UX, SIMPLE MODE, ADMIN (5.x)
+
+5.1 – Simple Mode vs Advanced Mode Dashboard
+Hide complexity for non-technical users → Beginner Mode
+Show full system → Advanced Mode
+⚠ PLANNED (SP-4)
+
+5.2 – Industry Pack Editor + Clone-a-Tenant Factory
+⚠ PLANNED (SP-10)
+
+5.3 – Support Center + AI Assistant v2 (contextual help everywhere)
+✔ SUPPORT v1 COMPLETE
+AI Setup v2 planned.
+
+PHASE 6 — PERFORMANCE, OPS, SYSTEM HEALTH (6.x)
+
+6.1 – Bootstrap + Skeletons + Page Load Optimization
+✔ COMPLETE
+
+6.2 – Performance Pass v2 (real profiling + SSR optimizations + caching)
+⚠ PLANNED (SP-12)
+
+6.3 – System Health Dashboard (errors, dropped calls, slow queries, job failures)
+🌙 FUTURE
+
+THIS IS THE OFFICIAL MASTER PLAN v4.0
+
+This replaces 3.6, 3.7, the SP list, the CM list, and all overlapping lists.
+
+Going forward:
+Every drop-in uses “Phase X.Y – Name” from this document.
