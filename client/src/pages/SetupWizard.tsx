@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ParserImportStep } from "@/components/ParserImportStep";
 import {
   CheckCircle2,
   Circle,
@@ -33,6 +34,7 @@ import {
   RefreshCw,
   History,
   Upload,
+  Brain,
 } from "lucide-react";
 
 interface OnboardingProgress {
@@ -573,107 +575,34 @@ export default function SetupWizard() {
             </Card>
           </motion.div>
 
-          {/* Step 3: Import Phone History (Optional) */}
+          {/* Step 3: Import Phone History (Optional) - Using AI Parser */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.25 }}
           >
-            <Card className={`border-dashed ${phoneHistoryComplete ? "border-green-500/50 border-solid" : "border-muted-foreground/30"}`}>
-              <CardHeader>
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    phoneHistoryComplete
-                      ? "bg-green-500 text-white" 
-                      : "bg-purple-500/20 text-purple-600"
-                  }`}>
-                    {phoneHistoryComplete ? (
-                      <CheckCircle2 className="w-5 h-5" />
-                    ) : (
-                      <History className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      <Upload className="w-5 h-5" />
-                      Import Your Phone History
-                      <Badge variant="secondary" className="bg-purple-500/20 text-purple-700 dark:text-purple-300">
-                        Optional
-                      </Badge>
-                      {phoneHistoryComplete && (
-                        <Badge variant="secondary" className="bg-green-500/20 text-green-700">
-                          Done
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription>
-                      Bring your existing customer conversations into ServicePro
-                    </CardDescription>
+            <ParserImportStep 
+              onComplete={() => {
+                updateProgressMutation.mutate({ phoneHistoryStepSeen: true });
+                queryClient.invalidateQueries({ queryKey: ['/api/onboarding/progress'] });
+              }}
+              showSkip={!progress?.phoneHistoryStepSeen}
+            />
+            
+            {/* Alternative: Migration Wizard Link */}
+            {!phoneHistoryComplete && (
+              <div className="mt-4 p-3 rounded-lg border border-dashed bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <History className="w-4 h-4" />
+                    <span>Have an existing customer database? Use the</span>
+                    <Link href="/admin/migration-wizard" className="text-primary hover:underline">
+                      Migration Wizard
+                    </Link>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {progress?.hasSuccessfulPhoneHistoryImport ? (
-                  <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-green-500" />
-                      <div>
-                        <p className="font-medium text-green-700 dark:text-green-400">
-                          Phone history imported!
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          Your customer conversations are now available in ServicePro.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/30">
-                      <div className="flex items-center gap-3 mb-2">
-                        <History className="w-5 h-5 text-purple-500" />
-                        <span className="font-medium text-purple-700 dark:text-purple-300">
-                          Switching from another system?
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground ml-8">
-                        If you have customer conversations on your personal phone or another app, 
-                        you can import them using our Migration Wizard.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                        data-testid="button-start-migration"
-                      >
-                        <Link href="/admin/migration-wizard">
-                          Start Migration Wizard
-                          <ChevronRight className="ml-1 w-4 h-4" />
-                        </Link>
-                      </Button>
-
-                      {!progress?.phoneHistoryStepSeen && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => updateProgressMutation.mutate({ phoneHistoryStepSeen: true })}
-                          disabled={updateProgressMutation.isPending}
-                          data-testid="button-skip-phone-history"
-                        >
-                          {updateProgressMutation.isPending ? (
-                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                          ) : null}
-                          Skip for Now
-                        </Button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+            )}
           </motion.div>
 
           {/* Step 4: Website */}
