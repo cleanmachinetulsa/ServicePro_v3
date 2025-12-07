@@ -4766,3 +4766,27 @@ export const updateTenantAddonSchema = z.object({
 export type TenantAddon = typeof tenantAddons.$inferSelect;
 export type InsertTenantAddon = z.infer<typeof insertTenantAddonSchema>;
 export type UpdateTenantAddon = z.infer<typeof updateTenantAddonSchema>;
+
+// CM-DEMO-1: Demo Sessions table for managing demo mode access
+export const demoSessions = pgTable("demo_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('demo-tenant'),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  verifiedDemoPhone: varchar("verified_demo_phone", { length: 20 }),
+  pendingCode: varchar("pending_code", { length: 6 }),
+  codeExpiresAt: timestamp("code_expires_at"),
+  ipAddress: varchar("ip_address", { length: 50 }),
+  userAgent: text("user_agent"),
+}, (table) => ({
+  tenantIdx: index("demo_sessions_tenant_id_idx").on(table.tenantId),
+  expiresAtIdx: index("demo_sessions_expires_at_idx").on(table.expiresAt),
+}));
+
+export const insertDemoSessionSchema = createInsertSchema(demoSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type DemoSession = typeof demoSessions.$inferSelect;
+export type InsertDemoSession = z.infer<typeof insertDemoSessionSchema>;
