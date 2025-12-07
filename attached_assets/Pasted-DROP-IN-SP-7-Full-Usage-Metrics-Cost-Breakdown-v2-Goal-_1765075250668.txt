@@ -1,0 +1,193 @@
+DROP-IN: SP-7 – Full Usage Metrics + Cost Breakdown v2
+
+Goal: Upgrade the existing usage engine (SP-3) so tenants can see Twilio / SendGrid / GPT usage and estimated cost broken down by channel + feature, with CSV export and better charts.
+
+Prompt for Replit agent:
+
+You are editing the ServicePro_v3 repo.
+Implement SP-7 – Full Usage Metrics + Cost Breakdown v2 as follows.
+You must:
+
+Respect the existing multi-tenant patterns (wrapTenantDb, requireRole, authMiddleware).
+
+Reuse the existing usage engine (usage_metrics, usage_rollups_daily, billing usage pages).
+
+Avoid breaking existing SP-3 functionality.
+
+1. Extend usage schema to store feature + source detail
+
+Open shared/schema.ts (or wherever usage_metrics and usage_rollups_daily are defined).
+
+Add the following fields:
+
+On usage_metrics:
+
+source (text, nullable) – e.g. 'twilio' | 'sendgrid' | 'openai' | 'internal'.
+
+feature (text, nullable) – e.g. 'ai_sms' | 'ivr' | 'broadcast' | 'portal_email' | 'support_ai'.
+
+metadata (jsonb, optional) – freeform extra info (campaignId, phoneNumber, templateKey, etc.).
+
+On usage_rollups_daily:
+
+source (text, nullable, indexed).
+
+feature (text, nullable, indexed).
+
+Create a migration file to add these columns and sensible indexes (e.g. (tenant_id, date, source, feature)).
+
+2. Wire GPT and SendGrid into the usage collector
+
+Find where SMS/voice/email usage is already recorded (search for usageCollector, recordUsage, or usage_metrics writes).
+
+For email (SendGrid) calls:
+
+After a successful send, record a metric with:
+
+channel = 'email'
+
+direction = 'outbound'
+
+source = 'sendgrid'
+
+feature based on template key (e.g. booking confirmations → feature = 'booking_email').
+
+For OpenAI/GPT calls:
+
+Locate the OpenAI wrapper (support assistant, SMS AI, voicemail AI, etc.).
+
+After each successful response, record:
+
+channel = 'ai'
+
+direction = 'outbound'
+
+source = 'openai'
+
+feature:
+
+SMS AI replies → 'ai_sms'
+
+Support widget → 'support_ai'
+
+Voicemail summary → 'voicemail_ai'
+
+metadata including at least:
+
+model
+
+input_tokens
+
+output_tokens
+
+Keep this lightweight; do not log full prompts or PII.
+
+3. Pricing map & estimated costs per channel/source
+
+Open the existing pricing config used in SP-3 (search for SMS/MMS/voice/email rates).
+
+Extend it with GPT rates, for example:
+
+const USAGE_PRICING = {
+  sms: { outbound: 0.0089, inbound: 0.0079 },
+  mms: { outbound: 0.02, inbound: 0.02 },
+  voice: { perMinute: 0.0085 },
+  email: { outbound: 0.00035 },
+  ai: {
+    input_per_1k_tokens: 0.002,   // example, keep configurable
+    output_per_1k_tokens: 0.006,  // example, keep configurable
+  },
+} as const;
+
+
+In the rollup service (daily aggregation):
+
+Compute estimated_cost per rollup row.
+
+For AI rows, use input_tokens and output_tokens from aggregated metadata if available; otherwise compute from derived totals.
+
+4. Tenant usage dashboard v2 – feature + cost breakdown
+
+Open the tenant usage page (e.g. client/src/pages/AdminBillingUsagePage.tsx or similar).
+
+Enhance it to show:
+
+Stacked bar chart or table:
+
+Rows: SMS, MMS, Voice, Email, AI.
+
+Columns: Count, Estimated Cost, % of total.
+
+Feature breakdown table:
+
+Columns: Feature, Channel, Count, Estimated Cost, Source.
+
+Summary cards at top:
+
+Total Estimated Billable Usage
+
+Top Channel by Spend
+
+Top Feature by Spend
+
+Add a “Download CSV” button:
+
+Calls a new endpoint (see next section).
+
+Downloads a CSV with per-day, per-channel stats for the last 30 days.
+
+5. New CSV export endpoint
+
+Add a tenant-scoped route, e.g. GET /api/billing/usage/export.
+
+It should:
+
+Require auth and tenant context.
+
+Accept optional range=30d|90d query param.
+
+Return text/csv with columns:
+
+date, channel, direction, source, feature, count, estimated_cost
+
+Implement in the existing billing/usage routes module; reuse the rollup data, don’t re-scan raw metrics.
+
+6. Root admin system usage v2
+
+In the root admin usage page, add:
+
+Tenant grid:
+
+Tenant Name
+
+Plan
+
+Total Estimated Usage Cost
+
+AI % of Spend
+
+Twilio % of Spend
+
+Emails Sent
+
+Add filters:
+
+By plan (Starter/Pro/Elite).
+
+By high AI spend (e.g. AI cost > 30%).
+
+7. Tests & docs
+
+Add minimal unit/integ tests to confirm:
+
+GPT sends record usage.
+
+Export endpoint returns CSV.
+
+Update replit.md or docs/MASTER_PLAN_v3.7_SERVICEPRO.md under SP-7 to describe:
+
+New fields.
+
+AI usage pricing assumptions.
+
+Where tenants see usage & costs.
