@@ -15,9 +15,8 @@ export default function DemoLandingPage() {
   const handleStartDemo = async () => {
     setIsStarting(true);
     try {
-      const response = await apiRequest('/api/demo/start', {
-        method: 'POST',
-      });
+      const res = await apiRequest('POST', '/api/demo/start');
+      const response = await res.json();
 
       if (response.success) {
         sessionStorage.setItem('demoSessionToken', response.demoSessionToken);
@@ -180,7 +179,7 @@ export default function DemoLandingPage() {
                 onClick={handleStartDemo}
                 disabled={isStarting}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-                data-testid="button-start-demo"
+                data-testid="button-try-demo"
               >
                 {isStarting ? (
                   <>Starting Demo...</>

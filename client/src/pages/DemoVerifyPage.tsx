@@ -62,13 +62,11 @@ export default function DemoVerifyPage() {
 
     setIsLoading(true);
     try {
-      const response = await apiRequest('/api/demo/send-code', {
-        method: 'POST',
-        body: JSON.stringify({
-          demoSessionToken,
-          phone: getE164Phone(),
-        }),
+      const res = await apiRequest('POST', '/api/demo/send-code', {
+        demoSessionToken,
+        phone: getE164Phone(),
       });
+      const response = await res.json();
 
       if (response.success) {
         setStep('code');
@@ -104,14 +102,12 @@ export default function DemoVerifyPage() {
 
     setIsLoading(true);
     try {
-      const response = await apiRequest('/api/demo/verify-code', {
-        method: 'POST',
-        body: JSON.stringify({
-          demoSessionToken,
-          phone: getE164Phone(),
-          code,
-        }),
+      const res = await apiRequest('POST', '/api/demo/verify-code', {
+        demoSessionToken,
+        phone: getE164Phone(),
+        code,
       });
+      const response = await res.json();
 
       if (response.success) {
         if (response.newToken) {
