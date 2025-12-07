@@ -40,6 +40,7 @@ import { registerSupportRoutes } from "./routes.support";
 import { registerIndustryPackRoutes } from "./routes.industryPacks";
 import importHistoryRouter from "./routes.importHistory";
 import importHistoryParserRouter from "./routes.importHistoryParser";
+import adminUsageOverviewRouter from "./routes.adminUsageOverview";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
@@ -354,6 +355,8 @@ registerIndustryPackRoutes(app);
 app.use('/api/admin/import-history', importHistoryRouter);
 // Register parser tool hook (INT-5 - Parser Tool Hook Phase 1)
 app.use('/api/import-history', importHistoryParserRouter);
+// Register root admin usage overview (SP-11 - Usage & Billing Foundation)
+app.use(adminUsageOverviewRouter);
 
 app.use((req, res, next) => {
   const start = Date.now();

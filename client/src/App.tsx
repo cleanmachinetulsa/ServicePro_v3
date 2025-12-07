@@ -99,6 +99,7 @@ import BillingUsagePage from "./pages/BillingUsagePage";
 import SystemUsageAdmin from "./pages/SystemUsageAdmin";
 import AdminBilling from "./pages/admin-billing";
 import SystemBillingAdmin from "./pages/SystemBillingAdmin";
+import AdminBillingOverview from "./pages/AdminBillingOverview";
 import GalleryManagementPage from "./pages/gallery-management";
 import DownloadExportPage from "./pages/download-export";
 import LaunchPage from "./pages/launch";
@@ -473,6 +474,11 @@ function Router() {
       <Route path="/admin/system-usage">
         <AuthGuard>
           <SystemUsageAdmin />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/billing-overview">
+        <AuthGuard>
+          <AdminBillingOverview />
         </AuthGuard>
       </Route>
       <Route path="/admin/gallery-management">
