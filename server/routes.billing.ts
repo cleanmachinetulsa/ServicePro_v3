@@ -11,8 +11,8 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { tenants } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { tenants, tenantInvoices } from '@shared/schema';
+import { eq, desc } from 'drizzle-orm';
 import { db } from './db';
 import {
   stripe,
@@ -21,6 +21,16 @@ import {
   isStripeConfigured,
 } from './services/stripeService';
 import { updateTenantBillingStatus } from './services/billingStatusService';
+import { 
+  getTenantBillingInfo,
+  getTenantInvoices,
+  getAllTenantsBillingInfo,
+  generateInvoiceData,
+  createTenantInvoice,
+  createAndChargeStripeInvoice,
+} from './services/stripeBillingService';
+import { getTenantDunningStatus } from './services/nightlyDunningService';
+import { requireRole } from './rbacMiddleware';
 
 const router = Router();
 
@@ -358,6 +368,155 @@ router.post('/api/billing/cancel-at-period-end', async (req: Request, res: Respo
       error: 'Failed to update subscription',
       message: error.message,
     });
+  }
+});
+
+/**
+ * GET /api/admin/billing/invoices
+ * 
+ * Get invoices for the current tenant
+ */
+router.get('/api/admin/billing/invoices', async (req: Request, res: Response) => {
+  try {
+    if (!req.session?.userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const tenantId = req.tenant?.id || req.session.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+
+    const limit = parseInt(req.query.limit as string) || 12;
+    const invoices = await getTenantInvoices(tenantId, limit);
+
+    res.json({
+      success: true,
+      invoices,
+    });
+  } catch (error: any) {
+    console.error('[BILLING] Error fetching invoices:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/billing/dunning-status
+ * 
+ * Get dunning status for the current tenant
+ */
+router.get('/api/admin/billing/dunning-status', async (req: Request, res: Response) => {
+  try {
+    if (!req.session?.userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const tenantId = req.tenant?.id || req.session.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+
+    const dunningStatus = await getTenantDunningStatus(tenantId);
+
+    res.json({
+      success: true,
+      ...dunningStatus,
+    });
+  } catch (error: any) {
+    console.error('[BILLING] Error fetching dunning status:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/billing/info
+ * 
+ * Get full billing info for the current tenant
+ */
+router.get('/api/admin/billing/info', async (req: Request, res: Response) => {
+  try {
+    if (!req.session?.userId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const tenantId = req.tenant?.id || req.session.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+
+    const billingInfo = await getTenantBillingInfo(tenantId);
+    const dunningStatus = await getTenantDunningStatus(tenantId);
+    const invoices = await getTenantInvoices(tenantId, 6);
+
+    res.json({
+      success: true,
+      billingInfo,
+      dunningStatus,
+      invoices,
+    });
+  } catch (error: any) {
+    console.error('[BILLING] Error fetching billing info:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/root-admin/billing/tenants
+ * 
+ * Get billing info for all tenants (root admin only)
+ */
+router.get('/api/root-admin/billing/tenants', requireRole(['owner', 'root_admin']), async (req: Request, res: Response) => {
+  try {
+    const tenantsBillingInfo = await getAllTenantsBillingInfo();
+
+    res.json({
+      success: true,
+      tenants: tenantsBillingInfo,
+    });
+  } catch (error: any) {
+    console.error('[BILLING] Error fetching all tenants billing:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/root-admin/billing/generate-invoice
+ * 
+ * Manually generate an invoice for a tenant (root admin only)
+ */
+router.post('/api/root-admin/billing/generate-invoice', requireRole(['owner', 'root_admin']), async (req: Request, res: Response) => {
+  try {
+    const { tenantId, periodStart, periodEnd } = req.body;
+
+    if (!tenantId || !periodStart || !periodEnd) {
+      return res.status(400).json({
+        success: false,
+        error: 'tenantId, periodStart, and periodEnd are required',
+      });
+    }
+
+    const invoiceData = await generateInvoiceData(tenantId, periodStart, periodEnd);
+    
+    if (invoiceData.totalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invoice amount would be zero',
+        invoiceData,
+      });
+    }
+
+    const invoiceId = await createTenantInvoice(invoiceData);
+    const chargeResult = await createAndChargeStripeInvoice(invoiceId);
+
+    res.json({
+      success: true,
+      invoiceId,
+      invoiceData,
+      stripeResult: chargeResult,
+    });
+  } catch (error: any) {
+    console.error('[BILLING] Error generating invoice:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
