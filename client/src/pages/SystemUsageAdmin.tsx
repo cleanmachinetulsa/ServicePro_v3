@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AppShell } from '@/components/AppShell';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -15,7 +18,9 @@ import {
   Mail,
   Bot,
   TrendingUp,
-  Building2
+  Building2,
+  Search,
+  Download
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -57,6 +62,9 @@ const planColors: Record<string, string> = {
 
 export default function SystemUsageAdmin() {
   const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [planFilter, setPlanFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('cost');
 
   const { data, isLoading, refetch } = useQuery<{
     success: boolean;
@@ -65,6 +73,10 @@ export default function SystemUsageAdmin() {
     queryKey: ['/api/root-admin/usage/tenants'],
     refetchInterval: 120000,
   });
+
+  const handleExportCSV = () => {
+    window.location.href = '/api/root-admin/usage/export?format=csv';
+  };
 
   const rollupMutation = useMutation({
     mutationFn: async () => {
@@ -79,14 +91,42 @@ export default function SystemUsageAdmin() {
     },
   });
 
-  const tenants = data?.tenants || [];
+  const allTenants = data?.tenants || [];
 
-  const totalCost = tenants.reduce((sum, t) => sum + parseFloat(t.estimated_monthly_cost || '0'), 0);
-  const totalSms = tenants.reduce((sum, t) => sum + Number(t.sms_total || 0), 0);
-  const totalVoice = tenants.reduce((sum, t) => sum + Number(t.voice_total || 0), 0);
-  const totalAiTokens = tenants.reduce((sum, t) => sum + Number(t.ai_tokens_total || 0), 0);
+  const filteredTenants = allTenants.filter(t => {
+    const matchesSearch = searchTerm === '' || 
+      (t.business_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (t.tenant_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      t.tenant_id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesPlan = planFilter === 'all' || (t.plan_tier || 'free') === planFilter;
+    return matchesSearch && matchesPlan;
+  });
 
-  const topTenants = tenants
+  const sortedTenants = [...filteredTenants].sort((a, b) => {
+    switch (sortBy) {
+      case 'cost':
+        return parseFloat(b.estimated_monthly_cost) - parseFloat(a.estimated_monthly_cost);
+      case 'sms':
+        return Number(b.sms_total) - Number(a.sms_total);
+      case 'voice':
+        return Number(b.voice_total) - Number(a.voice_total);
+      case 'ai':
+        return Number(b.ai_tokens_total) - Number(a.ai_tokens_total);
+      case 'name':
+        return (a.business_name || a.tenant_name || '').localeCompare(b.business_name || b.tenant_name || '');
+      default:
+        return 0;
+    }
+  });
+
+  const tenants = sortedTenants;
+
+  const totalCost = allTenants.reduce((sum, t) => sum + parseFloat(t.estimated_monthly_cost || '0'), 0);
+  const totalSms = allTenants.reduce((sum, t) => sum + Number(t.sms_total || 0), 0);
+  const totalVoice = allTenants.reduce((sum, t) => sum + Number(t.voice_total || 0), 0);
+  const totalAiTokens = allTenants.reduce((sum, t) => sum + Number(t.ai_tokens_total || 0), 0);
+
+  const topTenants = allTenants
     .slice()
     .sort((a, b) => parseFloat(b.estimated_monthly_cost) - parseFloat(a.estimated_monthly_cost))
     .slice(0, 8);
@@ -98,7 +138,7 @@ export default function SystemUsageAdmin() {
     voice: Number(t.voice_total) || 0,
   }));
 
-  const planDistribution = tenants.reduce((acc, t) => {
+  const planDistribution = allTenants.reduce((acc, t) => {
     const plan = t.plan_tier || 'free';
     acc[plan] = (acc[plan] || 0) + 1;
     return acc;
@@ -110,15 +150,26 @@ export default function SystemUsageAdmin() {
   }));
 
   const pageActions = (
-    <Button
-      onClick={() => rollupMutation.mutate()}
-      disabled={rollupMutation.isPending}
-      data-testid="button-run-rollup"
-      size="sm"
-    >
-      <RefreshCw className={`w-4 h-4 mr-2 ${rollupMutation.isPending ? 'animate-spin' : ''}`} />
-      Run Rollup
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        onClick={handleExportCSV}
+        size="sm"
+        data-testid="button-export-csv"
+      >
+        <Download className="w-4 h-4 mr-2" />
+        Export CSV
+      </Button>
+      <Button
+        onClick={() => rollupMutation.mutate()}
+        disabled={rollupMutation.isPending}
+        data-testid="button-run-rollup"
+        size="sm"
+      >
+        <RefreshCw className={`w-4 h-4 mr-2 ${rollupMutation.isPending ? 'animate-spin' : ''}`} />
+        Run Rollup
+      </Button>
+    </div>
   );
 
   if (isLoading) {
@@ -255,8 +306,49 @@ export default function SystemUsageAdmin() {
 
         <Card>
           <CardHeader>
-            <CardTitle>All Tenant Usage</CardTitle>
-            <CardDescription>Month-to-date usage breakdown by tenant</CardDescription>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <CardTitle>All Tenant Usage</CardTitle>
+                <CardDescription>Month-to-date usage breakdown by tenant ({tenants.length} of {allTenants.length})</CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search tenants..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 w-48"
+                    data-testid="input-search-tenants"
+                  />
+                </div>
+                <Select value={planFilter} onValueChange={setPlanFilter}>
+                  <SelectTrigger className="w-32" data-testid="select-plan-filter">
+                    <SelectValue placeholder="All Plans" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Plans</SelectItem>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="pro">Pro</SelectItem>
+                    <SelectItem value="elite">Elite</SelectItem>
+                    <SelectItem value="internal">Internal</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-32" data-testid="select-sort-by">
+                    <SelectValue placeholder="Sort By" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cost">Cost (High)</SelectItem>
+                    <SelectItem value="sms">SMS (High)</SelectItem>
+                    <SelectItem value="voice">Voice (High)</SelectItem>
+                    <SelectItem value="ai">AI Tokens (High)</SelectItem>
+                    <SelectItem value="name">Name (A-Z)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
