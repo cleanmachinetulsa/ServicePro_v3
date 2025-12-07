@@ -4536,11 +4536,15 @@ export type UpdateTrialTelephonyProfile = z.infer<typeof updateTrialTelephonyPro
 // ============================================================
 
 export const phoneHistoryImportStatusEnum = pgEnum('phone_history_import_status', ['pending', 'processing', 'success', 'failed']);
+export const phoneHistoryImportSourceEnum = pgEnum('phone_history_import_source', ['manual_upload', 'parser_tool']);
 
 export const phoneHistoryImports = pgTable("phone_history_imports", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
   status: phoneHistoryImportStatusEnum("status").notNull().default('pending'),
+  source: phoneHistoryImportSourceEnum("source").notNull().default('manual_upload'),
+  remoteBundleUrl: text("remote_bundle_url"),
+  externalJobId: text("external_job_id"),
   stats: jsonb("stats").$type<{
     customersImported: number;
     customersUpdated: number;
