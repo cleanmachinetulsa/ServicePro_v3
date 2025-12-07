@@ -25,6 +25,13 @@ import {
   sendPaymentFailedEmail,
   sendPaymentRecoveredEmail,
 } from './services/billingStatusService';
+import {
+  logPaymentFailed,
+  logPaymentRecovered,
+  logTenantSuspended,
+  logSubscriptionChange,
+  logPlanChange,
+} from './services/billingEventService';
 
 const router = Router();
 
@@ -466,6 +473,23 @@ async function handleSubscriptionChange(req: Request, subscription: Stripe.Subsc
       },
     });
 
+    // Log billing event
+    const previousPlan = tenant.planTier || 'free';
+    if (previousPlan !== targetTier) {
+      await logPlanChange(tenantId, previousPlan, targetTier, subscription.id, {
+        priceId,
+        subscriptionStatus: subscription.status,
+      });
+    }
+    await logSubscriptionChange(
+      tenantId,
+      tenant.stripeSubscriptionId ? 'subscription_updated' : 'subscription_created',
+      subscription.id,
+      previousPlan,
+      targetTier,
+      { status: subscription.status, priceId }
+    );
+
     console.log(`[STRIPE WEBHOOK] Tenant ${tenantId} upgraded to ${targetTier} (subscription ${subscription.id})`);
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error handling subscription change:', error);
@@ -550,6 +574,17 @@ async function handleSubscriptionDeleted(req: Request, subscription: Stripe.Subs
       },
     });
 
+    // Log billing event
+    const previousPlan = tenant.planTier || 'free';
+    await logSubscriptionChange(tenantId, 'subscription_cancelled', subscription.id, previousPlan, 'free', {
+      reason: 'subscription_deleted',
+    });
+    if (previousPlan !== 'free') {
+      await logPlanChange(tenantId, previousPlan, 'free', subscription.id, {
+        reason: 'subscription_cancelled',
+      });
+    }
+
     console.log(`[STRIPE WEBHOOK] Tenant ${tenantId} downgraded to free tier (subscription cancelled)`);
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error handling subscription deletion:', error);
@@ -604,7 +639,23 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
     await sendPaymentFailedEmail(tenant.id);
 
-    await checkAndApplySuspension(tenant.id);
+    // Log billing event
+    await logPaymentFailed(
+      tenant.id,
+      customerId,
+      invoice.id,
+      tenant.status,
+      invoice.amount_due,
+      { invoiceNumber: invoice.number }
+    );
+
+    const wasSuspended = await checkAndApplySuspension(tenant.id);
+    if (wasSuspended) {
+      await logTenantSuspended(tenant.id, customerId, 'past_due', {
+        reason: 'grace_period_expired',
+        invoiceId: invoice.id,
+      });
+    }
 
     console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status updated to ${newStatus} after invoice payment failed`);
   } catch (error) {
@@ -647,6 +698,16 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
       });
 
       await sendPaymentRecoveredEmail(tenant.id);
+
+      // Log billing event
+      await logPaymentRecovered(
+        tenant.id,
+        customerId,
+        invoice.id,
+        tenant.status,
+        invoice.amount_paid,
+        { invoiceNumber: invoice.number }
+      );
 
       console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status restored to active after successful payment`);
     } else {

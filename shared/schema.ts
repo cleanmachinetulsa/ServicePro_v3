@@ -3528,6 +3528,56 @@ export type UsageRollupsDaily = typeof usageRollupsDaily.$inferSelect;
 export type InsertUsageRollupsDaily = z.infer<typeof insertUsageRollupsDailySchema>;
 
 // ============================================================
+// SP-19: BILLING EVENTS AUDIT TABLE
+// ============================================================
+
+export const billingEventTypeEnum = pgEnum('billing_event_type', [
+  'invoice_created',
+  'invoice_paid',
+  'invoice_past_due',
+  'payment_failed',
+  'payment_recovered',
+  'subscription_created',
+  'subscription_updated',
+  'subscription_cancelled',
+  'tenant_suspended',
+  'tenant_reactivated',
+  'plan_upgraded',
+  'plan_downgraded',
+]);
+
+export const billingEvents = pgTable('billing_events', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  eventType: billingEventTypeEnum('event_type').notNull(),
+  stripeEventId: text('stripe_event_id'),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  stripeInvoiceId: text('stripe_invoice_id'),
+  previousStatus: text('previous_status'),
+  newStatus: text('new_status'),
+  previousPlan: text('previous_plan'),
+  newPlan: text('new_plan'),
+  amountCents: integer('amount_cents'),
+  meta: jsonb('meta').$type<Record<string, any>>(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index('billing_events_tenant_id_idx').on(table.tenantId),
+  eventTypeIdx: index('billing_events_event_type_idx').on(table.eventType),
+  occurredAtIdx: index('billing_events_occurred_at_idx').on(table.occurredAt),
+  stripeEventIdx: index('billing_events_stripe_event_idx').on(table.stripeEventId),
+}));
+
+export const insertBillingEventSchema = createInsertSchema(billingEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type BillingEvent = typeof billingEvents.$inferSelect;
+export type InsertBillingEvent = z.infer<typeof insertBillingEventSchema>;
+
+// ============================================================
 // SP-4: ADD-ON MARKETPLACE TABLES
 // ============================================================
 

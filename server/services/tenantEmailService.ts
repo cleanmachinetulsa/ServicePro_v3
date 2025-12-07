@@ -146,6 +146,17 @@ export async function sendTenantEmail(
     return { ok: false, reason: 'invalid_recipient' };
   }
 
+  // SP-19: BILLING ENFORCEMENT - Block suspended tenants (except billing category emails)
+  if (input.category !== 'billing_dunning') {
+    const { isTenantSuspended } = await import('../middleware/billingEnforcement');
+    const isSuspended = await isTenantSuspended(tenantId);
+    
+    if (isSuspended) {
+      console.warn(`[tenantEmailService] ⚠️ Blocked email to ${input.to} - Tenant ${tenantId} is suspended`);
+      return { ok: false, reason: 'account_suspended' as const };
+    }
+  }
+
   const context = await getTenantEmailContext(tenantDb, tenantId);
   if (!context) {
     return { ok: false, reason: 'send_failed', errorMessage: 'Failed to get tenant context' };
