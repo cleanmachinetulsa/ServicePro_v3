@@ -3359,6 +3359,89 @@ export const insertUsageMetricsSchema = createInsertSchema(usageMetrics).omit({ 
 export const insertUsageRollupsDailySchema = createInsertSchema(usageRollupsDaily).omit({ id: true, createdAt: true });
 
 // ============================================================
+// SP-7: GRANULAR USAGE EVENTS TRACKING
+// ============================================================
+
+// Usage Events - Granular per-event tracking with source/feature detail
+export const usageEvents = pgTable('usage_events', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
+  
+  // Channel & direction
+  channel: text('channel').notNull(), // 'sms' | 'mms' | 'voice' | 'email' | 'ai'
+  direction: text('direction').notNull(), // 'inbound' | 'outbound'
+  
+  // Source & feature classification
+  source: text('source').notNull(), // 'twilio' | 'sendgrid' | 'openai' | 'internal'
+  feature: text('feature').notNull(), // 'ai_sms' | 'ivr' | 'broadcast' | 'portal_email' | 'support_ai' | 'booking_email' | 'voicemail_ai'
+  
+  // Quantity for this event
+  quantity: integer('quantity').default(1).notNull(), // 1 for messages, minutes for voice, tokens for AI
+  
+  // Cost tracking
+  unitCost: numeric('unit_cost', { precision: 10, scale: 6 }).default('0').notNull(),
+  totalCost: numeric('total_cost', { precision: 10, scale: 6 }).default('0').notNull(),
+  
+  // Metadata for additional context (no PII)
+  metadata: jsonb('metadata').$type<{
+    model?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+    templateKey?: string;
+    campaignId?: number;
+    messageId?: string;
+    callSid?: string;
+    durationSeconds?: number;
+  }>(),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  tenantTimestampIdx: index('usage_events_tenant_timestamp_idx').on(table.tenantId, table.timestamp),
+  tenantDateSourceFeatureIdx: index('usage_events_tenant_date_source_feature_idx').on(table.tenantId, table.source, table.feature),
+  channelIdx: index('usage_events_channel_idx').on(table.channel),
+  timestampIdx: index('usage_events_timestamp_idx').on(table.timestamp),
+}));
+
+export type UsageEvent = typeof usageEvents.$inferSelect;
+export type InsertUsageEvent = typeof usageEvents.$inferInsert;
+export const insertUsageEventSchema = createInsertSchema(usageEvents).omit({ id: true, createdAt: true });
+
+// Usage Feature Rollups - Daily aggregation by source/feature
+export const usageFeatureRollups = pgTable('usage_feature_rollups', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').notNull(),
+  date: date('date').notNull(),
+  
+  // Classification
+  channel: text('channel').notNull(), // 'sms' | 'mms' | 'voice' | 'email' | 'ai'
+  direction: text('direction').notNull(), // 'inbound' | 'outbound' | 'both'
+  source: text('source').notNull(), // 'twilio' | 'sendgrid' | 'openai' | 'internal'
+  feature: text('feature').notNull(), // specific feature identifier
+  
+  // Aggregated counts
+  eventCount: integer('event_count').default(0).notNull(),
+  totalQuantity: integer('total_quantity').default(0).notNull(), // sum of quantities
+  
+  // Cost summary
+  estimatedCostUsd: numeric('estimated_cost_usd', { precision: 10, scale: 4 }).default('0').notNull(),
+  
+  // AI-specific aggregates (nullable)
+  aiInputTokens: integer('ai_input_tokens'),
+  aiOutputTokens: integer('ai_output_tokens'),
+  
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  tenantDateIdx: index('usage_feature_rollups_tenant_date_idx').on(table.tenantId, table.date),
+  tenantDateSourceFeatureIdx: index('usage_feature_rollups_tenant_date_source_feature_idx').on(table.tenantId, table.date, table.source, table.feature),
+  dateIdx: index('usage_feature_rollups_date_idx').on(table.date),
+}));
+
+export type UsageFeatureRollup = typeof usageFeatureRollups.$inferSelect;
+export type InsertUsageFeatureRollup = typeof usageFeatureRollups.$inferInsert;
+export const insertUsageFeatureRollupSchema = createInsertSchema(usageFeatureRollups).omit({ id: true, createdAt: true });
+
+// ============================================================
 // PHASE 2.3: TENANT INVOICES (SaaS Billing)
 // ============================================================
 // Separate from customer invoices - these are for platform billing to tenants

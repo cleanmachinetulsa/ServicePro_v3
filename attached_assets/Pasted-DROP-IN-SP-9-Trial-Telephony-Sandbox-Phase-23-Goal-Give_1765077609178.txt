@@ -1,0 +1,117 @@
+DROP-IN: SP-9 – Trial Telephony Sandbox (Phase 23)
+
+Goal: Give trial tenants a safe “sandbox line” for SMS/voice with whitelisted numbers and caps, without doing full per-tenant A2P or production telephony.
+
+Prompt for Replit agent:
+
+You are editing ServicePro_v3.
+Implement SP-9 – Trial Telephony Sandbox as described in MASTER_PLAN v3.7 (Phase 23).
+This must not break existing Pro/production telephony or A2P logic.
+
+1. Trial telephony profile schema
+
+Add a new table to shared/schema.ts, e.g. trial_telephony_profiles:
+
+tenantId (FK)
+
+allowedNumbers (jsonb array of E.164 strings)
+
+dailyMessageCap (int, default e.g. 30)
+
+totalMessageCap (int, default e.g. 200)
+
+messagesSentToday (int, default 0)
+
+totalMessagesSent (int, default 0)
+
+lastResetAt (timestamp, nullable)
+
+Add a daily cron/worker:
+
+Resets messagesSentToday at midnight (tenant local or UTC; pick one and note it).
+
+2. Plan awareness – identify trial tenants
+
+Reuse existing plan/tier system (wherever plan is stored).
+
+Implement a small helper: isTrialTenant(tenant) in a shared service.
+
+Returns true only when tenant is in trial mode.
+
+3. Telephony routing for trial tenants
+
+In the SMS/voice inbound handlers:
+
+Early in the request, determine tenantId and load tenant.
+
+If isTrialTenant(tenant):
+
+Route to trial telephony mode:
+
+For inbound SMS:
+
+Check if From is in allowedNumbers.
+
+If not, reply with polite “trial only” message and do not apply AI or booking flows.
+
+For inbound voice:
+
+Optional: play a short “trial demo” IVR or send SMS link instead of full AI/IVR.
+
+For outbound SMS from AI or system flows:
+
+If tenant is trial:
+
+Only allow sending to numbers listed in allowedNumbers.
+
+Enforce daily/total caps:
+
+If exceeded, do not send; instead log and optionally notify the tenant via an in-app banner.
+
+4. Trial telephony settings UI
+
+In the Phone / Telephony settings page for trial tenants:
+
+Add a card: “Trial SMS & Call Sandbox”
+
+Show:
+
+List of allowed numbers (with add/remove).
+
+messagesSentToday / dailyMessageCap.
+
+totalMessagesSent / totalMessageCap.
+
+CTA: “Upgrade to unlock full customer texting and calling”.
+
+For non-trial tenants, hide this card.
+
+5. Don’t conflict with Telephony Modes
+
+The Telephony Modes logic should still run, but:
+
+For trial tenants, you can:
+
+Limit modes to a subset (e.g. “Text-only” + basic).
+
+Or keep them but apply the sandbox rules on top.
+
+Be explicit in comments that trial telephony is layered before or alongside telephonyMode handling.
+
+6. Tests & docs
+
+Add tests or a small Playwright flow:
+
+Create a trial tenant.
+
+Add an allowed number.
+
+Send SMS from allowed vs disallowed number and confirm behavior.
+
+Document in replit.md under Phase 23 / SP-9:
+
+How trial telephony works.
+
+That no A2P or full provisioning is done for trials.
+
+Where to tweak caps.
