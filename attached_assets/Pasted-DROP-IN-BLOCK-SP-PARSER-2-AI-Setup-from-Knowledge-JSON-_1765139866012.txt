@@ -1,0 +1,387 @@
+DROP-IN BLOCK: SP-PARSER-2 – AI Setup from Knowledge JSON
+
+Goal: Take the stored Knowledge JSON from the parser and auto-build an onboarding setup plan for a tenant:
+– AI persona / tone
+– Draft services & pricing
+– Draft FAQs / KB articles
+– Suggestions for website & campaigns
+…without overwriting everything silently.
+
+Think of this as: “EXEC::ONBOARDING_EXTRACTION and EXEC::AI_PERSONA_CONSTRUCTION but inside ServicePro.”
+
+I’ll describe it so you can paste this whole thing into Replit as a single task.
+
+🔧 High-Level Behavior
+
+For each tenant that has run the parser and has at least one Knowledge JSON import:
+
+Tenant goes to Onboarding → Smart Setup (from past messages).
+
+They pick one Knowledge Import (or the newest is pre-selected).
+
+Click “Build my setup from this knowledge”.
+
+Backend:
+
+Loads the Knowledge JSON from DB (we already store it from SP-PARSER-1).
+
+Verifies meta.parser_version === "v2-onboarding".
+
+Uses the semantic structure (business info, services, style_profile, FAQs, etc.) to:
+
+Propose tenant config changes (business name, tagline, hours, service area).
+
+Propose AI persona (tone, style, do/don’t).
+
+Propose draft services & packages.
+
+Propose draft FAQs / KB articles.
+
+Writes these into normal ServicePro tables as drafts, not live overrides.
+
+Returns a rich summary object back to the frontend.
+
+UI shows a “Review & Apply” panel:
+
+Cards: “Persona”, “Services”, “FAQs”, “Website suggestions”.
+
+Each card shows: What was inferred, and whether it was applied as draft.
+
+No magic overrides, everything is transparent.
+
+🗂 Files / Areas to Touch
+
+Ask Replit to:
+
+Backend
+
+Find where SP-PARSER-1 stored imports. Likely something like:
+
+onboarding_knowledge_imports (Drizzle table)
+
+Or similar table defined in /server/db/schema/onboardingKnowledge.ts or /shared/onboardingKnowledge.ts
+
+Create a new service module:
+
+server/services/knowledgeOnboardingService.ts
+
+Or similar under server/services/onboarding/.
+
+Add a new API route:
+
+POST /api/onboarding/knowledge/apply
+
+Frontend
+
+Find the Knowledge Import / Parser UI page that SP-PARSER-1 created (something like /setup/knowledge-import or under /admin/onboarding).
+
+Extend that page with:
+
+A “Build my setup from this knowledge” button.
+
+A results panel showing:
+
+Persona summary
+
+Service suggestions (count)
+
+FAQ suggestions (count)
+
+Any warnings
+
+🧠 Backend: knowledgeOnboardingService.ts
+
+Create a service module like:
+
+// server/services/knowledgeOnboardingService.ts
+import { db } from "../db";
+import { getTenantDb } from "../db/tenantDb";
+import { getTenantContext } from "../auth/tenantContext";
+import { z } from "zod";
+import { KnowledgeImport } from "../db/schema/onboardingKnowledge"; // <— use actual path/table from SP-PARSER-1
+
+// Shape of stored Knowledge JSON (use a loose Zod schema; we don't need every field)
+const KnowledgeJsonSchema = z.object({
+  meta: z.object({
+    parser_version: z.string().optional(),
+    source: z.string().optional(),
+  }).optional(),
+  business_profile_guess: z.object({
+    business_name: z.string().optional(),
+    short_description: z.string().optional(),
+    industry: z.string().optional(),
+    phone: z.string().optional(),
+    website: z.string().optional().nullable(),
+    typical_service_radius_miles: z.number().optional().nullable(),
+    operating_hours: z.record(z.any()).optional(), // keep loose
+  }).optional(),
+  services: z.array(z.object({
+    name: z.string().optional(),
+    description: z.string().optional(),
+    price_hint: z.string().optional(),
+    duration_hint_minutes: z.number().optional(),
+    tags: z.array(z.string()).optional(),
+  })).optional(),
+  style_profile: z.object({
+    tone_words: z.array(z.string()).optional(),
+    typical_greetings: z.array(z.string()).optional(),
+    typical_signoffs: z.array(z.string()).optional(),
+    formality: z.string().optional(),
+    emojis_allowed: z.boolean().optional(),
+  }).optional(),
+  faq_chunks: z.array(z.object({
+    question: z.string().optional(),
+    answer: z.string().optional(),
+    confidence: z.number().optional(),
+  })).optional(),
+}).passthrough();
+
+export type KnowledgeJson = z.infer<typeof KnowledgeJsonSchema>;
+
+export interface OnboardingApplyResult {
+  persona: {
+    title: string;
+    systemPrompt: string;
+    toneWords: string[];
+    sampleGreeting?: string;
+    sampleSignoff?: string;
+  };
+  services: {
+    createdDraftCount: number;
+    skippedMissingNameCount: number;
+  };
+  faqs: {
+    createdDraftCount: number;
+  };
+  tenantProfile: {
+    appliedBusinessName?: string;
+    appliedTagline?: string;
+    appliedIndustry?: string;
+    notes: string[];
+  };
+  warnings: string[];
+}
+
+export async function applyKnowledgeToTenant({
+  tenantId,
+  knowledgeImportId,
+  userId,
+}: {
+  tenantId: string;
+  knowledgeImportId: string;
+  userId: string;
+}): Promise<OnboardingApplyResult> {
+  const tenantDb = getTenantDb(tenantId);
+
+  // 1) Load the import row
+  const importRow = await tenantDb.query.onboardingKnowledgeImports
+    .findFirst({ where: (t, { eq }) => eq(t.id, knowledgeImportId) });
+
+  if (!importRow) {
+    throw new Error("Knowledge import not found for this tenant.");
+  }
+
+  let parsed: KnowledgeJson;
+  try {
+    parsed = KnowledgeJsonSchema.parse(importRow.json_payload ?? importRow.json ?? {});
+  } catch (err) {
+    throw new Error("Stored knowledge JSON is invalid or not in the expected v2-onboarding format.");
+  }
+
+  const warnings: string[] = [];
+  if (!parsed.meta?.parser_version || parsed.meta.parser_version !== "v2-onboarding") {
+    warnings.push("Knowledge JSON did not advertise parser_version = v2-onboarding. Continuing with best-effort mapping.");
+  }
+
+  // 2) Build persona prompt from style_profile
+  const persona = buildPersonaFromStyleProfile(parsed);
+
+  // 3) Apply tenant profile hints (business name, tagline, industry, hours)
+  const tenantProfile = await applyTenantProfileHints({ tenantDb, parsed });
+
+  // 4) Seed draft services
+  const servicesResult = await seedDraftServices({ tenantDb, parsed, userId });
+
+  // 5) Seed draft FAQs / KB articles
+  const faqsResult = await seedDraftFaqs({ tenantDb, parsed, userId });
+
+  // 6) Save persona into SMS AI / support AI config (as draft)
+  await applyPersonaToAiConfig({ tenantDb, persona, userId });
+
+  return {
+    persona,
+    services: servicesResult,
+    faqs: faqsResult,
+    tenantProfile,
+    warnings,
+  };
+}
+
+
+Then implement the helpers (Replit can fill in details based on existing tables):
+
+buildPersonaFromStyleProfile(parsed)
+Use style_profile:
+
+function buildPersonaFromStyleProfile(parsed: KnowledgeJson): OnboardingApplyResult["persona"] {
+  const style = parsed.style_profile ?? {};
+  const toneWords = style.tone_words ?? ["friendly", "professional"];
+  const formality = style.formality ?? "neutral";
+
+  const systemPrompt = [
+    "You are the AI assistant for this specific business.",
+    "Match the owner's tone and style when replying to customers.",
+    `Tone keywords: ${toneWords.join(", ")}.`,
+    `Formality: ${formality}.`,
+    style.emojis_allowed ? "Emojis are allowed when appropriate." : "Avoid emojis unless the customer uses them first.",
+    "Always be clear, concise, and helpful.",
+  ].join(" ");
+
+  const sampleGreeting = style.typical_greetings?.[0];
+  const sampleSignoff = style.typical_signoffs?.[0];
+
+  return {
+    title: "Owner-Tuned AI Assistant",
+    systemPrompt,
+    toneWords,
+    sampleGreeting,
+    sampleSignoff,
+  };
+}
+
+
+applyTenantProfileHints({ tenantDb, parsed })
+Map:
+
+business_profile_guess.business_name → tenant display name (if empty or placeholder).
+
+short_description → tagline / about text.
+
+industry → tenant industry field.
+
+typical_service_radius_miles → service area radius field if you have one.
+
+But never force override if tenant already manually set values → write a notes array explaining what you DID and DIDN’T change.
+
+seedDraftServices({ tenantDb, parsed, userId })
+
+For each entry in parsed.services that has a name:
+
+Create a draft service:
+
+name
+
+description
+
+base_price_guess (from price_hint if parseable)
+
+default_duration_minutes (from duration_hint_minutes)
+
+tags → your existing tags or categories field
+
+Don’t touch existing services; mark these as is_draft = true.
+
+seedDraftFaqs({ tenantDb, parsed, userId })
+
+For each faq_chunks entry with question && answer && (confidence ?? 0) >= 0.6:
+
+Insert a KB / FAQ row as draft.
+
+applyPersonaToAiConfig({ tenantDb, persona, userId })
+
+Find your existing SMS AI / support AI config table:
+
+Something like agent_settings, sms_ai_settings, or supportAssistantConfig.
+
+Update:
+
+system_prompt (draft)
+
+tone_words
+
+sample_greeting
+
+sample_signoff
+
+If you don’t have a “draft vs live” column, add one (is_draft boolean) or simply create a new “preset” row and reference it from the Setup Wizard later.
+
+🌐 API Route: POST /api/onboarding/knowledge/apply
+
+Add a new route:
+
+// server/routes/onboardingKnowledgeApply.ts
+import { Router } from "express";
+import { z } from "zod";
+import { requireAuth } from "../auth/middleware";
+import { getTenantContext } from "../auth/tenantContext";
+import { applyKnowledgeToTenant } from "../services/knowledgeOnboardingService";
+
+const router = Router();
+
+const bodySchema = z.object({
+  knowledgeImportId: z.string(),
+});
+
+router.post("/api/onboarding/knowledge/apply", requireAuth, async (req, res) => {
+  try {
+    const { tenantId, userId } = getTenantContext(req);
+    const body = bodySchema.parse(req.body);
+
+    const result = await applyKnowledgeToTenant({
+      tenantId,
+      userId,
+      knowledgeImportId: body.knowledgeImportId,
+    });
+
+    res.json({ success: true, result });
+  } catch (err: any) {
+    console.error("applyKnowledgeToTenant error", err);
+    res.status(400).json({
+      success: false,
+      error: err?.message ?? "Failed to apply knowledge to tenant.",
+    });
+  }
+});
+
+export default router;
+
+
+Wire it into your main router file (where other /api/onboarding/* routes are registered).
+
+💻 Frontend: “Smart Setup from Knowledge” Panel
+
+On the same page you built for SP-PARSER-1 (where you can see Knowledge Imports and analytics):
+
+Identify the component (something like KnowledgeImportPage.tsx).
+
+For each import row, add:
+
+A “Build Setup from This” button.
+
+When clicked:
+
+POST to /api/onboarding/knowledge/apply with { knowledgeImportId }.
+
+Show a loading state.
+
+On success, show a summary modal:
+
+Persona preview (tone words, example greeting/signoff).
+
+Counts:
+
+services.createdDraftCount
+
+faqs.createdDraftCount
+
+Tenant profile changes (what was inferred & actually applied).
+
+Any warnings.
+
+Optionally:
+
+Add a “View Draft Services” button → route to Services page with a filter is_draft = true.
+
+Add a “View Draft FAQs” button → route to KB page with is_draft = true.
+
+This way, the user gets real value (a head start) but remains in control.

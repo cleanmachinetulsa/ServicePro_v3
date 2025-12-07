@@ -5,6 +5,9 @@ import { phoneHistoryImports } from '@shared/schema';
 
 const LOG_PREFIX = '[PARSER INTEGRATION]';
 
+const PARSER_API_BASE_URL = process.env.PARSER_API_URL || 'https://sms-parse-output-cleanmachinetul.replit.app';
+const PARSER_API_TIMEOUT_MS = 1000 * 60 * 2;
+
 export interface ParserConfig {
   businessName?: string;
   businessPhone?: string;
@@ -34,8 +37,28 @@ export interface ParserResult {
   error?: string;
 }
 
-function getParserApiUrl(): string | null {
-  return process.env.PARSER_API_URL || null;
+function getParserApiExtractUrl(): string {
+  const base = PARSER_API_BASE_URL.replace(/\/+$/, '');
+  return `${base}/api/knowledge/extract`;
+}
+
+export async function checkParserHealth(): Promise<{ healthy: boolean; message?: string }> {
+  try {
+    const base = PARSER_API_BASE_URL.replace(/\/+$/, '');
+    const healthUrl = `${base}/api/knowledge/health`;
+    
+    const response = await fetch(healthUrl, { 
+      method: 'GET',
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (response.ok) {
+      return { healthy: true };
+    }
+    return { healthy: false, message: `Health check returned ${response.status}` };
+  } catch (error: any) {
+    return { healthy: false, message: error.message || 'Connection failed' };
+  }
 }
 
 export async function runParserIntegration(
@@ -43,13 +66,6 @@ export async function runParserIntegration(
   config: ParserConfig,
   tenantId: string
 ): Promise<ParserResult> {
-  const parserUrl = getParserApiUrl();
-  
-  if (!parserUrl) {
-    console.warn(`${LOG_PREFIX} Parser API URL not configured`);
-    return { success: false, error: 'Parser API not configured. Set PARSER_API_URL environment variable.' };
-  }
-
   if (!files || files.length === 0) {
     return { success: false, error: 'No files provided for parsing' };
   }
@@ -61,15 +77,18 @@ export async function runParserIntegration(
     
     for (const file of files) {
       const blob = new Blob([file.buffer], { type: file.mimetype });
-      formData.append('files', blob, file.originalname);
+      formData.append('files[]', blob, file.originalname);
     }
     
     formData.append('config', JSON.stringify(config));
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), PARSER_API_TIMEOUT_MS);
 
-    const response = await fetch(parserUrl, {
+    const extractUrl = getParserApiExtractUrl();
+    console.log(`${LOG_PREFIX} Calling parser API at ${extractUrl}`);
+
+    const response = await fetch(extractUrl, {
       method: 'POST',
       body: formData,
       signal: controller.signal,

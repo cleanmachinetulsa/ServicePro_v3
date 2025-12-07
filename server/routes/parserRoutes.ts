@@ -7,6 +7,7 @@ import {
   updateParserImportWithResult,
   getParserImport,
   getLatestParserImport,
+  checkParserHealth,
   ParserConfig,
 } from '../services/parserIntegrationService';
 import { applyParserKnowledge } from '../services/parserApplyService';
@@ -51,6 +52,24 @@ const applyParserSchema = z.object({
   applyFaqs: z.boolean().default(false),
   applyServices: z.boolean().default(false),
   applyTone: z.boolean().default(false),
+});
+
+router.get('/health', async (req: Request, res: Response) => {
+  try {
+    const result = await checkParserHealth();
+    return res.json({
+      success: result.healthy,
+      healthy: result.healthy,
+      message: result.message,
+      parserUrl: process.env.PARSER_API_URL || 'https://sms-parse-output-cleanmachinetul.replit.app',
+    });
+  } catch (error: any) {
+    return res.status(500).json({ 
+      success: false, 
+      healthy: false,
+      error: error.message 
+    });
+  }
 });
 
 router.post('/run', upload.array('files', 10), async (req: Request, res: Response) => {
