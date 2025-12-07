@@ -52,9 +52,21 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
   const [dragActive, setDragActive] = useState(false);
   const [parserResult, setParserResult] = useState<ParserRunResult | null>(null);
   
-  const [applyFaqs, setApplyFaqs] = useState(true);
-  const [applyServices, setApplyServices] = useState(true);
-  const [applyTone, setApplyTone] = useState(true);
+  const [applyFaqs, setApplyFaqs] = useState(false);
+  const [applyServices, setApplyServices] = useState(false);
+  const [applyTone, setApplyTone] = useState(false);
+
+  const hasServices = (parserResult?.preview?.servicesCount || 0) > 0;
+  const hasFaqs = (parserResult?.preview?.faqCount || 0) > 0;
+  const hasTone = (parserResult?.preview?.styleSnippets?.length || 0) > 0;
+
+  const initializeApplyToggles = (preview: ParserPreview | undefined) => {
+    if (preview) {
+      setApplyServices(preview.servicesCount > 0);
+      setApplyFaqs(preview.faqCount > 0);
+      setApplyTone((preview.styleSnippets?.length || 0) > 0);
+    }
+  };
 
   const { data: latestImport } = useQuery<{ success: boolean; import: any }>({
     queryKey: ['/api/onboarding/parser/latest'],
@@ -88,6 +100,7 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
     onSuccess: (result) => {
       if (result.success) {
         setParserResult(result);
+        initializeApplyToggles(result.preview);
         toast({
           title: 'Files analyzed!',
           description: `Found ${result.preview?.servicesCount || 0} services and ${result.preview?.faqCount || 0} FAQs`,
@@ -281,42 +294,51 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ListPlus className="w-4 h-4 text-blue-500" />
-                <Label htmlFor="apply-services">Services ({parserResult.preview?.servicesCount || 0})</Label>
+                <ListPlus className={`w-4 h-4 ${hasServices ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                <Label htmlFor="apply-services" className={!hasServices ? 'text-muted-foreground' : ''}>
+                  Services ({parserResult.preview?.servicesCount || 0})
+                  {!hasServices && <span className="ml-1 text-xs">(none found)</span>}
+                </Label>
               </div>
               <Switch
                 id="apply-services"
                 checked={applyServices}
                 onCheckedChange={setApplyServices}
-                disabled={!parserResult.preview?.servicesCount}
+                disabled={!hasServices}
                 data-testid="switch-apply-services"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-green-500" />
-                <Label htmlFor="apply-faqs">FAQs ({parserResult.preview?.faqCount || 0})</Label>
+                <MessageSquare className={`w-4 h-4 ${hasFaqs ? 'text-green-500' : 'text-muted-foreground'}`} />
+                <Label htmlFor="apply-faqs" className={!hasFaqs ? 'text-muted-foreground' : ''}>
+                  FAQs ({parserResult.preview?.faqCount || 0})
+                  {!hasFaqs && <span className="ml-1 text-xs">(none found)</span>}
+                </Label>
               </div>
               <Switch
                 id="apply-faqs"
                 checked={applyFaqs}
                 onCheckedChange={setApplyFaqs}
-                disabled={!parserResult.preview?.faqCount}
+                disabled={!hasFaqs}
                 data-testid="switch-apply-faqs"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Brain className="w-4 h-4 text-purple-500" />
-                <Label htmlFor="apply-tone">Tone Profile</Label>
+                <Brain className={`w-4 h-4 ${hasTone ? 'text-purple-500' : 'text-muted-foreground'}`} />
+                <Label htmlFor="apply-tone" className={!hasTone ? 'text-muted-foreground' : ''}>
+                  Tone Profile
+                  {!hasTone && <span className="ml-1 text-xs">(none found)</span>}
+                </Label>
               </div>
               <Switch
                 id="apply-tone"
                 checked={applyTone}
                 onCheckedChange={setApplyTone}
-                disabled={!parserResult.preview?.styleSnippets?.length}
+                disabled={!hasTone}
                 data-testid="switch-apply-tone"
               />
             </div>
