@@ -1,0 +1,175 @@
+You are working on the ServicePro_v3 repo (multi-tenant SaaS).  
+We already have:
+
+- A public site generator that SHOULD serve tenant-branded sites via:
+  - GET /api/public/site/:subdomain → JSON
+  - GET /site/:subdomain          → React public site
+- A root tenant for Clean Machine (subdomain/slug "cleanmachine").
+- A Rewards Portal at /rewards that is working.
+
+Problem right now:
+
+- Visiting /site/cleanmachine shows “Site Not Found”.
+- Hitting /api/public/site/cleanmachine from a logged-out browser returns 401 (unauthorized).
+- We previously saw a note: “/api/public/site endpoint returning 401 (pre-existing issue)”.
+
+Goal of this drop-in (CM-DNS-1 – Public Site Fix & Prep):
+
+1. Make /api/public/site/:subdomain truly PUBLIC and tenant-aware (no auth required).
+2. Make /site/:subdomain call that API and render a real Clean Machine site when it exists.
+3. Keep multi-tenant isolation intact using wrapTenantDb/tenant helpers.
+4. Do NOT touch GoDaddy, DNS, or SSL in this block.
+
+You MUST respect the existing multi-tenant architecture:
+
+- Tenant lookup (by subdomain) uses the global DB.
+- All tenant-scoped data (services, FAQs, public-site settings) must come from a tenant DB handle created via wrapTenantDb or the existing tenantDb helper pattern.
+
+---
+
+### Step 1 – Find existing public site code
+
+Search for:
+
+- "/api/public/site"
+- "public site"
+- "site/:subdomain"
+- "PublicSite" or similar.
+
+Likely targets:
+
+- server/routes.publicSite.ts or similar
+- server/routes.website.ts / routes.public.ts
+- client/src/pages/PublicSite.tsx or similar
+- any shared/publicSiteService.ts or website service
+
+Open the relevant files and identify:
+
+- The Express route that handles GET /api/public/site/:subdomain
+- Any auth middleware applied to that route
+- The React route and component for /site/:subdomain
+
+Do NOT change unrelated routes.
+
+---
+
+### Step 2 – Fix /api/public/site/:subdomain to be public + tenant-aware
+
+In the Express route that handles GET /api/public/site/:subdomain:
+
+1. Remove or bypass any auth middleware for this route only.  
+   - It must be reachable while logged out.
+   - Rate limiting is fine; login requirement is not.
+
+2. Implement tenant lookup:
+
+   - Read `subdomain` from `req.params`.
+   - Use the global DB (NOT a tenantDb) to look up the tenant row by subdomain/slug.
+     - Example: table `tenants` with `subdomain` or `slug` and `id` and `status`.
+   - If not found or disabled/suspended:
+     - Return HTTP 404 with JSON: `{ success: false, error: "site_not_found" }`.
+
+3. When a valid tenant is found:
+
+   - Use wrapTenantDb(tenantInfo) (or the appropriate helper) to get a tenant-scoped db.
+   - From the tenant DB, load:
+     - Public site settings (the same table used by /admin/public-site-settings).
+     - Services, add-ons, FAQs, or other public site content as Phase 9 intended.
+   - Combine these into a JSON struct similar to:
+
+     ```ts
+     {
+       success: true,
+       site: {
+         tenantName,
+         logoUrl,
+         brandColors: { primary, secondary },
+         hero: {
+           title,
+           subtitle,
+           primaryCta,
+           secondaryCta,
+         },
+         services: [...],
+         faqs: [...],
+         rewardsEnabled: boolean
+       }
+     }
+     ```
+
+   - If a tenant has no custom public-site settings yet:
+     - Use sane defaults (e.g. from industryPack or fallback config) instead of erroring.
+
+4. The route should:
+
+   - Return HTTP 200 for valid tenants (with `success: true` or `success: false` as needed).
+   - Only return HTTP 404 when the tenant or public site truly does not exist.
+   - Never return 401 for this route.
+
+5. Add minimal, safe logging:
+
+   - On success: log subdomain + tenantId + a short message (e.g. “public site ok”).
+   - On 404: log subdomain + “site_not_found”.
+
+Do not log secrets or full objects.
+
+---
+
+### Step 3 – Wire the React public site page to use the fixed API
+
+Find the React route for /site/:subdomain, likely in:
+
+- client/src/App.tsx (route definition)
+- client/src/pages/PublicSite.tsx or similar
+
+Update it so that:
+
+1. It reads `subdomain` from the route params.
+2. On mount, it calls GET /api/public/site/:subdomain **without requiring auth**.
+3. It handles states:
+
+   - loading → show a skeleton / spinner
+   - 404 / `error === "site_not_found"` → show the existing “Site Not Found” UI
+   - success → render the tenant’s public site using the `site` payload from the API.
+
+Make sure this works in an incognito window.
+
+---
+
+### Step 4 – Smoke tests
+
+Run through this testing plan and fix anything that breaks:
+
+1. In an incognito window (not logged in):
+
+   - GET /api/public/site/cleanmachine
+     - Expect HTTP 200 and JSON with `{ success: true, site: { ... } }`.
+   - Visit /site/cleanmachine
+     - Expect a real public Clean Machine site (hero, services, etc.), not “Site Not Found” and not a login redirect.
+
+2. Visit /api/public/site/not-a-real-tenant
+
+   - Expect HTTP 404 with `{ success: false, error: "site_not_found" }`.
+
+3. While logged in as admin/admin123:
+
+   - Visit /admin/public-site-settings
+   - Change a hero title or CTA text, save.
+   - Refresh /site/cleanmachine in another tab.
+   - Confirm your change appears there.
+
+4. Sanity check that:
+
+   - Admin dashboard still loads.
+   - Rewards portal /rewards still works (we didn’t break anything it depends on).
+
+---
+
+At the end, please summarize:
+
+- Which files you changed.
+- The final JSON response shape from /api/public/site/cleanmachine.
+- Any edge cases you noticed (e.g., tenants with no public-site settings yet) and how you handled them.
+
+Remember: CM-DNS-1 is ONLY about fixing the internal public-site routes and React page.  
+Do NOT modify DNS, GoDaddy, or SSL yet – that will be CM-DNS-2.
