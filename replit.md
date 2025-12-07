@@ -39,6 +39,16 @@ A read-only billing and usage page accessible to all tenant users displays plan 
 #### Billing & Dunning Automation (SP-6)
 A comprehensive billing status and dunning system handles payment failures and account suspension. It tracks billing status via Stripe webhooks, provides warning banners for past-due accounts, and implements full-screen lockout for suspended accounts, with middleware to block critical API routes.
 
+#### Full Usage Metrics v2 (SP-7)
+A comprehensive granular usage tracking and cost attribution system with feature-level breakdown capabilities. Key components:
+- **`usage_events` table**: Records individual usage events with channel, source, feature, quantity, and metadata (AI input/output tokens, model used)
+- **`usage_granular_rollups` table**: Daily aggregates by tenant/channel/feature for efficient cost reporting
+- **Extended Pricing Map**: Per-channel and per-model cost calculation in `shared/pricing/usagePricing.ts` (SMS outbound/inbound, MMS, voice inbound/outbound, GPT-4o/4o-mini/3.5-turbo tokens)
+- **`usageEventService.ts`**: Central service for `recordUsageEvent()` called from SMS, email, voice, and AI services
+- **Enhanced Dashboard**: `/settings/usage` shows pie/bar charts, channel breakdown, feature drilldown, and CSV export
+- **Root Admin Dashboard**: `/admin/system-usage` with tenant filtering, search, sort, and CSV export for all tenants
+- **API Endpoints**: `/api/admin/usage/v2/channels`, `/api/admin/usage/v2/features`, `/api/admin/usage/v2/export`, `/api/root-admin/usage/export`
+
 #### Phase 2.3 Billing Automation
 A comprehensive SaaS billing automation system generates monthly invoices, tracks overdue payments, and automates dunning processes. It includes a `tenant_invoices` table, a `Stripe Billing Service` for invoice creation and charging, a `Monthly Invoice Generator` cron job, and a `Nightly Dunning` cron job for reminders and suspension. Admin pages provide billing info and control.
 

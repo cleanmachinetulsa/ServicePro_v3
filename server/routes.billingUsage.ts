@@ -248,6 +248,33 @@ router.post('/api/root-admin/usage/v2/rollup', requireRole(['owner', 'root_admin
   }
 });
 
+router.get('/api/root-admin/usage/export', requireRole(['owner', 'root_admin']), async (req: Request, res: Response) => {
+  try {
+    const format = req.query.format as string || 'csv';
+    const tenantsSummary = await getAllTenantsUsageSummary();
+    
+    if (format === 'csv') {
+      const csvHeader = 'Tenant ID,Tenant Name,Business Name,Plan Tier,SMS Total,MMS Total,Voice Minutes,Emails,AI Tokens,Estimated Cost\n';
+      const csvRows = tenantsSummary.map((t: any) => 
+        `${t.tenant_id},"${(t.tenant_name || '').replace(/"/g, '""')}","${(t.business_name || '').replace(/"/g, '""')}",${t.plan_tier || 'free'},${t.sms_total || 0},${t.mms_total || 0},${t.voice_total || 0},${t.email_total || 0},${t.ai_tokens_total || 0},${parseFloat(t.estimated_monthly_cost || '0').toFixed(4)}`
+      ).join('\n');
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=all-tenants-usage-${new Date().toISOString().split('T')[0]}.csv`);
+      return res.send(csvHeader + csvRows);
+    }
+    
+    res.json({
+      success: true,
+      tenants: tenantsSummary,
+      pricing: usagePricing,
+    });
+  } catch (error: any) {
+    console.error('[BILLING USAGE] Error exporting all tenants usage:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export function registerBillingUsageRoutes(app: express.Application) {
   app.use(router);
   console.log('[BILLING USAGE] Routes registered: /api/admin/usage/*, /api/root-admin/usage/*, /api/*/usage/v2/*');
