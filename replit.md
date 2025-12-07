@@ -57,3 +57,27 @@ A centralized usage metering system for billing preparation:
 
 **Sources**: twilio, openai, sendgrid, system
 **Event Types**: sms_outbound, sms_inbound, mms_outbound, mms_inbound, call_inbound, call_outbound, call_minutes, ivr_step, ai_message, ai_voicemail_summary, email_sent, email_campaign
+
+## SP-16: Add-Ons System
+
+Tenant add-ons extend the base plan with optional paid features:
+
+**Files**:
+- `shared/addonsConfig.ts`: Add-on catalog with AddonKey type, pricing, feature flags
+- `shared/schema.ts`: `tenant_addons` table (id, tenantId, addonKey, status, quantity, etc.)
+- `server/services/addonService.ts`: CRUD for tenant add-ons (getTenantAddons, isAddonActive, setAddonStatus)
+- `server/services/featureGatingService.ts`: Extended feature gating with add-on support
+- `server/routes/addonRoutes.ts`: API routes for /api/billing/addons
+- `client/src/pages/AdminPlansAndAddons.tsx`: Admin page at /admin/plans-and-addons
+- `client/src/pages/settings/AddonsPage.tsx`: Tenant page at /settings/billing/addons
+
+**Add-on Keys**: extra_phone_number, extra_user_seats, ai_power_pack, priority_support, multi_location, white_label_plus
+
+**How to add a new add-on**:
+1. Add key to `AddonKey` type in `shared/addonsConfig.ts`
+2. Add key to `ADDON_KEYS` array in `shared/schema.ts`
+3. Add definition to `ADDONS_CATALOG` array with pricing, minTier, featureFlags
+
+**Feature gating with add-ons**:
+- Use `isFeatureEnabled(tenantId, planTier, featureKey)` from featureGatingService for server-side checks
+- Use `hasAddonFlag(tenantId, 'ai.higherLimits')` to check specific add-on feature flags
