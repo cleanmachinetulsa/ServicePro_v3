@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   hasSeenDashboardTour: boolean("has_seen_dashboard_tour").default(false), // Track if user has completed the dashboard onboarding tour
   dashboardTheme: text("dashboard_theme").default("modern-dark"), // User's selected dashboard theme
+  preferredLanguage: varchar("preferred_language", { length: 10 }).default("en"), // SP-8: User's preferred UI language (en, es)
   createdAt: timestamp("created_at").defaultNow(),
   createdBy: integer("created_by"),
 }, (table) => ({
@@ -297,6 +298,9 @@ export const tenantConfig = pgTable("tenant_config", {
   
   // SP-4: UI Experience Mode - simple vs advanced dashboard
   uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).default("simple").$type<UiExperienceMode>(),
+  
+  // SP-8: Language settings
+  customerDefaultLanguage: varchar("customer_default_language", { length: 10 }).default("en"), // Default language for customer-facing pages (booking, rewards)
   
   // CM-4: Public Site Settings for generated website customization
   publicSiteSettings: jsonb("public_site_settings").$type<{

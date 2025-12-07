@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useUiExperience } from '@/contexts/UiExperienceContext';
 import { useBillingStatus } from '@/hooks/useBillingStatus';
 import TenantSuggestionModal from '@/components/TenantSuggestionModal';
+import { setLanguage } from '@/i18n';
 
 interface AuthContext {
   success: boolean;
@@ -21,6 +23,7 @@ interface AuthContext {
     id: number;
     username: string;
     role: string;
+    preferredLanguage?: string;
   };
   impersonation: {
     isActive: boolean;
@@ -51,12 +54,19 @@ export function AppShell({
   const { isDark, toggleTheme } = useTheme();
   const { mode: uiMode } = useUiExperience();
   const { isPastDue } = useBillingStatus();
+  const { t } = useTranslation('common');
 
   const { data: authContext } = useQuery<AuthContext>({
     queryKey: ['/api/auth/context'],
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
   });
+
+  useEffect(() => {
+    if (authContext?.user?.preferredLanguage) {
+      setLanguage(authContext.user.preferredLanguage);
+    }
+  }, [authContext?.user?.preferredLanguage]);
 
   const handleNavigate = (path: string) => {
     navigate(path);
