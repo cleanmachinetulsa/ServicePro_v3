@@ -44,7 +44,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import type { DashboardPanelId } from '@shared/schema';
-import { getCustomizableNavItems, getDefaultSimpleModeItems, type NavigationItem } from '@/config/navigationItems';
+import { getCustomizableNavItems, getDefaultSimpleModeItems, sanitizeNavConfig, OWNER_ONLY_NAV_IDS, type NavigationItem } from '@/config/navigationItems';
 
 interface PanelInfo {
   id: DashboardPanelId;
@@ -189,7 +189,9 @@ export default function DashboardCustomizePage() {
   
   const handleSaveNav = async () => {
     try {
-      await saveNavConfig({ visibleNavItems: selectedNavItems });
+      // Sanitize config to remove owner-only items for non-owners before saving
+      const configToSave = sanitizeNavConfig({ visibleNavItems: selectedNavItems }, userRole);
+      await saveNavConfig(configToSave);
       toast({
         title: 'Navigation saved',
         description: 'Your navigation menu has been customized.',

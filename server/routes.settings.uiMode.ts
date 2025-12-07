@@ -155,6 +155,16 @@ router.get('/api/settings/simple-mode-config', requireAuth, async (req: Request,
   }
 });
 
+// SP-21: Owner-only nav item IDs that should be stripped from non-owner configs
+const OWNER_ONLY_NAV_IDS = [
+  'concierge-setup',
+  'tenants',
+  'phone-config',
+  'parser-history',
+  'root-admin-usage',
+  'admin-usage',
+];
+
 // SP-21: Update current user's simple mode navigation config
 router.put('/api/settings/simple-mode-config', requireAuth, async (req: Request, res: Response) => {
   try {
@@ -176,8 +186,28 @@ router.put('/api/settings/simple-mode-config', requireAuth, async (req: Request,
       });
     }
 
-    const { config } = parseResult.data;
     const { db } = await import('./db');
+    
+    // Get user's role for RBAC sanitization
+    const [user] = await db.select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+      .limit(1);
+    
+    const userRole = user?.role;
+    let { config } = parseResult.data;
+    
+    // SP-21 RBAC: Strip owner-only nav items from non-owner configs (server-side sanitization)
+    if (userRole !== 'owner' && config.visibleNavItems) {
+      const originalCount = config.visibleNavItems.length;
+      config = {
+        ...config,
+        visibleNavItems: config.visibleNavItems.filter(id => !OWNER_ONLY_NAV_IDS.includes(id))
+      };
+      if (config.visibleNavItems.length < originalCount) {
+        console.log(`[SIMPLE MODE CONFIG] Sanitized: Stripped ${originalCount - config.visibleNavItems.length} owner-only items from non-owner user ${userId}`);
+      }
+    }
 
     await db.update(users)
       .set({ 

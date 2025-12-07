@@ -89,7 +89,7 @@ export const OWNER_ONLY_NAV_IDS = [
  * @param mode - 'simple' or 'advanced'
  * @param config - Custom simple mode configuration (optional)
  * @param items - Navigation items to filter (defaults to navigationItems)
- * @param userRole - User's role for RBAC filtering (optional)
+ * @param userRole - User's role for RBAC filtering (defaults to 'employee' for safety)
  */
 export function filterNavForMode(
   mode: 'simple' | 'advanced',
@@ -98,8 +98,10 @@ export function filterNavForMode(
   userRole?: string
 ): NavigationItem[] {
   // First, apply role-based filtering to remove owner-only items for non-owners
+  // Default to 'employee' for safety - only owners can see owner-only items
+  const effectiveRole = userRole || 'employee';
   let filteredItems = items;
-  if (userRole && userRole !== 'owner') {
+  if (effectiveRole !== 'owner') {
     filteredItems = items.filter(item => !OWNER_ONLY_NAV_IDS.includes(item.id));
   }
 
@@ -122,7 +124,7 @@ export function filterNavForMode(
     // If custom config exists, use it (but still exclude owner-only for non-owners)
     if (hasCustomConfig) {
       // Additional security: never show owner-only items even if in custom config
-      if (userRole && userRole !== 'owner' && OWNER_ONLY_NAV_IDS.includes(item.id)) {
+      if (effectiveRole !== 'owner' && OWNER_ONLY_NAV_IDS.includes(item.id)) {
         return false;
       }
       return customVisibleIds.has(item.id);
@@ -160,13 +162,16 @@ export function filterNavForMode(
 
 /**
  * SP-21: Get all non-separator navigation items for customization UI
- * @param userRole - User's role for RBAC filtering - omits owner-only items for non-owners
+ * @param userRole - User's role for RBAC filtering - omits owner-only items for non-owners (defaults to 'employee')
  */
 export function getCustomizableNavItems(userRole?: string): NavigationItem[] {
   let items = navigationItems.filter(item => !item.separator);
   
+  // Default to 'employee' for safety - only owners can see owner-only items
+  const effectiveRole = userRole || 'employee';
+  
   // Exclude owner-only items from customization for non-owners
-  if (userRole && userRole !== 'owner') {
+  if (effectiveRole !== 'owner') {
     items = items.filter(item => !OWNER_ONLY_NAV_IDS.includes(item.id));
   }
   
@@ -175,16 +180,19 @@ export function getCustomizableNavItems(userRole?: string): NavigationItem[] {
 
 /**
  * SP-21: Get default visible nav item IDs for simple mode
- * @param userRole - User's role for RBAC filtering
+ * @param userRole - User's role for RBAC filtering (defaults to 'employee')
  */
 export function getDefaultSimpleModeItems(userRole?: string): string[] {
+  // Default to 'employee' for safety - only owners can see owner-only items
+  const effectiveRole = userRole || 'employee';
+  
   return navigationItems
     .filter(item => {
       // Exclude separators
       if (item.separator) return false;
       
       // Exclude owner-only items for non-owners
-      if (userRole && userRole !== 'owner' && OWNER_ONLY_NAV_IDS.includes(item.id)) {
+      if (effectiveRole !== 'owner' && OWNER_ONLY_NAV_IDS.includes(item.id)) {
         return false;
       }
       
@@ -195,6 +203,23 @@ export function getDefaultSimpleModeItems(userRole?: string): string[] {
       );
     })
     .map(item => item.id);
+}
+
+/**
+ * SP-21: Sanitize nav config to remove owner-only items for non-owners
+ * Used when saving config to prevent persisting restricted items
+ */
+export function sanitizeNavConfig(config: SimpleModeConfig, userRole?: string): SimpleModeConfig {
+  const effectiveRole = userRole || 'employee';
+  
+  if (effectiveRole === 'owner' || !config.visibleNavItems) {
+    return config;
+  }
+  
+  return {
+    ...config,
+    visibleNavItems: config.visibleNavItems.filter(id => !OWNER_ONLY_NAV_IDS.includes(id))
+  };
 }
 
 export const navigationItems: NavigationItem[] = [
