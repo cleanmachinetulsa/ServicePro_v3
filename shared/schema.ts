@@ -3439,6 +3439,81 @@ export type UsageRollupsDaily = typeof usageRollupsDaily.$inferSelect;
 export type InsertUsageRollupsDaily = z.infer<typeof insertUsageRollupsDailySchema>;
 
 // ============================================================
+// SP-4: ADD-ON MARKETPLACE TABLES
+// ============================================================
+
+export const addOnCategoryEnum = pgEnum('add_on_category', [
+  'ai',           // AI-powered features (AI Voice, etc.)
+  'communication', // Communication add-ons (Spanish Pack, etc.)
+  'analytics',    // Analytics and reporting
+  'scheduling',   // Scheduling and team features
+  'loyalty',      // Loyalty and referral features
+  'automation',   // Automation features
+]);
+
+export const addOnBillingStatusEnum = pgEnum('add_on_billing_status', [
+  'active',       // Successfully billing
+  'pending',      // Waiting for Stripe confirmation
+  'cancelled',    // Cancelled by user
+  'failed',       // Billing failed
+]);
+
+export const addOns = pgTable('add_ons', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description').notNull(),
+  monthlyPriceCents: integer('monthly_price_cents').notNull(),
+  category: addOnCategoryEnum('category').notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  stripePriceId: text('stripe_price_id'),
+  iconName: varchar('icon_name', { length: 50 }),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  features: jsonb('features').$type<string[]>(),
+  requiredPlanTier: tenantTierEnum('required_plan_tier'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  keyIdx: uniqueIndex('add_ons_key_idx').on(table.key),
+  categoryIdx: index('add_ons_category_idx').on(table.category),
+  activeIdx: index('add_ons_active_idx').on(table.isActive),
+}));
+
+export const tenantAddOns = pgTable('tenant_add_ons', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  addOnId: integer('add_on_id').notNull().references(() => addOns.id, { onDelete: 'cascade' }),
+  enabledAt: timestamp('enabled_at', { withTimezone: true }).defaultNow().notNull(),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  billingStatus: addOnBillingStatusEnum('billing_status').default('pending').notNull(),
+  stripeSubscriptionItemId: text('stripe_subscription_item_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index('tenant_add_ons_tenant_id_idx').on(table.tenantId),
+  addOnIdIdx: index('tenant_add_ons_add_on_id_idx').on(table.addOnId),
+  tenantAddOnUniqueIdx: uniqueIndex('tenant_add_ons_unique_idx').on(table.tenantId, table.addOnId),
+  billingStatusIdx: index('tenant_add_ons_billing_status_idx').on(table.billingStatus),
+}));
+
+export const insertAddOnSchema = createInsertSchema(addOns).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+export const insertTenantAddOnSchema = createInsertSchema(tenantAddOns).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+export type AddOn = typeof addOns.$inferSelect;
+export type InsertAddOn = z.infer<typeof insertAddOnSchema>;
+export type TenantAddOn = typeof tenantAddOns.$inferSelect;
+export type InsertTenantAddOn = z.infer<typeof insertTenantAddOnSchema>;
+
+// ============================================================
 // SUGGESTIONS / FEEDBACK TABLE
 // ============================================================
 export const suggestions = pgTable('suggestions', {
