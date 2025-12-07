@@ -21,6 +21,7 @@ export const users = pgTable("users", {
   hasSeenDashboardTour: boolean("has_seen_dashboard_tour").default(false), // Track if user has completed the dashboard onboarding tour
   dashboardTheme: text("dashboard_theme").default("modern-dark"), // User's selected dashboard theme
   preferredLanguage: varchar("preferred_language", { length: 10 }).default("en"), // SP-8: User's preferred UI language (en, es)
+  uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).default("simple"), // SP-14: User's UI experience mode ('simple' or 'advanced')
   createdAt: timestamp("created_at").defaultNow(),
   createdBy: integer("created_by"),
 }, (table) => ({

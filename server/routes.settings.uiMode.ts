@@ -1,9 +1,8 @@
 import express, { Request, Response } from 'express';
-import { tenantConfig } from '@shared/schema';
+import { tenantConfig, users } from '@shared/schema';
 import type { UiExperienceMode } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
-import { requireRole } from './rbacMiddleware';
 import { z } from 'zod';
 
 const router = express.Router();
@@ -17,24 +16,40 @@ const CustomerLanguageUpdateSchema = z.object({
   language: z.enum(['en', 'es']),
 });
 
+// SP-14: Get current user's UI experience mode (per-user, not per-tenant)
 router.get('/api/settings/ui-mode', requireAuth, async (req: Request, res: Response) => {
   try {
+    const userId = req.session?.userId;
     const tenantId = req.session?.tenantId;
     
-    if (!tenantId) {
+    if (!userId || !tenantId) {
       return res.status(400).json({
         success: false,
-        error: 'Tenant context required',
+        error: 'User context required',
       });
     }
 
     const { db } = await import('./db');
-    const [config] = await db.select()
-      .from(tenantConfig)
-      .where(eq(tenantConfig.tenantId, tenantId))
+    
+    // First check user's personal preference
+    const [user] = await db.select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
       .limit(1);
 
-    const mode: UiExperienceMode = (config?.uiExperienceMode as UiExperienceMode) ?? 'simple';
+    // If user has a preference, use it; otherwise fall back to tenant default
+    let mode: UiExperienceMode = 'simple';
+    
+    if (user?.uiExperienceMode) {
+      mode = user.uiExperienceMode as UiExperienceMode;
+    } else {
+      // Fall back to tenant default for backward compatibility
+      const [config] = await db.select()
+        .from(tenantConfig)
+        .where(eq(tenantConfig.tenantId, tenantId))
+        .limit(1);
+      mode = (config?.uiExperienceMode as UiExperienceMode) ?? 'simple';
+    }
 
     res.json({
       success: true,
@@ -49,7 +64,8 @@ router.get('/api/settings/ui-mode', requireAuth, async (req: Request, res: Respo
   }
 });
 
-router.put('/api/settings/ui-mode', requireAuth, requireRole(['owner', 'admin', 'manager']), async (req: Request, res: Response) => {
+// SP-14: Update current user's UI experience mode (per-user preference)
+router.put('/api/settings/ui-mode', requireAuth, async (req: Request, res: Response) => {
   try {
     const parseResult = UiModeUpdateSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -59,38 +75,27 @@ router.put('/api/settings/ui-mode', requireAuth, requireRole(['owner', 'admin', 
       });
     }
 
+    const userId = req.session?.userId;
     const tenantId = req.session?.tenantId;
     
-    if (!tenantId) {
+    if (!userId || !tenantId) {
       return res.status(400).json({
         success: false,
-        error: 'Tenant context required',
+        error: 'User context required',
       });
     }
 
     const { mode } = parseResult.data;
     const { db } = await import('./db');
 
-    const [existingConfig] = await db.select()
-      .from(tenantConfig)
-      .where(eq(tenantConfig.tenantId, tenantId))
-      .limit(1);
+    // Update user's personal UI mode preference
+    await db.update(users)
+      .set({ 
+        uiExperienceMode: mode,
+      })
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)));
 
-    if (existingConfig) {
-      await db.update(tenantConfig)
-        .set({ 
-          uiExperienceMode: mode,
-          updatedAt: new Date(),
-        })
-        .where(eq(tenantConfig.tenantId, tenantId));
-    } else {
-      return res.status(404).json({
-        success: false,
-        error: 'Tenant configuration not found. Please contact support.',
-      });
-    }
-
-    console.log(`[UI MODE] Tenant ${tenantId}: Updated to "${mode}" by user ${req.session?.userId}`);
+    console.log(`[UI MODE] User ${userId} (tenant ${tenantId}): Updated to "${mode}"`);
 
     res.json({
       success: true,
