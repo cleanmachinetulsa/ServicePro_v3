@@ -9,7 +9,8 @@ import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { PastDueWarningBanner } from '@/components/billing/PastDueWarningBanner';
-import { navigationItems, NavigationItem } from '@/config/navigationItems';
+import { navigationItems, NavigationItem, filterNavForMode } from '@/config/navigationItems';
+import { useSimpleModeConfig } from '@/hooks/useUiExperienceMode';
 import { Menu, Moon, Sun, Lightbulb, Sparkles, Settings2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -56,6 +57,7 @@ export function AppShell({
   const { isDark, toggleTheme } = useTheme();
   const { mode: uiMode, toggleMode, isSaving: isModeSaving } = useUiExperience();
   const { mode: dashboardMode, simpleVisiblePanels, isSaving: isDashboardSaving } = useDashboardPreferencesContext();
+  const { config: simpleModeConfig } = useSimpleModeConfig();
   const { isPastDue } = useBillingStatus();
   const { t } = useTranslation('common');
 
@@ -93,13 +95,10 @@ export function AppShell({
       ? navigationItems.filter(item => !ownerOnlyIds.includes(item.id))
       : [...navigationItems];
     
-    // Filter by UI experience mode (per-user SP-14)
-    if (uiMode === 'simple') {
-      // Remove advancedOnly items and their section headers when empty
-      filteredItems = filteredItems.filter(item => item.visibility !== 'advancedOnly');
-    }
+    // SP-21: Filter by UI experience mode using filterNavForMode with custom config
+    filteredItems = filterNavForMode(uiMode as 'simple' | 'advanced', simpleModeConfig, filteredItems);
     
-    // SP-15: Filter by dashboard preferences (tenant-level panel visibility)
+    // SP-15: Additional filter by dashboard preferences (tenant-level panel visibility)
     if (dashboardMode === 'simple') {
       filteredItems = filteredItems.filter(item => {
         // Always show separators
