@@ -1,0 +1,147 @@
+You are working on the ServicePro_v3 repo.
+
+Goal of this drop-in (CM-DNS-2):
+
+- Prepare the app so that when the browser host is `cleanmachinetulsa.com`,
+  visitors see the Clean Machine public experience (booking site + rewards),
+  NOT the generic ServicePro landing page.
+- Do NOT touch any CI/CD or external DNS in this block – only app logic & docs.
+- Keep behavior for the existing Replit host exactly as-is.
+
+Assumptions / current state:
+
+- CM-DNS-1 is applied:
+  - /api/public/site/:subdomain returns tenant public site data
+  - /site/cleanmachine renders Clean Machine’s public site when called directly
+- There is already:
+  - A ServicePro marketing landing page at `/` (LandingPage).
+  - A Clean Machine booking experience at `/home` (legacy root booking).
+  - A rewards portal at `/rewards` (already working).
+- The custom domain we will attach later is: `cleanmachinetulsa.com`.
+
+What to implement in this drop-in:
+
+1) Add a small shared config for the Clean Machine public domain
+
+Create a new file such as:
+
+- `shared/domainConfig.ts` (or update existing config file if one already exists).
+
+In it, export:
+
+- `CLEAN_MACHINE_DOMAIN` (string), read from `process.env.CLEAN_MACHINE_DOMAIN` with fallback `"cleanmachinetulsa.com"`.
+- `CLEAN_MACHINE_TENANT_SLUG` with value `"cleanmachine"`.
+
+Example:
+
+```ts
+// shared/domainConfig.ts
+export const CLEAN_MACHINE_DOMAIN =
+  process.env.CLEAN_MACHINE_DOMAIN || "cleanmachinetulsa.com";
+
+export const CLEAN_MACHINE_TENANT_SLUG = "cleanmachine";
+If there is already a config/constants file used for multi-tenant/public site stuff, prefer augmenting that instead of creating a brand new file – but keep the names above.
+
+Add a root-route redirect for the SPA (client-side)
+
+We want this logic:
+
+If someone hits / on cleanmachinetulsa.com, they should be redirected to the Clean Machine public experience (NOT the generic ServicePro marketing landing).
+
+On all other hosts (the Replit default domain, future app.superdomain, etc.) keep the existing ServicePro landing behavior unchanged.
+
+Implementation details:
+
+In client/src/App.tsx or the main routing component where / is defined:
+
+Import CLEAN_MACHINE_DOMAIN and CLEAN_MACHINE_TENANT_SLUG
+from @shared/domainConfig (or appropriate path).
+
+In the component that renders for path / (likely the LandingPage route),
+add a useEffect that checks window.location.hostname and redirects if needed.
+
+Pseudo-code to implement properly:
+
+ts
+Copy code
+// Inside the component that handles the "/" route (e.g. LandingPage wrapper)
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { CLEAN_MACHINE_DOMAIN, CLEAN_MACHINE_TENANT_SLUG } from "@shared/domainConfig";
+
+function RootWrapper() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const host = window.location.hostname.toLowerCase();
+
+    if (host === CLEAN_MACHINE_DOMAIN.toLowerCase()) {
+      // Option A: redirect to the Clean Machine booking legacy route
+      // navigate("/home", { replace: true });
+
+      // Option B (preferred): redirect to the new tenant public site route
+      navigate(`/site/${CLEAN_MACHINE_TENANT_SLUG}`, { replace: true });
+      return;
+    }
+
+    // If we’re not on the Clean Machine domain, keep existing behavior:
+    // render the standard ServicePro landing page.
+  }, [navigate]);
+
+  return <LandingPage />; // or whatever is currently there for "/"
+}
+Wire this RootWrapper into the router for path / instead of using LandingPage directly.
+
+Make sure type imports and paths are correct for the project structure.
+
+Notes:
+
+Do NOT change any logic for /home or /site/:subdomain themselves.
+
+Do NOT apply this host check to any other route; it is only for /.
+
+Minimal documentation
+
+Update replit.md or the main ops doc to include a short section:
+
+“Clean Machine Custom Domain Behavior (CM-DNS-2)”
+
+It should explain:
+
+Environment variable: CLEAN_MACHINE_DOMAIN (default: cleanmachinetulsa.com).
+
+When host matches that value, / auto-redirects to /site/cleanmachine.
+
+For all other hosts, / shows the ServicePro marketing landing.
+
+Smoke tests (you should run them, or Replit tests should)
+
+Verify the following in dev:
+
+In a dev environment, temporarily simulate the hostname by:
+
+Opening DevTools and manually setting window.location.hostname (or mocking it), OR
+
+Using a local host alias (if easy), OR
+
+At least writing a unit test / console.log to confirm the branch is hit.
+
+Check:
+
+With host === CLEAN_MACHINE_DOMAIN, visiting / triggers a client-side redirect to /site/cleanmachine.
+
+With any other host (your current Replit domain), / still shows the ServicePro landing page.
+
+Do NOT attempt to modify GoDaddy, DNS, or SSL from inside this block.
+
+At the end, report:
+
+Which files you changed.
+
+The final behavior of / for:
+
+cleanmachinetulsa.com
+
+the current Replit host.
+
+Any caveats you discovered.

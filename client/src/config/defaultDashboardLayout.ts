@@ -1,5 +1,12 @@
 import { DashboardWidget } from "@/../../shared/schema";
 
+export const SIMPLE_MODE_WIDGETS = [
+  "monthly-stats",
+  "calendar", 
+  "schedule",
+  "quick-actions",
+];
+
 export const DEFAULT_WIDGET_CATALOG: DashboardWidget[] = [
   {
     id: "monthly-stats",

@@ -3,6 +3,7 @@ import { tenantConfig, users } from '@shared/schema';
 import type { UiExperienceMode } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
+import { requireRole } from './rbacMiddleware';
 import { z } from 'zod';
 
 const router = express.Router();

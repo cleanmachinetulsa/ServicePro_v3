@@ -33,8 +33,9 @@ import { DashboardTour } from "@/components/onboarding/DashboardTour";
 import { dashboardTourSteps } from "@/config/dashboardTourSteps";
 import { DashboardGrid } from "@/components/DashboardGrid";
 import type { DashboardWidget, DashboardLayoutPayload } from "../../../shared/schema";
-import { DEFAULT_WIDGET_CATALOG, reconcileLayoutWithCatalog } from "@/config/defaultDashboardLayout";
+import { DEFAULT_WIDGET_CATALOG, reconcileLayoutWithCatalog, SIMPLE_MODE_WIDGETS } from "@/config/defaultDashboardLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useUiExperience } from "@/contexts/UiExperienceContext";
 
 interface Appointment {
   id: string;
@@ -75,6 +76,9 @@ interface InvoiceDetails {
 export default function Dashboard() {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
+  const { mode } = useUiExperience();
+  const isSimpleMode = mode === 'simple';
+  
   const { data: currentUserData } = useQuery<{ 
     success: boolean; 
     user: { 
@@ -90,6 +94,12 @@ export default function Dashboard() {
   // Dashboard customization state
   const [isEditMode, setIsEditMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>(DEFAULT_WIDGET_CATALOG);
+  
+  // Get displayed widgets - In Simple mode, always show essential widgets from catalog
+  // This ensures essential widgets appear even if user removed them in Advanced mode
+  const displayedWidgets = isSimpleMode 
+    ? DEFAULT_WIDGET_CATALOG.filter(w => SIMPLE_MODE_WIDGETS.includes(w.id))
+    : widgets;
 
   // Fetch dashboard layout
   const { data: layoutData } = useQuery<{ success: boolean; layout: any }>({
@@ -429,8 +439,8 @@ export default function Dashboard() {
     </>
   );
 
-  // Sidebar actions (passed to AppShell)
-  const sidebarActions = (
+  // Sidebar actions (passed to AppShell) - hide customization in Simple mode
+  const sidebarActions = isSimpleMode ? null : (
     <Button
       size="sm"
       variant={isEditMode ? "default" : "ghost"}
@@ -488,9 +498,9 @@ export default function Dashboard() {
           </div>
         ) : (
           <DashboardGrid
-            widgets={widgets}
+            widgets={displayedWidgets}
             onReorder={handleWidgetReorder}
-            isEditMode={isEditMode}
+            isEditMode={isEditMode && !isSimpleMode}
           >
             {(widget) => {
               if (widget.id === 'monthly-stats') {
