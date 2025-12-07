@@ -37,6 +37,7 @@ import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { registerSuggestionRoutes } from "./routes.suggestions";
 import { registerSupportRoutes } from "./routes.support";
+import { registerIndustryPackRoutes } from "./routes.industryPacks";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
@@ -345,6 +346,8 @@ registerOnboardingIndustryRoutes(app);
 registerSuggestionRoutes(app);
 // Register support system routes (tickets, KB, AI context)
 registerSupportRoutes(app);
+// Register industry pack routes (Phase 5.2 - Industry Pack Editor + Clone-a-Tenant Factory)
+registerIndustryPackRoutes(app);
 
 app.use((req, res, next) => {
   const start = Date.now();
