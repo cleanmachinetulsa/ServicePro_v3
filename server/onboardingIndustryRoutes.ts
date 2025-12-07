@@ -12,8 +12,8 @@
 
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
-import { tenantConfig, tenants, users } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { tenantConfig, tenants, users, phoneHistoryImports } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { bootstrapIndustryAiAndMessaging } from "./industryAiBootstrapService";
 import { getBootstrapDataForIndustry, hasBootstrapData } from "./industryBootstrapData";
 import bcrypt from "bcrypt";
@@ -456,6 +456,7 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
             industry: tenantConfig.industry,
             businessSetupDone: tenantConfig.onboardingBusinessSetupDone,
             phoneSetupDone: tenantConfig.onboardingPhoneSetupDone,
+            phoneHistoryStepSeen: tenantConfig.onboardingPhoneHistoryStepSeen,
             sitePublished: tenantConfig.onboardingSitePublished,
             heroTitle: tenantConfig.heroTitle,
             heroSubtitle: tenantConfig.heroSubtitle,
@@ -474,6 +475,20 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
           return;
         }
 
+        // Check if there's a successful phone history import for auto-complete
+        const [successfulImport] = await db
+          .select({ id: phoneHistoryImports.id })
+          .from(phoneHistoryImports)
+          .where(
+            and(
+              eq(phoneHistoryImports.tenantId, tenantId),
+              eq(phoneHistoryImports.status, "completed")
+            )
+          )
+          .limit(1);
+
+        const hasSuccessfulImport = !!successfulImport;
+
         // Build website URL if subdomain is set
         const websiteUrl = config.subdomain
           ? `https://${req.get("host")}/site/${config.subdomain}`
@@ -484,6 +499,8 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
           progress: {
             businessSetupDone: config.businessSetupDone ?? false,
             phoneSetupDone: config.phoneSetupDone ?? false,
+            phoneHistoryStepSeen: config.phoneHistoryStepSeen ?? false,
+            hasSuccessfulPhoneHistoryImport: hasSuccessfulImport,
             sitePublished: config.sitePublished ?? false,
             businessName: config.businessName || "Your Business",
             subdomain: config.subdomain,
@@ -522,7 +539,7 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
           return;
         }
 
-        const { businessSetupDone, phoneSetupDone, sitePublished } = req.body;
+        const { businessSetupDone, phoneSetupDone, phoneHistoryStepSeen, sitePublished } = req.body;
 
         // Build update object with only provided fields
         const updates: Record<string, any> = {};
@@ -531,6 +548,9 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
         }
         if (typeof phoneSetupDone === "boolean") {
           updates.onboardingPhoneSetupDone = phoneSetupDone;
+        }
+        if (typeof phoneHistoryStepSeen === "boolean") {
+          updates.onboardingPhoneHistoryStepSeen = phoneHistoryStepSeen;
         }
         if (typeof sitePublished === "boolean") {
           updates.onboardingSitePublished = sitePublished;
