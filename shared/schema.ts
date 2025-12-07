@@ -288,6 +288,9 @@ export const tenantConfig = pgTable("tenant_config", {
   // Suggestion Box settings
   suggestionsBoxEnabled: boolean("suggestions_box_enabled").default(true), // Enable/disable public customer suggestions
   
+  // SP-4: UI Experience Mode - simple vs advanced dashboard
+  uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).default("simple").$type<UiExperienceMode>(),
+  
   // CM-4: Public Site Settings for generated website customization
   publicSiteSettings: jsonb("public_site_settings").$type<{
     heroTitle?: string;
@@ -1737,9 +1740,15 @@ export const businessSettings = pgTable("business_settings", {
   loyaltyRequireCoreService: boolean("loyalty_require_core_service").default(false), // Require a core service (not just add-ons) to redeem
   loyaltyGuardrailMessage: text("loyalty_guardrail_message").default("To redeem your loyalty points, please book a qualifying service worth at least $75."),
   
+  // UI Experience Mode - Controls dashboard complexity
+  uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).notNull().default("simple"), // 'simple' or 'advanced'
+  
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
 });
+
+// UI Experience Mode type
+export type UiExperienceMode = 'simple' | 'advanced';
 
 // Service Limits - Daily booking caps per service type
 export const serviceLimits = pgTable("service_limits", {

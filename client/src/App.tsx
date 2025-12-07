@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useKeyboardDismiss } from "@/hooks/useKeyboardDismiss";
 import { PwaProvider } from "@/contexts/PwaContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { UiExperienceProvider } from "@/contexts/UiExperienceContext";
 
 import NotFound from "@/pages/not-found";
 import ChatPage from "@/pages/chat";
@@ -76,6 +77,7 @@ import TechnicianPage from "./pages/technician";
 import ReferralPage from "./pages/ReferralPage";
 import PhoneSettingsPage from "./pages/phone-settings";
 import EmailSettingsPage from "./pages/email-settings";
+import UiModeSettingsPage from "./pages/settings/UiModeSettingsPage";
 import SipSetupGuide from "./pages/sip-setup-guide";
 import Billing from "./pages/billing";
 import EscalationsPage from "./pages/escalations";
@@ -214,6 +216,11 @@ function Router() {
       <Route path="/settings/email">
         <AuthGuard>
           <EmailSettingsPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/ui-mode">
+        <AuthGuard>
+          <UiModeSettingsPage />
         </AuthGuard>
       </Route>
       <Route path="/admin/port-recovery">
@@ -548,6 +555,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <PwaProvider>
+          <UiExperienceProvider>
           <Toaster />
           <PasswordChangeModal />
           <BannerDisplay />
@@ -560,6 +568,7 @@ function App() {
               <DashboardNavButton />
             )}
           <SupportAssistantWidget />
+          </UiExperienceProvider>
         </PwaProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -1,0 +1,321 @@
+DROP-IN 1 — SP-5: Usage & Billing Overview v1 (Read-Only)
+
+Goal: Give each tenant a Billing & Usage page that shows:
+
+Their current plan & status
+
+High-level usage meters (SMS, voice, email, AI calls)
+
+A button to open the billing portal (Stripe or future provider)
+
+No charges logic yet, just clear visibility
+
+Paste this as-is into the Replit agent:
+
+PROMPT FOR REPLIT AGENT (SP-5 – Usage & Billing Overview v1)
+
+You are modifying the existing ServicePro v3 codebase in:
+
+https://github.com/cleanmachinetulsa/ServicePro_v3.git
+
+Use docs/MASTER_PLAN_v3.7_SERVICEPRO.md as the canonical roadmap. Respect all existing multi-tenant, telephony, A2P, and pricing/plan architecture.
+
+Implement SP-5 – Usage & Billing Overview v1 with the following behavior:
+
+0. High-Level Behavior
+
+For each tenant:
+
+Show a “Billing & Usage” page in Settings:
+
+Current plan name (Starter / Pro / Elite / etc.)
+
+Plan status (Trial, Active, Past Due, Suspended, etc.) using existing plan/flags where possible
+
+Next renewal date or trial end date (if available)
+
+Usage snapshot for the last 30 days:
+
+SMS (sent)
+
+Voice minutes (inbound + outbound)
+
+Emails sent
+
+AI calls (approximate count of AI/LLM invocations)
+
+A “Manage payment details / invoices” button:
+
+If Stripe (or another provider) is integrated, this should hit a backend endpoint that returns a billing portal URL and redirect there.
+
+If no provider exists yet, show a disabled button with “Coming soon”.
+
+This is read-only with respect to billing—no cancel/upgrade logic here (that’s SP-6).
+
+1. Data Model / Services
+1.1 Reuse Existing Plan / Tier Data
+
+Find the existing shared pricing config (for example: shared/pricingConfig.ts or similar) that defines tiers and their feature flags.
+
+Reuse this config to:
+
+Map tenant.planId (or equivalent) → human-readable name (e.g. “Starter”, “Pro”, “Elite”).
+
+Get base included allowances (if defined), e.g. included SMS/month, etc.
+
+If there is no explicit planId, derive a temporary plan label from whatever flags exist and leave room to plug in real plan fields later.
+
+1.2 Usage Aggregation – Service Layer
+
+Create a backend service file, e.g.:
+
+server/services/usageOverviewService.ts
+
+Implement a function:
+
+export interface UsageMetric {
+  label: string;
+  unit: 'messages' | 'minutes' | 'emails' | 'requests';
+  value: number;
+  period: '30d';
+}
+
+export interface BillingOverview {
+  planId: string | null;
+  planName: string;
+  planTierLabel: string; // "Starter", "Pro", "Elite", etc.
+  status: 'trial' | 'active' | 'past_due' | 'suspended' | 'unknown';
+  trialEndsAt: string | null;
+  nextRenewalAt: string | null;
+  usage: {
+    smsSentLast30d: number;
+    voiceMinutesLast30d: number;
+    emailsSentLast30d: number;
+    aiRequestsLast30d: number;
+  };
+  // Optional: last updated timestamps if handy
+}
+
+
+Behavior:
+
+Given a tenant context (tenantInfo → wrapTenantDb(tenantInfo)), compute metrics based on existing tables:
+
+SMS usage:
+
+Prefer existing messages table (e.g. messages, sms_logs, or similar).
+
+Count messages where:
+
+Direction is outbound (if there is a direction field).
+
+CreatedAt is within last 30 days.
+
+If multiple tables exist, pick the one used by the AI SMS pipeline.
+
+Voice minutes:
+
+Use calls, call_logs, or similar.
+
+Sum durationSeconds or equivalent for the last 30 days and convert to minutes (round to 1 decimal place).
+
+If no duration field exists, count calls instead and treat them as 1 unit per call.
+
+Emails sent:
+
+If there is an email_log / mail_events table, count emails for last 30 days.
+
+If not, stub this as 0 with a TODO comment.
+
+AI requests:
+
+If there is a log table for AI calls (e.g. ai_logs, assistant_logs, openai_requests), count entries for last 30 days.
+
+If not, stub as 0 with a TODO.
+
+For plan/ billing state:
+
+Reuse existing billing/subscription fields:
+
+For example: tenant.plan_id, tenant.is_trial, tenant.trial_ends_at, tenant.subscription_status, etc.
+
+Map whatever enum or string exists to:
+
+status: 'trial' | 'active' | 'past_due' | 'suspended' | 'unknown'
+
+Set planName / planTierLabel from pricing config.
+
+Important: Apply tenant isolation consistently via wrapTenantDb(tenantInfo) and never query global tables with tenant-scoped data.
+
+2. API Endpoint – /api/settings/billing/overview
+
+Add a new route file, e.g.:
+
+server/routes.settings.billingOverview.ts
+
+Or extend an existing settings router if there is one for billing.
+
+Implement:
+
+GET /api/settings/billing/overview
+
+Requirements:
+
+Requires authenticated tenant user.
+
+Any tenant user can read it (no owner-only restriction for now).
+
+Uses requireTenant(req) + wrapTenantDb to build context.
+
+Calls getBillingOverview(tenantDb, tenantInfo) from usageOverviewService.
+
+Returns:
+
+{
+  "success": true,
+  "overview": { ...BillingOverview }
+}
+
+
+Error handling:
+
+On unexpected errors, log them and return success: false with status: 500 and a safe error message.
+
+Rate limiting: Use existing rate limiting pattern if there is one for settings endpoints.
+
+3. Frontend – Billing & Usage Page
+3.1 Hook
+
+Create client/src/hooks/useBillingOverview.ts:
+
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/apiClient';
+
+export function useBillingOverview() {
+  return useQuery({
+    queryKey: ['settings', 'billing-overview'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/settings/billing/overview');
+      return res.data.overview;
+    },
+  });
+}
+
+3.2 Page Component
+
+Create:
+
+client/src/pages/settings/BillingUsagePage.tsx
+
+Design:
+
+Follow the same glassmorphism / gradient card design as Email Settings and Telephony/A2P pages.
+
+Sections:
+
+Plan & Status Card
+
+Show plan name (“Starter / Pro / Elite / Agency”).
+
+Status pill (Trial, Active, Past Due, Suspended).
+
+Trial end date or next renewal date.
+
+Usage Summary (Last 30 Days)
+
+4 usage tiles:
+
+SMS sent
+
+Voice minutes
+
+Emails sent
+
+AI requests
+
+Use subtle bar or ring meter visuals if easy; otherwise just bold counts and small labels (“Last 30 days”).
+
+Billing Portal / Manage Payment
+
+Button: “Manage payment & invoices”.
+
+On click:
+
+Call a new endpoint: POST /api/billing/portal-session that returns { url }.
+
+If url is present, window.location.href = url.
+
+If not implemented yet, show a toast: “Billing portal not yet configured. Please contact support.”
+
+3.3 Route & Navigation
+
+In client/src/App.tsx (or the main router):
+
+<Route path="/settings/billing" element={<BillingUsagePage />} />
+
+
+In client/src/config/navigationItems.ts:
+
+Add an item under Settings & Administration:
+
+{
+  id: 'settings-billing',
+  label: 'Billing & Usage',
+  path: '/settings/billing',
+  icon: CreditCardIcon, // use the existing icon library
+  group: 'settings',
+  visibility: 'always',
+}
+
+
+Ensure it respects the Simple/Advanced UI mode rules if you already implemented SP-4 (but for v1 it can be visible in both modes).
+
+4. Billing Portal Endpoint (Provider-Agnostic)
+
+Create a small backend endpoint that will later integrate with Stripe, but is safe now:
+
+Route: POST /api/billing/portal-session
+
+Auth: require authenticated tenant user.
+
+Implementation:
+
+If Stripe integration already exists:
+
+Reuse the existing Stripe client and tenant billing profile (stripeCustomerId or similar).
+
+Call Stripe’s Billing Portal API to create a session for that customer:
+
+billingPortal.sessions.create({ customer, return_url })
+
+Return { success: true, url }.
+
+If no Stripe integration exists yet:
+
+Return status: 501 with { success: false, error: 'Billing portal not configured yet.' }.
+
+Frontend behavior should handle both cases cleanly.
+
+5. Docs & Tests
+
+Update replit.md and MASTER_PLAN v3.7 to mark SP-5 – Usage & Billing Overview v1 as Completed, and briefly describe:
+
+/settings/billing page.
+
+/api/settings/billing/overview and /api/billing/portal-session.
+
+What usage metrics are currently computed.
+
+Add/extend Playwright test:
+
+Login as admin.
+
+Navigate to /settings/billing.
+
+Assert that:
+
+Plan card renders with plan name.
+
+At least one usage meter is visible.
+
+“Manage payment & invoices” button exists.

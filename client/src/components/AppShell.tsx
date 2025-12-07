@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
-import { navigationItems } from '@/config/navigationItems';
+import { navigationItems, NavigationItem } from '@/config/navigationItems';
 import { Menu, Moon, Sun, Lightbulb } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useUiExperience } from '@/contexts/UiExperienceContext';
 import TenantSuggestionModal from '@/components/TenantSuggestionModal';
 
 interface AuthContext {
@@ -46,6 +47,7 @@ export function AppShell({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
   const [location, navigate] = useLocation();
   const { isDark, toggleTheme } = useTheme();
+  const { mode: uiMode } = useUiExperience();
 
   const { data: authContext } = useQuery<AuthContext>({
     queryKey: ['/api/auth/context'],
@@ -70,9 +72,16 @@ export function AppShell({
     const ownerOnlyIds = ['concierge-setup', 'tenants', 'phone-config'];
     const isImpersonating = authContext?.impersonation?.isActive || false;
     
-    const filteredItems = isImpersonating
+    // Start with base navigation items
+    let filteredItems: NavigationItem[] = isImpersonating
       ? navigationItems.filter(item => !ownerOnlyIds.includes(item.id))
-      : navigationItems;
+      : [...navigationItems];
+    
+    // Filter by UI experience mode
+    if (uiMode === 'simple') {
+      // Remove advancedOnly items and their section headers when empty
+      filteredItems = filteredItems.filter(item => item.visibility !== 'advancedOnly');
+    }
 
     return (
       <nav className="space-y-1" data-tour-id="sidebar-nav">

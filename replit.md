@@ -49,6 +49,16 @@ A comprehensive multi-tenant usage tracking and billing system with the followin
 - **Root Admin Dashboard**: `/admin/system-usage` shows all tenant usage with charts, plan distribution, and manual rollup trigger
 - **API Routes**: `server/routes.billingUsage.ts` with endpoints for summary, daily, metrics, and root admin tenant overview
 
+#### UI Experience Mode (SP-4)
+A Simple vs Advanced dashboard mode system that allows tenant owners to toggle between a streamlined interface and full-featured mode:
+- **Simple Mode**: Hides advanced features (Multi-Tenant Management, SMS Compliance, Port Recovery, IVR Configurator) for a cleaner, less overwhelming experience
+- **Advanced Mode**: Shows all navigation items and features for power users
+- **Storage**: `uiExperienceMode` column in `tenant_config` table (tenant-scoped)
+- **API Routes**: `server/routes.settings.uiMode.ts` with GET/PUT endpoints at `/api/settings/ui-mode`
+- **Frontend Context**: `client/src/contexts/UiExperienceContext.tsx` provides mode state to the application
+- **Navigation Filtering**: `client/src/config/navigationItems.ts` items with `visibility: 'advancedOnly'` are hidden in Simple mode
+- **Settings Page**: `/settings/ui-mode` provides a user-friendly toggle with descriptive cards
+
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business.
 

@@ -1,0 +1,372 @@
+DROP-IN 2 — SP-6: Billing & Dunning Automation v1
+
+Goal: Wire in real subscription status + basic dunning / suspension logic:
+
+Keep using Stripe (or future) for billing
+
+Reflect subscription status in ServicePro
+
+Automatically flag and eventually suspend unpaid tenants
+
+Let tenants cancel at end of period from the Billing page
+
+Paste this as a separate prompt into the Replit agent (after SP-5 is merged):
+
+PROMPT FOR REPLIT AGENT (SP-6 – Billing & Dunning Automation v1)
+
+You are modifying the existing ServicePro v3 codebase in:
+
+https://github.com/cleanmachinetulsa/ServicePro_v3.git
+
+Use docs/MASTER_PLAN_v3.7_SERVICEPRO.md as canonical. Reuse any existing Stripe/billing code from earlier phases.
+
+Implement SP-6 – Billing & Dunning Automation v1 with:
+
+Basic subscription state tracking
+
+Simple dunning and suspension logic
+
+A “Cancel at end of period” toggle on the Billing page
+
+0. Design Constraints
+
+Stripe (or the current payment provider) remains the source of truth for invoices and subscription status.
+
+ServicePro stores a mirror of billing status for each tenant to:
+
+Lock or warn the tenant when past due or suspended.
+
+Multi-tenant isolation must be preserved; no leaking billing info between tenants.
+
+1. Data Model – Tenant Billing Status
+
+Find the existing tenant-related table (e.g. tenants or tenant_configs in shared/schema.ts) that already has some billing fields from Phase 6 (plan, trial info, etc.).
+
+Add fields as needed (if not already present):
+
+billingStatus: text('billing_status')
+  .notNull()
+  .default('active'), // 'trial' tenants will still show status 'trial' in front-end, but this is the billing state
+
+billingStatusSince: timestamp('billing_status_since', { withTimezone: true }).defaultNow(),
+
+cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
+
+stripeCustomerId: text('stripe_customer_id'),
+stripeSubscriptionId: text('stripe_subscription_id'),
+lastInvoiceStatus: text('last_invoice_status'),
+lastInvoiceDueAt: timestamp('last_invoice_due_at', { withTimezone: true }),
+
+
+billingStatus enum (conceptually):
+
+trial
+
+active
+
+past_due
+
+suspended
+
+canceled
+
+Enforce this at the TypeScript level with a union type.
+
+If some of these fields already exist, reuse and extend instead of duplicating.
+
+2. Billing Status Service
+
+Create/extend a service, e.g.:
+
+server/services/billingStatusService.ts
+
+Responsibilities:
+
+Mapping Stripe state → internal state
+
+export type BillingStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled';
+
+export function mapStripeToBillingStatus(
+  subscriptionStatus: string | null,
+  invoiceStatus: string | null,
+  isTrial: boolean
+): BillingStatus {
+  // Example logic:
+  if (isTrial) return 'trial';
+  if (!subscriptionStatus) return 'canceled';
+
+  if (subscriptionStatus === 'active') {
+    if (invoiceStatus === 'past_due') return 'past_due';
+    return 'active';
+  }
+
+  if (subscriptionStatus === 'past_due' || invoiceStatus === 'past_due') return 'past_due';
+
+  if (subscriptionStatus === 'canceled' || subscriptionStatus === 'unpaid') {
+    return 'canceled';
+  }
+
+  return 'active';
+}
+
+
+Persisting billing status for a tenant
+
+export async function updateTenantBillingStatus(
+  globalDb: GlobalDb,
+  tenantId: string,
+  payload: {
+    billingStatus: BillingStatus;
+    cancelAtPeriodEnd?: boolean;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    lastInvoiceStatus?: string | null;
+    lastInvoiceDueAt?: Date | null;
+  }
+) {
+  // update tenants table; update billingStatusSince when status changes
+}
+
+
+Check for suspension
+
+Define a simple rule for v1:
+
+If billingStatus === 'past_due' for more than X days (e.g. 14), mark as suspended.
+
+Implement a helper:
+
+export function shouldSuspendTenant(
+  billingStatus: BillingStatus,
+  billingStatusSince: Date
+): boolean {
+  if (billingStatus !== 'past_due') return false;
+  const ageDays = /* difference in days */;
+  return ageDays >= 14;
+}
+
+
+Use this helper when refreshing status.
+
+3. Stripe Integration: Webhooks & Portal
+3.1 Webhooks
+
+Find the existing Stripe webhook handler (if present), e.g. server/routes.stripeWebhooks.ts.
+
+Extend to handle relevant events:
+
+customer.subscription.updated
+
+customer.subscription.deleted
+
+invoice.payment_failed
+
+invoice.payment_succeeded
+
+For each event:
+
+Look up the affected tenant by stripeCustomerId or stripeSubscriptionId.
+
+Extract:
+
+subscription.status
+
+subscription.cancel_at_period_end
+
+latest_invoice.status
+
+latest_invoice.due_date / next_payment_attempt if available.
+
+Call updateTenantBillingStatus(...) with the mapped fields.
+
+After updating, re-evaluate suspension:
+
+If shouldSuspendTenant(...) returns true, set billingStatus to 'suspended'.
+
+Make sure to log errors clearly but avoid leaking sensitive info in responses.
+
+3.2 Billing Portal Session (complete SP-5 stub)
+
+If you created /api/billing/portal-session in SP-5 as a stub:
+
+Now fully implement it using Stripe Billing Portal, if Stripe is configured.
+
+Steps:
+
+Require authenticated tenant user.
+
+Look up stripeCustomerId for this tenant.
+
+Create portal session:
+
+const session = await stripe.billingPortal.sessions.create({
+  customer: stripeCustomerId,
+  return_url: `${publicBaseUrl}/settings/billing`,
+});
+
+
+Return { success: true, url: session.url }.
+
+If Stripe is not configured (e.g. missing env var), keep the previous 501 behavior.
+
+4. Cancel at End of Period Toggle
+
+Extend the Billing & Usage page created in SP-5:
+
+4.1 Backend Endpoint
+
+Add a new endpoint:
+
+POST /api/billing/cancel-at-period-end
+
+Payload:
+
+{ "cancelAtPeriodEnd": true | false }
+
+
+Behavior:
+
+Require authenticated tenant user with owner/admin role.
+
+If Stripe subscription is present:
+
+Call stripe.subscriptions.update(stripeSubscriptionId, { cancel_at_period_end: cancelAtPeriodEnd }).
+
+Update tenant row via updateTenantBillingStatus to store new cancelAtPeriodEnd and latest subscription status.
+
+If no subscription present:
+
+Return 400 with a safe message.
+
+Response:
+
+{ "success": true, "cancelAtPeriodEnd": true }
+
+4.2 Frontend UI
+
+On BillingUsagePage.tsx:
+
+After the Plan & Status card, add a small card:
+
+If in trial status:
+
+Show “Your trial will end on [date]. You’ll be prompted to choose a plan before being charged.”
+
+No cancel toggle.
+
+If status === 'active' or 'past_due':
+
+Show a toggle labelled:
+
+“Cancel at end of current billing period (you’ll keep access until then)”
+
+Bound to overview.cancelAtPeriodEnd.
+
+Add a mutation hook:
+
+const cancelMutation = useMutation({
+  mutationFn: async (value: boolean) => {
+    const res = await apiClient.post('/api/billing/cancel-at-period-end', {
+      cancelAtPeriodEnd: value,
+    });
+    return res.data.cancelAtPeriodEnd as boolean;
+  },
+  onSuccess: (value) => {
+    queryClient.setQueryData(['settings', 'billing-overview'], (prev) =>
+      prev ? { ...prev, cancelAtPeriodEnd: value } : prev
+    );
+    showToast(
+      value
+        ? 'Your subscription will cancel at the end of the current period.'
+        : 'Your subscription will continue renewing automatically.',
+      'success'
+    );
+  },
+});
+
+
+Disable the toggle while cancelMutation.isPending.
+
+5. Suspension UX (Soft Lock)
+
+Implement soft lock behavior when a tenant is suspended:
+
+Backend-side guard
+
+Add a helper ensureTenantNotSuspended(tenantInfo) used by critical tenant routes (e.g. app shell bootstrap, core business flows).
+
+If billingStatus === 'suspended':
+
+Return 403 with { success: false, code: 'ACCOUNT_SUSPENDED' }.
+
+Frontend handling
+
+Modify the bootstrap / app shell loader to detect code === 'ACCOUNT_SUSPENDED'.
+
+Instead of normal dashboard, render a full-screen “Account Suspended” view:
+
+Headline: “Account temporarily suspended”
+
+Explanation: “We couldn’t process your recent payment. Your account is paused to protect you from new charges. Your data is safe.”
+
+Buttons:
+
+“Update payment method” → /settings/billing
+
+“Contact support” → /support or your Help page
+
+Keep the Help & Support and Billing & Usage pages accessible even while suspended.
+
+Past Due (but not yet suspended)
+
+If billingStatus === 'past_due' but not suspended:
+
+Show a yellow warning bar at the top of the app:
+
+“We had trouble processing your last payment. Please update your payment method to avoid interruption.”
+
+Link to /settings/billing.
+
+6. Dunning Emails (Simple v1)
+
+Use your existing Email v1 system (Phase 10) to send two basic templates when webhooks fire:
+
+On invoice.payment_failed:
+
+Send “Payment failed / please update card” email to tenant owner.
+
+When the system transitions a tenant to suspended:
+
+Send “Account suspended” email explaining what happened and how to restore service.
+
+Implementation detail:
+
+Add a small helper in billingStatusService.ts or a new billingDunningService.ts that:
+
+Receives tenant info + event type.
+
+Calls emailService.sendTransactionalEmail with appropriate template key.
+
+Keep templates simple and tenant-oriented. This can be refined later.
+
+7. Docs & Tests
+
+Update replit.md and MASTER_PLAN v3.7:
+
+Mark SP-6 – Billing & Dunning Automation v1 as Completed.
+
+Document:
+
+New billing fields on tenants.
+
+Stripe webhook mapping → BillingStatus.
+
+Suspension behavior and “Cancel at end of period” toggle.
+
+Add / extend Playwright tests:
+
+Mock a tenant in past_due status and ensure the yellow warning bar appears.
+
+Mock a suspended tenant and ensure they see the lockout screen but can access /settings/billing and /support.
+
+End of SP-6 drop-in.
