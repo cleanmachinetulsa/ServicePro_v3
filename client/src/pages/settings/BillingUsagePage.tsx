@@ -2,10 +2,14 @@ import { useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useBillingOverview } from '@/hooks/useBillingOverview';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { 
   CreditCard, 
   MessageSquare, 
@@ -17,7 +21,8 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  XCircle
+  XCircle,
+  CalendarOff
 } from 'lucide-react';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle }> = {
@@ -33,6 +38,35 @@ export default function BillingUsagePage() {
   const { data: overview, isLoading, error } = useBillingOverview();
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const queryClient = useQueryClient();
+
+  const cancelMutation = useMutation({
+    mutationFn: async (cancelAtPeriodEnd: boolean) => {
+      const res = await apiRequest('/api/billing/cancel-at-period-end', {
+        method: 'POST',
+        body: JSON.stringify({ cancelAtPeriodEnd }),
+      });
+      return res.cancelAtPeriodEnd as boolean;
+    },
+    onSuccess: (value) => {
+      queryClient.setQueryData(['settings', 'billing-overview'], (prev: any) =>
+        prev ? { ...prev, cancelAtPeriodEnd: value } : prev
+      );
+      toast({
+        title: value ? 'Subscription will cancel' : 'Subscription will continue',
+        description: value
+          ? 'Your subscription will cancel at the end of the current billing period.'
+          : 'Your subscription will continue renewing automatically.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update subscription settings.',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const handleManageBilling = async () => {
     setIsRedirecting(true);
@@ -190,6 +224,66 @@ export default function BillingUsagePage() {
             </CardContent>
           </Card>
         </div>
+
+        {overview.status === 'trial' && (
+          <Card className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/50 dark:to-yellow-950/50 border-amber-200 dark:border-amber-800">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="p-2 bg-gradient-to-br from-amber-500 to-yellow-600 rounded-lg">
+                <Clock className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-amber-900 dark:text-amber-100" data-testid="text-trial-notice">Trial Period</h3>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  {overview.trialEndsAt 
+                    ? `Your trial will end on ${new Date(overview.trialEndsAt).toLocaleDateString()}. You'll be prompted to choose a plan before being charged.`
+                    : `You're currently on a trial. You'll be prompted to choose a plan before being charged.`
+                  }
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {(overview.status === 'active' || overview.status === 'past_due') && overview.hasSubscription && (
+          <Card data-testid="card-subscription-settings">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <CalendarOff className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-lg">Subscription Settings</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <Label htmlFor="cancel-toggle" className="font-medium">
+                    Cancel at end of billing period
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {overview.cancelAtPeriodEnd 
+                      ? "Your subscription will end after the current period. You'll keep access until then."
+                      : "Your subscription will renew automatically at the end of each billing period."
+                    }
+                  </p>
+                </div>
+                <Switch
+                  id="cancel-toggle"
+                  checked={overview.cancelAtPeriodEnd}
+                  onCheckedChange={(checked) => cancelMutation.mutate(checked)}
+                  disabled={cancelMutation.isPending}
+                  data-testid="switch-cancel-at-period-end"
+                />
+              </div>
+              {overview.cancelAtPeriodEnd && (
+                <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" />
+                    Your subscription is set to cancel. Toggle off to continue renewing.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">

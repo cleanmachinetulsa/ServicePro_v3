@@ -7,10 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { PastDueWarningBanner } from '@/components/billing/PastDueWarningBanner';
 import { navigationItems, NavigationItem } from '@/config/navigationItems';
 import { Menu, Moon, Sun, Lightbulb } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useUiExperience } from '@/contexts/UiExperienceContext';
+import { useBillingStatus } from '@/hooks/useBillingStatus';
 import TenantSuggestionModal from '@/components/TenantSuggestionModal';
 
 interface AuthContext {
@@ -48,6 +50,7 @@ export function AppShell({
   const [location, navigate] = useLocation();
   const { isDark, toggleTheme } = useTheme();
   const { mode: uiMode } = useUiExperience();
+  const { isPastDue } = useBillingStatus();
 
   const { data: authContext } = useQuery<AuthContext>({
     queryKey: ['/api/auth/context'],
@@ -197,6 +200,9 @@ export function AppShell({
       <div className="flex-1 flex flex-col min-h-0">
         {/* Impersonation Banner */}
         <ImpersonationBanner />
+        
+        {/* Past Due Warning Banner (SP-6) */}
+        {isPastDue && <PastDueWarningBanner />}
         
         {/* Top Bar */}
         <header className="flex-shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">

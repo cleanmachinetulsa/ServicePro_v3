@@ -22,6 +22,8 @@ export interface BillingOverview {
   trialEndsAt: string | null;
   nextRenewalAt: string | null;
   hasStripeCustomer: boolean;
+  hasSubscription: boolean;
+  cancelAtPeriodEnd: boolean;
   usage: UsageSnapshot;
   estimatedCostLast30d: number;
 }
@@ -107,6 +109,8 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
     trialEndsAt: null,
     nextRenewalAt: null,
     hasStripeCustomer: !!tenant.stripeCustomerId,
+    hasSubscription: !!tenant.stripeSubscriptionId,
+    cancelAtPeriodEnd: tenant.cancelAtPeriodEnd || false,
     usage: {
       smsSentLast30d: smsSent,
       voiceMinutesLast30d: voiceTotal,
