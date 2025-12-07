@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { useLocation } from 'wouter';
+import { getProxiedAudioUrl } from '@/lib/twilioMediaProxy';
 
 interface Call {
   id: number;
@@ -194,7 +195,7 @@ export default function CallDetailsModal({
                 <Button
                   variant="outline"
                   className="w-full gap-2"
-                  onClick={() => window.open(call.recordingUrl!, '_blank')}
+                  onClick={() => window.open(getProxiedAudioUrl(call.recordingUrl) || '#', '_blank')}
                   data-testid="button-download-recording"
                 >
                   <Download className="h-4 w-4" />
