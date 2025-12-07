@@ -7,6 +7,27 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 - Preferred communication style: Simple, everyday language
 - AI Agent Behavior: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
 
+## CRITICAL: Clean Machine Domain Routing (DO NOT CHANGE)
+
+**cleanmachinetulsa.com MUST always render the custom HomePage, NEVER the auto-generated PublicSite.**
+
+| Domain | Component | File | Description |
+|--------|-----------|------|-------------|
+| cleanmachinetulsa.com | `HomePage` | `client/src/pages/home.tsx` | Custom hand-built homepage with 7 templates |
+| All other domains | `LandingPage` | `client/src/pages/LandingPage.tsx` | ServicePro marketing page |
+
+**Key Files:**
+- `client/src/components/RootDomainHandler.tsx` - Controls domain-based routing (contains critical comments)
+- `client/src/pages/home.tsx` - The Clean Machine homepage with template system
+- `client/src/pages/templates/` - 7 template options (CurrentTemplate, LuminousConcierge, etc.)
+- `/admin/homepage-editor` - Admin page to edit homepage content and select templates
+
+**NEVER route cleanmachinetulsa.com to:**
+- `/site/cleanmachine` (auto-generated PublicSite)
+- `PublicSite.tsx` (tenant auto-generator)
+
+This was established after the CM-DNS work accidentally routed the domain to PublicSite instead of the custom homepage.
+
 ## System Architecture
 
 ### UI/UX Decisions
