@@ -6,6 +6,11 @@ import LandingPage from "@/pages/LandingPage";
 function isCleanMachineDomain(): boolean {
   const host = window.location.hostname.toLowerCase();
   const cleanMachineDomain = CLEAN_MACHINE_DOMAIN.toLowerCase();
+  
+  console.log('[RootDomainHandler] Current hostname:', host);
+  console.log('[RootDomainHandler] Target domain:', cleanMachineDomain);
+  console.log('[RootDomainHandler] Match check:', host === cleanMachineDomain || host === `www.${cleanMachineDomain}`);
+  
   return host === cleanMachineDomain || host === `www.${cleanMachineDomain}`;
 }
 
@@ -21,7 +26,9 @@ export default function RootDomainHandler() {
   const isCleanMachine = isCleanMachineDomain();
 
   useEffect(() => {
+    console.log('[RootDomainHandler] Effect running, isCleanMachine:', isCleanMachine);
     if (isCleanMachine) {
+      console.log('[RootDomainHandler] Redirecting to /site/' + CLEAN_MACHINE_TENANT_SLUG);
       setLocation(`/site/${CLEAN_MACHINE_TENANT_SLUG}`, { replace: true });
     }
   }, [isCleanMachine, setLocation]);
