@@ -12,6 +12,15 @@ const UiModeUpdateSchema = z.object({
   mode: z.enum(['simple', 'advanced']),
 });
 
+// SP-21: Schema for simple mode config
+const SimpleModeConfigSchema = z.object({
+  visibleNavItems: z.array(z.string()).optional(),
+});
+
+const SimpleModeConfigUpdateSchema = z.object({
+  config: SimpleModeConfigSchema,
+});
+
 // SP-8: Customer-facing language settings
 const CustomerLanguageUpdateSchema = z.object({
   language: z.enum(['en', 'es']),
@@ -107,6 +116,86 @@ router.put('/api/settings/ui-mode', requireAuth, async (req: Request, res: Respo
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to update UI mode',
+    });
+  }
+});
+
+// SP-21: Get current user's simple mode navigation config
+router.get('/api/settings/simple-mode-config', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.session?.userId;
+    const tenantId = req.session?.tenantId;
+    
+    if (!userId || !tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User context required',
+      });
+    }
+
+    const { db } = await import('./db');
+    
+    const [user] = await db.select()
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+      .limit(1);
+
+    const config = user?.simpleModeConfig ?? null;
+
+    res.json({
+      success: true,
+      config,
+    });
+  } catch (error: any) {
+    console.error('[SIMPLE MODE CONFIG] Error fetching config:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch simple mode config',
+    });
+  }
+});
+
+// SP-21: Update current user's simple mode navigation config
+router.put('/api/settings/simple-mode-config', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const parseResult = SimpleModeConfigUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid payload. Config must include visibleNavItems array.',
+      });
+    }
+
+    const userId = req.session?.userId;
+    const tenantId = req.session?.tenantId;
+    
+    if (!userId || !tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User context required',
+      });
+    }
+
+    const { config } = parseResult.data;
+    const { db } = await import('./db');
+
+    await db.update(users)
+      .set({ 
+        simpleModeConfig: config,
+      })
+      .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)));
+
+    console.log(`[SIMPLE MODE CONFIG] User ${userId} (tenant ${tenantId}): Updated config with ${config.visibleNavItems?.length ?? 0} items`);
+
+    res.json({
+      success: true,
+      config,
+    });
+  } catch (error: any) {
+    console.error('[SIMPLE MODE CONFIG] Error updating config:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update simple mode config',
     });
   }
 });
@@ -236,7 +325,7 @@ router.put('/api/settings/customer-language', requireAuth, requireRole(['owner',
 
 export function registerUiModeRoutes(app: express.Application) {
   app.use(router);
-  console.log('[UI MODE] Routes registered: GET/PUT /api/settings/ui-mode, GET/PUT /api/settings/customer-language');
+  console.log('[UI MODE] Routes registered: GET/PUT /api/settings/ui-mode, GET/PUT /api/settings/simple-mode-config, GET/PUT /api/settings/customer-language');
 }
 
 export default router;
