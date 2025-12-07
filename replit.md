@@ -1,12 +1,7 @@
 # Clean Machine Auto Detail / ServicePro Platform
 
-## Canonical Roadmap
-**See `/docs/MASTER_PLAN_v3.7_SERVICEPRO.md`** for the complete architecture, roadmap, and delivery blueprint. This is the single source of truth for all ServicePro development.
-
 ## Overview
-ServicePro is a multi-tenant, white-label SaaS platform designed to transform service businesses into AI-powered web applications. It streamlines operations by providing comprehensive management for customers, appointments, loyalty programs, and payments. The platform integrates multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs) and leverages AI (OpenAI) and Google Workspace APIs for intelligent automation, aiming to enhance efficiency and customer engagement. The business vision is to provide a highly automated and scalable solution for service businesses, starting with Clean Machine Auto Detail.
-
-**Vision**: "The Shopify of service businesses."
+ServicePro is a multi-tenant, white-label SaaS platform that transforms service businesses into AI-powered web applications. It provides comprehensive management for customers, appointments, loyalty programs, and payments, integrating multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs) and leveraging AI (OpenAI) and Google Workspace APIs for intelligent automation. The platform aims to enhance efficiency and customer engagement for service businesses, with a vision to become "The Shopify of service businesses."
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
@@ -24,62 +19,28 @@ The system supports production-ready message attachments with Google Drive, TCPA
 An automated bootstrap system initializes new tenants with industry-specific AI behavior rules, SMS templates, and FAQ entries based on their selected industry, ensuring multi-tenant isolation and idempotent upsert logic across 22 supported industries.
 
 #### Telephony Mode System
-A comprehensive telephony routing system allows tenant owners to control how incoming calls are handled. Four modes are available:
-- **FORWARD_ALL_CALLS**: Calls ring the owner's personal phone directly without AI intervention. Requires a forwarding number.
-- **AI_FIRST** (default, recommended): AI or IVR answers first to screen calls, then forwards to human staff as needed.
-- **AI_ONLY**: AI handles all calls autonomously. Owners see bookings and messages but phones never ring.
-- **TEXT_ONLY_BUSINESS**: Calls are politely declined with a brief message; callers automatically receive an SMS with booking link. Optional voicemail backup available.
-
-Settings stored in `tenantPhoneConfig` table with `telephonyMode` and `allowVoicemailInTextOnly` columns. The canonical voice handler (`server/routes.twilioVoiceCanonical.ts`) branches on telephonyMode BEFORE consulting IVR settings. UI accessible via Phone Settings page (`/phone-settings`) with radio button selector and mode-specific options.
+A comprehensive telephony routing system allows tenant owners to control how incoming calls are handled, offering modes like `FORWARD_ALL_CALLS`, `AI_FIRST` (default), `AI_ONLY`, and `TEXT_ONLY_BUSINESS`. Settings are stored in the `tenantPhoneConfig` table, and the canonical voice handler branches based on the selected mode.
 
 #### Multi-Tenant Architecture
-The platform utilizes a comprehensive multi-tenant architecture with full tenant isolation across ~70+ database tables. An admin interface supports tenant CRUD operations and owner impersonation. A canonical voice entry-point provides standardized webhook handling for multi-tenant telephony. A Tenant Communication Routing Engine centralizes inbound communication routing for SMS, Voice, and IVR. An AI Voice Concierge entry point provides provider-agnostic AI voice infrastructure. Public sites are accessed via subdomain (`https://yoursite.serviceproapp.com/site/your-subdomain`) with global subdomain uniqueness and secure data isolation. Tenant isolation is enforced with a `tenantId` column on most tables.
+The platform utilizes a comprehensive multi-tenant architecture with full tenant isolation across ~70+ database tables. An admin interface supports tenant CRUD operations and owner impersonation. It includes a canonical voice entry-point, a Tenant Communication Routing Engine, and an AI Voice Concierge entry point. Public sites are accessed via subdomains with global uniqueness and secure data isolation.
 
 #### Customer Identity & Login
-Customer authentication is separate from staff/owner authentication, utilizing OTP (One-Time Password) via phone/email with rate limiting and session management. Customer profiles support `profilePictureUrl`, `customerNotes`, and notification preferences.
+Customer authentication is separate from staff/owner authentication, using OTP via phone/email with rate limiting and session management. Customer profiles support `profilePictureUrl`, `customerNotes`, and notification preferences.
 
 #### Billing & Usage Engine (SP-3)
-A comprehensive multi-tenant usage tracking and billing system with the following components:
-- **Usage Metrics Table**: `usage_metrics` tracks daily usage per tenant (SMS in/out, MMS in/out, voice minutes, emails, AI tokens in/out)
-- **Usage Rollups Table**: `usage_rollups_daily` stores aggregated daily data with estimated costs
-- **Usage Collector Service**: `server/services/usageCollectorService.ts` gathers usage data from various sources per tenant
-- **Usage Rollup Service**: `server/services/usageRollupService.ts` runs daily at midnight UTC to aggregate metrics
-- **Pricing Constants**: `shared/pricing/usagePricing.ts` defines per-unit costs (SMS: $0.0079, MMS: $0.02, Voice: $0.0085/min, Email: $0.00035, AI: $0.00001/$0.00003 per token)
-- **Tenant Dashboard**: `/admin/billing-usage` shows month-to-date usage, 30-day trends, cost breakdown, and daily history
-- **Root Admin Dashboard**: `/admin/system-usage` shows all tenant usage with charts, plan distribution, and manual rollup trigger
-- **API Routes**: `server/routes.billingUsage.ts` with endpoints for summary, daily, metrics, and root admin tenant overview
+A comprehensive multi-tenant usage tracking and billing system tracks daily usage (SMS, MMS, voice minutes, emails, AI tokens), aggregates this data daily, and estimates costs based on defined pricing constants. Tenant and root admin dashboards display usage, trends, and cost breakdowns.
 
 #### UI Experience Mode (SP-4)
-A Simple vs Advanced dashboard mode system that allows tenant owners to toggle between a streamlined interface and full-featured mode:
-- **Simple Mode**: Hides advanced features (Multi-Tenant Management, SMS Compliance, Port Recovery, IVR Configurator) for a cleaner, less overwhelming experience
-- **Advanced Mode**: Shows all navigation items and features for power users
-- **Storage**: `uiExperienceMode` column in `tenant_config` table (tenant-scoped)
-- **API Routes**: `server/routes.settings.uiMode.ts` with GET/PUT endpoints at `/api/settings/ui-mode`
-- **Frontend Context**: `client/src/contexts/UiExperienceContext.tsx` provides mode state to the application
-- **Navigation Filtering**: `client/src/config/navigationItems.ts` items with `visibility: 'advancedOnly'` are hidden in Simple mode
-- **Settings Page**: `/settings/ui-mode` provides a user-friendly toggle with descriptive cards
+A Simple vs Advanced dashboard mode system allows tenant owners to toggle between a streamlined interface and a full-featured mode, hiding advanced features for a cleaner experience in Simple Mode. The preference is stored in the `tenant_config` table.
 
 #### Usage & Billing Overview (SP-5)
-A read-only billing and usage page accessible to all tenant users:
-- **Settings Page**: `/settings/billing` shows plan info, 30-day usage snapshot, and billing portal access
-- **Plan Display**: Shows current plan name, tier (Free/Starter/Pro/Elite/Internal), and status (Trial/Active/Past Due/Suspended)
-- **Usage Meters**: 4 tiles showing SMS sent, voice minutes, emails sent, and AI requests for the last 30 days
-- **Billing Portal**: "Manage Payment & Invoices" button opens Stripe billing portal (if configured)
-- **API Routes**: `server/routes.settings.billingOverview.ts` with GET `/api/settings/billing/overview`
-- **Service Layer**: `server/services/usageOverviewService.ts` combines tenant plan info with 30-day usage metrics
-- **Hook**: `client/src/hooks/useBillingOverview.ts` for frontend data fetching
+A read-only billing and usage page accessible to all tenant users displays plan information, a 30-day usage snapshot, and access to the Stripe billing portal for payment management.
 
 #### Billing & Dunning Automation (SP-6)
-A comprehensive billing status and dunning system for handling payment failures and account suspension:
-- **Billing Status Fields**: `tenants` table extended with `billingStatusSince`, `cancelAtPeriodEnd`, `lastInvoiceStatus`, `lastInvoiceDueAt` columns
-- **Billing Status Service**: `server/services/billingStatusService.ts` maps Stripe subscription states to app billing statuses (trial, active, past_due, suspended, cancelled)
-- **Stripe Webhook Integration**: `invoice.payment_failed` and `invoice.payment_succeeded` handlers trigger billing status updates
-- **Cancel Subscription**: `POST /api/billing/cancel-at-period-end` toggles subscription cancellation at period end
-- **Past Due Warning Banner**: `client/src/components/billing/PastDueWarningBanner.tsx` displays yellow warning with link to update payment
-- **Account Suspended Screen**: `client/src/components/billing/AccountSuspendedScreen.tsx` full-screen lockout for suspended accounts
-- **Suspension Guard**: `client/src/components/AuthGuard.tsx` checks billing status and shows suspension screen except for `/settings/billing` and `/support` routes
-- **Billing Status Hook**: `client/src/hooks/useBillingStatus.ts` fetches and caches billing status from `/api/tenant/billing/status`
-- **Suspension Middleware**: `server/middleware/suspensionGuard.ts` blocks critical API routes for suspended tenants
+A comprehensive billing status and dunning system handles payment failures and account suspension. It tracks billing status via Stripe webhooks, provides warning banners for past-due accounts, and implements full-screen lockout for suspended accounts, with middleware to block critical API routes.
+
+#### Phase 2.3 Billing Automation
+A comprehensive SaaS billing automation system generates monthly invoices, tracks overdue payments, and automates dunning processes. It includes a `tenant_invoices` table, a `Stripe Billing Service` for invoice creation and charging, a `Monthly Invoice Generator` cron job, and a `Nightly Dunning` cron job for reminders and suspension. Admin pages provide billing info and control.
 
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business.
