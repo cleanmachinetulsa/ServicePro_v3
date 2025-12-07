@@ -1,0 +1,94 @@
+/**
+ * SP-11: Plan Usage Limits Configuration
+ * 
+ * Defines soft usage caps per plan tier for SMS, emails, AI requests, etc.
+ * These are informational limits shown in the UI - enforcement will be added later.
+ * 
+ * Usage: Used by the tenant billing page to show "X / Y" usage vs limit.
+ */
+
+export type PlanTier = 'free' | 'starter' | 'pro' | 'elite' | 'internal';
+
+export interface PlanLimits {
+  maxSmsPerMonth: number;
+  maxEmailsPerMonth: number;
+  maxAiRequestsPerMonth: number;
+  maxVoiceMinutesPerMonth: number;
+  baseMonthlyPrice: number;
+  displayName: string;
+  description: string;
+}
+
+export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
+  free: {
+    maxSmsPerMonth: 50,
+    maxEmailsPerMonth: 100,
+    maxAiRequestsPerMonth: 25,
+    maxVoiceMinutesPerMonth: 0,
+    baseMonthlyPrice: 0,
+    displayName: 'Free',
+    description: 'Basic CRM and website with watermark',
+  },
+  starter: {
+    maxSmsPerMonth: 500,
+    maxEmailsPerMonth: 1000,
+    maxAiRequestsPerMonth: 100,
+    maxVoiceMinutesPerMonth: 30,
+    baseMonthlyPrice: 29,
+    displayName: 'Starter',
+    description: 'Professional website and basic automation',
+  },
+  pro: {
+    maxSmsPerMonth: 2000,
+    maxEmailsPerMonth: 5000,
+    maxAiRequestsPerMonth: 500,
+    maxVoiceMinutesPerMonth: 120,
+    baseMonthlyPrice: 79,
+    displayName: 'Pro',
+    description: 'AI SMS agent, campaigns, and loyalty program',
+  },
+  elite: {
+    maxSmsPerMonth: 10000,
+    maxEmailsPerMonth: 25000,
+    maxAiRequestsPerMonth: 2500,
+    maxVoiceMinutesPerMonth: 500,
+    baseMonthlyPrice: 199,
+    displayName: 'Elite',
+    description: 'Full feature set including AI voice agent',
+  },
+  internal: {
+    maxSmsPerMonth: 999999,
+    maxEmailsPerMonth: 999999,
+    maxAiRequestsPerMonth: 999999,
+    maxVoiceMinutesPerMonth: 999999,
+    baseMonthlyPrice: 0,
+    displayName: 'Internal',
+    description: 'Family/friends at-cost tier - unlimited usage',
+  },
+};
+
+export function getPlanLimits(planTier: string): PlanLimits {
+  const tier = (planTier || 'starter').toLowerCase() as PlanTier;
+  return PLAN_LIMITS[tier] || PLAN_LIMITS.starter;
+}
+
+export function getUsagePercentage(current: number, limit: number): number {
+  if (limit <= 0 || limit >= 999999) return 0;
+  return Math.min(100, Math.round((current / limit) * 100));
+}
+
+export function isNearLimit(current: number, limit: number, threshold: number = 80): boolean {
+  if (limit >= 999999) return false;
+  return getUsagePercentage(current, limit) >= threshold;
+}
+
+export function isOverLimit(current: number, limit: number): boolean {
+  if (limit >= 999999) return false;
+  return current >= limit;
+}
+
+export function formatLimit(limit: number): string {
+  if (limit >= 999999) return 'Unlimited';
+  if (limit >= 1000) return `${(limit / 1000).toFixed(0)}k`;
+  return limit.toString();
+}

@@ -1,0 +1,255 @@
+SP-14 DROP-IN – Simple vs Advanced Dashboard Mode
+
+Now the **UI mode toggle**. Paste this as a separate message to Replit once SP-13 is done or queued:
+
+```text
+You are working on the ServicePro_v3 multi-tenant SaaS repo for Clean Machine Auto Detail (root tenant).
+
+### GOAL: SP-14 – Simple vs Advanced Dashboard Mode
+
+We want a **UI Mode toggle** that lets non-technical users run ServicePro in a “Simple” mode (minimal options, plain language) while power users can switch to “Advanced” (full controls).
+
+Key ideas:
+- Default to **Simple** for new tenants.
+- Mode is remembered per user (not global across all tenants).
+- Simple mode hides advanced nav items & panels but does NOT remove features entirely.
+- Implementation should be lightweight: no whole new dashboards, just conditional rendering + smart grouping.
+
+---
+
+## STEP 1 – Decide where to store UI mode
+
+1. Inspect the repo for user/tenant preference models:
+   - Search for:
+     - `userPreferences`, `settings`, `uiMode`, `locale`, etc.
+   - See how user-specific settings are stored.
+
+2. If something appropriate exists:
+   - Extend it with:
+     - `uiMode: 'simple' | 'advanced'` (default `'simple'`).
+
+3. If nothing exists:
+   - Add a small preferences table or field, e.g.:
+     - Add `uiMode` column to the `users` table or create `user_preferences` keyed by userId.
+
+4. Wire it into the existing auth/me endpoint:
+   - The frontend should be able to see the current user’s `uiMode` on login.
+
+---
+
+## STEP 2 – Add backend endpoints for changing UI mode
+
+Create a small controller to read/update UI mode:
+
+- `GET /api/me/preferences`
+  - Returns at least `{ uiMode: 'simple' | 'advanced' }`.
+
+- `POST /api/me/preferences/ui-mode`
+  - Body: `{ uiMode: 'simple' | 'advanced' }` (validated with Zod).
+  - Updates the current user’s mode in the DB.
+
+Both must:
+- Require auth.
+- Use the existing user identification method (from the session/JWT auth already in place).
+
+---
+
+## STEP 3 – Frontend global UI mode context
+
+We want a central source of truth on the client.
+
+1. Create a React context/hook, e.g. in `client/src/context/UiModeContext.tsx`:
+
+   - Holds:
+     - `uiMode` (`'simple' | 'advanced'`).
+     - `setUiMode(mode)` that:
+       - Updates local state.
+       - Calls the `/api/me/preferences/ui-mode` endpoint to persist.
+   - Loads initial value from:
+     - `/api/me` or `/api/me/preferences` on app bootstrap.
+
+2. Wrap the main app shell (where routing/layout is defined) with this provider so that all children can access `uiMode`.
+
+3. Expose a `useUiMode()` hook.
+
+---
+
+## STEP 4 – Add a visible toggle in the app shell
+
+We want something easy to find but not annoying.
+
+1. In your main app header or user menu (where avatar or settings lives), add a small toggle:
+
+   - Label: `Mode: Simple / Advanced` (or icon + tooltip).
+   - In simple version:
+     - Two segmented buttons or a switch:
+       - `[ Simple ]   [ Advanced ]`
+   - When changed:
+     - Immediately updates `uiMode` in context and persists to backend.
+
+2. Make sure the toggle is visible on all main admin screens but not on public pages.
+
+---
+
+## STEP 5 – Tag navigation items as advanced-only
+
+We want certain navigation items hidden in Simple mode.
+
+1. Open `client/src/config/navigationItems.ts` (or equivalent) that defines the sidebar/nav tree.
+
+2. For each nav item, add an optional flag, e.g.:
+
+   ```ts
+   interface NavItem {
+     // ...
+     advancedOnly?: boolean;
+   }
+Mark obviously advanced / overwhelming sections as advancedOnly: true, for example (adjust based on actual file):
+
+Deep telephony / A2P internals.
+
+Industry pack / template editor internals.
+
+Certain low-level automation or experimental features.
+
+Anything clearly “pro level” that a non-technical owner doesn’t need day 1.
+
+Update the sidebar rendering component to:
+
+Read uiMode from useUiMode().
+
+If uiMode === 'simple', filter out items where advancedOnly === true.
+
+Ensure essential features always show in both modes:
+
+Messages / Night Ops.
+
+Customers.
+
+Services.
+
+Booking / schedule.
+
+Loyalty, Rewards, Gift Cards.
+
+Billing & Usage.
+
+Help & Support.
+
+STEP 6 – Simplified views in Simple mode
+Beyond hiding nav entries, we want some pages to be less noisy in Simple mode.
+
+Pick 2–3 high-traffic pages and add Simple mode tweaks:
+
+Dashboard / Home
+
+In Simple mode:
+
+Show a high-level summary (today’s bookings, unread messages, upcoming appointments).
+
+Hide heavy analytics widgets or advanced filters.
+
+In Advanced mode:
+
+Show all the detailed cards (advanced stats, routing, deep logs, etc.).
+
+Settings Home or key Settings pages
+
+In Simple mode:
+
+Present a “Quick Start” style layout:
+
+Sections like “Business Basics”, “Phone & SMS”, “Website & Online Booking”.
+
+Each with 1–2 core settings and a “More options (Advanced)” link.
+
+Hide esoteric toggles, debug settings, and rarely changed fields.
+
+In Advanced mode:
+
+Show the full existing layout.
+
+Implementation approach:
+
+Use uiMode in these pages to wrap advanced panels:
+
+tsx
+Copy code
+const { uiMode } = useUiMode();
+
+if (uiMode === 'simple') {
+  // show compact layout
+} else {
+  // show full layout
+}
+Keep code DRY by using shared components where possible.
+
+STEP 7 – Copy & micro-UX
+The Simple mode should avoid jargon.
+
+For Simple mode only, adjust some key labels / helper texts to be more human:
+
+Example:
+
+“A2P Campaign Registration” → “Texting Registration (required by phone carriers)”.
+
+“Telephony modes” → “How calls & texts are handled”.
+
+Implement this by:
+
+Conditional text based on uiMode.
+
+Or using small helper functions that accept uiMode and return the appropriate label.
+
+Do not change every string; focus on a handful in the most important places (phone/SMS, booking).
+
+STEP 8 – Tests & sanity checks
+Confirm:
+
+New users default to uiMode = 'simple'.
+
+Toggling to Advanced and refreshing preserves the mode.
+
+Simple mode:
+
+Sidebar hides advanced-only items.
+
+Dashboard / Settings simplify as expected.
+
+Advanced mode:
+
+Everything visible as before.
+
+Make sure:
+
+No 404s appear when switching modes.
+
+All API calls are still auth’d and tenant-scoped correctly.
+
+STEP 9 – Docs
+Update replit.md and/or MASTER_PLAN v3.7 with a short section:
+
+“SP-14 Simple vs Advanced UI Mode”
+
+Where the toggle lives.
+
+Which sections are hidden or simplified in Simple mode.
+
+How to extend advancedOnly to new nav items in future.
+
+Guardrails
+Do NOT create separate routing trees per mode; just conditionally render nav + sections.
+
+Do NOT accidentally hide critical things like Billing & Usage, Support, or Messages in Simple mode.
+
+Keep mode preference strictly per user, not global per tenant.
+
+Preserve existing visual style (use existing components, gradients, spacing).
+
+When finished, summarize:
+
+Where uiMode is stored.
+
+Which nav items are advanced-only.
+
+Which pages behave differently in Simple vs Advanced.

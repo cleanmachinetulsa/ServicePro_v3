@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { useBillingOverview } from '@/hooks/useBillingOverview';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,8 +23,20 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  CalendarOff
+  CalendarOff,
+  Calendar,
+  TrendingUp
 } from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from 'recharts';
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle }> = {
   trial: { label: 'Trial', variant: 'secondary', icon: Clock },
@@ -33,6 +46,68 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   cancelled: { label: 'Cancelled', variant: 'outline', icon: XCircle },
   unknown: { label: 'Unknown', variant: 'outline', icon: AlertCircle },
 };
+
+function formatLimit(limit: number): string {
+  if (limit >= 999999) return 'Unlimited';
+  if (limit >= 1000) return `${(limit / 1000).toFixed(0)}k`;
+  return limit.toString();
+}
+
+function getUsagePercentage(current: number, limit: number): number {
+  if (limit <= 0 || limit >= 999999) return 0;
+  return Math.min(100, Math.round((current / limit) * 100));
+}
+
+function getProgressColor(percentage: number): string {
+  if (percentage >= 90) return 'bg-red-500';
+  if (percentage >= 75) return 'bg-amber-500';
+  return 'bg-green-500';
+}
+
+interface UsageCardProps {
+  icon: typeof MessageSquare;
+  label: string;
+  current: number;
+  limit: number;
+  gradientFrom: string;
+  gradientTo: string;
+  testId: string;
+}
+
+function UsageCard({ icon: Icon, label, current, limit, gradientFrom, gradientTo, testId }: UsageCardProps) {
+  const percentage = getUsagePercentage(current, limit);
+  const isUnlimited = limit >= 999999;
+  
+  return (
+    <Card data-testid={testId}>
+      <CardContent className="pt-6">
+        <div className="flex flex-col items-center text-center">
+          <div className={`p-3 bg-gradient-to-br ${gradientFrom} ${gradientTo} rounded-full mb-3`}>
+            <Icon className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-2xl font-bold text-gray-900 dark:text-white">
+            {current.toLocaleString()}
+          </span>
+          <span className="text-xs text-muted-foreground mb-2">
+            {isUnlimited ? 'Unlimited' : `of ${formatLimit(limit)}`}
+          </span>
+          {!isUnlimited && (
+            <div className="w-full mt-2">
+              <Progress 
+                value={percentage} 
+                className="h-2"
+              />
+              <span className="text-xs text-muted-foreground mt-1 block">
+                {percentage}% used
+              </span>
+            </div>
+          )}
+          <span className="text-sm text-muted-foreground mt-1">{label}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function BillingUsagePage() {
   const { data: overview, isLoading, error } = useBillingOverview();
@@ -101,19 +176,20 @@ export default function BillingUsagePage() {
 
   if (isLoading) {
     return (
-      <AppShell title="Billing & Usage">
-        <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <AppShell title="Usage & Billing">
+        <div className="p-6 max-w-5xl mx-auto space-y-6">
           <Skeleton className="h-8 w-48" />
           <div className="grid gap-4 md:grid-cols-2">
             <Skeleton className="h-48 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
           <div className="grid gap-4 md:grid-cols-4">
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-40 w-full" />
           </div>
+          <Skeleton className="h-64 w-full" />
         </div>
       </AppShell>
     );
@@ -121,8 +197,8 @@ export default function BillingUsagePage() {
 
   if (error || !overview) {
     return (
-      <AppShell title="Billing & Usage">
-        <div className="p-6 max-w-4xl mx-auto">
+      <AppShell title="Usage & Billing">
+        <div className="p-6 max-w-5xl mx-auto">
           <Card className="border-destructive bg-destructive/5">
             <CardContent className="flex items-center gap-4 p-6">
               <AlertCircle className="h-8 w-8 text-destructive" />
@@ -139,17 +215,35 @@ export default function BillingUsagePage() {
 
   const status = statusConfig[overview.status] || statusConfig.unknown;
   const StatusIcon = status.icon;
+  const planLimits = overview.planLimits;
+  const currentPeriod = overview.currentPeriod;
+
+  const chartData = (overview.dailyUsage || []).map(day => ({
+    date: new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    SMS: day.smsCount,
+    AI: day.aiRequests,
+    Email: day.emailCount,
+    Voice: day.voiceMinutes,
+  }));
 
   return (
-    <AppShell title="Billing & Usage">
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-billing-title">
-            Billing & Usage
-          </h2>
-          <p className="text-muted-foreground mt-1">
-            View your current plan and usage summary.
-          </p>
+    <AppShell title="Usage & Billing">
+      <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-billing-title">
+              Usage & Billing
+            </h2>
+            <p className="text-muted-foreground mt-1">
+              View your current plan and usage summary.
+            </p>
+          </div>
+          {currentPeriod && (
+            <Badge variant="outline" className="flex items-center gap-2 px-3 py-1.5" data-testid="badge-billing-period">
+              <Calendar className="h-4 w-4" />
+              Billing Period: {currentPeriod.label}
+            </Badge>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -167,10 +261,18 @@ export default function BillingUsagePage() {
               <CardTitle className="mt-3" data-testid="text-plan-name">{overview.planName}</CardTitle>
               <CardDescription>
                 {overview.planTierLabel} tier
+                {planLimits && planLimits.baseMonthlyPrice > 0 && (
+                  <span className="ml-2 text-sm font-medium">
+                    ${planLimits.baseMonthlyPrice}/mo
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
+                {planLimits && (
+                  <p className="text-xs">{planLimits.description}</p>
+                )}
                 {overview.trialEndsAt && (
                   <p>
                     <span className="font-medium">Trial ends:</span> {new Date(overview.trialEndsAt).toLocaleDateString()}
@@ -179,11 +281,6 @@ export default function BillingUsagePage() {
                 {overview.nextRenewalAt && (
                   <p>
                     <span className="font-medium">Next renewal:</span> {new Date(overview.nextRenewalAt).toLocaleDateString()}
-                  </p>
-                )}
-                {!overview.trialEndsAt && !overview.nextRenewalAt && (
-                  <p className="text-muted-foreground italic">
-                    No billing cycle configured
                   </p>
                 )}
               </div>
@@ -286,65 +383,54 @@ export default function BillingUsagePage() {
         )}
 
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Usage Summary (Last 30 Days)
-          </h3>
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Current Period Usage
+            </h3>
+            {currentPeriod && (
+              <span className="text-sm text-muted-foreground">
+                ({currentPeriod.startDate} - {currentPeriod.endDate})
+              </span>
+            )}
+          </div>
           <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-            <Card data-testid="card-usage-sms">
-              <CardContent className="pt-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full mb-3">
-                    <MessageSquare className="h-5 w-5 text-white" />
-                  </div>
-                  <span className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-sms-count">
-                    {overview.usage.smsSentLast30d.toLocaleString()}
-                  </span>
-                  <span className="text-sm text-muted-foreground">SMS Sent</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card data-testid="card-usage-voice">
-              <CardContent className="pt-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-3 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full mb-3">
-                    <Phone className="h-5 w-5 text-white" />
-                  </div>
-                  <span className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-voice-minutes">
-                    {overview.usage.voiceMinutesLast30d.toLocaleString()}
-                  </span>
-                  <span className="text-sm text-muted-foreground">Voice Minutes</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card data-testid="card-usage-email">
-              <CardContent className="pt-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-3 bg-gradient-to-br from-purple-500 to-violet-600 rounded-full mb-3">
-                    <Mail className="h-5 w-5 text-white" />
-                  </div>
-                  <span className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-email-count">
-                    {overview.usage.emailsSentLast30d.toLocaleString()}
-                  </span>
-                  <span className="text-sm text-muted-foreground">Emails Sent</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card data-testid="card-usage-ai">
-              <CardContent className="pt-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="p-3 bg-gradient-to-br from-orange-500 to-amber-600 rounded-full mb-3">
-                    <Bot className="h-5 w-5 text-white" />
-                  </div>
-                  <span className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-ai-requests">
-                    {overview.usage.aiRequestsLast30d.toLocaleString()}
-                  </span>
-                  <span className="text-sm text-muted-foreground">AI Requests</span>
-                </div>
-              </CardContent>
-            </Card>
+            <UsageCard
+              icon={MessageSquare}
+              label="SMS Messages"
+              current={overview.usage.smsSentLast30d}
+              limit={planLimits?.maxSmsPerMonth || 999999}
+              gradientFrom="from-green-500"
+              gradientTo="to-emerald-600"
+              testId="card-usage-sms"
+            />
+            <UsageCard
+              icon={Phone}
+              label="Voice Minutes"
+              current={overview.usage.voiceMinutesLast30d}
+              limit={planLimits?.maxVoiceMinutesPerMonth || 999999}
+              gradientFrom="from-blue-500"
+              gradientTo="to-cyan-600"
+              testId="card-usage-voice"
+            />
+            <UsageCard
+              icon={Mail}
+              label="Emails Sent"
+              current={overview.usage.emailsSentLast30d}
+              limit={planLimits?.maxEmailsPerMonth || 999999}
+              gradientFrom="from-purple-500"
+              gradientTo="to-violet-600"
+              testId="card-usage-email"
+            />
+            <UsageCard
+              icon={Bot}
+              label="AI Requests"
+              current={overview.usage.aiRequestsLast30d}
+              limit={planLimits?.maxAiRequestsPerMonth || 999999}
+              gradientFrom="from-orange-500"
+              gradientTo="to-amber-600"
+              testId="card-usage-ai"
+            />
           </div>
 
           {overview.estimatedCostLast30d > 0 && (
@@ -352,7 +438,7 @@ export default function BillingUsagePage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Estimated Usage Cost (30 days)</p>
+                    <p className="text-sm text-muted-foreground">Estimated Usage Cost (This Period)</p>
                     <p className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-estimated-cost">
                       ${overview.estimatedCostLast30d.toFixed(2)}
                     </p>
@@ -365,6 +451,64 @@ export default function BillingUsagePage() {
             </Card>
           )}
         </div>
+
+        {chartData.length > 0 && (
+          <Card data-testid="card-usage-chart">
+            <CardHeader>
+              <CardTitle className="text-lg">Daily Usage Trend (Last 30 Days)</CardTitle>
+              <CardDescription>
+                Track your usage patterns over time
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 12 }}
+                      className="text-muted-foreground"
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 12 }}
+                      className="text-muted-foreground"
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="SMS" 
+                      stroke="#22c55e" 
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="AI" 
+                      stroke="#f97316" 
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="Email" 
+                      stroke="#8b5cf6" 
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AppShell>
   );
