@@ -1,7 +1,7 @@
 # Clean Machine Auto Detail / ServicePro Platform
 
 ## Overview
-ServicePro is a multi-tenant, white-label SaaS platform designed to transform service businesses into AI-powered web applications. It provides comprehensive management for customers, appointments, loyalty programs, and payments, integrating multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs) and leveraging AI (OpenAI) and Google Workspace APIs for intelligent automation. The platform aims to enhance efficiency and customer engagement, with a strategic vision to become "The Shopify of service businesses."
+ServicePro is a multi-tenant, white-label SaaS platform that transforms service businesses into AI-powered web applications. It offers comprehensive management for customers, appointments, loyalty programs, and payments, integrating multi-channel communication (SMS, web chat, email, Facebook Messenger, Instagram DMs). Leveraging AI (OpenAI) and Google Workspace APIs, the platform automates tasks, enhances efficiency, and improves customer engagement. The strategic vision is to become "The Shopify of service businesses."
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
@@ -10,10 +10,10 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 ## System Architecture
 
 ### UI/UX Decisions
-The application features a modern, mobile-responsive 3-column layout built with shadcn/ui, including a hexagonal shield logo, visual channel indicators, gradient backgrounds, and gamification elements. PWA enhancements provide branded install prompts, app shortcuts, badge notifications, and offline mode. The public website features a glassmorphism design with gradients, animations, industry-specific content, and mobile responsiveness. SEO components dynamically set titles and meta tags.
+The application features a modern, mobile-responsive 3-column layout built with shadcn/ui, incorporating a hexagonal shield logo, visual channel indicators, and gradient backgrounds. PWA enhancements provide branded install prompts, app shortcuts, badge notifications, and offline mode. The public website utilizes a glassmorphism design with gradients, animations, and mobile responsiveness, including dynamic SEO components.
 
 ### Technical Implementations
-The system supports production-ready message attachments with Google Drive, TCPA/CTIA-compliant SMS consent, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Twilio Voice integration provides voicemail, missed call auto-SMS, and comprehensive call logging. Security is enforced through Twilio webhook verification, E.164 normalization, request validation, and RBAC middleware. An iMessage-quality messaging suite offers read receipts, typing indicators, reactions, and search. The platform includes service limits, maintenance mode, dynamic banner management, and auto-failover protection. A branded invoice email system offers professional, mobile-responsive invoices with upsell recommendations and HMAC-signed payment links. A centralized SMS template system allows dynamic editing with versioning and variable interpolation. Smart address validation with interactive map confirmation uses Google Maps. A comprehensive referral system with 9 reward types is implemented, including admin tools for code generation, tracking, and SMS invites. A dual phone line switching system supports two numbers with Google Voice-style UI and Twilio routing. A QR Code Security System with HMAC-SHA256 tokens is used for secure customer identification. Customer intelligence includes returning customer tracking and a GPT personalization service. Cash payment tracking includes manual entry and daily deposit widgets. A customizable dashboard system with drag-and-drop widgets is implemented for personalized user layouts. The platform also includes a Phone History Import Engine, Migration Wizard, and Parser Tool Hook for importing customer data, conversations, and messages, with an optional "Import Your Phone History" step in the Setup Wizard. A usage and billing foundation provides visibility into current usage against plan limits for both tenant owners and root admins, with a tenant-facing page for Stripe integration, automated dunning, and server-side proxy for secure voicemail playback. A Simple vs Advanced UI Mode system provides per-user interface complexity preferences with a visible toggle. A comprehensive usage metering system records all billable events (SMS, AI, email, voice) to a centralized ledger.
+The system supports production-ready message attachments with Google Drive, TCPA/CTIA-compliant SMS consent, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Twilio Voice integration provides voicemail, missed call auto-SMS, and call logging. Security is enforced through Twilio webhook verification, E.164 normalization, request validation, and RBAC middleware. An iMessage-quality messaging suite offers read receipts, typing indicators, reactions, and search. The platform includes service limits, maintenance mode, dynamic banner management, and auto-failover protection. A branded invoice email system offers professional, mobile-responsive invoices with upsell recommendations and HMAC-signed payment links. A centralized SMS template system allows dynamic editing with versioning and variable interpolation. Smart address validation with interactive map confirmation uses Google Maps. A comprehensive referral system with 9 reward types is implemented, including admin tools for code generation, tracking, and SMS invites. A dual phone line switching system supports two numbers with Google Voice-style UI and Twilio routing. A QR Code Security System with HMAC-SHA256 tokens is used for secure customer identification. Customer intelligence includes returning customer tracking and a GPT personalization service. Cash payment tracking includes manual entry and daily deposit widgets. A customizable dashboard system with drag-and-drop widgets is implemented for personalized user layouts. The platform also includes a Phone History Import Engine, Migration Wizard, and Parser Tool Hook for importing customer data, conversations, and messages. A usage and billing foundation provides visibility into current usage against plan limits for both tenant owners and root admins, with a tenant-facing page for Stripe integration, automated dunning, and server-side proxy for secure voicemail playback. A Simple vs Advanced UI Mode system provides per-user interface complexity preferences with a visible toggle. A comprehensive usage metering system records all billable events (SMS, AI, email, voice) to a centralized ledger.
 
 ### Feature Specifications
 Key features include multi-platform messaging (Facebook Messenger, Instagram DMs), real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business. The platform also supports custom domain routing, with specific redirection logic for `cleanmachinetulsa.com` (which must always render `client/src/pages/home.tsx`), and includes HTTPS and www-to-root canonical redirects. Multi-tenant custom domain management is foundational for future use. The platform also includes an add-ons system to extend base plans with optional paid features and a demo mode system for a safe sandbox environment. A comprehensive usage metering system (v2) tracks usage with tier-based caps and cost estimates. An AI-powered parser integration analyzes phone history for onboarding knowledge extraction.
@@ -44,94 +44,3 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
-
-## SP-18 Parser Integration v1
-
-AI-powered phone history analysis and knowledge extraction for onboarding:
-
-**Files**:
-- `shared/schema.ts`: Extended `phoneHistoryImports` table with `parserConfig`, `knowledgeJson`, `analyticsJson`, `appliedAt`, `appliedFlags` fields
-- `server/services/parserIntegrationService.ts`: External Parser API proxy, import record creation, result storage
-- `server/services/parserApplyService.ts`: Apply extracted services, FAQs, and tone profile to tenant config
-- `server/services/knowledgeOnboardingService.ts`: Build complete AI setup from Knowledge JSON
-- `server/routes/parserRoutes.ts`: API routes at /api/onboarding/parser/*
-- `client/src/components/ParserImportStep.tsx`: Setup Wizard component for file upload, analysis, and AI setup
-
-**API Routes**:
-- POST /api/onboarding/parser/run: Upload files and run parser analysis
-- POST /api/onboarding/parser/apply: Apply extracted knowledge to tenant
-- POST /api/onboarding/parser/build-setup: Build complete AI setup from knowledge (services, FAQs, persona)
-- GET /api/onboarding/parser/latest: Get most recent parser import
-- GET /api/onboarding/parser/import/:id: Get specific import record
-- GET /api/onboarding/parser/preview/:id: Get preview of knowledge import
-- GET /api/onboarding/parser/history: Get import history
-- GET /api/onboarding/parser/health: Check parser API connectivity
-
-**Parser Config Options**:
-- businessName, businessPhone, threadGapMinutes
-- includeFaqs, includeToneProfile, includeServices, includeAnalytics
-
-**Build Setup Options**:
-- applyServices: Creates services from extracted service mentions
-- applyFaqs: Creates faq_entries from extracted FAQs
-- applyPersona: Configures AI behavior rules and agent preferences from style profile
-- applyProfile: Extracts business profile hints (name, tagline, industry)
-
-**Environment Variables**:
-- PARSER_API_URL: External parser service URL (defaults to https://sms-parse-output-cleanmachinetul.replit.app)
-
-**Flow**:
-1. User uploads SMS export files (HTML, CSV, ZIP, JSON)
-2. Files sent to external parser API for analysis
-3. Parser returns structured knowledgeJson with services, FAQs, tone profile
-4. User reviews preview (service count, FAQ count, tone snippets)
-5. User clicks "Build My Setup" to apply all knowledge
-6. System creates services, FAQs, configures AI persona, and shows summary
-
-## SP-PARSER-3 Tenant Protection
-
-Clean Machine tenant protection prevents experimental parser tools from affecting production data:
-
-**Key Files**:
-- `server/services/tenantGuards.ts`: `isCleanMachineTenant()` and `isCleanMachineTenantFromRequest()` functions
-- `server/routes/parserRoutes.ts`: 403 guards on /run, /apply, /build-setup routes
-- `client/src/pages/admin/ParserHistory.tsx`: Admin page for viewing import history
-- `client/src/components/ParserImportStep.tsx`: Protected tenant UI with status pill
-
-**Detection Logic**:
-- Matches tenant ID, slug, or name against: root, cleanmachine, clean-machine, clean machine, clean machine auto detail, cleanmachinetulsa
-- Uses `isCleanMachineTenantFromRequest(req)` to check all identification paths (tenantId, tenantSlug, tenantName, req.tenant)
-- Guard checks execute BEFORE tenantId validation to prevent bypass via slug/name-only requests
-
-**API Routes** (Protected):
-- GET /api/onboarding/parser/status: Returns status pill (online/degraded/offline) + `isProtectedTenant` flag
-- GET /api/onboarding/parser/admin/history: Enhanced import history with service/FAQ/persona counts
-
-**UI Behavior**:
-- Protected tenants see "Protected Tenant" card with link to history page
-- Status pill shows parser service health (online/degraded/offline)
-- Non-protected tenants can use full parser functionality
-
-**Navigation**:
-- "Parser History" added to Multi-Tenant Management section (advancedOnly, Owner badge)
-
-## CRITICAL: Clean Machine Domain Routing (DO NOT CHANGE)
-
-**cleanmachinetulsa.com MUST always render the custom HomePage, NEVER the auto-generated PublicSite.**
-
-| Domain | Component | File | Description |
-|--------|-----------|------|-------------|
-| cleanmachinetulsa.com | `HomePage` | `client/src/pages/home.tsx` | Custom hand-built homepage with 7 templates |
-| All other domains | `LandingPage` | `client/src/pages/LandingPage.tsx` | ServicePro marketing page |
-
-**Key Files:**
-- `client/src/components/RootDomainHandler.tsx` - Controls domain-based routing (contains critical comments)
-- `client/src/pages/home.tsx` - The Clean Machine homepage with template system
-- `client/src/pages/templates/` - 7 template options (CurrentTemplate, LuminousConcierge, etc.)
-- `/admin/homepage-editor` - Admin page to edit homepage content and select templates
-
-**NEVER route cleanmachinetulsa.com to:**
-- `/site/cleanmachine` (auto-generated PublicSite)
-- `PublicSite.tsx` (tenant auto-generator)
-
-This was established after the CM-DNS work accidentally routed the domain to PublicSite instead of the custom homepage.
