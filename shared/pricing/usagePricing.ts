@@ -26,6 +26,7 @@ export type UsageSource = 'twilio' | 'sendgrid' | 'openai' | 'internal';
 export type UsageDirection = 'inbound' | 'outbound';
 export type UsageFeature = 
   | 'ai_sms' 
+  | 'ai_chat'
   | 'ivr' 
   | 'broadcast' 
   | 'portal_email' 

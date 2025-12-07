@@ -14,6 +14,7 @@ import {
 import { conversationState } from "./conversationState";
 import { requestDamagePhotos } from "./damageAssessment";
 import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPersonalizationService";
+import { recordAiUsage } from "./services/usageEventService";
 
 // SMS Agent Model Configuration
 // GPT-5.1 upgrade requested - centralized config for easy switching
@@ -700,6 +701,10 @@ export async function generateAIResponse(
                 iteration: iterations,
               }
             );
+            
+            if (tenantId) {
+              await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, SMS_AGENT_MODEL);
+            }
           } catch (err) {
             console.error('[SMS AI USAGE LOG] Error:', err);
           }
@@ -1069,6 +1074,10 @@ export async function generateAIResponse(
             output_tokens: outputTokens,
           }
         );
+        
+        if (tenantId) {
+          await recordAiUsage(tenantId, 'ai_chat', inputTokens, outputTokens, SMS_AGENT_MODEL);
+        }
       } catch (err) {
         console.error('[OPENAI USAGE LOG] Error:', err);
       }
