@@ -459,4 +459,106 @@ export async function getAllTenantsBillingInfo(): Promise<{
   return result;
 }
 
+/**
+ * SP-20: Add-On Billing Integration
+ * 
+ * Attach an add-on price to a tenant's subscription
+ */
+export async function attachAddonPriceToSubscription(
+  subscriptionId: string,
+  priceId: string,
+  addonKey: string,
+  quantity: number = 1
+): Promise<{ success: boolean; subscriptionItemId?: string; error?: string }> {
+  if (!stripe) {
+    console.warn('[STRIPE BILLING] Stripe not configured - cannot attach add-on');
+    return { success: false, error: 'Stripe not configured' };
+  }
+
+  try {
+    const subscriptionItem = await stripe.subscriptionItems.create({
+      subscription: subscriptionId,
+      price: priceId,
+      quantity: quantity,
+      metadata: {
+        addonKey: addonKey,
+        type: 'addon',
+      },
+    });
+
+    console.log(`[STRIPE BILLING] Attached add-on ${addonKey} to subscription ${subscriptionId}: item ${subscriptionItem.id}`);
+    
+    return { 
+      success: true, 
+      subscriptionItemId: subscriptionItem.id 
+    };
+  } catch (error: any) {
+    console.error(`[STRIPE BILLING] Failed to attach add-on ${addonKey}:`, error?.message || error);
+    return { 
+      success: false, 
+      error: error?.message || 'Failed to attach add-on to subscription' 
+    };
+  }
+}
+
+/**
+ * SP-20: Detach an add-on price from a tenant's subscription
+ */
+export async function detachAddonPriceFromSubscription(
+  subscriptionItemId: string,
+  addonKey: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!stripe) {
+    console.warn('[STRIPE BILLING] Stripe not configured - cannot detach add-on');
+    return { success: false, error: 'Stripe not configured' };
+  }
+
+  try {
+    await stripe.subscriptionItems.del(subscriptionItemId, {
+      proration_behavior: 'create_prorations',
+    });
+
+    console.log(`[STRIPE BILLING] Detached add-on ${addonKey} subscription item ${subscriptionItemId}`);
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[STRIPE BILLING] Failed to detach add-on ${addonKey}:`, error?.message || error);
+    return { 
+      success: false, 
+      error: error?.message || 'Failed to detach add-on from subscription' 
+    };
+  }
+}
+
+/**
+ * SP-20: Update add-on quantity on a subscription
+ */
+export async function updateAddonQuantity(
+  subscriptionItemId: string,
+  quantity: number,
+  addonKey: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!stripe) {
+    console.warn('[STRIPE BILLING] Stripe not configured - cannot update add-on');
+    return { success: false, error: 'Stripe not configured' };
+  }
+
+  try {
+    await stripe.subscriptionItems.update(subscriptionItemId, {
+      quantity: quantity,
+      proration_behavior: 'create_prorations',
+    });
+
+    console.log(`[STRIPE BILLING] Updated add-on ${addonKey} quantity to ${quantity}`);
+    
+    return { success: true };
+  } catch (error: any) {
+    console.error(`[STRIPE BILLING] Failed to update add-on ${addonKey} quantity:`, error?.message || error);
+    return { 
+      success: false, 
+      error: error?.message || 'Failed to update add-on quantity' 
+    };
+  }
+}
+
 console.log(`[STRIPE BILLING SERVICE] Initialized - Stripe ${STRIPE_ENABLED ? 'enabled' : 'disabled'}`);

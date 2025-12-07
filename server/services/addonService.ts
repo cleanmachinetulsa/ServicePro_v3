@@ -228,3 +228,29 @@ export async function getAddonFeatureFlags(tenantId: string): Promise<string[]> 
   
   return Array.from(flags);
 }
+
+/**
+ * SP-20: Set the Stripe subscription item ID for a tenant add-on
+ * Uses externalSubscriptionId field to store Stripe subscription item ID
+ */
+export async function setAddonStripeSubscriptionItemId(
+  tenantId: string,
+  addonKey: AddonKey,
+  stripeSubscriptionItemId: string
+): Promise<void> {
+  const rootDb = wrapTenantDb(db, 'root');
+  
+  await rootDb
+    .update(tenantAddons)
+    .set({ 
+      externalSubscriptionId: stripeSubscriptionItemId,
+    })
+    .where(
+      and(
+        eq(tenantAddons.tenantId, tenantId),
+        eq(tenantAddons.addonKey, addonKey)
+      )
+    );
+  
+  console.log(`[ADDON SERVICE] Set Stripe subscription item ID for ${addonKey} on tenant ${tenantId}: ${stripeSubscriptionItemId}`);
+}
