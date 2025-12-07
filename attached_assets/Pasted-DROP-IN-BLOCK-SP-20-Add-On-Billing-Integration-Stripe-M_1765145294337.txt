@@ -1,0 +1,308 @@
+DROP-IN BLOCK: SP-20 – Add-On Billing Integration (Stripe)
+
+MASTER PLAN v4 → Phase 2.4 Add-On Marketplace (billing side)
+
+0. Context (for the agent)
+
+You already have:
+
+Plans / tiers wired to Stripe subscriptions (SP-19 Billing v2).
+
+Usage Engine v1 (SMS/MMS/Voice/Email/AI tokens).
+
+A concept of features and tier gating from the pricing system (Phase 7B etc.).
+
+SP-20 adds:
+
+A first-class Add-On model (per-tenant).
+
+Stripe billing integration for those add-ons.
+
+A simple “Add-Ons” page in the tenant dashboard where owners can toggle extras on/off.
+
+Enforcement so that features only unlock when the add-on is active & billing is healthy.
+
+1. Goals
+
+Model add-ons as structured products, not one-off hacks:
+
+E.g. “Extra Phone Number”, “AI Power Pack”, “Priority Support”, “Extra Seats”, etc.
+
+Connect add-ons to Stripe:
+
+Each add-on ↔ Stripe Price (recurring monthly, or usage-based if needed).
+
+Toggling add-on ON creates/updates Stripe subscription items.
+
+Toggling OFF removes or cancels that price from the subscription.
+
+Tenant Add-On Management UI:
+
+Page: /settings/add-ons
+
+Tenant sees:
+
+Available add-ons
+
+Current status (On/Off)
+
+Price
+
+Short explanation of what it unlocks
+
+Safe toggling with confirmation.
+
+Feature gating via add-ons:
+
+Certain features (e.g. “AI Power Pack” or “Extra Number”) should check:
+
+Plan supports it AND/OR
+
+Add-on is active
+
+Reuse existing gating config if possible.
+
+No surprises for Clean Machine tenant:
+
+Clean Machine can either:
+
+Always be treated as “all add-ons enabled (internal)” OR
+
+Locked out of add-on toggling to avoid messing your live setup.
+
+We’ll prefer: Hide Add-Ons page for Clean Machine tenant, keep its behavior as-is.
+
+2. Data Model
+2.1 Add-On Catalog (global)
+
+Create a global table, e.g. addons:
+
+id (PK)
+
+code (string, unique, e.g. "extra_number", "ai_power_pack")
+
+name (string, human-readable)
+
+description (text)
+
+stripe_price_id (nullable for now, string)
+
+billing_type ("recurring" | "usage" | "one_time"), default "recurring"
+
+monthly_price_cents (for display only; Stripe is the real source)
+
+feature_flags (JSON with list of features this add-on unlocks, e.g. ["extra_phone_number", "ai_power_pack"])
+
+is_public (boolean: visible to tenants)
+
+created_at, updated_at
+
+Seed this table with a few core add-ons:
+
+ai_power_pack – “Unlock advanced AI behaviors, multi-step flows, and higher token limits.”
+
+extra_number – “Provision an extra phone number for campaigns or additional lines.”
+
+priority_support – “Priority support & faster response times.”
+
+2.2 Tenant Add-Ons
+
+Create tenant_addons table:
+
+id (PK)
+
+tenant_id
+
+addon_id
+
+status ("active" | "pending_activation" | "pending_cancellation" | "canceled")
+
+stripe_subscription_item_id (nullable)
+
+activated_at (nullable)
+
+canceled_at (nullable)
+
+meta (JSONB: can store usage caps, notes)
+
+created_at, updated_at
+
+3. Backend Logic
+
+Create a service: server/services/addonService.ts
+
+Core functions:
+
+listAvailableAddonsForTenant(tenantId)
+
+Join addons and tenant_addons.
+
+Return each addon with tenant status (or null if not subscribed).
+
+toggleAddon(tenantId, addonCode, enable: boolean)
+
+Auto-handle Clean Machine guard:
+
+If tenant is Clean Machine -> return 403 / no-op.
+
+Look up tenant’s subscription via tenant_subscriptions.
+
+If enable === true:
+
+If tenant_addon exists and is canceled, set to pending_activation.
+
+If not exists, create with pending_activation.
+
+Call stripeService.attachAddonPriceToSubscription(...).
+
+Once Stripe subscription is updated, set tenant_addon.status → active, record stripe_subscription_item_id.
+
+If enable === false:
+
+Mark tenant_addon.status = "pending_cancellation".
+
+Call stripeService.detachAddonPriceFromSubscription(...).
+
+On success, set to canceled & canceled_at.
+
+mapAddonsToFeatureFlags(tenantId)
+
+Return a set of “feature flags” this tenant has from both:
+
+Their tier (Plan)
+
+Active add-ons (tenant_addons.status = 'active')
+
+This will integrate with the existing feature gating system (e.g. hasFeature("ai_power_pack")).
+
+Stripe Helpers (in stripeService.ts or similar):
+
+attachAddonPriceToSubscription(subscriptionId, priceId): Promise<subscriptionItemId>
+
+detachAddonPriceFromSubscription(subscriptionId, subscriptionItemId)
+
+These should use Stripe’s subscription.items.create / subscription.items.update / subscription.items.del API.
+
+4. API Routes
+
+Add to e.g. server/routes/addonRoutes.ts under /api/billing/addons:
+
+GET /api/billing/addons
+
+requireAuth
+
+Return:
+
+{
+  "success": true,
+  "addons": [
+    {
+      "code": "ai_power_pack",
+      "name": "AI Power Pack",
+      "description": "...",
+      "monthlyPriceCents": 2900,
+      "billingType": "recurring",
+      "status": "active" | "canceled" | null
+    }
+  ]
+}
+
+
+POST /api/billing/addons/toggle
+
+Body: { addonCode: string, enable: boolean }
+
+requireAuth
+
+Guard Clean Machine.
+
+Calls addonService.toggleAddon.
+
+Returns updated add-on state.
+
+5. Frontend – Add-Ons Settings Page
+
+New page: client/src/pages/settings/AddOnsPage.tsx
+
+Fetch GET /api/billing/addons.
+
+Render each add-on as a card:
+
+Name, description, tag like "Add-on".
+
+Price: “$29/mo” (format from monthlyPriceCents).
+
+Status chip: Active, Off, Pending….
+
+Toggle / switch or “Enable / Disable” button.
+
+On toggle:
+
+Show confirmation modal:
+
+Enable: “This will add $X/month to your subscription.”
+
+Disable: “This may disable related features.”
+
+Call POST /api/billing/addons/toggle.
+
+If tenant is suspended (billing_status from /settings/billing):
+
+Disable toggles + show message: “You must resolve billing issues before changing add-ons.”
+
+Navigation
+
+Add to navigationItems.ts under “Settings & Administration”:
+
+{
+  id: "addons-settings",
+  label: "Add-Ons",
+  href: "/settings/add-ons",
+  icon: PlusSquareIcon,
+  section: "Settings & Administration",
+  ownerOnly: true,
+}
+
+6. Feature Gating Hook-In
+
+Wherever you check features (e.g. shared/features.ts, useFeatureFlags hook, or getTenantFeatures service):
+
+Extend the logic to include active add-ons from tenant_addons.
+
+Example:
+
+export function getTenantCapabilities(planCode: string, activeAddonCodes: string[]): Set<string> {
+  const base = new Set(planFeatureMap[planCode] ?? []);
+  for (const addonCode of activeAddonCodes) {
+    const flags = addonFeatureMap[addonCode] ?? [];
+    flags.forEach(f => base.add(f));
+  }
+  return base;
+}
+
+
+Then existing hasFeature("ai_power_pack") will naturally include add-ons.
+
+7. Testing Checklist (Agent)
+
+ Add-ons seeded and appear on /settings/add-ons.
+
+ Toggling ON:
+
+Creates/updates Stripe subscription item.
+
+Sets tenant_addons.status = active.
+
+ Toggling OFF:
+
+Removes subscription item.
+
+Sets tenant_addons.status = canceled.
+
+ Gating:
+
+Feature behind ai_power_pack is disabled unless add-on ON.
+
+ Clean Machine tenant:
+
+Add-Ons page hidden OR shows “not available” – no changes to your live setup.
