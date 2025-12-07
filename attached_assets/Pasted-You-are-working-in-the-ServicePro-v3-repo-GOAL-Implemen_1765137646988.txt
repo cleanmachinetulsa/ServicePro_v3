@@ -1,0 +1,342 @@
+You are working in the ServicePro_v3 repo.
+
+GOAL
+Implement SP-18 “Parser Integration v1”:
+
+1. Add a backend proxy route that sends uploaded SMS/Call export files + config to an external Parser API (our SMS parser app) and returns Knowledge JSON.
+2. Add a new Setup Wizard step + settings UI where tenants:
+   - Upload Google Voice / SMS export files.
+   - Configure parser options (thread gap, business phone/name, export sections).
+   - See basic analytics (calls + conversations) returned from the parser.
+   - Choose how to apply the parsed knowledge into ServicePro (AI persona, FAQs, services/pricing).
+3. Wire the Knowledge JSON into the existing onboarding & AI training pipeline using the GPT_AGENT_INTEGRATION_SPEC semantics (ONBOARDING.*, AI_TRAINING.*, CUSTOMER_INTELLIGENCE.*).
+
+CONSTRAINTS & STYLE
+- Follow existing patterns for:
+  - API routes under `server/routes/*`
+  - Services under `server/services/*`
+  - React pages/components under `client/src/pages` and `client/src/components`
+  - Tenant scoping & auth middleware
+- Do NOT hard-code the parser URL; use an env var instead.
+- UX must be mobile-friendly and match the current glassmorphism / purple gradient look.
+- Keep the code self-documenting with short comments, not essays.
+
+------------------------------------------------
+1) BACKEND: PARSER PROXY SERVICE + ROUTE
+------------------------------------------------
+
+A. Create a new service module, e.g.:
+
+- `server/services/parserIntegrationService.ts`
+
+Responsibilities:
+
+- Export an async function like:
+
+  ```ts
+  type ParserConfig = {
+    businessName?: string;
+    businessPhone?: string;
+    threadGapMinutes?: number;
+    includeFaqs?: boolean;
+    includeToneProfile?: boolean;
+    includeServices?: boolean;
+    includeAnalytics?: boolean;
+  };
+
+  type ParserResult = {
+    success: boolean;
+    knowledgeJson?: any; // as returned by parser
+    analytics?: {
+      calls?: any;
+      conversations?: any;
+    };
+    error?: string;
+  };
+
+  export async function runParserIntegration(
+    files: Express.Multer.File[],
+    config: ParserConfig
+  ): Promise<ParserResult> { ... }
+Implementation details:
+
+Read parser base URL from env:
+
+PARSER_API_URL (e.g. https://sms-parse-output-cleanmachinetul.replit.app/api/parse)
+
+If not set, return { success: false, error: "Parser API not configured" }.
+
+Use node-fetch / existing HTTP client in the repo.
+
+Build a FormData request:
+
+Attach each uploaded file from files as files[].
+
+Attach a JSON stringified config field.
+
+Forward to PARSER_API_URL with a reasonable timeout (e.g. 60s).
+
+Parse JSON response and normalize into ParserResult:
+
+knowledgeJson = full JSON body from parser (store it raw, don’t modify).
+
+analytics.calls = any call analytics object if present.
+
+analytics.conversations = any conversation analytics if present.
+
+B. Add an authenticated route, e.g.:
+
+server/routes/parserIntegration.ts and register it in the main router.
+
+Route:
+
+POST /api/onboarding/parser/run
+
+Middlewares:
+
+Auth (must be logged in + tenant scoped)
+
+Multer (file upload, e.g. files field, multiple allowed)
+
+Body fields (JSON, besides files):
+
+businessName?: string
+
+businessPhone?: string
+
+threadGapMinutes?: number
+
+includeFaqs?: boolean
+
+includeToneProfile?: boolean
+
+includeServices?: boolean
+
+Logic:
+
+Validate body with Zod (create a small schema).
+
+Call runParserIntegration(files, parsedConfig).
+
+If success === false, respond with 200 + { success: false, error } (do NOT throw 500; treat parser failure as a handled error).
+
+On success:
+
+Persist a new record in a table like onboarding_imports (if it exists); otherwise create a small table:
+
+id, tenantId, createdAt, source: "parser_v2", configJson, knowledgeJson, analyticsJson.
+
+Return:
+
+json
+Copy code
+{
+  "success": true,
+  "analytics": { ... },
+  "preview": {
+    "servicesCount": <number if parsable>,
+    "faqCount": <number if parsable>,
+    "styleSnippets": [ ...short examples from tone profile if present... ]
+  }
+}
+The preview can be derived by:
+
+Counting arrays in knowledgeJson.onboarding.services, knowledgeJson.ai_training.faqs, etc., following GPT_AGENT_INTEGRATION_SPEC.
+
+FRONTEND: WIZARD STEP + SETTINGS UI
+
+Goal: add a new Setup Wizard step for “Import from SMS & Call History” that consumes the new API.
+
+A. Find the existing Setup Wizard
+
+Locate the main wizard file (e.g. client/src/pages/setup/SetupWizard.tsx or similar).
+
+Add a new step near the beginning (after “Basic Business Info” and before “Services & Pricing”), named:
+
+“Import from Messages”
+
+Short description: “Use your past texts and calls to auto-configure your AI, FAQs, and services.”
+
+B. Create a new component for the step:
+
+client/src/components/setup/ParserImportStep.tsx (or under a similar folder).
+
+UI requirements:
+
+Layout:
+
+Card layout with:
+
+Left/top: explanation + checklist of what this does.
+
+Right/bottom: upload + config + preview.
+
+Controls:
+
+File upload
+
+Drag-and-drop zone + “Browse” button.
+
+Accepts .html, .zip, .csv (configure as needed).
+
+Show list of selected files with size and type.
+
+Parser config section
+
+Text inputs:
+
+Business name (default from existing onboarding state, if available)
+
+Business phone (default from telephony settings if available)
+
+Slider or number input:
+
+“Thread gap (minutes)” – default 60.
+
+Toggles (switches):
+
+“Use this to train AI tone”
+
+“Use this to build FAQs”
+
+“Use this to build services & pricing”
+
+Action buttons:
+
+Primary: “Analyze my history”
+
+Secondary: “Skip for now” (wizard can continue without using parser).
+
+After calling the API:
+
+Show:
+
+Small cards for analytics:
+
+“Calls” – total, missed, received.
+
+“Conversations” – threads, average length.
+
+Preview chips for:
+
+Detected services: X
+
+Potential FAQs: Y
+
+Tone profile examples: "…" "…"
+
+Final decision buttons:
+
+“Apply to my account”:
+
+Calls a new API POST /api/onboarding/parser/apply (see section 3).
+
+“Discard this import”:
+
+Does not persist any changes; wizard can advance.
+
+C. Hook into wizard state
+
+Use the same state management pattern already used by other steps.
+
+Persist the fact that the parser step was:
+
+not used
+
+used & applied
+
+used but skipped
+
+BACKEND: APPLY KNOWLEDGE JSON → TENANT CONFIG
+
+Add another small service & route to actually apply the parsed knowledge.
+
+A. Service:
+
+server/services/parserApplyService.ts
+
+Responsibilities:
+
+Given:
+
+tenantId
+
+importId (from onboarding_imports)
+
+flags: { applyFaqs, applyServices, applyTone }
+
+It should:
+
+Load knowledgeJson from onboarding_imports.
+
+Following GPT_AGENT_INTEGRATION_SPEC semantics:
+
+For ONBOARDING.services → map into your tenant services + addOns tables.
+
+For AI_TRAINING.style_profile → append to or build the AI persona instructions used by the SMS/voice agents.
+
+For AI_TRAINING.faqs → insert/update FAQ/KB entries.
+
+Avoid duplicates:
+
+Simple de-duplication by name + category for services.
+
+For FAQs: match on normalized question text.
+
+Return a summary: how many items created/updated/skipped.
+
+B. Route:
+
+POST /api/onboarding/parser/apply
+
+Body:
+
+importId: string
+
+applyFaqs: boolean
+
+applyServices: boolean
+
+applyTone: boolean
+
+Response:
+
+json
+Copy code
+{
+  "success": true,
+  "created": { "services": n, "faqs": m },
+  "updated": { "...": "..." }
+}
+Connect this route to the button “Apply to my account” in the wizard step.
+
+ANALYTICS VIEW (OPTIONAL BUT NICE)
+
+If time allows in this drop-in:
+
+Add a simple page under Settings → Data / Imports:
+
+/settings/imports:
+
+List previous parser imports for the tenant.
+
+Show basic analytics summary.
+
+Link “Re-open in wizard” or “Re-apply”.
+
+This reuses the onboarding_imports table.
+
+ENV VARS & DOCS
+
+Add PARSER_API_URL to the env example / Replit secrets docs.
+
+Update replit.md with a short “SP-18 Parser Integration” section:
+
+What the feature does.
+
+Which env var is required.
+
+How to trigger the wizard step again if the user skips it.
+
+Please implement everything above as SP-18.
+Focus on solid wiring and clean error handling; UI can be minimal but must match the existing design language.
