@@ -28,6 +28,7 @@ import phoneSettingsRouter from "./routes.phoneSettings";
 import sendgridWebhookRouter from "./routes.sendgridWebhook";
 import twilioVoiceRouter from "./routes.twilioVoice";
 import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
+import { twilioMediaRouter } from "./routes.twilioMedia";
 import campaignsRouter from "./routes.campaigns";
 import smsTemplatesRouter from "./routes.smsTemplates";
 import a2pCampaignRouter from "./routes.a2pCampaign";
@@ -357,6 +358,8 @@ app.use('/api/admin/import-history', importHistoryRouter);
 app.use('/api/import-history', importHistoryParserRouter);
 // Register root admin usage overview (SP-11 - Usage & Billing Foundation)
 app.use(adminUsageOverviewRouter);
+// Register Twilio media proxy routes (SP-12 - Voicemail Playback Fix)
+app.use('/api/twilio', twilioMediaRouter);
 
 app.use((req, res, next) => {
   const start = Date.now();
