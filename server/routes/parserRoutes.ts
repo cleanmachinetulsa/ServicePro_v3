@@ -12,6 +12,7 @@ import {
 } from '../services/parserIntegrationService';
 import { applyParserKnowledge } from '../services/parserApplyService';
 import { getImportHistory } from '../services/phoneHistoryImportService';
+import { applyKnowledgeToTenant, getKnowledgePreview } from '../services/knowledgeOnboardingService';
 
 const router = Router();
 
@@ -226,6 +227,70 @@ router.get('/history', async (req: Request, res: Response) => {
     return res.json({ success: true, imports: history });
   } catch (error: any) {
     console.error('[PARSER ROUTES] Get history error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+  }
+});
+
+const buildSetupSchema = z.object({
+  importId: z.coerce.number().int().positive(),
+  applyServices: z.boolean().default(true),
+  applyFaqs: z.boolean().default(true),
+  applyPersona: z.boolean().default(true),
+  applyProfile: z.boolean().default(true),
+});
+
+router.post('/build-setup', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const parseResult = buildSetupSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid request', 
+        details: parseResult.error.flatten() 
+      });
+    }
+
+    const { importId, applyServices, applyFaqs, applyPersona, applyProfile } = parseResult.data;
+
+    const result = await applyKnowledgeToTenant(importId, tenantId, {
+      applyServices,
+      applyFaqs,
+      applyPersona,
+      applyProfile,
+    });
+
+    return res.json({
+      success: true,
+      result,
+    });
+  } catch (error: any) {
+    console.error('[PARSER ROUTES] Build setup error:', error);
+    return res.status(422).json({ success: false, error: error.message || 'Failed to build setup from knowledge' });
+  }
+});
+
+router.get('/preview/:importId', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const importId = parseInt(req.params.importId, 10);
+    if (isNaN(importId)) {
+      return res.status(400).json({ success: false, error: 'Invalid import ID' });
+    }
+
+    const preview = await getKnowledgePreview(importId, tenantId);
+
+    return res.json({ success: true, preview });
+  } catch (error: any) {
+    console.error('[PARSER ROUTES] Get preview error:', error);
     return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
   }
 });
