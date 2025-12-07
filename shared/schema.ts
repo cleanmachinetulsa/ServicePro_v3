@@ -4493,3 +4493,40 @@ export type InsertIndustryPack = z.infer<typeof insertIndustryPackSchema>;
 export type UpdateIndustryPack = z.infer<typeof updateIndustryPackSchema>;
 export type IndustryPackTemplate = typeof industryPackTemplates.$inferSelect;
 export type InsertIndustryPackTemplate = z.infer<typeof insertIndustryPackTemplateSchema>;
+
+// ============================================================
+// SP-9: TRIAL TELEPHONY SANDBOX (Phase 23)
+// ============================================================
+
+export const trialTelephonyProfiles = pgTable("trial_telephony_profiles", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }).unique(),
+  allowedNumbers: jsonb("allowed_numbers").$type<string[]>().notNull().default([]),
+  dailyMessageCap: integer("daily_message_cap").notNull().default(30),
+  totalMessageCap: integer("total_message_cap").notNull().default(200),
+  messagesSentToday: integer("messages_sent_today").notNull().default(0),
+  totalMessagesSent: integer("total_messages_sent").notNull().default(0),
+  lastResetAt: timestamp("last_reset_at"),
+  sandboxEnabled: boolean("sandbox_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: uniqueIndex("trial_telephony_profiles_tenant_id_idx").on(table.tenantId),
+}));
+
+export const insertTrialTelephonyProfileSchema = createInsertSchema(trialTelephonyProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateTrialTelephonyProfileSchema = z.object({
+  allowedNumbers: z.array(z.string()).optional(),
+  dailyMessageCap: z.number().min(0).optional(),
+  totalMessageCap: z.number().min(0).optional(),
+  sandboxEnabled: z.boolean().optional(),
+});
+
+export type TrialTelephonyProfile = typeof trialTelephonyProfiles.$inferSelect;
+export type InsertTrialTelephonyProfile = z.infer<typeof insertTrialTelephonyProfileSchema>;
+export type UpdateTrialTelephonyProfile = z.infer<typeof updateTrialTelephonyProfileSchema>;

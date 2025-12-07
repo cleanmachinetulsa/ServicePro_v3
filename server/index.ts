@@ -515,6 +515,11 @@ app.use((req, res, next) => {
   const { initializeNightlyDunningScheduler } = await import('./services/nightlyDunningService');
   initializeNightlyDunningScheduler();
   console.log('[SERVER] Nightly dunning scheduler started - runs at 2:00 AM UTC daily');
+
+  // SP-9: Start trial telephony sandbox daily reset (midnight UTC)
+  const { initializeTrialTelephonyScheduler } = await import('./services/trialTelephonyService');
+  initializeTrialTelephonyScheduler();
+  console.log('[SERVER] Trial telephony scheduler started - resets daily message counts at midnight UTC');
   
   // Start port monitoring (auto-disables when port completes)
   const { initializePortMonitoring } = await import('./portMonitoring');
