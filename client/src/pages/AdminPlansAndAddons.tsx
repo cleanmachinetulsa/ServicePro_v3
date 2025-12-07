@@ -4,8 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Package, Crown, Zap, Shield, Users, Phone, MapPin, Palette } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, Package, Crown, Zap, Shield, Users, Phone, MapPin, Palette, AlertCircle } from "lucide-react";
 import { PRICING_PLANS } from "@shared/pricingConfig";
+import { ADDONS_CATALOG } from "@shared/addonsConfig";
 
 interface AddonDefinition {
   key: string;
@@ -31,9 +33,12 @@ const ADDON_ICONS: Record<string, typeof Package> = {
 export default function AdminPlansAndAddons() {
   const [activeTab, setActiveTab] = useState("plans");
 
-  const { data: catalogData, isLoading } = useQuery<{ catalog: AddonDefinition[] }>({
+  const { data: catalogData, isLoading, error } = useQuery<{ catalog: AddonDefinition[] }>({
     queryKey: ["/api/billing/addons/catalog"],
+    retry: false,
   });
+
+  const staticCatalog = ADDONS_CATALOG as AddonDefinition[];
 
   const getTierBadgeColor = (tier: string) => {
     switch (tier) {
@@ -117,9 +122,16 @@ export default function AdminPlansAndAddons() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {catalogData?.catalog.map((addon) => {
+          ) : error ? (
+            <Alert variant="default" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Failed to load add-ons from server. Showing static catalog.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            {(catalogData?.catalog || staticCatalog).map((addon) => {
                 const IconComponent = ADDON_ICONS[addon.key] || Package;
                 return (
                   <Card key={addon.key} data-testid={`card-addon-${addon.key}`}>
@@ -167,7 +179,6 @@ export default function AdminPlansAndAddons() {
                 );
               })}
             </div>
-          )}
           <p className="text-sm text-muted-foreground mt-4 text-center">
             Add-on catalog is managed in shared/addonsConfig.ts. Toggle visibility and pricing there.
           </p>
