@@ -1,0 +1,87 @@
+You are working in the ServicePro_v3 project.
+
+Goal: 
+My Clean Machine domain (cleanmachinetulsa.com) is currently showing a new auto-generated landing page instead of my original hand-built homepage. 
+
+I want you to:
+1) Precisely map HOW the current homepage is chosen for cleanmachinetulsa.com.
+2) Find my older/custom homepage component(s).
+3) Propose the *minimal* routing change needed to point the domain back to my original homepage.
+4) DO NOT APPLY ANY CHANGES YET. Just report.
+
+---
+
+STEP 1 – Map current routing for Clean Machine domain
+
+1. Open these files (or their closest equivalents if names differ):
+   - shared/domainConfig.ts
+   - client/src/components/RootDomainHandler.tsx
+   - client/src/App.tsx
+   - any file that defines the main <Routes> or router.
+
+2. Determine, **for host = cleanmachinetulsa.com or www.cleanmachinetulsa.com**:
+   - Which React component ends up rendering when I hit "/" in the browser.
+   - Whether it redirects to something like "/site/cleanmachine" or another path.
+   - The full chain, e.g.:
+
+     host → RootDomainHandler → path "/site/cleanmachine" → Component XYZ
+
+3. In your final report, clearly list:
+   - The exact component name and file that currently powers the homepage for Clean Machine.
+   - The path it is mounted on ("/", "/site/cleanmachine", etc.).
+
+DO NOT modify any files in this step.
+
+---
+
+STEP 2 – Find my original custom homepage component(s)
+
+1. Search the codebase for likely marketing/homepage components, including:
+   - Files in client/src/pages/*
+   - Files in client/src/components/public/*
+   - Any component containing text like:
+     - "Clean Machine Auto Detail"
+     - "Clean Machine"
+     - "Mobile Auto Detailing"
+     - or other obvious homepage copy if present.
+
+2. Also check git history for earlier versions (before the “Public Site v2 / CM-4” work) of:
+   - client/src/App.tsx
+   - any previous “Home”, “Landing”, or “PublicSite” page.
+
+3. Identify 1–3 best candidates for my **original hand-built homepage**, and for each candidate include in the report:
+   - File path
+   - Component name
+   - First <h1> or main hero text
+   - A one-line description of the layout (e.g. “dark gradient, two buttons, hero image on the right”).
+
+Again: DO NOT change any code yet.
+
+---
+
+STEP 3 – Propose minimal routing fix (but DO NOT apply)
+
+Based on Steps 1 and 2, propose the **simplest possible fix** that:
+
+- Keeps all existing DNS + SSL + multi-tenant logic.
+- Keeps the Clean Machine tenant mapping intact.
+- Changes ONLY which component is rendered as the homepage for:
+  - cleanmachinetulsa.com
+  - www.cleanmachinetulsa.com
+
+Most likely options (choose the best one in your proposal):
+
+A) In RootDomainHandler.tsx:
+   - When host matches Clean Machine, navigate to a different route 
+     (e.g. "/cm-home") that renders my original homepage component.
+
+B) Adjust the mapping in domainConfig.ts (or similar config) to point the Clean Machine domain to the original homepage route instead of "/site/cleanmachine".
+
+In your final report, you MUST:
+
+- Show the CURRENT logic (before change) as code snippets.
+- Show the PROPOSED new logic as code snippets (but do NOT edit files yet).
+- Explicitly tell me: 
+  - “If you approve, I will rewire the Clean Machine domain to use: [component name] in [file path] mounted at [route path].”
+
+Do not perform any edits. Stop after generating the report and wait for my confirmation.
