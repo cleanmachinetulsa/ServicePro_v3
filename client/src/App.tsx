@@ -9,6 +9,7 @@ import { useKeyboardDismiss } from "@/hooks/useKeyboardDismiss";
 import { PwaProvider } from "@/contexts/PwaContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { UiExperienceProvider } from "@/contexts/UiExperienceContext";
+import { DashboardPreferencesProvider } from "@/contexts/DashboardPreferencesContext";
 
 import NotFound from "@/pages/not-found";
 import ChatPage from "@/pages/chat";
@@ -86,6 +87,7 @@ import UiModeSettingsPage from "./pages/settings/UiModeSettingsPage";
 import SettingsBillingPage from "./pages/settings/BillingUsagePage";
 import UsageDashboardV2 from "./pages/settings/UsageDashboardV2";
 import DomainsPage from "./pages/settings/DomainsPage";
+import DashboardCustomizePage from "./pages/settings/DashboardCustomizePage";
 import SipSetupGuide from "./pages/sip-setup-guide";
 import Billing from "./pages/billing";
 import EscalationsPage from "./pages/escalations";
@@ -247,6 +249,11 @@ function Router() {
       <Route path="/settings/domains">
         <AuthGuard>
           <DomainsPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/dashboard/customize">
+        <AuthGuard>
+          <DashboardCustomizePage />
         </AuthGuard>
       </Route>
       <Route path="/admin/port-recovery">
@@ -618,18 +625,20 @@ function App() {
       <ThemeProvider>
         <PwaProvider>
           <UiExperienceProvider>
-          <Toaster />
-          <PasswordChangeModal />
-          <BannerDisplay />
-          <Router />
-          {!isCustomerFacingPage() &&
-            !location.startsWith("/dashboard") &&
-            !location.startsWith("/messages") &&
-            !location.startsWith("/phone") &&
-            !location.startsWith("/notifications-settings") && (
-              <DashboardNavButton />
-            )}
-          <SupportAssistantWidget />
+            <DashboardPreferencesProvider>
+              <Toaster />
+              <PasswordChangeModal />
+              <BannerDisplay />
+              <Router />
+              {!isCustomerFacingPage() &&
+                !location.startsWith("/dashboard") &&
+                !location.startsWith("/messages") &&
+                !location.startsWith("/phone") &&
+                !location.startsWith("/notifications-settings") && (
+                  <DashboardNavButton />
+                )}
+              <SupportAssistantWidget />
+            </DashboardPreferencesProvider>
           </UiExperienceProvider>
         </PwaProvider>
       </ThemeProvider>

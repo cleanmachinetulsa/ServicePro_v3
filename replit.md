@@ -104,3 +104,53 @@ Multi-tenant custom domain infrastructure for future use:
 - Delete domains with confirmation dialog
 - Shows domain status badges (pending/verified/inactive)
 - Navigation: Settings > Custom Domains (Advanced mode only)
+
+### SP-15: Multi-Mode Dashboard with Tenant-Level Panel Customization
+
+Tenant-level dashboard preferences that control which navigation panels are visible in Simple mode:
+
+**Schema** (`shared/schema.ts`):
+- `dashboard_mode_enum`: PostgreSQL enum with 'simple' | 'advanced' values
+- `dashboard_preferences` table with mode, simpleVisiblePanels (JSON array), tenant_id (FK)
+- One row per tenant; created on first access if not exists
+- Insert and select types exported
+
+**Service Layer** (`server/services/dashboardPreferencesService.ts`):
+- `getPreferences(tenantId)`: Returns preferences or creates default if not exists
+- `updateMode(tenantId, mode)`: Updates the dashboard mode
+- `updatePanels(tenantId, panels)`: Updates visible panels array
+- Default panels: dashboard, messages, customers, calendar, quick-actions
+
+**API Routes** (`server/routes.dashboardPreferences.ts`):
+- `GET /api/settings/dashboard/preferences`: Get tenant preferences
+- `PUT /api/settings/dashboard/preferences`: Update mode and/or panels
+- Requires authentication; uses session tenant_id
+
+**Frontend Hook** (`client/src/hooks/useDashboardPreferences.ts`):
+- `useDashboardPreferences()`: React Query hook for GET/mutations
+- Returns: mode, simpleVisiblePanels, updateMode, updatePanels, isLoading, isSaving
+
+**Context Provider** (`client/src/contexts/DashboardPreferencesContext.tsx`):
+- `DashboardPreferencesProvider`: Wraps app to provide preferences globally
+- `useDashboardPreferencesContext()`: Access mode, simpleVisiblePanels, isSaving
+- `shouldShowNavItem(itemId, mode, panels)`: Helper for filtering navigation
+
+**UI Page** (`client/src/pages/settings/DashboardCustomizePage.tsx`):
+- Toggle between Simple/Advanced mode with visual switches
+- When in Simple mode: select which panels to show via checkboxes
+- Pre-defined panel options with icons: Dashboard, Messages, Customers, Calendar, Quick Actions
+- Saves preferences immediately on toggle
+- Mobile-responsive card layout
+- Navigation: Settings > Customize Dashboard
+
+**AppShell Integration** (`client/src/components/AppShell.tsx`):
+- Imports `useDashboardPreferencesContext` and `shouldShowNavItem`
+- When dashboardMode='simple', filters navigation items to only show:
+  - Items in simpleVisiblePanels array
+  - Always shows: separators, settings, dashboard-customize, ui-mode
+- Stacks with SP-14 user-level UI mode filtering (advancedOnly items)
+
+**Interaction with SP-14**:
+- SP-14 (per-user UI mode): Controls advancedOnly items visibility
+- SP-15 (tenant-level dashboard mode): Controls panel visibility for Simple tenants
+- Both filters apply in sequence: SP-14 first, then SP-15

@@ -49,6 +49,7 @@ import agentContextRouter from "./routes/agentContextRouter";
 import setupAssistantRouter from "./routes/setupAssistantRouter";
 import emailTestRouter from "./routes/emailTestRouter";
 import tenantDomainsRouter from "./routes.tenantDomains";
+import dashboardPreferencesRouter from "./routes.dashboardPreferences";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -493,6 +494,10 @@ app.use((req, res, next) => {
   // SP-DOMAINS-1: Register tenant domain management routes
   app.use('/api/settings/domains', tenantDomainsRouter);
   console.log('[TENANT DOMAINS] Routes registered: /api/settings/domains');
+
+  // SP-15: Register dashboard preferences routes
+  app.use('/api/settings/dashboard/preferences', dashboardPreferencesRouter);
+  console.log('[DASHBOARD PREFS] Routes registered: /api/settings/dashboard/preferences');
 
   // Register Twilio Voice webhook (handles incoming calls to business number)
   app.use('/twilio', twilioVoiceRouter);
