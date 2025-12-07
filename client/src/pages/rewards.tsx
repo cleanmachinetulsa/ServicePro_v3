@@ -44,6 +44,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Seo } from '@/components/Seo';
 
 const triggerCelebration = async () => {
   const count = 200;
@@ -295,6 +296,13 @@ const CustomerRewardsPortal = () => {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {/* CM-DNS-3: SEO metadata for rewards portal */}
+      <Seo 
+        title="Rewards & Loyalty"
+        description="Check your loyalty points, unlock rewards, and redeem perks for your next mobile detailing appointment with Clean Machine Auto Detail."
+        canonicalPath="/rewards"
+      />
+      
       <div className="max-w-md mx-auto px-4 py-6 sm:py-10">
         <AnimatePresence mode="wait">
           {!hasSearched ? (

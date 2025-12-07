@@ -1,0 +1,137 @@
+PROMPT TO REPLIT AGENT — CM-Billing-Prep (Usage Metering Wiring)
+
+We are now implementing the internal plumbing for full usage-based billing (Twilio, SendGrid, OpenAI).
+
+This is NOT the final billing system — this is the wiring that makes all future billing possible.
+
+Part A — Create a Global Usage Ledger (Root DB)
+
+Add a new table in the GLOBAL (not tenant) DB:
+
+usage_ledger
+
+Columns:
+
+id uuid pk
+
+tenantId text
+
+source ("twilio" | "openai" | "sendgrid" | "system")
+
+eventType ("sms_outbound", "sms_inbound", "mms", "call_in", "call_out", "ivr", "ai_message", "email_sent", etc.)
+
+units integer (e.g., 1 message, 1 minute, 1 AI response)
+
+metadata json (raw Twilio/OpenAI/SendGrid payloads)
+
+occurredAt timestamp
+
+createdAt
+
+We will use this ledger to calculate invoices, taxes, dunning, etc.
+
+Part B — Intercept Every External Integration
+
+Whenever we hit:
+
+Twilio outbound SMS → log ledger entry
+
+Twilio inbound SMS → log ledger entry
+
+Twilio outbound call → log ledger entry
+
+Twilio call minutes → ledger entries
+
+SendGrid email → ledger entry
+
+OpenAI chat completions → ledger entry
+
+Implement a new helper:
+
+recordUsageEvent({ tenantId, source, eventType, units, metadata })
+
+Place this in:
+
+shared/usage/usageRecorder.ts
+
+It should:
+
+Validate inputs
+
+Insert into root DB usage_ledger
+
+Be fully async but non-blocking (use void recordUsageEvent() where appropriate)
+
+Part C — Add Integration Points (Light Touch Only)
+
+Add calls to recordUsageEvent in the following areas:
+
+Twilio
+
+SMS send (AI or human)
+
+SMS receive
+
+Call outbound initiation
+
+Call inbound minutes (attach to webhook events)
+
+IVR step execution
+
+SendGrid
+
+Any email the system sends (campaigns, alerts, admin notifications)
+
+OpenAI
+
+AI agent replies (chat completions)
+
+AI voicemail summaries
+
+Usage formula:
+units = number of tokens
+But keep the metadata so we can refine later.
+
+Part D — Tenant Usage UI (Read-Only, v1)
+
+Create a new page:
+
+Route: /settings/billing/usage
+
+Show:
+
+Graph of last 30 days usage by category
+
+Table of events (paginated)
+
+Filters (source, eventType)
+
+This is read-only — invoices and payments come later.
+
+Part E — API Routes
+
+Under /api/billing/usage:
+
+GET /summary → last 30 days grouped by category
+
+GET /events → paginated ledger rows for that tenant
+
+Use tenant isolation so each tenant sees only their own usage.
+
+Part F — Docs
+
+Update replit.md with:
+
+“Usage Ledger”
+
+“Where usage events are recorded”
+
+“How to add new event types in the future”
+
+Acceptance Tests
+
+✔ Sending an SMS → event written to ledger
+✔ Receiving an SMS → event written
+✔ Outbound call → event
+✔ AI response → event
+✔ Usage dashboard loads and filters

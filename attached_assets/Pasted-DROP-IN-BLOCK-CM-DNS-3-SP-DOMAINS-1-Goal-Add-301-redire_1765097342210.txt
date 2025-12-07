@@ -1,0 +1,279 @@
+DROP-IN BLOCK: CM-DNS-3 + SP-DOMAINS-1
+
+Goal:
+
+Add 301 redirects (www → bare domain) + force HTTPS for CleanMachine.
+
+Add canonical URL handling and SEO metadata for the Clean Machine public site.
+
+Lay foundation for tenant-level custom domain management in ServicePro (no routing changes yet, just configuration + UI).
+
+Paste everything below into the Replit agent:
+
+PROMPT TO REPLIT AGENT (CM-DNS-3 + SP-DOMAINS-1)
+
+We’re working on the ServicePro v3 / Clean Machine repo.
+Implement CM-DNS-3 + SP-DOMAINS-1 with the following goals:
+
+Part A – HTTP-level redirects (force HTTPS + www → root)
+
+Intent
+
+Right now we only do client-side hostname handling via RootDomainHandler.
+We want true HTTP 301 redirects at the server layer:
+
+If request comes to http://… → redirect to https://…
+
+If host starts with www.cleanmachinetulsa.com → redirect to https://cleanmachinetulsa.com/...
+
+All other domains (Replit preview domains, future app.servicepro.com, etc.) should not be forced to that canonical Clean Machine URL.
+
+Tasks
+
+Locate the main Express server entry (likely something like server/index.ts or similar where express() is created and middleware is attached).
+
+Add a global middleware near the top, before static file serving and before React SPA fallback, that:
+
+Reads req.headers['x-forwarded-proto'] and req.headers.host.
+
+If x-forwarded-proto === 'http', respond with a 301 redirect to:
+
+https://${req.headers.host}${req.originalUrl}
+
+In that same middleware, add Clean Machine canonical host redirect:
+
+Define constants using our existing domainConfig.ts if possible:
+
+CLEAN_MACHINE_ROOT = "cleanmachinetulsa.com"
+
+CLEAN_MACHINE_WWW = "www.cleanmachinetulsa.com"
+
+If host === CLEAN_MACHINE_WWW, redirect 301 to:
+
+https://cleanmachinetulsa.com${req.originalUrl}
+
+Ensure we do not accidentally redirect non-CleanMachine domains to cleanmachinetulsa.com. The canonical redirect should only apply when host matches one of the CleanMachine hosts.
+
+Keep the existing RootDomainHandler React logic, but it should now mainly handle route selection (ServicePro vs CleanMachine public site), not protocol/host forcing.
+
+Acceptance tests
+
+Request http://cleanmachinetulsa.com/anything → 301 to https://cleanmachinetulsa.com/anything.
+
+Request http://www.cleanmachinetulsa.com/anything → 301 to https://cleanmachinetulsa.com/anything.
+
+Request to the Replit preview domain should not be redirected to cleanmachinetulsa.com, only from HTTP→HTTPS if applicable.
+
+No redirect loops.
+
+Part B – Canonical URL + SEO metadata for Clean Machine
+
+We want better SEO metadata for the Clean Machine public site, especially:
+
+/site/cleanmachine
+
+/rewards
+
+/booking (or whatever the main online-booking route is)
+
+High-level design
+
+Use existing React layout components for the public website to:
+
+Set <title> and <meta name="description"> tags.
+
+Add <link rel="canonical" href="https://cleanmachinetulsa.com/..."> where appropriate.
+
+Optionally add Open Graph tags (og:title, og:description, og:url).
+
+Use whatever pattern the app already uses for head/meta tags (React Helmet, custom <SEO> component, etc.). If nothing exists, create a minimal reusable SEO component.
+
+Tasks
+
+Find the main public-site layout/component used for /site/:subdomain – the one that powers the Clean Machine site, and the Rewards portal /rewards and booking route.
+
+Implement a small SEO helper/component, for example:
+
+// client/src/components/Seo.tsx
+import { Helmet } from "react-helmet-async"; // or whatever we already use
+
+export function Seo(props: { title: string; description: string; canonicalUrl?: string }) {
+  const { title, description, canonicalUrl } = props;
+  const siteName = "Clean Machine Auto Detail";
+  const fullTitle = `${title} | ${siteName}`;
+
+  return (
+    <Helmet>
+      <title>{fullTitle}</title>
+      <meta name="description" content={description} />
+      {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+      {/* Basic OG tags */}
+      <meta property="og:title" content={fullTitle} />
+      <meta property="og:description" content={description} />
+      {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+      <meta property="og:site_name" content={siteName} />
+    </Helmet>
+  );
+}
+
+
+If the project already uses a different mechanism than react-helmet-async, adapt to that instead of adding a new dependency.
+
+Use this SEO helper in at least:
+
+Clean Machine homepage (/site/cleanmachine):
+
+Title: “Premium Mobile Auto Detailing in Tulsa”
+
+Description: “Clean Machine Auto Detail provides premium mobile interior and exterior detailing in Tulsa and surrounding areas. We come to you with dealership-level results.”
+
+Canonical URL: https://cleanmachinetulsa.com/
+
+(Even if the React route is /site/cleanmachine, canonical should be the root Clean Machine domain /.)
+
+Rewards portal (/rewards):
+
+Title: “Rewards & Loyalty | Clean Machine Auto Detail”
+
+Description: “Check your loyalty points, unlock rewards, and redeem perks for your next mobile detailing appointment with Clean Machine Auto Detail.”
+
+Canonical URL: https://cleanmachinetulsa.com/rewards
+
+Online booking route (whatever you’re using, e.g. /booking or /request):
+
+Title: “Book a Mobile Detailing Appointment”
+
+Description: “Request a mobile detailing appointment in minutes. Choose your vehicle, services, and preferred date and we’ll handle the rest.”
+
+Canonical URL: https://cleanmachinetulsa.com/<booking-path>
+
+Make sure SEO component is only applied for the Clean Machine tenant pages, not for generic ServicePro marketing (those can still have their own titles/descriptions).
+
+Acceptance tests
+
+Visiting /site/cleanmachine in the browser shows the updated <title> and <meta> tags in the DOM, with a canonical link pointing at https://cleanmachinetulsa.com/.
+
+Visiting /rewards and the booking page shows appropriate titles/descriptions and canonical URLs.
+
+No console errors from Helmet or meta-duplication.
+
+Part C – Tenant-Level Domain Management Foundation (SP-DOMAINS-1)
+
+This is infrastructure only – no live routing based on tenant domains yet.
+We just need a place to store and manage per-tenant domains for future SP features.
+
+Data model
+
+Create a new table (Drizzle):
+
+tenant_domains (or similar) with columns:
+
+id (uuid, PK)
+
+tenantId (fk → tenants table)
+
+domain (text, unique per tenant)
+
+isPrimary (boolean, default false)
+
+status (enum or text; e.g. 'pending', 'verified', 'inactive')
+
+createdAt, updatedAt timestamps
+
+Notes:
+
+For now, verification is manual / future – don’t build automated verification here.
+
+Enforce that only one primary domain per tenant is allowed at the DB or service layer.
+
+Backend service
+
+Create a tenantDomainService with functions like:
+
+listTenantDomains(tenantId)
+
+createTenantDomain(tenantId, data)
+
+updateTenantDomain(tenantId, domainId, data)
+
+setPrimaryDomain(tenantId, domainId)
+
+deleteTenantDomain(tenantId, domainId)
+
+Respect tenant isolation (use wrapTenantDb or tenant-scoped DB helpers).
+
+API routes
+
+Add authenticated routes under something like:
+
+GET /api/settings/domains → list domains for the current tenant
+
+POST /api/settings/domains → create a domain (domain string only for now)
+
+PUT /api/settings/domains/:id → update status / isPrimary
+
+DELETE /api/settings/domains/:id → delete
+
+Use Zod validation for inputs.
+
+Tenant Settings UI (v1)
+
+Add a simple page so tenant owners can see future domain management:
+
+Route: /settings/domains
+
+Sidebar entry under “Settings & Administration” → “Domains”
+
+Show:
+
+Current domains in a table:
+
+Domain
+
+Status (e.g., Pending / Verified / Inactive)
+
+Primary badge if isPrimary
+
+A small form to add a custom domain (just text input + “Add Domain” button).
+
+Placeholder text to explain:
+
+“Custom domains are a Pro+ feature. DNS and SSL setup assistance will be part of a future guided wizard. For now you can register the domain you plan to connect.”
+
+Do not wire these domains into actual routing yet. This is config-only.
+
+Acceptance tests
+
+As Clean Machine / root tenant owner, go to /settings/domains and see the new page.
+
+Create a new domain (e.g. demo.example.com) and see it appear in the list with status pending.
+
+Mark one domain as primary and see that only one row shows the primary badge.
+
+Confirm that existing routing for /site/cleanmachine and /rewards still works exactly as before (no accidental change in domain selection logic).
+
+Part D – Docs
+
+Update replit.md with a short section:
+
+“CM-DNS-3 – HTTPS + canonical redirect”
+
+“SP-DOMAINS-1 – Tenant Domain Management (config only)”
+
+Document:
+
+Where the redirect middleware lives.
+
+How to change canonical domain for Clean Machine if it ever changes.
+
+What the tenant_domains table is for, and that it currently does not affect routing yet.
+
+When done, summarize:
+
+Files added/modified.
+
+Example redirect behavior for HTTP→HTTPS and www → root.
+
+Screenshot / DOM snippet showing canonical and meta tags for Clean Machine homepage.
+
+Screenshot / description of /settings/domains UI and DB example row.

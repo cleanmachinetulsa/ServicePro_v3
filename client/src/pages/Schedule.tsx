@@ -4,6 +4,7 @@ import MultiVehicleAppointmentScheduler from "@/components/MultiVehicleAppointme
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { Gift, Sparkles } from "lucide-react";
+import { Seo } from '@/components/Seo';
 
 /**
  * Loyalty Redemption Journey v2
@@ -65,6 +66,13 @@ export default function SchedulePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-blue-950/10 to-black text-white overflow-hidden relative">
+      {/* CM-DNS-3: SEO metadata for booking page */}
+      <Seo 
+        title="Book a Mobile Detailing Appointment"
+        description="Request a mobile detailing appointment in minutes. Choose your vehicle, services, and preferred date and we'll handle the rest."
+        canonicalPath="/schedule"
+      />
+      
       {/* Premium background elements */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <div className="absolute top-[10%] left-[15%] w-96 h-96 bg-blue-500/5 rounded-full filter blur-3xl"></div>

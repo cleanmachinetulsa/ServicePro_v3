@@ -48,6 +48,7 @@ import publicSiteAdminRouter from "./routes.publicSiteAdmin";
 import agentContextRouter from "./routes/agentContextRouter";
 import setupAssistantRouter from "./routes/setupAssistantRouter";
 import emailTestRouter from "./routes/emailTestRouter";
+import tenantDomainsRouter from "./routes.tenantDomains";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -66,6 +67,40 @@ const app = express();
 // We must trust ALL proxies in the chain for secure cookies to work
 // Setting to true ensures session authentication works on deployed sites
 app.set('trust proxy', true);
+
+// CM-DNS-3: HTTPS + Canonical redirect middleware
+// Redirect http → https and www.cleanmachinetulsa.com → cleanmachinetulsa.com
+import { CLEAN_MACHINE_ROOT, CLEAN_MACHINE_WWW } from '@shared/domainConfig';
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const proto = req.headers['x-forwarded-proto'] as string | undefined;
+  const host = req.headers.host?.toLowerCase() || '';
+  
+  // Skip redirects in development mode
+  if (process.env.NODE_ENV === 'development') {
+    return next();
+  }
+  
+  // Check if this is a Clean Machine domain request
+  const isCleanMachineDomain = host === CLEAN_MACHINE_ROOT || host === CLEAN_MACHINE_WWW;
+  
+  // 1. Force HTTPS for Clean Machine domain
+  if (isCleanMachineDomain && proto === 'http') {
+    const targetHost = host === CLEAN_MACHINE_WWW ? CLEAN_MACHINE_ROOT : host;
+    const redirectUrl = `https://${targetHost}${req.originalUrl}`;
+    log(`[CM-DNS-3] HTTP→HTTPS redirect: ${req.originalUrl} → ${redirectUrl}`);
+    return res.redirect(301, redirectUrl);
+  }
+  
+  // 2. Canonical www → root redirect for Clean Machine
+  if (host === CLEAN_MACHINE_WWW) {
+    const redirectUrl = `https://${CLEAN_MACHINE_ROOT}${req.originalUrl}`;
+    log(`[CM-DNS-3] www→root redirect: ${req.originalUrl} → ${redirectUrl}`);
+    return res.redirect(301, redirectUrl);
+  }
+  
+  next();
+});
 
 // Serve uploaded media assets (MP3 voicemail greeting, PDFs, etc.)
 // IMPORTANT: Use /media path to avoid conflicting with Vite's /assets build output
@@ -454,6 +489,10 @@ app.use((req, res, next) => {
   
   // Register phone settings routes (phone line configuration)
   app.use('/api/phone-settings', phoneSettingsRouter);
+
+  // SP-DOMAINS-1: Register tenant domain management routes
+  app.use('/api/settings/domains', tenantDomainsRouter);
+  console.log('[TENANT DOMAINS] Routes registered: /api/settings/domains');
 
   // Register Twilio Voice webhook (handles incoming calls to business number)
   app.use('/twilio', twilioVoiceRouter);

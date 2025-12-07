@@ -4571,3 +4571,42 @@ export const insertPhoneHistoryImportSchema = createInsertSchema(phoneHistoryImp
 
 export type PhoneHistoryImport = typeof phoneHistoryImports.$inferSelect;
 export type InsertPhoneHistoryImport = z.infer<typeof insertPhoneHistoryImportSchema>;
+
+// ============================================================
+// SP-DOMAINS-1: TENANT DOMAIN MANAGEMENT
+// ============================================================
+
+export const tenantDomainStatusEnum = pgEnum('tenant_domain_status', ['pending', 'verified', 'inactive']);
+
+export const tenantDomains = pgTable("tenant_domains", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  domain: varchar("domain", { length: 255 }).notNull(),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  status: tenantDomainStatusEnum("status").notNull().default('pending'),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantDomainIdx: index("tenant_domains_tenant_id_idx").on(table.tenantId),
+  domainUniqueIdx: uniqueIndex("tenant_domains_domain_unique_idx").on(table.domain),
+}));
+
+export const insertTenantDomainSchema = createInsertSchema(tenantDomains).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateTenantDomainSchema = z.object({
+  isPrimary: z.boolean().optional(),
+  status: z.enum(['pending', 'verified', 'inactive']).optional(),
+});
+
+export const createTenantDomainSchema = z.object({
+  domain: z.string().min(1).max(255).regex(/^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]$/, 'Invalid domain format'),
+});
+
+export type TenantDomain = typeof tenantDomains.$inferSelect;
+export type InsertTenantDomain = z.infer<typeof insertTenantDomainSchema>;
+export type UpdateTenantDomain = z.infer<typeof updateTenantDomainSchema>;
+export type CreateTenantDomain = z.infer<typeof createTenantDomainSchema>;
