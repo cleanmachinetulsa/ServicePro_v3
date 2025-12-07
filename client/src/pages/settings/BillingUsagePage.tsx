@@ -341,6 +341,58 @@ export default function BillingUsagePage() {
           </Card>
         )}
 
+        {overview.status === 'past_due' && (
+          <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/50 border-amber-300 dark:border-amber-700" data-testid="card-past-due-banner">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg">
+                <AlertCircle className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-900 dark:text-amber-100" data-testid="text-past-due-title">Payment Issue</h3>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  We had trouble charging your payment method. Please update your payment details to avoid interruption to your service.
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleManageBilling}
+                disabled={isRedirecting || !overview.hasStripeCustomer}
+                className="shrink-0 border-amber-400 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-300 dark:hover:bg-amber-900"
+                data-testid="button-update-payment-past-due"
+              >
+                {isRedirecting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update Payment'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {overview.status === 'suspended' && (
+          <Card className="bg-gradient-to-br from-red-50 to-rose-50 dark:from-red-950/50 dark:to-rose-950/50 border-red-300 dark:border-red-700" data-testid="card-suspended-banner">
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="p-2 bg-gradient-to-br from-red-500 to-rose-600 rounded-lg">
+                <XCircle className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-900 dark:text-red-100" data-testid="text-suspended-title">Account Suspended</h3>
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  Your account is currently suspended due to unpaid invoices. Outbound SMS, voice, and email services are disabled. Update your payment method to restore full functionality.
+                </p>
+              </div>
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={handleManageBilling}
+                disabled={isRedirecting || !overview.hasStripeCustomer}
+                className="shrink-0"
+                data-testid="button-update-payment-suspended"
+              >
+                {isRedirecting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update Payment Now'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {(overview.status === 'active' || overview.status === 'past_due') && overview.hasSubscription && (
           <Card data-testid="card-subscription-settings">
             <CardHeader className="pb-3">
