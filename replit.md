@@ -154,3 +154,43 @@ On `/admin/import-history`, a purple notice appears for imports with `source = '
 - Automated bundle download from `remoteBundleUrl`
 - Multi-tenant support via `tenantExternalId` lookup
 - Webhook callbacks for import completion
+
+## DI4: Phone History Setup Wizard Step
+
+### Overview
+An optional "Import Your Phone History" step added to the Setup Wizard between Phone Setup (Step 2) and Website (Step 3). This helps new tenant owners easily discover and use the migration wizard to bring their existing customer conversations into ServicePro.
+
+### Location
+- **Setup Wizard**: `/setup-wizard` - Step 3 (optional, purple-themed card with dashed border)
+- **Cross-link**: Links to Migration Wizard at `/admin/migration-wizard`
+
+### Design
+- Optional step shown between Phone Setup and Website
+- Purple-themed glassmorphism card with dashed border
+- Displays "Optional" badge in header
+- Shows "Done" badge when completed (via import or skip)
+- Auto-completes if a successful phone history import already exists
+
+### Database Schema
+Extended `tenant_config` table with:
+- **onboardingPhoneHistoryStepSeen**: Boolean (default: false) - Tracks if user has seen/skipped this step
+
+### API Endpoints
+Updated endpoints in `/api/onboarding/progress`:
+- **GET**: Returns `phoneHistoryStepSeen` and `hasSuccessfulPhoneHistoryImport` flags
+- **POST**: Accepts `phoneHistoryStepSeen` boolean to mark step as seen
+
+### Completion Logic
+The step is considered complete (`phoneHistoryComplete`) when:
+1. `phoneHistoryStepSeen` is true (user clicked "Skip for Now"), OR
+2. `hasSuccessfulPhoneHistoryImport` is true (user completed a migration)
+
+### Progress Calculation
+- The phone history step does NOT count toward the required 3 steps
+- Progress bar shows "X of 3 required steps complete"
+- Website step remains as Step 3 in the numbered display
+
+### Key Files
+- `shared/schema.ts`: Added `onboardingPhoneHistoryStepSeen` field
+- `server/onboardingIndustryRoutes.ts`: Updated GET/POST endpoints
+- `client/src/pages/SetupWizard.tsx`: Added Step 3 UI card

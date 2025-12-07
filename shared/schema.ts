@@ -291,6 +291,7 @@ export const tenantConfig = pgTable("tenant_config", {
   // Onboarding progress tracking (Phase: Self-Service Onboarding)
   onboardingBusinessSetupDone: boolean("onboarding_business_setup_done").default(false),
   onboardingPhoneSetupDone: boolean("onboarding_phone_setup_done").default(false),
+  onboardingPhoneHistoryStepSeen: boolean("onboarding_phone_history_step_seen").default(false),
   onboardingSitePublished: boolean("onboarding_site_published").default(false),
   
   // Suggestion Box settings

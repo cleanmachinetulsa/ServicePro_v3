@@ -1,0 +1,144 @@
+You are working on the ServicePro_v3 multi-tenant SaaS repo for Clean Machine Auto Detail (root tenant).
+
+### GOAL: SP-12 – Voicemail Playback Fix (No Twilio Login Popups)
+
+Problem:
+- In Night Ops → Conversations & Dispatch, when viewing a voicemail item, the audio player is using a raw Twilio Recording URL.
+- That URL requires Twilio Console login, so I see a Twilio login popup instead of hearing the voicemail.
+- I want all voicemail playback to work **inside the app** with **no Twilio login** and **no Twilio credentials exposed in the browser**.
+
+High-level requirements:
+1. **Server-side proxy/streaming endpoint** that fetches the recording from Twilio using server credentials, then streams audio back to the browser.
+2. **Frontend voicemail player** must use this proxy endpoint (not the raw Twilio URL).
+3. Continue to respect **multi-tenant isolation**, **auth**, and existing voicemail/transcription flows.
+4. Work with the schema we already have (whether we store `recordingUrl`, `recordingSid`, or both). You must inspect the code and DB schema to adapt correctly.
+
+---
+
+## STEP 1 – Understand current voicemail implementation
+
+1. Do a quick repo scan:
+   - Find:
+     - `voicemail`, `voicemails`, `recordingUrl`, `recordingSid`, `transcription`, `voicemailService`, `voicemailRoute`, etc.
+   - Identify:
+     - The **DB table** / Drizzle schema for voicemails.
+     - Where Twilio webhooks currently **save** voicemail data.
+     - Where the **front-end** renders the voicemail card / audio player in the Conversations UI.
+
+2. Confirm:
+   - What fields are stored per voicemail (e.g. `id`, `tenantId`, `callSid`, `recordingUrl`, `recordingSid`, `transcription`, etc.).
+   - How the Twilio webhook gets the recording (RecordingUrl, RecordingSid, etc.).
+   - What URL the frontend is currently feeding into the `<audio>` tag.
+
+Do NOT guess the schema – read it from the repo.
+
+---
+
+## STEP 2 – Add secure backend audio endpoint
+
+Implement a new **API route** something like:
+
+- `GET /api/voicemail/:voicemailId/audio`
+
+Requirements:
+
+1. **Auth & tenant isolation**
+   - Only authenticated users can access.
+   - Enforce tenant context (use the same `wrapTenantDb` / `tenantDb` pattern as other tenant-scoped routes).
+   - Validate that the voicemail belongs to the current tenant.
+
+2. **Recording lookup**
+   - Load the voicemail row by id.
+   - Determine recording identifier:
+     - Prefer `recordingSid` if present.
+     - Otherwise, safely derive it from `recordingUrl` (if we store only the URL).
+   - Handle the case where the voicemail record is missing or doesn’t have a recording yet:
+     - Return 404 or a JSON error `{ success: false, error: 'VOICEMAIL_NOT_FOUND' }`.
+
+3. **Fetch from Twilio**
+   - Use the existing Twilio client / config that the rest of the telephony code uses.
+   - Fetch the recording **media** from Twilio using server-side credentials:
+     - If we have `recordingSid`, use the media URL for that sid.
+     - If we only have `recordingUrl`, use that URL with proper auth on the server side (NOT passed to the browser).
+
+4. **Stream audio to browser**
+   - Set appropriate headers (e.g. `Content-Type: audio/mpeg` or whatever Twilio returns).
+   - Pipe the Twilio response through to the client (streaming or buffer is fine, but no redirect to Twilio).
+   - On Twilio error (404, 401, etc.), return a 404 or JSON error; do NOT leak secrets.
+
+5. **Logging & safety**
+   - Log errors with enough detail to debug, but do not include Twilio secrets in logs.
+   - Make sure this endpoint never returns the raw Twilio Recording URL to the browser.
+
+---
+
+## STEP 3 – Update Twilio webhook (if needed)
+
+Inspect the Twilio voicemail webhook handler:
+
+- Ensure we are **storing** enough info for later playback:
+  - At minimum: `recordingSid` OR a stable `recordingUrl`.
+- If we’re only storing `recordingUrl` now:
+  - Try to also persist `RecordingSid` going forward (non-breaking).
+  - Do NOT break existing rows — the audio endpoint should still be able to handle legacy rows by parsing the SID from the URL when possible.
+
+If we already store everything we need, just make sure the code is clean and consistent.
+
+---
+
+## STEP 4 – Frontend: wire voicemail player to new endpoint
+
+Find the React component that renders the voicemail in the Conversations / Night Ops UI, for example:
+
+- Something like `VoicemailMessageCard`, `VoicemailBubble`, or similar.
+
+Update it to:
+
+1. Stop using the raw Twilio URL.
+2. Use the new proxy endpoint instead:
+
+   - `src={`/api/voicemail/${voicemail.id}/audio`}` or the correct path you implemented.
+
+3. Keep the existing UI (play button, waveform, etc.) but:
+   - If the audio endpoint returns an error, show a friendly “We couldn’t load this recording” message instead of failing silently.
+   - Ensure it still shows “transcription pending…” / the transcription text as it already does.
+
+4. Verify that this works in:
+   - Night Ops / Conversations
+   - Any other place we show voicemail playback (if there are multiple components, reuse a shared helper if appropriate).
+
+---
+
+## STEP 5 – Tests & smoke check
+
+1. Add/extend tests as appropriate (unit or integration) to cover:
+   - Auth/tenant checks on the new audio endpoint.
+   - Handling missing voicemail ids.
+2. Run the app and manually test:
+   - Open a thread with an existing voicemail.
+   - Confirm:
+     - The audio plays inside the app.
+     - No Twilio login popup appears.
+     - Dev tools network panel shows a request to `/api/voicemail/.../audio`, **not** to `api.twilio.com` directly from the browser.
+
+---
+
+## STEP 6 – Docs
+
+Update `replit.md` (or whatever internal docs file is used) with a short section:
+
+- “SP-12 Voicemail Playback”
+  - How the proxy endpoint works.
+  - Why we never expose Twilio recording URLs.
+  - Where to look if voicemail playback fails (Twilio credentials, network issues, etc.).
+
+---
+
+### Guardrails
+
+- Do NOT break existing multi-tenant isolation.
+- Do NOT expose Twilio Account SID/Auth Token or raw Recording URLs to the frontend.
+- Keep the implementation consistent with the existing code style and folder structure.
+- If you need to introduce new env variables, document them and use the existing config pattern.
+
+When you are done, summarize exactly what files you changed and how the flow now works end-to-end (from Twilio webhook → DB → API → React player).
