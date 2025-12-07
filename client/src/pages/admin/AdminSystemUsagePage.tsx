@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RefreshCw, AlertTriangle, CheckCircle, XCircle, Building2, TrendingUp } from 'lucide-react';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { apiRequest } from '@/lib/queryClient';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -70,7 +70,7 @@ export default function AdminSystemUsagePage() {
     ? `/api/admin/usage/v2/system-summary?${queryString}` 
     : '/api/admin/usage/v2/system-summary';
 
-  const { data, isLoading, refetch } = useQuery<{ success: boolean; data: TenantUsageRow[]; count: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ success: boolean; data: TenantUsageRow[]; count: number }>({
     queryKey: ['/api/admin/usage/v2/system-summary', statusFilter, tierFilter],
     queryFn: async () => {
       const res = await fetch(apiPath, { credentials: 'include' });
@@ -139,6 +139,20 @@ export default function AdminSystemUsagePage() {
             </Button>
           </div>
         </div>
+
+        {isError && (
+          <Card className="border-red-300 bg-red-50">
+            <CardContent className="flex items-center gap-3 py-4">
+              <XCircle className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="font-medium text-red-700">Unable to load usage data</p>
+                <p className="text-sm text-red-600">
+                  There was a problem fetching tenant usage information. Please try refreshing.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
