@@ -165,3 +165,41 @@ Comprehensive usage tracking with tier-based caps and cost estimates:
 - Daily usage rollups aggregated from usageLedger events
 - Cost estimation based on standard rates
 - Admin rebuild capability for data correction
+
+## SP-18 Parser Integration v1
+
+AI-powered phone history analysis and knowledge extraction for onboarding:
+
+**Files**:
+- `shared/schema.ts`: Extended `phoneHistoryImports` table with `parserConfig`, `knowledgeJson`, `analyticsJson`, `appliedAt`, `appliedFlags` fields
+- `server/services/parserIntegrationService.ts`: External Parser API proxy, import record creation, result storage
+- `server/services/parserApplyService.ts`: Apply extracted services, FAQs, and tone profile to tenant config
+- `server/routes/parserRoutes.ts`: API routes at /api/onboarding/parser/*
+- `client/src/components/ParserImportStep.tsx`: Setup Wizard component for file upload and apply
+
+**API Routes**:
+- POST /api/onboarding/parser/run: Upload files and run parser analysis
+- POST /api/onboarding/parser/apply: Apply extracted knowledge to tenant
+- GET /api/onboarding/parser/latest: Get most recent parser import
+- GET /api/onboarding/parser/import/:id: Get specific import record
+- GET /api/onboarding/parser/history: Get import history
+
+**Parser Config Options**:
+- businessName, businessPhone, threadGapMinutes
+- includeFaqs, includeToneProfile, includeServices, includeAnalytics
+
+**Apply Options**:
+- applyFaqs: Creates support_kb_articles from extracted FAQs
+- applyServices: Creates services from extracted service mentions
+- applyTone: Appends tone profile to ai_persona_instructions
+
+**Environment Variables**:
+- PARSER_API_URL: External parser service URL (required for parsing)
+- PARSER_TOOL_SHARED_SECRET: Shared secret for external parser webhooks
+
+**Flow**:
+1. User uploads SMS export files (HTML, CSV, ZIP, JSON)
+2. Files sent to external parser API for analysis
+3. Parser returns structured knowledgeJson with services, FAQs, tone profile
+4. User reviews preview (service count, FAQ count, tone snippets)
+5. User selects what to apply and applies to their tenant config
