@@ -248,6 +248,8 @@ export const tenants = pgTable("tenants", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false), // Stripe cancel_at_period_end flag
   lastInvoiceStatus: text("last_invoice_status"), // e.g., 'paid', 'open', 'past_due', 'uncollectible'
   lastInvoiceDueAt: timestamp("last_invoice_due_at", { withTimezone: true }), // Due date of last invoice
+  // Phase 2.3: Dunning automation - tracks days invoice is overdue
+  overdueDays: integer("overdue_days").default(0).notNull(), // Days since invoice became overdue, used for dunning
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3355,6 +3357,80 @@ export const usageRollupsDaily = pgTable('usage_rollups_daily', {
 // Zod schemas for usage metrics
 export const insertUsageMetricsSchema = createInsertSchema(usageMetrics).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUsageRollupsDailySchema = createInsertSchema(usageRollupsDaily).omit({ id: true, createdAt: true });
+
+// ============================================================
+// PHASE 2.3: TENANT INVOICES (SaaS Billing)
+// ============================================================
+// Separate from customer invoices - these are for platform billing to tenants
+export const tenantInvoiceStatusEnum = pgEnum('tenant_invoice_status', [
+  'draft',      // Invoice being prepared
+  'open',       // Invoice sent, awaiting payment
+  'paid',       // Successfully paid
+  'past_due',   // Payment overdue
+  'uncollectible', // Payment failed, marked as uncollectible
+  'void',       // Invoice cancelled
+]);
+
+export const tenantInvoices = pgTable('tenant_invoices', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  
+  // Billing period
+  periodStart: date('period_start').notNull(), // Start of billing period
+  periodEnd: date('period_end').notNull(),     // End of billing period
+  
+  // Amounts (in USD cents for precision)
+  subscriptionAmount: integer('subscription_amount').default(0).notNull(), // Base subscription fee in cents
+  usageAmount: integer('usage_amount').default(0).notNull(),              // Usage-based charges in cents
+  discountAmount: integer('discount_amount').default(0).notNull(),        // Discounts applied in cents
+  totalAmount: integer('total_amount').default(0).notNull(),              // Final total in cents
+  
+  // Status and tracking
+  status: tenantInvoiceStatusEnum('status').default('draft').notNull(),
+  dueDate: date('due_date').notNull(),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  
+  // Stripe integration
+  stripeInvoiceId: text('stripe_invoice_id'),       // Stripe invoice ID
+  stripePaymentIntentId: text('stripe_payment_intent_id'),
+  stripeHostedInvoiceUrl: text('stripe_hosted_invoice_url'), // Link for customer to pay
+  stripePdfUrl: text('stripe_pdf_url'),             // PDF invoice URL
+  
+  // Usage breakdown (stored for historical reference)
+  usageBreakdown: jsonb('usage_breakdown').$type<{
+    smsTotal?: number;
+    mmsTotal?: number;
+    voiceMinutes?: number;
+    emailTotal?: number;
+    aiTokens?: number;
+    smsCost?: number;
+    mmsCost?: number;
+    voiceCost?: number;
+    emailCost?: number;
+    aiCost?: number;
+  }>(),
+  
+  // Notes and metadata
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdx: index('tenant_invoices_tenant_id_idx').on(table.tenantId),
+  statusIdx: index('tenant_invoices_status_idx').on(table.status),
+  periodIdx: index('tenant_invoices_period_idx').on(table.periodStart, table.periodEnd),
+  stripeInvoiceIdx: index('tenant_invoices_stripe_invoice_idx').on(table.stripeInvoiceId),
+}));
+
+// Zod schemas for tenant invoices
+export const insertTenantInvoiceSchema = createInsertSchema(tenantInvoices).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+// Types for tenant invoices
+export type TenantInvoice = typeof tenantInvoices.$inferSelect;
+export type InsertTenantInvoice = z.infer<typeof insertTenantInvoiceSchema>;
 
 // Types for usage metrics
 export type UsageMetrics = typeof usageMetrics.$inferSelect;
