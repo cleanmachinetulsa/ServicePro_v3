@@ -63,6 +63,7 @@ import { debugEnvRouter } from './routes/debugEnv';
 import { twilioDebugSmsRouter } from './routes/twilioDebugSms';
 import facebookRoutes from './routes.facebook';
 import tagRoutes from './routes.tags';
+import demoRoutes from './routes/demoRoutes';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { getLoyaltyPointsByPhone, getLoyaltyPointsByEmail, addLoyaltyPointsFromInvoice } from './loyaltyService';
 import { updateLoyaltyPointsInSheets } from './googleLoyaltyIntegration';
@@ -3015,6 +3016,9 @@ Follow up with this lead to set up their 14-day trial!
   app.use(adminTenantReadinessRouter);
   app.use('/api/admin/impersonate', adminImpersonationRoutes);
   app.use('/api/admin/backfill', adminBackfillRoutes);
+  
+  // CM-DEMO-1: Demo mode routes (public - no auth required)
+  app.use('/api/demo', demoRoutes);
   registerCustomerIntelligenceRoutes(app);
   registerPublicCustomerLookupRoutes(app);
   registerUpsellRoutes(app);
