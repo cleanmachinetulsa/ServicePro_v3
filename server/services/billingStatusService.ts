@@ -299,3 +299,55 @@ export async function sendAccountSuspendedEmail(tenantId: string): Promise<void>
     console.error(`[BILLING DUNNING] Error sending account suspended email for tenant ${tenantId}:`, error);
   }
 }
+
+/**
+ * Send payment recovered email to tenant owner
+ */
+export async function sendPaymentRecoveredEmail(tenantId: string): Promise<void> {
+  try {
+    const [config] = await db
+      .select({
+        businessName: tenantConfig.businessName,
+        ownerEmail: tenantConfig.primaryContactEmail,
+      })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+
+    if (!config?.ownerEmail) {
+      console.warn(`[BILLING DUNNING] No owner email found for tenant ${tenantId}`);
+      return;
+    }
+
+    const tenantDb = createTenantDb({ id: tenantId, name: config.businessName || 'Your Business', subdomain: null, isRoot: false });
+
+    const subject = 'Payment Successful - Account Restored';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #16a34a;">Your Account Has Been Restored</h2>
+        <p>Hi there,</p>
+        <p>Great news! Your payment for <strong>${config.businessName}</strong> has been successfully processed.</p>
+        <p>Your account is now fully active and all features have been restored.</p>
+        <div style="margin: 24px 0;">
+          <a href="${process.env.APP_URL || 'https://serviceproapp.com'}/dashboard" 
+             style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Go to Dashboard
+          </a>
+        </div>
+        <p>Thank you for your continued business!</p>
+        <p>Best regards,<br>The ServicePro Team</p>
+      </div>
+    `;
+
+    await sendTenantEmail(tenantDb, tenantId, {
+      to: config.ownerEmail,
+      subject,
+      html,
+      category: 'billing_dunning',
+    });
+
+    console.log(`[BILLING DUNNING] Payment recovered email sent to ${config.ownerEmail} for tenant ${tenantId}`);
+  } catch (error) {
+    console.error(`[BILLING DUNNING] Error sending payment recovered email for tenant ${tenantId}:`, error);
+  }
+}
