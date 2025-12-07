@@ -11,6 +11,8 @@ import {
   type UsageFeature 
 } from '@shared/pricing/usagePricing';
 
+export type { UsageChannel, UsageSource, UsageDirection, UsageFeature };
+
 export interface RecordUsageEventParams {
   tenantId: string;
   channel: UsageChannel;
