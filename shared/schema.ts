@@ -4324,3 +4324,85 @@ export type UpdateSupportTicketStatus = z.infer<typeof updateSupportTicketStatus
 export type SupportKbArticle = typeof supportKbArticles.$inferSelect;
 export type InsertSupportKbArticle = z.infer<typeof insertSupportKbArticleSchema>;
 export type UpdateSupportKbArticle = z.infer<typeof updateSupportKbArticleSchema>;
+
+// ============================================================================
+// Phase 5.2: Industry Packs - Templates for tenant cloning
+// ============================================================================
+
+export const industryPacks = pgTable("industry_packs", {
+  id: serial("id").primaryKey(),
+  key: varchar("key", { length: 100 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  configJson: jsonb("config_json").$type<{
+    industry?: string;
+    services?: Array<{
+      name: string;
+      description?: string;
+      priceRange?: string;
+      duration?: string;
+    }>;
+    heroText?: string;
+    heroSubtext?: string;
+    ctaText?: string;
+    colorPalette?: {
+      primary?: string;
+      secondary?: string;
+      accent?: string;
+    };
+    businessRules?: {
+      appointmentBuffer?: number;
+      maxDailyAppointments?: number;
+      depositRequired?: boolean;
+      depositPercent?: number;
+    };
+    smsTemplates?: Record<string, string>;
+    aiRules?: string[];
+    faq?: Array<{ question: string; answer: string }>;
+  }>().notNull().default({}),
+  isPublic: boolean("is_public").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  keyIdx: uniqueIndex("industry_packs_key_idx").on(table.key),
+  isPublicIdx: index("industry_packs_is_public_idx").on(table.isPublic),
+}));
+
+export const industryPackTemplates = pgTable("industry_pack_templates", {
+  id: serial("id").primaryKey(),
+  packId: integer("pack_id").notNull().references(() => industryPacks.id, { onDelete: "cascade" }),
+  templateKey: varchar("template_key", { length: 100 }).notNull(),
+  templateValue: text("template_value").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  packIdIdx: index("industry_pack_templates_pack_id_idx").on(table.packId),
+  packTemplateUnique: uniqueIndex("industry_pack_templates_pack_key_unique").on(table.packId, table.templateKey),
+}));
+
+// Industry Pack Insert Schemas
+export const insertIndustryPackSchema = createInsertSchema(industryPacks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateIndustryPackSchema = z.object({
+  name: z.string().optional(),
+  description: z.string().optional(),
+  configJson: z.any().optional(),
+  isPublic: z.boolean().optional(),
+});
+
+export const insertIndustryPackTemplateSchema = createInsertSchema(industryPackTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Industry Pack Types
+export type IndustryPack = typeof industryPacks.$inferSelect;
+export type InsertIndustryPack = z.infer<typeof insertIndustryPackSchema>;
+export type UpdateIndustryPack = z.infer<typeof updateIndustryPackSchema>;
+export type IndustryPackTemplate = typeof industryPackTemplates.$inferSelect;
+export type InsertIndustryPackTemplate = z.infer<typeof insertIndustryPackTemplateSchema>;
