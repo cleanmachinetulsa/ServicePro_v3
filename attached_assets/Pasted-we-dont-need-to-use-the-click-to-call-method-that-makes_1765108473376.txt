@@ -1,0 +1,38 @@
+we dont need to use the click to call method that makes my ohine ring then connects me to the customer usign my groundwire app anymore do we? on the phone 'version' of the servicepro app there should be a way to make it call directly from the app now right? unless im using the ipad or mac 'version' of the app, right?
+
+JB
+
+cleanmachinetul
+Assistant
+2 days ago
+Read 20 files
+You're absolutely right! The current Dialer component uses Twilio's "click-to-call" method where:
+
+You click "Call" in the app
+The backend initiates a call to YOUR phone first
+Then connects you to the customer
+But since you're using Groundwire SIP on your phone, you can make direct SIP calls from the app without that two-step process. The iPad/Mac versions would still need the click-to-call method since they don't have cellular capabilities.
+
+However, looking at your codebase, I don't see a direct SIP calling implementation yet. The current setup only handles:
+
+Inbound calls via SIP (when customers call you)
+Click-to-call outbound (the two-step method you mentioned)
+What you need:
+A native dialer mode that detects if you're on a mobile device with SIP configured, and if so, uses tel: links to trigger direct calls through Groundwire instead of going through the backend click-to-call flow.
+
+Proposed Solution:
+I'll update the Dialer component to:
+
+Detect if the device is mobile (iOS/Android)
+On mobile: Use direct tel: links (which Groundwire will intercept)
+On desktop/web: Use existing click-to-call method
+client/src/components/phone/Dialer.tsx
++59
+-33
+Now the dialer will:
+
+✅ On iPhone/iPad with Groundwire: Directly trigger tel: link → Groundwire intercepts → Direct call (no backend involved)
+✅ On Mac/Desktop: Use click-to-call method (backend initiates call to your phone, then connects to customer)
+✅ No confirmation dialog on mobile (since it's a direct call)
+✅ Shows toast notification indicating which method is being used
+This gives you the native calling experience on mobile devices while keeping the reliable click-to-call method for desktop/web interfaces where SIP isn't available.

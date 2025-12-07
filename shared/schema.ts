@@ -4716,6 +4716,44 @@ export type UsageLedgerEntry = typeof usageLedger.$inferSelect;
 export type InsertUsageLedgerEntry = z.infer<typeof insertUsageLedgerSchema>;
 
 // ============================================================
+// SP-18: TENANT USAGE STATUS (Current month status tracking)
+// ============================================================
+
+export const USAGE_CHANNELS_V2 = ['sms', 'mms', 'voice', 'email', 'ai'] as const;
+export type UsageChannelV2 = typeof USAGE_CHANNELS_V2[number];
+
+export const usageStatusEnumV2 = pgEnum('usage_status_v2', ['ok', 'warning', 'over_cap']);
+
+export const tenantUsageStatusV2 = pgTable("tenant_usage_status_v2", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }).unique(),
+  periodKey: varchar("period_key", { length: 7 }).notNull(),
+  smsUsed: integer("sms_used").notNull().default(0),
+  mmsUsed: integer("mms_used").notNull().default(0),
+  voiceUsed: integer("voice_used").notNull().default(0),
+  emailUsed: integer("email_used").notNull().default(0),
+  aiUsed: integer("ai_used").notNull().default(0),
+  overallStatus: usageStatusEnumV2("overall_status").notNull().default('ok'),
+  hardStopEnabled: boolean("hard_stop_enabled").notNull().default(false),
+  lastCalculatedAt: timestamp("last_calculated_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  tenantIdx: uniqueIndex("tenant_usage_status_v2_tenant_id_idx").on(table.tenantId),
+  periodKeyIdx: index("tenant_usage_status_v2_period_key_idx").on(table.periodKey),
+  overallStatusIdx: index("tenant_usage_status_v2_overall_status_idx").on(table.overallStatus),
+}));
+
+export const insertTenantUsageStatusV2Schema = createInsertSchema(tenantUsageStatusV2).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type TenantUsageStatusV2 = typeof tenantUsageStatusV2.$inferSelect;
+export type InsertTenantUsageStatusV2 = z.infer<typeof insertTenantUsageStatusV2Schema>;
+
+// ============================================================
 // SP-16: TENANT ADD-ONS
 // ============================================================
 

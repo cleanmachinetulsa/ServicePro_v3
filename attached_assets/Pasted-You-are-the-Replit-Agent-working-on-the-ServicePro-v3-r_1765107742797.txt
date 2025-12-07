@@ -1,0 +1,161 @@
+You are the Replit Agent working on the `ServicePro_v3` repo.
+
+Goal: Fix the custom domain routing for Clean Machine so that:
+
+- Visiting https://cleanmachinetulsa.com or https://www.cleanmachinetulsa.com
+  ALWAYS lands on the Clean Machine public site at /site/cleanmachine,
+  NOT the generic ServicePro landing page.
+
+DNS is already pointed at this Repl and SSL is working.
+This task is **purely a frontend/router fix**.
+
+---
+
+1️⃣ Find RootDomainHandler and current "/" route
+
+- Locate the component we previously discussed for hostname-based routing, likely:
+  - `client/src/components/RootDomainHandler.tsx`
+- Also locate the React Router setup, likely:
+  - `client/src/App.tsx` or similar root router file.
+
+Inspect:
+
+- How the route for path="/" is currently defined.
+- Whether RootDomainHandler is actually used at "/" or not.
+- The order of routes (especially any `*`/catch-all routes).
+
+---
+
+2️⃣ Implement a robust RootDomainHandler
+
+If `RootDomainHandler` already exists, update it; if not, create it at:
+
+- `client/src/components/RootDomainHandler.tsx`
+
+Implementation requirements:
+
+- Use React Router’s `useNavigate`.
+- On mount, inspect `window.location.hostname`.
+- Logic:
+
+  - Normalize hostname to lowercase.
+  - If hostname is exactly "cleanmachinetulsa.com" OR "www.cleanmachinetulsa.com":
+    - Immediately `navigate("/site/cleanmachine", { replace: true })`.
+    - Render a minimal "Redirecting..." placeholder while navigating.
+  - Otherwise:
+    - Render the existing ServicePro root/landing page component.
+
+You will need to:
+
+- Import the existing ServicePro landing/home component and use that as the fallback
+  for non-CleanMachine hosts.
+
+Example (you’ll adapt import names to match our codebase):
+
+```tsx
+import React, { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { LandingPage } from "./LandingPage"; // adjust path/name to actual landing component
+
+export const RootDomainHandler: React.FC = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const host = window.location.hostname.toLowerCase();
+
+    const isCleanMachineRoot =
+      host === "cleanmachinetulsa.com" ||
+      host === "www.cleanmachinetulsa.com";
+
+    if (isCleanMachineRoot) {
+      navigate("/site/cleanmachine", { replace: true });
+    }
+  }, [navigate]);
+
+  // While on cleanmachinetulsa.com, this will be visible only briefly before redirect.
+  // On other hosts, this is the normal ServicePro landing.
+  return <LandingPage />;
+};
+If our actual landing component is named differently, use that instead.
+
+3️⃣ Wire RootDomainHandler to "/" route with correct ordering
+
+In the main router file (likely client/src/App.tsx):
+
+Ensure there is a route for exact path "/" that uses RootDomainHandler:
+
+Example:
+
+tsx
+Copy code
+import { RootDomainHandler } from "./components/RootDomainHandler"; // adjust path
+
+// Inside <Routes>:
+<Route path="/" element={<RootDomainHandler />} />
+Critical:
+
+This route must be defined before any overly-broad or catch-all routes like:
+
+<Route path="*" ... />
+
+<Route path="/:tenantSlug" ... /> (if such exists)
+
+Make sure we are not also mapping "/" to a different landing component anywhere else.
+If there’s a second "/" route, remove or merge it so RootDomainHandler is the only one.
+
+4️⃣ Confirm the actual Clean Machine public route
+
+Find where the Clean Machine public site is served:
+
+It should be something like /site/:tenantSlug or a dedicated /site/cleanmachine route.
+
+Confirm that:
+
+The path /site/cleanmachine is valid and working when visited from the Replit domain.
+
+If the actual slug/path is DIFFERENT (e.g. /site/root or /cleanmachine), then update the RootDomainHandler redirect to point at the real route.
+
+The goal is:
+
+Visiting /site/cleanmachine on the Replit base domain should show the Clean Machine tenant site.
+
+RootDomainHandler only needs to redirect cleanmachinetulsa.com → that same path.
+
+If the slug is not cleanmachine, detect it from the DB or central config where we mark the root tenant for Clean Machine, then use that constant in the redirect.
+
+If a simple string is already present somewhere (like CLEAN_MACHINE_TENANT_SLUG = "cleanmachine"), import and reuse it.
+
+5️⃣ Quick verification steps (you can do these in the browser)
+
+After the code change:
+
+Open the Replit-hosted URL (e.g. https://<replit-project>.replit.app/):
+
+Should still show the generic ServicePro landing page (unchanged).
+
+Open:
+
+https://cleanmachinetulsa.com
+
+https://www.cleanmachinetulsa.com
+
+Expected behavior:
+
+Briefly show "Redirecting..." or nothing, then:
+
+Load the Clean Machine public site at /site/cleanmachine
+(or whatever path is configured for that tenant).
+
+If necessary, add a console.log in RootDomainHandler to log the hostname and redirect decision so we can debug if it doesn’t fire.
+
+Scope reminder:
+
+DO NOT touch DNS or any external config.
+
+Only adjust:
+
+RootDomainHandler.tsx
+
+App.tsx (or main router file)
+
+Keep all changes small, well-commented, and focused on robust host-based routing.
