@@ -7,8 +7,19 @@ import {
   validateReferralCode,
   trackReferralSignup,
   getOrCreateReferralCode,
+  getReferralLandingInfo,
+  getAdminReferralStats,
 } from './referralService';
 import { getRefereeRewardDescriptor, formatRewardDescription } from './referralConfigService';
+
+function requireAdminRole(req: Request, res: Response, next: () => void) {
+  const role = (req.session as any)?.role;
+  const allowedRoles = ['owner', 'manager', 'admin', 'root_admin'];
+  if (!allowedRoles.includes(role)) {
+    return res.status(403).json({ success: false, message: 'Access denied. Admin role required.' });
+  }
+  next();
+}
 
 /**
  * Register referral program routes
@@ -234,6 +245,92 @@ export function registerReferralRoutes(app: Express) {
         success: false, 
         message: 'Failed to track referral signup',
         error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  /**
+   * Public landing page info for a referral code
+   * Returns referrer name, business name, and reward info
+   * Used by /ref/:code public landing page
+   */
+  app.get('/api/referral/landing/:code', async (req: Request, res: Response) => {
+    try {
+      const code = req.params.code?.trim().toUpperCase();
+      
+      if (!code) {
+        return res.status(400).json({ 
+          valid: false, 
+          message: 'Referral code is required'
+        });
+      }
+      
+      const result = await getReferralLandingInfo(req.tenantDb!, code);
+      res.json(result);
+    } catch (error) {
+      console.error('Error getting referral landing info:', error);
+      res.status(500).json({ 
+        valid: false, 
+        message: 'Failed to load referral information'
+      });
+    }
+  });
+
+  /**
+   * Admin endpoint: Get all referral statistics
+   * Returns aggregate stats for referral program
+   * Auth: Requires manager or owner role
+   */
+  app.get('/api/admin/referrals/stats', requireAuth, requireAdminRole, async (req: Request, res: Response) => {
+    try {
+      const stats = await getAdminReferralStats(req.tenantDb!);
+      res.json({ success: true, data: stats });
+    } catch (error) {
+      console.error('Error getting admin referral stats:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to retrieve referral statistics'
+      });
+    }
+  });
+
+  /**
+   * Admin endpoint: Get all referrals for the tenant
+   * Returns paginated list of all referrals
+   * Auth: Requires manager or owner role
+   */
+  app.get('/api/admin/referrals', requireAuth, requireAdminRole, async (req: Request, res: Response) => {
+    try {
+      const { referrals } = req.tenantDb!.schema;
+      const { customers } = req.tenantDb!.schema;
+      const { eq, sql, desc } = await import('drizzle-orm');
+      
+      const allReferrals = await req.tenantDb!
+        .select({
+          id: referrals.id,
+          referralCode: referrals.referralCode,
+          referrerId: referrals.referrerId,
+          refereeName: referrals.refereeName,
+          refereePhone: referrals.refereePhone,
+          refereeEmail: referrals.refereeEmail,
+          status: referrals.status,
+          pointsAwarded: referrals.pointsAwarded,
+          createdAt: referrals.createdAt,
+          signedUpAt: referrals.signedUpAt,
+          completedAt: referrals.completedAt,
+          rewardedAt: referrals.rewardedAt,
+        })
+        .from(referrals)
+        .where(req.tenantDb!.withTenantFilter(referrals, sql`true`))
+        .orderBy(desc(referrals.createdAt))
+        .limit(100);
+      
+      res.json({ success: true, data: allReferrals });
+    } catch (error) {
+      console.error('Error getting admin referrals:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Failed to retrieve referrals'
       });
     }
   });

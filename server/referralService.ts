@@ -946,3 +946,151 @@ export async function getOrCreateReferralCode(tenantDb: TenantDb, customerId: nu
     return { success: false, message: "Failed to get referral code" };
   }
 }
+
+/**
+ * Get referral landing page info for a referral code
+ * Returns referrer name, business name for public landing page
+ */
+export async function getReferralLandingInfo(tenantDb: TenantDb, code: string): Promise<{
+  valid: boolean;
+  message: string;
+  referral?: any;
+  referrerName?: string;
+  businessName?: string;
+}> {
+  try {
+    // First validate the code
+    const validation = await validateReferralCode(tenantDb, code);
+    
+    if (!validation.valid) {
+      return { 
+        valid: false, 
+        message: validation.message || 'Invalid referral code'
+      };
+    }
+    
+    // Get the referral with referrer info
+    const [referral] = await tenantDb
+      .select({
+        id: referrals.id,
+        referralCode: referrals.referralCode,
+        referrerId: referrals.referrerId,
+        status: referrals.status,
+        referrerName: customers.name,
+      })
+      .from(referrals)
+      .leftJoin(customers, eq(referrals.referrerId, customers.id))
+      .where(
+        tenantDb.withTenantFilter(referrals, and(
+          eq(referrals.referralCode, code),
+          eq(referrals.status, 'pending')
+        ))
+      )
+      .limit(1);
+    
+    if (!referral) {
+      return { 
+        valid: false, 
+        message: 'Referral code not found or already used'
+      };
+    }
+    
+    // Get business name from tenantConfig
+    const { tenantConfig } = tenantDb.schema;
+    const [config] = await tenantDb
+      .select({
+        businessName: tenantConfig.businessName,
+      })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantDb.tenantId as any))
+      .limit(1);
+    
+    // Sanitize response - only return minimal info needed for landing page
+    // Do not expose internal IDs or referrer details beyond first name
+    const referrerFirstName = referral.referrerName?.split(' ')[0] || 'Your friend';
+    
+    return {
+      valid: true,
+      message: 'Valid referral code',
+      referral: {
+        id: referral.id,
+        referralCode: referral.referralCode,
+        referrerId: referral.referrerId,
+        status: referral.status,
+      },
+      referrerName: referrerFirstName, // Only first name for privacy
+      businessName: config?.businessName || 'Our Business',
+    };
+  } catch (error) {
+    console.error("Error getting referral landing info:", error);
+    return { 
+      valid: false, 
+      message: 'Failed to load referral information'
+    };
+  }
+}
+
+/**
+ * Get admin referral statistics for the tenant
+ * Returns aggregate stats for the referral program
+ */
+export async function getAdminReferralStats(tenantDb: TenantDb): Promise<{
+  totalReferrals: number;
+  pendingReferrals: number;
+  signedUpReferrals: number;
+  completedReferrals: number;
+  rewardedReferrals: number;
+  totalPointsAwarded: number;
+}> {
+  try {
+    const { count, sum } = await import('drizzle-orm');
+    
+    // Get total counts by status
+    const allReferrals = await tenantDb
+      .select({
+        status: referrals.status,
+        pointsAwarded: referrals.pointsAwarded,
+      })
+      .from(referrals)
+      .where(tenantDb.withTenantFilter(referrals, sql`true`));
+    
+    const stats = {
+      totalReferrals: allReferrals.length,
+      pendingReferrals: 0,
+      signedUpReferrals: 0,
+      completedReferrals: 0,
+      rewardedReferrals: 0,
+      totalPointsAwarded: 0,
+    };
+    
+    for (const ref of allReferrals) {
+      switch (ref.status) {
+        case 'pending':
+          stats.pendingReferrals++;
+          break;
+        case 'signed_up':
+          stats.signedUpReferrals++;
+          break;
+        case 'first_service_completed':
+          stats.completedReferrals++;
+          break;
+        case 'rewarded':
+          stats.rewardedReferrals++;
+          stats.totalPointsAwarded += ref.pointsAwarded || 0;
+          break;
+      }
+    }
+    
+    return stats;
+  } catch (error) {
+    console.error("Error getting admin referral stats:", error);
+    return {
+      totalReferrals: 0,
+      pendingReferrals: 0,
+      signedUpReferrals: 0,
+      completedReferrals: 0,
+      rewardedReferrals: 0,
+      totalPointsAwarded: 0,
+    };
+  }
+}

@@ -75,6 +75,7 @@ import CleanMachineShowcase from "./pages/clean-machine-showcase";
 import SecuritySettingsPage from "./pages/security-settings";
 import TechnicianPage from "./pages/technician";
 import ReferralPage from "./pages/ReferralPage";
+import ReferralLanding from "./pages/ReferralLanding";
 import PhoneSettingsPage from "./pages/phone-settings";
 import EmailSettingsPage from "./pages/email-settings";
 import UiModeSettingsPage from "./pages/settings/UiModeSettingsPage";
@@ -531,6 +532,9 @@ function Router() {
       <Route path="/sms-consent" component={SMSConsentPage} />
       <Route path="/privacy-policy" component={PrivacyPolicyPage} />
       <Route path="/careers" component={Careers} />
+
+      {/* Phase 3.2: Public Referral Landing Page */}
+      <Route path="/ref/:code" component={ReferralLanding} />
 
       {/* Phase 15 & 16.5: Customer Portal Routes */}
       <Route path="/portal/welcome" component={PortalWelcome} />
