@@ -51,6 +51,7 @@ import emailTestRouter from "./routes/emailTestRouter";
 import tenantDomainsRouter from "./routes.tenantDomains";
 import dashboardPreferencesRouter from "./routes.dashboardPreferences";
 import usageLedgerRouter from "./routes.usageLedger";
+import addonRouter from "./routes/addonRoutes";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -503,6 +504,10 @@ app.use((req, res, next) => {
   // CM-Billing-Prep: Register usage ledger routes
   app.use('/api/billing/usage', usageLedgerRouter);
   console.log('[USAGE LEDGER] Routes registered: /api/billing/usage');
+
+  // SP-16: Register add-on management routes
+  app.use('/api/billing/addons', addonRouter);
+  console.log('[ADDONS] Routes registered: /api/billing/addons');
 
   // Register Twilio Voice webhook (handles incoming calls to business number)
   app.use('/twilio', twilioVoiceRouter);
