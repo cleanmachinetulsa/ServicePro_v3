@@ -86,11 +86,8 @@ export default function AdminPublicSiteSettings() {
 
   const updateMutation = useMutation({
     mutationFn: async (newSettings: PublicSiteSettings) => {
-      return await apiRequest('/api/admin/public-site-settings', {
-        method: 'PUT',
-        body: JSON.stringify(newSettings),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      // CM-DNS-1: Fix apiRequest signature - method, url, data
+      return await apiRequest('PUT', '/api/admin/public-site-settings', newSettings);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/public-site-settings'] });

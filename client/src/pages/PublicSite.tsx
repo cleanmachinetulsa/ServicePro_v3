@@ -72,8 +72,19 @@ export default function PublicSite() {
   const subdomain = params?.subdomain;
 
   // Fetch public site data
+  // CM-DNS-1: Use custom queryFn since this is a public endpoint that constructs URL from subdomain
   const { data, isLoading, error } = useQuery<{ success: boolean; data: PublicSiteData }>({
     queryKey: ['/api/public/site', subdomain],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/site/${subdomain}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
     enabled: !!subdomain,
   });
 

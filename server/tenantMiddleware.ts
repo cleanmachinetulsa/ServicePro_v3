@@ -27,6 +27,26 @@ export async function tenantMiddleware(
   next: NextFunction
 ) {
   try {
+    // CM-DNS-1: Skip tenant middleware for truly public paths that handle their own tenant resolution
+    // These endpoints determine tenant from URL params (subdomain) not session
+    const publicPaths = [
+      '/api/public/site',     // Public website generator (resolves tenant from subdomain param)
+      '/api/public/pricing',  // Public pricing page
+    ];
+    
+    if (publicPaths.some(path => req.originalUrl.startsWith(path))) {
+      // For public paths, set a minimal tenant context (root) so req.tenant exists
+      // The actual route will override this with the correct tenant from URL params
+      req.tenant = {
+        id: 'root',
+        name: 'Root',
+        subdomain: null,
+        isRoot: true,
+      };
+      req.tenantDb = createTenantDb(req.tenant);
+      return next();
+    }
+    
     // Use single source of truth for tenant ID (supports impersonation and user's tenant)
     const tenantId = getEffectiveTenantId(req);
     

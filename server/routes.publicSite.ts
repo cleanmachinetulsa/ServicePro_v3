@@ -77,10 +77,12 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
       .limit(1);
 
     if (!tenantRecords || tenantRecords.length === 0) {
+      console.log(`[PUBLIC SITE] site_not_found: subdomain=${subdomain}`);
       // Set cache headers for 404s (cache for 5 minutes to reduce load)
       res.set('Cache-Control', 'public, max-age=300');
       return res.status(404).json({
         success: false,
+        error: 'site_not_found',
         message: 'Site not found',
       });
     }
@@ -89,9 +91,11 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
 
     // Block suspended or cancelled tenants from showing public sites
     if (tenant.status === 'suspended' || tenant.status === 'cancelled') {
+      console.log(`[PUBLIC SITE] site_not_found (${tenant.status}): subdomain=${subdomain}`);
       res.set('Cache-Control', 'public, max-age=300');
       return res.status(404).json({
         success: false,
+        error: 'site_not_found',
         message: 'Site not available',
       });
     }
@@ -196,6 +200,8 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
 
     // Set cache headers (cache for 10 minutes for public sites)
     res.set('Cache-Control', 'public, max-age=600');
+    
+    console.log(`[PUBLIC SITE] public site ok: subdomain=${subdomain} tenantId=${tenant.tenantId}`);
     
     return res.json({
       success: true,
