@@ -1,0 +1,256 @@
+SP-11 DROP-IN PROMPT
+
+(Usage & Billing Foundation v1 – internal + tenant-visible usage dashboard)
+
+You are the Replit Agent with full access to the Servicepro_v3 repo.
+Follow these instructions exactly and make all necessary edits in one pass.
+Do not break multi-tenant isolation and do not remove existing functionality.
+
+Goal
+
+Implement SP-11 – Usage & Billing Foundation v1:
+
+Track core usage metrics per tenant (SMS, voice minutes, emails, AI calls) on a daily basis.
+
+Expose a tenant-visible Usage & Billing page in the admin dashboard so ServicePro customers can see what they’re using.
+
+Add a simple internal Billing Overview for the root admin (me) so I can see usage across tenants.
+
+Keep this v1: view-only / informational and ready for Stripe integration later – no suspensions or invoices yet.
+
+This is a foundation layer: correct, multi-tenant, and easy to extend to real billing/charging later.
+
+Part 1 – Data Model & Aggregation
+
+Create/extend a usage table for daily aggregated metrics, e.g.:
+
+Table name suggestion: billing_usage_daily
+
+Columns (adapt names to existing conventions if similar table exists):
+
+id (primary key)
+
+tenantId (FK to tenants/root metadata)
+
+date (DATE, UTC)
+
+smsOutboundCount
+
+smsInboundCount
+
+mmsOutboundCount
+
+voiceMinutesInbound
+
+voiceMinutesOutbound
+
+emailsSent
+
+aiRequests (count of OpenAI/assistant calls)
+
+createdAt / updatedAt
+
+Use Drizzle and the existing shared schema patterns.
+
+Ensure multi-tenant isolation: all queries are scoped by tenantId and use wrapTenantDb (or the correct helper) where appropriate.
+
+Usage aggregation job / service
+
+Add a billingUsageService.ts (or extend an existing service if you already have one) that can:
+
+Compute usage for a single tenant over a date range by querying existing tables:
+
+SMS/MMS: use your messages / conversations / Twilio event tables.
+
+Voice: use call logs or Twilio call records if available.
+
+Email: use your email log table, if present (or stub as 0 for now if not).
+
+AI: use your existing OpenAI logging table (e.g. where SMS AI & Support AI interactions are stored).
+
+Upsert daily rows into billing_usage_daily.
+
+Implement a daily aggregation job that:
+
+Runs for “yesterday” (or any missing days).
+
+Loops through tenants and writes aggregate rows into billing_usage_daily.
+
+If there is already a cron / scheduled job system in the repo, plug into that.
+Otherwise, add a small scheduler hook consistent with existing patterns (e.g. a job that can be triggered via an admin endpoint for now).
+
+Plan metadata for limits (read-only for now)
+
+Reuse the existing plan/tier config (Starter/Pro/Elite/Agency) – do not hard-code limits in multiple places.
+
+If there is not yet a central config object/file for plan usage caps, add one under shared/ or similar, e.g.:
+
+maxSmsPerMonth
+
+maxEmailsPerMonth
+
+maxAiRequestsPerMonth
+
+These should be read-only for now and used only to show “Usage vs soft limit” in the UI; no enforcement in SP-11.
+
+Part 2 – Tenant Usage & Billing Page (Customer-Facing)
+
+New route & page
+
+Add a “Usage & Billing” page for tenant admins, e.g. route:
+
+/settings/billing (or /settings/usage-and-billing – pick one and be consistent).
+
+Add a nav item under the existing “Settings & Administration” section:
+
+Label: Usage & Billing
+
+Icon: something appropriate already used in the design system (e.g. a bar chart or receipt icon).
+
+Backend API for the page
+
+Implement a secure API route, e.g. GET /api/billing/usage/summary:
+
+Requires auth and uses the current tenant context.
+
+Returns:
+
+currentPlan (name, display label)
+
+planLimits (per-plan usage caps if defined)
+
+currentPeriod (start/end dates – align with calendar month for now)
+
+totalsForPeriod (aggregated from billing_usage_daily)
+
+dailyUsage (last 30 days, array of day+metrics for charting)
+
+Do not call external APIs (Twilio/SendGrid) on every page load – always rely on the aggregated table.
+
+Frontend UI – tenant view
+
+On the Usage & Billing page, design a simple but premium layout consistent with the existing admin style:
+
+Header:
+
+Plan name badge (Starter/Pro/Elite/etc.).
+
+“Billing period: [Month] [1–30]” (or similar).
+
+Top row stats cards (3–4 cards):
+
+“SMS” – how many sent this period vs plan soft cap (e.g. 134 / 1000).
+
+“Voice Minutes” – inbound+outbound this period.
+
+“Emails Sent”.
+
+“AI Requests” (optional).
+
+Usage chart:
+
+Line or bar chart over the last 30 days for at least SMS & AI.
+
+Plan & Billing info section:
+
+Shows:
+
+Current plan
+
+Monthly base price (pull from the shared plan config if available, or display “Contact support” if not yet wired)
+
+A “Manage subscription” button (for now this can be a stub that links to a placeholder or says “Stripe billing integration coming soon”).
+
+This is purely read-only: no ability to change plan or payment data yet.
+
+Multi-tenant safety
+
+Ensure the page and API only ever see the current tenant’s usage, never global data.
+
+Use any existing requireTenantAdmin / requireOwner guard you already have for settings pages.
+
+Part 3 – Root Admin Billing Overview (Internal)
+
+Admin-only page
+
+Add an internal/root-only page, something like:
+
+/admin/billing-overview
+
+Only visible to the root/platform admin (whatever role/flag you already use to distinguish the ServicePro owner from tenant admins).
+
+Backend API
+
+Add an endpoint, e.g. GET /api/admin/billing/usage/tenants:
+
+Auth: root admin only.
+
+Returns an array of tenants with:
+
+tenantId
+
+tenantName
+
+plan
+
+active/suspended status
+
+totals for current billing period:
+
+smsOutboundCount
+
+voiceMinutes
+
+emailsSent
+
+aiRequests
+
+Data should be computed from billing_usage_daily, not live from external APIs.
+
+UI
+
+Simple table listing tenants with sortable columns:
+
+Tenant name, Plan, SMS this period, Voice minutes, Emails, AI requests.
+
+Add a basic filter/search by tenant name.
+
+This gives me a quick sense of “who is heavy” and will be the base for Stripe/pricing later.
+
+Part 4 – Docs & Master Plan
+
+Update replit.md (or the main dev notes file) with a short section:
+
+“SP-11 – Usage & Billing Foundation v1”
+
+Explains:
+
+The billing_usage_daily table.
+
+How aggregation job works.
+
+How to trigger it manually (if applicable).
+
+Endpoints and routes added.
+
+Update docs/MASTER_PLAN_v3.7_SERVICEPRO.md (or the latest master plan file):
+
+Mark SP-11 as Completed (v1).
+
+Note what is not yet done (no Stripe integration, no auto-suspension), so we can add SP-25+/billing phases later.
+
+Acceptance Criteria
+
+✅ billing_usage_daily exists, populated via a job or helper.
+
+✅ Tenant admin can visit Usage & Billing in their dashboard and see their current period usage summarized and charted.
+
+✅ Root admin can visit Admin Billing Overview and see per-tenant usage in a table.
+
+✅ No external Twilio/SendGrid/OpenAI calls are made on these pages; everything uses aggregated data.
+
+✅ All queries remain tenant-scoped and respect existing multi-tenant isolation patterns.
+
+✅ Master plan and docs updated to reflect SP-11 completion.
+
+Please implement all of the above as a single coherent change set, following the existing coding style and file structure.

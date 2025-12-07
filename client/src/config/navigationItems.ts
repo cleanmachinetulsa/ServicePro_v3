@@ -324,6 +324,14 @@ export const navigationItems: NavigationItem[] = [
     visibility: 'advancedOnly',
   },
   {
+    id: 'migration-wizard',
+    label: 'Migration Wizard',
+    icon: Sparkles,
+    path: '/admin/migration-wizard',
+    badge: 'Owner',
+    visibility: 'advancedOnly',
+  },
+  {
     id: 'import-history',
     label: 'Data Import',
     icon: FileArchive,

@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Smartphone,
+  Sparkles,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { format } from 'date-fns';
@@ -158,6 +159,22 @@ export default function AdminImportHistory() {
             </p>
           </div>
         </div>
+
+        <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+          <Sparkles className="w-4 h-4 text-blue-500" />
+          <AlertTitle className="text-blue-800 dark:text-blue-200">Prefer a guided flow?</AlertTitle>
+          <AlertDescription className="text-blue-700 dark:text-blue-300">
+            <span className="block mb-2">
+              The Migration Wizard walks you through the process step-by-step.
+            </span>
+            <Link href="/admin/migration-wizard">
+              <Button variant="outline" size="sm" className="bg-white dark:bg-blue-900 border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-800" data-testid="button-migration-wizard">
+                <Sparkles className="w-4 h-4 mr-2" />
+                Use Migration Wizard
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
 
         <Card className="border-2 border-dashed border-gray-300 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
           <CardHeader>

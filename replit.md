@@ -76,3 +76,35 @@ The ZIP file should contain standardized CSV or JSON files:
 - Conversations are auto-created per phone if not provided
 - Messages are deduplicated by (phone, timestamp, direction, body)
 - All imports are tenant-scoped via session context
+
+## INT-4: Migration Wizard (Phone History)
+
+### Overview
+A guided 4-step wizard UI built on top of the INT-3 import engine, designed to help non-technical users easily migrate their old phone data into ServicePro.
+
+### Location
+- **Admin Page**: `/admin/migration-wizard`
+- **Navigation**: Multi-Tenant Management → Migration Wizard (Owner badge, advanced mode only)
+- **Cross-link**: Button on `/admin/import-history` to access the wizard
+
+### Wizard Steps
+1. **Prepare** - Explains how to export phone data, use the Parser Tool, and download the ServicePro Bundle ZIP
+2. **Upload** - Drag & drop file upload with detection checklist (customers, conversations, messages)
+3. **Review** - Summary of imported data with stats and any errors
+4. **Finish** - Success message with links to Messages and Customers pages
+
+### Design
+- Glassmorphism/gradient card design matching the Setup Wizard
+- Dark theme with blue/purple gradients
+- Animated step transitions using Framer Motion
+- Mobile-responsive layout
+
+### Key Files
+- `client/src/pages/AdminMigrationWizard.tsx`: Wizard UI component
+- `client/src/pages/AdminImportHistory.tsx`: Contains cross-link to wizard
+- `client/src/config/navigationItems.ts`: Navigation entry
+
+### API Integration
+Uses the same endpoints as INT-3:
+- POST `/api/admin/import-history/upload` - Upload ZIP bundle
+- GET `/api/admin/import-history/latest` - Get import status (with polling during processing)

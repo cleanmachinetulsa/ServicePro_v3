@@ -64,6 +64,7 @@ import TenantSuggestions from "./pages/TenantSuggestions";
 import AdminCustomerSuggestions from "./pages/admin-customer-suggestions";
 import AdminIndustryPacks from "./pages/AdminIndustryPacks";
 import AdminImportHistory from "./pages/AdminImportHistory";
+import AdminMigrationWizard from "./pages/AdminMigrationWizard";
 import ThemeGallery from "./pages/ThemeGallery";
 import PayerApprovalPage from "./pages/payer-approval";
 import QuoteApprovalPage from "./pages/quote-approval";
@@ -410,6 +411,12 @@ function Router() {
       <Route path="/admin/import-history">
         <AuthGuard>
           <AdminImportHistory />
+        </AuthGuard>
+      </Route>
+      {/* INT-4: Migration Wizard */}
+      <Route path="/admin/migration-wizard">
+        <AuthGuard>
+          <AdminMigrationWizard />
         </AuthGuard>
       </Route>
       {/* Phase 26: Support System */}
