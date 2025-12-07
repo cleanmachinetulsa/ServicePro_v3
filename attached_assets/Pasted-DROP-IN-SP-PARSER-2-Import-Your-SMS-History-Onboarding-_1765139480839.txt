@@ -1,0 +1,585 @@
+DROP-IN: SP-PARSER-2 — “Import Your SMS History” Onboarding Step
+
+Repo: ServicePro_v3
+Depends on: Parser API from sms-parse-output-cleanmachinetul with:
+
+POST /api/knowledge/extract
+
+GET /api/knowledge/health
+
+GET /api/knowledge/spec
+
+Goal:
+Add a new step in the Setup Wizard that:
+
+Lets the tenant upload their SMS / call log exports.
+
+Lets them configure the parser options (thread gap, business name/phone, etc).
+
+Sends everything to the parser API.
+
+Stores the resulting Knowledge JSON + summary in the tenant’s onboarding data so later phases (AI setup, industry pack personalization, etc.) can use it.
+
+We are not changing the Messages page in this drop-in, so no risk of re-breaking scroll/layout.
+
+0. Environment & Config
+
+Add new env variables:
+
+PARSER_API_BASE_URL
+
+Example: https://sms-parse-output-cleanmachinetul.replit.app
+
+(Optional) PARSER_API_KEY if you decide to protect the parser API.
+
+Add a small shared config file, e.g.:
+
+shared/parserConfig.ts:
+
+export const PARSER_API_BASE_URL =
+  process.env.PARSER_API_BASE_URL || "https://sms-parse-output-cleanmachinetul.replit.app";
+
+export const PARSER_API_TIMEOUT_MS = 1000 * 60 * 2; // 2 minutes
+
+// If we later add auth to the parser API
+export const PARSER_API_KEY = process.env.PARSER_API_KEY || null;
+
+1. Backend: Parser Integration Service
+
+Create a new backend service module, e.g.:
+
+server/services/parserIntegrationService.ts
+
+Responsibilities:
+
+Call the parser API /api/knowledge/extract.
+
+Validate response against minimal structure.
+
+Return a typed object to routes.
+
+Implementation details:
+
+// server/services/parserIntegrationService.ts
+import axios from "axios";
+import FormData from "form-data";
+import { PARSER_API_BASE_URL, PARSER_API_TIMEOUT_MS, PARSER_API_KEY } from "@shared/parserConfig";
+
+export interface ParserConfigInbound {
+  threadGapMinutes?: number;
+  businessName?: string;
+  businessPhone?: string;
+  exportColumns?: string[];
+  locale?: string;
+  flags?: {
+    includeCallAnalytics?: boolean;
+    includeConversationAnalytics?: boolean;
+    includeRawExports?: boolean;
+  };
+}
+
+export interface KnowledgeJsonMeta {
+  spec_version: string;
+  spec_type: string;
+  target_system: string;
+  parser_version: string;
+  // plus any other meta fields we don’t strictly depend on yet
+}
+
+export interface KnowledgeJson {
+  meta: KnowledgeJsonMeta;
+  business_profile_guess?: unknown;
+  style_profile?: unknown;
+  knowledge_chunks?: unknown[];
+  analytics?: unknown;
+  // we keep this loose on purpose; strict schema is in parser repo
+}
+
+export async function extractKnowledgeFromParser(
+  files: { buffer: Buffer; filename: string; mimetype: string }[],
+  config: ParserConfigInbound,
+): Promise<KnowledgeJson> {
+  if (!PARSER_API_BASE_URL) {
+    throw new Error("PARSER_API_BASE_URL is not configured");
+  }
+
+  const form = new FormData();
+
+  for (const file of files) {
+    form.append("files[]", file.buffer, {
+      filename: file.filename,
+      contentType: file.mimetype || "application/octet-stream",
+    });
+  }
+
+  form.append("config", JSON.stringify(config));
+
+  const headers: Record<string, string> = {
+    ...form.getHeaders(),
+  };
+
+  if (PARSER_API_KEY) {
+    headers["X-API-Key"] = PARSER_API_KEY;
+  }
+
+  const url = `${PARSER_API_BASE_URL.replace(/\/+$/, "")}/api/knowledge/extract`;
+
+  const response = await axios.post(url, form, {
+    headers,
+    timeout: PARSER_API_TIMEOUT_MS,
+    maxContentLength: 50 * 1024 * 1024, // 50MB
+  });
+
+  const data = response.data as KnowledgeJson;
+
+  if (!data?.meta || data.meta.parser_version !== "v2-onboarding") {
+    throw new Error("Parser response missing or invalid meta.parser_version");
+  }
+
+  return data;
+}
+
+2. Backend: Onboarding Storage for Knowledge JSON
+
+Add a simple table to store imports per tenant (if one doesn’t already exist):
+
+Migration file: server/db/migrations/XXXX_onboarding_knowledge_imports.ts
+
+Table name: onboarding_knowledge_imports
+
+Schema (minimal but future-proof):
+
+// pseudo migration
+table.uuid("id").primary();
+table.uuid("tenant_id").notNullable().index();
+table.jsonb("knowledge_json").notNullable();
+table.string("source").notNullable().defaultTo("sms_parser_v2");
+table.jsonb("config_used").notNullable();
+table.jsonb("summary").nullable(); // quick view for UI
+table.timestamp("created_at").notNullable().defaultTo(knex.fn.now());
+
+
+Add a small repository/service:
+
+server/services/onboardingKnowledgeService.ts
+
+import { getTenantDb } from "../db/tenantDb";
+import type { KnowledgeJson, ParserConfigInbound } from "./parserIntegrationService";
+
+export async function saveKnowledgeImportForTenant(
+  tenantId: string,
+  knowledge: KnowledgeJson,
+  config: ParserConfigInbound,
+) {
+  const db = await getTenantDb(tenantId);
+
+  const summary = buildKnowledgeSummary(knowledge);
+
+  await db("onboarding_knowledge_imports").insert({
+    id: db.raw("gen_random_uuid()"),
+    tenant_id: tenantId,
+    knowledge_json: knowledge,
+    source: "sms_parser_v2",
+    config_used: config,
+    summary,
+  });
+
+  return summary;
+}
+
+function buildKnowledgeSummary(knowledge: KnowledgeJson) {
+  const chunksCount = Array.isArray(knowledge.knowledge_chunks)
+    ? knowledge.knowledge_chunks.length
+    : 0;
+  const analytics: any = knowledge.analytics || {};
+  const calls = analytics.calls || {};
+  const convos = analytics.conversations || {};
+
+  return {
+    chunksCount,
+    callsSummary: {
+      total: calls.total ?? null,
+      received: calls.received ?? null,
+      missed: calls.missed ?? null,
+      placed: calls.placed ?? null,
+    },
+    conversationsSummary: {
+      totalThreads: convos.total_threads ?? null,
+      totalMessages: convos.total_messages ?? null,
+    },
+    parserVersion: knowledge.meta?.parser_version,
+    specVersion: knowledge.meta?.spec_version,
+  };
+}
+
+3. Backend API Route: /api/onboarding/sms-import
+
+Create a new route module:
+
+server/routes/onboardingSmsImport.ts (or add to existing onboarding routes).
+
+Route:
+
+POST /api/onboarding/sms-import
+
+Auth: requires logged-in tenant owner/admin.
+
+Accepts multipart/form-data.
+
+Expected fields:
+
+files[] (1+ files)
+
+Optional text field: config (JSON string matching ParserConfigInbound)
+
+Implementation outline:
+
+// server/routes/onboardingSmsImport.ts
+import express from "express";
+import multer from "multer";
+import { extractKnowledgeFromParser, ParserConfigInbound } from "../services/parserIntegrationService";
+import { saveKnowledgeImportForTenant } from "../services/onboardingKnowledgeService";
+import { requireAuthTenantOwner } from "../middleware/auth";
+
+const upload = multer({ limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
+
+const router = express.Router();
+
+router.post(
+  "/api/onboarding/sms-import",
+  requireAuthTenantOwner,
+  upload.array("files[]"),
+  async (req, res) => {
+    try {
+      const user = req.user!;
+      const tenantId = user.tenantId;
+
+      const files = (req.files as Express.Multer.File[]) || [];
+      if (!files.length) {
+        return res.status(400).json({ ok: false, error: "NO_FILES" });
+      }
+
+      let config: ParserConfigInbound = {
+        threadGapMinutes: 90,
+        flags: {
+          includeCallAnalytics: true,
+          includeConversationAnalytics: true,
+          includeRawExports: false,
+        },
+      };
+
+      if (typeof req.body.config === "string") {
+        try {
+          const parsed = JSON.parse(req.body.config);
+          config = { ...config, ...parsed };
+        } catch {
+          return res.status(400).json({ ok: false, error: "BAD_CONFIG_JSON" });
+        }
+      }
+
+      const knowledge = await extractKnowledgeFromParser(
+        files.map((f) => ({
+          buffer: f.buffer,
+          filename: f.originalname,
+          mimetype: f.mimetype,
+        })),
+        config,
+      );
+
+      const summary = await saveKnowledgeImportForTenant(tenantId, knowledge, config);
+
+      return res.json({
+        ok: true,
+        summary,
+      });
+    } catch (err: any) {
+      console.error("sms-import error", err);
+      return res.status(500).json({
+        ok: false,
+        error: "INTERNAL_ERROR",
+        message: err?.message ?? "Unexpected error",
+      });
+    }
+  },
+);
+
+export default router;
+
+
+Wire it into the main server:
+
+In your main routes/index: app.use(onboardingSmsImportRouter);
+
+4. Frontend: New Setup Wizard Step – “Import SMS History”
+
+Locate the setup wizard flow component, e.g.:
+
+client/src/pages/SetupWizard.tsx
+(or any existing multi-step onboarding layout).
+
+Add a new step to the wizard sequence, something like:
+
+stepId: "smsImport"
+
+Label: "Import SMS & Call History"
+
+4.1 Create the Step Component
+
+Create: client/src/components/setup/SetupSmsImportStep.tsx
+
+Behavior:
+
+Explain why this step matters in plain English:
+
+“Upload your past messages and call logs so we can learn your tone, extract FAQs and pricing, and pre-fill your AI agent + website content.”
+
+Provide:
+
+File upload (multiple):
+
+Accept .html, .htm, .json, .txt, .csv
+
+Show file list with name + size.
+
+Basic config fields (visible):
+
+Business name
+
+Business phone
+
+Thread gap (minutes) with help text: “Messages separated by more than X minutes become separate conversations.”
+
+Advanced config (collapsible):
+
+Export columns (multi-select, optional)
+
+Flags for includeCallAnalytics / includeConversationAnalytics / includeRawExports.
+
+Buttons:
+
+“Skip for now” (mark step as skipped and let them proceed).
+
+“Analyze my history” (calls backend route).
+
+Pseudo-implementation:
+
+// client/src/components/setup/SetupSmsImportStep.tsx
+import React, { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiClient } from "@/utils/apiClient"; // whatever you use now
+import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
+import { Collapse } from "@/components/ui/Collapse";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
+
+interface Props {
+  onComplete: (summary: any | null) => void;
+  onSkip: () => void;
+}
+
+export default function SetupSmsImportStep({ onComplete, onSkip }: Props) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [businessName, setBusinessName] = useState("");
+  const [businessPhone, setBusinessPhone] = useState("");
+  const [threadGapMinutes, setThreadGapMinutes] = useState(90);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [includeCallAnalytics, setIncludeCallAnalytics] = useState(true);
+  const [includeConversationAnalytics, setIncludeConversationAnalytics] = useState(true);
+  const [includeRawExports, setIncludeRawExports] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async (): Promise<{ summary: any }> => {
+      const form = new FormData();
+      for (const file of files) {
+        form.append("files[]", file);
+      }
+
+      const config = {
+        threadGapMinutes,
+        businessName: businessName || undefined,
+        businessPhone: businessPhone || undefined,
+        flags: {
+          includeCallAnalytics,
+          includeConversationAnalytics,
+          includeRawExports,
+        },
+      };
+
+      form.append("config", JSON.stringify(config));
+
+      const res = await apiClient.post("/api/onboarding/sms-import", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      return res.data;
+    },
+    onSuccess: (data) => {
+      onComplete(data.summary ?? null);
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    setFiles(Array.from(e.target.files));
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold mb-1">Import your SMS & call history</h2>
+        <p className="text-sm text-muted-foreground">
+          Upload your Google Voice or phone exports so we can learn your tone, extract FAQs,
+          pricing, and build a smarter AI agent for your business.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        <label className="block text-sm font-medium">Upload files</label>
+        <Input
+          type="file"
+          multiple
+          accept=".html,.htm,.json,.txt,.csv"
+          onChange={handleFileChange}
+        />
+        {files.length > 0 && (
+          <ul className="text-xs text-muted-foreground">
+            {files.map((f) => (
+              <li key={f.name}>
+                {f.name} ({Math.round(f.size / 1024)} KB)
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium">Business name</label>
+          <Input
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+            placeholder="Clean Machine Auto Detail"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Business phone</label>
+          <Input
+            value={businessPhone}
+            onChange={(e) => setBusinessPhone(e.target.value)}
+            placeholder="918-555-1234"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Thread gap (minutes)</label>
+          <Input
+            type="number"
+            min={5}
+            max={720}
+            value={threadGapMinutes}
+            onChange={(e) => setThreadGapMinutes(Number(e.target.value) || 90)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Messages separated by more than this will be treated as separate conversations.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <button
+          type="button"
+          className="text-sm underline"
+          onClick={() => setShowAdvanced((v) => !v)}
+        >
+          {showAdvanced ? "Hide advanced options" : "Show advanced options"}
+        </button>
+        {showAdvanced && (
+          <div className="mt-3 space-y-2 border rounded-md p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Include call analytics</span>
+              <Switch
+                checked={includeCallAnalytics}
+                onCheckedChange={setIncludeCallAnalytics}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Include conversation analytics</span>
+              <Switch
+                checked={includeConversationAnalytics}
+                onCheckedChange={setIncludeConversationAnalytics}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Include raw exports in JSON</span>
+              <Switch checked={includeRawExports} onCheckedChange={setIncludeRawExports} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {mutation.isError && (
+        <div className="text-sm text-red-500">
+          Sorry, something went wrong analyzing your files. Please check your file types and try
+          again.
+        </div>
+      )}
+
+      <div className="flex justify-between items-center pt-4 border-t">
+        <Button variant="ghost" type="button" onClick={onSkip}>
+          Skip for now
+        </Button>
+        <Button
+          type="button"
+          disabled={mutation.isLoading || files.length === 0}
+          onClick={() => mutation.mutate()}
+        >
+          {mutation.isLoading ? "Analyzing…" : "Analyze my history"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+4.2 Wire into Wizard
+
+Inside your SetupWizard (or equivalent):
+
+Add a new step object to the steps array after the basic business profile / telephony config, but before “Go Live” / “Connect everything” step.
+
+When onComplete(summary) fires:
+
+Save the summary into your onboarding state (e.g. setupState.smsImportSummary).
+
+Optionally show a compact “Imported X chunks, Y threads, Z calls” confirmation.
+
+Ensure “Skip for now” marks the step as completed but skipped: true so the app can gently remind them later from Settings → “Improve your AI with SMS history”.
+
+5. Acceptance Criteria
+
+SP-PARSER-2 is done when:
+
+New Setup Wizard step “Import SMS & Call History” appears in the onboarding flow.
+
+User can:
+
+Upload 1+ export files.
+
+Set basic parser options.
+
+Click “Analyze my history” and see a loading state.
+
+Backend:
+
+Calls the parser API /api/knowledge/extract with files + config.
+
+Validates meta.parser_version === "v2-onboarding".
+
+Stores the full Knowledge JSON + a small summary in onboarding_knowledge_imports.
+
+Wizard:
+
+On success, shows a “success” state and allows moving to the next step.
+
+On error (bad files, parser unavailable), shows a clear error + allows retry OR skip.
+
+Existing pages (Messages, etc.) are untouched and still work exactly as before.
