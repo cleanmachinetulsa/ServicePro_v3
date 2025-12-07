@@ -704,6 +704,16 @@ export async function generateAIResponse(
             
             if (tenantId) {
               await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, SMS_AGENT_MODEL);
+              
+              // CM-Billing-Prep: Record to usage ledger for billing
+              const { recordAiMessage } = await import('./usage/usageRecorder');
+              void recordAiMessage(tenantId, inputTokens + outputTokens, {
+                model: SMS_AGENT_MODEL,
+                inputTokens,
+                outputTokens,
+                platform: 'sms',
+                iteration: iterations,
+              });
             }
           } catch (err) {
             console.error('[SMS AI USAGE LOG] Error:', err);

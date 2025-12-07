@@ -50,6 +50,7 @@ import setupAssistantRouter from "./routes/setupAssistantRouter";
 import emailTestRouter from "./routes/emailTestRouter";
 import tenantDomainsRouter from "./routes.tenantDomains";
 import dashboardPreferencesRouter from "./routes.dashboardPreferences";
+import usageLedgerRouter from "./routes.usageLedger";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -498,6 +499,10 @@ app.use((req, res, next) => {
   // SP-15: Register dashboard preferences routes
   app.use('/api/settings/dashboard/preferences', dashboardPreferencesRouter);
   console.log('[DASHBOARD PREFS] Routes registered: /api/settings/dashboard/preferences');
+
+  // CM-Billing-Prep: Register usage ledger routes
+  app.use('/api/billing/usage', usageLedgerRouter);
+  console.log('[USAGE LEDGER] Routes registered: /api/billing/usage');
 
   // Register Twilio Voice webhook (handles incoming calls to business number)
   app.use('/twilio', twilioVoiceRouter);

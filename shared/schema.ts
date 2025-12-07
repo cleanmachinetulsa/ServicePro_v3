@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, varchar, numeric, jsonb, date, index, uniqueIndex, foreignKey, pgEnum, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -4670,3 +4670,47 @@ export const updateDashboardPreferencesSchema = z.object({
 export type DashboardPreferences = typeof dashboardPreferences.$inferSelect;
 export type InsertDashboardPreferences = z.infer<typeof insertDashboardPreferencesSchema>;
 export type UpdateDashboardPreferences = z.infer<typeof updateDashboardPreferencesSchema>;
+
+export const USAGE_SOURCES = ['twilio', 'openai', 'sendgrid', 'system'] as const;
+export type UsageSource = typeof USAGE_SOURCES[number];
+
+export const USAGE_EVENT_TYPES = [
+  'sms_outbound',
+  'sms_inbound', 
+  'mms_outbound',
+  'mms_inbound',
+  'call_inbound',
+  'call_outbound',
+  'call_minutes',
+  'ivr_step',
+  'ai_message',
+  'ai_voicemail_summary',
+  'email_sent',
+  'email_campaign',
+] as const;
+export type UsageEventType = typeof USAGE_EVENT_TYPES[number];
+
+export const usageLedger = pgTable("usage_ledger", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  source: varchar("source", { length: 20 }).notNull().$type<UsageSource>(),
+  eventType: varchar("event_type", { length: 50 }).notNull().$type<UsageEventType>(),
+  units: integer("units").notNull().default(1),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tenantIdIdx: index("usage_ledger_tenant_id_idx").on(table.tenantId),
+  occurredAtIdx: index("usage_ledger_occurred_at_idx").on(table.occurredAt),
+  sourceIdx: index("usage_ledger_source_idx").on(table.source),
+  eventTypeIdx: index("usage_ledger_event_type_idx").on(table.eventType),
+  tenantOccurredIdx: index("usage_ledger_tenant_occurred_idx").on(table.tenantId, table.occurredAt),
+}));
+
+export const insertUsageLedgerSchema = createInsertSchema(usageLedger).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type UsageLedgerEntry = typeof usageLedger.$inferSelect;
+export type InsertUsageLedgerEntry = z.infer<typeof insertUsageLedgerSchema>;
