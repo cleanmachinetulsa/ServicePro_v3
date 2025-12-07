@@ -17,13 +17,29 @@ import {
   getTenantAddons,
 } from '../services/addonService';
 import { ADDONS_CATALOG, getAddonByKey, type AddonKey } from '@shared/addonsConfig';
-import { ADDON_KEYS } from '@shared/schema';
-import { storage } from '../storage';
+import { ADDON_KEYS, tenants } from '@shared/schema';
+import { requireAuth } from '../authMiddleware';
+import { getRootDb } from '../tenantDb';
+import { eq } from 'drizzle-orm';
 
 const router = Router();
 
+router.use(requireAuth);
+
 function getTenantId(req: Request): string | null {
-  return (req.session as any)?.tenantId || 'root';
+  const session = req.session as any;
+  const user = (req as any).user;
+  
+  if (session?.impersonatedTenantId) {
+    return session.impersonatedTenantId;
+  }
+  if (session?.tenantId) {
+    return session.tenantId;
+  }
+  if (user?.tenantId) {
+    return user.tenantId;
+  }
+  return null;
 }
 
 function isOwner(req: Request): boolean {
@@ -57,12 +73,23 @@ const toggleSchema = z.object({
 
 router.get('/my', requireOwner, async (req: Request, res: Response) => {
   try {
-    const tenantId = getTenantId(req);
+    let tenantId = getTenantId(req);
     if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant ID required' });
+      const user = (req as any).user;
+      if (user?.username === 'admin' || user?.role === 'root_admin') {
+        tenantId = 'root';
+      } else {
+        return res.status(400).json({ error: 'Tenant ID required' });
+      }
     }
     
-    const tenant = await storage.getTenant(tenantId);
+    const rootDb = getRootDb();
+    const [tenant] = await rootDb
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    
     if (!tenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
@@ -85,9 +112,14 @@ router.get('/my', requireOwner, async (req: Request, res: Response) => {
 
 router.post('/my/toggle', requireOwner, async (req: Request, res: Response) => {
   try {
-    const tenantId = getTenantId(req);
+    let tenantId = getTenantId(req);
     if (!tenantId) {
-      return res.status(400).json({ error: 'Tenant ID required' });
+      const user = (req as any).user;
+      if (user?.username === 'admin' || user?.role === 'root_admin') {
+        tenantId = 'root';
+      } else {
+        return res.status(400).json({ error: 'Tenant ID required' });
+      }
     }
     
     const parseResult = toggleSchema.safeParse(req.body);
@@ -105,7 +137,13 @@ router.post('/my/toggle', requireOwner, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Add-on not found' });
     }
     
-    const tenant = await storage.getTenant(tenantId);
+    const rootDb = getRootDb();
+    const [tenant] = await rootDb
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+    
     if (!tenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
