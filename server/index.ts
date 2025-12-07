@@ -502,6 +502,16 @@ app.use((req, res, next) => {
   const { initializeUsageRollupScheduler } = await import('./services/usageRollupService');
   initializeUsageRollupScheduler();
   console.log('[SERVER] Usage rollup scheduler started - aggregates daily usage at midnight UTC');
+
+  // Phase 2.3: Start monthly invoice generator (1st of each month at 6:00 AM UTC)
+  const { initializeInvoiceGeneratorScheduler } = await import('./services/invoiceGeneratorService');
+  initializeInvoiceGeneratorScheduler();
+  console.log('[SERVER] Invoice generator scheduler started - runs on 1st of each month');
+
+  // Phase 2.3: Start nightly dunning process (2:00 AM UTC daily)
+  const { initializeNightlyDunningScheduler } = await import('./services/nightlyDunningService');
+  initializeNightlyDunningScheduler();
+  console.log('[SERVER] Nightly dunning scheduler started - runs at 2:00 AM UTC daily');
   
   // Start port monitoring (auto-disables when port completes)
   const { initializePortMonitoring } = await import('./portMonitoring');
