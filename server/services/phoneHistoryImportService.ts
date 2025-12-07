@@ -418,3 +418,72 @@ export async function processImportZip(
     throw error;
   }
 }
+
+export interface ImportSummary extends PhoneHistoryImport {
+  serviceCount: number;
+  faqCount: number;
+  hasPersona: boolean;
+  knowledgeApplied: boolean;
+}
+
+export async function listTenantImportsWithSummary(
+  tenantId: string,
+  limit: number = 20
+): Promise<ImportSummary[]> {
+  const tenantDb = wrapTenantDb(db, tenantId);
+
+  const result = await tenantDb.execute(sql`
+    SELECT 
+      phi.*,
+      COALESCE(
+        (phi.knowledge_json->'services')::jsonb,
+        '[]'::jsonb
+      ) as services_json,
+      COALESCE(
+        (phi.knowledge_json->'faqs')::jsonb,
+        '[]'::jsonb
+      ) as faqs_json,
+      COALESCE(phi.knowledge_json->'tone', '{}'::jsonb) as tone_json
+    FROM phone_history_imports phi
+    WHERE phi.tenant_id = ${tenantId}
+    ORDER BY phi.created_at DESC
+    LIMIT ${limit}
+  `);
+
+  return result.rows.map((row: any) => {
+    let serviceCount = 0;
+    let faqCount = 0;
+    let hasPersona = false;
+
+    try {
+      const servicesData = typeof row.services_json === 'string' 
+        ? JSON.parse(row.services_json) 
+        : row.services_json;
+      serviceCount = Array.isArray(servicesData) ? servicesData.length : 0;
+    } catch { serviceCount = 0; }
+
+    try {
+      const faqsData = typeof row.faqs_json === 'string' 
+        ? JSON.parse(row.faqs_json) 
+        : row.faqs_json;
+      faqCount = Array.isArray(faqsData) ? faqsData.length : 0;
+    } catch { faqCount = 0; }
+
+    try {
+      const toneData = typeof row.tone_json === 'string' 
+        ? JSON.parse(row.tone_json) 
+        : row.tone_json;
+      hasPersona = !!(toneData && Object.keys(toneData).length > 0);
+    } catch { hasPersona = false; }
+
+    const knowledgeApplied = !!(row.applied_at);
+
+    return {
+      ...row,
+      serviceCount,
+      faqCount,
+      hasPersona,
+      knowledgeApplied,
+    } as ImportSummary;
+  });
+}
