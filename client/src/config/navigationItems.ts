@@ -49,6 +49,10 @@ import {
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
+// SP-21: Complexity levels for navigation items
+export type ComplexityLevel = 'simple' | 'advanced' | 'expert';
+
+// Legacy visibility type for backward compatibility
 export type NavVisibility = 'always' | 'advancedOnly';
 
 export interface NavigationItem {
@@ -60,6 +64,96 @@ export interface NavigationItem {
   separator?: boolean;
   sectionHeader?: string;
   visibility?: NavVisibility;
+  // SP-21: New complexity metadata
+  complexity?: ComplexityLevel;
+  simpleDefault?: boolean; // Whether shown in Simple mode by default
+}
+
+// SP-21: Simple mode config stored in user/tenant preferences
+export interface SimpleModeConfig {
+  visibleNavItems?: string[];
+}
+
+/**
+ * SP-21: Filter navigation items based on dashboard mode
+ * @param mode - 'simple' or 'advanced'
+ * @param config - Custom simple mode configuration (optional)
+ * @param items - Navigation items to filter (defaults to navigationItems)
+ */
+export function filterNavForMode(
+  mode: 'simple' | 'advanced',
+  config?: SimpleModeConfig | null,
+  items: NavigationItem[] = navigationItems
+): NavigationItem[] {
+  // Advanced mode shows everything
+  if (mode === 'advanced') {
+    return items;
+  }
+
+  // Simple mode filtering logic
+  // Get IDs of visible items based on custom config or defaults
+  const customVisibleIds = new Set(config?.visibleNavItems || []);
+  const hasCustomConfig = customVisibleIds.size > 0;
+
+  return items.filter(item => {
+    // Always include separators that precede visible items (handled later)
+    if (item.separator) {
+      return true; // We'll filter empty sections after
+    }
+
+    // If custom config exists, use it
+    if (hasCustomConfig) {
+      return customVisibleIds.has(item.id);
+    }
+
+    // Default simple mode: show items marked as simpleDefault or with simple complexity
+    // Also respect legacy visibility field
+    if (item.visibility === 'advancedOnly') {
+      return false;
+    }
+    
+    // Show if explicitly marked for simple mode
+    if (item.simpleDefault === true) {
+      return true;
+    }
+    
+    // Show if complexity is simple
+    if (item.complexity === 'simple') {
+      return true;
+    }
+    
+    // Hide expert items
+    if (item.complexity === 'expert') {
+      return false;
+    }
+    
+    // Default: show items without complexity marking (backward compatibility)
+    if (!item.complexity) {
+      return item.visibility !== 'advancedOnly';
+    }
+    
+    return false;
+  });
+}
+
+/**
+ * SP-21: Get all non-separator navigation items for customization UI
+ */
+export function getCustomizableNavItems(): NavigationItem[] {
+  return navigationItems.filter(item => !item.separator);
+}
+
+/**
+ * SP-21: Get default visible nav item IDs for simple mode
+ */
+export function getDefaultSimpleModeItems(): string[] {
+  return navigationItems
+    .filter(item => !item.separator && (
+      item.simpleDefault === true || 
+      item.complexity === 'simple' ||
+      (!item.complexity && item.visibility !== 'advancedOnly')
+    ))
+    .map(item => item.id);
 }
 
 export const navigationItems: NavigationItem[] = [
@@ -77,6 +171,8 @@ export const navigationItems: NavigationItem[] = [
     label: 'Dashboard',
     icon: Home,
     path: '/dashboard',
+    complexity: 'simple',
+    simpleDefault: true,
   },
 
   // COMMUNICATIONS
@@ -93,18 +189,23 @@ export const navigationItems: NavigationItem[] = [
     label: 'Messages',
     icon: MessageSquare,
     path: '/messages',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'escalations',
     label: 'Escalations',
     icon: AlertCircle,
     path: '/escalations',
+    complexity: 'advanced',
   },
   {
     id: 'phone',
     label: 'Phone',
     icon: Phone,
     path: '/phone',
+    complexity: 'simple',
+    simpleDefault: true,
   },
 
   // CUSTOMER MANAGEMENT
@@ -121,6 +222,8 @@ export const navigationItems: NavigationItem[] = [
     label: 'Customer Database',
     icon: Users,
     path: '/customer-database',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'service-history',
@@ -128,12 +231,15 @@ export const navigationItems: NavigationItem[] = [
     icon: History,
     path: '/service-history',
     visibility: 'advancedOnly',
+    complexity: 'advanced',
   },
   {
     id: 'rewards',
     label: 'Rewards',
     icon: Gift,
     path: '/rewards',
+    complexity: 'simple',
+    simpleDefault: true,
   },
 
   // SCHEDULING & OPERATIONS
@@ -150,12 +256,15 @@ export const navigationItems: NavigationItem[] = [
     label: 'Scheduling',
     icon: Calendar,
     path: '/admin/scheduling',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'technician',
     label: 'Technician Hub',
     icon: Wrench,
     path: '/technician',
+    complexity: 'advanced',
   },
   {
     id: 'damage-assessment',
@@ -163,6 +272,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Camera,
     path: '/damage-assessment',
     visibility: 'advancedOnly',
+    complexity: 'advanced',
   },
 
   // MARKETING & CONTENT
@@ -179,18 +289,21 @@ export const navigationItems: NavigationItem[] = [
     label: 'Website Design',
     icon: Palette,
     path: '/admin/homepage-editor',
+    complexity: 'advanced',
   },
   {
     id: 'public-site-settings',
     label: 'Public Site Settings',
     icon: Globe,
     path: '/admin/public-site-settings',
+    complexity: 'advanced',
   },
   {
     id: 'gallery-management',
     label: 'Gallery Management',
     icon: Image,
     path: '/admin/gallery-management',
+    complexity: 'advanced',
   },
   {
     id: 'gallery-public',
@@ -198,6 +311,7 @@ export const navigationItems: NavigationItem[] = [
     icon: LayoutDashboard,
     path: '/gallery',
     badge: 'Public',
+    complexity: 'simple',
   },
   {
     id: 'banner-management',
@@ -205,12 +319,14 @@ export const navigationItems: NavigationItem[] = [
     icon: Megaphone,
     path: '/admin/banner-management',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'referrals',
     label: 'Referral Management',
     icon: Gift,
     path: '/referrals',
+    complexity: 'advanced',
   },
 
   // REPORTS & ANALYTICS
@@ -227,6 +343,8 @@ export const navigationItems: NavigationItem[] = [
     label: 'Analytics',
     icon: TrendingUp,
     path: '/analytics',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'call-metrics',
@@ -234,6 +352,7 @@ export const navigationItems: NavigationItem[] = [
     icon: BarChart3,
     path: '/call-metrics',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
 
   // FINANCE
@@ -250,6 +369,8 @@ export const navigationItems: NavigationItem[] = [
     label: 'Billing',
     icon: DollarSign,
     path: '/billing',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'usage-dashboard',
@@ -257,6 +378,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Wallet,
     path: '/admin/usage-dashboard',
     visibility: 'advancedOnly',
+    complexity: 'advanced',
   },
   {
     id: 'billing-usage',
@@ -264,6 +386,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Activity,
     path: '/admin/billing-usage',
     visibility: 'advancedOnly',
+    complexity: 'advanced',
   },
 
   // MULTI-TENANT MANAGEMENT (Owner Only) - Advanced Mode
@@ -446,30 +569,38 @@ export const navigationItems: NavigationItem[] = [
     label: 'Settings',
     icon: Settings,
     path: '/settings',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'ui-mode',
     label: 'Interface Mode',
     icon: SlidersHorizontal,
     path: '/settings/ui-mode',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'dashboard-customize',
     label: 'Customize Dashboard',
     icon: LayoutDashboard,
     path: '/settings/dashboard/customize',
+    complexity: 'advanced',
   },
   {
     id: 'settings-billing',
     label: 'Billing & Usage',
     icon: CreditCard,
     path: '/settings/billing',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'settings-addons',
     label: 'My Add-Ons',
     icon: Package,
     path: '/settings/billing/addons',
+    complexity: 'advanced',
   },
   {
     id: 'settings-domains',
@@ -477,30 +608,36 @@ export const navigationItems: NavigationItem[] = [
     icon: Globe,
     path: '/settings/domains',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'business-settings',
     label: 'Business Settings',
     icon: Building2,
     path: '/business-settings',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'user-management',
     label: 'User Management',
     icon: UserCog,
     path: '/user-management',
+    complexity: 'advanced',
   },
   {
     id: 'security',
     label: 'Security',
     icon: Shield,
     path: '/security-settings',
+    complexity: 'advanced',
   },
   {
     id: 'notifications-settings',
     label: 'Notifications',
     icon: Bell,
     path: '/notifications-settings',
+    complexity: 'advanced',
   },
   {
     id: 'phone-settings',
@@ -508,6 +645,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Phone,
     path: '/phone-settings',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'email-settings',
@@ -515,6 +653,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Mail,
     path: '/settings/email',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'a2p-campaign',
@@ -522,6 +661,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Shield,
     path: '/settings/a2p',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'port-recovery',
@@ -530,6 +670,7 @@ export const navigationItems: NavigationItem[] = [
     path: '/admin/port-recovery',
     badge: 'Campaign',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'facebook-settings',
@@ -537,6 +678,7 @@ export const navigationItems: NavigationItem[] = [
     icon: MessagesSquare,
     path: '/facebook-settings',
     visibility: 'advancedOnly',
+    complexity: 'expert',
   },
   {
     id: 'quick-replies',
@@ -544,6 +686,7 @@ export const navigationItems: NavigationItem[] = [
     icon: MessageCircle,
     path: '/quick-replies',
     visibility: 'advancedOnly',
+    complexity: 'advanced',
   },
   {
     id: 'reminders',
