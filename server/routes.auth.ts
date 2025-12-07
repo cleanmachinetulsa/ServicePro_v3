@@ -922,6 +922,7 @@ export function registerAuthRoutes(app: Express) {
           id: user.id,
           username: user.username,
           role: user.role,
+          preferredLanguage: user.preferredLanguage || 'en',
         },
         impersonation: {
           isActive: impersonationContext.isImpersonating,
@@ -942,6 +943,29 @@ export function registerAuthRoutes(app: Express) {
         success: false,
         message: 'Failed to get auth context',
       });
+    }
+  });
+
+  // SP-8: Update user language preference
+  app.put('/api/user/language', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session?.userId;
+      const { language } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Not authenticated' });
+      }
+
+      if (!language || !['en', 'es'].includes(language)) {
+        return res.status(400).json({ success: false, message: 'Invalid language. Supported: en, es' });
+      }
+
+      await db.update(users).set({ preferredLanguage: language }).where(eq(users.id, userId));
+
+      res.json({ success: true, language });
+    } catch (error) {
+      console.error('Update language preference error:', error);
+      res.status(500).json({ success: false, message: 'Failed to update language preference' });
     }
   });
 }

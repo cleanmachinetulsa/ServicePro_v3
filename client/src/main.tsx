@@ -3,6 +3,7 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import "./index.css";
 import "./styles/nightOpsTheme.css";
+import "./i18n/i18n";
 
 createRoot(document.getElementById("root")!).render(
   <AppErrorBoundary>

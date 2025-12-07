@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppShell } from '@/components/AppShell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useUiExperienceMode, UiExperienceMode } from '@/hooks/useUiExperienceMode';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Check, Sparkles, Settings2, Loader2 } from 'lucide-react';
+import { Check, Sparkles, Settings2, Loader2, Globe } from 'lucide-react';
+import { LanguageSelector } from '@/components/LanguageSelector';
+import { Separator } from '@/components/ui/separator';
 
 export default function UiModeSettingsPage() {
   const { mode, isLoading, isSaving, saveMode } = useUiExperienceMode();
   const [localMode, setLocalMode] = useState<UiExperienceMode>('simple');
   const { toast } = useToast();
+  const { t } = useTranslation('common');
 
   useEffect(() => {
     if (!isLoading) {
@@ -178,6 +182,23 @@ export default function UiModeSettingsPage() {
               'Save Changes'
             )}
           </Button>
+        </div>
+
+        <Separator className="my-6" />
+
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Globe className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white" data-testid="text-language-title">
+              {t('settings.language')}
+            </h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            {t('settings.languageDescription')}
+          </p>
+          <Card className="p-4">
+            <LanguageSelector showLabel={false} persistToServer={true} />
+          </Card>
         </div>
       </div>
     </AppShell>

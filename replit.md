@@ -49,6 +49,22 @@ A comprehensive granular usage tracking and cost attribution system with feature
 - **Root Admin Dashboard**: `/admin/system-usage` with tenant filtering, search, sort, and CSV export for all tenants
 - **API Endpoints**: `/api/admin/usage/v2/channels`, `/api/admin/usage/v2/features`, `/api/admin/usage/v2/export`, `/api/root-admin/usage/export`
 
+#### Full i18n + Spanish Pack v1 (SP-8)
+A comprehensive internationalization layer with English and Spanish support for owner UI and customer-facing flows. Key components:
+- **i18n Infrastructure**: `client/src/i18n/` folder with i18next + react-i18next setup, LanguageDetector for auto-detection
+- **Translation Files**: `client/src/i18n/locales/en/common.json` and `client/src/i18n/locales/es/common.json` with translations for nav, dashboard, booking, rewards, settings, billing, validation, and errors
+- **User Language Preference**: `users.preferred_language` field stores user's UI language preference, synced on login via `/api/auth/context`
+- **Tenant Default Language**: `tenant_config.customer_default_language` controls default language for customer-facing pages (booking, rewards)
+- **Language Selector Component**: `client/src/components/LanguageSelector.tsx` for easy language switching in settings
+- **Public Language API**: `/api/public/:tenantId/language` returns tenant's customer default language for public pages
+- **Query Parameter Support**: Customer-facing pages support `?lang=en` or `?lang=es` query parameter to override language
+- **Settings Page**: Language selector added to `/admin/interface-mode` settings page
+- **How to Add a New Language**:
+  1. Create new locale file: `client/src/i18n/locales/{code}/common.json`
+  2. Add language to `supportedLanguages` array in `client/src/i18n/i18n.ts`
+  3. Import the new locale in `i18n.ts` and add to `resources` object
+  4. Update language validation in API routes to include the new code
+
 #### Phase 2.3 Billing Automation
 A comprehensive SaaS billing automation system generates monthly invoices, tracks overdue payments, and automates dunning processes. It includes a `tenant_invoices` table, a `Stripe Billing Service` for invoice creation and charging, a `Monthly Invoice Generator` cron job, and a `Nightly Dunning` cron job for reminders and suspension. Admin pages provide billing info and control.
 
