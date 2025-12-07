@@ -259,6 +259,19 @@ export async function sendSMS(
       }
     }
 
+    // CM-Billing-Prep: Record usage event for billing
+    try {
+      const { recordSmsOutbound } = await import('./usage/usageRecorder');
+      void recordSmsOutbound(tenantId, {
+        messageSid,
+        to: formattedPhone,
+        from: actualSender,
+        usedBackup: failoverResult.usedBackup,
+      });
+    } catch (usageError) {
+      console.error('[USAGE] Failed to record SMS outbound:', usageError);
+    }
+
     return { success: true, messageSid: messageSid };
   } catch (error) {
     console.error('Error sending SMS:', error);

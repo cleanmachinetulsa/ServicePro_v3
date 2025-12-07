@@ -66,7 +66,7 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
   const twimlResponse = new MessagingResponse();
   
   try {
-    const { Body, From, To } = req.body || {};
+    const { Body, From, To, MessageSid, NumMedia } = req.body || {};
     
     console.log("[TWILIO TEST SMS INBOUND] Parsed fields:", {
       From: (req.body as any)?.From,
@@ -83,6 +83,19 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
     
     const tenantId = 'root';
     const tenantDb = wrapTenantDb(db, tenantId);
+    
+    // CM-Billing-Prep: Record inbound SMS usage
+    try {
+      const { recordSmsInbound, recordMmsInbound } = await import('../usage/usageRecorder');
+      const hasMms = NumMedia && parseInt(NumMedia, 10) > 0;
+      if (hasMms) {
+        void recordMmsInbound(tenantId, { messageSid: MessageSid, from: From, to: To, numMedia: NumMedia });
+      } else {
+        void recordSmsInbound(tenantId, { messageSid: MessageSid, from: From, to: To });
+      }
+    } catch (usageError) {
+      console.error('[USAGE] Failed to record SMS inbound:', usageError);
+    }
     
     const conversation = await getOrCreateTestConversation(tenantDb, From);
     

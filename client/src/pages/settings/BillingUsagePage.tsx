@@ -9,8 +9,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useBillingOverview } from '@/hooks/useBillingOverview';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   CreditCard, 
   MessageSquare, 
@@ -25,7 +27,10 @@ import {
   XCircle,
   CalendarOff,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  FileText,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import {
   LineChart,
@@ -109,11 +114,52 @@ function UsageCard({ icon: Icon, label, current, limit, gradientFrom, gradientTo
   );
 }
 
+interface UsageLedgerEvent {
+  id: string;
+  tenantId: string;
+  source: 'twilio' | 'openai' | 'sendgrid' | 'system';
+  eventType: string;
+  units: number;
+  metadata: Record<string, unknown> | null;
+  occurredAt: string;
+}
+
+interface UsageLedgerResponse {
+  success: boolean;
+  events: UsageLedgerEvent[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
+const SOURCE_LABELS: Record<string, { label: string; icon: typeof MessageSquare; color: string }> = {
+  twilio: { label: 'Twilio', icon: MessageSquare, color: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' },
+  openai: { label: 'AI', icon: Bot, color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300' },
+  sendgrid: { label: 'Email', icon: Mail, color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300' },
+  system: { label: 'System', icon: FileText, color: 'bg-gray-100 text-gray-700 dark:bg-gray-900/50 dark:text-gray-300' },
+};
+
+function formatEventType(eventType: string): string {
+  return eventType
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function BillingUsagePage() {
   const { data: overview, isLoading, error } = useBillingOverview();
   const { toast } = useToast();
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  const { data: ledgerData, isLoading: ledgerLoading } = useQuery<UsageLedgerResponse>({
+    queryKey: ['/api/billing/usage/events'],
+    enabled: ledgerOpen,
+  });
 
   const cancelMutation = useMutation({
     mutationFn: async (cancelAtPeriodEnd: boolean) => {
@@ -561,6 +607,100 @@ export default function BillingUsagePage() {
             </CardContent>
           </Card>
         )}
+
+        <Collapsible open={ledgerOpen} onOpenChange={setLedgerOpen}>
+          <Card data-testid="card-usage-ledger">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    <CardTitle className="text-lg">Usage Event Log</CardTitle>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {ledgerData?.pagination && (
+                      <Badge variant="secondary" data-testid="badge-ledger-count">
+                        {ledgerData.pagination.total} events
+                      </Badge>
+                    )}
+                    {ledgerOpen ? (
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                </div>
+                <CardDescription>
+                  Detailed log of all billable events (SMS, AI, email, voice)
+                </CardDescription>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent>
+                {ledgerLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                  </div>
+                ) : ledgerData?.events && ledgerData.events.length > 0 ? (
+                  <div className="rounded-md border overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Time</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Event</TableHead>
+                          <TableHead className="text-right">Units</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ledgerData.events.slice(0, 20).map((event) => {
+                          const sourceConfig = SOURCE_LABELS[event.source] || { 
+                            label: event.source, 
+                            icon: FileText, 
+                            color: 'bg-gray-100 text-gray-700' 
+                          };
+                          const SourceIcon = sourceConfig.icon;
+                          return (
+                            <TableRow key={event.id} data-testid={`row-ledger-${event.id}`}>
+                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                {new Date(event.occurredAt).toLocaleString()}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={`${sourceConfig.color} flex items-center gap-1 w-fit`}>
+                                  <SourceIcon className="h-3 w-3" />
+                                  {sourceConfig.label}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {formatEventType(event.eventType)}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {event.units}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-muted-foreground">
+                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No usage events recorded yet.</p>
+                    <p className="text-sm">Events will appear here as you use SMS, AI, and email features.</p>
+                  </div>
+                )}
+                {ledgerData?.pagination && ledgerData.pagination.total > 20 && (
+                  <p className="mt-4 text-sm text-muted-foreground text-center">
+                    Showing 20 of {ledgerData.pagination.total} events
+                  </p>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
       </div>
     </AppShell>
   );

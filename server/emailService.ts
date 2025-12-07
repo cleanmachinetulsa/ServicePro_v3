@@ -138,6 +138,14 @@ export async function sendTrackedEmail(
   if (result.success) {
     try {
       await recordEmailUsage(tenantId, feature);
+      
+      // CM-Billing-Prep: Record to usage ledger for billing
+      const { recordEmailSent } = await import('./usage/usageRecorder');
+      void recordEmailSent(tenantId, {
+        to,
+        subject,
+        feature,
+      });
     } catch (err) {
       console.error('[EMAIL] Failed to record usage:', err);
     }
