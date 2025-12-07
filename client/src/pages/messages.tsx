@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ShareAvailabilityModal } from '@/components/ShareAvailabilityModal';
 import { apiRequest } from '@/lib/queryClient';
 import { useCustomerSidebarData } from '@/hooks/useCustomerSidebarData';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 interface Conversation {
   id: number;
@@ -288,6 +289,7 @@ function MessagesPageContent() {
             >
               <Phone className="h-3.5 w-3.5" />
             </Button>
+            <LanguageSwitcher variant="ghost" size="icon" showLabel={false} />
           </div>
         }
       />
