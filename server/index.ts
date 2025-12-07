@@ -38,6 +38,7 @@ import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
 import { registerSuggestionRoutes } from "./routes.suggestions";
 import { registerSupportRoutes } from "./routes.support";
 import { registerIndustryPackRoutes } from "./routes.industryPacks";
+import importHistoryRouter from "./routes.importHistory";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
@@ -348,6 +349,8 @@ registerSuggestionRoutes(app);
 registerSupportRoutes(app);
 // Register industry pack routes (Phase 5.2 - Industry Pack Editor + Clone-a-Tenant Factory)
 registerIndustryPackRoutes(app);
+// Register phone history import routes (INT-3 - Phone History Import Engine)
+app.use('/api/admin/import-history', importHistoryRouter);
 
 app.use((req, res, next) => {
   const start = Date.now();

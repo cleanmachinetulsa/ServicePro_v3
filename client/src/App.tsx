@@ -63,6 +63,7 @@ import PlatformSuggestions from "./pages/PlatformSuggestions";
 import TenantSuggestions from "./pages/TenantSuggestions";
 import AdminCustomerSuggestions from "./pages/admin-customer-suggestions";
 import AdminIndustryPacks from "./pages/AdminIndustryPacks";
+import AdminImportHistory from "./pages/AdminImportHistory";
 import ThemeGallery from "./pages/ThemeGallery";
 import PayerApprovalPage from "./pages/payer-approval";
 import QuoteApprovalPage from "./pages/quote-approval";
@@ -403,6 +404,12 @@ function Router() {
       <Route path="/admin/industry-packs">
         <AuthGuard>
           <AdminIndustryPacks />
+        </AuthGuard>
+      </Route>
+      {/* INT-3: Phone History Import Engine */}
+      <Route path="/admin/import-history">
+        <AuthGuard>
+          <AdminImportHistory />
         </AuthGuard>
       </Route>
       {/* Phase 26: Support System */}
