@@ -303,7 +303,7 @@ export default function AdminBilling() {
                 <CardContent>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     Usage charges are calculated monthly and added to your subscription invoice.
-                    View detailed usage in the <a href="/admin/usage" className="text-blue-600 hover:underline">Usage Dashboard</a>.
+                    View detailed usage in the <a href="/admin/usage" className="text-blue-600 hover:underline" data-testid="link-usage-dashboard">Usage Dashboard</a>.
                   </p>
                 </CardContent>
               </Card>
