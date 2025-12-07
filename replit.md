@@ -44,3 +44,19 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 
 **AI & ML**:
 - **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
+
+## Clean Machine Custom Domain Behavior (CM-DNS-2)
+
+The platform supports custom domain routing for the Clean Machine tenant specifically:
+
+- **Environment Variable**: `CLEAN_MACHINE_DOMAIN` (default: `cleanmachinetulsa.com`)
+- **Frontend Variable**: `VITE_CLEAN_MACHINE_DOMAIN` (same default)
+
+**Behavior**:
+- When the browser hostname matches `cleanmachinetulsa.com` (or `www.cleanmachinetulsa.com`), visiting `/` automatically redirects to `/site/cleanmachine` (the Clean Machine public booking site).
+- For all other hosts (Replit default domain, future app.servicepro.com, etc.), `/` shows the standard ServicePro marketing landing page.
+
+**Implementation**:
+- `shared/domainConfig.ts`: Exports `CLEAN_MACHINE_DOMAIN` and `CLEAN_MACHINE_TENANT_SLUG` constants
+- `client/src/components/RootDomainHandler.tsx`: Checks hostname on the root route and redirects if on the Clean Machine domain
+- This is a client-side redirect only; no server-side changes required for this feature

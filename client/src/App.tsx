@@ -23,6 +23,7 @@ import DamageAssessmentPage from "@/pages/damage-assessment";
 import DemoPage from "@/pages/demo";
 import HomePage from "@/pages/home";
 import LandingPage from "@/pages/LandingPage";
+import RootDomainHandler from "@/components/RootDomainHandler";
 import SchedulePage from "@/pages/Schedule";
 import QuickBookingPage from "@/pages/quick-booking";
 import LoyaltyPointsPage from "@/pages/rewards";
@@ -578,8 +579,8 @@ function Router() {
       {/* Customer-facing homepage for Clean Machine (tenant booking site) */}
       <Route path="/home" component={HomePage} />
       
-      {/* Public landing page for ServicePro platform */}
-      <Route path="/" component={LandingPage} />
+      {/* CM-DNS-2: Root route with domain-based routing */}
+      <Route path="/" component={RootDomainHandler} />
       <Route component={NotFound} />
     </Switch>
   );
