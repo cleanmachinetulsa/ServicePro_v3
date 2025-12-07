@@ -39,6 +39,9 @@ interface PhoneHistoryImport {
   id: number;
   tenantId: string;
   status: 'pending' | 'processing' | 'success' | 'failed';
+  source: 'manual_upload' | 'parser_tool';
+  remoteBundleUrl: string | null;
+  externalJobId: string | null;
   stats: ImportStats | null;
   errorText: string | null;
   fileName: string | null;
@@ -262,6 +265,15 @@ export default function AdminImportHistory() {
               <CardDescription>
                 {latestImport.fileName || 'Phone history bundle'} • Imported {format(new Date(latestImport.createdAt), 'MMM d, yyyy h:mm a')}
               </CardDescription>
+              {latestImport.source === 'parser_tool' && (
+                <Alert className="mt-3 bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800" data-testid="alert-parser-tool">
+                  <Sparkles className="w-4 h-4 text-purple-500" />
+                  <AlertDescription className="text-purple-700 dark:text-purple-300">
+                    This import came from the Parser Tool
+                    {latestImport.externalJobId && <span> (job #{latestImport.externalJobId})</span>}
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardHeader>
             <CardContent className="space-y-6">
               {latestImport.stats && (
