@@ -1,0 +1,103 @@
+DROP-IN FOR THE REPLIT AGENT — SP-23
+
+Paste this:
+
+TASK: Implement SP-23 Performance Pass V2 (Profiling + Code Splitting + Caching + Mobile Optimizations)
+
+GOALS:
+1. Reduce bundle size.
+2. Speed dashboard load time by 50–70%.
+3. Make message scrolling instant.
+4. Cache all tenant config data.
+5. Add real profiling tools.
+
+-------------------------------------
+1. ENABLE REACT LAZY LOADING & SUSPENSE
+-------------------------------------
+
+Convert the following pages to lazy-loaded modules:
+
+- MessagesPage
+- CalendarPage
+- IVRPage
+- BillingPage
+- SetupWizard
+- RewardsPortal
+- PublicSite
+- DashboardSettings
+
+Use:
+  const MessagesPage = React.lazy(() => import("./pages/MessagesPage"));
+
+Wrap with:
+  <Suspense fallback={<LoadingSkeleton />}>
+
+-------------------------------------
+2. BUNDLE ANALYSIS
+
+Install:
+  npm install --save-dev source-map-explorer
+
+Add script:
+  "analyze": "source-map-explorer client/dist/assets/*.js"
+
+-------------------------------------
+3. SERVER CACHING LAYER (LRU)
+
+Create:
+  server/cache/lruCache.ts
+
+Implement:
+  get(key)
+  set(key, value, ttl)
+  clearPrefix(prefix)
+
+Use LRU for:
+  - tenantConfig
+  - aiConfig
+  - ivrConfig
+  - usageSummary
+  - publicSiteConfig
+
+-------------------------------------
+4. BOOTSTRAP CACHE
+
+Modify:
+  server/routes/bootstrap.ts
+
+Cache bootstrap results for 30 seconds per tenant.
+
+-------------------------------------
+5. DB QUERY REDUCTION
+
+Batch endpoints:
+- /api/settings/*
+- /api/ivr/*
+- /api/usage/*
+- /api/loyalty/*
+
+Ensure no page makes >3 initial requests.
+
+-------------------------------------
+6. MOBILE OPTIMIZATION
+
+Messages Page:
+- Render only 20 messages at a time (virtual list)
+- Preload threads not full messages
+- Remove any blocking CSS
+
+Public Site:
+- Preload hero only
+- Lazy-load reviews, gallery, FAQ
+
+-------------------------------------
+7. PERFORMANCE MONITORING
+
+Add:
+  client/src/utils/perf.ts
+with:
+  reportWebVitals()
+  write logs to /api/perf/logs (server endpoint)
+
+-------------------------------------
+END TASK

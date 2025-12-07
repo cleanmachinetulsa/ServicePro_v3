@@ -45,6 +45,7 @@ import {
   CreditCard,
   FileArchive,
   LayoutGrid,
+  Package,
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -463,6 +464,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Billing & Usage',
     icon: CreditCard,
     path: '/settings/billing',
+  },
+  {
+    id: 'settings-addons',
+    label: 'My Add-Ons',
+    icon: Package,
+    path: '/settings/billing/addons',
   },
   {
     id: 'settings-domains',

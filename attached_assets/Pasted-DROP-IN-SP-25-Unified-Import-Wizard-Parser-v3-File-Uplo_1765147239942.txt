@@ -1,0 +1,208 @@
+DROP-IN — SP-25: Unified Import Wizard (Parser v3 + File Upload Onboarding)
+
+Master Plan v4 → “Data Import Wizard (SMS Upload Integration)”
+
+You already have:
+
+Parser pipeline (SP-18 + SP-PARSER-2)
+
+Knowledge JSON → AI setup
+
+ParserImportStep in Setup Wizard
+
+SP-25 ties this together into a proper wizard, ready for non-tech humans:
+
+Single “Import Your Existing History” flow
+
+Supports SMS exports, Google Voice exports, possibly simple CSV price sheets
+
+Clean “you don’t have to understand any of this, just upload” UX
+
+🎯 What SP-25 Should Deliver
+
+Unified Import Step in Onboarding
+
+One wizard step called: “Import your existing messages (optional)”
+
+Explains what kinds of files are supported.
+
+Lets user skip easily.
+
+File-Type Detection & UX
+
+Show detection of:
+
+SMS / Google Voice HTML
+
+Call logs
+
+Conversation logs
+
+Show “what we’ll do with this”:
+“We’ll learn your tone, FAQs, and pricing patterns, then propose a setup.”
+
+Safer “Apply to My Account” Flow
+
+Show preview of:
+
+New services
+
+New FAQs
+
+Suggested tone profile
+
+Let user choose:
+
+Apply all
+
+Apply only FAQs
+
+Apply only tone
+
+Don’t apply now (save for later)
+
+Integration with Existing Parser API
+
+Use the working parser API proxy already wired in SP-18 / SP-PARSER-2.
+
+No CM tenant changes unless explicitly applied.
+
+✅ REPLIT DROP-IN BLOCK — SP-25 Unified Import Wizard
+
+Paste into the agent:
+
+TASK: Implement SP-25 Unified Import Wizard (Parser v3 + File Onboarding)
+
+GOAL:
+Turn the existing parser + knowledge onboarding into a simple, guided wizard step in the ServicePro onboarding flow, safe for non-technical users.
+
+-------------------------------------
+1. ONBOARDING FLOW INTEGRATION
+-------------------------------------
+
+Locate the Setup Wizard:
+- client/src/components/Onboarding/ or equivalent
+
+Add a new wizard step:
+- Title: "Import your existing messages (optional)"
+- Component: <ImportHistoryStep />
+
+The step should:
+- Appear AFTER basic business info
+- BEFORE telephony / A2P config
+
+-------------------------------------
+2. IMPORTHISTORYSTEP COMPONENT
+-------------------------------------
+
+Create:
+- client/src/components/onboarding/ImportHistoryStep.tsx
+
+Features:
+
+1) Explanation box:
+   - What this does:
+     - "We can analyze your past messages to learn your tone, common Q&A, and typical services."
+   - Supported sources:
+     - Google Voice exports
+     - SMS backup files
+     - Other simple HTML or text logs
+
+2) File upload:
+   - Drag-and-drop + "Browse files" button
+   - Reuse the upload logic from ParserImportStep.tsx
+   - Allow multiple files and .zip
+
+3) Status states:
+   - Idle
+   - Uploading & analyzing
+   - Analysis complete
+   - Error (with retry)
+
+4) Preview:
+   - Show summary from latest knowledge import:
+     - X services detected
+     - Y FAQs detected
+     - Tone summary snippet (tone words, sample greeting)
+
+5) Options:
+   - Checkboxes:
+       [x] Apply services
+       [x] Apply FAQs
+       [x] Apply tone & AI persona
+   - These default based on what was found (similar to ParserImportStep toggles).
+
+6) Call-to-action buttons:
+   - "Build My Setup from This" -> calls /parser/build-setup
+   - "Skip for Now" -> mark step as completed with no import
+
+-------------------------------------
+3. API REUSE
+-------------------------------------
+
+Re-use existing endpoints from SP-18 / SP-PARSER-2:
+
+- POST /api/onboarding/parser/run
+- GET  /api/onboarding/parser/preview/:id
+- POST /api/onboarding/parser/build-setup
+
+If any of these are missing or named slightly differently, standardize them but ensure backward compatibility.
+
+-------------------------------------
+4. WIZARD STATE INTEGRATION
+-------------------------------------
+
+Ensure ImportHistoryStep:
+
+- Reads/writes onboarding progress state:
+    - Marks "Import" step as:
+        - not_started
+        - in_progress
+        - completed_no_import
+        - completed_with_import
+
+- When "Build My Setup from This" succeeds:
+    - Mark step as completed_with_import
+    - Optionally show a success toast: "We’ve tuned your AI and services from your history."
+
+-------------------------------------
+5. SAFETY FOR CLEAN MACHINE TENANT
+-------------------------------------
+
+IMPORTANT:
+
+- Do NOT auto-apply parser results to the existing Clean Machine production tenant unless:
+    - User explicitly clicks "Build My Setup from This"
+- Ensure that the wizard is safe for all NEW tenants; Clean Machine can simply SKIP this step.
+
+-------------------------------------
+6. ADMIN VISIBILITY (OPTIONAL BUT PREFERRED)
+
+Add a simple admin view page (optional, if small effort):
+
+- /admin/onboarding/import-history
+
+Shows:
+- Latest import per tenant:
+    - tenant slug
+    - servicesCount
+    - faqCount
+    - applied_flags
+    - applied_at
+
+-------------------------------------
+7. DONE WHEN
+
+- A brand new tenant can:
+    - Go through onboarding
+    - Hit "Import your existing messages"
+    - Upload Google Voice / SMS export files
+    - See a summary of what was found
+    - Click "Build My Setup from This"
+    - End up with:
+        - services populated
+        - FAQs populated
+        - AI persona tuned
+- And: they can also skip this step entirely without breaking onboarding.
+
+END TASK

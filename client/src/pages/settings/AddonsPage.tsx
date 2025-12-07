@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Package, Zap, Shield, Users, Phone, MapPin, Palette, Check, Clock, Lock, Info } from "lucide-react";
+import { Loader2, Package, Zap, Shield, Users, Phone, MapPin, Palette, Check, Clock, Lock, Info, ShieldAlert } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,6 +27,7 @@ interface AddonsResponse {
   planTier: string;
   catalog: AddonCatalogItem[];
   billingNote: string;
+  isProtectedTenant?: boolean;
 }
 
 const ADDON_ICONS: Record<string, typeof Package> = {
@@ -104,6 +105,44 @@ export default function AddonsPage() {
   const activeAddons = data?.catalog.filter(a => a.currentStatus === 'active' || a.currentStatus === 'pending_cancel') || [];
   const availableAddons = data?.catalog.filter(a => a.currentStatus === 'available') || [];
   const unavailableAddons = data?.catalog.filter(a => a.currentStatus === 'unavailable') || [];
+
+  // SP-20: Show protected tenant state for Clean Machine
+  if (data?.isProtectedTenant) {
+    return (
+      <div className="container mx-auto py-6 max-w-4xl">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+            <Package className="h-6 w-6" />
+            My Add-Ons
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Enhance your plan with powerful add-ons
+          </p>
+        </div>
+
+        <Card className="border-amber-200 bg-amber-50/30" data-testid="card-protected-tenant">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-100 rounded-lg">
+                <ShieldAlert className="h-6 w-6 text-amber-600" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Protected Account</CardTitle>
+                <CardDescription>
+                  This account is managed by ServicePro and add-on modifications are not available.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              If you need to modify add-ons for this account, please contact the ServicePro team directly.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-6 max-w-4xl">
