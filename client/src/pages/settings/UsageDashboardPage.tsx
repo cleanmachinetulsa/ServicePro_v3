@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RefreshCw, MessageSquare, Phone, Mail, Sparkles, Image, AlertTriangle, CheckCircle, XCircle, TrendingUp, HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -137,19 +137,21 @@ export default function UsageDashboardPage() {
   const { toast } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useQuery<{ success: boolean; data: UsageSummary }>({
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError, refetch: refetchSummary } = useQuery<{ success: boolean; data: UsageSummary }>({
     queryKey: ['/api/billing/usage/v2/summary'],
   });
 
-  const { data: dailyData, isLoading: dailyLoading } = useQuery<{ success: boolean; data: DailyUsage[] }>({
+  const { data: dailyData, isLoading: dailyLoading, isError: dailyError, refetch: refetchDaily } = useQuery<{ success: boolean; data: DailyUsage[] }>({
     queryKey: ['/api/billing/usage/v2/daily'],
   });
+
+  const hasError = summaryError || dailyError;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
       await apiRequest('POST', '/api/billing/usage/v2/refresh');
-      await refetchSummary();
+      await Promise.all([refetchSummary(), refetchDaily()]);
       toast({
         title: 'Usage Refreshed',
         description: 'Your usage data has been updated.',
@@ -193,6 +195,20 @@ export default function UsageDashboardPage() {
             Refresh
           </Button>
         </div>
+
+        {hasError && (
+          <Card className="border-red-300 bg-red-50">
+            <CardContent className="flex items-center gap-3 py-4">
+              <XCircle className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="font-medium text-red-700">Unable to load usage data</p>
+                <p className="text-sm text-red-600">
+                  There was a problem fetching your usage information. Please try refreshing.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {summary?.overallStatus && summary.overallStatus !== 'ok' && (
           <Card className={summary.overallStatus === 'over_cap' ? 'border-red-300 bg-red-50' : 'border-yellow-300 bg-yellow-50'}>
