@@ -81,6 +81,7 @@ import PhoneSettingsPage from "./pages/phone-settings";
 import EmailSettingsPage from "./pages/email-settings";
 import UiModeSettingsPage from "./pages/settings/UiModeSettingsPage";
 import SettingsBillingPage from "./pages/settings/BillingUsagePage";
+import UsageDashboardV2 from "./pages/settings/UsageDashboardV2";
 import SipSetupGuide from "./pages/sip-setup-guide";
 import Billing from "./pages/billing";
 import EscalationsPage from "./pages/escalations";
@@ -231,6 +232,11 @@ function Router() {
       <Route path="/settings/billing">
         <AuthGuard>
           <SettingsBillingPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/usage">
+        <AuthGuard>
+          <UsageDashboardV2 />
         </AuthGuard>
       </Route>
       <Route path="/admin/port-recovery">
