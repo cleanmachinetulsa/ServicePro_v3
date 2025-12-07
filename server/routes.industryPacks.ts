@@ -33,34 +33,40 @@ function requireAdminRole(req: Request, res: Response, next: () => void) {
 export function registerIndustryPackRoutes(app: Express) {
   console.log('[INDUSTRY PACKS] Registering routes...');
 
-  app.get('/api/industry-packs', async (req: Request, res: Response) => {
+  app.get('/api/admin/industry-packs', requireAuth, requireRootAdmin, async (req: Request, res: Response) => {
     try {
-      const role = (req.session as any)?.role;
-      const includePrivate = role === 'root_admin';
-      const packs = await listPacks(includePrivate);
-      
-      const sanitizedPacks = packs.map(pack => ({
-        id: pack.id,
-        key: pack.key,
-        name: pack.name,
-        description: pack.description,
-        isPublic: pack.isPublic,
-        configJson: includePrivate ? pack.configJson : {
-          industry: pack.configJson?.industry,
-          heroText: pack.configJson?.heroText,
-          colorPalette: pack.configJson?.colorPalette,
-        },
-        createdAt: pack.createdAt,
-      }));
-      
-      res.json({ success: true, data: sanitizedPacks });
+      const packs = await listPacks(true);
+      res.json({ success: true, data: packs });
     } catch (error) {
       console.error('[INDUSTRY PACKS] Error listing packs:', error);
       res.status(500).json({ success: false, message: 'Failed to list industry packs' });
     }
   });
 
-  app.get('/api/industry-packs/:id', async (req: Request, res: Response) => {
+  app.get('/api/industry-packs/public', async (req: Request, res: Response) => {
+    try {
+      const packs = await listPacks(false);
+      
+      const sanitizedPacks = packs.map(pack => ({
+        id: pack.id,
+        key: pack.key,
+        name: pack.name,
+        description: pack.description,
+        configJson: {
+          industry: pack.configJson?.industry,
+          heroText: pack.configJson?.heroText,
+          colorPalette: pack.configJson?.colorPalette,
+        },
+      }));
+      
+      res.json({ success: true, data: sanitizedPacks });
+    } catch (error) {
+      console.error('[INDUSTRY PACKS] Error listing public packs:', error);
+      res.status(500).json({ success: false, message: 'Failed to list public industry packs' });
+    }
+  });
+
+  app.get('/api/admin/industry-packs/:id', requireAuth, requireRootAdmin, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {

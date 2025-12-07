@@ -59,7 +59,7 @@ export default function AdminIndustryPacks() {
   const [editForm, setEditForm] = useState<Partial<IndustryPack>>({});
 
   const { data: packsData, isLoading } = useQuery<{ success: boolean; data: IndustryPack[] }>({
-    queryKey: ['/api/industry-packs'],
+    queryKey: ['/api/admin/industry-packs'],
   });
 
   const packs = packsData?.data || [];
@@ -69,7 +69,7 @@ export default function AdminIndustryPacks() {
       return apiRequest(`/api/admin/industry-packs/${data.id}`, { method: 'PUT', body: JSON.stringify(data.updates) });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/industry-packs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/industry-packs'] });
       toast({ title: 'Pack Updated', description: 'Industry pack has been updated successfully.' });
       setIsEditDialogOpen(false);
     },
@@ -83,7 +83,7 @@ export default function AdminIndustryPacks() {
       return apiRequest(`/api/admin/industry-packs/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/industry-packs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/industry-packs'] });
       toast({ title: 'Pack Deleted', description: 'Industry pack has been deleted.' });
     },
     onError: (error: any) => {
@@ -113,7 +113,7 @@ export default function AdminIndustryPacks() {
       return apiRequest('/api/admin/industry-packs/import', { method: 'POST', body: JSON.stringify({ json }) });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/industry-packs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/industry-packs'] });
       toast({ title: 'Pack Imported', description: 'Industry pack has been imported successfully.' });
       setIsImportDialogOpen(false);
       setImportJson('');
