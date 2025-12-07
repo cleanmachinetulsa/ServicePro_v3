@@ -1,0 +1,317 @@
+You are working on the ServicePro_v3 multi-tenant SaaS repo for Clean Machine Auto Detail (root tenant).
+
+### GOAL: SP-13 – Billing & Usage + Stripe Portal + Basic Dunning
+
+We need a tenant-facing **Billing & Usage** experience plus minimal-but-real dunning, wired to our existing Stripe integration and internal usage data.
+
+Key principles:
+- Multi-tenant safe (use wrapTenantDb / tenantDb consistently).
+- No secrets in the browser; Stripe is accessed through secure backend.
+- Tenant admins should clearly see:
+  - Current plan, price, renewal/end date.
+  - Usage snapshot (SMS, minutes, emails, AI, etc.) for the current period.
+  - Billing state (trial / active / past_due / suspended).
+  - Buttons to manage payment (Stripe portal) and cancel at period end.
+- Stripe is the source of truth for subscription status; our DB mirrors key bits for UX + enforcement.
+
+---
+
+## STEP 1 – Discover current billing/plan/Stripe setup
+
+1. Scan the repo for existing billing/plan logic:
+   - Search terms:
+     - `stripe`, `Stripe`, `subscription`, `billing`, `plan`, `trial`, `priceId`, `stripeCustomerId`.
+   - Identify:
+     - Where tenant plan/tier is stored (e.g. on `tenants` table or a `subscriptions` table).
+     - Any existing Stripe client configuration (API keys, helpers).
+     - Any existing Stripe webhook handler (e.g. for `invoice.payment_succeeded`, `invoice.payment_failed`, `customer.subscription.*`).
+
+2. Document for yourself:
+   - Which DB table + fields represent:
+     - Tenant’s plan / tier.
+     - Stripe customer id.
+     - Trial status / end date, if any.
+   - Whether we already store subscription status (“active”, “trialing”, etc.).
+
+You must adapt to the actual schema; don’t invent a parallel system.
+
+---
+
+## STEP 2 – Add/normalize billing state on tenants
+
+We need a clear, minimal billing state reflected in our DB.
+
+1. If not already present, extend the tenant model (e.g. `tenants` table) to include:
+
+   - `billingStatus` (enum or text):
+     - `'trialing' | 'active' | 'past_due' | 'canceled' | 'suspended'`
+   - `currentPlan` (string, e.g. `"starter" | "pro" | "elite"`)
+   - `trialEndsAt` (nullable timestamp)
+   - `nextRenewalAt` (nullable timestamp)
+   - `cancelAtPeriodEnd` (boolean, default false)
+
+2. If similar fields already exist, **reuse and normalize** them instead of duplicating.
+
+3. Make sure multi-tenant isolation helpers use these fields where appropriate (no cross-tenant leakage).
+
+---
+
+## STEP 3 – Usage metrics service (read-only v1)
+
+We want a **read-only usage snapshot** per tenant for now, derived from existing tables, not a complex new metering system.
+
+1. Create a service file such as `server/services/usageMetricsService.ts` that exposes:
+
+   ```ts
+   export type TenantUsageSnapshot = {
+     periodStart: Date;
+     periodEnd: Date;
+     smsCount: number;
+     mmsCount: number;
+     voiceMinutes: number;
+     emailCount: number;
+     aiMessagesCount: number; // or tokens if we can
+   };
+
+   export async function getTenantUsageSnapshot(
+     tenantDb: ReturnType<typeof wrapTenantDb>,
+     tenantId: string
+   ): Promise<TenantUsageSnapshot>
+For v1, implement this by aggregating existing tenant-scoped tables, for the current billing period:
+
+Messages table:
+
+Count outbound SMS/MMS rows (based on a direction/type field if present).
+
+Calls/voicemails table:
+
+Sum call durations (in seconds) and convert to minutes (rounded).
+
+Email logs table (if we have one):
+
+Count rows to get emailCount.
+
+AI usage:
+
+If there is an AI interaction log, count messages (don’t bother with tokens yet).
+
+If not, just set aiMessagesCount to 0 and document that.
+
+Determine the period window:
+
+If we can read currentPeriodStart / currentPeriodEnd from Stripe subscription data, use that.
+
+Otherwise, default to “last 30 days” as a stand-in and include that clearly in the return.
+
+STEP 4 – Stripe customer portal + subscription sync
+We want a Manage Billing button that opens Stripe’s customer portal.
+
+Inspect existing Stripe integration for:
+
+Stripe client/SDK initialization.
+
+Any existing customer-portal creation logic.
+
+If not present, implement a backend route, for example:
+
+POST /api/billing/create-portal-session
+
+Requirements:
+
+Auth required, tenant admin only.
+
+Use the tenant’s stripeCustomerId.
+
+Call stripe.billingPortal.sessions.create with:
+
+customer: stripeCustomerId
+
+return_url: <app base URL>/settings/billing
+
+Return { url } to the frontend.
+
+Sync subscription status on key Stripe webhook events (if not already implemented):
+
+For example, in the existing webhook handler:
+
+customer.subscription.updated
+
+invoice.payment_succeeded
+
+invoice.payment_failed
+
+Update the tenant record:
+
+billingStatus
+
+nextRenewalAt
+
+cancelAtPeriodEnd
+
+Do NOT expose secret Stripe event payloads to the client.
+
+If webhook handling already exists, extend it with the extra fields instead of rewriting.
+
+STEP 5 – Dunning + suspension basics
+Implement minimal but real dunning:
+
+When Stripe indicates a payment failure / past_due:
+
+Set billingStatus = 'past_due' on the tenant.
+
+Optionally record a lastPaymentFailedAt timestamp field if helpful.
+
+Define a simple enforcement rule (server-side):
+
+When billingStatus === 'suspended', block:
+
+New outbound SMS/email/AI actions.
+
+Return a clear JSON error (e.g. TENANT_SUSPENDED_FOR_BILLING) that the UI can render.
+
+Add a small background job or reuse the webhook logic to:
+
+After N days in past_due (e.g. 7), mark the tenant as suspended.
+
+You can implement this as:
+
+A cron-like job in the existing job runner, or
+
+A simple manual script plus clear docs (v1 is okay as long as the logic exists and is tested).
+
+Do not over-engineer; we just need to support the basic path:
+
+Payment fails → past_due → warning + limited features → suspended if not fixed.
+
+STEP 6 – Tenant Billing & Usage UI
+Create a proper Billing & Usage page in the frontend.
+
+Route:
+
+Add a route like /settings/billing if not already present.
+
+Use the same protected/admin gating pattern as other Settings pages.
+
+Component:
+
+New React component, e.g. BillingAndUsagePage.tsx.
+
+It should show:
+
+Header
+
+Title: “Billing & Usage”
+
+Subtitle: “Manage your plan, payments, and usage.”
+
+Plan card
+
+Current plan name + short description (Starter/Pro/Elite).
+
+Billing status badge (Trialing / Active / Past Due / Suspended).
+
+Next renewal date or trial end date.
+
+“Change Plan” button (even if it just links to a placeholder for now).
+
+“Cancel at end of period” toggle button:
+
+Calls a backend endpoint to set cancelAtPeriodEnd and sync with Stripe.
+
+Show confirmation text (“You’ll keep access until <date>.”).
+
+Usage summary
+
+For the current period (from TenantUsageSnapshot):
+
+SMS sent
+
+Voice minutes
+
+Emails sent
+
+AI interactions
+
+Display as stat cards with subtle gradient styling, consistent with your existing design system.
+
+Manage payment
+
+Button: “Manage Payment Details & Invoices”
+
+On click:
+
+Calls /api/billing/create-portal-session.
+
+Redirects the user to the returned Stripe portal URL.
+
+Past-due / suspended messaging
+
+If billingStatus === 'past_due':
+
+Yellow banner: “We had trouble charging your payment method. Please update your payment details to avoid interruption.”
+
+If billingStatus === 'suspended':
+
+Red banner: “Your account is currently suspended due to unpaid invoices. Update your payment method to restore full functionality.”
+
+Add a sidebar navigation entry under Settings & Administration:
+
+Label: “Billing & Usage”.
+
+Icon: credit-card or receipt icon if available in your icon set.
+
+STEP 7 – API endpoints & wiring
+Create a small REST API for the frontend page:
+
+GET /api/billing/overview
+
+Returns:
+
+Plan + billingStatus + trial/renewal dates + cancelAtPeriodEnd.
+
+Usage snapshot for current period.
+
+Any helpful flags (e.g. canAccessPortal).
+
+POST /api/billing/cancel-at-period-end
+
+Toggle cancelAtPeriodEnd and sync to Stripe subscription.
+
+Both endpoints:
+
+Require auth.
+
+Use wrapTenantDb for tenant isolation.
+
+Use Zod for input/output validation where consistent with the repo.
+
+STEP 8 – Docs
+Update replit.md (or the canonical MASTER_PLAN doc) to include:
+
+“SP-13 Billing & Usage v1”
+
+Where the UI is.
+
+What data is shown.
+
+How Stripe portal integration works.
+
+How billing statuses map to behavior.
+
+Guardrails
+Do not store Stripe secrets in the frontend or client-side config.
+
+Preserve existing plan/tier architecture; augment where needed rather than replacing.
+
+Keep all usage aggregation tenant-scoped.
+
+Any new environment variables must be documented and optional where possible.
+
+When finished, summarize:
+
+Which files you changed.
+
+How the flow works from Stripe subscription → tenant record → Billing & Usage page → Stripe portal.
+
+yaml
+Copy code
