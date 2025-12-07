@@ -354,6 +354,14 @@ export const navigationItems: NavigationItem[] = [
     badge: 'Owner',
     visibility: 'advancedOnly',
   },
+  {
+    id: 'parser-history',
+    label: 'Parser History',
+    icon: History,
+    path: '/admin/parser-history',
+    badge: 'Owner',
+    visibility: 'advancedOnly',
+  },
 
   // WORKFORCE MANAGEMENT
   {

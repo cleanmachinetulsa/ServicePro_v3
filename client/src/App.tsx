@@ -70,6 +70,7 @@ import AdminCustomerSuggestions from "./pages/admin-customer-suggestions";
 import AdminIndustryPacks from "./pages/AdminIndustryPacks";
 import AdminImportHistory from "./pages/AdminImportHistory";
 import AdminMigrationWizard from "./pages/AdminMigrationWizard";
+import AdminParserHistory from "./pages/admin/ParserHistory";
 import ThemeGallery from "./pages/ThemeGallery";
 import PayerApprovalPage from "./pages/payer-approval";
 import QuoteApprovalPage from "./pages/quote-approval";
@@ -459,6 +460,17 @@ function Router() {
       <Route path="/admin/migration-wizard">
         <AuthGuard>
           <AdminMigrationWizard />
+        </AuthGuard>
+      </Route>
+      {/* SP-PARSER-3: Parser History */}
+      <Route path="/admin/parser-history">
+        <AuthGuard>
+          <AdminParserHistory />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/parser-history/:id">
+        <AuthGuard>
+          <AdminParserHistory />
         </AuthGuard>
       </Route>
       {/* Phase 26: Support System */}
