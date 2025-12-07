@@ -11,8 +11,9 @@ import {
   ParserConfig,
 } from '../services/parserIntegrationService';
 import { applyParserKnowledge } from '../services/parserApplyService';
-import { getImportHistory } from '../services/phoneHistoryImportService';
+import { getImportHistory, listTenantImportsWithSummary } from '../services/phoneHistoryImportService';
 import { applyKnowledgeToTenant, getKnowledgePreview } from '../services/knowledgeOnboardingService';
+import { isCleanMachineTenant, logTenantGuardCheck } from '../services/tenantGuards';
 
 const router = Router();
 
@@ -128,6 +129,14 @@ router.post('/apply', async (req: Request, res: Response) => {
     const tenantId = (req as any).tenantId;
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    if (isCleanMachineTenant(tenantId)) {
+      logTenantGuardCheck(tenantId, 'parser/apply', true);
+      return res.status(403).json({
+        success: false,
+        error: 'Parser onboarding is disabled for the Clean Machine tenant. Your configuration is already live.',
+      });
     }
 
     const parseResult = applyParserSchema.safeParse(req.body);
@@ -246,6 +255,14 @@ router.post('/build-setup', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
 
+    if (isCleanMachineTenant(tenantId)) {
+      logTenantGuardCheck(tenantId, 'parser/build-setup', true);
+      return res.status(403).json({
+        success: false,
+        error: 'Parser onboarding is disabled for the Clean Machine tenant. Your configuration is already live.',
+      });
+    }
+
     const parseResult = buildSetupSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({ 
@@ -291,6 +308,59 @@ router.get('/preview/:importId', async (req: Request, res: Response) => {
     return res.json({ success: true, preview });
   } catch (error: any) {
     console.error('[PARSER ROUTES] Get preview error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+  }
+});
+
+router.get('/status', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId;
+    
+    const healthResult = await checkParserHealth();
+    
+    let status: 'online' | 'degraded' | 'offline' = 'offline';
+    if (healthResult.healthy) {
+      status = 'online';
+    } else if (healthResult.message && !healthResult.message.includes('Connection failed')) {
+      status = 'degraded';
+    }
+
+    const isProtectedTenant = tenantId ? isCleanMachineTenant(tenantId) : false;
+
+    return res.json({
+      success: true,
+      status,
+      healthy: healthResult.healthy,
+      lastError: healthResult.message || null,
+      parserUrl: process.env.PARSER_API_URL || 'https://sms-parse-output-cleanmachinetul.replit.app',
+      isProtectedTenant,
+      protectionMessage: isProtectedTenant 
+        ? 'Parser onboarding is disabled for the Clean Machine tenant.'
+        : null,
+    });
+  } catch (error: any) {
+    return res.json({
+      success: false,
+      status: 'offline',
+      healthy: false,
+      lastError: error.message,
+    });
+  }
+});
+
+router.get('/admin/history', async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Not authenticated' });
+    }
+
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 50);
+    const imports = await listTenantImportsWithSummary(tenantId, limit);
+
+    return res.json({ success: true, imports });
+  } catch (error: any) {
+    console.error('[PARSER ROUTES] Admin history error:', error);
     return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
   }
 });

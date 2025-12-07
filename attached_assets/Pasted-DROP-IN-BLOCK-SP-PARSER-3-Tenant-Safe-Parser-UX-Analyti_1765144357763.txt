@@ -1,0 +1,315 @@
+DROP-IN BLOCK: SP-PARSER-3 – Tenant-Safe Parser UX + Analytics Surface
+0. Context (for the agent)
+
+You already have:
+
+/api/onboarding/parser/run and /build-setup
+
+ParserImportStep.tsx wired into the Setup Wizard
+
+phone_history_imports table holding knowledge_json, analytics_json, applied_flags
+
+knowledgeOnboardingService.applyKnowledgeToTenant()
+
+This drop-in makes the parser:
+
+Tenant-safe (no accidental use on Clean Machine)
+
+More transparent (imports history + analytics)
+
+More guided (warnings, “review before apply”)
+
+1. Goals
+
+Protect Clean Machine tenant
+
+Hide parser step in the Setup Wizard for the Clean Machine tenant.
+
+Backend: refuse apply/build calls for Clean Machine (hard guard).
+
+Add Parser History + Analytics Panel
+
+New Admin page: /admin/parser-history
+
+Show last N imports: date, files, service/FAQ counts, applied flags, parser version.
+
+Show high-level analytics if analytics_json present (message volume, threads, etc).
+
+Improve Setup Wizard UX
+
+In ParserImportStep.tsx:
+
+Display clearer warnings before “Build My Setup”.
+
+Show a read-only persona preview (tone + sample system prompt snippet).
+
+Show per-section toggle summary: “Services: X will be created/updated”, “FAQs: Y will be created/updated”.
+
+Better Error/Health Surfacing
+
+New API route to expose parser health & last error:
+
+GET /api/onboarding/parser/status
+
+Frontend: small status pill in ParserImportStep (“Parser: Online / Degraded / Offline”).
+
+2. Files to Inspect / Likely Touch
+
+Ask the agent to open / inspect:
+
+Backend
+
+server/routes/parserRoutes.ts
+
+server/services/parserIntegrationService.ts
+
+server/services/knowledgeOnboardingService.ts
+
+Tenant helpers: server/services/tenantService.ts or similar
+
+Constants for Clean Machine tenant/slug (e.g. CLEAN_MACHINE_TENANT_ID or slug in @shared/domainConfig)
+
+Frontend
+
+client/src/components/ParserImportStep.tsx
+
+Setup wizard flow (where Parser step is used), e.g. client/src/components/setup/SetupWizard.tsx or similar
+
+Admin routing and nav:
+
+client/src/App.tsx
+
+client/src/navigation/navigationItems.ts
+
+DB
+
+server/db/schema.sql or migrations defining phone_history_imports
+
+3. Implementation Tasks
+3.1 Tenant Guard – Clean Machine Protection
+
+Backend guard
+
+Locate a way to identify the current tenant in parser routes: usually via req.user.tenantId or req.context.tenant.
+
+Import a Clean Machine constant or derive it:
+
+e.g. CLEAN_MACHINE_TENANT_SLUG or CLEAN_MACHINE_TENANT_ID.
+
+In all parser “apply” routes:
+
+/api/onboarding/parser/apply
+
+/api/onboarding/parser/build-setup
+
+Add guard:
+
+if (isCleanMachineTenant(currentTenant)) {
+  return res.status(403).json({
+    success: false,
+    error: "Parser onboarding is disabled for the Clean Machine tenant.",
+  });
+}
+
+
+Implement isCleanMachineTenant in a shared helper (e.g. server/services/tenantGuards.ts):
+
+export function isCleanMachineTenant(tenant: { id?: string; slug?: string } | null | undefined): boolean {
+  if (!tenant) return false;
+  const slug = (tenant.slug || "").toLowerCase();
+  return slug === "cleanmachine" || slug === "clean-machine";
+}
+
+
+Frontend guard
+
+In ParserImportStep.tsx (or the Setup Wizard that renders it), fetch tenant context if not already available (probably from /api/me or /api/tenant/current).
+
+If tenant.slug indicates Clean Machine:
+
+Hide the step entirely or show an info card:
+
+if (isCleanMachineTenant) {
+  return (
+    <AlertCard
+      title="This step is disabled for Clean Machine"
+      description="Your Clean Machine configuration is already live. Parser-based onboarding is reserved for new tenants only."
+      variant="info"
+    />
+  );
+}
+
+3.2 New Admin Page: /admin/parser-history
+
+Backend
+
+Extend parserIntegrationService with:
+
+export async function listTenantImports(tenantId: string, limit = 20) {
+  const db = await wrapTenantDb(tenantId);
+  const rows = await db`
+    SELECT id, created_at, applied_at, parser_version, source,
+           analytics_json, knowledge_json,
+           applied_flags, file_summary
+    FROM phone_history_imports
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
+  return rows;
+}
+
+export function summarizeImportRow(row: PhoneHistoryImportRow) {
+  // Optionally compute servicesCount, faqCount from knowledge_json
+  // Or store precomputed counts in applied_flags or dedicated columns.
+}
+
+
+Add new route:
+
+router.get("/history", requireAuth, async (req, res) => {
+  const tenant = req.context?.tenant;
+  if (!tenant) return res.status(401).json({ success: false });
+  const imports = await listTenantImports(tenant.id);
+  res.json({ success: true, imports: imports.map(summarizeImportRow) });
+});
+
+
+Frontend
+
+Add new page component, e.g. client/src/pages/admin/ParserHistoryPage.tsx.
+
+Requirements:
+
+Table or list showing:
+
+Date
+
+Source (e.g. sms_export, google_voice_html)
+
+Parser version
+
+Services detected (count)
+
+FAQs detected (count)
+
+Applied flags (services/faqs/persona/profile)
+
+When an import is clicked, show a side panel / modal with:
+
+Basic analytics from analytics_json (if available):
+
+Total messages
+
+Threads
+
+Top senders
+
+Message length distribution (even basic text summary is fine)
+
+High-level style snippet (tone words, sample greeting)
+
+Hook up data fetch:
+
+const { data, isLoading, error } = useQuery({
+  queryKey: ["parserImports"],
+  queryFn: () => api.get("/api/onboarding/parser/history").then(r => r.data),
+});
+
+
+Add to admin navigation under something like “Setup & Data Import”:
+
+In navigationItems.ts:
+
+{
+  id: "parser-history",
+  label: "Phone History Imports",
+  href: "/admin/parser-history",
+  section: "Settings & Administration",
+  icon: ClockIcon, // or similar
+  ownerOnly: true,
+}
+
+3.3 Parser Status Endpoint + UI Pill
+
+Backend
+
+In parserRoutes.ts, implement:
+
+router.get("/status", requireAuth, async (req, res) => {
+  try {
+    const health = await parserIntegrationService.checkHealth(); // ping external API
+    return res.json({
+      success: true,
+      status: health.ok ? "online" : "degraded",
+      lastError: health.lastError ?? null,
+    });
+  } catch (err) {
+    return res.json({
+      success: false,
+      status: "offline",
+      lastError: (err as Error).message,
+    });
+  }
+});
+
+
+Implement checkHealth to call PARSER_API_URL + /api/knowledge/health and interpret the result, but do not crash if HTML is returned; just treat it as degraded.
+
+Frontend
+
+In ParserImportStep.tsx, add a useQuery:
+
+const { data: status } = useQuery({
+  queryKey: ["parserStatus"],
+  queryFn: () => api.get("/api/onboarding/parser/status").then(r => r.data),
+  staleTime: 60_000,
+});
+
+
+Render a small pill in the header:
+
+<StatusPill status={status?.status ?? "unknown"} />
+
+
+where the pill text is “Parser: Online/Degraded/Offline”.
+
+3.4 UX Enhancements in ParserImportStep.tsx
+
+When preview data is loaded, add a persona preview card:
+
+Show detected tone words.
+
+Show “Formality: Casual / Neutral / Formal”.
+
+Show first 1–2 sentences of the generated system prompt (pulled from preview endpoint or from the apply result if available).
+
+Before user clicks “Build My Setup”, add a confirm dialog or warning:
+
+Copy:
+“This will create or update services and FAQs for this tenant, and tune your AI assistant’s tone. It will never delete anything, but please review your services after this step.”
+
+In the success state, show:
+
+Services created / updated counts.
+
+FAQs created / updated counts.
+
+Persona status (updated/not updated).
+
+4. Testing Checklist (for Replit Agent)
+
+ Clean Machine tenant:
+
+Parser step hidden or shows disabled message.
+
+/build-setup returns 403 if called manually.
+
+ Other tenants:
+
+Wizard step visible and functional.
+
+History page loads, shows imports.
+
+Status pill reflects mocked health endpoint.
+
+ No regression on existing parser flow.

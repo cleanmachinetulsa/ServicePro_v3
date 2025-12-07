@@ -1,0 +1,359 @@
+DROP-IN BLOCK: SP-19 – Billing v2 (Auto-Charge, Dunning, Suspension)
+
+This builds on existing Stripe integration & usage engine.
+
+0. Context (for the agent)
+
+You already have:
+
+Usage engine v1 (SP-3)
+
+Tenant usage dashboards (admin + tenant)
+
+Stripe integrated at least for one-time payments or subscription basics (per your earlier SP-6 plan)
+
+Email Sending system (Phase 10 Email Settings v1).
+
+SP-19 must add:
+
+Real auto-billing (monthly subscriptions)
+
+Dunning flow (failed payments)
+
+Suspension logic (disable telephony & outbound when delinquent)
+
+Reactivate path
+
+1. Goals
+
+Subscription Enforcement
+
+Each tenant has a Stripe customer and Stripe subscription ID stored.
+
+System knows their current plan and renewal date.
+
+Automatic Charges
+
+On Stripe’s schedule (billing cycle), invoices are created and payments attempted.
+
+We listen to webhooks to update tenant status.
+
+Dunning & Suspension
+
+Failed payment → mark tenant past_due, send warning emails.
+
+After grace period → mark tenant suspended, block telephony + AI.
+
+Reactivation when outstanding invoice gets paid.
+
+Tenant Billing View
+
+Page in dashboard:
+
+Current plan
+
+Next billing date
+
+Billing status (Active / Past Due / Suspended)
+
+“Update payment method” link (Stripe portal)
+
+“View invoices” link (Stripe portal or internal list)
+
+Admin Global Billing View
+
+Root admin page:
+
+List of tenants with billing status
+
+Filters for “Past Due”, “Suspended”
+
+Links to Stripe customer pages.
+
+2. Files to Inspect / Likely Touch
+
+Stripe-related backend files, e.g.:
+
+server/services/billingService.ts
+
+server/services/stripeService.ts
+
+server/routes/billingRoutes.ts or /api/billing/*
+
+Stripe webhook handler file (e.g. server/routes/stripeWebhookRoutes.ts)
+
+Tenant and plan models:
+
+server/db/schema.sql / migrations for tenants, tenant_subscriptions, plans, etc.
+
+Frontend:
+
+client/src/pages/admin/BillingSettingsPage.tsx or similar
+
+Navigation: navigationItems.ts
+
+Any existing “Plans” / pricing configuration UI.
+
+3. Implementation Tasks
+3.1 Data Model Adjustments
+
+If not already present, create/verify tables:
+
+tenant_subscriptions
+
+id (PK)
+
+tenant_id
+
+stripe_customer_id
+
+stripe_subscription_id
+
+plan_code (maps to your internal tier: starter/pro/elite)
+
+status (active, trialing, past_due, canceled, suspended)
+
+current_period_end (timestamp)
+
+created_at, updated_at
+
+Optional: billing_events (audit log)
+
+id
+
+tenant_id
+
+event_type (invoice_paid, payment_failed, suspended, reactivated, etc)
+
+stripe_event_id
+
+occurred_at
+
+meta JSON
+
+Update any existing Stripe integration to use this table as the source of truth.
+
+3.2 Stripe Webhook Handling v2
+
+Locate your Stripe webhook route (e.g. /api/stripe/webhook).
+
+Extend handling for these events:
+
+customer.subscription.created
+
+customer.subscription.updated
+
+invoice.payment_succeeded
+
+invoice.payment_failed
+
+customer.subscription.deleted / customer.subscription.canceled
+
+Logic outline:
+
+async function handleSubscriptionEvent(event: Stripe.Event) {
+  const sub = event.data.object as Stripe.Subscription;
+  const stripeSubId = sub.id;
+  const stripeCustomerId = String(sub.customer);
+  // Lookup tenant_subscriptions by stripe_subscription_id or customer_id
+  const tenantSub = await findTenantSubscription(stripeSubId, stripeCustomerId);
+  if (!tenantSub) return;
+
+  const newStatus = mapStripeStatusToInternal(sub.status);
+  await updateTenantSubscription(tenantSub.tenant_id, {
+    status: newStatus,
+    current_period_end: new Date(sub.current_period_end * 1000),
+  });
+
+  // If status transitions to active -> ensure tenant unsuspended
+  // If transitions to past_due / unpaid -> maybe mark as warning
+}
+
+
+For invoice.payment_failed:
+
+Record in billing_events.
+
+If this is first failure in period:
+
+Mark tenant_subscriptions.status = past_due.
+
+Send “payment failed” email with link to update payment method.
+
+If there have been N consecutive failures or time since first failure > grace period:
+
+Mark tenant_subscriptions.status = suspended.
+
+Trigger suspension routine (see next section).
+
+3.3 Suspension Logic
+
+Create a central helper, e.g. billingEnforcementService.ts:
+
+export async function suspendTenant(tenantId: string, reason: string) {
+  const db = await wrapTenantDb(tenantId);
+  // mark tenant as suspended in global tenant table
+  await globalDb`UPDATE tenants SET billing_status = 'suspended' WHERE id = ${tenantId}`;
+  await globalDb`INSERT INTO billing_events ...`;
+
+  // Optional: mark telephony numbers as disabled or tagged
+}
+
+export async function reactivateTenant(tenantId: string) {
+  await globalDb`UPDATE tenants SET billing_status = 'active' WHERE id = ${tenantId}`;
+  await globalDb`INSERT INTO billing_events ...`;
+}
+
+
+Middleware Enforcement
+
+For telephony endpoints (Twilio webhooks):
+
+Incoming calls/SMS: you may still allow and show “we’re experiencing billing issues” or route to voicemail.
+
+Outgoing SMS / calls initiated by the tenant or AI should be blocked when suspended.
+
+Add a middleware used by your messaging/calling routes:
+
+async function requireBillingActive(req, res, next) {
+  const tenant = req.context?.tenant;
+  if (!tenant) return res.status(401).end();
+  if (tenant.billing_status === "suspended") {
+    return res.status(403).json({
+      success: false,
+      error: "Account is suspended due to billing issues.",
+    });
+  }
+  return next();
+}
+
+
+Use it in all outbound routes (/api/sms/send, /api/ivr/outbound, etc).
+
+For the AI Support / Messages UI:
+
+If tenant is suspended, show a banner:
+
+“Your account is currently suspended due to failed payments. Please update your billing details to restore service.”
+
+3.4 Tenant Billing Settings Page
+
+New page: /settings/billing (or /admin/billing).
+
+Backend
+
+Add route:
+
+router.get("/settings/billing", requireAuth, async (req, res) => {
+  const tenantId = req.context.tenant.id;
+  const sub = await getTenantSubscription(tenantId);
+  const portalUrl = await stripeService.getBillingPortalUrl(sub.stripe_customer_id);
+  res.json({
+    success: true,
+    planCode: sub.plan_code,
+    status: sub.status,
+    currentPeriodEnd: sub.current_period_end,
+    portalUrl,
+  });
+});
+
+
+Frontend
+
+New React page component: BillingSettingsPage.tsx:
+
+Shows:
+
+Plan name (map code → label)
+
+Billing status (with badge colors)
+
+“Next billing date: <date>”
+
+Button: “Manage Payment Method & Invoices” → opens portalUrl from backend.
+
+If status === "past_due":
+
+Show warning text.
+
+If status === "suspended":
+
+Show red warning with explanation and CTA.
+
+Add to navigation under “Settings & Administration”:
+
+{
+  id: "billing-settings",
+  label: "Billing & Subscription",
+  href: "/settings/billing",
+  icon: CreditCardIcon,
+  section: "Settings & Administration",
+  ownerOnly: true,
+}
+
+3.5 Admin Billing Overview Page
+
+New admin-only page: /admin/billing-overview.
+
+Backend
+
+Add route such as:
+
+router.get("/admin/billing/overview", requireRootAdmin, async (req, res) => {
+  const rows = await globalDb`
+    SELECT t.id, t.name, ts.plan_code, ts.status, ts.current_period_end,
+           ts.stripe_customer_id, ts.stripe_subscription_id
+    FROM tenants t
+    JOIN tenant_subscriptions ts ON ts.tenant_id = t.id
+  `;
+  res.json({ success: true, tenants: rows });
+});
+
+
+Frontend
+
+Table listing:
+
+Tenant name
+
+Plan
+
+Status (badge)
+
+Next renewal
+
+Link: “Open in Stripe” (construct from customer/sub ID; you can store Stripe dashboard base URL in a constant).
+
+3.6 Email Templates (Dunning & Suspension)
+
+Use your existing Email Settings + SendGrid integration.
+
+Create or wire functions:
+
+sendBillingPaymentFailedEmail(tenantId, details)
+
+sendBillingSuspendedEmail(tenantId, details)
+
+sendBillingReactivatedEmail(tenantId, details)
+
+They should:
+
+Respect tenant email settings (from /settings/email)
+
+Use a respectful but clear tone: payment failed, grace period, what breaks, how to fix.
+
+4. Testing Checklist (for Replit Agent)
+
+ Signup / plan assignment creates tenant_subscriptions row.
+
+ Webhook for invoice.payment_succeeded marks tenant as active.
+
+ Webhook for invoice.payment_failed marks past_due, sends email.
+
+ After multiple failures or elapsed grace → suspended + telephony blocked.
+
+ Paying overdue invoice → Stripe sends events → tenant gets active again, telephony restored.
+
+ Tenant Billing page displays correct status and portal link.
+
+ Admin overview lists tenants and their billing states.
