@@ -1,0 +1,208 @@
+DROP-IN — SP-24: Public Site v3 (Themes + Template Library)
+
+Master Plan v4 → Phase 4.2
+
+Goal: Turn the public site into a proper, themed website engine with multiple templates, tenant-selectable themes, and clean separation between content and presentation.
+
+🎯 What SP-24 Should Deliver
+
+Theme System
+
+Multiple themes (e.g. "clean-glass", "bold-gradient", "minimal-light").
+
+Each theme defined in a central config (colors, typography, layout options).
+
+Tenants can choose theme from an admin page.
+
+Template Library
+
+Layout “recipes” for sections:
+
+Hero (image left, text right / full-width / centered)
+
+Services grid vs list
+
+Testimonials carousel vs stacked cards
+
+Call-to-action bar variants
+
+Stored as structured config, not hardcoded JSX everywhere.
+
+Tenant Controls
+
+New admin page:
+
+/admin/public-site-theme
+
+Tenants can:
+
+Pick a base theme
+
+Pick a layout style (e.g. Hero layout A/B)
+
+Toggle sections on/off: testimonials, FAQ, gallery, “Why choose us”, etc.
+
+Safe Defaults
+
+Clean Machine tenant keeps its current look unless specifically changed.
+
+Other tenants default to a polished “general service business” theme.
+
+✅ REPLIT DROP-IN BLOCK — SP-24 Public Site v3
+
+Paste this whole thing into the agent:
+
+TASK: Implement SP-24 Public Site v3 (Themes + Template Library)
+
+GOAL:
+Turn the public site into a themed, configurable website system:
+- Multiple visual themes
+- Section layout templates
+- Tenant-level configuration panel
+
+-------------------------------------
+1. DATA MODEL UPDATES
+-------------------------------------
+
+Add to tenant_settings (or create if needed) the following JSON fields:
+
+- public_site_theme_config JSONB, example shape:
+
+{
+  "themeKey": "clean-glass",
+  "heroLayout": "image-right",
+  "showTestimonials": true,
+  "showFaq": true,
+  "showGallery": false,
+  "showWhyChooseUs": true,
+  "ctaStyle": "full-width-bar"
+}
+
+If tenant_settings already has a general JSON column, extend it appropriately.
+
+-------------------------------------
+2. THEME REGISTRY
+-------------------------------------
+
+Create:
+- shared/publicSiteThemes.ts
+
+Export a registry like:
+
+export type PublicSiteThemeKey =
+  | "clean-glass"
+  | "bold-gradient"
+  | "minimal-light";
+
+export interface PublicSiteTheme {
+  key: PublicSiteThemeKey;
+  label: string;
+  description: string;
+  colors: {
+    background: string;
+    surface: string;
+    accent: string;
+    textPrimary: string;
+    textSecondary: string;
+  };
+  heroVariants: Array<{ id: string; label: string }>;
+  ctaStyles: Array<{ id: string; label: string }>;
+}
+
+export const PUBLIC_SITE_THEMES: PublicSiteTheme[] = [ ... ];
+
+-------------------------------------
+3. TEMPLATE LAYOUT CONFIG
+-------------------------------------
+
+Create:
+- client/src/publicSite/templates/layoutConfig.ts
+
+Define configuration objects for each section:
+
+- Hero variants (heroImageLeft, heroImageRight, heroCentered)
+- Services section variants (grid3, grid2, list)
+- Testimonials section variants (carousel, stacked)
+- FAQ section layout
+- CTA bar styles
+
+These should be plain config objects (not JSX), so PublicSite.tsx can interpret them.
+
+-------------------------------------
+4. PUBLIC SITE COMPONENT REFACTOR
+-------------------------------------
+
+File: client/src/pages/public/PublicSite.tsx
+
+Refactor to:
+
+- Load theme + layout config from:
+    - tenant_settings.public_site_theme_config if present
+    - otherwise fallback to default theme & layouts
+
+- Use PUBLIC_SITE_THEMES registry for:
+    - colors
+    - hero layout choice
+    - CTA style
+
+Ensure Clean Machine tenant keeps its existing “showcase” layout:
+- If tenant.slug === "cleanmachine" and no theme config set:
+    - Use a theme/layout that closely matches existing style.
+
+-------------------------------------
+5. ADMIN THEME CONFIG PAGE
+-------------------------------------
+
+Create route + page:
+- /admin/public-site-theme
+
+File:
+- client/src/pages/admin/PublicSiteThemePage.tsx
+
+Features:
+- Dropdown to select themeKey
+- Dropdown to select heroLayout
+- Toggles for:
+    - showTestimonials
+    - showFaq
+    - showGallery
+    - showWhyChooseUs
+- Dropdown for ctaStyle
+- Live preview panel (even if simple): show what sections will appear
+- Save button -> calls API to persist tenant_settings.public_site_theme_config
+
+Add server route:
+- GET /api/admin/public-site-theme
+- PUT /api/admin/public-site-theme
+
+Use wrapTenantDb for tenant isolation.
+
+-------------------------------------
+6. NAVIGATION
+-------------------------------------
+
+Add to admin sidebar:
+- Under "Settings & Administration":
+    - "Public Site Theme" (only visible to tenant owners)
+
+-------------------------------------
+7. SAFETY & COMPATIBILITY
+-------------------------------------
+
+- Do NOT break existing CM-4 Public Site v2 behavior.
+- If no theme config exists:
+    - Use existing PublicSite behavior as best-effort default.
+- Ensure that current Clean Machine home experience is not overridden.
+
+-------------------------------------
+8. DONE WHEN
+-------------------------------------
+
+- Tenant owner can:
+    - Open /admin/public-site-theme
+    - Choose a theme & layouts
+    - Save
+- Visiting /site/:tenantSlug uses chosen theme and layout
+- Clean Machine main domain still uses your manually built homepage, not overridden.
+
+END TASK
