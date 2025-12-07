@@ -1,0 +1,268 @@
+PROMPT TO REPLIT AGENT — CM-Demo-Mode (Safe Sandbox Tenant)
+
+Goal: Implement a Clean Machine Demo Mode that:
+
+Uses a separate demo tenant with fake data.
+
+Can be launched from the marketing site as “Try Live Demo”.
+
+Never exposes Jody’s real data.
+
+Never sends real messages to real customers — only to a single verified demo phone chosen by the viewer.
+
+Gives a realistic feel of Night Ops, loyalty, booking, etc.
+
+We’ll call this phase CM-DEMO-1.
+
+Part A – Mark the Demo Tenant
+
+Create:
+
+shared/demoConfig.ts
+
+export const DEMO_TENANT_SLUG = "cleanmachine-demo";
+export const DEMO_TENANT_NAME = "Clean Machine Demo";
+
+
+Assume we already have tenant helper functions (getTenantBySlug, etc.).
+If not, create a minimal helper using the root tenant table.
+
+Add a isDemoTenant(tenantId: string): boolean helper.
+
+Part B – Seed a Demo Tenant + Fake Data
+
+Add a small seed script (or extend existing seeds) that:
+
+Creates a tenant with slug "cleanmachine-demo" if it doesn’t exist.
+
+Seeds:
+
+10–20 fake customers (names, phones, emails in 555 range).
+
+8–10 past appointments (various statuses).
+
+A few future bookings.
+
+Sample loyalty transactions and achievements.
+
+A handful of message threads & voicemails with generated lorem text.
+
+IMPORTANT:
+
+All seeded phone numbers should be fake / 555 style to avoid real world collisions.
+
+Document how to run this seed in replit.md.
+
+Part C – Demo Entry Point (Public)
+
+Add a new public route:
+
+Route: /demo
+
+Behavior:
+
+Shows a “Try the Live Demo” hero page with:
+
+Brief explanation.
+
+Button: “Launch Demo Dashboard”.
+
+When clicking the button:
+
+Call a new backend endpoint:
+
+POST /api/demo/start
+
+This endpoint should:
+
+Create a short-lived demo session record in a new root table demo_sessions:
+
+id uuid
+
+tenantId (always demo tenant)
+
+createdAt
+
+expiresAt (e.g., +2 hours)
+
+verifiedDemoPhone nullable
+
+Return a signed JWT or opaque token like demoSessionToken.
+
+Frontend then:
+
+Stores demoSessionToken in memory (or localStorage).
+
+Redirects user to /demo/dashboard.
+
+Part D – Demo Dashboard Routing
+
+Create a client-side wrapper:
+
+DemoAppShell component (or similar):
+
+When on any /demo/* route:
+
+Use the demo tenant slug + demoSessionToken instead of normal auth.
+
+Inject tenantId = DEMO_TENANT in context.
+
+Render the same Night Ops UI but with:
+
+A clear top banner:
+
+“Demo Mode – data and messages here are simulated. No real customers are contacted.”
+
+Routes:
+
+/demo/dashboard → Conversations & Dispatch v2 for demo tenant.
+
+/demo/rewards → Rewards portal using demo data.
+
+/demo/booking → Booking flow with demo customer preloaded.
+
+We do NOT need login for demo; the demo session token is good enough as “auth”.
+
+Part E – Outbound Guardrail: Demo Message Router
+
+Create a central guard near the telephony/email send functions:
+
+shared/demo/demoGuards.ts
+
+export async function filterOutboundForDemo(args: {
+  tenantId: string;
+  toPhone?: string;
+  toEmail?: string;
+  bodyPreview?: string;
+  demoSessionToken?: string;
+}): Promise<{
+  allow: boolean;
+  finalToPhone?: string;
+  finalToEmail?: string;
+  reason?: string;
+}>;
+
+
+Rules:
+
+If !isDemoTenant(tenantId) → return { allow: true } (no change).
+
+If isDemoTenant:
+
+Look up demo_sessions by demoSessionToken.
+
+If no session or expired → allow: false with reason “Demo session expired”.
+
+If session has no verifiedDemoPhone yet:
+
+allow: false with reason “Demo phone not verified”.
+
+If present:
+
+Force finalToPhone = verifiedDemoPhone.
+
+Ignore any attempted toEmail (we don’t send demo emails for now).
+
+Update the Twilio send pipeline so that before actually sending SMS/voice, it calls filterOutboundForDemo. If allow is false, log it and respond to client with a safe “simulated send only” response.
+
+Also, never record demo tenant Twilio events into real usage billing.
+
+Part F – Demo Phone Verification Flow
+
+Create a small UI component visible in demo mode:
+
+Location: In the demo dashboard sidebar or header: “Demo Settings”.
+
+Features:
+
+Input field: Your phone number for demo texts.
+
+Button: “Send verification code”.
+
+When clicked:
+
+Backend endpoint POST /api/demo/send-code:
+
+Accepts demoSessionToken + phone.
+
+Generates a 6-digit code, stores it in demo_sessions table (pendingCode, codeExpiresAt).
+
+Sends ONE real SMS via Twilio with the code. (This is okay; it’s opt-in by the viewer.)
+
+Second step: “Enter verification code” field + Confirm button.
+
+Backend endpoint POST /api/demo/verify-code:
+
+Check code & expiry.
+
+If valid, set verifiedDemoPhone for that session.
+
+Clear code fields.
+
+Once verified:
+
+Show status badge: “Demo texts will go only to (xxx) xxx-xxxx”.
+
+Any subsequent “send” from the demo UI will:
+
+Go only to that phone.
+
+Be logged locally and surfaced as “Simulated message to you”.
+
+Part G – Disable Dangerous Actions in Demo
+
+For the demo tenant, add safety checks so that:
+
+No bookings are written into the real production schedule.
+
+No customers, vehicles, or payment methods are saved into global CRM.
+
+Implementation idea:
+
+In the backend wrapTenantDb or in relevant route handlers:
+
+If isDemoTenant(tenantId):
+
+For mutating endpoints (create/update/delete), either:
+
+Write to a separate demo schema (if easy), OR
+
+Short-circuit with “Simulated success” — return dummy objects without touching DB.
+
+At minimum for CM-DEMO-1, ensure:
+
+Booking creation endpoints detect demo tenant and do not affect real operational calendar.
+
+Document whichever approach you implement in replit.md.
+
+Part H – Docs
+
+Update replit.md:
+
+“CM-DEMO-1 – Clean Machine Demo Mode”
+
+How to:
+
+Run the seed.
+
+Access /demo.
+
+Understand outbound restrictions.
+
+Clear warning: demo tenant must not be used for real operations.
+
+Acceptance Checklist
+
+/demo loads a public invite page.
+
+“Launch Demo Dashboard” creates a demo session and routes to /demo/dashboard.
+
+UI clearly shows “Demo Mode”.
+
+No real Clean Machine data appears (only fake seeded data).
+
+Attempting to send a message without verifying phone → blocked with friendly error.
+
+After verifying a phone, demo SMS attempts only ever go to that number.
+
+Creating bookings in demo does not affect real bookings.

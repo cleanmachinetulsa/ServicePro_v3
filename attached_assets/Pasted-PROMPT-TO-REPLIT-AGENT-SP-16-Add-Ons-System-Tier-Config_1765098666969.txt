@@ -1,0 +1,228 @@
+PROMPT TO REPLIT AGENT — SP-16 Add-Ons System + Tier Config Page
+
+We’re working in the ServicePro v3 repo.
+Implement SP-16 Add-Ons System so that:
+
+We have a central catalog of add-ons.
+
+Each tenant can enable/disable add-ons on top of their base plan.
+
+Feature gating can check both plan tier and active add-ons.
+
+There is a Tier & Add-Ons Config page for platform owners AND a My Add-Ons page for tenants.
+
+This is a config + wiring phase, not deep Stripe billing yet.
+
+Part A – Shared Add-On Catalog
+
+Create:
+
+shared/addonsConfig.ts
+
+Export:
+
+export type AddonKey =
+  | "extra_phone_number"
+  | "extra_user_seats"
+  | "ai_power_pack"
+  | "priority_support"
+  | "multi_location"
+  | "white_label_plus";
+
+export interface AddonDefinition {
+  key: AddonKey;
+  name: string;
+  shortLabel: string;
+  description: string;
+  monthlyPrice: number; // in USD for now
+  recommendedTier: "starter" | "pro" | "elite" | "agency";
+  minTier: "starter" | "pro" | "elite"; // minimum base plan required
+  featureFlags: string[]; // e.g. ["telephony.extraNumber", "ai.higherLimits"]
+  isVisible: boolean; // allow hiding unfinished add-ons
+}
+
+export const ADDONS_CATALOG: AddonDefinition[] = [/* seed 5–6 sensible add-ons */];
+
+
+Seed examples:
+
+Extra phone number
+
+Extra user seats (pack of 2)
+
+AI Power Pack (higher OpenAI usage, faster responses)
+
+Priority Support
+
+Multi-Location
+
+White-Label Plus (extra branding options)
+
+Part B – Root DB: tenant_addons
+
+In the GLOBAL/root DB (same place we keep plan info), create table:
+
+tenant_addons:
+
+id uuid pk
+
+tenantId text (indexed)
+
+addonKey text (AddonKey)
+
+status "active" | "pending_cancel" | "canceled"
+
+billingPeriod "monthly" | "yearly"
+
+quantity integer default 1
+
+externalSubscriptionId text nullable (Stripe later)
+
+activatedAt timestamp
+
+canceledAt timestamp nullable
+
+createdAt timestamp default now
+
+Add helpers:
+
+shared/addons/addonService.ts with:
+
+export async function getTenantAddons(tenantId: string): Promise<TenantAddonWithMeta[]>;
+export async function isAddonActive(tenantId: string, key: AddonKey): Promise<boolean>;
+export async function setAddonStatus(args: {
+  tenantId: string;
+  addonKey: AddonKey;
+  status: "active" | "pending_cancel" | "canceled";
+  quantity?: number;
+}): Promise<void>;
+
+
+Where TenantAddonWithMeta merges DB row + ADDONS_CATALOG entry.
+
+Part C – Feature Gating Integration
+
+Wherever we currently have a feature gate helper (e.g. featureService.ts / isFeatureEnabledForTenant), extend it:
+
+Accept optional addonKey or list of featureFlags.
+
+Logic:
+
+Check plan tier (existing).
+
+If plan does not unlock feature by default, check if any active add-on supplies the feature flag.
+
+Keep this backwards-compatible: existing calls with no add-on info should behave exactly as before.
+
+Example:
+
+export async function isFeatureEnabled(
+  tenantId: string,
+  featureKey: string
+): Promise<boolean> {
+  // 1) existing tier-based logic
+  // 2) if false, check tenant_addons for any addon whose featureFlags includes featureKey
+}
+
+Part D – Admin Tier & Add-Ons Config Page (Platform Owner)
+
+Create a root-admin-only page:
+
+Route: /admin/plans-and-addons
+
+Features:
+
+Two tabs:
+
+Plans – read-only summary of Starter / Pro / Elite / Agency (pull from existing pricing config).
+
+Add-Ons – editable list of add-ons from ADDONS_CATALOG.
+
+For Add-Ons tab:
+
+Show cards with:
+
+Name, description, suggested tiers.
+
+Simple controls:
+
+isVisible toggle
+
+Monthly price field
+
+Changes should update a persistent config source (either a root DB table addons_overrides or simply keep editing ADDONS_CATALOG via config service).
+To keep safe, log changes to console + admin audit logs.
+
+This page is for you only, not regular tenants.
+
+Part E – Tenant “My Add-Ons” Page
+
+Create a tenant-visible page:
+
+Route: /settings/billing/addons
+
+Accessible to owner role only.
+
+Features:
+
+Summary card: base plan + current add-ons.
+
+List of visible add-ons (from ADDONS_CATALOG where isVisible is true).
+
+For each:
+
+Show whether it is:
+
+Active
+
+Pending cancellation
+
+Available to add (respect minTier).
+
+Buttons:
+
+“Add to my account” → activates add-on.
+
+“Cancel at end of period” → sets status to pending_cancel.
+
+For now, these actions:
+
+Update tenant_addons only.
+
+Do NOT call Stripe yet; that comes in Billing v2.
+
+Show a subtle banner:
+
+“Changes to add-ons will reflect on your next invoice. Billing automation is in beta.”
+
+Part F – API Endpoints
+
+Under /api/billing/addons:
+
+GET /my → return catalog + current addon status for this tenant.
+
+POST /my/toggle → body { addonKey, action: "activate" | "cancel" }
+
+Use auth + owner permission middleware + Zod validation.
+
+Part G – Docs
+
+Update replit.md:
+
+“SP-16 Add-Ons System”
+
+How to add a new add-on to catalog.
+
+How plan + add-on feature gating works.
+
+Acceptance
+
+Tenant owner can see /settings/billing/addons.
+
+Activating an add-on sets a row in tenant_addons.
+
+Canceling sets pending_cancel.
+
+Feature gating helper can see add-ons (unit test or simple integration test).
+
+No behavior change for existing features unless they explicitly opt-in to use add-on flags.
