@@ -317,6 +317,14 @@ export const navigationItems: NavigationItem[] = [
     visibility: 'advancedOnly',
   },
   {
+    id: 'billing-overview',
+    label: 'Usage Overview',
+    icon: TrendingUp,
+    path: '/admin/billing-overview',
+    badge: 'Owner',
+    visibility: 'advancedOnly',
+  },
+  {
     id: 'theme-gallery',
     label: 'Theme Gallery',
     icon: Palette,
