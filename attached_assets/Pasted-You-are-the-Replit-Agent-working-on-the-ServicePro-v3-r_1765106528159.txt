@@ -1,0 +1,219 @@
+You are the Replit Agent working on the `ServicePro_v3` repo.
+
+Implement **SP-18 – Usage Metering v2 (Twilio + OpenAI + SendGrid)**.
+
+Goal:
+Build a full **tenant-facing Usage Dashboard** and **owner-facing global usage view**, with real per-tenant meters for:
+- Twilio (SMS/MMS/Voice),
+- OpenAI (AI tokens),
+- SendGrid (emails),
+using the existing usage wiring we already have.
+
+Add:
+- Daily (or rolling) aggregation,
+- Soft warnings when usage is near the tenant’s cap,
+- A hard stop flag when they exceed their cap (but do NOT yet implement full Billing v2 dunning/suspension – that’s SP-19).
+
+We’re upgrading the existing “Usage Engine v1 (SP-3 / CM-Billing-Prep)” into a usable, visible tool.
+
+---
+
+1️⃣ Inspect existing usage wiring
+
+- Find the backend usage code from previous phases, likely in files such as:
+  - `server/src/usage/usageService.ts`
+  - `server/src/usage/usageEvents.ts`
+  - or similar filenames that track Twilio/OpenAI/SendGrid usage.
+- Confirm:
+  - How we currently **log** usage events.
+  - Whether we already have per-tenant daily/weekly aggregates.
+  - How we store:
+    - channel (sms/mms/voice/email/ai),
+    - quantity (messages, minutes, tokens, etc),
+    - cost (if already computed).
+
+Do NOT rip out existing logic; extend it.
+
+---
+
+2️⃣ Define a normalized usage model
+
+If not already present, create a central TypeScript type and Prisma model for **usage summaries**, something like:
+
+- Table: `usage_summary`
+  - `id`
+  - `tenantId`
+  - `date` (YYYY-MM-DD, UTC)
+  - `channel` ENUM: `sms`, `mms`, `voice`, `email`, `ai`
+  - `unitCount` (e.g. messages, minutes, token-thousands)
+  - `estimatedCostCents` (optional, for transparency)
+  - `meta` JSON (provider, breakdown, etc.)
+
+If a similar table already exists, reuse it and just document the contract.
+
+---
+
+3️⃣ Add a daily (or rolling) aggregation job
+
+- Implement a scheduled job (or an API endpoint that we can trigger manually in dev) that:
+  - Reads raw usage events recorded for the last N days,
+  - Aggregates them into `usage_summary` per:
+    - tenant,
+    - date,
+    - channel.
+- Make it **idempotent**:
+  - Re-running for the same date should upsert the same daily summary.
+- For now, it’s acceptable to:
+  - Have a job like `POST /api/admin/usage/rebuild?days=7` for manual triggering,
+  - With a TODO comment for wiring to a real scheduler later.
+
+---
+
+4️⃣ Define per-tenant caps & thresholds
+
+- Extend the tenant configuration (or billing plan config) to include **usage caps** and **warning thresholds**, e.g.:
+
+  - `smsMonthlyCap`, `smsWarningThresholdPct`
+  - `emailMonthlyCap`, `emailWarningThresholdPct`
+  - `aiMonthlyCap`, `aiWarningThresholdPct`
+  - `voiceMonthlyCap`, `voiceWarningThresholdPct`
+
+If we already have tier metadata that knows approximate limits, reuse that:
+
+- For now, you can:
+  - Attach defaults based on tier (Starter, Pro, etc.), or
+  - Use a central config map in `shared/billingConfig.ts`.
+
+- Add a computed helper:
+
+  - `getTenantUsageStatus(tenantId, month)` → returns:
+    - totals so far,
+    - cap values,
+    - percent of cap used,
+    - `status: 'ok' | 'warning' | 'over_cap'`.
+
+---
+
+5️⃣ Tenant-facing Usage Dashboard
+
+Create a new page:
+
+- Route: `/settings/billing-usage` or `/billing/usage` (follow existing patterns).
+- Component file, e.g.: `client/src/pages/BillingUsagePage.tsx`.
+
+Features:
+
+- Show **current billing period** (e.g. “December 2025”).
+- For each channel (SMS, Voice, Email, AI):
+
+  - A card with:
+    - Usage bar (e.g. 65% of cap),
+    - “Used 650 of 1000 SMS this month”
+    - Status chip: OK / Near Limit / Over Cap
+    - “Estimated cost: $X.XX” (if we can compute this from costCents)
+
+- Chart or simple trend (optional but ideal):
+
+  - Last 7–30 days usage per channel (line chart or stacked bars).
+
+- Clear explanation:
+
+  - A small help text area:
+    - “These numbers are based on Twilio, OpenAI, and SendGrid usage recorded through ServicePro.”
+    - “Caps are per-month soft limits; going over them may affect your plan in a future release.”
+
+Data source:
+
+- Add an API endpoint:
+
+  - `GET /api/billing/usage/summary?period=current`
+  - Returns per-channel totals, caps, and statuses.
+
+Put the navigation link under the **Billing/Usage** section in the sidebar (we’ll reorganize sections later, but this page must be reachable):
+
+- e.g. label: “Usage & Costs”.
+
+---
+
+6️⃣ Owner-facing global usage view
+
+For root admin:
+
+- New route: `/admin/system-usage`
+- New page, e.g. `client/src/pages/AdminSystemUsagePage.tsx`.
+
+Features:
+
+- Table of tenants:
+  - Columns:
+    - Tenant name
+    - Plan / tier
+    - SMS used (this month)
+    - Voice minutes used
+    - Emails sent
+    - AI tokens used
+    - Status: `OK`, `Warning`, `Over Cap`
+- Filters:
+  - By tier
+  - By status (show only near limit / over cap)
+
+Backend endpoint:
+
+- `GET /api/admin/billing/usage/system-summary?period=current`
+
+Use the same underlying `usage_summary` table and helper functions as the tenant view.
+
+---
+
+7️⃣ Warnings & hard-stop flag
+
+We are **not** yet implementing full Billing v2 (SP-19), but we need:
+
+- A field in tenant / billing config such as:
+  - `usageStatus: 'ok' | 'warning' | 'over_cap'`
+  - `usageHardStopEnabled: boolean` (or similar)
+
+Logic:
+
+- When computing monthly usage:
+  - If tenant is above warning threshold but below cap:
+    - Mark status = `warning`.
+  - If tenant is above cap:
+    - Mark status = `over_cap`.
+
+- Implement a **central helper** used by critical operations (sending SMS/placing calls):
+
+  - e.g. `canTenantUseChannel(tenantId, channel)`:
+    - If `usageHardStopEnabled` is true and status is `over_cap` for that channel, return false.
+    - For now, we can:
+      - Log an event and block the action with a clear error message:
+        - “Usage cap reached for this channel. Please contact support or update your plan.”
+
+Do NOT implement full Stripe dunning or plan upgrading here; that’s SP-19.
+
+---
+
+8️⃣ Expose status in the UI
+
+- In the app header or Billing/Usage page, show a discrete badge when:
+
+  - Status = `warning` → “You’re nearing your monthly usage cap.”
+  - Status = `over_cap` → “You’ve exceeded your monthly usage cap for X. Some actions may be blocked.”
+
+Keep this small and non-intrusive in v1.
+
+---
+
+9️⃣ Verification checklist
+
+Before you consider SP-18 complete, verify:
+
+- Raw usage events are still being recorded as before (no regressions).
+- The aggregation job successfully builds `usage_summary` data for at least one tenant.
+- `/billing/usage` (or `/settings/billing-usage`) loads and shows realistic numbers for a test tenant.
+- `/admin/system-usage` loads and shows multiple tenants with usage status.
+- When you manually tweak usage to be above the cap:
+  - Tenant status flips to `over_cap`.
+  - `canTenantUseChannel` returns false and the UI shows a clear error when attempting to send an SMS.
+
+Keep changes focused and well-commented so future phases (SP-19 Billing v2 and SP-20 Add-On Billing) can hook into these usage metrics without needing to redesign the system again.

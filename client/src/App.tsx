@@ -22,6 +22,9 @@ import BannerManagement from "@/pages/banner-management";
 import BannerDisplay from "@/components/BannerDisplay";
 import DamageAssessmentPage from "@/pages/damage-assessment";
 import DemoPage from "@/pages/demo";
+import DemoLandingPage from "@/pages/DemoLandingPage";
+import DemoVerifyPage from "@/pages/DemoVerifyPage";
+import DemoDashboardPage from "@/pages/DemoDashboardPage";
 import HomePage from "@/pages/home";
 import LandingPage from "@/pages/LandingPage";
 import RootDomainHandler from "@/components/RootDomainHandler";
@@ -150,6 +153,11 @@ function Router() {
 
       {/* Phase 7B: Pricing & Tier Comparison (PUBLIC ROUTE - NO AUTH) */}
       <Route path="/pricing" component={PricingPage} />
+
+      {/* CM-DEMO-1: Demo Mode Routes (PUBLIC - NO AUTH) */}
+      <Route path="/demo" component={DemoLandingPage} />
+      <Route path="/demo/verify" component={DemoVerifyPage} />
+      <Route path="/demo/dashboard" component={DemoDashboardPage} />
 
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}
       <Route path="/onboarding/industry" component={OnboardingIndustryPage} />

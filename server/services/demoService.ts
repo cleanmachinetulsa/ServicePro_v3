@@ -2,14 +2,21 @@
  * CM-DEMO-1: Demo Mode Service
  * 
  * Handles demo session management, phone verification, and demo data seeding.
+ * 
+ * SECURITY:
+ * - Session tokens are cryptographically random and stored in database
+ * - Lookup uses indexed query on session_token column (not scan)
+ * - All database operations use parameterized Drizzle queries
+ * - Token rotation on verification prevents session fixation
  */
 
 import { db } from '../db';
-import { demoSessions, tenants, customers, appointments, messages, DemoSession } from '@shared/schema';
-import { DEMO_TENANT_ID, DEMO_TENANT_NAME, DEMO_TENANT_SLUG, DEMO_SESSION_DURATION_HOURS, isDemoTenant } from '@shared/demoConfig';
+import { demoSessions, tenants, DemoSession } from '@shared/schema';
+import { DEMO_TENANT_ID, DEMO_TENANT_NAME, DEMO_SESSION_DURATION_HOURS } from '@shared/demoConfig';
 import { eq, and, gt } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { addHours, addMinutes } from 'date-fns';
+import crypto from 'crypto';
 
 export interface CreateDemoSessionResult {
   success: boolean;
@@ -19,16 +26,24 @@ export interface CreateDemoSessionResult {
   error?: string;
 }
 
+function constantTimeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 export async function createDemoSession(
   ipAddress?: string,
   userAgent?: string
 ): Promise<CreateDemoSessionResult> {
   try {
     const expiresAt = addHours(new Date(), DEMO_SESSION_DURATION_HOURS);
-    const sessionToken = `demo-${nanoid(32)}`;
+    const sessionSecret = `demo_${nanoid(48)}`;
 
     const [session] = await db.insert(demoSessions).values({
       tenantId: DEMO_TENANT_ID,
+      sessionToken: sessionSecret,
       expiresAt,
       ipAddress: ipAddress || null,
       userAgent: userAgent || null,
@@ -38,7 +53,7 @@ export async function createDemoSession(
 
     return {
       success: true,
-      sessionToken: `${sessionToken}-${session.id}`,
+      sessionToken: sessionSecret,
       sessionId: session.id,
       expiresAt,
     };
@@ -52,12 +67,13 @@ export async function createDemoSession(
 }
 
 export async function getDemoSession(sessionToken: string): Promise<DemoSession | null> {
-  if (!sessionToken || !sessionToken.startsWith('demo-')) {
+  if (!sessionToken || !sessionToken.startsWith('demo_')) {
     return null;
   }
 
-  const parts = sessionToken.split('-');
-  const sessionId = parts[parts.length - 1];
+  if (sessionToken.length < 40 || sessionToken.length > 60) {
+    return null;
+  }
 
   try {
     const [session] = await db
@@ -65,7 +81,7 @@ export async function getDemoSession(sessionToken: string): Promise<DemoSession 
       .from(demoSessions)
       .where(
         and(
-          eq(demoSessions.id, sessionId),
+          eq(demoSessions.sessionToken, sessionToken),
           gt(demoSessions.expiresAt, new Date())
         )
       )
@@ -106,7 +122,7 @@ export async function sendDemoVerificationCode(
       return { success: false, error: 'Failed to send verification SMS' };
     }
 
-    console.log(`[DEMO] Sent verification code to ${phone} for session ${session.id}`);
+    console.log(`[DEMO] Sent verification code to ${phone.slice(0, 6)}*** for session ${session.id}`);
     return { success: true };
   } catch (error) {
     console.error('[DEMO] Failed to send verification code:', error);
@@ -118,7 +134,7 @@ export async function verifyDemoCode(
   sessionToken: string,
   code: string,
   phone: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; newToken?: string; error?: string }> {
   const session = await getDemoSession(sessionToken);
   
   if (!session) {
@@ -133,9 +149,11 @@ export async function verifyDemoCode(
     return { success: false, error: 'Verification code expired' };
   }
 
-  if (session.pendingCode !== code) {
+  if (!constantTimeCompare(session.pendingCode, code)) {
     return { success: false, error: 'Invalid verification code' };
   }
+
+  const newToken = `demo_${nanoid(48)}`;
 
   try {
     await db.update(demoSessions)
@@ -143,11 +161,12 @@ export async function verifyDemoCode(
         verifiedDemoPhone: phone,
         pendingCode: null,
         codeExpiresAt: null,
+        sessionToken: newToken,
       })
       .where(eq(demoSessions.id, session.id));
 
-    console.log(`[DEMO] Phone ${phone} verified for session ${session.id}`);
-    return { success: true };
+    console.log(`[DEMO] Phone verified for session ${session.id}, token rotated`);
+    return { success: true, newToken };
   } catch (error) {
     console.error('[DEMO] Failed to verify demo code:', error);
     return { success: false, error: 'Failed to verify code' };
@@ -181,14 +200,13 @@ export async function ensureDemoTenantExists(): Promise<boolean> {
       .limit(1);
 
     if (existing) {
-      console.log('[DEMO] Demo tenant already exists');
       return true;
     }
 
     await db.insert(tenants).values({
       id: DEMO_TENANT_ID,
       name: DEMO_TENANT_NAME,
-      subdomain: DEMO_TENANT_SLUG,
+      subdomain: 'cleanmachine-demo',
       isRoot: false,
       planTier: 'pro',
       status: 'active',
@@ -202,25 +220,10 @@ export async function ensureDemoTenantExists(): Promise<boolean> {
   }
 }
 
-const FAKE_FIRST_NAMES = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery', 'Parker', 'Dakota', 'Skyler', 'Jamie', 'Drew', 'Reese', 'Cameron', 'Charlie', 'Finley', 'Hayden', 'Jessie', 'Kelly'];
-const FAKE_LAST_NAMES = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Wilson', 'Anderson', 'Taylor', 'Thomas', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson'];
-
-export function generateFakePhone(index: number): string {
-  const suffix = String(1000 + index).padStart(4, '0');
-  return `+1555${String(100 + Math.floor(index / 100)).slice(-3)}${suffix}`;
-}
-
-export function generateFakeEmail(firstName: string, lastName: string): string {
-  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}@demo-cleanmachine.example`;
-}
-
 export async function seedDemoData(): Promise<{ success: boolean; error?: string }> {
   try {
     await ensureDemoTenantExists();
-
     console.log('[DEMO SEED] Demo data seeding would occur here');
-    console.log('[DEMO SEED] For full implementation, run: npm run seed:demo');
-
     return { success: true };
   } catch (error) {
     console.error('[DEMO SEED] Failed to seed demo data:', error);

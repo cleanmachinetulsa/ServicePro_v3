@@ -81,3 +81,38 @@ Tenant add-ons extend the base plan with optional paid features:
 **Feature gating with add-ons**:
 - Use `isFeatureEnabled(tenantId, planTier, featureKey)` from featureGatingService for server-side checks
 - Use `hasAddonFlag(tenantId, 'ai.higherLimits')` to check specific add-on feature flags
+
+## CM-DEMO-1: Demo Mode System
+
+A safe sandbox demo environment for potential customers to try the platform:
+
+**Files**:
+- `shared/demoConfig.ts`: Demo tenant ID, slug, configuration constants, and isDemoTenant() helper
+- `shared/demo/demoGuards.ts`: Outbound guardrails for filtering SMS/email in demo mode
+- `server/services/demoService.ts`: Demo session management (create, verify, get session info)
+- `server/routes/demoRoutes.ts`: Public API routes at /api/demo/* (start, send-code, verify-code, session)
+- `server/middleware/demoModeMiddleware.ts`: Express middleware for detecting and handling demo mode
+- `shared/schema.ts`: `demo_sessions` table with session tokens, verification status, expiry
+- `client/src/pages/DemoLandingPage.tsx`: Public /demo entry page with "Try Live Demo" button
+- `client/src/pages/DemoVerifyPage.tsx`: Phone verification flow for demo access
+- `client/src/pages/DemoDashboardPage.tsx`: Demo dashboard with simulated data
+
+**Demo Flow**:
+1. User visits /demo → Sees feature overview and "Try Live Demo" button
+2. POST /api/demo/start → Creates demo session token (2-hour expiry)
+3. User enters phone number → POST /api/demo/send-code sends real SMS verification
+4. User enters code → POST /api/demo/verify-code marks session as verified
+5. User redirected to /demo/dashboard with demo banner and simulated data
+
+**Security Features**:
+- Phone verification prevents abuse
+- Sessions expire after 2 hours
+- All outbound SMS/email redirected to verified demo phone only
+- Demo tenant ID: 'demo-tenant' (hardcoded in demoConfig.ts)
+- Demo banner clearly indicates sandbox mode
+
+**Middleware Helpers**:
+- `demoModeMiddleware`: Adds req.isDemoMode and req.demoSessionInfo to requests
+- `requireDemoVerified`: Guards routes that need verified phone
+- `blockInDemoMode(actionName)`: Returns 403 for blocked actions
+- `simulateInDemoMode(fn)`: Returns simulated response in demo mode

@@ -4771,6 +4771,7 @@ export type UpdateTenantAddon = z.infer<typeof updateTenantAddonSchema>;
 export const demoSessions = pgTable("demo_sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default('demo-tenant'),
+  sessionToken: varchar("session_token", { length: 100 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   verifiedDemoPhone: varchar("verified_demo_phone", { length: 20 }),
@@ -4781,6 +4782,7 @@ export const demoSessions = pgTable("demo_sessions", {
 }, (table) => ({
   tenantIdx: index("demo_sessions_tenant_id_idx").on(table.tenantId),
   expiresAtIdx: index("demo_sessions_expires_at_idx").on(table.expiresAt),
+  sessionTokenIdx: index("demo_sessions_session_token_idx").on(table.sessionToken),
 }));
 
 export const insertDemoSessionSchema = createInsertSchema(demoSessions).omit({
