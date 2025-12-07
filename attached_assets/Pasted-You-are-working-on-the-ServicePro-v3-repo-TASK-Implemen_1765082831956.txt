@@ -1,0 +1,95 @@
+You are working on the ServicePro_v3 repo.
+
+TASK: Implement a backend + admin import flow to ingest a “Phone History Bundle” (ZIP from the parser tool) and map it into the existing multi-tenant schema (customers, conversations, messages).
+
+Assumptions about the parser bundle (v1):
+- User will use an external “Parser Tool” to process their old phone/Google Voice exports.
+- Parser outputs a ZIP with normalized CSV/JSON files, e.g.:
+  - customers.csv (or customers.json)
+  - conversations.csv (optional, can be derived)
+  - messages.csv
+  - calls.csv (optional, for future use)
+  - training.jsonl (for AI, not imported yet in this block)
+- All phones are normalized to E.164 where possible.
+
+GOALS:
+1. Create a secure tenant-scoped import endpoint that:
+   - Accepts a ZIP upload (multipart/form-data).
+   - Extracts standardized CSV/JSON files.
+   - Imports:
+     - Customers (if new) into customers table.
+     - Conversations (if provided) or auto-creates conversation rows by phone.
+     - Messages into messages table, linked to conversations.
+   - Avoids duplicates if import is re-run (idempotent).
+
+2. Provide a minimal admin UI page under `/admin/import-history` for:
+   - Uploading the ZIP file.
+   - Showing last import status (time, counts imported, any errors).
+   - Showing a small summary: “Imported X customers, Y conversations, Z messages”.
+
+3. Maintain proper multi-tenant isolation using wrapTenantDb and auth middleware.
+
+Implementation details:
+
+A. Database / Schema
+- DO NOT change existing core schemas (customers, messages, conversations).
+- If you need an import log table, create something like:
+  - phone_history_imports:
+    - id
+    - tenantId
+    - createdAt
+    - status ('pending' | 'success' | 'failed')
+    - stats jsonb (counts)
+    - errorText (nullable)
+- Use shared/schema.ts patterns + drizzle.
+
+B. Backend:
+- Add a new route file: `server/routes.importHistory.ts` (or similar).
+  - POST `/api/admin/import-history/upload`
+    - Auth required, tenant owner only.
+    - Accepts multipart form with `file` (ZIP).
+    - Saves an import log row (pending).
+    - Extracts ZIP (use a lightweight lib already in the repo if present; otherwise choose a small, Node-friendly one).
+    - Looks for standard files:
+      - customers.(csv|json)
+      - messages.(csv|json)
+      - conversations.(csv|json) (optional)
+    - Imports in this order:
+      1) Customers
+         - Key on phone number (and/or email).
+         - If a customer with that phone already exists for this tenant, don’t duplicate; update basic fields if needed.
+      2) Conversations
+         - If conversations file present, create rows and map by phone.
+         - If not present, create conversations on the fly per phone from messages.
+      3) Messages
+         - Insert messages, linking to correct conversation.
+         - Deduplicate by (phone, timestamp, direction, body) to avoid double-imports.
+    - Update import log with stats and status.
+
+C. Frontend:
+- Create a new admin page at `/admin/import-history`:
+  - Add to navigation under “Settings & Administration” as “Data Import”.
+  - Components:
+    - Hero card: “Bring Your Phone History”
+    - File upload dropzone (ZIP only) + Upload button.
+    - Last import status card:
+      - Date/time
+      - Counts (customers / conversations / messages)
+      - Last error (if any), styled as warning.
+  - Use existing design language (glassmorphism cards, same typography as other admin pages).
+  - Use TanStack Query for:
+    - GET `/api/admin/import-history/latest`
+    - POST upload with optimistic loading state.
+
+D. Security / Multi-tenant:
+- All imports are scoped to the current tenant from auth context.
+- No ability to specify tenantId from the client.
+- wrapTenantDb used for all tenant-scoped writes.
+
+E. Docs:
+- Update `replit.md` with a short “INT-3 – Phone History Import Engine” section:
+  - Where the page is.
+  - What the bundle format is supposed to be.
+  - Note that the parser tool produces the bundle; this app doesn’t parse raw phone exports.
+
+Keep code quality consistent with the rest of the repo (TypeScript types, Zod validation, etc.).

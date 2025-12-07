@@ -1,0 +1,50 @@
+You are working on the ServicePro_v3 repo.
+
+TASK: Prepare a minimal, secure API hook so that in the future the external Parser Tool can send a pre-signed URL or token to download the “ServicePro Bundle” ZIP directly, instead of the user manually uploading it.
+
+Goal for v1:
+- Add a backend endpoint + DB fields that can store:
+  - A “remote bundle URL” OR
+  - A one-time token that the parser tool can use to push results.
+
+Scope:
+- NO need to fully automate parser → ServicePro integration yet.
+- Just define the endpoint and small data model so future work can consume it.
+
+Implementation:
+
+1. DB / Schema:
+   - Extend `phone_history_imports` (if created in INT-3) or create a small related table:
+     - remoteBundleUrl (nullable)
+     - source ('manual_upload' | 'parser_tool')
+     - externalJobId (nullable)
+   - This is to record that an import is associated with an external parser job.
+
+2. Backend Route:
+   - New route file: `server/routes.importHistoryParser.ts` (or extend existing).
+   - POST `/api/import-history/parser-hook`
+     - For now, protect via:
+       - A shared secret header (e.g. `x-parser-secret`) read from env.
+       - Plus a required `tenantExternalKey` param (future concept) or for v1, only allow `root` tenant for Clean Machine.
+     - Accepts:
+       - `tenantExternalId` (string)
+       - `remoteBundleUrl` (string)
+       - `externalJobId` (string, optional)
+     - Creates a `phone_history_imports` row with:
+       - status = 'pending'
+       - source = 'parser_tool'
+       - remoteBundleUrl set
+   - Do NOT implement automated download yet. Just store it.
+
+3. Admin UI:
+   - On `/admin/import-history`, add a small read-only notice if there is a latest import with `source = 'parser_tool'`:
+     - “This import came from the Parser Tool (job #...).”
+   - No need for full UX beyond that.
+
+4. Config:
+   - Add env variable placeholder:
+     - PARSER_TOOL_SHARED_SECRET (document in replit.md)
+   - Document in `replit.md`:
+     - “INT-5 – Parser Tool Hook (Phase 1): allows future server-to-server automation.”
+
+This sets up an integration point without changing user flows yet.

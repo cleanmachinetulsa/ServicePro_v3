@@ -1,0 +1,55 @@
+You are working on the ServicePro_v3 repo.
+
+TASK: Add a guided “Phone History Migration” wizard UI on top of the existing import engine from INT-3, so non-technical users can easily migrate their old phone data.
+
+Requirements:
+
+1. New Admin Page: `/admin/migration-wizard`
+   - 3–4 step wizard:
+     Step 1 – “Prepare your export”
+       - Explains, in plain language, what the parser tool is and why it matters:
+         - “Download your phone/Google Voice data”
+         - “Upload it into the Parser Tool”
+         - “Download the ‘ServicePro Bundle’ ZIP”
+       - Include a button link to the external Parser Tool URL (string constant for now).
+     Step 2 – “Upload your bundle”
+       - File upload for the ZIP.
+       - Shows a short checklist:
+         - [ ] Customers detected
+         - [ ] Conversations detected
+         - [ ] Messages detected
+       - Under the hood, this simply calls the same POST `/api/admin/import-history/upload` endpoint.
+     Step 3 – “Review summary”
+       - Show:
+         - How many customers will be added/updated.
+         - How many conversations/messages.
+         - A couple of sample rows (first 3 customers + first 3 messages).
+       - For v1, you can reuse the stats from the importHistory latest response; no need for a separate “preview only” path.
+     Step 4 – “Finish”
+       - Success message:
+         - “Your phone history is now part of ServicePro.”
+         - Button to:
+           - “Go to Messages”
+           - “Go to Customers”
+
+2. Integrate with existing importHistory API:
+   - Reuse the `phone_history_imports` log to show:
+     - Pending / success / failed.
+   - If the import is still running, show a spinner + “Processing… this may take a few minutes” message.
+
+3. Navigation:
+   - Add a link under Settings/Administration:
+     - “Migration Wizard”
+   - On `/admin/import-history`, add a button:
+     - “Prefer a guided flow? Use the Migration Wizard” linking to `/admin/migration-wizard`.
+
+4. Design:
+   - Use the same glassmorphism / gradient card design used in the Setup Wizard.
+   - Each step should feel like a big friendly card, with minimal jargon.
+
+5. No new backend routes are strictly required for v1.
+   - Use:
+     - GET `/api/admin/import-history/latest`
+     - POST `/api/admin/import-history/upload`
+
+Document this in `replit.md` under INT-4 – Migration Wizard (Phone History).

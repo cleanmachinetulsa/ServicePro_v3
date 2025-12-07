@@ -1,0 +1,46 @@
+You are working on the ServicePro_v3 repo.
+
+TASK: Add an optional “Bring Your Phone History” step into the existing Setup Wizard so that new tenants see this early, but can skip it if they want.
+
+Constraints:
+- Setup Wizard currently has:
+  - Step 1: Business Basics & Services
+  - Step 2: Phone & SMS Setup
+  - Step 3: Public Website & Booking
+- We want a light-touch step that points to the Migration Wizard, not a heavy import UI inside the wizard itself.
+
+Implementation:
+
+1. Wizard Integration:
+   - Add a new optional step labelled:
+     - “Import Your Phone History”
+   - Place it AFTER Step 2 (Phone & SMS) and BEFORE Step 3 (Website), OR at the very end with “Optional power step”.
+   - This step should:
+     - Explain in 2–3 short paragraphs what importing phone history does.
+     - Show a bullet list:
+       - “See all past conversations in Messages”
+       - “Train your AI receptionist on how you already text customers”
+       - “No need to start from zero”
+     - Offer two buttons:
+       - “Open Migration Wizard” → opens `/admin/migration-wizard` in a new tab.
+       - “Skip for now” → marks the step as complete and moves on.
+
+2. Completion Logic:
+   - Add a small field to whatever stores wizard completion state, e.g.:
+     - `hasSeenPhoneHistoryStep` or add `phoneHistoryStepStatus`.
+   - The step should count as “complete” if:
+     - User clicks “Skip for now”, OR
+     - There exists at least one successful `phone_history_imports` record for this tenant.
+   - This allows the wizard to auto-clear the step for tenants who already imported via admin UI.
+
+3. UI:
+   - Use the same wizard card layout you used for other steps.
+   - Include a subtle badge like “Recommended” (but not required).
+   - Include a short note: “You can always do this later from Settings → Migration Wizard.”
+
+4. Docs:
+   - Update `replit.md` under Setup Wizard section:
+     - Mention the new “Bring Your Phone History” step.
+     - Explain that it links to `/admin/migration-wizard`.
+
+No new backend endpoints needed; reuse existing wizard state + importHistory log to detect completion.
