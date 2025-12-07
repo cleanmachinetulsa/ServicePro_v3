@@ -40,9 +40,12 @@ import {
   HelpCircle,
   Headphones,
   Mail,
-  Globe
+  Globe,
+  SlidersHorizontal
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
+
+export type NavVisibility = 'always' | 'advancedOnly';
 
 export interface NavigationItem {
   id: string;
@@ -52,6 +55,7 @@ export interface NavigationItem {
   badge?: string;
   separator?: boolean;
   sectionHeader?: string;
+  visibility?: NavVisibility;
 }
 
 export const navigationItems: NavigationItem[] = [
@@ -252,7 +256,7 @@ export const navigationItems: NavigationItem[] = [
     path: '/admin/billing-usage',
   },
 
-  // MULTI-TENANT MANAGEMENT (Owner Only)
+  // MULTI-TENANT MANAGEMENT (Owner Only) - Advanced Mode
   {
     id: 'separator-multi-tenant',
     label: '',
@@ -260,6 +264,7 @@ export const navigationItems: NavigationItem[] = [
     path: '',
     separator: true,
     sectionHeader: 'Multi-Tenant Management',
+    visibility: 'advancedOnly',
   },
   {
     id: 'concierge-setup',
@@ -267,6 +272,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Sparkles,
     path: '/admin/concierge-setup',
     badge: 'Owner',
+    visibility: 'advancedOnly',
   },
   {
     id: 'setup-copilot',
@@ -274,6 +280,7 @@ export const navigationItems: NavigationItem[] = [
     icon: MessageCircle,
     path: '/admin/setup-copilot',
     badge: 'Beta',
+    visibility: 'advancedOnly',
   },
   {
     id: 'tenants',
@@ -281,6 +288,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Building2,
     path: '/admin/tenants',
     badge: 'Owner',
+    visibility: 'advancedOnly',
   },
   {
     id: 'phone-config',
@@ -288,6 +296,7 @@ export const navigationItems: NavigationItem[] = [
     icon: Phone,
     path: '/admin/phone-config',
     badge: 'Owner',
+    visibility: 'advancedOnly',
   },
   {
     id: 'ivr-config',
@@ -295,6 +304,7 @@ export const navigationItems: NavigationItem[] = [
     icon: PhoneCall,
     path: '/admin/ivr-config',
     badge: 'Owner',
+    visibility: 'advancedOnly',
   },
   {
     id: 'system-usage',
@@ -302,12 +312,14 @@ export const navigationItems: NavigationItem[] = [
     icon: Activity,
     path: '/admin/system-usage',
     badge: 'Owner',
+    visibility: 'advancedOnly',
   },
   {
     id: 'theme-gallery',
     label: 'Theme Gallery',
     icon: Palette,
     path: '/admin/theme-gallery',
+    visibility: 'advancedOnly',
   },
 
   // WORKFORCE MANAGEMENT
@@ -394,6 +406,12 @@ export const navigationItems: NavigationItem[] = [
     path: '/settings',
   },
   {
+    id: 'ui-mode',
+    label: 'Interface Mode',
+    icon: SlidersHorizontal,
+    path: '/settings/ui-mode',
+  },
+  {
     id: 'business-settings',
     label: 'Business Settings',
     icon: Building2,
@@ -434,6 +452,7 @@ export const navigationItems: NavigationItem[] = [
     label: 'SMS Compliance',
     icon: Shield,
     path: '/settings/a2p',
+    visibility: 'advancedOnly',
   },
   {
     id: 'port-recovery',
@@ -441,6 +460,7 @@ export const navigationItems: NavigationItem[] = [
     icon: RefreshCw,
     path: '/admin/port-recovery',
     badge: 'Campaign',
+    visibility: 'advancedOnly',
   },
   {
     id: 'facebook-settings',
