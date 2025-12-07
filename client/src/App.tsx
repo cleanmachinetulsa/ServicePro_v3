@@ -88,6 +88,8 @@ import SettingsBillingPage from "./pages/settings/BillingUsagePage";
 import UsageDashboardV2 from "./pages/settings/UsageDashboardV2";
 import DomainsPage from "./pages/settings/DomainsPage";
 import DashboardCustomizePage from "./pages/settings/DashboardCustomizePage";
+import AddonsPage from "./pages/settings/AddonsPage";
+import AdminPlansAndAddons from "./pages/AdminPlansAndAddons";
 import SipSetupGuide from "./pages/sip-setup-guide";
 import Billing from "./pages/billing";
 import EscalationsPage from "./pages/escalations";
@@ -254,6 +256,16 @@ function Router() {
       <Route path="/settings/dashboard/customize">
         <AuthGuard>
           <DashboardCustomizePage />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/billing/addons">
+        <AuthGuard>
+          <AddonsPage />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/plans-and-addons">
+        <AuthGuard>
+          <AdminPlansAndAddons />
         </AuthGuard>
       </Route>
       <Route path="/admin/port-recovery">

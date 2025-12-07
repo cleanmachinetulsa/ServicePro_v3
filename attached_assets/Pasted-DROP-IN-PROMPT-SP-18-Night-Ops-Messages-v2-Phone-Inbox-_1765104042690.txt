@@ -1,0 +1,244 @@
+DROP-IN PROMPT: SP-18 – Night Ops / Messages v2 (Phone Inbox v2)
+
+You are the Replit Agent working on the ServicePro_v3 repo.
+Implement SP-18 – Night Ops / Messages v2.
+This fulfills MASTER PLAN v4.0 – Phase 1.5 (Phone Inbox v2 – improved layout, filtering, shortcuts).
+
+Overall Goal
+
+Make the Messages / Conversations screen feel like a true Night Ops Command Center:
+
+Faster to scan.
+
+Easier to filter (open vs closed, channel, unread, VIP).
+
+Provides a helpful conversation detail panel with key context (customer info, loyalty points, upcoming bookings).
+
+Still fully multi-tenant and respects existing isolation and permissions.
+
+1. Analyze Current Messages Implementation
+
+Locate the current “messages”/“conversations” UI:
+
+Likely under client/src/pages/messages, MessagesPage.tsx, or similar.
+
+Also check shared components like ConversationList, MessageBubble, etc.
+
+Locate server-side routes/services for conversations:
+
+server/routes.conversations.ts (or similar).
+
+server/services/conversationService.ts and related.
+
+Do not break any existing APIs; we’re enhancing UI + adding filters, not changing message delivery.
+
+2. Backend – Conversation Metadata & Filters
+2.1 Add / confirm conversation metadata
+
+If not already present, extend the conversation model (in shared/schema.ts and relevant services) with:
+
+// Example shape – adapt to existing columns where possible
+status: 'open' | 'closed';
+channel: 'sms' | 'voice' | 'ivr' | 'email' | 'internal';
+lastDirection: 'inbound' | 'outbound';
+unreadCount: number; // per user not needed; global count is ok for now
+isVip: boolean; // based on customer flag, if available
+
+
+If some of these already exist (e.g. status), re-use them.
+
+If a full DB migration would be too heavy, you can derive some fields on the fly (e.g. channel based on message source).
+
+2.2 Add a filtered list endpoint
+
+Add or extend an endpoint like:
+
+GET /api/conversations
+
+Query params:
+
+status?: 'open' | 'closed'
+
+channel?: 'sms' | 'voice' | 'ivr' | 'email'
+
+unreadOnly?: boolean
+
+search?: string (matches customer name, phone, or last message snippet)
+
+Returns:
+
+{
+  success: boolean;
+  conversations: Array<{
+    id: string;
+    customerName?: string;
+    customerPhone?: string;
+    lastMessageAt: string;
+    lastMessagePreview: string;
+    status: 'open' | 'closed';
+    channel: 'sms' | 'voice' | 'ivr' | 'email' | 'internal';
+    unreadCount: number;
+    isVip: boolean;
+  }>;
+}
+
+
+Requirements:
+
+Multi-tenant isolation using wrapTenantDb etc.
+
+Derive isVip from customer table if a VIP flag exists; otherwise default false.
+
+search should be reasonably indexed (use ILIKE or similar).
+
+3. Frontend – Night Ops Layout (3-Pane)
+
+Transform the Messages page into a 3-pane layout:
+
+Left pane: Filters / segments
+
+Quick filter buttons:
+
+“All”
+
+“Open”
+
+“Unread”
+
+“SMS”
+
+“Voice/IVR”
+
+“VIP”
+
+Small counts next to each (e.g. Open (7), Unread (3)).
+
+Middle pane: Conversation list
+
+List of conversations with:
+
+Customer name (or phone if unknown).
+
+Channel pill (SMS, Voice, IVR, Email).
+
+Status pill (Open/Closed).
+
+Unread dot / badge if unreadCount > 0.
+
+Last message preview.
+
+Timestamp of last activity.
+
+Should support:
+
+Scrolling.
+
+Click to select a conversation.
+
+Right pane: Conversation detail drawer
+
+Shows the message thread as it is today.
+
+Adds a top header with:
+
+Customer name + phone.
+
+Status chip (Open/Closed) with toggle.
+
+VIP badge (if isVip).
+
+Right side mini-context strip:
+
+Points balance (if loyalty integrated).
+
+Next booking date/time (if exists).
+
+Last booking date/time.
+
+Implementation notes:
+
+Use existing styled components & design system; don’t pull in new UI libraries.
+
+Keep Night Ops look: dark mode friendly, subtle gradients, not garish.
+
+4. Filters & Shortcuts
+
+Add a search bar at the top of the conversation list:
+
+Typing sets search query param, debounced.
+
+Calls GET /api/conversations with search.
+
+Add filter pill toolbar:
+
+Clicking pill updates local filter state and re-fetches conversations.
+
+Pills map to:
+
+Status: open/closed
+
+Channel: sms/voice/email
+
+Unread: unreadOnly=true
+
+VIP: &vipOnly=true (if added to backend; or filter client-side using isVip).
+
+Keyboard shortcuts (optional but nice):
+
+o → toggle Open/Closed on active conversation.
+
+u → mark conversation as read.
+
+If keyboard shortcuts are too invasive for now, you can implement them as a small helper with clear comments and keep them scoped to the messages page.
+
+5. Status Updates & Actions
+
+Add a small action strip in the conversation header:
+
+Open / Close toggle (updates status via new or existing endpoint).
+
+“View customer” button → opens customer profile in a new tab or side drawer.
+
+Ensure:
+
+When status changes, the list updates (e.g., a Closed conversation disappears from the “Open” filter).
+
+Unread logic is updated when user opens the thread.
+
+6. Multi-Tenant & Permissions
+
+Do not change who can see which conversations.
+
+If there’s a concept of “owner-only” data, respect it.
+
+All list + detail calls must:
+
+Use the current tenantId from auth context.
+
+Never allow cross-tenant data leakage.
+
+7. Tests & Verification
+
+Please verify:
+
+Messages page loads successfully for a normal tenant user.
+
+Filters change the list as expected (Open/Closed, Unread, SMS, Voice, VIP).
+
+Search works for:
+
+Customer name
+
+Phone number
+
+Last message snippet text.
+
+Conversation detail panel shows loyalty/booking context when present.
+
+Status Open/Closed toggling works and syncs back to the list.
+
+Keep the implementation incremental:
+
+Don’t rip out existing message logic; re-use it.
+
+Only extend the shape & layout to support the new “Night Ops” experience.
