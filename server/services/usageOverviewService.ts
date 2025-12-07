@@ -4,6 +4,7 @@ import { tenants } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { calculateUsageCost } from '@shared/pricing/usagePricing';
 import { getPlanLimits, type PlanLimits } from '@shared/pricing/planLimits';
+import { stripe, isStripeConfigured } from './stripeService';
 
 export type PlanStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'unknown';
 export type PlanTier = 'free' | 'starter' | 'pro' | 'elite' | 'internal';
@@ -148,17 +149,41 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
   const planTierLabel = tierLabels[planTier] || 'Starter';
   const planLimits = getPlanLimits(planTier);
   
+  let trialEndsAt: string | null = null;
+  let nextRenewalAt: string | null = null;
+  const dbCancelAtPeriodEnd = tenant.cancelAtPeriodEnd || false;
+  let cancelAtPeriodEnd = dbCancelAtPeriodEnd;
+  
+  if (tenant.stripeSubscriptionId && isStripeConfigured() && stripe) {
+    try {
+      const subscription = await stripe.subscriptions.retrieve(tenant.stripeSubscriptionId);
+      
+      if (subscription.trial_end) {
+        trialEndsAt = new Date(subscription.trial_end * 1000).toISOString();
+      }
+      
+      if (subscription.current_period_end) {
+        nextRenewalAt = new Date(subscription.current_period_end * 1000).toISOString();
+      }
+      
+      cancelAtPeriodEnd = subscription.cancel_at_period_end;
+    } catch (error) {
+      console.warn(`[USAGE OVERVIEW] Failed to fetch Stripe subscription for tenant ${tenantId}:`, error);
+      cancelAtPeriodEnd = dbCancelAtPeriodEnd;
+    }
+  }
+  
   return {
     planId: tenant.stripeSubscriptionId || null,
     planName: `${planTierLabel} Plan`,
     planTier,
     planTierLabel,
     status: mapStatusToEnum(tenant.status),
-    trialEndsAt: null,
-    nextRenewalAt: null,
+    trialEndsAt,
+    nextRenewalAt,
     hasStripeCustomer: !!tenant.stripeCustomerId,
     hasSubscription: !!tenant.stripeSubscriptionId,
-    cancelAtPeriodEnd: tenant.cancelAtPeriodEnd || false,
+    cancelAtPeriodEnd,
     usage: {
       smsSentLast30d: smsSent,
       voiceMinutesLast30d: voiceTotal,
