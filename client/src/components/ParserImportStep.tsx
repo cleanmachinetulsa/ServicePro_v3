@@ -7,9 +7,10 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Upload, FileText, CheckCircle2, AlertCircle, Brain, ListPlus, MessageSquare, Sparkles, X, Wand2, Settings2, User } from 'lucide-react';
+import { Loader2, Upload, FileText, CheckCircle2, AlertCircle, Brain, ListPlus, MessageSquare, Sparkles, X, Wand2, Settings2, User, Shield, History } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { Link } from 'wouter';
 
 interface ParserPreview {
   servicesCount: number;
@@ -64,6 +65,15 @@ interface BuildSetupResult {
   error?: string;
 }
 
+interface ParserStatus {
+  success: boolean;
+  status: 'online' | 'degraded' | 'offline';
+  healthy: boolean;
+  lastError: string | null;
+  isProtectedTenant: boolean;
+  protectionMessage: string | null;
+}
+
 interface ParserImportStepProps {
   onComplete?: () => void;
   showSkip?: boolean;
@@ -95,6 +105,12 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
       setApplyPersona(true);
     }
   };
+
+  const { data: parserStatus, isLoading: statusLoading } = useQuery<ParserStatus>({
+    queryKey: ['/api/onboarding/parser/status'],
+    staleTime: 60000,
+    retry: 1,
+  });
 
   const { data: latestImport } = useQuery<{ success: boolean; import: any }>({
     queryKey: ['/api/onboarding/parser/latest'],
@@ -287,6 +303,66 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
   };
 
   const hasExistingImport = latestImport?.import?.status === 'success' && latestImport.import.applied_at;
+
+  const getStatusBadge = () => {
+    if (!parserStatus) return null;
+    
+    switch (parserStatus.status) {
+      case 'online':
+        return <Badge className="bg-green-500 text-white text-xs">Online</Badge>;
+      case 'degraded':
+        return <Badge className="bg-yellow-500 text-white text-xs">Degraded</Badge>;
+      default:
+        return <Badge variant="destructive" className="text-xs">Offline</Badge>;
+    }
+  };
+
+  if (statusLoading) {
+    return (
+      <Card>
+        <CardContent className="py-8 flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (parserStatus?.isProtectedTenant) {
+    return (
+      <Card className="border-yellow-500/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-yellow-600" />
+            Protected Tenant
+          </CardTitle>
+          <CardDescription>
+            {parserStatus.protectionMessage || 'Parser onboarding is disabled for this tenant'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground space-y-3">
+            <p>
+              Your AI agent and services are already configured and running in production.
+              This tool is designed for new tenant onboarding only.
+            </p>
+            <div className="flex gap-3">
+              <Link href="/admin/parser-history">
+                <Button variant="outline" size="sm" data-testid="button-view-history">
+                  <History className="w-4 h-4 mr-2" />
+                  View Import History
+                </Button>
+              </Link>
+              {showSkip && (
+                <Button variant="ghost" size="sm" onClick={onComplete} data-testid="button-parser-skip">
+                  Continue
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (buildSetupResult?.success && buildSetupResult.result) {
     const { persona, services, faqs, tenantProfile, warnings } = buildSetupResult.result;
@@ -556,13 +632,16 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Upload className="w-5 h-5" />
-          Import Your Phone History
-          <Badge variant="secondary" className="bg-purple-500/20 text-purple-700 dark:text-purple-300">
-            Optional
-          </Badge>
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="w-5 h-5" />
+            Import Your Phone History
+            <Badge variant="secondary" className="bg-purple-500/20 text-purple-700 dark:text-purple-300">
+              Optional
+            </Badge>
+          </CardTitle>
+          {getStatusBadge()}
+        </div>
         <CardDescription>
           Upload your exported SMS/call history and we'll extract services, FAQs, and communication style
         </CardDescription>
