@@ -12,7 +12,7 @@ import cron from 'node-cron';
 import { db } from '../db';
 import { tenants, tenantInvoices, tenantConfig } from '@shared/schema';
 import { eq, and, ne, sql, or, inArray } from 'drizzle-orm';
-import { sendEmail } from '../emailService';
+import { sendBusinessEmail } from '../emailService';
 
 let dunningSchedulerInitialized = false;
 
@@ -165,22 +165,20 @@ async function sendPaymentReminderEmail(
   amountDue: number,
   daysOverdue: number
 ): Promise<void> {
-  await sendEmail({
-    to: email,
-    subject: `Payment Reminder - ServicePro Account`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #d97706;">Payment Reminder</h2>
-        <p>Hello ${tenantName},</p>
-        <p>Your ServicePro account has an outstanding balance of <strong>$${amountDue.toFixed(2)}</strong> that is ${daysOverdue} days past due.</p>
-        <p>To avoid service interruption, please update your payment method or pay your outstanding balance as soon as possible.</p>
-        <p>You can manage your billing and payment methods in your <a href="https://serviceproapp.com/admin/billing">Billing Dashboard</a>.</p>
-        <p>If you have any questions, please contact our support team.</p>
-        <p>Best regards,<br>The ServicePro Team</p>
-      </div>
-    `,
-    text: `Payment Reminder - Your ServicePro account has an outstanding balance of $${amountDue.toFixed(2)} that is ${daysOverdue} days past due. Please update your payment method to avoid service interruption.`,
-  });
+  const subject = `Payment Reminder - ServicePro Account`;
+  const textContent = `Payment Reminder - Your ServicePro account has an outstanding balance of $${amountDue.toFixed(2)} that is ${daysOverdue} days past due. Please update your payment method to avoid service interruption.`;
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #d97706;">Payment Reminder</h2>
+      <p>Hello ${tenantName},</p>
+      <p>Your ServicePro account has an outstanding balance of <strong>$${amountDue.toFixed(2)}</strong> that is ${daysOverdue} days past due.</p>
+      <p>To avoid service interruption, please update your payment method or pay your outstanding balance as soon as possible.</p>
+      <p>You can manage your billing and payment methods in your <a href="https://serviceproapp.com/admin/billing">Billing Dashboard</a>.</p>
+      <p>If you have any questions, please contact our support team.</p>
+      <p>Best regards,<br>The ServicePro Team</p>
+    </div>
+  `;
+  await sendBusinessEmail(email, subject, textContent, htmlContent);
 }
 
 /**
@@ -191,27 +189,25 @@ async function sendAccountSuspendedEmail(
   tenantName: string,
   amountDue: number
 ): Promise<void> {
-  await sendEmail({
-    to: email,
-    subject: `Account Suspended - ServicePro`,
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #dc2626;">Account Suspended</h2>
-        <p>Hello ${tenantName},</p>
-        <p>Your ServicePro account has been suspended due to an outstanding balance of <strong>$${amountDue.toFixed(2)}</strong> that is more than 30 days past due.</p>
-        <p><strong>What this means:</strong></p>
-        <ul>
-          <li>Outbound SMS and voice services are disabled</li>
-          <li>New appointments cannot be scheduled</li>
-          <li>Your public site remains accessible</li>
-        </ul>
-        <p>To restore your account, please pay your outstanding balance immediately through your <a href="https://serviceproapp.com/admin/billing">Billing Dashboard</a>.</p>
-        <p>If you need assistance or have questions about your account, please contact our support team.</p>
-        <p>Best regards,<br>The ServicePro Team</p>
-      </div>
-    `,
-    text: `Account Suspended - Your ServicePro account has been suspended due to an outstanding balance of $${amountDue.toFixed(2)}. Please pay your balance to restore services.`,
-  });
+  const subject = `Account Suspended - ServicePro`;
+  const textContent = `Account Suspended - Your ServicePro account has been suspended due to an outstanding balance of $${amountDue.toFixed(2)}. Please pay your balance to restore services.`;
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #dc2626;">Account Suspended</h2>
+      <p>Hello ${tenantName},</p>
+      <p>Your ServicePro account has been suspended due to an outstanding balance of <strong>$${amountDue.toFixed(2)}</strong> that is more than 30 days past due.</p>
+      <p><strong>What this means:</strong></p>
+      <ul>
+        <li>Outbound SMS and voice services are disabled</li>
+        <li>New appointments cannot be scheduled</li>
+        <li>Your public site remains accessible</li>
+      </ul>
+      <p>To restore your account, please pay your outstanding balance immediately through your <a href="https://serviceproapp.com/admin/billing">Billing Dashboard</a>.</p>
+      <p>If you need assistance or have questions about your account, please contact our support team.</p>
+      <p>Best regards,<br>The ServicePro Team</p>
+    </div>
+  `;
+  await sendBusinessEmail(email, subject, textContent, htmlContent);
 }
 
 /**
