@@ -89,6 +89,7 @@ import EmailSettingsPage from "./pages/email-settings";
 import UiModeSettingsPage from "./pages/settings/UiModeSettingsPage";
 import SettingsBillingPage from "./pages/settings/BillingUsagePage";
 import UsageDashboardV2 from "./pages/settings/UsageDashboardV2";
+import UsageDashboardPage from "./pages/settings/UsageDashboardPage";
 import DomainsPage from "./pages/settings/DomainsPage";
 import DashboardCustomizePage from "./pages/settings/DashboardCustomizePage";
 import AddonsPage from "./pages/settings/AddonsPage";
@@ -106,6 +107,7 @@ import HomepageEditor from "./pages/HomepageEditor";
 import UsageDashboard from "./pages/UsageDashboard";
 import BillingUsagePage from "./pages/BillingUsagePage";
 import SystemUsageAdmin from "./pages/SystemUsageAdmin";
+import AdminSystemUsagePage from "./pages/admin/AdminSystemUsagePage";
 import AdminBilling from "./pages/admin-billing";
 import SystemBillingAdmin from "./pages/SystemBillingAdmin";
 import AdminBillingOverview from "./pages/AdminBillingOverview";
@@ -254,6 +256,11 @@ function Router() {
       <Route path="/settings/usage">
         <AuthGuard>
           <UsageDashboardV2 />
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/usage-caps">
+        <AuthGuard>
+          <UsageDashboardPage />
         </AuthGuard>
       </Route>
       <Route path="/settings/domains">
@@ -508,6 +515,11 @@ function Router() {
       <Route path="/admin/system-usage">
         <AuthGuard>
           <SystemUsageAdmin />
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/system-usage-v2">
+        <AuthGuard>
+          <AdminSystemUsagePage />
         </AuthGuard>
       </Route>
       <Route path="/admin/billing-overview">

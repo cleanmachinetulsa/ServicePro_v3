@@ -1,0 +1,64 @@
+You are the Replit Agent working on the `ServicePro_v3` repo.
+
+DO NOT modify any code in this task.
+
+Goal:
+Produce a clear, structured “navigation map” of the current dashboard sidebar and top-level routes so an external AI can analyze the layout and suggest improvements.
+
+Steps:
+
+1️⃣ Find the navigation source
+
+- Locate the file(s) that define the sidebar / app navigation items. Likely candidates:
+  - `client/src/config/navigationItems.ts` or similar,
+  - or any layout components like `Sidebar.tsx`, `AppShell.tsx`, etc. that hard-code nav items.
+- Also note any special cases:
+  - Items that are conditionally rendered based on plan/tier.
+  - Items hidden behind “owner only” or “admin only” flags.
+
+2️⃣ Build a structured JSON map
+
+From what you find, build a single JSON object with this shape:
+
+{
+  "navTree": [
+    {
+      "sectionLabel": "string or null",   // e.g. "Main", "Settings & Administration", etc. If not grouped, use null.
+      "items": [
+        {
+          "label": "Messages",
+          "path": "/messages",
+          "iconName": "MessageCircle" | null,
+          "categoryGuess": "core" | "marketing" | "settings" | "billing" | "support" | "other",
+          "isOwnerOnly": true | false | "unknown",
+          "tierRestrictions": "all" | "paid_only" | "higher_tiers_only" | "unknown",
+          "isCustomerFacingConfig": true | false | "unknown"
+        },
+        ...
+      ]
+    },
+    ...
+  ],
+  "notes": [
+    "Any comments that will help another AI understand oddities or special cases."
+  ]
+}
+
+Requirements:
+
+- For each nav item / sidebar link:
+  - Include the **label shown to the user**.
+  - Include the **route path** (e.g. `/settings/email`, `/admin/support-tickets`).
+  - Include the **icon component name** if available.
+  - Make your best guess for `categoryGuess` based on the path/label.
+- If the code uses nested groups or sections, reflect that in `sectionLabel`.
+- If there is a “top nav” separate from “sidebar nav”, include a separate section with `sectionLabel: "topNav"`.
+
+3️⃣ Output
+
+- Print ONLY:
+  - A short header explaining which file(s) you inspected.
+  - The JSON object as described above, properly formatted.
+- Do not include TypeScript types or full source code; just the summarized JSON and any relevant notes in the `notes` section.
+
+Again: DO NOT change any files. This is a read-only mapping task so another AI can redesign the nav later.

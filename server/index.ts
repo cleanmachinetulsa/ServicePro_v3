@@ -52,6 +52,7 @@ import tenantDomainsRouter from "./routes.tenantDomains";
 import dashboardPreferencesRouter from "./routes.dashboardPreferences";
 import usageLedgerRouter from "./routes.usageLedger";
 import addonRouter from "./routes/addonRoutes";
+import usageMeteringRouter from "./routes/usageMeteringRoutes";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -504,6 +505,11 @@ app.use((req, res, next) => {
   // CM-Billing-Prep: Register usage ledger routes
   app.use('/api/billing/usage', usageLedgerRouter);
   console.log('[USAGE LEDGER] Routes registered: /api/billing/usage');
+
+  // SP-18: Register usage metering v2 routes
+  app.use('/api/billing/usage/v2', usageMeteringRouter);
+  app.use('/api/admin/usage/v2', usageMeteringRouter);
+  console.log('[USAGE METERING V2] Routes registered: /api/billing/usage/v2, /api/admin/usage/v2');
 
   // SP-16: Register add-on management routes
   app.use('/api/billing/addons', addonRouter);
