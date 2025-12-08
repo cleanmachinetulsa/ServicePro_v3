@@ -39,35 +39,12 @@ interface AuthContext {
   };
 }
 
-// CM-DASH-ROUTES-RESTORE: Mapping from /settings/* paths to legacy admin paths for root tenant
-// Also maps other nav paths to ensure root tenant uses legacy pages where available
-const SETTINGS_TO_LEGACY_MAP: Record<string, string> = {
-  // Settings paths
-  '/settings/billing': '/admin/billing',
-  '/settings/billing/addons': '/admin/plans-and-addons',
-  '/settings/email': '/admin/homepage-editor',
-  '/settings/a2p': '/admin/phone-config',
-  '/settings/domains': '/admin/public-site-settings',
-  '/settings/dashboard/customize': '/dashboard',
-  '/settings/ui-mode': '/dashboard',
-  '/settings/usage': '/admin/usage-dashboard',
-  '/settings/usage-caps': '/admin/usage-dashboard',
-  // Settings workspace paths (generic /settings routes)
-  '/settings': '/dashboard',
-  '/settings/operations/services': '/dashboard', // No dedicated legacy page, go to dashboard
-  '/settings/operations/recurring': '/admin/scheduling',
-  '/settings/customers/loyalty': '/rewards',
-  '/settings/customers/referrals': '/referrals',
-  '/settings/communications/sms-templates': '/dashboard',
-  '/settings/communications/email-templates': '/dashboard',
-};
-
-// CM-DASH-ROUTES-RESTORE: Helper to transform path based on tenant
+// CM-DASH-ROUTES-FIX: Do NOT transform navigation paths in AppShell
+// Let the destination pages handle their own routing/redirects based on tenant
+// This prevents the "click does nothing" bug where /settings -> /dashboard when already on dashboard
 function getTenantAwarePath(path: string, tenantId?: string): string {
-  if (!isRootTenant(tenantId)) {
-    return path;
-  }
-  return SETTINGS_TO_LEGACY_MAP[path] || path;
+  // Always return the original path - let destination handle routing
+  return path;
 }
 
 interface AppShellProps {

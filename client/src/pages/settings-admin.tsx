@@ -40,13 +40,14 @@ export default function SettingsAdmin() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // CM-ROUTE-RESTORE: Redirect root tenant to legacy admin pages
+  // CM-ROUTE-FIX: Only redirect for specific items that have dedicated legacy pages
+  // Do NOT redirect /settings to /dashboard - that breaks navigation!
   useEffect(() => {
     // Wait for auth context to load
     if (authLoading || !authContext) return;
     if (redirectChecked) return;
     
-    // Only redirect for root tenant
+    // Only check redirects for root tenant
     if (!isRootTenant(authContext?.user?.tenantId)) {
       setRedirectChecked(true);
       return;
@@ -55,20 +56,14 @@ export default function SettingsAdmin() {
     // Get the current settings item from URL params
     const item = params?.item || params?.section;
     
+    // Only redirect if there's a specific legacy page for this item
     if (item && SETTINGS_TO_LEGACY_MAP[item]) {
-      // Redirect to legacy page
       console.log(`[CM-ROUTE] Root tenant redirecting ${item} -> ${SETTINGS_TO_LEGACY_MAP[item]}`);
       setLocation(SETTINGS_TO_LEGACY_MAP[item], { replace: true });
       return;
     }
     
-    // For root tenant with no specific item, redirect to dashboard
-    if (!params?.section && !params?.item) {
-      console.log('[CM-ROUTE] Root tenant at /settings -> redirecting to /dashboard');
-      setLocation('/dashboard', { replace: true });
-      return;
-    }
-    
+    // Otherwise let root tenant use the settings workspace - don't redirect to dashboard!
     setRedirectChecked(true);
   }, [authContext, authLoading, params, setLocation, redirectChecked]);
 
