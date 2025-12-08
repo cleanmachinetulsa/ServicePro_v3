@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,26 +30,43 @@ export default function SettingsWorkspace({ initialSection, initialItem }: Setti
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  
+  // CM-ROUTE-FLAPPING-FIX-2: Track previous props to detect actual changes vs re-renders
+  const prevPropsRef = useRef({ section: initialSection, item: initialItem });
 
-  // SP-21: Sync initial props to state when they change (from URL parsing)
+  // SP-21: Sync initial props to state when they ACTUALLY change (from URL navigation)
+  // CM-ROUTE-FLAPPING-FIX-2: Only sync when props genuinely change, not on every render
   useEffect(() => {
-    // Wait for parent to provide initialSection/initialItem from URL
+    const prevSection = prevPropsRef.current.section;
+    const prevItem = prevPropsRef.current.item;
+    
+    // Update ref for next comparison
+    prevPropsRef.current = { section: initialSection, item: initialItem };
+    
+    // Case 1: Props provided AND they actually changed from previous props
     if (initialSection && initialItem) {
-      setActiveSection(initialSection);
-      setActiveItem(initialItem);
-      setIsInitialized(true);
-    } else if (!isInitialized && !initialSection && !initialItem) {
-      // If parent hasn't set values yet, use defaults only after a tick
+      const propsActuallyChanged = prevSection !== initialSection || prevItem !== initialItem;
+      
+      if (!isInitialized || propsActuallyChanged) {
+        setActiveSection(initialSection);
+        setActiveItem(initialItem);
+        setIsInitialized(true);
+      }
+      // If props haven't changed, do nothing - preserve internal state from sidebar clicks
+      return;
+    }
+    
+    // Case 2: No props provided and not yet initialized - use defaults
+    if (!isInitialized && !initialSection && !initialItem) {
       const timer = setTimeout(() => {
-        if (!activeSection && !activeItem) {
-          setActiveSection('operations');
-          setActiveItem('services');
-          setIsInitialized(true);
-        }
+        // Only set defaults if we still have no active state
+        setActiveSection(prev => prev || 'operations');
+        setActiveItem(prev => prev || 'services');
+        setIsInitialized(true);
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [initialSection, initialItem, isInitialized, activeSection, activeItem]);
+  }, [initialSection, initialItem, isInitialized]);
 
   // Sync URL when active section/item changes (only after initialization)
   // CM-ROUTE-FLAPPING-FIX: Only update URL if it actually differs to prevent redirect loops

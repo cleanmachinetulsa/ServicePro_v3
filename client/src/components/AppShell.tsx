@@ -68,11 +68,6 @@ export function AppShell({
     refetchInterval: 30000,
   });
 
-  // TEMPORARY: Route trace logging for CM-ROUTE-FLAPPING-FIX-2
-  useEffect(() => {
-    console.log("[ROUTE_TRACE] location changed to:", location);
-  }, [location]);
-
   useEffect(() => {
     if (authContext?.user?.preferredLanguage) {
       setLanguage(authContext.user.preferredLanguage);
