@@ -3369,6 +3369,12 @@ export const usageRollupsDaily = pgTable('usage_rollups_daily', {
   emailTotal: integer('email_total').default(0).notNull(),
   aiTotalTokens: integer('ai_total_tokens').default(0).notNull(),
   estimatedCostUsd: numeric('estimated_cost_usd', { precision: 10, scale: 4 }).default('0').notNull(),
+  // SP-26: Per-channel cost breakdown in cents
+  smsCostCents: integer('sms_cost_cents').default(0).notNull(),
+  mmsCostCents: integer('mms_cost_cents').default(0).notNull(),
+  voiceCostCents: integer('voice_cost_cents').default(0).notNull(),
+  emailCostCents: integer('email_cost_cents').default(0).notNull(),
+  aiCostCents: integer('ai_cost_cents').default(0).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
   tenantDateIdx: index('usage_rollups_tenant_date_idx').on(table.tenantId, table.date),
