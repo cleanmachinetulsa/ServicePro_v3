@@ -40,6 +40,7 @@ import { registerFileUploadRoutes } from './fileUpload';
 import { registerEmailRoutes } from './routes.email';
 import { registerCancellationRoutes } from './routes.cancellation';
 import { registerConversationRoutes } from './routes.conversations';
+import { registerDebugTenantRoutes } from './routes.debugTenant';
 import { registerServiceManagementRoutes } from './serviceManagement';
 import { registerServiceLimitsRoutes } from './routes.serviceLimits';
 import { registerMaintenanceRoutes } from './routes.maintenance';
@@ -3492,6 +3493,9 @@ Follow up with this lead to set up their 14-day trial!
   
   // Debug env route for Twilio environment verification
   app.use('/api/debug/env', debugEnvRouter);
+  
+  // Debug tenant visibility route
+  registerDebugTenantRoutes(app);
   
   // Debug outbound SMS route (MUST be before inbound route for proper matching)
   app.use('/api/twilio/sms', twilioDebugSmsRouter);

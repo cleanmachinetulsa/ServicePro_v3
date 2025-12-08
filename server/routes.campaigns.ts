@@ -19,19 +19,9 @@ import { hasFeature } from '@shared/features';
 import { db } from './db';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { requireAuth } from './authMiddleware';
 
 const router = Router();
-
-// SECURITY: Require authentication for all campaign routes
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required'
-    });
-  }
-  next();
-}
 
 // PHASE 7: Feature gating for campaigns
 async function requireCampaignsFeature(req: Request, res: Response, next: NextFunction) {

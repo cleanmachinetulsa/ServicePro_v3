@@ -1,0 +1,303 @@
+TASK: SP-21-UNIFIED – Dashboard Navigation Refresh + Simple/Advanced Mode Hardening (Owner-Safe)
+
+GOAL
+- Use the existing navigation map (client/src/config/navigationItems.ts and AppShell) to:
+  1) Fix Simple vs Advanced mode so owners NEVER lose critical tools.
+  2) Make the sidebar feel organized and predictable for small service businesses.
+  3) Keep everything tenant-safe: DO NOT touch DB isolation or tenant resolution.
+
+//////////////////////////////////////////////////////
+// ABSOLUTE HARD CONSTRAINTS – DO NOT BREAK THESE  //
+//////////////////////////////////////////////////////
+
+❌ DO NOT modify:
+- wrapTenantDb or any low-level tenant DB isolation helpers.
+- How tenantId/tenantSlug are resolved from JWT/session/domain.
+- Loyalty DB helpers’ core implementation (only pass correct tenantId in routes if needed).
+- Any schema or migration.
+
+❌ DO NOT:
+- Delete sidebar items.
+- Change route paths.
+- Delete data.
+
+✅ You MAY:
+- Change how navigationItems are grouped, flagged (simple/advanced), and filtered.
+- Change which items are visible in Simple vs Advanced modes.
+- Adjust DashboardPreferences behavior to make Simple mode actually useful (not destructive).
+- Add small, targeted logs for debugging.
+
+Use the nav map already discovered (summarized):
+
+- Source: client/src/config/navigationItems.ts
+- Rendered via: client/src/components/AppShell.tsx
+- Simple mode logic: visibility="advancedOnly", DashboardPreferencesContext (NAV_TO_PANEL_MAP)
+- Sections: Dashboard, Communications, Customer Management, Scheduling & Operations, Marketing & Content, Reports & Analytics, Finance, Multi-Tenant Management, Workforce Management, Technician Portal, Settings & Administration, Help & Support, plus topNav tools.
+
+------------------------------------
+STEP 0 – ORIENT YOURSELF IN CODE
+------------------------------------
+
+1. Open:
+   - client/src/config/navigationItems.ts
+   - client/src/components/AppShell.tsx
+   - client/src/contexts/DashboardPreferencesContext.tsx
+   - Any “ui mode” context: e.g. client/src/pages/settings/UiModePage.tsx or a context file controlling simple vs advanced.
+
+2. Confirm the following from code (not just the map):
+   - Which property marks an item as advanced-only (likely `advancedOnly` or `visibility`).
+   - How “simple mode” is determined:
+     - Via a user preference (UI mode toggle in header).
+     - Via tenant dashboard preferences (DashboardPreferencesContext, NAV_TO_PANEL_MAP, simpleVisiblePanels).
+   - How owner-only behavior is represented (`isOwnerOnly` / `badge: "Owner"` / impersonation checks).
+
+Add a **temporary log** in AppShell where the nav is built:
+
+   console.log("SP-21-UNIFIED NAV CONTEXT", {
+     tenantSlug,
+     tenantPlan,
+     isOwner,
+     uiMode,
+     dashboardMode,
+   });
+
+------------------------------------
+STEP 1 – DEFINE A CANONICAL MODEL
+------------------------------------
+
+We want a clean, explicit model that the code can follow:
+
+1) Roles:
+   - Owner: full control of the business (your CM account).
+   - Staff/Tech: limited tools.
+   - Root admin / multi-tenant owner: ServicePro platform owner (already handled via Multi-Tenant section).
+
+2) UI Modes:
+   - SIMPLE: for non-technical users, fewer visible tools.
+   - ADVANCED: full control, including multi-tenant and power tools.
+
+3) Item attributes to rely on:
+   - `advancedOnly`: Only hide for SIMPLE (but **never** hide critical items for owner).
+   - `isOwnerOnly`: Show only to owners/root admins.
+   - Section-level `sectionAdvancedOnly`: Hide entire section in SIMPLE mode for non-owners.
+
+If needed, you may add a non-breaking field to nav items, e.g.:
+
+   interface NavItem {
+     ...
+     simpleDefault?: boolean; // suggested to appear in simple mode
+   }
+
+But don’t remove or rename existing fields.
+
+------------------------------------
+STEP 2 – MAKE SIMPLE MODE SAFE FOR OWNERS
+------------------------------------
+
+Goal:
+- In SIMPLE mode, **owners still see all the core business controls**:
+  - Dashboard, Messages, Scheduling, Customers, Rewards, Website/Gallery, Billing, Help & Support.
+
+Actions:
+
+1. In AppShell (or wherever nav filtering happens), implement a function like:
+
+   function filterNavItemsForMode(
+     items,
+     { isOwner, uiMode, dashboardPrefs }
+   ) {
+     if (uiMode !== "simple") return items;
+
+     const ALWAYS_VISIBLE_FOR_OWNER = new Set([
+       "/dashboard",
+       "/messages",
+       "/admin/scheduling",
+       "/customer-database",
+       "/rewards",
+       "/admin/homepage-editor",
+       "/admin/gallery-management",
+       "/billing",
+       "/support",
+     ]);
+
+     return items.filter(item => {
+       const path = item.path;
+
+       // Owners: never hide always-visible core items, even if advancedOnly
+       if (isOwner && path && ALWAYS_VISIBLE_FOR_OWNER.has(path)) {
+         return true;
+       }
+
+       // Non-owners: apply existing simple filters (advancedOnly, sectionAdvancedOnly)
+       if (item.advancedOnly || item.sectionAdvancedOnly) {
+         return false;
+       }
+
+       // Optionally integrate dashboardPrefs for per-tenant simple mode (see Step 3)
+       return true;
+     });
+   }
+
+2. Wire this filter into AppShell where nav items are computed.  
+   - Do **not** alter the underlying navTree; just alter the filtering logic.
+
+3. Ensure that when you (CM owner) are in Advanced mode:
+   - No additional filtering is applied except role/plan gating.
+   - Simple/Advanced toggle state is persisted per user (if it isn’t already).
+
+------------------------------------
+STEP 3 – USE DASHBOARD PREFERENCES FOR CUSTOM SIMPLE MODE
+------------------------------------
+
+We already have DashboardPreferencesContext and NAV_TO_PANEL_MAP; use them instead of inventing something new.
+
+Goal:
+- SIMPLE mode = curated default, **plus** tenant-configurable choices.
+- Tenant can add/remove which panels appear in SIMPLE mode via `/settings/dashboard/customize`.
+
+Actions:
+
+1. Inspect DashboardPreferencesContext.tsx:
+   - Note how `NAV_TO_PANEL_MAP` maps nav paths/ids to panel IDs.
+   - Note how `simpleVisiblePanels` and `dashboardMode` are used.
+
+2. Enhance logic as follows (pseudo-code):
+
+   const DEFAULT_SIMPLE_PANELS = new Set([
+     "conversations",       // /messages
+     "calendar",            // /admin/scheduling
+     "customers",           // /customer-database
+     "rewards",             // /rewards
+     "gallery",             // /admin/gallery-management + /gallery
+     "billing",             // /billing
+     "settings",            // /settings (high-level only)
+     "support",             // /support
+   ]);
+
+   function shouldShowNavItemInSimpleMode(item, ctx) {
+     const { isOwner, uiMode, dashboardPrefs } = ctx;
+     if (uiMode !== "simple") return true;
+
+     const panelId = NAV_TO_PANEL_MAP[item.id or path];
+
+     // Owners: always show essential panels
+     if (isOwner && panelId && DEFAULT_SIMPLE_PANELS.has(panelId)) {
+       return true;
+     }
+
+     // If tenant selected it in Customize Dashboard, show it
+     if (panelId && dashboardPrefs.simpleVisiblePanels?.includes(panelId)) {
+       return true;
+     }
+
+     // Otherwise, fall through to advancedOnly / sectionAdvancedOnly checks
+     if (item.advancedOnly || item.sectionAdvancedOnly) {
+       return false;
+     }
+
+     return true;
+   }
+
+3. In AppShell’s nav construction, use this function in combination with Step 2’s filter so that:
+   - SIMPLE = default core set + any explicitly added by tenant.
+   - ADVANCED = everything (respecting roles/plan).
+
+4. Confirm `/settings/dashboard/customize`:
+   - Shows a list of panels with friendly names.
+   - Allows toggling visibility of additional panels in SIMPLE mode.
+   - Does NOT remove items from ADVANCED; only from SIMPLE.
+
+------------------------------------
+STEP 4 – KEEP MULTI-TENANT & TECH STUFF TIDY
+------------------------------------
+
+Use the nav map notes:
+
+- “Multi-Tenant Management” section has `sectionAdvancedOnly: true`.
+- Technician Portal is semantically for technicians.
+
+Adjust filters so that:
+
+1. In SIMPLE mode:
+   - Hide entire “Multi-Tenant Management” section unless:
+     - User is root admin (platform owner).
+   - Hide Technician Portal section for non-tech users:
+     - If there is a technician role flag, use it.
+     - If not, you may temporarily gate by role or leave as-is but **do not break paths**.
+
+2. In ADVANCED mode:
+   - Owners see everything relevant:
+     - Multi-tenant, usage, system health, etc., as appropriate for their role.
+   - Ensure badges (“Owner”, “Beta”, “Campaign”, “Public”) still render.
+
+------------------------------------
+STEP 5 – SMALL QUALITY-OF-LIFE TWEAKS (NO BREAKING CHANGES)
+------------------------------------
+
+Within navigationItems.ts:
+
+1. Re-group items if needed so sections are semantically strong:
+   - Communications: Messages, Escalations, Phone.
+   - Customer Management: Customer Database, Service History, Rewards.
+   - Scheduling & Operations: Scheduling, Technician Hub, Damage Assessment.
+   - Marketing & Content: Website Design, Public Site Settings, Gallery Management, Gallery Showcase (Public), Banner Management, Referral Management.
+   - Finance: Billing, Usage Dashboard, Billing & Usage, etc.
+   - Settings & Administration: Settings, Interface Mode, Customize Dashboard, Business Settings, Email Settings, SMS Compliance, Port Recovery, etc.
+   - Help & Support: Help & Support, Support Tickets.
+
+2. You may add an optional field like `groupHint` or `sectionOrder` for clarity, but do not remove existing ones.
+
+3. Do **not** change the actual `path` strings.
+
+------------------------------------
+STEP 6 – QUICK MANUAL VERIFICATION
+------------------------------------
+
+On the Clean Machine tenant, logged in as the main owner:
+
+1. Switch to **Advanced Mode**:
+   - Sidebar should show:
+     - All previous settings/config pages (telephony, email, A2P, campaigns, rewards, homepage editor, gallery, billing, etc.).
+   - No missing panels compared to earlier in the project.
+
+2. Switch to **Simple Mode**:
+   - Sidebar should show **at least**:
+     - Dashboard
+     - Messages
+     - Scheduling
+     - Customers
+     - Rewards
+     - Website Design / Public Site / Gallery Management (core marketing)
+     - Billing
+     - Help & Support
+   - Multi-tenant and deep admin stuff can be hidden (Concierge Setup, Tenant Management, Migration Wizard, etc.).
+
+3. Visit `/settings/dashboard/customize`:
+   - Confirm you can add/remove panels from Simple mode.
+   - Confirm ADVANCED still shows everything regardless of these toggles.
+
+4. Confirm Messages top “Dashboard” button:
+   - Goes to `/dashboard` (CM dashboard), NOT the global ServicePro marketing page.
+
+5. Confirm **nothing** in this task touched:
+   - wrapTenantDb.
+   - TenantId resolution.
+   - Loyalty DB internals.
+
+------------------------------------
+STEP 7 – DOCUMENT THE FINAL MODEL
+------------------------------------
+
+Update docs (MASTER_PLAN_v4 or replit.md):
+
+Section: “SP-21 Dashboard Navigation & UI Mode”
+
+Document:
+
+- What SIMPLE mode shows by default.
+- What ADVANCED mode shows.
+- Which panels owners can toggle into Simple mode.
+- That nav behavior is tenant-safe and owner-safe (CM cannot lose its configs again).
+- That multi-tenant admin tools live under “Multi-Tenant Management” and are hidden in simple mode.
+
+END TASK
