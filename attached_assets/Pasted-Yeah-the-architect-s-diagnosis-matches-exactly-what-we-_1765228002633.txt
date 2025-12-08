@@ -1,0 +1,139 @@
+Yeah, the architect’s diagnosis matches exactly what we thought:
+
+* **Nav links now all point to `/settings/...` → `SettingsWorkspace` → skinny placeholder panels**
+* Your **old rich pages live under `/dashboard`, `/admin/...`**, and they’re still there — just not being used.
+
+So:
+
+* ✅ The **high-level plan is correct** (route root → legacy pages, others → new workspace).
+* ⚠️ The way it’s phrased is **too vague**.
+  “Update all links to old paths” could accidentally make *every* tenant use legacy admin, which we don’t want.
+
+We should **amend the prompt** so it:
+
+1. Only changes behavior for **Clean Machine / root tenant**.
+2. Keeps new workspace routes for **all other tenants**.
+3. Doesn’t delete or gut any “new” pages — just chooses which ones to *link* to.
+
+---
+
+## What to do now
+
+Tell the architect to follow the same four tasks, but with these guardrails baked in.
+
+### 🔧 Paste THIS as a follow-up instruction
+
+You can send this **right after** its proposed “Guide users / Update links / Stop fixing paths / Check owner pages” plan:
+
+````text
+IMPORTANT REFINEMENT TO YOUR PLAN:
+
+You are correct about the problem and the direction of the fix:
+- Root (Clean Machine) should use the legacy admin pages.
+- Other tenants should continue to use the new /settings/... workspace pages.
+
+However, DO NOT apply "update all links to old paths" globally.
+
+Instead, do this:
+
+1) TENANT SCOPING
+- Use the existing tenant context (tenantId or hostname) to detect Clean Machine:
+  - tenantId === 'root' OR hostname contains "cleanmachinetulsa.com".
+- All routing overrides MUST be conditional on that check.
+- For any tenant that is NOT root, keep the current /settings/... behavior exactly as-is.
+
+2) NAVIGATION LINKS (navigationItems.ts)
+- Do NOT hard-overwrite the paths for everyone.
+- Introduce a helper function (or equivalent) that picks legacy vs new per tenant:
+
+  ```ts
+  import { getCurrentTenantId } from "@/utils/tenantContext"; // or your existing helper
+
+  function cmOrDefault(cmPath: string, defaultPath: string): string {
+    const tenantId = getCurrentTenantId();
+    return tenantId === "root" ? cmPath : defaultPath;
+  }
+````
+
+* Then update ONLY the items where we know there is a legacy page:
+
+  Examples (adjust to actual paths you found):
+
+  ```ts
+  {
+    label: "Dashboard",
+    path: cmOrDefault("/dashboard", "/settings/dashboard"),
+    ...
+  },
+  {
+    label: "Services",
+    path: cmOrDefault("/admin/services", "/settings/operations/services"),
+    ...
+  },
+  {
+    label: "SMS Campaigns",
+    path: cmOrDefault("/admin/sms-campaigns", "/settings/communications/sms"),
+    ...
+  },
+  {
+    label: "Email Templates",
+    path: cmOrDefault("/admin/email-templates", "/settings/email"),
+    ...
+  },
+  {
+    label: "Rewards",
+    path: cmOrDefault("/rewards", "/settings/loyalty"),
+    ...
+  }
+  ```
+
+* The key is: ROOT tenant gets the legacy `/dashboard` + `/admin/...` routes; everyone else stays on `/settings/...`.
+
+3. STOP “FIXING” PATHS FOR ROOT ONLY
+
+* Wherever you previously added auto-normalization or redirects (e.g. SettingsWorkspace, settings-admin wrapper, dashboard route), scope these changes:
+
+  ```ts
+  const tenantId = getCurrentTenantId();
+
+  // If root, DO NOT rewrite URLs to /settings/...
+  if (tenantId === "root") return;
+  ```
+
+* Only non-root tenants should be auto-redirected to normalized /settings/... paths.
+
+4. VERIFICATION (REQUIRED)
+
+* Log in as the root / Clean Machine tenant and verify:
+
+  * Dashboard, Services, SMS Campaigns, Email Templates, Rewards all land on the older rich pages with my existing content.
+  * URLs do NOT flap anymore and do NOT auto-redirect back to the skinny workspace panels.
+* Also log in as a **non-root** test tenant and confirm:
+
+  * They still use the new /settings/... workspace pages.
+  * Their experience is unchanged.
+
+DO NOT delete any workspace components or the new /settings/... routes.
+We are only changing:
+
+* Which path nav points to for ROOT vs others.
+* Which tenants the normalization logic runs for.
+
+```
+
+---
+
+### Short answer to your question
+
+> “Do you trust its tact? Shall I set it to work or should we amend our prompt?”
+
+- **Trust the diagnosis and the direction.**  
+- **Amend the prompt with the scoping + helper logic above, then let it run.**
+
+That gives you:
+
+- Root = your old, fully-configured Clean Machine dashboard back.
+- Other tenants = still get the new workspace system.
+- No need to revert the whole repo or lose progress.
+::contentReference[oaicite:0]{index=0}
+```
