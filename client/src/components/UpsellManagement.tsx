@@ -311,9 +311,12 @@ export function UpsellManagement() {
   };
 
   // Format currency display
-  const formatCurrency = (amount?: number) => {
-    if (amount === undefined) return '';
-    return `$${amount.toFixed(2)}`;
+  // CM-ROUTE-FLAPPING-FIX: Handle non-numeric values gracefully to prevent crashes
+  const formatCurrency = (amount?: number | string | null) => {
+    if (amount === undefined || amount === null) return '';
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(numAmount)) return '';
+    return `$${numAmount.toFixed(2)}`;
   };
 
   // Format percentage display

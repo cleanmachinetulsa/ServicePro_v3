@@ -52,14 +52,19 @@ export default function SettingsWorkspace({ initialSection, initialItem }: Setti
   }, [initialSection, initialItem, isInitialized, activeSection, activeItem]);
 
   // Sync URL when active section/item changes (only after initialization)
+  // CM-ROUTE-FLAPPING-FIX: Only update URL if it actually differs to prevent redirect loops
   useEffect(() => {
     // Only update URL if we have valid values and are initialized
     if (!isInitialized || !activeSection || !activeItem) return;
     
     const currentPath = window.location.pathname;
-    if (currentPath.startsWith('/settings')) {
-      // Update URL to reflect current section and item
-      setLocation(`/settings/${activeSection}/${activeItem}`);
+    const targetPath = `/settings/${activeSection}/${activeItem}`;
+    
+    // Only navigate if we're on a settings page AND the path is actually different
+    // This prevents the ping-pong between legacy routes and generated paths
+    if (currentPath.startsWith('/settings') && currentPath !== targetPath) {
+      // Use replace to avoid polluting browser history with intermediate states
+      setLocation(targetPath, { replace: true });
     }
   }, [activeSection, activeItem, setLocation, isInitialized]);
 

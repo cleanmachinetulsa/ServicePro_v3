@@ -219,12 +219,13 @@ export default function Dashboard() {
   };
 
   // Compatibility redirect for old ?tab= URLs
+  // CM-ROUTE-FLAPPING-FIX: Use replace to avoid history spam
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
       if (tabParam && tabCompatibilityMap[tabParam]) {
-        navigate(tabCompatibilityMap[tabParam]);
+        navigate(tabCompatibilityMap[tabParam], { replace: true });
       }
     }
   }, [location]);
