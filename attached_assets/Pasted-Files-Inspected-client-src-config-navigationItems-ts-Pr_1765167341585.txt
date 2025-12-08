@@ -1,0 +1,681 @@
+Files Inspected
+client/src/config/navigationItems.ts - Primary source defining all sidebar nav items with labels, paths, icons, badges, section headers, and visibility flags
+client/src/components/AppShell.tsx - Renders navigation with conditional filtering based on:
+Owner-only items (hidden when impersonating)
+UI experience mode (simple vs advanced - SP-14)
+Dashboard preferences (tenant-level panel visibility - SP-15)
+client/src/contexts/DashboardPreferencesContext.tsx - Maps nav item IDs to dashboard panel IDs for visibility control
+{
+"navTree": [
+{
+"sectionLabel": "Dashboard",
+"items": [
+{
+"label": "Dashboard",
+"path": "/dashboard",
+"iconName": "Home",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+}
+]
+},
+{
+"sectionLabel": "Communications",
+"items": [
+{
+"label": "Messages",
+"path": "/messages",
+"iconName": "MessageSquare",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Escalations",
+"path": "/escalations",
+"iconName": "AlertCircle",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Phone",
+"path": "/phone",
+"iconName": "Phone",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+}
+]
+},
+{
+"sectionLabel": "Customer Management",
+"items": [
+{
+"label": "Customer Database",
+"path": "/customer-database",
+"iconName": "Users",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Service History",
+"path": "/service-history",
+"iconName": "History",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Rewards",
+"path": "/rewards",
+"iconName": "Gift",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true
+}
+]
+},
+{
+"sectionLabel": "Scheduling & Operations",
+"items": [
+{
+"label": "Scheduling",
+"path": "/admin/scheduling",
+"iconName": "Calendar",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Technician Hub",
+"path": "/technician",
+"iconName": "Wrench",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Damage Assessment",
+"path": "/damage-assessment",
+"iconName": "Camera",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+}
+]
+},
+{
+"sectionLabel": "Marketing & Content",
+"items": [
+{
+"label": "Website Design",
+"path": "/admin/homepage-editor",
+"iconName": "Palette",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true
+},
+{
+"label": "Public Site Settings",
+"path": "/admin/public-site-settings",
+"iconName": "Globe",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true
+},
+{
+"label": "Gallery Management",
+"path": "/admin/gallery-management",
+"iconName": "Image",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true
+},
+{
+"label": "Gallery Showcase",
+"path": "/gallery",
+"iconName": "LayoutDashboard",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true,
+"badge": "Public"
+},
+{
+"label": "Banner Management",
+"path": "/admin/banner-management",
+"iconName": "Megaphone",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true,
+"advancedOnly": true
+},
+{
+"label": "Referral Management",
+"path": "/referrals",
+"iconName": "Gift",
+"categoryGuess": "marketing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true
+}
+]
+},
+{
+"sectionLabel": "Reports & Analytics",
+"items": [
+{
+"label": "Analytics",
+"path": "/analytics",
+"iconName": "TrendingUp",
+"categoryGuess": "other",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Call Metrics",
+"path": "/call-metrics",
+"iconName": "BarChart3",
+"categoryGuess": "other",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+}
+]
+},
+{
+"sectionLabel": "Finance",
+"items": [
+{
+"label": "Billing",
+"path": "/billing",
+"iconName": "DollarSign",
+"categoryGuess": "billing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Usage Dashboard",
+"path": "/admin/usage-dashboard",
+"iconName": "Wallet",
+"categoryGuess": "billing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Billing & Usage",
+"path": "/admin/billing-usage",
+"iconName": "Activity",
+"categoryGuess": "billing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+}
+]
+},
+{
+"sectionLabel": "Multi-Tenant Management",
+"sectionAdvancedOnly": true,
+"items": [
+{
+"label": "Concierge Setup",
+"path": "/admin/concierge-setup",
+"iconName": "Sparkles",
+"categoryGuess": "settings",
+"isOwnerOnly": true,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "Setup Copilot",
+"path": "/admin/setup-copilot",
+"iconName": "MessageCircle",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Beta"
+},
+{
+"label": "Tenant Management",
+"path": "/admin/tenants",
+"iconName": "Building2",
+"categoryGuess": "settings",
+"isOwnerOnly": true,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "Phone Config",
+"path": "/admin/phone-config",
+"iconName": "Phone",
+"categoryGuess": "settings",
+"isOwnerOnly": true,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "IVR Configurator",
+"path": "/admin/ivr-config",
+"iconName": "PhoneCall",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "System Usage",
+"path": "/admin/system-usage",
+"iconName": "Activity",
+"categoryGuess": "billing",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "Usage Overview",
+"path": "/admin/billing-overview",
+"iconName": "TrendingUp",
+"categoryGuess": "billing",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "Theme Gallery",
+"path": "/admin/theme-gallery",
+"iconName": "Palette",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Migration Wizard",
+"path": "/admin/migration-wizard",
+"iconName": "Sparkles",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+},
+{
+"label": "Data Import",
+"path": "/admin/import-history",
+"iconName": "FileArchive",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Owner"
+}
+]
+},
+{
+"sectionLabel": "Workforce Management",
+"items": [
+{
+"label": "Employees",
+"path": "/admin/employees",
+"iconName": "Briefcase",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Quote Requests",
+"path": "/admin/quote-requests",
+"iconName": "FileQuestion",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Job Applications",
+"path": "/admin/applications",
+"iconName": "UserPlus",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "PTO Management",
+"path": "/admin/pto",
+"iconName": "Plane",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+}
+]
+},
+{
+"sectionLabel": "Technician Portal",
+"items": [
+{
+"label": "My Schedule",
+"path": "/tech/schedule",
+"iconName": "CalendarDays",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Request PTO",
+"path": "/tech/pto",
+"iconName": "Plane",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Open Shifts",
+"path": "/tech/open-shifts",
+"iconName": "Calendar",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Shift Trades",
+"path": "/tech/shift-trades",
+"iconName": "Users",
+"categoryGuess": "core",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+}
+]
+},
+{
+"sectionLabel": "Settings & Administration",
+"items": [
+{
+"label": "Settings",
+"path": "/settings",
+"iconName": "Settings",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Interface Mode",
+"path": "/settings/ui-mode",
+"iconName": "SlidersHorizontal",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Customize Dashboard",
+"path": "/settings/dashboard/customize",
+"iconName": "LayoutDashboard",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Billing & Usage",
+"path": "/settings/billing",
+"iconName": "CreditCard",
+"categoryGuess": "billing",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Custom Domains",
+"path": "/settings/domains",
+"iconName": "Globe",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": true,
+"advancedOnly": true
+},
+{
+"label": "Business Settings",
+"path": "/business-settings",
+"iconName": "Building2",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": true
+},
+{
+"label": "User Management",
+"path": "/user-management",
+"iconName": "UserCog",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Security",
+"path": "/security-settings",
+"iconName": "Shield",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Notifications",
+"path": "/notifications-settings",
+"iconName": "Bell",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Phone Settings",
+"path": "/phone-settings",
+"iconName": "Phone",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Email Settings",
+"path": "/settings/email",
+"iconName": "Mail",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "SMS Compliance",
+"path": "/settings/a2p",
+"iconName": "Shield",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Port Recovery",
+"path": "/admin/port-recovery",
+"iconName": "RefreshCw",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true,
+"badge": "Campaign"
+},
+{
+"label": "Facebook Settings",
+"path": "/facebook-settings",
+"iconName": "MessagesSquare",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Quick Replies",
+"path": "/quick-replies",
+"iconName": "MessageCircle",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Reminders",
+"path": "/reminders",
+"iconName": "Clock",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"advancedOnly": true
+},
+{
+"label": "Customer Feedback",
+"path": "/admin/customer-suggestions",
+"iconName": "MessageSquarePlus",
+"categoryGuess": "support",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+}
+]
+},
+{
+"sectionLabel": "Help & Support",
+"items": [
+{
+"label": "Help & Support",
+"path": "/support",
+"iconName": "HelpCircle",
+"categoryGuess": "support",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false
+},
+{
+"label": "Support Tickets",
+"path": "/admin/support-tickets",
+"iconName": "Headphones",
+"categoryGuess": "support",
+"isOwnerOnly": false,
+"tierRestrictions": "unknown",
+"isCustomerFacingConfig": false,
+"badge": "Owner"
+}
+]
+},
+{
+"sectionLabel": "topNav",
+"items": [
+{
+"label": "UI Mode Toggle",
+"path": null,
+"iconName": "Sparkles (simple) / Settings2 (advanced)",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"notes": "Header toggle button - switches between simple and advanced UI modes (SP-14)"
+},
+{
+"label": "Theme Toggle",
+"path": null,
+"iconName": "Sun / Moon",
+"categoryGuess": "settings",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"notes": "Header toggle for dark/light mode"
+},
+{
+"label": "Floating Feedback Button",
+"path": null,
+"iconName": "Lightbulb",
+"categoryGuess": "support",
+"isOwnerOnly": false,
+"tierRestrictions": "all",
+"isCustomerFacingConfig": false,
+"notes": "Fixed bottom-right button that opens TenantSuggestionModal"
+}
+]
+}
+],
+"notes": [
+"Source file: client/src/config/navigationItems.ts defines all sidebar nav items.",
+"Rendering logic in client/src/components/AppShell.tsx filters items dynamically.",
+"OWNER-ONLY ITEMS: Items with IDs 'concierge-setup', 'tenants', 'phone-config' are hidden when the root admin is impersonating a tenant.",
+"VISIBILITY MODES (SP-14): Items with visibility='advancedOnly' are hidden when user is in 'simple' UI mode. User-level toggle in header.",
+"DASHBOARD PREFERENCES (SP-15): When tenant dashboard mode is 'simple', nav items are filtered by NAV_TO_PANEL_MAP in DashboardPreferencesContext.tsx. Only panels in simpleVisiblePanels are shown.",
+"NAV_TO_PANEL_MAP mappings: messages→conversations, schedule→calendar, quote-requests→booking-requests, customers→customers, rewards→rewards, settings→settings, analytics→analytics, banner-management→campaigns, referrals→referrals, technician→technician, employees→employees, gallery-management→gallery, gallery-public→gallery, billing→billing, billing-usage→billing, settings-billing→billing, import-history→imports, phone-settings→telephony, ivr-config→ivr.",
+"BADGES: 'Owner' = typically owner-only functionality, 'Beta' = experimental feature, 'Campaign' = related to marketing campaigns, 'Public' = links to public-facing page.",
+"The 'Multi-Tenant Management' entire section has visibility='advancedOnly' on its separator, meaning the whole section is hidden in simple mode.",
+"Technician Portal section appears for all users but is semantically intended for technician-role users only (no code filter observed).",
+"Some paths use /admin/* prefix for owner/manager routes, /tech/* for technician routes, /settings/* for user settings.",
+"Header includes AI search component (AiHelpSearch) visible on desktop.",
+"ImpersonationBanner and PastDueWarningBanner appear conditionally at top of content area."
+]
+}
+
+This map captures all 50+ navigation items across 12 sections, with visibility flags, badges, and the multi-layer filtering logic used by the platform.

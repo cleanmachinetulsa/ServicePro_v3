@@ -349,7 +349,10 @@ export function initializeDepositReminders() {
   // Run every 4 hours
   cron.schedule('0 */4 * * *', async () => {
     console.log('[DEPOSIT] Running scheduled task: checking deposit reminders');
-    await processDepositReminders();
+    const { wrapTenantDb } = await import('./tenantDb');
+    const { db } = await import('./db');
+    const tenantDb = wrapTenantDb(db, 'root');
+    await processDepositReminders(tenantDb);
   });
 
   depositReminderSchedulerInitialized = true;

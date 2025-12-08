@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { ButtonWithTooltip, TooltipButtonGroup } from '@/components/ui/button-with-tooltip';
 import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
 import { useLocation, useSearch } from 'wouter';
 import { 
@@ -237,60 +238,68 @@ function MessagesPageContent() {
         showContextPanel={showProfilePanel && !!selectedConversation}
         selectedConversationId={selectedConversation}
         headerActions={
-          <div className="flex items-center gap-2">
-            <Button 
-              size="sm" 
-              onClick={() => setLocation('/dashboard')}
-              data-testid="button-dashboard"
-              className="nightops-button text-xs"
-              title="Dashboard"
-            >
-              <LayoutDashboard className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">Dashboard</span>
-            </Button>
-            <Button 
-              size="sm" 
-              onClick={() => setShowComposeDialog(true)}
-              data-testid="button-compose"
-              className="nightops-button text-xs"
-            >
-              <PlusCircle className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">New</span>
-            </Button>
-            {selectedConversation && (
-              <>
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowShareAvailabilityModal(true)}
-                  data-testid="button-share-availability"
-                  className="nightops-button text-xs"
-                  title="Share calendar availability"
-                >
-                  <CalendarDays className="h-3.5 w-3.5 sm:mr-1.5" />
-                  <span className="hidden sm:inline">Share</span>
-                </Button>
-                <Button 
-                  size="sm" 
-                  onClick={() => setShowProfilePanel(!showProfilePanel)}
-                  className="nightops-button text-xs hidden lg:flex"
-                  data-testid="button-toggle-profile"
-                  title={showProfilePanel ? "Hide Context Panel" : "Show Context Panel"}
-                >
-                  {showProfilePanel ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
-                </Button>
-              </>
-            )}
-            <Button 
-              size="sm" 
-              onClick={() => setLocation('/phone')}
-              data-testid="button-phone"
-              className="nightops-button text-xs"
-              title="Phone & Voicemail"
-            >
-              <Phone className="h-3.5 w-3.5" />
-            </Button>
-            <LanguageSwitcher variant="ghost" size="icon" showLabel={false} />
-          </div>
+          <TooltipButtonGroup delayDuration={150}>
+            <div className="flex items-center gap-2">
+              <ButtonWithTooltip 
+                size="sm" 
+                onClick={() => setLocation('/dashboard')}
+                data-testid="button-dashboard"
+                className="nightops-button text-xs"
+                tooltip="Go to Dashboard"
+                tooltipSide="bottom"
+              >
+                <LayoutDashboard className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </ButtonWithTooltip>
+              <ButtonWithTooltip 
+                size="sm" 
+                onClick={() => setShowComposeDialog(true)}
+                data-testid="button-compose"
+                className="nightops-button text-xs"
+                tooltip="Compose new message"
+                tooltipSide="bottom"
+              >
+                <PlusCircle className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">New</span>
+              </ButtonWithTooltip>
+              {selectedConversation && (
+                <>
+                  <ButtonWithTooltip 
+                    size="sm" 
+                    onClick={() => setShowShareAvailabilityModal(true)}
+                    data-testid="button-share-availability"
+                    className="nightops-button text-xs"
+                    tooltip="Share calendar availability"
+                    tooltipSide="bottom"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 sm:mr-1.5" />
+                    <span className="hidden sm:inline">Share</span>
+                  </ButtonWithTooltip>
+                  <ButtonWithTooltip 
+                    size="sm" 
+                    onClick={() => setShowProfilePanel(!showProfilePanel)}
+                    className="nightops-button text-xs hidden lg:flex"
+                    data-testid="button-toggle-profile"
+                    tooltip={showProfilePanel ? "Hide Context Panel" : "Show Context Panel"}
+                    tooltipSide="bottom"
+                  >
+                    {showProfilePanel ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
+                  </ButtonWithTooltip>
+                </>
+              )}
+              <ButtonWithTooltip 
+                size="sm" 
+                onClick={() => setLocation('/phone')}
+                data-testid="button-phone"
+                className="nightops-button text-xs"
+                tooltip="Phone & Voicemail"
+                tooltipSide="bottom"
+              >
+                <Phone className="h-3.5 w-3.5" />
+              </ButtonWithTooltip>
+              <LanguageSwitcher variant="ghost" size="icon" showLabel={false} />
+            </div>
+          </TooltipButtonGroup>
         }
       />
 
