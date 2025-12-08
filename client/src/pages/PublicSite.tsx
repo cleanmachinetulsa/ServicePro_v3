@@ -24,6 +24,13 @@ import {
 } from 'lucide-react';
 import { Seo } from '@/components/Seo';
 import { CLEAN_MACHINE_TENANT_SLUG } from '@shared/domainConfig';
+import { 
+  usePublicSiteTheme, 
+  getThemeGradient,
+  getHeroLayoutClasses,
+  getServicesGridClasses,
+} from '@/publicSite/hooks/usePublicSiteTheme';
+import type { PublicSiteThemeConfig } from '@shared/publicSiteThemes';
 
 interface PublicSiteData {
   tenant: {
@@ -67,6 +74,19 @@ interface PublicSiteData {
     canShowBookingForm: boolean;
     canShowAdvancedSections: boolean;
   };
+  themeConfig?: {
+    themeKey?: string;
+    heroLayout?: string;
+    servicesLayout?: string;
+    testimonialsLayout?: string;
+    ctaStyle?: string;
+    showRewards?: boolean;
+    showFaq?: boolean;
+    showTestimonials?: boolean;
+    showAbout?: boolean;
+    showGallery?: boolean;
+    showWhyChooseUs?: boolean;
+  };
 }
 
 export default function PublicSite() {
@@ -98,14 +118,23 @@ export default function PublicSite() {
 
   const siteData = data?.data;
 
+  // SP-24: Use theme hook for computed styles
+  const themeStyles = usePublicSiteTheme({
+    themeConfig: siteData?.themeConfig,
+    tenantPrimaryColor: siteData?.branding?.primaryColor,
+    tenantAccentColor: siteData?.branding?.accentColor,
+  });
+
   // Scroll to top on mount
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  // Get branding colors or use defaults
-  const primaryColor = siteData?.branding?.primaryColor || '#6366f1';
-  const accentColor = siteData?.branding?.accentColor || '#a855f7';
+  // Get branding colors from theme (with fallback for pre-hook render)
+  const primaryColor = themeStyles.primaryColor;
+  const accentColor = themeStyles.accentColor;
+  const heroLayout = getHeroLayoutClasses(themeStyles.heroLayoutId);
+  const servicesGridClass = getServicesGridClasses(themeStyles.servicesLayoutId);
 
   // Loading state
   if (isLoading) {
@@ -321,7 +350,7 @@ export default function PublicSite() {
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
               variants={staggerContainer}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              className={servicesGridClass}
             >
               {services.slice(0, 6).map((service, index) => (
                 <motion.div key={service.id} variants={fadeIn} data-testid={`service-card-${service.id}`}>
@@ -374,7 +403,8 @@ export default function PublicSite() {
         </section>
       )}
 
-      {/* About Section */}
+      {/* About Section - SP-24: Visibility controlled by theme */}
+      {themeStyles.showAbout && (
       <section className="py-20 px-4 sm:px-6 lg:px-8" data-testid="about-section">
         <motion.div
           initial="hidden"
@@ -395,8 +425,10 @@ export default function PublicSite() {
           </Card>
         </motion.div>
       </section>
+      )}
 
-      {/* Rewards Program Section */}
+      {/* Rewards Program Section - SP-24: Visibility controlled by theme */}
+      {themeStyles.showRewards && (
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-purple-50/50 to-pink-50/50" data-testid="rewards-section">
         <motion.div
           initial="hidden"
@@ -456,9 +488,10 @@ export default function PublicSite() {
           </Card>
         </motion.div>
       </section>
+      )}
 
-      {/* FAQ Section */}
-      {faqs && faqs.length > 0 && (
+      {/* FAQ Section - SP-24: Visibility controlled by theme */}
+      {themeStyles.showFaq && faqs && faqs.length > 0 && (
         <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white/30" data-testid="faq-section">
           <div className="max-w-3xl mx-auto">
             <motion.div

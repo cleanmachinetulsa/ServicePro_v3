@@ -226,6 +226,10 @@ export function getTheme(key: PublicSiteThemeKey): PublicSiteTheme | undefined {
   return PUBLIC_SITE_THEMES.find(t => t.key === key);
 }
 
+export const THEME_REGISTRY: Record<PublicSiteThemeKey, PublicSiteTheme> = Object.fromEntries(
+  PUBLIC_SITE_THEMES.map(theme => [theme.key, theme])
+) as Record<PublicSiteThemeKey, PublicSiteTheme>;
+
 export function getDefaultTheme(): PublicSiteTheme {
   return PUBLIC_SITE_THEMES[0]; // clean-glass as default
 }

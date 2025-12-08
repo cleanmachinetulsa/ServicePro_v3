@@ -174,6 +174,23 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
       canShowAdvancedSections: ['pro', 'elite', 'internal'].includes(planTier),
     };
 
+    // SP-24: Extract theme configuration from publicSiteSettings
+    // Uses correct layout keys from shared/publicSiteThemes.ts
+    // Read themeKey (from admin route) or fallback to selectedTheme (legacy) or default
+    const themeConfig = {
+      themeKey: siteSettings.themeKey || siteSettings.selectedTheme || 'clean-glass',
+      heroLayout: siteSettings.heroLayout || 'centered',
+      servicesLayout: siteSettings.servicesLayout || 'grid-3',
+      testimonialsLayout: siteSettings.testimonialsLayout || 'carousel',
+      ctaStyle: siteSettings.ctaStyle || 'centered-buttons',
+      showRewards: siteSettings.showRewards !== false,
+      showFaq: siteSettings.showFaq !== false,
+      showTestimonials: siteSettings.showTestimonials !== false,
+      showAbout: siteSettings.showAbout !== false,
+      showGallery: siteSettings.showGallery ?? false,
+      showWhyChooseUs: siteSettings.showWhyChooseUs ?? true,
+    };
+
     // Compose public site payload
     const siteData = {
       tenant: {
@@ -196,6 +213,7 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
       services: tenantServices,
       faqs: tenantFaqs,
       featureFlags,
+      themeConfig,
     };
 
     // Set cache headers (cache for 10 minutes for public sites)
