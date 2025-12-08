@@ -1,0 +1,183 @@
+uccessfully validated 9/9 services from Google Sheet
+6:36:34 AM [express] GET /api/services 200 in 194ms :: {"success":true,"services":[{"id":1,"name":"F…
+Successfully loaded 9 add-on services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:34 AM [express] GET /api/addon-services 200 in 196ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+6:36:34 AM [express] GET /api/services 200 in 196ms :: {"success":true,"services":[{"id":1,"name":"F…
+Successfully loaded 9 add-on services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:34 AM [express] GET /api/addon-services 200 in 194ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+6:36:35 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+Successfully loaded 9 add-on services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:35 AM [express] GET /api/addon-services 200 in 196ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:35 AM [express] GET /api/services 200 in 199ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:35 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:35 AM [express] GET /api/services 200 in 204ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:36 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:36 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:36 AM [express] GET /api/addon-services 200 in 194ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:36 AM [express] GET /api/services 200 in 193ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:36 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:37 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:37 AM [express] GET /api/addon-services 200 in 197ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:37 AM [express] GET /api/services 200 in 196ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:37 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:37 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:37 AM [express] GET /api/addon-services 200 in 192ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:38 AM [express] GET /api/services 200 in 193ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:38 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:38 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:38 AM [express] GET /api/addon-services 200 in 194ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:39 AM [express] GET /api/services 200 in 198ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:39 AM [express] GET /api/addon-services 200 in 196ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:39 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:39 AM [express] GET /api/addon-services 200 in 194ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:39 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:39 AM [express] GET /api/addon-services 200 in 197ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:40 AM [express] GET /api/services 200 in 196ms :: {"success":true,"services":[{"id":1,"name":"F…
+6:36:40 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:40 AM [express] GET /api/services 200 in 194ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:40 AM [express] GET /api/addon-services 200 in 209ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:40 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:41 AM [express] GET /api/addon-services 200 in 193ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:41 AM [express] GET /api/services 200 in 198ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:41 AM [express] GET /api/addon-services 200 in 196ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:41 AM [express] GET /api/services 200 in 197ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:41 AM [express] GET /api/addon-services 200 in 194ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:42 AM [express] GET /api/services 200 in 192ms :: {"success":true,"services":[{"id":1,"name":"F…
+[getAddonServices] Merging 17 database images with 9 add-on services
+Successfully validated 9/9 add-ons from Google Sheet
+6:36:42 AM [express] GET /api/addon-services 200 in 195ms :: {"success":true,"addOns":[{"name":"Leat…
+Successfully loaded 9 services from Google Sheet
+Successfully validated 9/9 services from Google Sheet
+Successfully loaded 9 add-on services from Google Sheet
+6:36:42 AM [express] GET /api/services 200 in 195ms :: {"success":true,"services":[{"id":1,"name":"F…
+
+
+
+its bouncing between pages instantly so fast you can barely see what it says in the url, but if i hit the reffresh it stopped on the right spot where i could see my sms messages, i treied this in emil settings too, since its doing the same flashing back and forth ebtween two different urls, and couldnt get it to and on a page shoing emaik teplates.. but there is some progress even if very small. were learnig whats goign wrong? i DONT want to haev to do this with every damned page to try to get back what i had... this is insanity. i cant belive were at ANOTHER atsndstill with this like we were the other day, this issue where it built something we didnt want and now we cant easily backtrack to get it out... like sand in your hair, its all worked in so deep its impossible to find and get it all out..
+
+
+CM-TENANT-FOCUS-RESTORE Complete
+All steps have been verified. Here's the summary:
+
+What Was Fixed:
+
+Dashboard Mode Restored - Updated the root tenant's dashboard_preferences to use advanced mode with all 16 navigation panels visible
+Default Fallback Improved - The dashboard preferences hook now defaults to advanced mode with full panel visibility if preferences fail to load, preventing accidental downgrades
+Debug Logging Added - Development-only [TENANT_DEBUG_NAV] logging in AppShell helps track tenant context during navigation (should be removed before production)
+Verified Working:
+
+All key routes use proper tenantDb isolation (loyalty, upsell, a2p, publicSite, campaigns)
+Dashboard button from Messages page correctly routes to /dashboard
+Full navigation stack visible for Clean Machine owner (Dashboard, Messages, Schedule, Customers, Rewards, Settings, Billing, Analytics, etc.)
+Campaigns auth fixed (from earlier session)
+Public site settings accessible via Business Settings > Look & Feel
+Test Results:
+
+Logged in as admin/admin123 successfully
+Full sidebar navigation visible
+All major pages load correctly (dashboard, settings, rewards, messages)
+Dashboard button navigation works properly
+Key Tenant Details (for reference):
+
+Tenant ID: root
+Name: Clean Machine Auto Detail
+Plan: elite
+Owner: admin (admin@cleanmachineautodetail.com)

@@ -1,0 +1,110 @@
+DROP-IN: CM-ROUTE-FLAPPING-FIX
+
+Paste this as a task for your Replit agent:
+
+TASK: CM-ROUTE-FLAPPING-FIX
+GOAL:
+Stop the rapid redirect loop / “page bouncing” that causes the UI to flash between two URLs and spam
+`GET /api/services` and `GET /api/addon-services` for the Clean Machine tenant.
+
+CONSTRAINTS:
+- Do NOT remove or break domain handling for cleanmachinetulsa.com.
+- Do NOT disable multi-tenant behavior.
+- Fix the redirect logic so navigation is stable for Clean Machine and other tenants.
+
+STEP 1 – Reproduce and record the exact routes
+1) Use Playwright to:
+   - Log in as the Clean Machine owner account (same credentials I use).
+   - Click “Messages” in the sidebar.
+   - Observe the URL bar and record which two routes the app is bouncing between.
+   - Repeat for the Email Settings page (or another flapping page) and record the two URLs there as well.
+
+   OUTPUT (write to scratchpad / comment in code):
+   - BOUNCE_CASE_1: e.g. /messages <-> /dashboard or /messages <-> /admin/something
+   - BOUNCE_CASE_2: e.g. /settings/email <-> /settings or something similar
+
+STEP 2 – Inspect routing + redirect logic
+2) Open `client/src/App.tsx` and look for:
+   - Any `<Redirect>` or navigation wrappers.
+   - Any components that wrap routes and use `useEffect` + `setLocation` / `navigate`.
+
+3) Open:
+   - `client/src/components/AppShell.tsx`
+   - `client/src/components/RootDomainHandler.tsx`
+   - Any “guard” components such as a Setup Wizard wrapper, UI mode guard, or tenant guard.
+
+   Look for code like this (patterns that can cause loops):
+
+   - `useEffect(() => { setLocation('/somewhere'); }, []);`
+   - `if (condition) return <Navigate to="/somewhere" replace />;`
+   - Domain checks like `if (isCleanMachineDomain()) setLocation('/site/...');`
+   - UI mode / dashboard mode redirects like “if simple mode, go here, otherwise go there” that don’t check the current path.
+
+STEP 3 – Identify the loop conditions
+4) Correlate BOUNCE_CASE_1 and BOUNCE_CASE_2 with the above code:
+   - For each case, determine:
+     - “Component A redirects to route X when condition C1 is true”
+     - “Component B redirects to route Y when condition C2 is true”
+   - Confirm that for the Clean Machine tenant, C1 and C2 are both true → infinite ping-pong.
+
+   Example patterns to look for:
+   - RootDomainHandler sending `"/"` traffic to `/site/cleanmachine`, **and** something inside `/site/cleanmachine` sending you back to `/dashboard` or `/messages`.
+   - A Setup Wizard that redirects to `/admin/concierge-setup` when “not configured,” but that page immediately redirects back when “configured,” with a stale or incorrect condition.
+   - A Simple/Advanced mode guard that redirects based on UI mode but doesn’t check the current path.
+
+STEP 4 – Implement safe redirect guards (no more flapping)
+5) For each redirect you identify as part of a bounce, tighten the conditions:
+
+   a) Always read the current location when using `setLocation` or `navigate`:
+      - In any component using `useLocation()` from `wouter` (or `useNavigate` from React Router), ensure you only call `setLocation()` if the current path is NOT already the target.
+
+      Example fix pattern:
+
+      ```ts
+      const [location, setLocation] = useLocation();
+
+      useEffect(() => {
+        if (!isReady) return;
+        if (location !== '/desired-path') {
+          setLocation('/desired-path', { replace: true });
+        }
+      }, [isReady, location, setLocation]);
+      ```
+
+   b) Avoid double-guarding the same decision:
+      - If RootDomainHandler decides what `/` should do for Clean Machine, do NOT have a second guard elsewhere that also forces navigation for every route.
+      - Centralize “what should happen for `/` on cleanmachinetulsa.com” in `RootDomainHandler` and do NOT repeat it again in AppShell.
+
+   c) For domain-specific logic:
+      - In `RootDomainHandler.tsx`, ensure it only handles the bare `/` route, not sub-pages.
+      - Example:
+        - If `isCleanMachineDomain()` and `location === '/'`, render `<CleanMachineShowcase />` (or redirect once to `/dashboard`).
+        - But do NOT redirect when `location` starts with `/messages`, `/settings`, etc.
+
+STEP 5 – Fix the Messages-page Dashboard button
+6) On the Messages page, confirm the “Dashboard” button’s click handler:
+   - It should navigate to `/dashboard`, NOT `/`.
+   - If it currently navigates to `/`, change it to `/dashboard`.
+   - This avoids going back through RootDomainHandler and any domain-level redirect logic when you just want the tenant dashboard.
+
+STEP 6 – Verification with Clean Machine tenant
+7) Restart the app and re-run Playwright tests:
+   - Log in as the Clean Machine owner.
+   - Click “Messages”:
+     - Confirm the URL changes exactly once (e.g. `/messages`) and STAYS there.
+     - Confirm messages load normally without URL flicker.
+
+   - Go to Email Settings:
+     - Use the correct route (whatever App.tsx defines, often `/settings/email`).
+     - Confirm the URL stays stable and the page does NOT flicker or bounce away.
+     - Confirm that if email templates are empty, it shows “no templates” instead of redirecting.
+
+8) Check the logs again:
+   - Confirm that `GET /api/services` and `GET /api/addon-services` are not spammed in a loop when you open Messages or Settings.
+   - Normal behavior: 1–2 calls on first load, maybe another when you refresh. No rapid repeated 200ms polling.
+
+STEP 7 – Summarize changes
+9) In comments or a short markdown note (replit.md or similar), summarize:
+   - Which components had redirect logic adjusted (file + function).
+   - What the bounce cases were (routes involved).
+   - How the new guard conditions prevent the loop.
