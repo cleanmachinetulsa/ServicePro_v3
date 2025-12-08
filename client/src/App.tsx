@@ -96,6 +96,7 @@ const AdminParserHistory = lazy(() => import("./pages/admin/ParserHistory"));
 const AdminPlansAndAddons = lazy(() => import("./pages/AdminPlansAndAddons"));
 const AdminPortRecovery = lazy(() => import("./pages/AdminPortRecovery"));
 const AdminPublicSiteSettings = lazy(() => import("./pages/admin-public-site-settings"));
+const AdminPublicSiteTheme = lazy(() => import("./pages/admin-public-site-theme"));
 const AdminIndustryImages = lazy(() => import("./pages/AdminIndustryImages"));
 const AdminSupportTickets = lazy(() => import("./pages/AdminSupportTickets"));
 const AdminPTO = lazy(() => import("./pages/AdminPTO"));
@@ -373,6 +374,11 @@ function Router() {
       <Route path="/admin/public-site-settings">
         <AuthGuard>
           <LazyPage><AdminPublicSiteSettings /></LazyPage>
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/public-site-theme">
+        <AuthGuard>
+          <LazyPage><AdminPublicSiteTheme /></LazyPage>
         </AuthGuard>
       </Route>
       <Route path="/settings/:section?/:item?">
