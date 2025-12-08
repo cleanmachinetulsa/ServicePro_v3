@@ -521,6 +521,21 @@ export const navigationItems: NavigationItem[] = [
     visibility: 'advancedOnly',
   },
   {
+    id: 'usage-costs',
+    label: 'Usage & Costs',
+    icon: DollarSign,
+    path: '/admin/usage-costs',
+    visibility: 'advancedOnly',
+  },
+  {
+    id: 'root-system-usage',
+    label: 'All Tenants Usage',
+    icon: Building2,
+    path: '/root/system-usage',
+    badge: 'Root',
+    visibility: 'advancedOnly',
+  },
+  {
     id: 'billing-overview',
     label: 'Usage Overview',
     icon: TrendingUp,
