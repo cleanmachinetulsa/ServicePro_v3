@@ -33,6 +33,12 @@ export default function SettingsWorkspace({ initialSection, initialItem }: Setti
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   
+  // CM-ROUTE-FIX: Get tenant context to determine if this is root tenant
+  const { data: authContext } = useQuery<{ user?: { tenantId?: string } }>({
+    queryKey: ['/api/auth/context'],
+    staleTime: 5 * 60 * 1000,
+  });
+  
   // CM-ROUTE-FLAPPING-FIX-2: Track previous props to detect actual changes vs re-renders
   const prevPropsRef = useRef({ section: initialSection, item: initialItem });
 
@@ -72,9 +78,16 @@ export default function SettingsWorkspace({ initialSection, initialItem }: Setti
 
   // Sync URL when active section/item changes (only after initialization)
   // CM-ROUTE-FLAPPING-FIX: Only update URL if it actually differs to prevent redirect loops
+  // CM-ROUTE-FIX: Skip URL normalization for root tenant - they use legacy routes
   useEffect(() => {
     // Only update URL if we have valid values and are initialized
     if (!isInitialized || !activeSection || !activeItem) return;
+    
+    // CM-ROUTE-FIX: Root tenant (Clean Machine) uses legacy routes, skip normalization
+    // This prevents /admin/services from being redirected to /settings/operations/services
+    if (isRootTenant(authContext?.user?.tenantId)) {
+      return;
+    }
     
     const currentPath = window.location.pathname;
     const targetPath = `/settings/${activeSection}/${activeItem}`;
@@ -85,7 +98,7 @@ export default function SettingsWorkspace({ initialSection, initialItem }: Setti
       // Use replace to avoid polluting browser history with intermediate states
       setLocation(targetPath, { replace: true });
     }
-  }, [activeSection, activeItem, setLocation, isInitialized]);
+  }, [activeSection, activeItem, setLocation, isInitialized, authContext?.user?.tenantId]);
 
   // Find active item component (only when we have an active item)
   const ActiveComponent = activeItem 
