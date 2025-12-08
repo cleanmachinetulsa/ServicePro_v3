@@ -14,8 +14,8 @@
 
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
-import { tenantConfig, services } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { tenantConfig, services, aiBehaviorRules } from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { getCampaignContextForCustomer, getCustomerIdFromPhone } from '../services/campaignContextService';
 import { 
   SYSTEM_PROMPT_TEMPLATE, 
@@ -24,6 +24,14 @@ import {
   getBookingStatusFromState, 
   BookingStatus 
 } from '@shared/ai/smsAgentConfig';
+
+interface AiBehaviorRule {
+  ruleKey: string;
+  category: string;
+  name: string;
+  content: string;
+  priority: number;
+}
 
 interface ConversationStateInfo {
   customerName?: string;
@@ -56,6 +64,68 @@ interface SmsPromptParams {
   conversationState?: ConversationStateInfo;  // AI Behavior v2: conversation state for context
   controlMode?: 'auto' | 'manual' | 'paused';  // AI Behavior v2: control mode awareness
   recentHumanMessages?: string[];  // AI Behavior v2: messages from human agent during handback
+}
+
+/**
+ * Get tenant-specific AI behavior rules from database
+ * These rules customize the AI personality and behavior for each tenant
+ */
+async function getTenantBehaviorRules(tenantId: string): Promise<AiBehaviorRule[]> {
+  try {
+    const tenantDb = wrapTenantDb(db, tenantId);
+    const rules = await tenantDb
+      .select({
+        ruleKey: aiBehaviorRules.ruleKey,
+        category: aiBehaviorRules.category,
+        name: aiBehaviorRules.name,
+        content: aiBehaviorRules.content,
+        priority: aiBehaviorRules.priority,
+      })
+      .from(aiBehaviorRules)
+      .where(and(
+        eq(aiBehaviorRules.tenantId, tenantId),
+        eq(aiBehaviorRules.enabled, true)
+      ))
+      .orderBy(aiBehaviorRules.priority);
+    
+    console.log(`[SMS PROMPT] Loaded ${rules.length} behavior rules for tenant ${tenantId}`);
+    return rules;
+  } catch (error) {
+    console.error('[SMS PROMPT] Error loading behavior rules:', error);
+    return [];
+  }
+}
+
+/**
+ * Build tenant-specific behavior instructions from rules
+ */
+function buildBehaviorInstructions(rules: AiBehaviorRule[]): string {
+  if (rules.length === 0) {
+    return '';
+  }
+  
+  const sections: Record<string, string[]> = {};
+  
+  for (const rule of rules) {
+    const category = rule.category || 'general';
+    if (!sections[category]) {
+      sections[category] = [];
+    }
+    sections[category].push(rule.content);
+  }
+  
+  let instructions = '\n\n=== TENANT-SPECIFIC BEHAVIOR RULES ===\n';
+  
+  for (const [category, contents] of Object.entries(sections)) {
+    instructions += `\n[${category.toUpperCase()}]\n`;
+    for (const content of contents) {
+      instructions += `${content}\n`;
+    }
+  }
+  
+  instructions += '\n=== END BEHAVIOR RULES ===';
+  
+  return instructions;
 }
 
 /**
@@ -227,6 +297,10 @@ export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<str
   // Get services list
   const servicesList = await getTenantServices(tenantId);
   
+  // CM-TENANT-AI-FIX: Load tenant-specific AI behavior rules from database
+  const behaviorRules = await getTenantBehaviorRules(tenantId);
+  const behaviorInstructions = buildBehaviorInstructions(behaviorRules);
+  
   // Build booking link
   const bookingLink = buildBookingLink(subdomain, tenantId);
 
@@ -257,6 +331,11 @@ export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<str
   
   // Add services list
   systemPrompt += `\n\n${servicesList}`;
+  
+  // CM-TENANT-AI-FIX: Inject tenant-specific behavior rules into system prompt
+  if (behaviorInstructions) {
+    systemPrompt += behaviorInstructions;
+  }
   
   // Add booking link
   systemPrompt += `\n\nBooking link: ${bookingLink}`;
