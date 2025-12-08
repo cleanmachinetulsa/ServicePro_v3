@@ -70,6 +70,12 @@ const __dirname = dirname(__filename);
 
 const app = express();
 
+// CLOUD RUN HEALTH CHECK: Must respond immediately before any middleware
+// This allows Cloud Run to verify the service is alive during initialization
+app.get('/healthz', (_req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // CRITICAL: Trust proxy headers (required for Replit deployment)
 // Replit uses multiple proxy layers (load balancer + Cloudflare)
 // We must trust ALL proxies in the chain for secure cookies to work
@@ -436,40 +442,44 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // Initialize push notifications table
-  const { initializePushNotificationsTable } = await import('./initPushNotifications');
-  await initializePushNotificationsTable();
+// DEFERRED INITIALIZATION: Heavy tasks that run AFTER server is listening
+// This prevents Cloud Run timeout during deployment
+async function startDeferredInitialization() {
+  console.log('[DEFERRED INIT] Starting background initialization tasks...');
   
-  // Seed phone lines and business hours (idempotent - only runs once)
-  const { seedPhoneLines } = await import('./seedPhoneLines');
-  await seedPhoneLines();
-  
-  // Backfill legacy phone lines with tenant_id (idempotent - safe to run multiple times)
-  const { backfillPhoneLines } = await import('./backfillPhoneLines');
-  await backfillPhoneLines();
-  
-  // Phase 2.2: Seed tenant phone configuration for multi-tenant telephony
-  const { seedTenantPhone } = await import('./seed/seedTenantPhone');
-  await seedTenantPhone(db);
-  
-  // Phase 3: Seed IVR menus for all tenants (idempotent - only seeds if missing)
-  const { seedIvrMenus } = await import('./seed/seedIvrMenus');
-  await seedIvrMenus(db);
-  
-  // Initialize SMS templates (idempotent - safe to run multiple times)
-  const { initializeSmsTemplates } = await import('./initSmsTemplates');
-  await initializeSmsTemplates();
-  
-  // Initialize referral program configuration (singleton - only runs once)
-  const { initializeReferralConfig } = await import('./referralConfigService');
-  const tenantDbForStartup = wrapTenantDb(db, 'root');
-  await initializeReferralConfig(tenantDbForStartup);
-  
-  // Migrate SMS fallback settings - auto-disable if enabled without phone (safety migration)
-  async function migrateSmsFallbackSettings() {
+  try {
+    // Initialize push notifications table
+    const { initializePushNotificationsTable } = await import('./initPushNotifications');
+    await initializePushNotificationsTable();
+    
+    // Seed phone lines and business hours (idempotent - only runs once)
+    const { seedPhoneLines } = await import('./seedPhoneLines');
+    await seedPhoneLines();
+    
+    // Backfill legacy phone lines with tenant_id (idempotent - safe to run multiple times)
+    const { backfillPhoneLines } = await import('./backfillPhoneLines');
+    await backfillPhoneLines();
+    
+    // Phase 2.2: Seed tenant phone configuration for multi-tenant telephony
+    const { seedTenantPhone } = await import('./seed/seedTenantPhone');
+    await seedTenantPhone(db);
+    
+    // Phase 3: Seed IVR menus for all tenants (idempotent - only seeds if missing)
+    const { seedIvrMenus } = await import('./seed/seedIvrMenus');
+    await seedIvrMenus(db);
+    
+    // Initialize SMS templates (idempotent - safe to run multiple times)
+    // This is the slowest task - processes 15+ tenants
+    const { initializeSmsTemplates } = await import('./initSmsTemplates');
+    await initializeSmsTemplates();
+    
+    // Initialize referral program configuration (singleton - only runs once)
+    const { initializeReferralConfig } = await import('./referralConfigService');
+    const tenantDbForStartup = wrapTenantDb(db, 'root');
+    await initializeReferralConfig(tenantDbForStartup);
+    
+    // Migrate SMS fallback settings - auto-disable if enabled without phone (safety migration)
     try {
-      // Find settings with enabled=true but phone=null (broken state)
       const [settings] = await db.select().from(businessSettings).limit(1);
       
       if (settings && settings.smsFallbackEnabled && (!settings.smsFallbackPhone || settings.smsFallbackPhone.trim() === '')) {
@@ -485,13 +495,17 @@ app.use((req, res, next) => {
       }
     } catch (error) {
       console.error('[STARTUP MIGRATION] Error checking SMS fallback settings:', error);
-      throw error;
     }
+    
+    console.log('[DEFERRED INIT] Background initialization complete');
+  } catch (error) {
+    console.error('[DEFERRED INIT] Error during background initialization:', error);
+    // Don't crash the server - initialization failures are logged but non-fatal
   }
-  
-  // Run SMS fallback migration on startup
-  await migrateSmsFallbackSettings();
-  
+}
+
+// STARTUP: Register routes and start server IMMEDIATELY, then run deferred tasks
+(async () => {
   const server = await registerRoutes(app);
   
   // Register contacts routes
