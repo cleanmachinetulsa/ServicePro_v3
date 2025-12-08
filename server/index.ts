@@ -497,6 +497,100 @@ async function startDeferredInitialization() {
       console.error('[STARTUP MIGRATION] Error checking SMS fallback settings:', error);
     }
     
+    // Run startup health checks for external services
+    await runStartupHealthChecks();
+    
+    // Log phone configuration status
+    const { logPhoneConfigStatus } = await import('./config/phoneConfig');
+    logPhoneConfigStatus();
+    
+    // Log SMS Agent model configuration
+    const { SMS_AGENT_MODEL } = await import('./openai');
+    console.log(`[AI] SMS agent model: ${SMS_AGENT_MODEL}`);
+    
+    // Log Twilio Test routing status
+    const { TWILIO_TEST_SMS_NUMBER, isTwilioConfigured } = await import('./twilioClient');
+    if (isTwilioConfigured()) {
+      console.log(`[TWILIO TEST] Test SMS/Voice routing enabled - Number: ${TWILIO_TEST_SMS_NUMBER || 'not set'}`);
+      console.log('[TWILIO TEST] Webhook URLs: /api/twilio/sms/inbound, /api/twilio/voice/inbound');
+    } else {
+      console.log('[TWILIO TEST] TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not configured - test routes disabled');
+    }
+
+    // Start timeout monitoring for manual mode conversations
+    const { startTimeoutMonitoring } = await import('./timeoutMonitorService');
+    startTimeoutMonitoring();
+    console.log('[SERVER] Timeout monitoring started');
+    
+    // Start damage assessment auto-approval monitoring
+    const { startDamageAssessmentMonitoring } = await import('./damageAssessmentMonitor');
+    startDamageAssessmentMonitoring();
+    console.log('[SERVER] Damage assessment monitoring started');
+    
+    // Start recurring services scheduler and deposit reminders
+    const { initializeRecurringServicesScheduler, initializeRecurringServiceReminders, initializeDepositReminders, initializeEscalationExpiry } = await import('./recurringServicesScheduler');
+    initializeRecurringServicesScheduler();
+    initializeRecurringServiceReminders();
+    initializeDepositReminders();
+    initializeEscalationExpiry();
+    console.log('[SERVER] Recurring services scheduler, reminders, deposit reminders, and escalation expiry started');
+    
+    // Initialize proactive reminder system (Phase 4B)
+    const { seedDefaultReminderRules, initializeProactiveReminderScheduler } = await import('./reminderService');
+    await seedDefaultReminderRules(tenantDbForStartup);
+    initializeProactiveReminderScheduler();
+    console.log('[SERVER] Proactive reminder system initialized - scheduler running every 6 hours');
+    
+    // Start email campaign scheduler (hourly batch processor)
+    const { initializeCampaignScheduler } = await import('./campaignScheduler');
+    initializeCampaignScheduler();
+    console.log('[SERVER] Email campaign scheduler started - processes campaigns hourly');
+    
+    // Start usage rollup scheduler (daily at midnight UTC)
+    const { initializeUsageRollupScheduler } = await import('./services/usageRollupService');
+    initializeUsageRollupScheduler();
+    console.log('[SERVER] Usage rollup scheduler started - aggregates daily usage at midnight UTC');
+
+    // Phase 2.3: Start monthly invoice generator (1st of each month at 6:00 AM UTC)
+    const { initializeInvoiceGeneratorScheduler } = await import('./services/invoiceGeneratorService');
+    initializeInvoiceGeneratorScheduler();
+    console.log('[SERVER] Invoice generator scheduler started - runs on 1st of each month');
+
+    // Phase 2.3: Start nightly dunning process (2:00 AM UTC daily)
+    const { initializeNightlyDunningScheduler } = await import('./services/nightlyDunningService');
+    initializeNightlyDunningScheduler();
+    console.log('[SERVER] Nightly dunning scheduler started - runs at 2:00 AM UTC daily');
+
+    // SP-9: Start trial telephony sandbox daily reset (midnight UTC)
+    const { initializeTrialTelephonyScheduler } = await import('./services/trialTelephonyService');
+    initializeTrialTelephonyScheduler();
+    console.log('[SERVER] Trial telephony scheduler started - resets daily message counts at midnight UTC');
+    
+    // Start port monitoring (auto-disables when port completes)
+    const { initializePortMonitoring } = await import('./portMonitoring');
+    initializePortMonitoring();
+    console.log('[SERVER] Port monitoring started - will notify when 918-856-5304 is fully ported');
+    
+    // Start unanswered message monitoring (checks every 5 minutes)
+    const { unansweredMonitor } = await import('./unansweredMessageMonitor');
+    setInterval(() => {
+      unansweredMonitor.checkAndAlert().catch(err => 
+        console.error('[SERVER] Unanswered monitor error:', err)
+      );
+    }, 5 * 60 * 1000); // 5 minutes
+    // Run initial check after 1 minute
+    setTimeout(() => {
+      unansweredMonitor.checkAndAlert().catch(err => 
+        console.error('[SERVER] Unanswered monitor initial check error:', err)
+      );
+    }, 60 * 1000);
+    console.log('[SERVER] Unanswered message monitoring started - checks every 5 minutes for web chat messages without AI responses');
+
+    // Start system health monitoring (checks every 5 minutes)
+    const { startHealthMonitoring } = await import('./services/systemHealthMonitor');
+    startHealthMonitoring();
+    console.log('[SERVER] System health monitoring started - checks every 5 minutes, sends URGENT alerts for critical issues');
+
     console.log('[DEFERRED INIT] Background initialization complete');
   } catch (error) {
     console.error('[DEFERRED INIT] Error during background initialization:', error);
@@ -547,100 +641,6 @@ async function startDeferredInitialization() {
 
   // Register Twilio TEST Voice webhook (handles IVR for test number)
   app.use('/api/twilio/voice', twilioTestVoiceRouter);
-
-  // Run startup health checks for external services
-  await runStartupHealthChecks();
-  
-  // Log phone configuration status
-  const { logPhoneConfigStatus } = await import('./config/phoneConfig');
-  logPhoneConfigStatus();
-  
-  // Log SMS Agent model configuration
-  const { SMS_AGENT_MODEL } = await import('./openai');
-  console.log(`[AI] SMS agent model: ${SMS_AGENT_MODEL}`);
-  
-  // Log Twilio Test routing status
-  const { TWILIO_TEST_SMS_NUMBER, isTwilioConfigured } = await import('./twilioClient');
-  if (isTwilioConfigured()) {
-    console.log(`[TWILIO TEST] Test SMS/Voice routing enabled - Number: ${TWILIO_TEST_SMS_NUMBER || 'not set'}`);
-    console.log('[TWILIO TEST] Webhook URLs: /api/twilio/sms/inbound, /api/twilio/voice/inbound');
-  } else {
-    console.log('[TWILIO TEST] TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not configured - test routes disabled');
-  }
-
-  // Start timeout monitoring for manual mode conversations
-  const { startTimeoutMonitoring } = await import('./timeoutMonitorService');
-  startTimeoutMonitoring();
-  console.log('[SERVER] Timeout monitoring started');
-  
-  // Start damage assessment auto-approval monitoring
-  const { startDamageAssessmentMonitoring } = await import('./damageAssessmentMonitor');
-  startDamageAssessmentMonitoring();
-  console.log('[SERVER] Damage assessment monitoring started');
-  
-  // Start recurring services scheduler and deposit reminders
-  const { initializeRecurringServicesScheduler, initializeRecurringServiceReminders, initializeDepositReminders, initializeEscalationExpiry } = await import('./recurringServicesScheduler');
-  initializeRecurringServicesScheduler();
-  initializeRecurringServiceReminders();
-  initializeDepositReminders();
-  initializeEscalationExpiry();
-  console.log('[SERVER] Recurring services scheduler, reminders, deposit reminders, and escalation expiry started');
-  
-  // Initialize proactive reminder system (Phase 4B)
-  const { seedDefaultReminderRules, initializeProactiveReminderScheduler } = await import('./reminderService');
-  await seedDefaultReminderRules(tenantDbForStartup);
-  initializeProactiveReminderScheduler();
-  console.log('[SERVER] Proactive reminder system initialized - scheduler running every 6 hours');
-  
-  // Start email campaign scheduler (hourly batch processor)
-  const { initializeCampaignScheduler } = await import('./campaignScheduler');
-  initializeCampaignScheduler();
-  console.log('[SERVER] Email campaign scheduler started - processes campaigns hourly');
-  
-  // Start usage rollup scheduler (daily at midnight UTC)
-  const { initializeUsageRollupScheduler } = await import('./services/usageRollupService');
-  initializeUsageRollupScheduler();
-  console.log('[SERVER] Usage rollup scheduler started - aggregates daily usage at midnight UTC');
-
-  // Phase 2.3: Start monthly invoice generator (1st of each month at 6:00 AM UTC)
-  const { initializeInvoiceGeneratorScheduler } = await import('./services/invoiceGeneratorService');
-  initializeInvoiceGeneratorScheduler();
-  console.log('[SERVER] Invoice generator scheduler started - runs on 1st of each month');
-
-  // Phase 2.3: Start nightly dunning process (2:00 AM UTC daily)
-  const { initializeNightlyDunningScheduler } = await import('./services/nightlyDunningService');
-  initializeNightlyDunningScheduler();
-  console.log('[SERVER] Nightly dunning scheduler started - runs at 2:00 AM UTC daily');
-
-  // SP-9: Start trial telephony sandbox daily reset (midnight UTC)
-  const { initializeTrialTelephonyScheduler } = await import('./services/trialTelephonyService');
-  initializeTrialTelephonyScheduler();
-  console.log('[SERVER] Trial telephony scheduler started - resets daily message counts at midnight UTC');
-  
-  // Start port monitoring (auto-disables when port completes)
-  const { initializePortMonitoring } = await import('./portMonitoring');
-  initializePortMonitoring();
-  console.log('[SERVER] Port monitoring started - will notify when 918-856-5304 is fully ported');
-  
-  // Start unanswered message monitoring (checks every 5 minutes)
-  const { unansweredMonitor } = await import('./unansweredMessageMonitor');
-  setInterval(() => {
-    unansweredMonitor.checkAndAlert().catch(err => 
-      console.error('[SERVER] Unanswered monitor error:', err)
-    );
-  }, 5 * 60 * 1000); // 5 minutes
-  // Run initial check after 1 minute
-  setTimeout(() => {
-    unansweredMonitor.checkAndAlert().catch(err => 
-      console.error('[SERVER] Unanswered monitor initial check error:', err)
-    );
-  }, 60 * 1000);
-  console.log('[SERVER] Unanswered message monitoring started - checks every 5 minutes for web chat messages without AI responses');
-
-  // Start system health monitoring (checks every 5 minutes)
-  const { startHealthMonitoring } = await import('./services/systemHealthMonitor');
-  startHealthMonitoring();
-  console.log('[SERVER] System health monitoring started - checks every 5 minutes, sends URGENT alerts for critical issues');
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
@@ -729,6 +729,13 @@ async function startDeferredInitialization() {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    
+    // CLOUD RUN FIX: Run deferred initialization AFTER server is listening
+    // This ensures the server is ready to accept health checks immediately
+    // while heavy initialization runs in the background
+    startDeferredInitialization().catch(err => {
+      console.error('[SERVER] Deferred initialization failed:', err);
+    });
   });
 })();
 // PHASE 11 – SMS AI Agent Parity
