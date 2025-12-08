@@ -46,6 +46,10 @@ export interface BillingOverview {
   planLimits: PlanLimits;
   currentPeriod: BillingPeriod;
   dailyUsage: DailyUsage[];
+  // SP-27: Enhanced dunning tracking
+  failedPaymentAttempts: number;
+  delinquentSince: string | null;
+  lastInvoiceStatus: string | null;
 }
 
 const tierLabels: Record<PlanTier, string> = {
@@ -198,5 +202,9 @@ export async function getBillingOverview(tenantId: string): Promise<BillingOverv
       label: periodLabel,
     },
     dailyUsage,
+    // SP-27: Enhanced dunning tracking
+    failedPaymentAttempts: tenant.failedPaymentAttempts || 0,
+    delinquentSince: tenant.delinquentSince?.toISOString() || null,
+    lastInvoiceStatus: tenant.lastInvoiceStatus || null,
   };
 }
