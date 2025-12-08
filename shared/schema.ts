@@ -253,6 +253,9 @@ export const tenants = pgTable("tenants", {
   lastInvoiceDueAt: timestamp("last_invoice_due_at", { withTimezone: true }), // Due date of last invoice
   // Phase 2.3: Dunning automation - tracks days invoice is overdue
   overdueDays: integer("overdue_days").default(0).notNull(), // Days since invoice became overdue, used for dunning
+  // SP-27: Enhanced dunning tracking
+  failedPaymentAttempts: integer("failed_payment_attempts").default(0).notNull(), // Number of failed payment attempts
+  delinquentSince: timestamp("delinquent_since", { withTimezone: true }), // When first payment failed
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -3598,6 +3601,23 @@ export const insertBillingEventSchema = createInsertSchema(billingEvents).omit({
 
 export type BillingEvent = typeof billingEvents.$inferSelect;
 export type InsertBillingEvent = z.infer<typeof insertBillingEventSchema>;
+
+// SP-27: Stripe Webhook Events table for persistent idempotency
+export const stripeWebhookEvents = pgTable('stripe_webhook_events', {
+  id: serial('id').primaryKey(),
+  eventId: varchar('event_id', { length: 100 }).notNull().unique(), // Stripe event ID (evt_xxx)
+  eventType: varchar('event_type', { length: 100 }).notNull(), // e.g., 'invoice.payment_failed'
+  processedAt: timestamp('processed_at', { withTimezone: true }).defaultNow().notNull(),
+  success: boolean('success').default(true).notNull(),
+  errorMessage: text('error_message'),
+  metadata: jsonb('metadata').$type<Record<string, any>>(),
+}, (table) => ({
+  eventIdIdx: uniqueIndex('stripe_webhook_events_event_id_idx').on(table.eventId),
+  eventTypeIdx: index('stripe_webhook_events_event_type_idx').on(table.eventType),
+  processedAtIdx: index('stripe_webhook_events_processed_at_idx').on(table.processedAt),
+}));
+
+export type StripeWebhookEvent = typeof stripeWebhookEvents.$inferSelect;
 
 // ============================================================
 // SP-4: ADD-ON MARKETPLACE TABLES

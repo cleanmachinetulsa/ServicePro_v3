@@ -56,6 +56,7 @@ import usageTransparencyV2Router from "./routes.usageTransparencyV2";
 import addonRouter from "./routes/addonRoutes";
 import usageMeteringRouter from "./routes/usageMeteringRoutes";
 import parserRoutes from "./routes/parserRoutes";
+import billingHealthRouter from "./routes/billingHealthRoutes";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -369,6 +370,7 @@ app.use('/api/admin', publicSiteAdminRouter);
 app.use('/api/admin', publicSiteThemeRouter);
 // Register billing routes (Phase 7C - Stripe Billing & Subscriptions, requires tenant auth)
 app.use(billingRouter);
+app.use(billingHealthRouter);
 // Register campaign management routes (requires auth)
 app.use('/api/campaigns', campaignsRouter);
 // Register Welcome Back Campaign routes (tenant admin, requires 'campaigns' feature)

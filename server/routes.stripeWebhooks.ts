@@ -11,7 +11,7 @@
 
 import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
-import { appointments, paymentLinks, auditLog, invoices, tenants } from '@shared/schema';
+import { appointments, paymentLinks, auditLog, invoices, tenants, stripeWebhookEvents } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { markDepositPaid } from './depositManager';
 import { getTierForPriceId } from './services/stripeService';
@@ -32,6 +32,10 @@ import {
   logSubscriptionChange,
   logPlanChange,
 } from './services/billingEventService';
+import {
+  incrementFailedAttempts,
+  resetFailedAttempts,
+} from './services/billingService';
 
 const router = Router();
 
@@ -46,8 +50,61 @@ if (!STRIPE_ENABLED) {
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
-// Store processed event IDs to prevent duplicate processing
-const processedEvents = new Set<string>();
+// In-memory cache for quick duplicate detection (DB is source of truth)
+const processedEventsCache = new Set<string>();
+
+/**
+ * SP-27: Check if webhook event has already been processed (DB-based idempotency)
+ */
+async function isEventProcessed(eventId: string): Promise<boolean> {
+  if (processedEventsCache.has(eventId)) {
+    return true;
+  }
+
+  const [existing] = await db
+    .select({ id: stripeWebhookEvents.id })
+    .from(stripeWebhookEvents)
+    .where(eq(stripeWebhookEvents.eventId, eventId))
+    .limit(1);
+
+  if (existing) {
+    processedEventsCache.add(eventId);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * SP-27: Record webhook event as processed
+ */
+async function markEventProcessed(
+  eventId: string,
+  eventType: string,
+  success: boolean,
+  errorMessage?: string
+): Promise<void> {
+  try {
+    await db.insert(stripeWebhookEvents).values({
+      eventId,
+      eventType,
+      success,
+      errorMessage: errorMessage || null,
+    });
+    processedEventsCache.add(eventId);
+
+    if (processedEventsCache.size > 1000) {
+      const oldEntries = Array.from(processedEventsCache).slice(0, processedEventsCache.size - 1000);
+      oldEntries.forEach(id => processedEventsCache.delete(id));
+    }
+  } catch (error: any) {
+    if (error.code === '23505') {
+      console.log(`[STRIPE WEBHOOK] Event ${eventId} already recorded (concurrent insert)`);
+    } else {
+      console.error(`[STRIPE WEBHOOK] Failed to record event ${eventId}:`, error.message);
+    }
+  }
+}
 
 /**
  * Resolve tenant context from webhook metadata
@@ -117,19 +174,11 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Check for duplicate events (idempotency)
-  if (processedEvents.has(event.id)) {
+  // SP-27: DB-based idempotency check
+  const alreadyProcessed = await isEventProcessed(event.id);
+  if (alreadyProcessed) {
     console.log(`[STRIPE WEBHOOK] Duplicate event ${event.id}, skipping`);
     return res.status(200).json({ received: true, skipped: 'duplicate' });
-  }
-
-  // Mark event as processed
-  processedEvents.add(event.id);
-
-  // Clean up old processed events (keep last 1000)
-  if (processedEvents.size > 1000) {
-    const oldEvents = Array.from(processedEvents).slice(0, processedEvents.size - 1000);
-    oldEvents.forEach(id => processedEvents.delete(id));
   }
 
   console.log(`[STRIPE WEBHOOK] Processing event: ${event.type} (${event.id})`);
@@ -189,9 +238,16 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
       });
     }
 
+    // SP-27: Mark event as processed in DB
+    await markEventProcessed(event.id, event.type, true);
+
     res.status(200).json({ received: true });
   } catch (error: any) {
     console.error('[STRIPE WEBHOOK] Error processing event:', error);
+    
+    // SP-27: Still record the event even on error to prevent infinite retries
+    await markEventProcessed(event.id, event.type, false, error.message);
+    
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
