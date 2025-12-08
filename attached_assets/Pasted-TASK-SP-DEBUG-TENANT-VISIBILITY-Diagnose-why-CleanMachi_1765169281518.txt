@@ -1,0 +1,203 @@
+TASK: SP-DEBUG-TENANT-VISIBILITY – Diagnose why CleanMachine config pages look “empty” even though DB has data
+
+GOAL
+- CONFIRM, with code and an in-app debug panel, that:
+  1) The CleanMachine tenant is resolved correctly (tenantId/tenantSlug).
+  2) Key config pages (Rewards, Port Recovery campaign, SMS/Email campaigns) are:
+     - Calling tenant-aware routes
+     - Using wrapTenantDb
+     - Returning actual data
+  3) Any remaining “blank UI” is due to mismatched filtering or wrong endpoints, and then FIX that wiring.
+
+HARD CONSTRAINTS
+- ❌ DO NOT delete or truncate any tables.
+- ❌ DO NOT modify wrapTenantDb or any DB isolation utilities.
+- ❌ DO NOT change schemas or run migrations.
+- ✅ You MAY:
+  - Add read-only debug endpoints.
+  - Fix routes to pass tenantDb correctly.
+  - Fix front-end components to call the correct tenant-aware routes.
+  - Add logs and a one-off debug page.
+
+--------------------------------
+STEP 0 – REPRODUCE AS CLEANMACHINE
+--------------------------------
+
+1) Assume I’m logging in as the normal CleanMachine owner user (NOT impersonating another tenant).
+
+2) Confirm:
+   - I’m in Advanced mode (UI mode).
+   - I’m on the CleanMachine tenant (check whatever tenantSlug/tenantId logic is used).
+
+If needed, use the same tenant detection you already use in wrapTenantDb.
+
+--------------------------------
+STEP 1 – ADD A DEBUG API ENDPOINT
+--------------------------------
+
+Create a new debug route file:
+
+- server/routes.debugTenant.ts (or similar)
+
+Wire it into the main routes index under `/api/debug/tenant` with:
+
+GET /api/debug/tenant/snapshot
+
+Implementation:
+
+- Use your existing auth + tenant resolution.
+- Use wrapTenantDb to get tenantDb for the CURRENT tenant.
+- Return JSON like:
+
+{
+  "tenantContext": {
+    "tenantId": "...",
+    "tenantSlug": "...",
+    "plan": "...",
+    "isRootTenant": boolean
+  },
+  "coreCounts": {
+    "customers": <count>,
+    "conversations": <count>,
+    "messages": <count>,
+    "appointments": <count>
+  },
+  "engagementCounts": {
+    "loyalty_points": <count>,
+    "reward_services": <count>,
+    "redeemed_rewards": <count>,
+    "sms_campaigns": <count>,
+    "email_campaigns": <count>,
+    "sms_templates": <count>,
+    "email_templates": <count>,
+    "upsell_offers": <count>
+  }
+}
+
+All queries MUST be via tenantDb (not global DB).
+
+--------------------------------
+STEP 2 – ADD A SMALL DEBUG PAGE IN THE DASHBOARD
+--------------------------------
+
+Create a simple internal-only debug page:
+
+- client/src/pages/admin/TenantDebugPage.tsx
+- Route: /admin/debug/tenant (do NOT expose in sidebar; we’ll just navigate directly)
+
+Behavior:
+
+- On mount, call GET /api/debug/tenant/snapshot.
+- Show:
+  - Tenant ID, slug, plan.
+  - Counts for the tables above.
+- Show any error if the route fails (auth, DB, etc).
+
+This gives us a “truth lens” for what the app thinks the current tenant is.
+
+--------------------------------
+STEP 3 – TRACE ONE BROKEN PAGE END-TO-END (REWARDS CONFIG)
+--------------------------------
+
+Pick the Rewards / Loyalty config page that currently looks empty.
+
+1) Locate the page/component:
+   - Likely something like client/src/pages/admin/RewardsConfigPage.tsx,
+     or whatever handles the loyalty settings.
+
+2) Find the data hook:
+   - Some useQuery call: useQuery(['loyalty', ...], ...).
+   - Note exactly which endpoint it calls, e.g.:
+     - GET /api/loyalty/config
+     - GET /api/loyalty/rewards
+     - etc.
+
+3) Follow that to the server:
+   - server/routes.loyalty.ts
+   - Then into the relevant service functions.
+
+VERIFY:
+- The route handler uses wrapTenantDb to obtain tenantDb.
+- The service functions called from this route also accept tenantDb and do NOT fall back to a global DB.
+
+If you find ANY loyalty/Rewards route that **still** doesn’t use tenantDb, fix it:
+
+- Pass tenantDb all the way down.
+- Ensure queries are against tenantDb.
+
+After that, add a temporary log in the route:
+
+console.log("DEBUG REWARDS ROUTE", {
+  tenantId,
+  counts: { ... }
+});
+
+Return the config and/or lists in the body so the front-end can use them.
+
+--------------------------------
+STEP 4 – TRACE PORT RECOVERY + CAMPAIGNS
+--------------------------------
+
+Repeat a lighter version of Step 3 for:
+
+1) Port Recovery Campaign page:
+   - Likely at /admin/port-recovery
+   - Find the React page and its useQuery.
+   - Locate the route: server/routes.campaigns.ts (or similar).
+   - Confirm the “port recovery campaign settings” endpoint is using tenantDb and returning data.
+
+2) SMS/Email Campaign Management:
+   - The architect already edited server/routes.campaigns.ts and server/smsCampaignService.ts,
+     but did NOT verify front-end integration.
+   - Find the front-end page(s) for:
+     - /settings/campaigns or whatever you use.
+   - Confirm they call the updated tenant-aware endpoints and not:
+     - Old endpoints
+     - Global debug endpoints
+     - Hard-coded test routes.
+
+Fix any mismatches where the frontend is still calling an older path.
+
+--------------------------------
+STEP 5 – VERIFY WITH REAL DATA (CLEANMACHINE)
+--------------------------------
+
+From the CleanMachine owner session:
+
+1) Open `/admin/debug/tenant`:
+   - Confirm tenantContext has the expected CleanMachine tenant.
+   - Confirm counts match the earlier SQL snapshot (551 customers, 4 appointments, 4 loyalty_points, etc.).
+
+2) Open the Rewards / Loyalty config page:
+   - Confirm:
+     - It calls the updated loyalty route.
+     - The route logs show the same tenantId as in the debug snapshot.
+     - The response contains the expected rewards/loyalty config and services.
+
+3) Open Port Recovery config and campaigns pages:
+   - Confirm they hit tenant-aware routes and return non-empty data.
+
+If the API returns data but the UI still shows “empty”:
+
+- Inspect the React code:
+  - Are you filtering on `status === 'active'` or some flag that isn’t set for older records?
+  - Are you expecting a newer shape (e.g., `config` field) that older rows don’t have?
+- In that case, adjust the frontend’s mapping so existing records are considered valid enough to display (don’t hide them just because a new optional field is null).
+
+--------------------------------
+STEP 6 – CLEAN UP TEMP LOGS (AFTER CONFIRMATION)
+--------------------------------
+
+Once we confirm:
+
+- Tenant debug snapshot works.
+- Loyalty / Rewards shows real data.
+- Port Recovery & Campaigns show real data.
+
+You may:
+- Remove noisy console.log debug lines.
+- Keep the /api/debug/tenant/snapshot + /admin/debug/tenant page (they’re very handy), or gate them:
+  - Owner only
+  - Advanced-only
+
+END TASK

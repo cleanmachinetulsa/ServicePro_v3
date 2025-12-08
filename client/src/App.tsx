@@ -104,6 +104,7 @@ const AdminBilling = lazy(() => import("./pages/admin-billing"));
 const SystemBillingAdmin = lazy(() => import("./pages/SystemBillingAdmin"));
 const SystemUsageAdmin = lazy(() => import("./pages/SystemUsageAdmin"));
 const AdminSystemUsagePage = lazy(() => import("./pages/admin/AdminSystemUsagePage"));
+const TenantDebugPage = lazy(() => import("./pages/admin/TenantDebugPage"));
 const AdminBillingOverview = lazy(() => import("./pages/AdminBillingOverview"));
 const HomepageEditor = lazy(() => import("./pages/HomepageEditor"));
 const ThemeGallery = lazy(() => import("./pages/ThemeGallery"));
@@ -555,6 +556,12 @@ function Router() {
       <Route path="/admin/parser-history">
         <AuthGuard>
           <LazyDashboard><AdminParserHistory /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      {/* Debug: Tenant Visibility Snapshot */}
+      <Route path="/admin/debug/tenant">
+        <AuthGuard>
+          <LazyPage><TenantDebugPage /></LazyPage>
         </AuthGuard>
       </Route>
       <Route path="/admin/parser-history/:id">

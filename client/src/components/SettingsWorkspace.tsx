@@ -8,7 +8,7 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ChevronLeft, ChevronRight, Menu, Settings as SettingsIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Menu, Settings as SettingsIcon, Loader2 } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -24,35 +24,49 @@ interface SettingsWorkspaceProps {
 
 export default function SettingsWorkspace({ initialSection, initialItem }: SettingsWorkspaceProps = {}) {
   const [, setLocation] = useLocation();
-  const [activeSection, setActiveSection] = useState(initialSection || 'operations');
-  const [activeItem, setActiveItem] = useState(initialItem || 'services');
+  // Initialize from props - use undefined to detect "not yet loaded" state
+  const [activeSection, setActiveSection] = useState<string | undefined>(initialSection);
+  const [activeItem, setActiveItem] = useState<string | undefined>(initialItem);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Sync initial props to state when they change
+  // SP-21: Sync initial props to state when they change (from URL parsing)
   useEffect(() => {
-    if (initialSection && initialSection !== activeSection) {
+    // Wait for parent to provide initialSection/initialItem from URL
+    if (initialSection && initialItem) {
       setActiveSection(initialSection);
-    }
-    if (initialItem && initialItem !== activeItem) {
       setActiveItem(initialItem);
+      setIsInitialized(true);
+    } else if (!isInitialized && !initialSection && !initialItem) {
+      // If parent hasn't set values yet, use defaults only after a tick
+      const timer = setTimeout(() => {
+        if (!activeSection && !activeItem) {
+          setActiveSection('operations');
+          setActiveItem('services');
+          setIsInitialized(true);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [initialSection, initialItem]);
+  }, [initialSection, initialItem, isInitialized, activeSection, activeItem]);
 
-  // Sync URL when active section/item changes
+  // Sync URL when active section/item changes (only after initialization)
   useEffect(() => {
-    // Only update URL if we're on a settings page (check current location)
+    // Only update URL if we have valid values and are initialized
+    if (!isInitialized || !activeSection || !activeItem) return;
+    
     const currentPath = window.location.pathname;
     if (currentPath.startsWith('/settings')) {
       // Update URL to reflect current section and item
       setLocation(`/settings/${activeSection}/${activeItem}`);
     }
-  }, [activeSection, activeItem, setLocation]);
+  }, [activeSection, activeItem, setLocation, isInitialized]);
 
-  // Find active item component
-  const ActiveComponent = settingsSections
-    .flatMap(s => s.items)
-    .find(item => item.id === activeItem)?.component || null;
+  // Find active item component (only when we have an active item)
+  const ActiveComponent = activeItem 
+    ? settingsSections.flatMap(s => s.items).find(item => item.id === activeItem)?.component || null
+    : null;
 
   // Sidebar navigation component
   const SidebarNavigation = ({ isMobile = false, collapsed = false }: { isMobile?: boolean; collapsed?: boolean }) => (
