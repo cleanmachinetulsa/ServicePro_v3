@@ -186,7 +186,7 @@ router.delete('/email/:id', async (req, res) => {
 // Get all SMS campaigns
 router.get('/sms', async (req, res) => {
   try {
-    const campaigns = await getAllSMSCampaigns();
+    const campaigns = await getAllSMSCampaigns((req as any).tenantDb!);
     res.json({ success: true, campaigns });
   } catch (error: any) {
     console.error('Error fetching SMS campaigns:', error);
@@ -198,7 +198,7 @@ router.get('/sms', async (req, res) => {
 router.get('/sms/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const campaign = await getSMSCampaignById(id);
+    const campaign = await getSMSCampaignById((req as any).tenantDb!, id);
     res.json({ success: true, campaign });
   } catch (error: any) {
     console.error('Error fetching SMS campaign:', error);
@@ -211,7 +211,7 @@ router.post('/sms', async (req, res) => {
   try {
     const data = smsCampaignSchema.parse(req.body);
     
-    const campaign = await createSMSCampaign({
+    const campaign = await createSMSCampaign((req as any).tenantDb!, {
       name: data.name,
       message: data.message,
       targetAudience: data.targetAudience,
@@ -234,7 +234,7 @@ router.post('/sms', async (req, res) => {
 router.post('/sms/:id/send', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const campaign = await sendSMSCampaignNow(id);
+    const campaign = await sendSMSCampaignNow((req as any).tenantDb!, id);
     res.json({ success: true, campaign, message: 'Campaign is being processed' });
   } catch (error: any) {
     console.error('Error sending SMS campaign:', error);
@@ -246,7 +246,7 @@ router.post('/sms/:id/send', async (req, res) => {
 router.delete('/sms/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const campaign = await cancelSMSCampaign(id);
+    const campaign = await cancelSMSCampaign((req as any).tenantDb!, id);
     res.json({ success: true, campaign });
   } catch (error: any) {
     console.error('Error cancelling SMS campaign:', error);

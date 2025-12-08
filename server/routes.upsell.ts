@@ -23,7 +23,8 @@ export function registerUpsellRoutes(app: Express) {
   app.get('/api/upsell/offers', async (req: Request, res: Response) => {
     try {
       const activeOnly = req.query.active === 'true';
-      const offers = activeOnly ? await getActiveUpsellOffers() : await getAllUpsellOffers();
+      const tenantDb = (req as any).tenantDb!;
+      const offers = activeOnly ? await getActiveUpsellOffers(tenantDb) : await getAllUpsellOffers(tenantDb);
       res.json({ success: true, offers });
     } catch (error) {
       console.error('Error fetching upsell offers:', error);
@@ -39,7 +40,7 @@ export function registerUpsellRoutes(app: Express) {
         return res.status(400).json({ success: false, error: 'Invalid ID format' });
       }
       
-      const offer = await getUpsellOfferById(id);
+      const offer = await getUpsellOfferById((req as any).tenantDb!, id);
       if (!offer) {
         return res.status(404).json({ success: false, error: 'Upsell offer not found' });
       }
@@ -73,7 +74,7 @@ export function registerUpsellRoutes(app: Express) {
       const validatedData = schema.parse(req.body);
       
       // Create the offer
-      const offer = await createUpsellOffer(validatedData);
+      const offer = await createUpsellOffer((req as any).tenantDb!, validatedData);
       res.status(201).json({ success: true, offer });
     } catch (error) {
       console.error('Error creating upsell offer:', error);
@@ -111,7 +112,7 @@ export function registerUpsellRoutes(app: Express) {
       const validatedData = schema.parse(req.body);
       
       // Update the offer
-      const offer = await updateUpsellOffer(id, validatedData);
+      const offer = await updateUpsellOffer((req as any).tenantDb!, id, validatedData);
       if (!offer) {
         return res.status(404).json({ success: false, error: 'Upsell offer not found' });
       }
@@ -134,7 +135,7 @@ export function registerUpsellRoutes(app: Express) {
         return res.status(400).json({ success: false, error: 'Invalid ID format' });
       }
       
-      const success = await deleteUpsellOffer(id);
+      const success = await deleteUpsellOffer((req as any).tenantDb!, id);
       if (!success) {
         return res.status(404).json({ success: false, error: 'Upsell offer not found' });
       }
@@ -156,7 +157,7 @@ export function registerUpsellRoutes(app: Express) {
         return res.status(400).json({ success: false, error: 'Invalid appointment ID format' });
       }
       
-      const offers = await getApplicableUpsellsForAppointment(appointmentId);
+      const offers = await getApplicableUpsellsForAppointment((req as any).tenantDb!, appointmentId);
       res.json({ success: true, offers });
     } catch (error) {
       console.error('Error fetching applicable upsell offers:', error);
@@ -182,6 +183,7 @@ export function registerUpsellRoutes(app: Express) {
       
       // Create the appointment upsell
       const appointmentUpsell = await createAppointmentUpsell(
+        (req as any).tenantDb!,
         appointmentId, 
         validatedData.upsellOfferId
       );
@@ -204,7 +206,7 @@ export function registerUpsellRoutes(app: Express) {
         return res.status(400).json({ success: false, error: 'Invalid appointment ID format' });
       }
       
-      const upsells = await getActiveAppointmentUpsells(appointmentId);
+      const upsells = await getActiveAppointmentUpsells((req as any).tenantDb!, appointmentId);
       res.json({ success: true, upsells });
     } catch (error) {
       console.error('Error fetching active appointment upsells:', error);
@@ -220,7 +222,7 @@ export function registerUpsellRoutes(app: Express) {
         return res.status(400).json({ success: false, error: 'Invalid appointment ID format' });
       }
       
-      const upsellsWithDetails = await getAppointmentUpsellsWithDetails(appointmentId);
+      const upsellsWithDetails = await getAppointmentUpsellsWithDetails((req as any).tenantDb!, appointmentId);
       res.json({ success: true, upsells: upsellsWithDetails });
     } catch (error) {
       console.error('Error fetching appointment upsells with details:', error);
@@ -245,15 +247,16 @@ export function registerUpsellRoutes(app: Express) {
 
       // Validate input
       const validatedData = schema.parse(req.body);
+      const tenantDb = (req as any).tenantDb!;
       
       // If accepting the upsell, handle the appointment creation logic
       if (validatedData.status === 'accepted' && !validatedData.newAppointmentId) {
         // Apply the upsell offer (create appointment with discount)
-        const result = await applyUpsellOffer(id, validatedData.customerInfo);
+        const result = await applyUpsellOffer(tenantDb, id, validatedData.customerInfo);
         
         if (result.success && result.appointmentId) {
           // Update the appointment upsell with the new appointment ID
-          const appointmentUpsell = await updateAppointmentUpsell(id, 'accepted', result.appointmentId);
+          const appointmentUpsell = await updateAppointmentUpsell(tenantDb, id, 'accepted', result.appointmentId);
           
           return res.json({ 
             success: true, 
@@ -270,6 +273,7 @@ export function registerUpsellRoutes(app: Express) {
       } else {
         // Just update the status without creating a new appointment
         const appointmentUpsell = await updateAppointmentUpsell(
+          tenantDb,
           id, 
           validatedData.status, 
           validatedData.newAppointmentId
