@@ -30,7 +30,7 @@ export default function SettingsAdmin() {
       } else {
         // Invalid combination - redirect to default
         console.warn(`Invalid settings path: section=${section}, item=${item}`);
-        setLocation('/settings');
+        setLocation('/settings', { replace: true });
       }
       return;
     }
@@ -54,7 +54,7 @@ export default function SettingsAdmin() {
         } else {
           // Invalid - redirect to default
           console.warn(`Invalid settings path: ${section}`);
-          setLocation('/settings');
+          setLocation('/settings', { replace: true });
         }
       }
       return;
