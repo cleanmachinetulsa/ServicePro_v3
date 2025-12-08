@@ -32,47 +32,54 @@ const ROOT_TENANT_SETTINGS_SECTIONS = [
     title: 'Operations',
     description: 'Manage services, scheduling, and appointments',
     items: [
-      { path: '/settings/operations/services', label: 'Services & Pricing', icon: Building2 },
-      { path: '/admin/scheduling', label: 'Scheduling & Availability', icon: Calendar },
+      { path: '/settings/operations/services', label: 'Services & Add-ons', icon: Building2 },
+      { path: '/settings/operations/recurring', label: 'Recurring Services', icon: Calendar },
+      { path: '/settings/operations/phone-settings', label: 'Phone & Voice', icon: Phone },
     ]
   },
   {
     title: 'Customer Management',
     description: 'Customers, loyalty, and referrals',
     items: [
-      { path: '/settings/customers/customer-list', label: 'Customer List', icon: Users },
-      { path: '/settings/customers/loyalty-program', label: 'Loyalty Program', icon: Gift },
-      { path: '/settings/customers/referral-program', label: 'Referral Program', icon: UserPlus },
+      { path: '/settings/customers/customer-management', label: 'Customer Database', icon: Users },
+      { path: '/settings/customers/loyalty', label: 'Loyalty Program', icon: Gift },
+      { path: '/settings/customers/referrals', label: 'Referral Program', icon: UserPlus },
     ]
   },
   {
     title: 'Communications',
-    description: 'Messaging, AI agent, and notifications',
+    description: 'Messaging, notifications, and campaigns',
     items: [
+      { path: '/settings/communications/notifications', label: 'Notifications', icon: Bell },
       { path: '/settings/communications/sms-templates', label: 'SMS Templates', icon: MessageSquare },
-      { path: '/settings/communications/ai-agent', label: 'AI Agent Settings', icon: Shield },
-      { path: '/settings/communications/push-notifications', label: 'Push Notifications', icon: Bell },
+      { path: '/settings/communications/email-templates', label: 'Email Templates', icon: MessageSquare },
+      { path: '/settings/communications/campaigns', label: 'Campaigns', icon: MessageSquare },
+      { path: '/settings/communications/upsell', label: 'Upsell Offers', icon: Gift },
     ]
   },
   {
-    title: 'Team',
-    description: 'Employees and access management',
+    title: 'Business',
+    description: 'Business settings, billing, and AI agent',
     items: [
-      { path: '/admin/employees', label: 'Employees', icon: Users },
+      { path: '/settings/business/business-settings', label: 'Business Settings', icon: Building2 },
+      { path: '/settings/business/agent-settings', label: 'AI Agent Settings', icon: Shield },
+      { path: '/settings/business/subscriptions', label: 'Subscription Plans', icon: Users },
+      { path: '/settings/business/billing-status', label: 'Billing & Usage', icon: Building2 },
     ]
   },
   {
     title: 'Website & Branding',
     description: 'Homepage, appearance, and public pages',
     items: [
-      { path: '/admin/homepage-editor', label: 'Homepage Editor', icon: Palette },
+      { path: '/settings/website/homepage-editor', label: 'Homepage Editor', icon: Palette },
     ]
   },
   {
-    title: 'Integrations',
-    description: 'Phone, calendar, and external services',
+    title: 'Team & Security',
+    description: 'Employees and access management',
     items: [
-      { path: '/phone-settings', label: 'Phone Settings', icon: Phone },
+      { path: '/admin/employees', label: 'Employees', icon: Users },
+      { path: '/settings/security/demo-mode', label: 'Demo Mode', icon: Shield },
     ]
   },
 ];
