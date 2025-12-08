@@ -648,8 +648,8 @@ async function handleSubscriptionDeleted(req: Request, subscription: Stripe.Subs
 }
 
 /**
- * Handle invoice payment failed (SP-6)
- * Updates tenant billing status and sends dunning email
+ * Handle invoice payment failed (SP-6 + SP-27 enhanced dunning)
+ * Updates tenant billing status, increments failed attempts, and sends dunning email
  */
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   console.log('[STRIPE WEBHOOK] Invoice payment failed:', invoice.id);
@@ -687,22 +687,43 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
     const isTrial = tenant.status === 'trialing';
     const newStatus = mapStripeToBillingStatus(subscriptionStatus, 'past_due', isTrial);
 
+    // SP-27: Track failed payment attempts and delinquency start date
+    const currentAttempts = tenant.failedPaymentAttempts || 0;
+    const newAttempts = currentAttempts + 1;
+    const now = new Date();
+    
+    // Set delinquentSince on first failure, keep existing on subsequent failures
+    const delinquentSince = tenant.delinquentSince || now;
+
     await updateTenantBillingStatus(tenant.id, {
       billingStatus: newStatus,
       lastInvoiceStatus: 'past_due',
       lastInvoiceDueAt: invoice.due_date ? new Date(invoice.due_date * 1000) : null,
     });
 
+    // Update dunning tracking fields
+    await db.update(tenants)
+      .set({
+        failedPaymentAttempts: newAttempts,
+        delinquentSince: delinquentSince,
+        updatedAt: now,
+      })
+      .where(eq(tenants.id, tenant.id));
+
     await sendPaymentFailedEmail(tenant.id);
 
-    // Log billing event
+    // Log billing event with attempt count
     await logPaymentFailed(
       tenant.id,
       customerId,
       invoice.id,
       tenant.status,
       invoice.amount_due,
-      { invoiceNumber: invoice.number }
+      { 
+        invoiceNumber: invoice.number,
+        failedAttempts: newAttempts,
+        delinquentSince: delinquentSince.toISOString(),
+      }
     );
 
     const wasSuspended = await checkAndApplySuspension(tenant.id);
@@ -710,18 +731,19 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
       await logTenantSuspended(tenant.id, customerId, 'past_due', {
         reason: 'grace_period_expired',
         invoiceId: invoice.id,
+        failedAttempts: newAttempts,
       });
     }
 
-    console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status updated to ${newStatus} after invoice payment failed`);
+    console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status updated to ${newStatus} after invoice payment failed (attempt ${newAttempts})`);
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error handling invoice payment failed:', error);
   }
 }
 
 /**
- * Handle invoice payment succeeded (SP-6)
- * Updates tenant billing status back to active, clears cancelAtPeriodEnd, sends recovery email
+ * Handle invoice payment succeeded (SP-6 + SP-27 enhanced dunning)
+ * Updates tenant billing status back to active, clears cancelAtPeriodEnd, resets dunning counters, sends recovery email
  */
 async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   console.log('[STRIPE WEBHOOK] Invoice payment succeeded:', invoice.id);
@@ -745,6 +767,11 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
     }
 
     const wasSuspendedOrPastDue = tenant.status === 'past_due' || tenant.status === 'suspended';
+    const now = new Date();
+
+    // SP-27: Always reset dunning tracking on successful payment
+    const previousAttempts = tenant.failedPaymentAttempts || 0;
+    const wasDelinquent = tenant.delinquentSince != null;
 
     if (wasSuspendedOrPastDue) {
       await updateTenantBillingStatus(tenant.id, {
@@ -755,25 +782,43 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
 
       await sendPaymentRecoveredEmail(tenant.id);
 
-      // Log billing event
+      // Log billing event with recovery info
       await logPaymentRecovered(
         tenant.id,
         customerId,
         invoice.id,
         tenant.status,
         invoice.amount_paid,
-        { invoiceNumber: invoice.number }
+        { 
+          invoiceNumber: invoice.number,
+          previousAttempts,
+          wasDelinquent,
+          recoveredFrom: tenant.status,
+        }
       );
 
-      console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status restored to active after successful payment`);
+      console.log(`[STRIPE WEBHOOK] Tenant ${tenant.id} billing status restored to active after successful payment (recovered from ${previousAttempts} failed attempts)`);
     } else {
       await db.update(tenants)
         .set({
           lastInvoiceStatus: 'paid',
           cancelAtPeriodEnd: false,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(tenants.id, tenant.id));
+    }
+
+    // SP-27: Reset dunning tracking fields on any successful payment
+    await db.update(tenants)
+      .set({
+        failedPaymentAttempts: 0,
+        delinquentSince: null,
+        updatedAt: now,
+      })
+      .where(eq(tenants.id, tenant.id));
+
+    if (previousAttempts > 0 || wasDelinquent) {
+      console.log(`[STRIPE WEBHOOK] Dunning counters reset for tenant ${tenant.id} (was ${previousAttempts} attempts, delinquent: ${wasDelinquent})`);
     }
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error handling invoice payment succeeded:', error);
