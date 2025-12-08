@@ -916,6 +916,9 @@ export function registerAuthRoutes(app: Express) {
       const user = (req as any).user;
       const impersonationContext = getImpersonationContext(req);
 
+      // CM-DASH-ROUTES-RESTORE: Include user's actual tenantId for client-side routing decisions
+      const userTenantId = req.session?.tenantId || user.tenantId || 'root';
+
       res.json({
         success: true,
         user: {
@@ -923,6 +926,7 @@ export function registerAuthRoutes(app: Express) {
           username: user.username,
           role: user.role,
           preferredLanguage: user.preferredLanguage || 'en',
+          tenantId: userTenantId, // CM-DASH-ROUTES-RESTORE: Expose tenantId for routing
         },
         impersonation: {
           isActive: impersonationContext.isImpersonating,

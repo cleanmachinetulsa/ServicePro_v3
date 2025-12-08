@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { settingsSections } from "@/config/settingsSections";
+import { isRootTenant } from "@/utils/tenantRouting";
 
 interface SettingsWorkspaceProps {
   initialSection?: string;
