@@ -1,0 +1,467 @@
+=============================================================================
+SERVICEPRO V3 CODE REVIEW - NAVIGATION & SETTINGS ROUTING
+=============================================================================
+Generated: December 8, 2025
+Purpose: GPT Code Review for Root Tenant (Clean Machine) Routing Issues
+=============================================================================
+
+ISSUE SUMMARY:
+- Root tenant (Clean Machine) should see LEGACY rich admin pages
+- Instead, root tenant sees NEW generic "SettingsWorkspace" pages
+- Settings navigation showing "Email Templates Manager" instead of legacy pages
+- AI Agent may not be using Clean Machine's legacy prompt
+
+=============================================================================
+FILE 1: client/src/config/navigationItems.ts
+Purpose: Defines all sidebar navigation items and their paths
+=============================================================================
+
+import { 
+  Home, 
+  MessageSquare, 
+  Phone,
+  PhoneCall,
+  Users, 
+  Calendar, 
+  TrendingUp, 
+  Image, 
+  Wrench, 
+  Settings, 
+  Shield,
+  DollarSign,
+  AlertCircle,
+  Palette,
+  BarChart3,
+  UserCog,
+  Building2,
+  Bell,
+  Clock,
+  Activity,
+  Megaphone,
+  FileText,
+  MessagesSquare,
+  LayoutDashboard,
+  Camera,
+  Gift,
+  Briefcase,
+  FileQuestion,
+  UserPlus,
+  CalendarDays,
+  Plane,
+  MessageCircle,
+  History,
+  Wallet,
+  Sparkles,
+  RefreshCw,
+  Lightbulb,
+  MessageSquarePlus,
+  HelpCircle,
+  Headphones,
+  Mail,
+  Globe,
+  SlidersHorizontal,
+  CreditCard,
+  FileArchive,
+  LayoutGrid,
+  Package,
+} from 'lucide-react';
+import { LucideIcon } from 'lucide-react';
+
+// SP-21: Complexity levels for navigation items
+export type ComplexityLevel = 'simple' | 'advanced' | 'expert';
+
+// Legacy visibility type for backward compatibility
+export type NavVisibility = 'always' | 'advancedOnly';
+
+export interface NavigationItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  path: string;
+  badge?: string;
+  separator?: boolean;
+  sectionHeader?: string;
+  visibility?: NavVisibility;
+  complexity?: ComplexityLevel;
+  simpleDefault?: boolean;
+}
+
+// KEY NAVIGATION ITEMS (excerpt - settings section):
+export const navigationItems: NavigationItem[] = [
+  // ... (dashboard, communications, customer management, scheduling sections)
+
+  // SETTINGS & ADMINISTRATION
+  {
+    id: 'separator-admin',
+    label: '',
+    icon: Settings,
+    path: '',
+    separator: true,
+    sectionHeader: 'Settings & Administration',
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: Settings,
+    path: '/settings',  // <-- THIS IS THE PROBLEM: Goes to generic SettingsWorkspace
+    complexity: 'simple',
+    simpleDefault: true,
+  },
+  // ... more items
+];
+
+=============================================================================
+FILE 2: client/src/App.tsx (Routing Configuration - Excerpt)
+Purpose: Defines all page routes and which components they render
+=============================================================================
+
+// Settings pages (heavy - lazy load)
+const SettingsPage = lazy(() => import("./pages/settings"));
+const SettingsAdmin = lazy(() => import("./pages/settings-admin"));
+const BusinessSettingsPage = lazy(() => import("@/pages/business-settings"));
+// ... more imports
+
+function Router() {
+  return (
+    <Switch>
+      {/* ... other routes ... */}
+
+      {/* SETTINGS ROUTES - These use SettingsWorkspace (new generic pages) */}
+      <Route path="/settings/:section?/:item?">
+        <AuthGuard>
+          <LazyPage><SettingsAdmin /></LazyPage>
+        </AuthGuard>
+      </Route>
+
+      {/* LEGACY ADMIN ROUTES - These are the RICH pages Clean Machine should use */}
+      <Route path="/admin/employees">
+        <AuthGuard>
+          <LazyDashboard><AdminEmployees /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/scheduling">
+        <AuthGuard>
+          <LazyDashboard><SchedulingDashboard /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/homepage-editor">
+        <AuthGuard>
+          <LazyPage><HomepageEditor /></LazyPage>
+        </AuthGuard>
+      </Route>
+      {/* ... more legacy routes ... */}
+    </Switch>
+  );
+}
+
+=============================================================================
+FILE 3: client/src/pages/settings-admin.tsx
+Purpose: Settings page wrapper that should redirect root tenant to legacy pages
+=============================================================================
+
+import { useEffect, useState } from 'react';
+import { useRoute, useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import SettingsWorkspace from '@/components/SettingsWorkspace';
+import BackNavigation from '@/components/BackNavigation';
+import { Settings as SettingsIcon, Loader2 } from 'lucide-react';
+import { settingsSections, findSectionForItem, isValidItem, isSectionValid } from '@/config/settingsSections';
+import { isRootTenant } from '@/utils/tenantRouting';
+
+/**
+ * CM-ROUTE-RESTORE: Map settings workspace paths to legacy admin paths for root tenant.
+ * Root tenant (Clean Machine) uses legacy admin pages with full functionality.
+ * Other tenants use the simplified SettingsWorkspace.
+ * 
+ * IMPORTANT: Only include mappings to routes that actually exist in App.tsx!
+ */
+const SETTINGS_TO_LEGACY_MAP: Record<string, string> = {
+  // Operations section - scheduling route exists at /admin/scheduling
+  'recurring': '/admin/scheduling',
+  // Website section - these legacy routes exist
+  'homepage-editor': '/admin/homepage-editor',
+  // Team section - employees route exists
+  'employees': '/admin/employees',
+  // Integrations section - phone settings route exists
+  'phone-settings': '/phone-settings',
+  // NOTE: Most settings items render in workspace as components (ServicesManagement, etc.)
+  // Only redirect when there's a dedicated legacy page that provides better UX
+};
+
+export default function SettingsAdmin() {
+  const [, params] = useRoute('/settings/:section?/:item?');
+  const [location, setLocation] = useLocation();
+  const [initialSection, setInitialSection] = useState<string | undefined>();
+  const [initialItem, setInitialItem] = useState<string | undefined>();
+  const [redirectChecked, setRedirectChecked] = useState(false);
+  
+  // CM-ROUTE-RESTORE: Get tenant context to redirect root tenant to legacy pages
+  const { data: authContext, isLoading: authLoading } = useQuery<{ user?: { tenantId?: string } }>({
+    queryKey: ['/api/auth/context'],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // CM-ROUTE-FIX: Only redirect for specific items that have dedicated legacy pages
+  // Do NOT redirect /settings to /dashboard - that breaks navigation!
+  useEffect(() => {
+    // Wait for auth context to load
+    if (authLoading || !authContext) return;
+    if (redirectChecked) return;
+    
+    // Only check redirects for root tenant
+    if (!isRootTenant(authContext?.user?.tenantId)) {
+      setRedirectChecked(true);
+      return;
+    }
+    
+    // Get the current settings item from URL params
+    const item = params?.item || params?.section;
+    
+    // Only redirect if there's a specific legacy page for this item
+    if (item && SETTINGS_TO_LEGACY_MAP[item]) {
+      console.log(`[CM-ROUTE] Root tenant redirecting ${item} -> ${SETTINGS_TO_LEGACY_MAP[item]}`);
+      setLocation(SETTINGS_TO_LEGACY_MAP[item], { replace: true });
+      return;
+    }
+    
+    // Otherwise let root tenant use the settings workspace - don't redirect to dashboard!
+    setRedirectChecked(true);
+  }, [authContext, authLoading, params, setLocation, redirectChecked]);
+
+  // ... rest of component renders SettingsWorkspace
+  return (
+    <div className="container mx-auto p-6 max-w-7xl">
+      <SettingsWorkspace 
+        initialSection={initialSection}
+        initialItem={initialItem}
+      />
+    </div>
+  );
+}
+
+=============================================================================
+FILE 4: client/src/components/SettingsWorkspace.tsx
+Purpose: NEW generic settings workspace with sidebar categories
+         (This is what root tenant sees instead of legacy pages)
+=============================================================================
+
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { ChevronLeft, ChevronRight, Menu, Settings as SettingsIcon, Loader2 } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { settingsSections } from "@/config/settingsSections";
+import { isRootTenant } from "@/utils/tenantRouting";
+
+interface SettingsWorkspaceProps {
+  initialSection?: string;
+  initialItem?: string;
+}
+
+export default function SettingsWorkspace({ initialSection, initialItem }: SettingsWorkspaceProps = {}) {
+  const [, setLocation] = useLocation();
+  const [activeSection, setActiveSection] = useState<string | undefined>(initialSection);
+  const [activeItem, setActiveItem] = useState<string | undefined>(initialItem);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // CM-ROUTE-FIX: Get tenant context to determine if this is root tenant
+  const { data: authContext } = useQuery<{ user?: { tenantId?: string } }>({
+    queryKey: ['/api/auth/context'],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // SP-21: Sync initial props to state when they ACTUALLY change (from URL navigation)
+  useEffect(() => {
+    // ... initialization logic
+    if (!isInitialized && !initialSection && !initialItem) {
+      const timer = setTimeout(() => {
+        // Default to 'operations' section and 'services' item
+        setActiveSection(prev => prev || 'operations');
+        setActiveItem(prev => prev || 'services');
+        setIsInitialized(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [initialSection, initialItem, isInitialized]);
+
+  // Find active item component
+  const ActiveComponent = activeItem 
+    ? settingsSections.flatMap(s => s.items).find(item => item.id === activeItem)?.component || null
+    : null;
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 w-full">
+      {/* Mobile/Tablet Collapsible Menu */}
+      <div className="lg:hidden w-full">
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="default" size="default" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+              <Menu className="h-5 w-5 mr-2" />
+              Settings Menu - Click to Open
+            </Button>
+          </SheetTrigger>
+          {/* ... mobile navigation */}
+        </Sheet>
+      </div>
+
+      {/* Desktop Sidebar */}
+      <div className={`hidden lg:block flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
+        {/* Sidebar with settingsSections */}
+      </div>
+
+      {/* Content Area - renders ActiveComponent */}
+      <div className="flex-1 w-full min-w-0">
+        {ActiveComponent ? <ActiveComponent /> : (
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground">Select a settings item from the menu</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+=============================================================================
+FILE 5: server/ai/smsAgentPromptBuilder.ts
+Purpose: Builds SMS AI agent system prompts (should use Clean Machine's legacy prompt)
+=============================================================================
+
+/**
+ * SMS AI Agent System Prompt Builder
+ * 
+ * AI BEHAVIOR V2 - CORE BRAIN
+ * 
+ * Builds tenant-aware, state-aware, SMS-optimized system prompts for the AI assistant.
+ */
+
+import { db } from '../db';
+import { wrapTenantDb } from '../tenantDb';
+import { tenantConfig, services, aiBehaviorRules } from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
+import { getCampaignContextForCustomer, getCustomerIdFromPhone } from '../services/campaignContextService';
+import { 
+  SYSTEM_PROMPT_TEMPLATE, 
+  BEHAVIOR_CONFIG, 
+  REQUIRED_FIELDS, 
+  getBookingStatusFromState, 
+  BookingStatus 
+} from '@shared/ai/smsAgentConfig';
+
+/**
+ * Get tenant-specific AI behavior rules from database
+ * These rules customize the AI personality and behavior for each tenant
+ */
+async function getTenantBehaviorRules(tenantId: string): Promise<AiBehaviorRule[]> {
+  try {
+    const tenantDb = wrapTenantDb(db, tenantId);
+    const rules = await tenantDb
+      .select({
+        ruleKey: aiBehaviorRules.ruleKey,
+        category: aiBehaviorRules.category,
+        name: aiBehaviorRules.name,
+        content: aiBehaviorRules.content,
+        priority: aiBehaviorRules.priority,
+      })
+      .from(aiBehaviorRules)
+      .where(and(
+        eq(aiBehaviorRules.tenantId, tenantId),
+        eq(aiBehaviorRules.enabled, true)
+      ))
+      .orderBy(aiBehaviorRules.priority);
+    
+    console.log(`[SMS PROMPT] Loaded ${rules.length} behavior rules for tenant ${tenantId}`);
+    return rules;
+  } catch (error) {
+    console.error('[SMS PROMPT] Error loading behavior rules:', error);
+    return [];
+  }
+}
+
+/**
+ * Build SMS-optimized system prompt for AI agent
+ * AI BEHAVIOR V2: Now includes conversation state and control mode awareness
+ */
+export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<string> {
+  const { tenantId, phoneNumber, customerId, conversationState, controlMode, recentHumanMessages } = params;
+
+  // Get tenant configuration
+  const { businessName, industryType, subdomain } = await getTenantBusinessInfo(tenantId);
+  
+  // Get services list
+  const servicesList = await getTenantServices(tenantId);
+  
+  // CM-TENANT-AI-FIX: Load tenant-specific AI behavior rules from database
+  const behaviorRules = await getTenantBehaviorRules(tenantId);
+  const behaviorInstructions = buildBehaviorInstructions(behaviorRules);
+  
+  // Build booking link
+  const bookingLink = buildBookingLink(subdomain, tenantId);
+
+  // AI BEHAVIOR V2: Start with template-based system prompt
+  let systemPrompt = SYSTEM_PROMPT_TEMPLATE
+    .replace('{businessName}', businessName)
+    .replace('{industryType}', industryType);
+  
+  // Add services list
+  systemPrompt += `\n\n${servicesList}`;
+  
+  // CM-TENANT-AI-FIX: Inject tenant-specific behavior rules into system prompt
+  if (behaviorInstructions) {
+    systemPrompt += behaviorInstructions;
+  }
+  
+  // ... rest of prompt building
+
+  return systemPrompt;
+}
+
+=============================================================================
+ANALYSIS & RECOMMENDATIONS
+=============================================================================
+
+THE CORE PROBLEM:
+- Root tenant (Clean Machine) clicks "Settings" in sidebar
+- Path is "/settings" which goes to SettingsAdmin component
+- SettingsAdmin renders SettingsWorkspace (NEW generic pages)
+- Root tenant should see LEGACY admin pages instead
+
+WHAT NEEDS TO HAPPEN FOR ROOT TENANT:
+1. When root tenant clicks "Settings", they should NOT see SettingsWorkspace
+2. Instead, they should see the legacy rich admin pages
+3. The legacy pages exist at:
+   - /admin/employees (AdminEmployees component)
+   - /admin/scheduling (SchedulingDashboard component)
+   - /admin/homepage-editor (HomepageEditor component)
+   - etc.
+
+POSSIBLE SOLUTIONS:
+1. Make navigation items have tenant-aware paths (root tenant uses /admin/* paths)
+2. Make settings-admin.tsx completely skip SettingsWorkspace for root tenant
+3. Create a dedicated SettingsHub page that links to all legacy admin pages
+
+AI AGENT ISSUE:
+- smsAgentPromptBuilder.ts loads behavior rules from `aiBehaviorRules` database table
+- If Clean Machine (root tenant) doesn't have rules seeded in this table, 
+  it will use the generic template only
+- Need to verify `aiBehaviorRules` table has rules for tenantId='root'
+
+=============================================================================
+END OF REVIEW DOCUMENT
+=============================================================================
