@@ -254,7 +254,9 @@ export function registerLoyaltyRoutes(app: Express) {
         });
       }
       
-      const result = await optInToLoyaltyProgram(Number(customerId));
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const result = await optInToLoyaltyProgram(tenantDb, Number(customerId));
       
       res.json({ 
         success: true, 
@@ -282,7 +284,9 @@ export function registerLoyaltyRoutes(app: Express) {
         });
       }
       
-      const redeemedRewards = await getRedeemedRewards(Number(customerId));
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const redeemedRewards = await getRedeemedRewards(tenantDb, Number(customerId));
       
       res.json({ 
         success: true, 
@@ -299,9 +303,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all loyalty points (for dashboard)
-  app.get('/api/loyalty/points', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/points', async (req: Request, res: Response) => {
     try {
-      const points = await getAllLoyaltyPoints();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const points = await getAllLoyaltyPoints(tenantDb);
       res.json({ success: true, loyaltyPoints: points });
     } catch (error) {
       console.error('Error fetching all loyalty points:', error);
@@ -314,9 +320,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all customers (for dashboard)
-  app.get('/api/loyalty/customers', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/customers', async (req: Request, res: Response) => {
     try {
-      const customerList = await getAllCustomers();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const customerList = await getAllCustomers(tenantDb);
       res.json({ success: true, customers: customerList });
     } catch (error) {
       console.error('Error fetching all customers:', error);
@@ -329,9 +337,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all transactions (for dashboard)
-  app.get('/api/loyalty/transactions', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/transactions', async (req: Request, res: Response) => {
     try {
-      const transactionList = await getAllTransactions();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const transactionList = await getAllTransactions(tenantDb);
       res.json({ success: true, transactions: transactionList });
     } catch (error) {
       console.error('Error fetching all transactions:', error);
@@ -344,9 +354,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all loyalty tiers (for dashboard)
-  app.get('/api/loyalty/tiers', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/tiers', async (req: Request, res: Response) => {
     try {
-      const tierList = await getAllLoyaltyTiers();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const tierList = await getAllLoyaltyTiers(tenantDb);
       res.json({ success: true, tiers: tierList });
     } catch (error) {
       console.error('Error fetching all loyalty tiers:', error);
@@ -359,9 +371,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all achievements (for dashboard)
-  app.get('/api/loyalty/achievements', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/achievements', async (req: Request, res: Response) => {
     try {
-      const achievementList = await getAllAchievements();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const achievementList = await getAllAchievements(tenantDb);
       res.json({ success: true, achievements: achievementList });
     } catch (error) {
       console.error('Error fetching all achievements:', error);
@@ -374,9 +388,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all customer achievements (for dashboard)
-  app.get('/api/loyalty/customer-achievements', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/customer-achievements', async (req: Request, res: Response) => {
     try {
-      const customerAchievementList = await getAllCustomerAchievements();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const customerAchievementList = await getAllCustomerAchievements(tenantDb);
       res.json({ success: true, customerAchievements: customerAchievementList });
     } catch (error) {
       console.error('Error fetching all customer achievements:', error);
@@ -389,9 +405,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all redeemed rewards (for dashboard)
-  app.get('/api/loyalty/redeemed-rewards', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/redeemed-rewards', async (req: Request, res: Response) => {
     try {
-      const redeemed = await getAllRedeemedRewards();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const redeemed = await getAllRedeemedRewards(tenantDb);
       res.json({ success: true, redeemedRewards: redeemed });
     } catch (error) {
       console.error('Error fetching all redeemed rewards:', error);
@@ -404,9 +422,11 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all reward services (for dashboard)
-  app.get('/api/loyalty/reward-services', async (_req: Request, res: Response) => {
+  app.get('/api/loyalty/reward-services', async (req: Request, res: Response) => {
     try {
-      const services = await getRewardServicesForDashboard();
+      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const services = await getRewardServicesForDashboard(tenantDb);
       res.json({ success: true, rewardServices: services });
     } catch (error) {
       console.error('Error fetching reward services:', error);
