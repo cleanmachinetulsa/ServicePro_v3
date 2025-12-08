@@ -1,0 +1,247 @@
+=============================================================================
+SERVICEPRO V3 COMPREHENSIVE CODE REVIEW
+=============================================================================
+Generated: December 8, 2025
+Purpose: Complete listing of ALL admin, settings, and dashboard pages/widgets
+=============================================================================
+
+TABLE OF CONTENTS:
+1. Dashboard Pages and Widgets
+2. Admin Pages (Root & Tenant Level)
+3. Settings Pages
+4. Navigation Configuration
+5. Key Components
+
+=============================================================================
+SECTION 1: DASHBOARD PAGES AND WIDGETS
+=============================================================================
+
+=== MAIN DASHBOARD PAGE ===
+File: client/src/pages/dashboard.tsx
+Purpose: Main dashboard with customizable widget grid, drag-and-drop layout
+Features:
+- Monthly stats, calendar, daily schedule widgets
+- Quick actions, cash collections, deposit history
+- Simple/Advanced mode support (SIMPLE_MODE_WIDGETS vs full catalog)
+- Dashboard onboarding tour
+- Invoice creation modal
+
+=== DASHBOARD WIDGETS (client/src/components/dashboard/) ===
+
+1. DailyScheduleWidget.tsx
+   - Shows today's appointments with customer details
+   - Action buttons: call, chat, navigate, view history, send invoice
+   - Animated cards with gradient accents
+
+2. CalendarWidget.tsx
+   - Month view calendar with appointment indicators
+   - Navigate to different dates
+   - Visual appointment density markers
+
+3. MonthlyStatsWidget.tsx
+   - Revenue, appointments, new customers stats
+   - Trend indicators (up/down arrows)
+   - Period comparison
+
+4. QuickActionsWidget.tsx
+   - Customer Service History button
+   - User Management button
+   - Quick navigation shortcuts
+
+5. DailyInsightsWidget.tsx
+   - AI-powered daily business insights
+   - Weather impact on appointments
+   - Suggested actions
+
+6. CashCollectionsWidget.tsx
+   - Track cash payments received
+   - Quick entry for cash deposits
+   - Daily totals
+
+7. DepositHistoryWidget.tsx
+   - Bank deposit tracking
+   - Cash vs card breakdown
+   - Historical deposit records
+
+=============================================================================
+SECTION 2: ADMIN PAGES
+=============================================================================
+
+=== ROOT-LEVEL ADMIN PAGES (client/src/pages/) ===
+
+1. admin-billing.tsx - Billing management
+2. admin-customer-suggestions.tsx - Customer feedback/suggestions
+3. admin-employees.tsx - Employee management
+4. admin-job-editor.tsx - Job/service type editing
+5. admin-public-site-settings.tsx - Public website configuration
+6. admin-public-site-theme.tsx - Theme/branding customization
+7. admin-quote-requests.tsx - Quote request management
+
+8. AdminApplications.tsx - Job applications management
+9. AdminBillingOverview.tsx - Billing dashboard overview
+10. AdminConciergeSetup.tsx - Concierge service configuration
+11. AdminImportHistory.tsx - Import history/logs
+12. AdminIndustryImages.tsx - Industry-specific images
+13. AdminIndustryPacks.tsx - Industry pack management
+14. AdminIvrConfig.tsx - IVR/voice menu configuration
+15. AdminMigrationWizard.tsx - Data migration wizard
+16. AdminPhoneConfig.tsx - Phone/Twilio settings
+17. AdminPlansAndAddons.tsx - Subscription plans/addons
+18. AdminPortRecovery.tsx - Phone number port recovery
+19. AdminPromos.tsx - Promotional campaigns
+20. AdminPTO.tsx - PTO (time off) management
+21. AdminSupportTickets.tsx - Support ticket management
+22. AdminTenantDetail.tsx - Individual tenant details
+23. AdminTenants.tsx - Multi-tenant management (root only)
+
+=== ADMIN SUBPAGES (client/src/pages/admin/) ===
+
+1. AdminSystemUsagePage.tsx - System-wide usage metrics
+2. ParserHistory.tsx - AI parser history/logs
+3. TenantDebugPage.tsx - Tenant debugging tools
+
+=============================================================================
+SECTION 3: SETTINGS PAGES
+=============================================================================
+
+=== MAIN SETTINGS PAGES (client/src/pages/) ===
+
+1. settings.tsx - General communications settings (Quick Reply Templates, SMS Templates, Campaigns, Notifications, Security)
+2. settings-admin.tsx - Admin settings hub (Root tenant sees RootTenantSettingsHub)
+3. business-settings.tsx - Business profile settings
+4. email-settings.tsx - Email configuration
+5. facebook-settings.tsx - Facebook/Meta integration
+6. notifications-settings.tsx - Push notification preferences
+7. phone-settings.tsx - Phone line configuration
+8. security-settings.tsx - Security/password settings
+9. SettingsA2P.tsx - A2P (Application-to-Person) SMS registration
+
+=== SETTINGS SUBPAGES (client/src/pages/settings/) ===
+
+1. AddonsPage.tsx - Manage subscription add-ons
+2. BillingUsagePage.tsx - Billing and usage details
+3. DashboardCustomizePage.tsx - Dashboard widget customization
+4. DomainsPage.tsx - Custom domain management
+5. TrialTelephonySettings.tsx - Trial telephony limits
+6. UiModeSettingsPage.tsx - Simple/Advanced UI mode toggle
+7. UsageDashboardPage.tsx - Usage metrics dashboard
+8. UsageDashboardV2.tsx - Enhanced usage dashboard (v2)
+
+=============================================================================
+SECTION 4: NAVIGATION CONFIGURATION
+=============================================================================
+
+File: client/src/config/navigationItems.ts
+Purpose: Defines sidebar navigation items and their paths
+
+Key sections:
+- Dashboard
+- Communications (Messages, Phone, SMS)
+- Customer Management (Customers, Loyalty, Referrals)
+- Scheduling (Calendar, Appointments)
+- Operations (Services, Damage Assessment)
+- Settings & Administration
+
+Complexity Levels: 'simple' | 'advanced' | 'expert'
+- Simple mode shows essential items only
+- Advanced mode shows full navigation
+
+=============================================================================
+SECTION 5: KEY COMPONENTS
+=============================================================================
+
+=== Settings Components ===
+
+1. client/src/components/SettingsWorkspace.tsx
+   - Generic workspace settings for non-root tenants
+   - Business info, services, scheduling, branding sections
+   
+2. client/src/components/RootTenantSettingsHub.tsx (in settings-admin.tsx)
+   - Settings hub for root tenant (Clean Machine)
+   - Organized links to legacy admin pages
+   - Categories: Operations, Customer Management, Communications, Team, Website & Branding, Integrations
+
+3. client/src/components/SmsTemplatesManager.tsx
+   - SMS template editing interface
+   - Template categories, previews, variable interpolation
+
+4. client/src/components/settings/NotificationPreferences.tsx
+   - Push notification preferences
+   - Per-event notification toggles
+
+=== Dashboard Components ===
+
+1. client/src/components/DashboardGrid.tsx
+   - Drag-and-drop widget grid layout
+   - Widget visibility toggles
+   - Layout persistence
+
+2. client/src/config/defaultDashboardLayout.ts
+   - DEFAULT_WIDGET_CATALOG - all available widgets
+   - SIMPLE_MODE_WIDGETS - subset for simple mode
+
+=============================================================================
+SECTION 6: TENANT TIER SYSTEM
+=============================================================================
+
+File: shared/features.ts
+Purpose: Defines feature availability per plan tier
+
+Plan Tiers: 'free' | 'starter' | 'pro' | 'elite' | 'internal'
+
+Key Functions:
+- hasFeature(tenant, key) - Check if tenant has feature
+- getTenantFeatures(tenant) - Get all features for tenant
+- TIER_FEATURES[tier] - Feature matrix
+
+Feature Keys:
+- aiSmsAgent, aiVoiceAgent, dedicatedNumber
+- campaigns, dataExport, websiteGenerator
+- customDomain, crmBasic, loyalty
+- multiUser, advancedAnalytics, prioritySupport
+
+IMPORTANT: planTier is stored in `tenants` table, NOT `tenantConfig`
+
+=== Where planTier is accessed ===
+1. server/services/agentContextService.ts - AI context building
+2. server/services/supportContextService.ts - Support AI context
+3. server/services/featureGatingService.ts - Feature gating
+4. server/services/billingService.ts - Billing calculations
+5. shared/features.ts - hasFeature() checks
+
+=============================================================================
+SECTION 7: ROOT TENANT SPECIAL ROUTING
+=============================================================================
+
+Root tenant (id='root', Clean Machine) has special routing:
+- /settings shows RootTenantSettingsHub instead of SettingsWorkspace
+- Full access to all legacy admin pages
+- Custom domain: cleanmachinetulsa.com
+
+=== Routing Logic (client/src/pages/settings-admin.tsx) ===
+
+```tsx
+// Check if root tenant
+const isRootTenant = currentUserData?.user?.tenantId === 'root';
+
+// Show different UI based on tenant
+{isRootTenant ? <RootTenantSettingsHub /> : <SettingsWorkspace />}
+```
+
+=============================================================================
+SECTION 8: USAGE/BILLING PAGES
+=============================================================================
+
+1. UsageCostsPage.tsx - Per-channel cost breakdown
+2. UsageDashboard.tsx - General usage overview
+3. BillingSuccess.tsx - Payment success confirmation
+4. BillingUsagePage.tsx - Detailed billing/usage
+5. billing.tsx - Main billing page
+6. subscription.tsx - Subscription management
+7. SystemBillingAdmin.tsx - System-wide billing (root)
+8. SystemUsageAdmin.tsx - System-wide usage (root)
+9. RootSystemUsagePage.tsx - Root admin usage view
+
+=============================================================================
+END OF COMPREHENSIVE CODE REVIEW DOCUMENT
+=============================================================================
