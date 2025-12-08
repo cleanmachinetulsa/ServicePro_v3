@@ -240,7 +240,7 @@ function MessagesPageContent() {
           <div className="flex items-center gap-2">
             <Button 
               size="sm" 
-              onClick={() => setLocation('/')}
+              onClick={() => setLocation('/dashboard')}
               data-testid="button-dashboard"
               className="nightops-button text-xs"
               title="Dashboard"
