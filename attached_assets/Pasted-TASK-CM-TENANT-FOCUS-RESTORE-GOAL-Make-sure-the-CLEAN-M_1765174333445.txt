@@ -1,0 +1,86 @@
+TASK: CM-TENANT-FOCUS-RESTORE
+GOAL:
+Make sure the CLEAN MACHINE tenant sees the full, correct dashboard again:
+- Correct tenant context
+- Advanced UI mode
+- All config pages visible and wired to tenantDb
+
+STEP 0 – Identify Clean Machine tenant clearly
+1) Run SQL to list tenants and find the Clean Machine tenant row:
+   SELECT id, slug, name FROM tenants ORDER BY created_at ASC;
+   - Determine which row is the Clean Machine tenant (likely slug 'cleanmachine' or similar).
+   - Record: CLEAN_MACHINE_TENANT_ID and CLEAN_MACHINE_TENANT_SLUG.
+
+2) Verify which user(s) belong to that tenant and their roles:
+   - Find the owner-level user used for my login (email will likely contain 'cleanmachine' or my name).
+   - Confirm that user has OWNER or ADMIN role for CLEAN_MACHINE_TENANT_ID.
+
+STEP 1 – Force Clean Machine into Advanced mode with all panels visible
+3) Inspect dashboard preferences table (whatever table stores UI mode + visible panels).
+   - Find the record for CLEAN_MACHINE_TENANT_ID (and/or for the owner user).
+   - Set:
+     - ui_mode = 'advanced'
+     - simpleVisiblePanels = NULL or full set
+   - Ensure no tenant-level setting is hiding critical config pages.
+
+4) In DashboardPreferencesContext (client/src/contexts/DashboardPreferencesContext.tsx):
+   - Add a safe fallback: if preferences cannot be loaded or are missing,
+     default to:
+       uiMode = 'advanced'
+       simpleVisiblePanels = ['dashboard','messages','schedule','customers','rewards','settings','billing','analytics']
+   - Make sure this fallback is tenant-aware and does NOT hide panels for Clean Machine.
+
+STEP 2 – Verify navigation + routes for Clean Machine
+5) In client/src/components/AppShell.tsx:
+   - Confirm that:
+     - It uses the current tenant (from useTenant) when building the nav.
+     - It does NOT treat the root admin context as a replacement for Clean Machine when I'm logged in as that tenant.
+   - Add a temporary console.log in dev:
+     - console.log('[TENANT_DEBUG_NAV]', { tenantId, uiMode, userEmail });
+
+6) Use the navigationItems.ts file:
+   - Ensure no critical Clean Machine items are marked advancedOnly when they should always be visible for the owner.
+   - Specifically confirm:
+     - Settings
+     - Website Design
+     - Public Site Settings
+     - Gallery Management
+     - Rewards
+     - Scheduling
+     - A2P / SMS Compliance
+     - Email Settings
+     - Billing / Usage
+   - DO NOT remove advancedOnly everywhere; just make sure the owner of CLEAN_MACHINE_TENANT_ID sees these in advanced mode.
+
+STEP 3 – Fix Dashboard button from Messages page
+7) On the Messages page, find the "Dashboard" button handler:
+   - It currently routes to "/" (ServicePro landing page).
+   - Change it to route to "/dashboard" so that, for any tenant, clicking Dashboard returns to the correct tenant dashboard.
+
+STEP 4 – Sanity check tenantDb usage (for Clean Machine)
+8) For the following routes, verify they call services with tenantDb from wrapTenantDb:
+   - Rewards / Loyalty
+   - SMS Campaigns
+   - Email Campaigns
+   - Upsell Offers
+   - A2P / SMS Compliance
+   - Email Settings
+   - Homepage Editor / Public Site Settings
+
+   - If any route still uses a global db connection or no tenantDb, fix it to use req.tenantDb (which should already be wired by middleware).
+
+STEP 5 – Manual verification as ME (Clean Machine)
+9) Run a Playwright session as the CLEAN MACHINE owner user (NOT just admin/admin123):
+   - Log in as the Clean Machine owner account.
+   - Confirm:
+     - Sidebar shows all expected sections (Messages, Scheduling, Rewards, Website, Settings, Billing, etc.).
+     - /dashboard loads with real widgets, not a generic empty layout.
+     - /settings loads and does NOT 404.
+     - /settings/a2p, /settings/email, /admin/public-site-settings, /admin/port-recovery, and /rewards all load and show data where applicable.
+
+10) Only after verifying all of that, summarize:
+   - CLEAN_MACHINE_TENANT_ID
+   - CLEAN_MACHINE_TENANT_SLUG
+   - Owner email used for testing
+   - Which pages were confirmed working
+   - Any remaining pages that still look empty and why.

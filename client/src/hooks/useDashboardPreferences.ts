@@ -60,8 +60,9 @@ export function useDashboardPreferences() {
   const preferences = data?.preferences;
   const availablePanels = data?.availablePanels || [];
 
-  const mode = preferences?.mode || 'simple';
-  const simpleVisiblePanels = preferences?.simpleVisiblePanels || [];
+  // CM-TENANT-FOCUS: Default to 'advanced' mode for owners when preferences can't load
+  const mode = preferences?.mode || 'advanced';
+  const simpleVisiblePanels = preferences?.simpleVisiblePanels || ['dashboard', 'messages', 'calendar', 'schedule', 'booking-requests', 'customers', 'rewards', 'settings', 'conversations', 'billing', 'analytics', 'gallery', 'campaigns', 'referrals', 'technician', 'employees', 'telephony', 'ivr', 'imports'];
 
   const toggleMode = async () => {
     const newMode = mode === 'simple' ? 'advanced' : 'simple';
