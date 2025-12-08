@@ -82,7 +82,7 @@ export async function getSupportContextForTenantUser(
       id: tenantId,
       name: tenant?.name || "Unknown",
       slug: tenant?.subdomain || undefined,
-      plan: config?.planTier || "free",
+      plan: tenant?.planTier || "free",  // FIXED: planTier is on tenants table, not tenantConfig
       features: {
         aiSmsAgent: config?.featureAiSmsAgent || false,
         aiVoiceAgent: config?.featureAiVoiceAgent || false,
