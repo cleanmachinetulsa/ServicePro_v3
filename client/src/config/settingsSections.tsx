@@ -9,6 +9,7 @@ import {
 import AgentSettings from "../components/AgentSettings";
 import BusinessSettings from "../pages/business-settings";
 import NotificationsSettings from "../pages/notifications-settings";
+import BillingStatusPanel from "../components/settings/BillingStatusPanel";
 import { UpsellManagement } from "../components/UpsellManagement";
 import RecurringServicesManager from "../components/RecurringServicesManager";
 import { EmailCampaignsManager } from "../components/EmailCampaignsManager";
@@ -81,6 +82,7 @@ export const settingsSections: SettingsSection[] = [
       { id: 'business-settings', label: 'Business Settings', component: BusinessSettings },
       { id: 'agent-settings', label: 'Agent Settings', component: AgentSettings },
       { id: 'subscriptions', label: 'Subscription Plans', component: SubscriptionManager },
+      { id: 'billing-status', label: 'Billing & Usage', component: BillingStatusPanel },
     ]
   },
   {
