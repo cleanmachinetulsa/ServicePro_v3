@@ -11,36 +11,20 @@ import { isRootTenant } from '@/utils/tenantRouting';
  * CM-ROUTE-RESTORE: Map settings workspace paths to legacy admin paths for root tenant.
  * Root tenant (Clean Machine) uses legacy admin pages with full functionality.
  * Other tenants use the simplified SettingsWorkspace.
+ * 
+ * IMPORTANT: Only include mappings to routes that actually exist in App.tsx!
  */
 const SETTINGS_TO_LEGACY_MAP: Record<string, string> = {
-  // Operations section
-  'services': '/admin/services',
-  'addons': '/admin/services',
+  // Operations section - scheduling route exists at /admin/scheduling
   'recurring': '/admin/scheduling',
-  'reminder-rules': '/admin/scheduling',
-  // Customers section
-  'import-export': '/customers',
-  'segments': '/customers',
-  // Communication section
-  'sms-templates': '/settings/communications/sms-templates',
-  'email-templates': '/settings/communications/email-templates',
-  'campaigns': '/communications',
-  'quick-replies': '/settings',
-  // Website section
+  // Website section - these legacy routes exist
   'homepage-editor': '/admin/homepage-editor',
-  'gallery': '/admin/gallery-management',
-  'reviews': '/admin/reviews',
-  // Integrations section
-  'phone': '/phone-settings',
-  'calendar': '/dashboard',
-  'payments': '/dashboard',
-  // Team section
+  // Team section - employees route exists
   'employees': '/admin/employees',
-  'roles': '/admin/employees',
-  // Billing section (keep in workspace for all tenants)
-  // 'subscription': stays in workspace
-  // 'usage': stays in workspace
-  // 'invoices': stays in workspace
+  // Integrations section - phone settings route exists
+  'phone-settings': '/phone-settings',
+  // NOTE: Most settings items render in workspace as components (ServicesManagement, etc.)
+  // Only redirect when there's a dedicated legacy page that provides better UX
 };
 
 export default function SettingsAdmin() {
