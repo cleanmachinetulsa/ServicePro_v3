@@ -130,6 +130,7 @@ import calendarAvailabilityRoutes from './routes.calendarAvailability';
 import calendarAvailabilityShareRoutes from './routes.calendarAvailabilityShare';
 import availabilityTemplatesRoutes from './routes.availabilityTemplates';
 import { registerHealthRoutes } from './healthCheck';
+import { registerPerfRoutes } from './routes.perf';
 import phoneSettingsRoutes from './routes.phoneSettings';
 import { registerCallRoutes } from './routes.calls';
 import { registerTechDepositRoutes } from './routes.techDeposits';
@@ -215,6 +216,9 @@ export async function registerRoutes(app: Express) {
 
   // Register health check routes (FIRST - no auth required)
   registerHealthRoutes(app);
+
+  // SP-23: Register performance monitoring routes (no auth required for logging)
+  registerPerfRoutes(app);
 
   // Export download endpoint (no auth required for file downloads)
   app.get('/download/cleanmachine-export.zip', (req: Request, res: Response) => {

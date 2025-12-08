@@ -2,6 +2,26 @@ import type { Express, Request, Response } from 'express';
 import { db } from './db';
 import { users, tenants, conversations, callEvents } from '@shared/schema';
 import { eq, and, sql, isNull } from 'drizzle-orm';
+import { getBootstrapData, setBootstrapData, globalCache } from './cache/lruCache';
+
+// Cache TTL for bootstrap tenant data (30 seconds)
+const BOOTSTRAP_TENANT_TTL = 30000;
+// Cache TTL for counts (10 seconds - shorter since they change more frequently)
+const BOOTSTRAP_COUNTS_TTL = 10000;
+
+interface CachedTenantData {
+  id: string;
+  name: string;
+  slug: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  industry: string | null;
+}
+
+interface CachedCounts {
+  unreadConversations: number;
+  newVoicemails: number;
+}
 
 interface BootstrapResponse {
   success: boolean;
@@ -69,6 +89,10 @@ export function registerBootstrapRoutes(app: Express) {
 
       const tenantId = session.impersonatedTenantId || session.tenantId || 'root';
 
+      // SP-23: Use LRU cache for tenant data
+      let cachedTenant = getBootstrapData<CachedTenantData>(tenantId);
+      
+      // Fetch user (not cached - session specific) and tenant (cached)
       const [user, tenant] = await Promise.all([
         db.query.users.findFirst({
           where: eq(users.id, session.userId),
@@ -78,48 +102,76 @@ export function registerBootstrapRoutes(app: Express) {
             role: true,
           },
         }),
-        db.query.tenants.findFirst({
-          where: eq(tenants.id, tenantId),
-          columns: {
-            id: true,
-            name: true,
-            subdomain: true,
-            logoUrl: true,
-            primaryColor: true,
-            industry: true,
-          },
-        }),
+        cachedTenant 
+          ? Promise.resolve(cachedTenant)
+          : db.query.tenants.findFirst({
+              where: eq(tenants.id, tenantId),
+              columns: {
+                id: true,
+                name: true,
+                subdomain: true,
+                logoUrl: true,
+                primaryColor: true,
+                industry: true,
+              },
+            }).then((t) => {
+              if (t) {
+                const tenantData: CachedTenantData = {
+                  id: t.id,
+                  name: t.name,
+                  slug: t.subdomain,
+                  logoUrl: t.logoUrl,
+                  primaryColor: t.primaryColor,
+                  industry: t.industry,
+                };
+                setBootstrapData(tenantId, tenantData);
+                return tenantData;
+              }
+              return null;
+            }),
       ]);
 
       let unreadConversations = 0;
       let newVoicemails = 0;
 
-      try {
-        const [convResult, vmResult] = await Promise.all([
-          db.select({ count: sql<number>`count(*)::int` })
-            .from(conversations)
-            .where(
-              and(
-                eq(conversations.tenantId, tenantId),
-                sql`${conversations.unreadCount} > 0`
-              )
-            ),
-          db.select({ count: sql<number>`count(*)::int` })
-            .from(callEvents)
-            .where(
-              and(
-                eq(callEvents.tenantId, tenantId),
-                eq(callEvents.direction, 'inbound'),
-                sql`${callEvents.recordingUrl} IS NOT NULL`,
-                isNull(callEvents.readAt)
-              )
-            ),
-        ]);
+      // SP-23: Use LRU cache for counts (shorter TTL)
+      const countsCacheKey = `bootstrap:counts:${tenantId}`;
+      const cachedCounts = globalCache.get<CachedCounts>(countsCacheKey);
 
-        unreadConversations = convResult[0]?.count || 0;
-        newVoicemails = vmResult[0]?.count || 0;
-      } catch (countError) {
-        console.warn('[Bootstrap] Count queries failed, using defaults:', countError);
+      if (cachedCounts) {
+        unreadConversations = cachedCounts.unreadConversations;
+        newVoicemails = cachedCounts.newVoicemails;
+      } else {
+        try {
+          const [convResult, vmResult] = await Promise.all([
+            db.select({ count: sql<number>`count(*)::int` })
+              .from(conversations)
+              .where(
+                and(
+                  eq(conversations.tenantId, tenantId),
+                  sql`${conversations.unreadCount} > 0`
+                )
+              ),
+            db.select({ count: sql<number>`count(*)::int` })
+              .from(callEvents)
+              .where(
+                and(
+                  eq(callEvents.tenantId, tenantId),
+                  eq(callEvents.direction, 'inbound'),
+                  sql`${callEvents.recordingUrl} IS NOT NULL`,
+                  isNull(callEvents.readAt)
+                )
+              ),
+          ]);
+
+          unreadConversations = convResult[0]?.count || 0;
+          newVoicemails = vmResult[0]?.count || 0;
+          
+          // Cache counts for 10 seconds
+          globalCache.set(countsCacheKey, { unreadConversations, newVoicemails }, BOOTSTRAP_COUNTS_TTL);
+        } catch (countError) {
+          console.warn('[Bootstrap] Count queries failed, using defaults:', countError);
+        }
       }
 
       const isImpersonating = !!session.impersonatedTenantId;
@@ -134,7 +186,7 @@ export function registerBootstrapRoutes(app: Express) {
         tenant: tenant ? {
           id: tenant.id,
           name: tenant.name,
-          slug: tenant.subdomain,
+          slug: (tenant as any).slug ?? (tenant as any).subdomain ?? null,
           logoUrl: tenant.logoUrl,
           primaryColor: tenant.primaryColor,
           industry: tenant.industry,

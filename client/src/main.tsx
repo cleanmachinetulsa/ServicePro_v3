@@ -1,9 +1,13 @@
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { reportWebVitals } from "./utils/perf";
 import "./index.css";
 import "./styles/nightOpsTheme.css";
 import "./i18n/i18n";
+
+// SP-23: Initialize performance monitoring
+reportWebVitals();
 
 createRoot(document.getElementById("root")!).render(
   <AppErrorBoundary>
