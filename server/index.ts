@@ -45,6 +45,7 @@ import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
 import publicPricingRouter from "./routes.publicPricing";
 import publicSiteAdminRouter from "./routes.publicSiteAdmin";
+import publicSiteThemeRouter from "./routes.publicSiteTheme";
 import agentContextRouter from "./routes/agentContextRouter";
 import setupAssistantRouter from "./routes/setupAssistantRouter";
 import emailTestRouter from "./routes/emailTestRouter";
@@ -363,6 +364,8 @@ app.use('/api/public', publicSiteRouter);
 app.use('/api/public', publicPricingRouter);
 // Register public site admin routes (CM-4 - Public Site Entry Points)
 app.use('/api/admin', publicSiteAdminRouter);
+// Register public site theme routes (SP-24 - Themes + Template Library)
+app.use('/api/admin', publicSiteThemeRouter);
 // Register billing routes (Phase 7C - Stripe Billing & Subscriptions, requires tenant auth)
 app.use(billingRouter);
 // Register campaign management routes (requires auth)

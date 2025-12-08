@@ -365,6 +365,13 @@ export const navigationItems: NavigationItem[] = [
     complexity: 'advanced',
   },
   {
+    id: 'public-site-theme',
+    label: 'Public Site Theme',
+    icon: Palette,
+    path: '/admin/public-site-theme',
+    complexity: 'advanced',
+  },
+  {
     id: 'gallery-management',
     label: 'Gallery Management',
     icon: Image,
