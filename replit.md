@@ -7,6 +7,17 @@ ServicePro is a multi-tenant, white-label SaaS platform that transforms service 
 - Preferred communication style: Simple, everyday language
 - AI Agent Behavior: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
 
+## Recent Changes (December 2024)
+
+### Critical Production Fixes (Dec 8, 2024)
+1. **Google Calendar Sync for Dashboard Appointments**: Added `syncAppointmentToCalendar` export in `server/calendarApi.ts` and integrated it into `server/routes.appointments.ts`. Appointments created via the admin dashboard now sync to Google Calendar.
+
+2. **Push Notifications for New Bookings**: Added `sendPushToAllUsers` call in `server/routes.appointments.ts` to alert owners/managers when new appointments are created via the dashboard. Includes deep link to appointment details.
+
+3. **Root Tenant Settings Hub**: Updated `client/src/pages/settings-admin.tsx` to show a dedicated settings hub for root tenant (Clean Machine) instead of the generic SettingsWorkspace. The hub shows organized links to all legacy admin pages with proper icons and data-testid attributes.
+
+4. **AI Agent Behavior Rules**: Root tenant has 3 behavior rules in database that are loaded by `buildSmsSystemPrompt` in `server/ai/smsAgentPromptBuilder.ts` for SMS AI responses.
+
 ## System Architecture
 
 ### UI/UX Decisions

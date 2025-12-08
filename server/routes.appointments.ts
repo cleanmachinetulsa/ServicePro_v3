@@ -3,6 +3,9 @@ import { appointments, conversations, services, customers } from '@shared/schema
 import { eq, and, lte, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { recordAppointmentCreated } from './customerBookingStats';
+import { syncAppointmentToCalendar } from './calendarApi';
+import { sendPushToAllUsers } from './pushNotificationService';
+import { invalidateAppointmentCaches } from './cacheService';
 
 const router = Router();
 
@@ -163,6 +166,67 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
     const [customer] = await req.tenantDb!.select()
       .from(customers)
       .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, appointment.customerId)));
+    
+    // CRITICAL FIX: Sync appointment to Google Calendar
+    try {
+      if (!conversation.appointmentId) {
+        // Only sync new appointments (not updates) to Google Calendar
+        const calendarResult = await syncAppointmentToCalendar(
+          customer.name || 'Customer',
+          customer.phone || '',
+          service.name || 'Service',
+          data.scheduledTime.toISOString(),
+          `Address: ${data.address || 'TBD'}\nPhone: ${customer.phone || 'N/A'}`
+        );
+        if (calendarResult && calendarResult.eventId) {
+          console.log('[APPOINTMENT] Synced to Google Calendar:', calendarResult.eventId);
+        } else {
+          console.log('[APPOINTMENT] Calendar sync completed (no event ID returned)');
+        }
+      }
+    } catch (calendarError) {
+      console.error('[APPOINTMENT] Failed to sync to Google Calendar (continuing):', calendarError);
+      // Don't fail the request - appointment is saved to DB
+    }
+    
+    // CRITICAL FIX: Send push notification for new bookings
+    try {
+      if (!conversation.appointmentId) {
+        // Only notify for new appointments
+        const formattedDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+        
+        await sendPushToAllUsers({
+          title: '📅 New Appointment Booked!',
+          body: `${customer.name || 'Customer'} - ${service.name} on ${formattedDate}`,
+          tag: `new-appointment-${appointmentId}`,
+          requireInteraction: true,
+          data: {
+            type: 'new_booking',
+            appointmentId: appointmentId.toString(),
+            url: '/messages',
+          },
+          actions: [
+            { action: 'view', title: 'View' },
+          ],
+        });
+        console.log('[APPOINTMENT] Push notification sent for new booking');
+      }
+    } catch (pushError) {
+      console.error('[APPOINTMENT] Failed to send push notification (continuing):', pushError);
+    }
+    
+    // Invalidate dashboard caches
+    try {
+      invalidateAppointmentCaches();
+    } catch (cacheError) {
+      console.error('[APPOINTMENT] Failed to invalidate caches:', cacheError);
+    }
     
     res.json({ 
       success: true, 
