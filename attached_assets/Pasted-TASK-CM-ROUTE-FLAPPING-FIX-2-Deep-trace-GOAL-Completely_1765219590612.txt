@@ -1,0 +1,143 @@
+TASK: CM-ROUTE-FLAPPING-FIX-2 (Deep trace)
+
+GOAL:
+Completely eliminate the remaining route flapping for the Clean Machine tenant, especially around Settings / Services / Add-on Services, where I still see endless GET /api/services and /api/addon-services calls and fast URL flicker.
+
+CONSTRAINTS:
+- The previous SettingsWorkspace “URL normalization” fix is NOT sufficient; flapping still occurs.
+- Do NOT rip out multi-tenant logic or domain handling.
+- Do NOT “solve” this by disabling services/add-on fetching. The UI still needs those.
+
+STEP 1 – Add temporary route trace logging
+1) Open `client/src/components/AppShell.tsx`.
+2) Add a TEMPORARY `useEffect` near the top (inside the component) that logs the current location on every change:
+
+   ```ts
+   import { useLocation } from "wouter";
+
+   // inside AppShell component:
+   const [location] = useLocation();
+
+   useEffect(() => {
+     console.log("[ROUTE_TRACE] location changed to:", location);
+   }, [location]);
+NOTE: If AppShell already uses useLocation, just reuse that hook and only add the useEffect.
+
+Rebuild and run the app.
+
+Click the page that still flickers.
+
+Watch the console log and write down EXACTLY which 2–3 paths it is bouncing between, e.g.:
+
+/settings/email ↔ /settings/operations/services
+
+or /messages ↔ /dashboard
+
+or some other pair.
+
+Record them in a comment or note, e.g.:
+
+ts
+Copy code
+// BOUNCE_CASE_A: /settings/email <-> /settings/operations/services
+STEP 2 – Find all redirect logic for those paths
+4) Use ripgrep to find all code that navigates to those paths:
+
+bash
+Copy code
+rg "/settings/operations/services" client -n
+rg "/settings/email" client -n
+rg "Navigate to" client -n
+rg "setLocation" client -n
+For each hit, inspect the surrounding code:
+
+Look for useEffect blocks that call setLocation or navigate.
+
+Look for <Navigate to="..."> components.
+
+Look for guards like “if not section or item, send them to operations/services”.
+
+The goal is to identify ALL places that can redirect you to those “base” settings routes.
+
+STEP 3 – Harden the redirect conditions
+6) For each redirect related to the bounce paths:
+
+a) Only redirect when the current path actually needs normalization.
+
+cpp
+Copy code
+  Example safe pattern for settings:
+
+  ```ts
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    // Only normalize when we are *exactly* on the bare settings route(s)
+    const bareSettingsPaths = ["/settings", "/settings/operations"];
+    if (!bareSettingsPaths.includes(location)) return;
+
+    const target = "/settings/operations/services";
+
+    if (location !== target) {
+      setLocation(target, { replace: true });
+    }
+  }, [location, setLocation]);
+  ```
+
+  DO NOT:
+  - Rewrite `/settings/email`, `/settings/billing`, etc. to `/settings/operations/services`.
+  - Put generic “normalize any /settings route” logic in a place that sees *all* settings pages.
+b) If there’s a <Navigate to="/settings/operations/services" />:
+- Wrap it in a condition that ONLY triggers on the exact route where you want the redirect (e.g. /settings), not every settings subpage.
+
+swift
+Copy code
+  Example:
+
+  ```tsx
+  // Route definition
+  <Route path="/settings" component={SettingsWorkspace} />
+
+  // Inside SettingsWorkspace:
+  if (location === "/settings") {
+    return <Navigate to="/settings/operations/services" replace />;
+  }
+  ```
+
+  And make sure there is no second component ALSO trying to redirect `/settings/email` back to `/settings/operations/services`.
+STEP 4 – Check services/add-ons pages for self-redirects
+7) Open the page components that actually fetch /api/services and /api/addon-services, e.g.:
+
+client/src/pages/admin/OperationsServicesPage.tsx (or whatever the file is)
+
+client/src/pages/admin/AddonServicesPage.tsx
+
+Confirm:
+
+They do NOT call setLocation or navigate inside useEffect every time they mount.
+
+They do NOT try to “normalize” the base URL themselves.
+
+If they do, apply the SAME guarding pattern:
+
+Only redirect from a truly “bare” route.
+
+Never redirect when already on the correct specific route.
+
+STEP 5 – Re-test with Clean Machine tenant
+8) Remove any stale builds, restart the server, and re-open the app.
+9) With the Clean Machine owner account, test:
+
+Messages page → ensure it no longer flickers.
+
+Settings → Email (or the previously broken settings page) → ensure it stays anchored on that route.
+
+Confirm the [ROUTE_TRACE] logs show only 1–2 transitions per click, not a rapid alternating ping-pong.
+
+STEP 6 – Clean up temporary logging
+10) Once the bounce is fully gone:
+- Remove the [ROUTE_TRACE] logging useEffect from AppShell.
+- Remove any console.log spam you added during debugging.
+
+markdown
+Copy code
