@@ -614,16 +614,19 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
               ) : (
                 <>
                   <Wand2 className="w-4 h-4 mr-2" />
-                  Build My Setup
+                  Build My Setup from This
                 </>
               )}
             </Button>
             {showSkip && (
               <Button variant="outline" onClick={onComplete} data-testid="button-parser-skip">
-                Skip for Now
+                Don't Apply Now
               </Button>
             )}
           </div>
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            Your import results are saved - you can apply them later from Settings
+          </p>
         </CardContent>
       </Card>
     );
@@ -635,7 +638,7 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Upload className="w-5 h-5" />
-            Import Your Phone History
+            Import Your Existing Messages
             <Badge variant="secondary" className="bg-purple-500/20 text-purple-700 dark:text-purple-300">
               Optional
             </Badge>
@@ -643,10 +646,42 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
           {getStatusBadge()}
         </div>
         <CardDescription>
-          Upload your exported SMS/call history and we'll extract services, FAQs, and communication style
+          We can analyze your past messages to learn your tone, common Q&A, and typical services
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-500" />
+            What we'll do with your files:
+          </h4>
+          <ul className="text-xs text-muted-foreground space-y-1 ml-6 list-disc">
+            <li>Learn your communication style and tone</li>
+            <li>Extract FAQs from real customer conversations</li>
+            <li>Identify services and pricing patterns</li>
+            <li>Configure your AI agent to match your voice</li>
+          </ul>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="flex items-center gap-2 p-2 rounded bg-muted/50">
+            <FileText className="w-4 h-4 text-green-500" />
+            <span>Google Voice exports</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded bg-muted/50">
+            <MessageSquare className="w-4 h-4 text-blue-500" />
+            <span>SMS backup files</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded bg-muted/50">
+            <FileText className="w-4 h-4 text-orange-500" />
+            <span>HTML conversation logs</span>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded bg-muted/50">
+            <ListPlus className="w-4 h-4 text-purple-500" />
+            <span>CSV price sheets</span>
+          </div>
+        </div>
+
         <div
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -671,7 +706,7 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
             Drag and drop files here, or click to select
           </p>
           <p className="text-xs text-muted-foreground">
-            Supports: HTML (Google Messages export), CSV, ZIP, JSON
+            Supports: HTML, CSV, ZIP, JSON (up to 50MB)
           </p>
         </div>
 
