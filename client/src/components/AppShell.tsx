@@ -11,6 +11,7 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { PastDueWarningBanner } from '@/components/billing/PastDueWarningBanner';
 import { navigationItems, NavigationItem, filterNavForMode } from '@/config/navigationItems';
 import { useSimpleModeConfig } from '@/hooks/useUiExperienceMode';
+import { isRootTenant } from '@/utils/tenantRouting';
 import { Menu, Moon, Sun, Lightbulb, Sparkles, Settings2 } from 'lucide-react';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -28,6 +29,7 @@ interface AuthContext {
     username: string;
     role: string;
     preferredLanguage?: string;
+    tenantId?: string; // CM-DASH-ROUTES-RESTORE: Add tenantId for routing decisions
   };
   impersonation: {
     isActive: boolean;
@@ -35,6 +37,37 @@ interface AuthContext {
     tenantName: string | null;
     startedAt: string | null;
   };
+}
+
+// CM-DASH-ROUTES-RESTORE: Mapping from /settings/* paths to legacy admin paths for root tenant
+// Also maps other nav paths to ensure root tenant uses legacy pages where available
+const SETTINGS_TO_LEGACY_MAP: Record<string, string> = {
+  // Settings paths
+  '/settings/billing': '/admin/billing',
+  '/settings/billing/addons': '/admin/plans-and-addons',
+  '/settings/email': '/admin/homepage-editor',
+  '/settings/a2p': '/admin/phone-config',
+  '/settings/domains': '/admin/public-site-settings',
+  '/settings/dashboard/customize': '/dashboard',
+  '/settings/ui-mode': '/dashboard',
+  '/settings/usage': '/admin/usage-dashboard',
+  '/settings/usage-caps': '/admin/usage-dashboard',
+  // Settings workspace paths (generic /settings routes)
+  '/settings': '/dashboard',
+  '/settings/operations/services': '/dashboard', // No dedicated legacy page, go to dashboard
+  '/settings/operations/recurring': '/admin/scheduling',
+  '/settings/customers/loyalty': '/rewards',
+  '/settings/customers/referrals': '/referrals',
+  '/settings/communications/sms-templates': '/dashboard',
+  '/settings/communications/email-templates': '/dashboard',
+};
+
+// CM-DASH-ROUTES-RESTORE: Helper to transform path based on tenant
+function getTenantAwarePath(path: string, tenantId?: string): string {
+  if (!isRootTenant(tenantId)) {
+    return path;
+  }
+  return SETTINGS_TO_LEGACY_MAP[path] || path;
 }
 
 interface AppShellProps {
@@ -77,6 +110,11 @@ export function AppShell({
   const handleNavigate = (path: string) => {
     navigate(path);
     setDrawerOpen(false);
+  };
+  
+  // CM-DASH-ROUTES-RESTORE: Get tenant-aware path for navigation and active state
+  const getEffectivePath = (path: string) => {
+    return getTenantAwarePath(path, authContext?.user?.tenantId);
   };
 
   const isActive = (path: string) => {
@@ -142,7 +180,9 @@ export function AppShell({
             );
           }
 
-          const active = isActive(item.path);
+          // CM-DASH-ROUTES-RESTORE: Use effective path for both navigation and active state
+          const effectivePath = getEffectivePath(item.path);
+          const active = isActive(effectivePath);
           const Icon = item.icon;
 
           return (
@@ -154,7 +194,7 @@ export function AppShell({
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
-              onClick={() => handleNavigate(item.path)}
+              onClick={() => handleNavigate(effectivePath)}
               data-testid={`nav-${item.id}`}
               data-tour-id={`nav-${item.id}`}
             >
