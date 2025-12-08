@@ -90,6 +90,18 @@ export function AppShell({
     const isImpersonating = authContext?.impersonation?.isActive || false;
     const userRole = authContext?.user?.role;
     
+    // CM-TENANT-FOCUS: Debug logging for navigation filtering
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TENANT_DEBUG_NAV]', { 
+        userRole, 
+        userEmail: authContext?.user?.username,
+        uiMode, 
+        dashboardMode,
+        isImpersonating,
+        simpleModeConfigItems: simpleModeConfig?.visibleNavItems?.length || 0
+      });
+    }
+    
     // Start with base navigation items
     let filteredItems: NavigationItem[] = [...navigationItems];
     
