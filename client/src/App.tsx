@@ -174,6 +174,8 @@ const CleanMachineShowcase = lazy(() => import("./pages/clean-machine-showcase")
 const SipSetupGuide = lazy(() => import("./pages/sip-setup-guide"));
 const DownloadExportPage = lazy(() => import("./pages/download-export"));
 const UsageDashboard = lazy(() => import("./pages/UsageDashboard"));
+const UsageCostsPage = lazy(() => import("./pages/UsageCostsPage"));
+const RootSystemUsagePage = lazy(() => import("./pages/RootSystemUsagePage"));
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const DashboardNavButton = lazy(() => import("@/components/DashboardNavButton"));
 
@@ -619,6 +621,17 @@ function Router() {
       <Route path="/admin/system-usage-v2">
         <AuthGuard>
           <LazyDashboard><AdminSystemUsagePage /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      {/* SP-26: Usage Transparency v2 */}
+      <Route path="/admin/usage-costs">
+        <AuthGuard>
+          <LazyDashboard><UsageCostsPage /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      <Route path="/root/system-usage">
+        <AuthGuard>
+          <LazyDashboard><RootSystemUsagePage /></LazyDashboard>
         </AuthGuard>
       </Route>
       <Route path="/admin/billing-overview">

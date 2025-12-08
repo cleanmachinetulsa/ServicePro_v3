@@ -52,6 +52,7 @@ import emailTestRouter from "./routes/emailTestRouter";
 import tenantDomainsRouter from "./routes.tenantDomains";
 import dashboardPreferencesRouter from "./routes.dashboardPreferences";
 import usageLedgerRouter from "./routes.usageLedger";
+import usageTransparencyV2Router from "./routes.usageTransparencyV2";
 import addonRouter from "./routes/addonRoutes";
 import usageMeteringRouter from "./routes/usageMeteringRoutes";
 import parserRoutes from "./routes/parserRoutes";
@@ -511,6 +512,10 @@ app.use((req, res, next) => {
   // CM-Billing-Prep: Register usage ledger routes
   app.use('/api/billing/usage', usageLedgerRouter);
   console.log('[USAGE LEDGER] Routes registered: /api/billing/usage');
+
+  // SP-26: Register usage transparency v2 routes
+  app.use(usageTransparencyV2Router);
+  console.log('[USAGE TRANSPARENCY V2] Routes registered: /api/admin/usage/summary, /api/root/usage/summary');
 
   // SP-18: Register usage metering v2 routes
   app.use('/api/billing/usage/v2', usageMeteringRouter);
