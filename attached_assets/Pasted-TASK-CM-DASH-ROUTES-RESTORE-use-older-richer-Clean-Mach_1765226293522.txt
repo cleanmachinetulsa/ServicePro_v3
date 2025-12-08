@@ -1,0 +1,155 @@
+TASK: CM-DASH-ROUTES-RESTORE (use older, richer Clean Machine pages instead of new generic ones)
+
+GOAL:
+For the root tenant ("Clean Machine"), the dashboard and settings navigation should use the older, fully configured admin pages instead of the newer "SettingsWorkspace" / generated pages that have little or no content.
+
+The problem:
+- Previously there was route "flapping" between two different URLs (legacy admin pages vs new settings/workspace pages).
+- A fix stopped the flapping, but now the navigation and redirects mostly land on the NEW generic routes instead of the OLD rich pages.
+- For Clean Machine (tenant_id='root'), I want the nav to prefer the older, populated pages.
+
+CONSTRAINTS:
+- Do NOT delete the new generic pages; other tenants may use them later.
+- Do NOT break multi-tenant or simple/advanced mode.
+- For the root tenant only, make sure nav items and default redirects target the older admin pages where they exist.
+
+STEP 1 – Identify legacy vs new routes for key sections
+1) Use ripgrep to find all dashboard/settings/admin routes:
+
+   ```bash
+   rg "Route path=.*dashboard" client/src/App.tsx -n
+   rg "Route path=.*settings" client/src/App.tsx -n
+   rg "Route path=.*admin" client/src/App.tsx -n
+   rg "SettingsWorkspace" client/src -n
+For each key section (Dashboard, Messages, Services, Add-ons, Email Templates, SMS Campaigns, Loyalty/Rewards), list:
+
+The legacy Clean Machine pages, typically under /admin/* with components in client/src/pages/admin/...
+
+The new generic pages, typically under /settings/* or with "*Workspace" in the name.
+
+Produce a short summary in a code comment somewhere (e.g. in client/src/config/navigationItems.ts), like:
+
+ts
+Copy code
+// CM-ROUTE-MAP (root tenant):
+// Dashboard: legacy = /dashboard (DashboardPage.tsx), new = /settings/dashboard (DashboardWorkspace.tsx)
+// Services: legacy = /admin/services, new = /settings/operations/services
+// SMS campaigns: legacy = /admin/sms-campaigns, new = /settings/communications/sms
+// Email templates: legacy = /admin/email-templates, new = /settings/email
+// Rewards: legacy = /rewards or /admin/rewards-config, new = /settings/loyalty
+(Adjust the actual paths based on what you find.)
+
+STEP 2 – Teach navigationItems to prefer legacy pages for root tenant
+3) Open client/src/config/navigationItems.ts.
+
+For each nav item that points to a NEW route where a legacy equivalent exists, do this:
+
+Introduce an optional helper that can choose a path based on tenant ID:
+
+ts
+Copy code
+import { getCurrentTenantId } from "@/utils/tenantContext"; // or the appropriate helper
+
+function cmOrDefault(cmPath: string, defaultPath: string): string {
+  const tenantId = getCurrentTenantId();
+  if (tenantId === "root") return cmPath;
+  return defaultPath;
+}
+If you don't have getCurrentTenantId on the client, instead:
+
+Use the same logic you use elsewhere to detect the root/owner tenant or
+
+Hardcode a flag based on hostname (cleanmachinetulsa.com => root tenant).
+
+Then update the nav items that currently point at generic settings/workspace routes to use the legacy ones for root:
+
+Example:
+
+ts
+Copy code
+{
+  label: "Services",
+  path: cmOrDefault("/admin/services", "/settings/operations/services"),
+  icon: ...,
+  // other props
+}
+{
+  label: "SMS Campaigns",
+  path: cmOrDefault("/admin/sms-campaigns", "/settings/communications/sms"),
+  ...
+}
+{
+  label: "Email Templates",
+  path: cmOrDefault("/admin/email-templates", "/settings/email"),
+  ...
+}
+{
+  label: "Rewards",
+  path: cmOrDefault("/rewards", "/settings/loyalty"),
+  ...
+}
+The goal is that when logged in to the root Clean Machine tenant, the sidebar links route to the older admin pages.
+
+STEP 3 – Fix default redirects to respect legacy vs new
+5) Open any components that perform default redirects for settings/admin (you already touched some):
+
+client/src/pages/settings/SettingsWorkspace.tsx (or similar)
+
+client/src/pages/dashboard/DashboardPage.tsx (if it redirects internally)
+
+any other Navigate or setLocation logic that points at /settings/operations/services or similar.
+
+For each redirect, gate it by tenant ID. Example pattern:
+
+ts
+Copy code
+const [location, setLocation] = useLocation();
+const tenantId = getCurrentTenantId(); // or equivalent
+
+useEffect(() => {
+  // Only normalize for non-root tenants
+  if (tenantId === "root") return;
+
+  const bareSettingsPaths = ["/settings", "/settings/operations"];
+  if (!bareSettingsPaths.includes(location)) return;
+
+  const target = "/settings/operations/services";
+  if (location !== target) {
+    setLocation(target, { replace: true });
+  }
+}, [location, setLocation, tenantId]);
+For root (Clean Machine), do not auto-redirect to the new pages. Let nav drive to the legacy admin pages.
+
+STEP 4 – Validate with Clean Machine tenant
+7) Restart the app and log in as the Clean Machine owner.
+
+Confirm:
+
+Sidebar → "Services" takes you to the old, populated services page.
+
+Sidebar → "SMS Campaigns" takes you to the old, populated SMS campaign page.
+
+Sidebar → "Email Templates" (or equivalent) takes you to the old, populated email templates page.
+
+Rewards / Loyalty uses the page that shows your real reward services and points.
+
+Make sure there is no more bouncing/flapping:
+
+Click back and forth between Messages, Settings, Services, Email, Rewards.
+
+URLs should remain stable and only change once per click.
+
+STEP 5 – Keep both worlds for future tenants
+10) Ensure that for non-root tenants, you still use the new settings/workspace pages as default:
+
+If tenantId !== 'root', nav items should point to /settings/... routes.
+
+Only root gets routed to /admin/... legacy pages.
+
+Once this is done:
+
+Clean Machine gets its old, rich configuration experience back.
+
+New tenants keep the simpler, newer experience.
+
+And we don't need to revert the repo or throw away all recent work.

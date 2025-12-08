@@ -1,15 +1,92 @@
 import { useEffect, useState } from 'react';
 import { useRoute, useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import SettingsWorkspace from '@/components/SettingsWorkspace';
 import BackNavigation from '@/components/BackNavigation';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Settings as SettingsIcon, Loader2 } from 'lucide-react';
 import { settingsSections, findSectionForItem, isValidItem, isSectionValid } from '@/config/settingsSections';
+import { isRootTenant } from '@/utils/tenantRouting';
+
+/**
+ * CM-ROUTE-RESTORE: Map settings workspace paths to legacy admin paths for root tenant.
+ * Root tenant (Clean Machine) uses legacy admin pages with full functionality.
+ * Other tenants use the simplified SettingsWorkspace.
+ */
+const SETTINGS_TO_LEGACY_MAP: Record<string, string> = {
+  // Operations section
+  'services': '/admin/services',
+  'addons': '/admin/services',
+  'recurring': '/admin/scheduling',
+  'reminder-rules': '/admin/scheduling',
+  // Customers section
+  'import-export': '/customers',
+  'segments': '/customers',
+  // Communication section
+  'sms-templates': '/settings/communications/sms-templates',
+  'email-templates': '/settings/communications/email-templates',
+  'campaigns': '/communications',
+  'quick-replies': '/settings',
+  // Website section
+  'homepage-editor': '/admin/homepage-editor',
+  'gallery': '/admin/gallery-management',
+  'reviews': '/admin/reviews',
+  // Integrations section
+  'phone': '/phone-settings',
+  'calendar': '/dashboard',
+  'payments': '/dashboard',
+  // Team section
+  'employees': '/admin/employees',
+  'roles': '/admin/employees',
+  // Billing section (keep in workspace for all tenants)
+  // 'subscription': stays in workspace
+  // 'usage': stays in workspace
+  // 'invoices': stays in workspace
+};
 
 export default function SettingsAdmin() {
   const [, params] = useRoute('/settings/:section?/:item?');
   const [location, setLocation] = useLocation();
   const [initialSection, setInitialSection] = useState<string | undefined>();
   const [initialItem, setInitialItem] = useState<string | undefined>();
+  const [redirectChecked, setRedirectChecked] = useState(false);
+  
+  // CM-ROUTE-RESTORE: Get tenant context to redirect root tenant to legacy pages
+  const { data: authContext, isLoading: authLoading } = useQuery<{ user?: { tenantId?: string } }>({
+    queryKey: ['/api/auth/context'],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // CM-ROUTE-RESTORE: Redirect root tenant to legacy admin pages
+  useEffect(() => {
+    // Wait for auth context to load
+    if (authLoading || !authContext) return;
+    if (redirectChecked) return;
+    
+    // Only redirect for root tenant
+    if (!isRootTenant(authContext?.user?.tenantId)) {
+      setRedirectChecked(true);
+      return;
+    }
+    
+    // Get the current settings item from URL params
+    const item = params?.item || params?.section;
+    
+    if (item && SETTINGS_TO_LEGACY_MAP[item]) {
+      // Redirect to legacy page
+      console.log(`[CM-ROUTE] Root tenant redirecting ${item} -> ${SETTINGS_TO_LEGACY_MAP[item]}`);
+      setLocation(SETTINGS_TO_LEGACY_MAP[item], { replace: true });
+      return;
+    }
+    
+    // For root tenant with no specific item, redirect to dashboard
+    if (!params?.section && !params?.item) {
+      console.log('[CM-ROUTE] Root tenant at /settings -> redirecting to /dashboard');
+      setLocation('/dashboard', { replace: true });
+      return;
+    }
+    
+    setRedirectChecked(true);
+  }, [authContext, authLoading, params, setLocation, redirectChecked]);
 
   useEffect(() => {
     if (!params) {
@@ -64,6 +141,15 @@ export default function SettingsAdmin() {
     setInitialSection('operations');
     setInitialItem('services');
   }, [params, setLocation]);
+  
+  // Show loading while checking auth for root tenant redirect
+  if (authLoading) {
+    return (
+      <div className="container mx-auto p-6 max-w-7xl flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
