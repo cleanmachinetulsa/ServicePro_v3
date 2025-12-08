@@ -1,31 +1,136 @@
 import { useEffect, useState } from 'react';
-import { useRoute, useLocation } from 'wouter';
+import { useRoute, useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import SettingsWorkspace from '@/components/SettingsWorkspace';
 import BackNavigation from '@/components/BackNavigation';
-import { Settings as SettingsIcon, Loader2 } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { 
+  Settings as SettingsIcon, 
+  Loader2, 
+  Users, 
+  Calendar, 
+  Palette, 
+  Phone, 
+  Gift, 
+  UserPlus, 
+  MessageSquare,
+  Bell,
+  Shield,
+  Building2,
+  ChevronRight
+} from 'lucide-react';
 import { settingsSections, findSectionForItem, isValidItem, isSectionValid } from '@/config/settingsSections';
 import { isRootTenant } from '@/utils/tenantRouting';
 
 /**
- * CM-ROUTE-RESTORE: Map settings workspace paths to legacy admin paths for root tenant.
- * Root tenant (Clean Machine) uses legacy admin pages with full functionality.
+ * CM-ROUTE-RESTORE: Legacy admin pages for root tenant (Clean Machine).
+ * Root tenant gets dedicated admin pages with full functionality.
  * Other tenants use the simplified SettingsWorkspace.
- * 
- * IMPORTANT: Only include mappings to routes that actually exist in App.tsx!
  */
-const SETTINGS_TO_LEGACY_MAP: Record<string, string> = {
-  // Operations section - scheduling route exists at /admin/scheduling
-  'recurring': '/admin/scheduling',
-  // Website section - these legacy routes exist
-  'homepage-editor': '/admin/homepage-editor',
-  // Team section - employees route exists
-  'employees': '/admin/employees',
-  // Integrations section - phone settings route exists
-  'phone-settings': '/phone-settings',
-  // NOTE: Most settings items render in workspace as components (ServicesManagement, etc.)
-  // Only redirect when there's a dedicated legacy page that provides better UX
-};
+const ROOT_TENANT_SETTINGS_SECTIONS = [
+  {
+    title: 'Operations',
+    description: 'Manage services, scheduling, and appointments',
+    items: [
+      { path: '/settings/operations/services', label: 'Services & Pricing', icon: Building2 },
+      { path: '/admin/scheduling', label: 'Scheduling & Availability', icon: Calendar },
+    ]
+  },
+  {
+    title: 'Customer Management',
+    description: 'Customers, loyalty, and referrals',
+    items: [
+      { path: '/settings/customers/customer-list', label: 'Customer List', icon: Users },
+      { path: '/settings/customers/loyalty-program', label: 'Loyalty Program', icon: Gift },
+      { path: '/settings/customers/referral-program', label: 'Referral Program', icon: UserPlus },
+    ]
+  },
+  {
+    title: 'Communications',
+    description: 'Messaging, AI agent, and notifications',
+    items: [
+      { path: '/settings/communications/sms-templates', label: 'SMS Templates', icon: MessageSquare },
+      { path: '/settings/communications/ai-agent', label: 'AI Agent Settings', icon: Shield },
+      { path: '/settings/communications/push-notifications', label: 'Push Notifications', icon: Bell },
+    ]
+  },
+  {
+    title: 'Team',
+    description: 'Employees and access management',
+    items: [
+      { path: '/admin/employees', label: 'Employees', icon: Users },
+    ]
+  },
+  {
+    title: 'Website & Branding',
+    description: 'Homepage, appearance, and public pages',
+    items: [
+      { path: '/admin/homepage-editor', label: 'Homepage Editor', icon: Palette },
+    ]
+  },
+  {
+    title: 'Integrations',
+    description: 'Phone, calendar, and external services',
+    items: [
+      { path: '/phone-settings', label: 'Phone Settings', icon: Phone },
+    ]
+  },
+];
+
+/**
+ * Root tenant settings hub - shows links to all legacy admin pages
+ */
+function RootTenantSettingsHub() {
+  return (
+    <div className="container mx-auto p-6 max-w-7xl">
+      <div className="mb-4">
+        <BackNavigation fallbackPath="/dashboard" />
+      </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <SettingsIcon className="h-8 w-8" />
+          Settings
+        </h1>
+        <p className="text-muted-foreground mt-2">
+          Manage your Clean Machine operations, customers, and communications
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {ROOT_TENANT_SETTINGS_SECTIONS.map((section) => (
+          <Card key={section.title} className="hover:shadow-lg transition-shadow">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">{section.title}</CardTitle>
+              <CardDescription>{section.description}</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <ul className="space-y-2">
+                {section.items.map((item) => {
+                  const testId = `settings-link-${item.label.toLowerCase().replace(/\s+/g, '-')}`;
+                  return (
+                    <li key={item.path}>
+                      <Link 
+                        href={item.path}
+                        data-testid={testId}
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors group"
+                      >
+                        <span className="flex items-center gap-2">
+                          <item.icon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{item.label}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsAdmin() {
   const [, params] = useRoute('/settings/:section?/:item?');
@@ -40,32 +145,18 @@ export default function SettingsAdmin() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // CM-ROUTE-FIX: Only redirect for specific items that have dedicated legacy pages
-  // Do NOT redirect /settings to /dashboard - that breaks navigation!
+  // CM-ROUTE-FIX: Root tenant gets settings hub, other tenants get workspace
+  // Only redirect if there's a specific section/item that needs special handling
   useEffect(() => {
     // Wait for auth context to load
     if (authLoading || !authContext) return;
     if (redirectChecked) return;
     
-    // Only check redirects for root tenant
-    if (!isRootTenant(authContext?.user?.tenantId)) {
-      setRedirectChecked(true);
-      return;
-    }
-    
-    // Get the current settings item from URL params
-    const item = params?.item || params?.section;
-    
-    // Only redirect if there's a specific legacy page for this item
-    if (item && SETTINGS_TO_LEGACY_MAP[item]) {
-      console.log(`[CM-ROUTE] Root tenant redirecting ${item} -> ${SETTINGS_TO_LEGACY_MAP[item]}`);
-      setLocation(SETTINGS_TO_LEGACY_MAP[item], { replace: true });
-      return;
-    }
-    
-    // Otherwise let root tenant use the settings workspace - don't redirect to dashboard!
     setRedirectChecked(true);
-  }, [authContext, authLoading, params, setLocation, redirectChecked]);
+  }, [authContext, authLoading, redirectChecked]);
+  
+  // Determine if we're on the root settings path (no section/item specified)
+  const isRootSettingsPath = !params?.section && !params?.item;
 
   useEffect(() => {
     if (!params) {
@@ -130,6 +221,13 @@ export default function SettingsAdmin() {
     );
   }
 
+  // CM-ROUTE-RESTORE: Root tenant gets settings hub on /settings
+  // Shows organized links to all legacy admin pages
+  if (isRootSettingsPath && isRootTenant(authContext?.user?.tenantId)) {
+    return <RootTenantSettingsHub />;
+  }
+
+  // Other tenants (or root tenant with specific path) get the settings workspace
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="mb-4">

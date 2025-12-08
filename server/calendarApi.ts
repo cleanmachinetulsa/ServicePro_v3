@@ -1060,8 +1060,9 @@ export async function generateAvailableSlots(serviceName: string) {
 
 /**
  * Book an appointment in Google Calendar
+ * Exported for use by admin dashboard when creating appointments manually
  */
-async function bookAppointment(
+export async function syncAppointmentToCalendar(
   customerName: string,
   phone: string,
   serviceName: string,
