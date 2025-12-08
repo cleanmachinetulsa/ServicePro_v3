@@ -314,6 +314,18 @@ export const tenantConfig = pgTable("tenant_config", {
     showRewardsCTA?: boolean;
     showGiftCardCTA?: boolean;
     showBookingCTA?: boolean;
+    // SP-24: Theme and layout configuration
+    themeKey?: string;
+    heroLayout?: string;
+    servicesLayout?: string;
+    testimonialsLayout?: string;
+    ctaStyle?: string;
+    showTestimonials?: boolean;
+    showFaq?: boolean;
+    showGallery?: boolean;
+    showWhyChooseUs?: boolean;
+    showAbout?: boolean;
+    showRewards?: boolean;
   }>(),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
