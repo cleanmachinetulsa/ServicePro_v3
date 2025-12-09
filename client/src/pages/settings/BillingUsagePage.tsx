@@ -163,11 +163,8 @@ export default function BillingUsagePage() {
 
   const cancelMutation = useMutation({
     mutationFn: async (cancelAtPeriodEnd: boolean) => {
-      const res = await apiRequest('/api/billing/cancel-at-period-end', {
-        method: 'POST',
-        body: JSON.stringify({ cancelAtPeriodEnd }),
-      });
-      return res.cancelAtPeriodEnd as boolean;
+      const res = await apiRequest('POST', '/api/billing/cancel-at-period-end', { cancelAtPeriodEnd });
+      return (res as any).cancelAtPeriodEnd as boolean;
     },
     onSuccess: (value) => {
       queryClient.setQueryData(['settings', 'billing-overview'], (prev: any) =>

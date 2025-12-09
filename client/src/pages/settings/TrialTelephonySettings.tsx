@@ -50,10 +50,7 @@ export default function TrialTelephonySettings() {
 
   const addNumberMutation = useMutation({
     mutationFn: async (phoneNumber: string) => {
-      return await apiRequest('/api/settings/trial-telephony/allowed-numbers', {
-        method: 'POST',
-        body: JSON.stringify({ phoneNumber }),
-      });
+      return await apiRequest('POST', '/api/settings/trial-telephony/allowed-numbers', { phoneNumber });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/settings/trial-telephony'] });
@@ -75,10 +72,7 @@ export default function TrialTelephonySettings() {
 
   const removeNumberMutation = useMutation({
     mutationFn: async (phoneNumber: string) => {
-      return await apiRequest('/api/settings/trial-telephony/allowed-numbers', {
-        method: 'DELETE',
-        body: JSON.stringify({ phoneNumber }),
-      });
+      return await apiRequest('DELETE', '/api/settings/trial-telephony/allowed-numbers', { phoneNumber });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/settings/trial-telephony'] });

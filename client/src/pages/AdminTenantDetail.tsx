@@ -103,11 +103,7 @@ export default function AdminTenantDetail() {
 
   const impersonateMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest('/api/admin/impersonate/start', {
-        method: 'POST',
-        body: JSON.stringify({ tenantId: id }),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('POST', '/api/admin/impersonate/start', { tenantId: id });
     },
     onSuccess: (data: any) => {
       toast({

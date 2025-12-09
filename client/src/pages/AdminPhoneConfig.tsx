@@ -114,11 +114,7 @@ export default function AdminPhoneConfig() {
 
   const createMutation = useMutation({
     mutationFn: async (data: CreatePhoneConfigForm) => {
-      return await apiRequest('/api/admin/phone-config', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('POST', '/api/admin/phone-config', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/phone-config'] });
@@ -140,11 +136,7 @@ export default function AdminPhoneConfig() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: EditPhoneConfigForm }) => {
-      return await apiRequest(`/api/admin/phone-config/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('PATCH', `/api/admin/phone-config/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/phone-config'] });

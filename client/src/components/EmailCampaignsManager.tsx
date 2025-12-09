@@ -514,13 +514,9 @@ const EmailCampaignsManager: React.FC = () => {
     mutationFn: async (data: { prompt: string, template?: string }) => {
       setIsGenerating(true);
       try {
-        const response = await apiRequest('/api/generate-email-content', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            prompt: data.prompt,
-            template: data.template || ''
-          }),
+        const response = await apiRequest('POST', '/api/generate-email-content', { 
+          prompt: data.prompt,
+          template: data.template || ''
         });
         return response;
       } catch (error) {

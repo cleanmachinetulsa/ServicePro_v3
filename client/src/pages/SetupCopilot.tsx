@@ -142,16 +142,13 @@ export default function SetupCopilot() {
       
       conversationHistory.push({ role: "user", content: userText });
 
-      const response = await apiRequest<{
+      const response = await apiRequest("POST", "/api/ai/setup-assistant", { messages: conversationHistory });
+
+      return response as {
         ok: boolean;
         reply: string;
         debug?: { overallStatus: string; gapCount: number };
-      }>("/api/ai/setup-assistant", {
-        method: "POST",
-        body: JSON.stringify({ messages: conversationHistory }),
-      });
-
-      return response;
+      };
     },
     onSuccess: (data) => {
       if (data.ok && data.reply) {

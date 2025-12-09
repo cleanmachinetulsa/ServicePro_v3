@@ -64,7 +64,7 @@ export default function CustomerPortalDashboard() {
 
   const handleLogout = async () => {
     try {
-      await apiRequest('/api/public/customer-auth/logout', { method: 'POST' });
+      await apiRequest('POST', '/api/public/customer-auth/logout');
       toast({
         title: 'Logged Out',
         description: 'You have been logged out successfully',

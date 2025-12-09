@@ -7,7 +7,7 @@
  * Usage: Used by the tenant billing page to show "X / Y" usage vs limit.
  */
 
-export type PlanTier = 'free' | 'starter' | 'pro' | 'elite' | 'internal';
+export type PlanTier = 'free' | 'starter' | 'pro' | 'elite' | 'internal' | 'family_free' | 'family_paid';
 
 export interface PlanLimits {
   maxSmsPerMonth: number;
@@ -64,6 +64,24 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     baseMonthlyPrice: 0,
     displayName: 'Internal',
     description: 'Family/friends at-cost tier - unlimited usage',
+  },
+  family_free: {
+    maxSmsPerMonth: 999999,
+    maxEmailsPerMonth: 999999,
+    maxAiRequestsPerMonth: 999999,
+    maxVoiceMinutesPerMonth: 999999,
+    baseMonthlyPrice: 0,
+    displayName: 'Family (Free)',
+    description: 'Family tier - all features free, no usage fees',
+  },
+  family_paid: {
+    maxSmsPerMonth: 999999,
+    maxEmailsPerMonth: 999999,
+    maxAiRequestsPerMonth: 999999,
+    maxVoiceMinutesPerMonth: 999999,
+    baseMonthlyPrice: 0,
+    displayName: 'Family (Fee + Usage)',
+    description: 'Family tier - no base fee, pay for usage only',
   },
 };
 

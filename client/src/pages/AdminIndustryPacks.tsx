@@ -80,7 +80,7 @@ export default function AdminIndustryPacks() {
 
   const deletePackMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/admin/industry-packs/${id}`, { method: 'DELETE' });
+      return apiRequest('DELETE', `/api/admin/industry-packs/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/industry-packs'] });
@@ -93,10 +93,7 @@ export default function AdminIndustryPacks() {
 
   const cloneTenantMutation = useMutation({
     mutationFn: async (data: { packId: number; tenantInfo: typeof cloneForm }) => {
-      return apiRequest(`/api/admin/industry-packs/${data.packId}/clone-tenant`, { 
-        method: 'POST', 
-        body: JSON.stringify(data.tenantInfo) 
-      });
+      return apiRequest('POST', `/api/admin/industry-packs/${data.packId}/clone-tenant`, data.tenantInfo);
     },
     onSuccess: (result: any) => {
       toast({ title: 'Tenant Created!', description: result.message || 'New tenant has been created from the pack.' });
@@ -110,7 +107,7 @@ export default function AdminIndustryPacks() {
 
   const importPackMutation = useMutation({
     mutationFn: async (json: string) => {
-      return apiRequest('/api/admin/industry-packs/import', { method: 'POST', body: JSON.stringify({ json }) });
+      return apiRequest('POST', '/api/admin/industry-packs/import', { json });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/industry-packs'] });

@@ -38,11 +38,11 @@ const createTenantSchema = z.object({
   businessName: z.string().min(1, 'Business name is required'),
   logoUrl: z.string().optional(),
   primaryColor: z.string().optional(),
-  tier: z.enum(['starter', 'pro', 'elite']),
+  tier: z.enum(['starter', 'pro', 'elite', 'internal', 'family_free', 'family_paid']),
 });
 
 const editPlanSchema = z.object({
-  planTier: z.enum(['starter', 'pro', 'elite', 'internal']),
+  planTier: z.enum(['starter', 'pro', 'elite', 'internal', 'family_free', 'family_paid']),
   status: z.enum(['trialing', 'active', 'past_due', 'suspended', 'cancelled']),
 });
 
@@ -75,11 +75,7 @@ export default function AdminTenants() {
 
   const createTenantMutation = useMutation({
     mutationFn: async (data: CreateTenantForm) => {
-      return await apiRequest('/api/admin/tenants', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('POST', '/api/admin/tenants', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/tenants'] });
@@ -105,11 +101,7 @@ export default function AdminTenants() {
 
   const impersonateMutation = useMutation({
     mutationFn: async (tenantId: string) => {
-      return await apiRequest('/api/admin/impersonate/start', {
-        method: 'POST',
-        body: JSON.stringify({ tenantId }),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('POST', '/api/admin/impersonate/start', { tenantId });
     },
     onSuccess: (data: any) => {
       toast({
@@ -142,11 +134,7 @@ export default function AdminTenants() {
 
   const editPlanMutation = useMutation({
     mutationFn: async ({ tenantId, data }: { tenantId: string; data: EditPlanForm }) => {
-      return await apiRequest(`/api/admin/tenants/${tenantId}/plan`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('PATCH', `/api/admin/tenants/${tenantId}/plan`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/tenants'] });
@@ -415,6 +403,8 @@ export default function AdminTenants() {
                             <SelectItem value="pro">Pro</SelectItem>
                             <SelectItem value="elite">Elite</SelectItem>
                             <SelectItem value="internal">Internal (at-cost)</SelectItem>
+                            <SelectItem value="family_free">Family (All Free)</SelectItem>
+                            <SelectItem value="family_paid">Family (Fee + Usage)</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

@@ -37,10 +37,7 @@ export function NotificationPreferences() {
 
   const updateMutation = useMutation({
     mutationFn: async (updates: any) => {
-      return apiRequest('/api/notification-preferences/me', {
-        method: 'PUT',
-        body: JSON.stringify(updates)
-      });
+      return apiRequest('PUT', '/api/notification-preferences/me', updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notification-preferences/me'] });
@@ -53,14 +50,11 @@ export function NotificationPreferences() {
 
   const updateSmsFallbackMutation = useMutation({
     mutationFn: async (updates: any) => {
-      return apiRequest('/api/business-settings', {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...businessSettings?.data,
-          smsFallbackEnabled: updates.enabled,
-          smsFallbackPhone: updates.phone,
-          smsFallbackAutoReply: updates.autoReply
-        })
+      return apiRequest('PUT', '/api/business-settings', {
+        ...businessSettings?.data,
+        smsFallbackEnabled: updates.enabled,
+        smsFallbackPhone: updates.phone,
+        smsFallbackAutoReply: updates.autoReply
       });
     },
     onSuccess: () => {

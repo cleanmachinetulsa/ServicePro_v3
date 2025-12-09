@@ -311,10 +311,7 @@ export function LoyaltyPointsSystem() {
   // Mutations
   const addPointsMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addPointsSchema>) => {
-      return await apiRequest('/api/loyalty/add-points', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('POST', '/api/loyalty/add-points', data);
     },
     onSuccess: () => {
       toast({
@@ -339,10 +336,7 @@ export function LoyaltyPointsSystem() {
   
   const createRewardServiceMutation = useMutation({
     mutationFn: async (data: z.infer<typeof rewardServiceSchema>) => {
-      return await apiRequest('/api/loyalty/reward-services', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('POST', '/api/loyalty/reward-services', data);
     },
     onSuccess: () => {
       toast({
@@ -366,10 +360,7 @@ export function LoyaltyPointsSystem() {
   
   const updateRewardServiceMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: z.infer<typeof rewardServiceSchema> }) => {
-      return await apiRequest(`/api/loyalty/reward-services/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('PUT', `/api/loyalty/reward-services/${id}`, data);
     },
     onSuccess: () => {
       toast({
@@ -394,10 +385,7 @@ export function LoyaltyPointsSystem() {
   
   const createAchievementMutation = useMutation({
     mutationFn: async (data: z.infer<typeof achievementSchema>) => {
-      return await apiRequest('/api/loyalty/achievements', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('POST', '/api/loyalty/achievements', data);
     },
     onSuccess: () => {
       toast({
@@ -421,10 +409,7 @@ export function LoyaltyPointsSystem() {
   
   const updateAchievementMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: z.infer<typeof achievementSchema> }) => {
-      return await apiRequest(`/api/loyalty/achievements/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('PUT', `/api/loyalty/achievements/${id}`, data);
     },
     onSuccess: () => {
       toast({

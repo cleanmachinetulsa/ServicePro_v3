@@ -164,10 +164,7 @@ export function UpsellManagement() {
   // Mutation for creating upsell offer
   const createUpsellMutation = useMutation({
     mutationFn: async (data: UpsellFormValues) => {
-      return await apiRequest('/api/upsell/offers', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('POST', '/api/upsell/offers', data);
     },
     onSuccess: () => {
       toast({
@@ -192,10 +189,7 @@ export function UpsellManagement() {
   // Mutation for updating upsell offer
   const updateUpsellMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: UpsellFormValues }) => {
-      return await apiRequest(`/api/upsell/offers/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
+      return await apiRequest('PUT', `/api/upsell/offers/${id}`, data);
     },
     onSuccess: () => {
       toast({
