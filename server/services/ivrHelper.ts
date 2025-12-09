@@ -129,12 +129,19 @@ export function findMenuItemByDigit(menu: IvrMenuWithItems, digit: string): IvrM
  * 
  * Processes the action_type and action_payload from a menu item
  * Returns TwiML string for the specified action
+ * 
+ * @param item - Menu item with action configuration
+ * @param menu - Full menu configuration
+ * @param callerNumber - Caller's phone number
+ * @param callbackBaseUrl - Base URL for callbacks
+ * @param voicemailGreetingUrl - Optional custom voicemail greeting MP3 URL
  */
 export function buildActionTwiml(
   item: IvrMenuItem,
   menu: IvrMenuWithItems,
   callerNumber: string,
-  callbackBaseUrl: string
+  callbackBaseUrl: string,
+  voicemailGreetingUrl?: string | null
 ): string {
   const voiceName = menu.voiceName || 'alice';
   const payload = item.actionPayload || {};
@@ -153,7 +160,7 @@ export function buildActionTwiml(
       return buildForwardPhoneTwiml(payload.phoneNumber || '', callerNumber, callbackBaseUrl, voiceName);
       
     case 'VOICEMAIL':
-      return buildVoicemailTwiml(callbackBaseUrl, voiceName);
+      return buildVoicemailTwiml(callbackBaseUrl, voiceName, voicemailGreetingUrl);
       
     case 'SUBMENU':
       // For submenu, we redirect to the incoming handler with the submenu ID
@@ -173,7 +180,7 @@ export function buildActionTwiml(
       
     default:
       console.warn(`[IVR HELPER] Unknown action type: ${item.actionType}`);
-      return buildVoicemailTwiml(callbackBaseUrl, voiceName);
+      return buildVoicemailTwiml(callbackBaseUrl, voiceName, voicemailGreetingUrl);
   }
 }
 
@@ -401,11 +408,29 @@ export function buildForwardToPersonTwiml(config: IvrConfig, callerNumber: strin
  * Uses proper callbacks for:
  * - Recording status → conversation sync + push notification
  * - Transcription → update conversation with text
+ * 
+ * @param callbackBaseUrl - Base URL for Twilio callbacks
+ * @param voiceName - TTS voice to use (default: 'alice')
+ * @param voicemailGreetingUrl - Optional URL to custom MP3 greeting. If provided, plays MP3 instead of TTS.
  */
-export function buildVoicemailTwiml(callbackBaseUrl: string, voiceName: string = 'alice'): string {
+export function buildVoicemailTwiml(
+  callbackBaseUrl: string, 
+  voiceName: string = 'alice',
+  voicemailGreetingUrl?: string | null
+): string {
+  // Build greeting: use custom MP3 if available, otherwise TTS
+  let greetingTwiml: string;
+  if (voicemailGreetingUrl) {
+    // Custom MP3 greeting
+    greetingTwiml = `<Play>${escapeXml(voicemailGreetingUrl)}</Play>`;
+  } else {
+    // Default TTS greeting
+    greetingTwiml = `<Say voice="${voiceName}">Please leave your name, vehicle, and what you're looking to get done, and we'll text you back. Press any key when you're finished.</Say>`;
+  }
+  
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="${voiceName}">Please leave your name, vehicle, and what you're looking to get done, and we'll text you back. Press any key when you're finished.</Say>
+  ${greetingTwiml}
   <Record maxLength="120" playBeep="true" transcribe="true" action="${callbackBaseUrl}/twilio/voice/voicemail-complete" method="POST" recordingStatusCallback="${callbackBaseUrl}/twilio/voice/recording-status" recordingStatusCallbackMethod="POST" transcribeCallback="${callbackBaseUrl}/twilio/voice/voicemail-transcribed" finishOnKey="any"/>
   <Say voice="${voiceName}">We didn't receive your message. Goodbye.</Say>
   <Hangup/>

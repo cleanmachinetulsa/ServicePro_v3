@@ -20,7 +20,7 @@
 import type { Express, Request, Response } from 'express';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
-import { tenantPhoneConfig, tenantConfig, users, phoneLines, ivrMenus } from '../shared/schema';
+import { tenantPhoneConfig, tenantConfig, users, phoneLines, ivrMenus, tenantTelephonySettings } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import {
   buildServicesOverviewTwiml,
@@ -129,10 +129,33 @@ async function handleIvrSelection(req: Request, res: Response) {
   // Get callback base URL
   const callbackBaseUrl = getCallbackBaseUrl(req);
   
+  // Fetch tenant's voicemail greeting URL (from phone_lines table)
+  // NOTE: Query phone_lines directly (not via tenantDb) because phone lines 
+  // are shared telephony assets that may be mapped to tenants via tenantPhoneConfig
+  let voicemailGreetingUrl: string | null = null;
+  try {
+    if (normalizedTo) {
+      // Query global phone_lines table directly by phone number
+      const [phoneLine] = await db
+        .select()
+        .from(phoneLines)
+        .where(eq(phoneLines.phoneNumber, normalizedTo))
+        .limit(1);
+      
+      voicemailGreetingUrl = phoneLine?.voicemailGreetingUrl || null;
+      
+      if (voicemailGreetingUrl) {
+        console.log(`[IVR SELECTION] tenant=${tenantId}, using custom voicemail greeting: ${voicemailGreetingUrl.substring(0, 50)}...`);
+      }
+    }
+  } catch (greetingError) {
+    console.error('[IVR SELECTION] Error fetching voicemail greeting URL:', greetingError);
+  }
+  
   // Handle forced voicemail (from dial failure) - always works same way
   if (forced === 'voicemail') {
     console.log(`[IVR SELECTION] tenant=${tenantId}, action=voicemail (forced after dial failure)`);
-    const twiml = buildVoicemailTwiml(callbackBaseUrl);
+    const twiml = buildVoicemailTwiml(callbackBaseUrl, 'alice', voicemailGreetingUrl);
     res.type('text/xml');
     return res.send(twiml);
   }
@@ -164,8 +187,8 @@ async function handleIvrSelection(req: Request, res: Response) {
       });
     }
     
-    // Build TwiML for the action
-    const twiml = buildActionTwiml(menuItem, menu, From, callbackBaseUrl);
+    // Build TwiML for the action (pass voicemail greeting URL for VOICEMAIL actions)
+    const twiml = buildActionTwiml(menuItem, menu, From, callbackBaseUrl, voicemailGreetingUrl);
     res.type('text/xml');
     res.send(twiml);
     
@@ -198,7 +221,7 @@ async function handleIvrSelection(req: Request, res: Response) {
         break;
       
       case '3':
-        twiml = buildVoicemailTwiml(callbackBaseUrl);
+        twiml = buildVoicemailTwiml(callbackBaseUrl, 'alice', voicemailGreetingUrl);
         break;
       
       case '7':
