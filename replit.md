@@ -9,6 +9,16 @@ ServicePro is a multi-tenant, white-label SaaS platform that transforms service 
 
 ## Recent Changes (December 2024)
 
+### CM-REWARDS-WELCOME-LANDING: Token-Based Rewards Welcome Page (Dec 9, 2024)
+1. **Secure Customer Token System**: HMAC-SHA256 signed tokens for secure URL-based customer access without authentication. Tokens contain customer phone + tenant ID.
+
+2. **Key Files**:
+   - `server/routes.loyalty.ts`: Added `generateRewardsToken()`, `validateRewardsToken()` functions and `/api/loyalty/points/token/:token` endpoint
+   - `client/src/pages/rewards/PointsWelcomeLandingPage.tsx`: Celebratory landing page with confetti, points display, rewards catalog, and Book Now CTA
+   - `client/src/components/chat/FloatingChatButton.tsx`: Floating chat bubble for customer support on public pages
+
+3. **Usage**: Generate token with `generateRewardsToken(phone, tenantId)`, customer accesses `/rewards/welcome?token=<token>` from SMS campaigns.
+
 ### SP-SUPPORT-1: Support Issues & Error Logging (Dec 9, 2024)
 1. **Support Issues System**: Added `support_issues` table for tracking errors, bugs, and feature requests per tenant. Owner-only access for viewing/managing issues.
 
