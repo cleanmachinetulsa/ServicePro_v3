@@ -1010,6 +1010,19 @@ export const callEvents = pgTable("call_events", {
   recordingSidIndex: index("call_events_recording_sid_idx").on(table.recordingSid),
 }));
 
+// Call SMS State - Tracks which calls have received automated SMS responses
+// CM-VOICEMAIL-MISSED-CALL-SMS-FIX: Prevents double-texting by recording which calls already got SMS
+export const callSmsState = pgTable("call_sms_state", {
+  id: serial("id").primaryKey(),
+  callSid: varchar("call_sid", { length: 50 }).notNull().unique(), // Twilio's unique call identifier
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  smsType: varchar("sms_type", { length: 30 }).notNull(), // 'missed_call', 'ai_voicemail_reply', 'fallback_acknowledgment'
+  recipientPhone: varchar("recipient_phone", { length: 20 }).notNull(), // Who received the SMS
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => ({
+  callSidIndex: index("call_sms_state_call_sid_idx").on(table.callSid),
+}));
+
 // Phone Lines - Configuration for each Twilio business phone line
 export const phoneLines = pgTable("phone_lines", {
   id: serial("id").primaryKey(),
