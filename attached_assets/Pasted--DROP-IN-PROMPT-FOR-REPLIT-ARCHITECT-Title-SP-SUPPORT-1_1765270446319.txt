@@ -1,0 +1,474 @@
+📦 DROP-IN PROMPT FOR REPLIT ARCHITECT
+
+Title: SP-SUPPORT-1 — Support Issues + Auto Error Logging + Admin Panel
+
+🧠 Instructions for Architect:
+You are modifying the ServicePro_v3 repo. Implement the spec below without breaking any working features, especially:
+
+Root tenant (Clean Machine) settings hub & legacy admin routes
+
+SMS campaigns & Welcome Back campaign
+
+Voicemail → AI SMS reply behavior
+Only change files explicitly mentioned, or ones you discover are directly necessary for this feature.
+
+0. Goal
+
+Create a v1 Support Issues system so that:
+
+The Setup / Support assistant (and other frontend flows) can log errors to a central table.
+
+The system can notify support admins via an admin page.
+
+Support admins can mark issues resolved and optionally send an automatic resolution email to the affected user.
+
+Later, the AI agent can use this pipeline for lightweight self-debug and escalation.
+
+This feature is internal and should be tenant-aware and RBAC-safe.
+
+Name this feature SP-SUPPORT-1 in comments and docs.
+
+1. Database: support_issues table
+
+File: shared/schema.ts
+Use the same style as existing tenant-scoped tables (e.g. phone_history_imports, escalations, etc).
+
+Create a new table: support_issues
+
+Columns (Postgres):
+
+id — serial PK
+
+tenant_id — TEXT NOT NULL
+
+Use the same pattern as other tenant-scoped tables.
+
+user_id — TEXT NULL
+
+Optional, maps to current user if known.
+
+source — TEXT NOT NULL
+
+Examples: 'setup-assistant' | 'agent' | 'dashboard' | 'system'.
+
+Default 'setup-assistant'.
+
+severity — TEXT NOT NULL
+
+'info' | 'warning' | 'error' | 'critical'
+
+Default 'error'.
+
+status — TEXT NOT NULL
+
+'open' | 'in_progress' | 'resolved'
+
+Default 'open'.
+
+error_code — TEXT NOT NULL
+
+Short code like EMAIL_SETTINGS_UNAUTHORIZED, CAMPAIGN_SEND_FAILED.
+
+summary — TEXT NOT NULL
+
+Short human-readable title shown in the admin UI.
+
+details_json — JSONB NOT NULL DEFAULT '{}'::jsonb
+
+Arbitrary payload with technical data (route, stack, payload sample, etc.).
+
+user_contact_email — TEXT NULL
+
+created_at — TIMESTAMP NOT NULL DEFAULT NOW()
+
+updated_at — TIMESTAMP NOT NULL DEFAULT NOW()
+
+resolved_at — TIMESTAMP NULL
+
+resolution_notes — TEXT NULL
+
+Indexes:
+
+Index on (tenant_id, status) for filtering open issues per tenant.
+
+Optional index on error_code for grouping.
+
+Also ensure updated_at is maintained via triggers or manual updates in service code (follow existing pattern in repo).
+
+2. Backend service & routes
+2.1. Service
+
+File (new): server/services/supportIssuesService.ts
+
+Create a service module that:
+
+Uses tenant DB access (whatever helper is used elsewhere, e.g. wrapTenantDb, getTenantDb, etc.).
+
+Provides functions:
+
+// types are approximate, use repo conventions
+async function createSupportIssue(ctx, payload): Promise<{ id: number }>;
+async function listSupportIssues(ctx, filters): Promise<SupportIssueRow[]>;
+async function getSupportIssueById(ctx, id: number): Promise<SupportIssueRow | null>;
+async function resolveSupportIssue(ctx, id: number, options: {
+  resolutionNotes: string;
+  notifyUser?: boolean;
+}): Promise<{ success: boolean }>;
+
+
+Rules:
+
+createSupportIssue:
+
+Read tenantId and userId from the auth context/session.
+
+Insert row into support_issues.
+
+Return the new id.
+
+listSupportIssues:
+
+Filters:
+
+Optional status (default 'open').
+
+Optional tenantIdOverride for platform-wide views in future, but for now just use the current tenant.
+
+resolveSupportIssue:
+
+Only allowed for owner / platform admin roles. Use existing RBAC helpers.
+
+Update status='resolved', resolution_notes, resolved_at, updated_at.
+
+2.2. Routes
+
+File (new): server/routes.supportIssues.ts
+
+Create an Express router mounted under /api/support/issues.
+
+Routes:
+
+POST /api/support/issues — create issue
+
+Auth: any authenticated user (tenant admin / employee / root) may create.
+
+Body shape:
+
+{
+  errorCode: string;
+  summary: string;
+  severity?: 'info' | 'warning' | 'error' | 'critical';
+  source?: string;
+  details?: Record<string, any>;
+  userContactEmail?: string;
+}
+
+
+Use supportIssuesService.createSupportIssue.
+
+Return: { success: true, issueId }.
+
+GET /api/support/issues — list issues for current tenant
+
+Auth: owner / admin only (use same role gate as other admin pages).
+
+Query params: status optional (open default).
+
+Return: { success: true, issues: SupportIssueSummary[] }
+(include key fields needed for the list screen).
+
+GET /api/support/issues/:id — detail
+
+Auth: owner/admin for current tenant.
+
+Return full row plus details_json.
+
+POST /api/support/issues/:id/resolve — resolve & optionally notify
+
+Auth: owner / platform admin only.
+
+Body:
+
+{
+  resolutionNotes: string;
+  notifyUser?: boolean;
+}
+
+
+Calls service; if notifyUser is true and user_contact_email exists:
+
+Send an email using the existing platform email service (SendGrid / notify@servicepro.app
+) with:
+
+Subject: We've fixed your issue: <summary>
+
+Body: include:
+
+Short friendly explanation
+
+resolutionNotes
+
+Any generic “thanks for your patience” language.
+
+Return { success: true } or error JSON if unauthorized.
+
+2.3. Route registration
+
+File: server/index.ts (or equivalent central router registration)
+
+Import the router and mount it:
+
+app.use('/api/support/issues', supportIssuesRouter);
+
+
+Use the same logging/error-handling conventions as other routes.
+
+3. Frontend: Admin Support Issues page
+
+Goal: A simple admin UI where the root/tenant owner can see issues and resolve them.
+
+3.1. Page
+
+File (new): client/src/pages/admin/SupportIssuesPage.tsx
+
+Use the existing design system:
+
+Card, Button, Badge, ScrollArea, Dialog from @/components/ui/...
+
+useQuery, useMutation from React Query
+
+apiRequest & queryClient from @/lib/queryClient
+
+Layout:
+
+Page title: “Support Issues”
+
+Subtitle: “Errors and setup problems automatically logged by the assistant.”
+
+Two sections:
+
+Open Issues (default)
+
+Table or list of cards with:
+
+summary
+
+error_code
+
+severity (Badge color)
+
+created_at (nice human format)
+
+source
+
+Clicking an issue shows a details panel:
+
+All fields, including pretty-printed details_json.
+
+user_contact_email if present.
+
+Issue Detail + Resolve
+
+Show resolution_notes textarea.
+
+Buttons:
+
+Mark Resolved (data-testid="button-resolve-issue")
+
+Checkbox: Also email the user if possible (data-testid="checkbox-resolve-notify-user")
+
+Data flow:
+
+useQuery to call GET /api/support/issues?status=open.
+
+When user clicks an issue:
+
+Fetch details via GET /api/support/issues/:id (or reuse list data if sufficient).
+
+When resolving:
+
+Use useMutation on POST /api/support/issues/:id/resolve
+
+On success:
+
+Toast: “Issue marked resolved”
+
+Invalidate query /api/support/issues to refresh list.
+
+Add test IDs:
+
+List container: data-testid="support-issues-list"
+
+Each issue row/card: data-testid="support-issue-row-<id>"
+
+Detail panel: data-testid="support-issue-detail"
+
+Resolution notes textarea: data-testid="support-issue-resolution-notes"
+
+3.2. Navigation
+
+File: client/src/config/navigationItems.ts
+
+Add a new navigation item under the admin / owner-only area where other admin tools live (e.g. near usage, tenants, etc).
+
+id: "support-issues"
+
+label: "Support Issues"
+
+Path: "/admin/support-issues"
+
+Complexity: advanced or expert (whatever fits your scheme).
+
+Mark as owner-only using whatever mechanism exists:
+
+If there is an OWNER_ONLY_NAV_IDS array, add "support-issues" to it.
+
+Ensure filterNavForMode respects this and never shows it to non-owners.
+
+File: client/src/App.tsx
+
+Register the route:
+
+Route path="/admin/support-issues" component={SupportIssuesPage} or equivalent.
+
+Ensure it’s wrapped with the same auth guard as other admin pages.
+
+4. Frontend helper: error logging for Setup/Support assistant
+
+We want a reusable helper the Setup / Support assistant (and other flows) can call when something breaks.
+
+4.1. Helper module
+
+File (new): client/src/lib/supportIssueReporter.ts
+
+Export:
+
+export type SupportIssueSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+export async function reportSupportIssue(opts: {
+  errorCode: string;
+  summary: string;
+  severity?: SupportIssueSeverity;
+  source?: string;
+  details?: Record<string, any>;
+  userContactEmail?: string;
+}): Promise<number | undefined> {
+  // Use apiRequest to POST /api/support/issues
+  // Return issueId on success, undefined on failure.
+}
+
+
+Swallow network errors gracefully: log to console but don’t crash the UI.
+
+Default severity = 'error', source = 'setup-assistant' if not provided.
+
+4.2. Integrate into the Setup / Support assistant
+
+Find the main Setup / Support assistant UI component. Likely candidates (names may vary; search):
+
+client/src/components/SetupAssistant.tsx
+
+client/src/pages/settings/SetupWizardPage.tsx
+
+Any component with title/subtitle including “Setup Assistant” or “Guided Setup”.
+
+In that component:
+
+Wherever an async step fails (e.g. saving email settings, phone settings, campaign config, etc.), wrap in try/catch and:
+
+try {
+  // existing step logic...
+} catch (error) {
+  const issueId = await reportSupportIssue({
+    errorCode: 'EMAIL_SETTINGS_UNAUTHORIZED', // or whatever specific code
+    summary: 'Failed to save email profile settings during setup',
+    details: {
+      message: (error as Error).message,
+      stack: (error as Error).stack,
+      step: 'Email Profile Setup',
+      route: '/settings/email',
+    },
+    userContactEmail: currentUserEmail ?? undefined,
+  });
+
+  // Then show a user-friendly message
+  const msgWithTicket =
+    issueId != null
+      ? "I just logged this error for our support team and attached the technical details. A support agent will review it and reach out to you with more information."
+      : "I hit an error I couldn't fix automatically. I've tried to log it, but something went wrong. Please contact support and mention the email setup error.";
+
+  // Use whatever toast / chat message system already exists
+  showAssistantMessage(msgWithTicket);
+}
+
+
+Do NOT expose raw stack traces to the user; keep messages human and simple.
+
+Use specific errorCode strings for key failure types so the admin can recognize patterns (e.g. EMAIL_SETTINGS_UNAUTHORIZED, CAMPAIGN_SEND_FAILED, GOOGLE_SHEETS_PERMISSION_DENIED).
+
+4.3. Agent behavior copy
+
+Wherever you store agent behavior rules / system prompts for the Setup/Support assistant (could be:
+
+server/services/aiBehaviorRulesService.ts,
+
+AI Behavior Rules sheet,
+
+or a config constant),
+
+add a short behavior rule along these lines:
+
+Support Issue Escalation
+
+When you encounter a technical error you cannot fix directly, call the internal support issue logging endpoint (via the built-in reportSupportIssue helper) with the error code, short summary, and any useful technical details.
+
+After logging, tell the user:
+“I just logged this error for our support team and attached the technical details. A support agent will review it and reach out to you with more information.”
+
+Do not show internal stack traces or database details to the user. Keep explanations simple and focused on what will happen next.
+
+If the problem appears to be a simple, user-fixable validation issue (missing required fields, obviously invalid values), guide the user to fix it first before escalating.
+
+Make sure this rule is added, not replacing existing behavior rules.
+
+5. RBAC & Safety
+
+Only owner / platform admin roles can:
+
+View the Support Issues admin page.
+
+Call POST /api/support/issues/:id/resolve.
+
+Regular tenant admins/employees may call POST /api/support/issues to create an issue for their tenant.
+
+All routes must use the existing auth / tenant extraction logic so tenant_id is always correct.
+
+Do not change any voicemail, Twilio, or campaign behavior for this feature.
+
+6. Documentation
+
+File: replit.md (or main docs file used for phases)
+
+Add a new section: SP-SUPPORT-1: Support Issues & Error Logging
+
+Tables: support_issues (columns & purpose).
+
+API routes:
+
+POST /api/support/issues
+
+GET /api/support/issues
+
+GET /api/support/issues/:id
+
+POST /api/support/issues/:id/resolve
+
+Frontend:
+
+/admin/support-issues page
+
+reportSupportIssue helper usage
+
+Brief example of how Setup Assistant uses this for escalation.
+
+End of drop-in. Please implement exactly as described, keeping existing working features intact.

@@ -4942,3 +4942,56 @@ export const insertDemoSessionSchema = createInsertSchema(demoSessions).omit({
 
 export type DemoSession = typeof demoSessions.$inferSelect;
 export type InsertDemoSession = z.infer<typeof insertDemoSessionSchema>;
+
+// ============================================================
+// SP-SUPPORT-1: SUPPORT ISSUES & ERROR LOGGING
+// ============================================================
+
+export const supportIssueSeverityEnum = pgEnum('support_issue_severity', ['info', 'warning', 'error', 'critical']);
+export const supportIssueStatusEnum = pgEnum('support_issue_status', ['open', 'in_progress', 'resolved']);
+
+export const supportIssues = pgTable("support_issues", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  userId: text("user_id"),
+  source: text("source").notNull().default('setup-assistant'),
+  severity: supportIssueSeverityEnum("severity").notNull().default('error'),
+  status: supportIssueStatusEnum("status").notNull().default('open'),
+  errorCode: text("error_code").notNull(),
+  summary: text("summary").notNull(),
+  detailsJson: jsonb("details_json").notNull().default({}),
+  userContactEmail: text("user_contact_email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  resolutionNotes: text("resolution_notes"),
+}, (table) => ({
+  tenantStatusIdx: index("support_issues_tenant_status_idx").on(table.tenantId, table.status),
+  errorCodeIdx: index("support_issues_error_code_idx").on(table.errorCode),
+}));
+
+export const insertSupportIssueSchema = createInsertSchema(supportIssues).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  resolvedAt: true,
+});
+
+export const createSupportIssueSchema = z.object({
+  errorCode: z.string().min(1),
+  summary: z.string().min(1),
+  severity: z.enum(['info', 'warning', 'error', 'critical']).optional().default('error'),
+  source: z.string().optional().default('setup-assistant'),
+  details: z.record(z.any()).optional().default({}),
+  userContactEmail: z.string().email().optional(),
+});
+
+export const resolveSupportIssueSchema = z.object({
+  resolutionNotes: z.string().min(1),
+  notifyUser: z.boolean().optional().default(false),
+});
+
+export type SupportIssue = typeof supportIssues.$inferSelect;
+export type InsertSupportIssue = z.infer<typeof insertSupportIssueSchema>;
+export type CreateSupportIssue = z.infer<typeof createSupportIssueSchema>;
+export type ResolveSupportIssue = z.infer<typeof resolveSupportIssueSchema>;
