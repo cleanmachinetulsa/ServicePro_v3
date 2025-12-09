@@ -99,6 +99,7 @@ const AdminPublicSiteSettings = lazy(() => import("./pages/admin-public-site-set
 const AdminPublicSiteTheme = lazy(() => import("./pages/admin-public-site-theme"));
 const AdminIndustryImages = lazy(() => import("./pages/AdminIndustryImages"));
 const AdminSupportTickets = lazy(() => import("./pages/AdminSupportTickets"));
+const SupportIssuesPage = lazy(() => import("./pages/admin/SupportIssuesPage"));
 const AdminPTO = lazy(() => import("./pages/AdminPTO"));
 const AdminBilling = lazy(() => import("./pages/admin-billing"));
 const SystemBillingAdmin = lazy(() => import("./pages/SystemBillingAdmin"));
@@ -578,6 +579,12 @@ function Router() {
       <Route path="/admin/support-tickets">
         <AuthGuard>
           <LazyDashboard><AdminSupportTickets /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      {/* SP-SUPPORT-1: Support Issues & Error Logging */}
+      <Route path="/admin/support-issues">
+        <AuthGuard>
+          <LazyDashboard><SupportIssuesPage /></LazyDashboard>
         </AuthGuard>
       </Route>
       <Route path="/admin/theme-gallery">
