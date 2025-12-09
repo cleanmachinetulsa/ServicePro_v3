@@ -1,4 +1,8 @@
 import { addDays, addHours, format, setHours, setMinutes } from "date-fns";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
+
+// Business timezone for Clean Machine (Tulsa, OK)
+const BUSINESS_TIMEZONE = 'America/Chicago';
 import { getGoogleCalendarClient } from "./googleCalendarConnector";
 import { criticalMonitor } from "./criticalMonitoring";
 import { customerMemory } from "./customerMemory";
@@ -982,17 +986,21 @@ export async function generateAvailableSlots(serviceName: string) {
       }
 
       // Generate slots for each hour in the booking window
-      // Use business hours from settings
+      // Use business hours from settings (hours are in Central Time)
       for (let hour = settings.startHour; hour < settings.endHour; hour++) {
         // Skip lunch hour if enabled
         if (settings.enableLunchBreak && hour === settings.lunchHour) continue;
 
-        const startTime = setHours(setMinutes(date, 0), hour);
+        // Create time in Central timezone, then convert to UTC for storage/comparison
+        // Business hours are in Central Time (e.g., 9 AM Central)
+        const localTime = setHours(setMinutes(date, 0), hour);
+        const startTime = fromZonedTime(localTime, BUSINESS_TIMEZONE); // Convert Central to UTC
         const endTime = addHours(startTime, duration);
 
-        // Skip if appointment would end after business closing time
-        const endHour = endTime.getHours();
-        const endMinute = endTime.getMinutes();
+        // Skip if appointment would end after business closing time (in Central Time)
+        const endTimeLocal = toZonedTime(endTime, BUSINESS_TIMEZONE);
+        const endHour = endTimeLocal.getHours();
+        const endMinute = endTimeLocal.getMinutes();
         if (endHour > settings.endHour || (endHour === settings.endHour && endMinute > settings.endMinute)) {
           continue;
         }
@@ -1018,12 +1026,14 @@ export async function generateAvailableSlots(serviceName: string) {
 
         // Add half-hour slot if enabled and service is short enough
         if (settings.halfHourIncrements && duration <= 1.5) {
-          const halfHourStart = setHours(setMinutes(date, 30), hour);
+          const halfHourLocal = setHours(setMinutes(date, 30), hour);
+          const halfHourStart = fromZonedTime(halfHourLocal, BUSINESS_TIMEZONE);
           const halfHourEnd = addHours(halfHourStart, duration);
 
           // Skip if half-hour appointment would end after business closing time
-          const halfEndHour = halfHourEnd.getHours();
-          const halfEndMinute = halfHourEnd.getMinutes();
+          const halfHourEndLocal = toZonedTime(halfHourEnd, BUSINESS_TIMEZONE);
+          const halfEndHour = halfHourEndLocal.getHours();
+          const halfEndMinute = halfHourEndLocal.getMinutes();
           if (halfEndHour > settings.endHour || (halfEndHour === settings.endHour && halfEndMinute > settings.endMinute)) {
             continue;
           }
