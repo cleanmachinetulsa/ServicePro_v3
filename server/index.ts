@@ -57,6 +57,7 @@ import addonRouter from "./routes/addonRoutes";
 import usageMeteringRouter from "./routes/usageMeteringRoutes";
 import parserRoutes from "./routes/parserRoutes";
 import billingHealthRouter from "./routes/billingHealthRoutes";
+import supportIssuesRouter from "./routes.supportIssues";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -401,6 +402,9 @@ registerOnboardingIndustryRoutes(app);
 registerSuggestionRoutes(app);
 // Register support system routes (tickets, KB, AI context)
 registerSupportRoutes(app);
+// SP-SUPPORT-1: Support Issues & Error Logging
+app.use('/api/support/issues', supportIssuesRouter);
+console.log('[SP-SUPPORT-1] Routes registered: /api/support/issues');
 // Register industry pack routes (Phase 5.2 - Industry Pack Editor + Clone-a-Tenant Factory)
 registerIndustryPackRoutes(app);
 // Register phone history import routes (INT-3 - Phone History Import Engine)
