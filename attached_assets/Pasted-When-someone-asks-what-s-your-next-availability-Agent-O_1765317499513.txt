@@ -1,0 +1,288 @@
+When someone asks “what’s your next availability?”
+
+Agent:
+
+Offers 2–3 time options in the chat
+
+PLUS gives them a “See this on the calendar / pick a time” link
+
+That link jumps them straight into the visual scheduler, with that date/time pre-selected, then the normal booking wizard runs but skips the date/time step (or marks it done).
+
+Below is a single Replit Architect drop-in that tells it to wire this into the current build, with:
+
+Global rules for the agent (how it behaves when user asks for availability)
+
+Root-tenant specific booking URL for Clean Machine (using your real booking page)
+
+Pre-selecting slot in the booking wizard so the “when” part is already done.
+
+DROP-IN PROMPT – “Smart Availability Deep Link” (Clean Machine + Global Rules)
+
+Paste this whole block into the Replit Architect chat for ServicePro_v3.
+
+PROJECT: ServicePro_v3 – Smart Availability Deep Links for Clean Machine
+
+Goal
+====
+
+When a user asks about availability (“what’s your next availability?”, “any openings this week?”, “when can you come out?”, etc.):
+
+1. The SMS/Web chat AI agent still replies with *natural language* and a couple of concrete slot suggestions.
+2. **PLUS** it offers a **“See it on the calendar / Pick a time”** link that opens the visual scheduler.
+3. For Clean Machine (root tenant), that link should:
+   - Jump directly to the **actual date/time pick step** of the booking UI so they can see options visually.
+   - When they pick a time and continue, the full booking wizard runs **as normal** (service, contact info, address, etc.), but the **date/time portion is already chosen / marked done** so they don’t repeat that part.
+4. The *rules* (when to offer this link, how the agent talks about it) should be **global**, but the **concrete implementation (URL shape, wiring)** should be correct for the **Clean Machine root tenant** first.
+5. Do not break existing SMS scheduling, booking links, or Google Calendar integration.
+
+Think “premium polish” and minimal risk: small, focused changes that fit inside the existing scheduling and booking architecture (conversationalScheduling, schedulingTools, calendarApi, booking pages).
+
+---
+
+Step 0 – Discover Current Booking & Scheduling Structure
+=========================================================
+
+Before making changes, inspect and note (in comments):
+
+1. Booking UI:
+   - The primary **public booking page** React component and route:
+     - e.g. `client/src/pages/public/BookingPage.tsx` or similar.
+     - How the booking wizard steps are structured (service → details → date/time, etc.).
+   - Where date/time selection lives (component file + step index).
+
+2. Scheduling backend:
+   - `server/conversationalScheduling.ts`
+   - `server/schedulingTools.ts`
+   - `server/calendarApi.ts`
+   - Any existing function like `getAvailableSlots`, `generateAvailableSlots`, `buildBookingLink`, etc.
+
+3. Existing booking links:
+   - Look for how booking URLs are currently built for Clean Machine (root tenant):
+     - e.g. `/book`, `/book/cleanmachine`, `/site/cleanmachine/book`, etc.
+   - Identify the canonical Clean Machine booking URL that is already working in production.
+
+Document your findings in brief comments in the relevant files so future us can see the context.
+
+---
+
+Step 1 – Add a “preselected slot” mechanism to the booking wizard
+=================================================================
+
+We want the booking page to support a **preselected date/time slot** via query params so that:
+
+- The booking wizard can:
+  - Start with the normal first step (service / details, etc.)
+  - Show that the **time is already picked** (with ability to change it)
+  - Internally mark the date/time selection as “completed”.
+
+Implementation:
+
+1. Define a simple preselected slot shape (no cryptography needed):
+
+   - Readable query params such as:
+
+     - `slotStart` – ISO 8601 datetime (UTC or tenant-local, follow existing convention)
+     - `slotEnd` or `durationMinutes` – whichever is consistent with existing slot logic
+     - Optional: `slotSource=chat` for analytics.
+
+2. On the **public booking page component**:
+
+   - On initial load, parse these query params.
+   - If they exist and parse cleanly:
+     - Store them in local React state or in the booking-wizard context, e.g. `preselectedSlot`.
+     - Set the initial wizard state so the **date/time step**:
+       - Has this slot pre-filled.
+       - Is marked as “completed / ready” by default, but still editable if the user wants to change it.
+   - The wizard should still **start at the first step** (e.g. service selection) so the flow feels consistent:
+     - Step 1: Service
+     - Step 2: Details
+     - Step 3: Date/time (already filled in, with a “change” option)
+
+3. UX in the booking wizard:
+
+   - Somewhere near the top or in the summary, show a small banner like:
+
+     - “📅 Pre-selected time: **Tue, Dec 10 — 9:00 AM** (you can change this on the date/time step)”
+
+   - If the user changes the date/time, overwrite `preselectedSlot` and proceed as normal.
+
+4. Guardrails:
+
+   - If the query params are invalid or in the past, silently ignore them and fall back to the existing behavior.
+   - Do **not** introduce any new required fields that could break current links.
+
+---
+
+Step 2 – Create a helper to build booking links for slots
+=========================================================
+
+Add a small helper that can be used by the conversational scheduling tools when they have a slot.
+
+1. In a shared server-side location (whichever is appropriate, e.g. `server/schedulingTools.ts` or a small new helper file), implement:
+
+   ```ts
+   interface BookingSlotLinkInput {
+     tenantId: string;
+     start: Date;
+     end?: Date;
+     durationMinutes?: number;
+     source?: string; // e.g. 'chat'
+   }
+
+   interface BookingSlotLinkResult {
+     url: string;
+     startIso: string;
+     endIso?: string;
+   }
+
+
+Logic:
+
+Determine the base URL for the tenant:
+
+For the Clean Machine root tenant:
+
+Use its custom domain if configured (e.g. https://cleanmachinetulsa.com).
+
+Fall back to the default app URL otherwise (same logic you already use for loyalty/rewards links).
+
+Determine the booking path:
+
+Use the existing booking route you found in Step 0 (e.g. /book or /site/cleanmachine/book).
+
+Build a URL like:
+
+https://cleanmachinetulsa.com/book?slotStart=2025-12-10T09:00:00Z&durationMinutes=180&source=chat
+
+Return this URL in BookingSlotLinkResult.
+
+Make the helper tenant-aware, but:
+
+It’s OK if only Clean Machine has a fully working booking URL today.
+
+For other tenants, you can:
+
+Either skip the link, or
+
+Use a generic booking path if one exists.
+
+Add comments explaining that Clean Machine is the current primary target.
+
+Step 3 – Wire deep links into conversational scheduling (agent side)
+
+Now we connect these booking links to the AI agent so that when it surfaces slots, it also offers the “see calendar” option.
+
+In server/conversationalScheduling.ts (or wherever the scheduling response shape is defined):
+
+Extend the internal result type returned by scheduling utilities to include an optional bookingLink (string) or bookingLinks array (if multiple slots).
+
+Examples:
+
+interface SuggestedSlot {
+  start: Date;
+  end: Date;
+  humanLabel: string;        // e.g. "Tuesday at 9 AM"
+  bookingUrl?: string;       // deep link for that slot
+}
+
+
+In server/schedulingTools.ts (or equivalent):
+
+When you generate suggested slots for a given intent:
+
+For each slot, call the helper from Step 2 to attach a bookingUrl.
+
+Ensure this is tenant-aware:
+
+If the tenant is Clean Machine (root), we always attach a URL.
+
+For other tenants, attach booking URLs only if base URL + booking path can be resolved.
+
+Update the AI agent prompt / response builder (where the SMS/webchat message text is crafted) so that when there are suggested slots:
+
+It responds something like:
+
+“I can help with that. Based on our current schedule, I can fit you in:
+• Tue at 9:00 AM
+• Wed at 2:00 PM
+
+If you’d rather see this on the calendar and pick a time visually, tap here:
+{bookingUrl}
+
+Once you pick a time, I’ll grab your vehicle details and address.”
+
+Ensure this behavior is global (any tenant with a valid booking link gets this behavior), but the concrete URL for Clean Machine is correct.
+
+Channel considerations:
+
+For SMS: just include the URL as part of the message text (as above).
+
+For webchat: the same URL should show; if you already support buttons / rich content, you may optionally include it as a “Book this time” button. Don’t break SMS in the process.
+
+Keep the natural language tone consistent with the Clean Machine flavored agent you’ve already configured.
+
+Step 4 – Clean Machine specific polish
+
+Add a few small touches specifically for the root tenant:
+
+If tenantId === 'root' (Clean Machine):
+
+Prefer the custom domain in the booking URL.
+
+Use copy like “See openings on the calendar” rather than generic text.
+
+Ensure this does not affect other tenants:
+
+No hard-coded Clean Machine copy inside generic helpers.
+
+Keep root-tenant-only logic behind a simple check or config.
+
+Step 5 – Tests & Smoke Checks
+
+Add or update tests/playwright flows to verify:
+
+Agent availability flow:
+
+Simulate a user asking:
+
+“What’s your next availability?”
+
+“Are you available for a detail this week?”
+
+Verify the agent:
+
+Returns at least one concrete time option in plain text.
+
+Includes a clickable booking URL for Clean Machine.
+
+Confirm the URL includes slotStart and source=chat.
+
+Booking wizard deep link:
+
+Open the booking URL in the browser (for Clean Machine):
+
+Confirm the booking page loads.
+
+Confirm the pre-selected slot is recognized and shown in the UI (“Pre-selected time” banner).
+
+Confirm the wizard still walks through service + details but the time is pre-filled (and can be edited).
+
+Backwards compatibility:
+
+Existing booking links without slot params still work exactly as before.
+
+Existing scheduling responses still work if the helper fails to produce a link (e.g. for other tenants).
+
+Step 6 – Document It
+
+Update docs/MASTER_PLAN_v3.7_SERVICEPRO.md (or the current master plan doc) with a short section:
+
+“Smart Availability Deep Links (Clean Machine)”
+
+How links are built (slotStart, durationMinutes, source).
+
+That the rules (when the agent offers the link) are global.
+
+That Clean Machine currently has the most polished implementation (root tenant booking URL).
+
+Then stop.
