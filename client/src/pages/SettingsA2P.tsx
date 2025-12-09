@@ -102,7 +102,7 @@ export default function SettingsA2P() {
     websiteUrl: '',
     useCaseCategory: 'mixed',
     campaignDescription: '',
-    sampleMessages: ['', '', ''],
+    sampleMessages: ['', '', '', '', ''],
     optInDescription: '',
     optOutInstructions: 'Reply STOP to unsubscribe from all messages.',
     helpInstructions: 'Reply HELP to receive assistance or call us directly.',
@@ -130,7 +130,7 @@ export default function SettingsA2P() {
         websiteUrl: c.websiteUrl || '',
         useCaseCategory: c.useCaseCategory || 'mixed',
         campaignDescription: c.campaignDescription || '',
-        sampleMessages: (c.sampleMessages as string[])?.length ? c.sampleMessages as string[] : ['', '', ''],
+        sampleMessages: (c.sampleMessages as string[])?.length ? c.sampleMessages as string[] : ['', '', '', '', ''],
         optInDescription: c.optInDescription || '',
         optOutInstructions: c.optOutInstructions || 'Reply STOP to unsubscribe from all messages.',
         helpInstructions: c.helpInstructions || 'Reply HELP to receive assistance or call us directly.',
@@ -199,7 +199,7 @@ export default function SettingsA2P() {
           ...prev,
           campaignDescription: data.suggestions.campaign_description || prev.campaignDescription,
           sampleMessages: data.suggestions.sample_messages?.length 
-            ? [...data.suggestions.sample_messages, '', ''].slice(0, 4)
+            ? [...data.suggestions.sample_messages, '', '', '', '', ''].slice(0, 5)
             : prev.sampleMessages,
           optInDescription: data.suggestions.opt_in_description || prev.optInDescription,
           optOutInstructions: data.suggestions.opt_out_instructions || prev.optOutInstructions,

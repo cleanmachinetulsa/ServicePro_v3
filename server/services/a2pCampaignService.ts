@@ -267,19 +267,34 @@ ${faqContext ? `BUSINESS FAQ:\n${faqContext}` : ''}`;
 Return a JSON object with these exact fields:
 {
   "campaign_description": "Clear 2-3 sentence description of the SMS campaign purpose",
-  "sample_messages": ["Sample message 1...", "Sample message 2...", "Sample message 3..."],
+  "sample_messages": ["Message 1", "Message 2", "Message 3", "Message 4", "Message 5"],
   "opt_in_description": "How customers opt-in to receive messages",
   "opt_out_instructions": "Instructions for opting out (must include STOP)",
   "help_instructions": "What happens when they reply HELP",
   "message_frequency": "Expected message frequency (e.g., '1-5 messages per month')"
 }
 
+TWILIO 10DLC SAMPLE MESSAGE REQUIREMENTS (CRITICAL):
+1. Generate EXACTLY 5 unique sample messages covering different message types:
+   - Appointment confirmation/reminder
+   - Follow-up/feedback request
+   - Promotional/special offer
+   - Service update/notification
+   - General customer care response
+2. Each message MUST:
+   - Be 20-160 characters (ideal SMS length)
+   - Include the business name "${businessName}"
+   - End with "Reply STOP to opt out" or similar opt-out language
+   - Be realistic and match actual business communications
+   - Avoid marketing buzzwords like "FREE", "ACT NOW", all caps
+3. Messages should demonstrate the FULL range of campaign use cases
+4. Use proper grammar and professional tone
+
 Requirements:
-- campaign_description: Explain the purpose and types of messages
-- sample_messages: 3-4 realistic examples that could actually be sent
-- Each sample should include opt-out language "Reply STOP to unsubscribe"
+- campaign_description: Explain the purpose and types of messages sent
+- sample_messages: EXACTLY 5 diverse, Twilio-compliant examples
 - opt_in_description: Be specific about the consent process
-- All content must be carrier-compliant`;
+- All content must pass Twilio carrier compliance review`;
 
   try {
     // Use GPT-5.1 for better compliance-aware copy generation
