@@ -24,7 +24,7 @@ export default function CancellationDemo() {
         <CardTitle>Cancellation Feedback Demo</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="p-4 bg-gray-50 rounded-lg">
+        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
           <h4 className="font-medium mb-2">Sample Appointment:</h4>
           <p><strong>Service:</strong> {sampleAppointment.service}</p>
           <p><strong>Date:</strong> {sampleAppointment.date}</p>
