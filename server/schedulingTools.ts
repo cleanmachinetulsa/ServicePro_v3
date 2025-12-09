@@ -838,3 +838,97 @@ export async function rescheduleAppointment(phone: string, newDateTime: string):
     };
   }
 }
+
+/**
+ * Smart Availability Deep Links
+ * Builds booking URLs with pre-selected time slots for web chat
+ */
+export interface BookingSlotLinkInput {
+  tenantId: string;
+  start: Date;
+  durationMinutes?: number;
+  source?: string;
+}
+
+export interface BookingSlotLinkResult {
+  url: string;
+  startIso: string;
+  humanLabel: string;
+}
+
+/**
+ * Build a booking URL with pre-selected slot for a tenant
+ * Multi-tenant: queries tenant_domains for custom domain, falls back to env vars
+ */
+export async function buildBookingSlotLink(input: BookingSlotLinkInput): Promise<BookingSlotLinkResult | null> {
+  try {
+    const { tenantId, start, durationMinutes, source } = input;
+    
+    // Determine base URL for the tenant
+    let baseUrl: string = '';
+    
+    // Try to get tenant's custom domain from tenant_domains table
+    try {
+      const { db } = await import('./db');
+      const { tenantDomains } = await import('@shared/schema');
+      const { eq, and } = await import('drizzle-orm');
+      
+      const domains = await db.select()
+        .from(tenantDomains)
+        .where(eq(tenantDomains.tenantId, tenantId))
+        .limit(1);
+      
+      if (domains.length > 0 && domains[0].isVerified && domains[0].domain) {
+        baseUrl = `https://${domains[0].domain}`;
+        console.log(`[BOOKING LINK] Using custom domain for ${tenantId}: ${domains[0].domain}`);
+      }
+    } catch (dbError) {
+      // tenant_domains table might not exist yet - continue to fallback
+      console.log('[BOOKING LINK] tenant_domains not available, using fallback URL');
+    }
+    
+    // Fallback: use environment variable or Replit URL
+    if (!baseUrl) {
+      baseUrl = process.env.PUBLIC_APP_BASE_URL || 
+                (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER?.toLowerCase()}.repl.co` : '');
+    }
+    
+    if (!baseUrl) {
+      console.warn('[BOOKING LINK] No base URL available for tenant:', tenantId);
+      return null;
+    }
+    
+    // Build the booking URL with query params
+    const params = new URLSearchParams();
+    params.set('slotStart', start.toISOString());
+    if (durationMinutes) {
+      params.set('durationMinutes', durationMinutes.toString());
+    }
+    params.set('source', source || 'chat');
+    
+    // Use /book path (the existing booking route)
+    const url = `${baseUrl}/book?${params.toString()}`;
+    
+    // Create human-readable label for the slot
+    const humanLabel = start.toLocaleString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/Chicago',
+    });
+    
+    console.log(`[BOOKING LINK] Generated for ${tenantId}: ${url}`);
+    
+    return {
+      url,
+      startIso: start.toISOString(),
+      humanLabel,
+    };
+    
+  } catch (error) {
+    console.error('[BOOKING LINK] Error building link:', error);
+    return null;
+  }
+}

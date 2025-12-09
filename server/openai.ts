@@ -476,11 +476,13 @@ const WEB_SAFE_SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[
 /**
  * Execute a function call requested by OpenAI
  * @param isWebChat - If true, blocks privileged functions for security
+ * @param tenantId - Used for generating booking links in web chat
  */
 async function executeFunctionCall(
   functionName: string,
   args: any,
-  isWebChat: boolean = false
+  isWebChat: boolean = false,
+  tenantId?: string
 ): Promise<string> {
   // SECURITY: Block privileged functions for web chat users
   if (isWebChat && !WEB_SAFE_FUNCTION_NAMES.includes(functionName)) {
@@ -508,6 +510,35 @@ async function executeFunctionCall(
         console.log(`[AI FUNCTION CALL] ✅ AI is calling get_available_slots for service: "${args.service}", phone: ${args.phone}`);
         const result = await getAvailableSlots(args.phone, args.service);
         console.log(`[AI FUNCTION CALL] get_available_slots returned ${result.length} slots`);
+        
+        // Smart Availability Deep Links: Add booking link for web chat
+        if (isWebChat && tenantId && result.length > 0) {
+          try {
+            const { buildBookingSlotLink } = await import('./schedulingTools');
+            // Use the first available slot for the booking link
+            const firstSlot = result[0];
+            if (firstSlot && firstSlot.time) {
+              const slotDate = new Date(firstSlot.time);
+              const bookingLink = await buildBookingSlotLink({
+                tenantId,
+                start: slotDate,
+                source: 'chat'
+              });
+              if (bookingLink) {
+                console.log(`[WEB CHAT] Generated booking link: ${bookingLink.url}`);
+                // Add booking link to the result for AI to include in response
+                return JSON.stringify({
+                  slots: result,
+                  booking_link: bookingLink.url,
+                  booking_link_label: "📅 See openings on the calendar and book your time"
+                });
+              }
+            }
+          } catch (linkError) {
+            console.error('[WEB CHAT] Error generating booking link:', linkError);
+          }
+        }
+        
         return JSON.stringify(result);
       }
       
@@ -823,15 +854,17 @@ export async function generateAIResponse(
           controlMode: 'auto'
         });
         
-        // Add web-specific restrictions to the prompt
+        // Add web-specific restrictions to the prompt (Smart Availability Deep Links)
         const webRestrictedPrompt = webSystemPrompt + `
 
 IMPORTANT WEB CHAT RESTRICTIONS:
 - You CAN check availability using get_available_slots - this is encouraged!
 - You CAN suggest add-ons using get_upsell_offers
 - You CANNOT create appointments directly (no create_appointment function)
-- When customer wants to book, say: "I've got those times available! To lock in your spot, just text or call us at (918) 856-5304 and we'll confirm your appointment right away."
-- Keep responses friendly and conversational`;
+- When you show available times, ALWAYS include the booking link provided in the tool result
+- Format response like: "I can fit you in on [times]! 📅 See these openings on the calendar: [booking_link]"
+- Keep responses friendly and conversational
+- The booking link lets them visually pick a time and complete their booking`;
         
         // Build messages array
         const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -899,7 +932,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
             break;
           }
           
-          // Execute tool calls with isWebChat=true for security
+          // Execute tool calls with isWebChat=true for security and tenantId for booking links
           console.log(`[WEB CHAT AI] Executing ${responseMessage.tool_calls.length} tool call(s) in iteration ${iterations}`);
           for (const toolCall of responseMessage.tool_calls) {
             const functionName = toolCall.function.name;
@@ -908,7 +941,8 @@ IMPORTANT WEB CHAT RESTRICTIONS:
             console.log(`[WEB CHAT AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
             
             // SECURITY: Pass isWebChat=true to block privileged functions
-            const functionResult = await executeFunctionCall(functionName, functionArgs, true);
+            // Pass tenantId for Smart Availability Deep Links (booking URL generation)
+            const functionResult = await executeFunctionCall(functionName, functionArgs, true, tenantId);
             
             currentMessages.push({
               role: "tool",

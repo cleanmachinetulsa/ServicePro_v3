@@ -726,6 +726,9 @@ function Router() {
       <Route path="/book">
         <LazyPage><SchedulePage /></LazyPage>
       </Route>
+      <Route path="/booking">
+        <LazyPage><SchedulePage /></LazyPage>
+      </Route>
       <Route path="/quick-booking">
         <LazyPage><QuickBookingPage /></LazyPage>
       </Route>
