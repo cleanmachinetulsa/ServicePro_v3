@@ -5008,3 +5008,43 @@ export type SupportIssue = typeof supportIssues.$inferSelect;
 export type InsertSupportIssue = z.infer<typeof insertSupportIssueSchema>;
 export type CreateSupportIssue = z.infer<typeof createSupportIssueSchema>;
 export type ResolveSupportIssue = z.infer<typeof resolveSupportIssueSchema>;
+
+// ============================================================
+// SP-PARSER-HISTORY-IMPORT: PHONE HISTORY IMPORT TRACKING
+// ============================================================
+
+export const phoneHistoryImportBatches = pgTable("phone_history_import_batches", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  source: text("source").notNull().default('parser-csv'),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdByUserId: text("created_by_user_id"),
+  dryRun: boolean("dry_run").notNull().default(false),
+  summaryJson: jsonb("summary_json").notNull().default({}),
+  notes: text("notes"),
+}, (table) => ({
+  tenantIdx: index("phone_history_import_batches_tenant_idx").on(table.tenantId),
+  createdAtIdx: index("phone_history_import_batches_created_at_idx").on(table.createdAt),
+}));
+
+export const insertPhoneHistoryImportBatchSchema = createInsertSchema(phoneHistoryImportBatches).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PhoneHistoryImportBatch = typeof phoneHistoryImportBatches.$inferSelect;
+export type InsertPhoneHistoryImportBatch = z.infer<typeof insertPhoneHistoryImportBatchSchema>;
+
+export const phoneHistoryConversationLinks = pgTable("phone_history_conversation_links", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  externalConversationId: text("external_conversation_id").notNull(),
+  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  importBatchId: integer("import_batch_id").references(() => phoneHistoryImportBatches.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantExternalIdx: uniqueIndex("phone_history_conv_links_tenant_external_idx").on(table.tenantId, table.externalConversationId),
+  conversationIdx: index("phone_history_conv_links_conversation_idx").on(table.conversationId),
+}));
+
+export type PhoneHistoryConversationLink = typeof phoneHistoryConversationLinks.$inferSelect;

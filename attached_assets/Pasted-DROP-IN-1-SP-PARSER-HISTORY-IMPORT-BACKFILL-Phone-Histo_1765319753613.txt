@@ -1,0 +1,300 @@
+DROP-IN 1: SP-PARSER-HISTORY-IMPORT-BACKFILL
+“Phone History Import (Parser CSV → DB Backfill)”
+
+📦 DROP-IN PROMPT FOR REPLIT ARCHITECT
+SP-PARSER-HISTORY-IMPORT-BACKFILL — IMPORT LEGACY PHONE HISTORY (CSV/ZIP) INTO TENANT DB
+
+You are modifying the ServicePro_v3 repo.
+
+GOAL
+Implement a **Phone History Import** feature that lets an admin upload a parser export (ZIP with contacts.csv, messages.csv, calls.csv, conversations.csv, manifest.json) and backfill:
+
+- Customers / contacts
+- Conversations + messages
+- Call history
+
+…for a specific tenant (initially Clean Machine = root tenant) with **deduping** and full multi-tenant safety.
+
+This should be implemented as a reusable feature, so future tenants can also use it to “add more history later” even after onboarding.
+
+HIGH-LEVEL REQUIREMENTS
+
+1) **Back-end importer service** that:
+   - Accepts a ZIP with:
+     - contacts.csv
+     - messages.csv
+     - calls.csv
+     - conversations.csv
+     - manifest.json
+   - Parses CSVs & manifest
+   - Maps them into existing tables:
+     - customers/contacts
+     - conversations
+     - messages
+     - call logs
+   - De-duplicates based on existing records (phone, email, etc.)
+   - Supports:
+     - **Dry run** → compute what would happen, but don’t write
+     - **Real import** → write rows, return stats
+
+2) **Tracking table** (import batches) so we can see what was imported and when.
+
+3) **Admin UI page** where the tenant owner/admin can:
+   - Upload the ZIP
+   - Run a dry run
+   - Run the actual import
+   - See summary stats and previous batches
+
+4) Everything must be **tenant-aware** and use the existing multi-tenant plumbing (wrapTenantDb or equivalent).
+
+-----------------------------------
+STEP 1 – DISCOVER EXISTING SCHEMA
+-----------------------------------
+
+First, inspect the current schema and code to find the right tables. Do NOT create duplicate entities if they already exist.
+
+1. Open shared schema:
+
+- `shared/schema.ts`
+- Find tables related to:
+  - customers / contacts
+  - conversations / threads
+  - messages
+  - calls / call logs
+  - any existing import/history tables
+
+2. Use ripgrep to find references:
+
+- Search for customers:
+  - `rg -n "customers" shared server client`
+- Search for conversations:
+  - `rg -n "conversations" shared server client`
+- Search for messages:
+  - `rg -n "conversation_messages|messages" shared server client`
+- Search for call logs:
+  - `rg -n "call_log|call_logs|calls" shared server client`
+
+3. Identify:
+
+- The **canonical customer table** (e.g. `customers` or `tenant_customers`)
+- The **canonical conversation and message tables** used by the Messages UI
+- The **canonical call log table** used by call history UI
+- Any existing `phone_history_imports` / parser-related tables (if they exist)
+
+We will re-use those, not create new top-level tables.
+
+-----------------------------------
+STEP 2 – ADD IMPORT BATCH TABLE
+-----------------------------------
+
+Add a table in `shared/schema.ts` to track import batches:
+
+- Table name: `phone_history_import_batches`
+
+Fields:
+
+- `id` (serial PK)
+- `tenant_id` (FK → tenants.id, NOT NULL)
+- `source` TEXT NOT NULL DEFAULT 'parser-csv'
+  - e.g. 'parser-csv', 'twilio-export', etc.
+- `created_at` TIMESTAMP NOT NULL DEFAULT NOW()
+- `created_by_user_id` TEXT NULL
+- `dry_run` BOOLEAN NOT NULL DEFAULT FALSE
+- `summary_json` JSONB NOT NULL DEFAULT '{}'::jsonb
+  - counts: contacts_new/updated, conversations_new, messages_new, calls_new, etc.
+- `notes` TEXT NULL
+
+Apply the schema change using the existing pattern (db:push or raw ALTER TABLE as appropriate).
+
+-----------------------------------
+STEP 3 – IMPORTER SERVICE
+-----------------------------------
+
+Create a service module that will parse and import the uploaded archive.
+
+New file example:
+
+- `server/services/phoneHistoryImportService.ts`
+
+Responsibilities:
+
+1) **Parsing the archive**
+
+- Accept:
+  - `tenantId: string`
+  - `buffer: Buffer` (ZIP file contents)
+
+- Use a ZIP library available in the project (if none, add a dependency that works in this environment, e.g. `adm-zip` or `jszip`).
+- Extract the following files (case-insensitive, but ideally exact):
+  - `contacts.csv`
+  - `messages.csv`
+  - `calls.csv`
+  - `conversations.csv`
+  - `manifest.json`
+- Parse CSVs (use an existing CSV helper if present; otherwise, use a well-supported CSV parser dependency that’s already used in the repo).
+- Parse `manifest.json` for counts.
+
+Return a normalized structure, e.g.:
+
+```ts
+export interface ParsedPhoneHistory {
+  manifest: {
+    contactsCount: number;
+    messagesCount: number;
+    callsCount: number;
+    conversationsCount: number;
+    raw: any;
+  };
+  contacts: ParsedContactRow[];
+  conversations: ParsedConversationRow[];
+  messages: ParsedMessageRow[];
+  calls: ParsedCallRow[];
+}
+Each parsed row:
+* Should have original IDs (e.g. external_contact_id, external_conversation_id) so we can link messages/conversations. 
+2. Normalization helpers 
+Create helpers for:
+* normalizePhone(raw: string): string | null
+    * Strip punctuation, spaces, etc. 
+    * Ensure E.164 for US: if 10 digits → prepend +1 
+    * Return null if invalid/unusable 
+* getTwilioNumbersForTenant(tenantId):
+    * Use existing config/DB where Twilio numbers are stored. 
+    * Needed to determine inbound vs outbound direction for messages/calls. 
+3. Dry Run & Real Import 
+Design two top-level functions:
+
+export interface PhoneHistoryImportOptions {
+  dryRun: boolean;
+  batchNotes?: string | null;
+  userId?: string | null;
+}
+
+export interface PhoneHistoryImportSummary {
+  contacts: { new: number; updated: number; skipped: number };
+  conversations: { new: number; skipped: number };
+  messages: { new: number; skipped: number };
+  calls: { new: number; skipped: number };
+  manifest?: ParsedPhoneHistory['manifest'];
+}
+
+export async function importPhoneHistoryFromArchive(
+  tenantId: string,
+  buffer: Buffer,
+  options: PhoneHistoryImportOptions
+): Promise<PhoneHistoryImportSummary>
+Implementation strategy:
+* Use wrapTenantDb(tenantId, async (db) => {...}) pattern for all writes to ensure tenant isolation. 
+* Deduplication:
+    * Contacts:
+        * Identify existing customer by normalized phone and/or email. 
+        * If found → update missing fields (e.g. name) but avoid overwriting better data. 
+        * If not found → insert. 
+    * Conversations:
+        * Use external conversation ID + tenant to avoid duplicates:
+            * Either store external_conversation_id in a dedicated column, OR maintain a mapping table:
+                * phone_history_conversation_links with:
+                    * tenant_id 
+                    * external_conversation_id 
+                    * conversation_id 
+        * If mapping exists → reuse conversation_id. 
+        * If not → create a new conversation row and link it. 
+    * Messages:
+        * Use conversation mapping + timestamp and body. 
+        * Optionally, avoid double-inserting if a message with same external ID and timestamp already exists. 
+    * Calls:
+        * Similar pattern: map to customer by phone; dedupe if we have a primary key / external ID mapping. 
+* When options.dryRun === true:
+    * Perform lookups but do not INSERT/UPDATE. 
+    * Return counts of what would be created/updated. 
+* When options.dryRun === false:
+    * Actually apply INSERTs/UPDATEs. 
+    * Create a phone_history_import_batches row at the end with:
+        * summary_json containing the summary object 
+        * dry_run flag 
+        * notes from batchNotes 
+        * created_by_user_id 
+Make sure you respect existing types and column names (adapt mapping as needed).
+
+STEP 4 – API ROUTES
+Create a new routes file:
+* server/routes.admin.phoneHistoryImport.ts (or similar) 
+Register it in server/index.ts with appropriate admin auth middleware.
+Endpoints:
+1. POST /api/admin/import/phone-history
+    * Auth: tenant owner/admin only. 
+    * Accept multipart/form-data:
+        * Field: file (ZIP) 
+        * Field: dryRun (boolean, default true) 
+        * Field: notes (optional string) 
+    * Determine tenantId from the auth context (for now, will be root in your env). 
+    * Read uploaded file into Buffer. 
+    * Call importPhoneHistoryFromArchive(tenantId, buffer, { dryRun, batchNotes: notes, userId }). 
+    * Return:
+        * summary: PhoneHistoryImportSummary 
+        * dryRun: boolean 
+2. GET /api/admin/import/phone-history/batches
+    * Returns last N batches for the current tenant:
+        * id, created_at, dry_run, summary_json, notes. 
+3. (Optional but nice) GET /api/admin/import/phone-history/batch/:id
+    * Returns full summary for a single batch. 
+
+STEP 5 – ADMIN UI PAGE
+Create a React page:
+* client/src/pages/admin/PhoneHistoryImportPage.tsx 
+Requirements:
+* Only visible to tenant owner/admin (respect existing RBAC). 
+* Form with:
+    * File input for ZIP 
+    * Checkbox toggle for “Dry run only (no data will be written)” – default ON 
+    * Optional notes textarea 
+    * Submit button: “Run Import” 
+* After submit:
+    * Call POST /api/admin/import/phone-history. 
+    * Show a loading state. 
+    * Render:
+        * If dryRun:
+            * “Dry Run Summary” 
+            * show counts (contacts new/updated, conversations, messages, calls). 
+            * Prompt: “If this looks correct, uncheck Dry Run and run again.” 
+        * If real import:
+            * “Import Complete” 
+            * show final summary. 
+* Below form:
+    * A small table of previous batches (from GET /api/admin/import/phone-history/batches):
+        * Date 
+        * Dry run? 
+        * Source (hardcoded 'parser-csv' for now) 
+        * Key stats (e.g. contacts.new, messages.new) 
+Add navigation:
+* In client/src/config/navigationItems.ts:
+    * Add an owner-only admin link (under Admin or Tools):
+        * id: 'phone-history-import' 
+        * label: 'Phone History Import' 
+        * path: '/admin/phone-history-import' 
+        * restricted to owner / admin roles using the existing RBAC helpers. 
+
+STEP 6 – CLEAN MACHINE USAGE
+After implementation, the intended usage for the root tenant (Clean Machine) is:
+1. Zip your parser export files:
+    * contacts.csv 
+    * messages.csv 
+    * calls.csv 
+    * conversations.csv 
+    * manifest.json 
+2. Log in as owner/admin. 
+3. Go to Admin → Phone History Import. 
+4. Upload the ZIP, run Dry Run. 
+5. If the summary looks correct, uncheck Dry Run and run again to perform the real import. 
+
+STEP 7 – TESTING
+Add or update tests to verify:
+* Admin can open /admin/phone-history-import and see the upload form. 
+* API:
+    * Rejects missing file. 
+    * Returns summary for dryRun. 
+    * Performs writes on real import (ideally using a small fixture ZIP in tests). 
+* Data is correctly tenant-scoped:
+    * Records are associated with the current tenant only. 
+* Optionally, check that imported conversations/messages show up in the existing Messages UI for that tenant. 
+Please implement all of the above with robust error handling, logging (for debugging), and minimal disruption to existing parser integration.
