@@ -126,8 +126,7 @@ export function useSupportAssistantChat(initialContext: SupportAssistantContext 
           reportFromAssistant(
             text.trim(),
             err instanceof Error ? err.message : 'Unknown error',
-            'error',
-            `Route: ${initialContext.currentRoute}`
+            'ASSISTANT_CHAT_ERROR'
           ).catch(() => {});
         }
       } finally {

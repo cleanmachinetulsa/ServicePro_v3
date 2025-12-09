@@ -9,6 +9,18 @@ ServicePro is a multi-tenant, white-label SaaS platform that transforms service 
 
 ## Recent Changes (December 2024)
 
+### SP-SUPPORT-1: Support Issues & Error Logging (Dec 9, 2024)
+1. **Support Issues System**: Added `support_issues` table for tracking errors, bugs, and feature requests per tenant. Owner-only access for viewing/managing issues.
+
+2. **Key Files**:
+   - `shared/schema.ts`: support_issues table with tenant isolation
+   - `server/services/supportIssuesService.ts`: CRUD operations with email notifications
+   - `server/routes.supportIssues.ts`: API routes at /api/support/issues
+   - `client/src/pages/admin/SupportIssuesPage.tsx`: Admin page for issue management
+   - `client/src/lib/supportIssueReporter.ts`: Frontend helper for auto-logging errors
+
+3. **Integration Points**: Support Assistant (useSupportAssistantChat) auto-logs errors to support_issues table. Emails sent to info@cleanmachinetulsa.com on new issues.
+
 ### Critical Production Fixes (Dec 8, 2024)
 1. **Google Calendar Sync for Dashboard Appointments**: Added `syncAppointmentToCalendar` export in `server/calendarApi.ts` and integrated it into `server/routes.appointments.ts`. Appointments created via the admin dashboard now sync to Google Calendar.
 

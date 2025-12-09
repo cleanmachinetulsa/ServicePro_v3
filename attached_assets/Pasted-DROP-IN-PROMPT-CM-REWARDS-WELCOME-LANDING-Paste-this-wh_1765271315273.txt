@@ -1,0 +1,350 @@
+DROP-IN PROMPT: CM-REWARDS-WELCOME-LANDING
+
+Paste this whole thing into Replit Architect for the ServicePro_v3 repo.
+You are modifying the Clean Machine (root tenant) experience.
+Do not break:
+
+Existing rewards portal v2
+
+Booking flows
+
+SMS campaigns, including the Welcome Back / missed-call ones
+
+Root tenant routing and domain logic
+Only change files that are necessary for this feature.
+
+0. Goal
+
+Create a “Points Welcome” landing flow for customers who tap the SMS link that says:
+
+“Sorry I missed your message… here are 500 bonus points…”
+
+When they hit the link, we want:
+
+A tight, beautiful, animated landing screen that:
+
+Greets them by name
+
+Celebrates their points with confetti / motion
+
+Shows current balance + what those points can buy
+
+Has a Book Now button that goes straight into booking
+
+Gently mentions holiday gift cards
+
+Shows a small floating chat bubble (minimized by default, labelled so they know it’s chat)
+
+This page should feel connected to the current Clean Machine site, but slightly more “premium” and celebratory.
+
+It should plug into the existing loyalty/rewards portal and use the same underlying APIs & token mechanics. No reinventing auth.
+
+Name this feature CM-REWARDS-WELCOME-LANDING in comments/docs.
+
+1. Discover existing rewards portal + APIs
+
+First, scan the repo to understand current rewards plumbing:
+
+Find the customer-facing rewards portal (v2) by searching for:
+
+"Rewards Portal", "Loyalty Portal", "points balance", "redeem points" or similar.
+
+Likely files:
+
+client/src/pages/rewards/RewardsPortalPage*.tsx
+
+client/src/components/rewards/*
+
+server/routes.rewards*.ts
+
+Find the API endpoint that powers the portal:
+
+Example patterns: /api/rewards/portal/*, /api/rewards/summary, /api/rewards/customer/:token, etc.
+
+Identify how customer tokens are passed in from SMS links:
+
+Query param (?token=) vs path (/rewards/portal/:token).
+
+Do not change the existing rewards portal behavior. We’re going to add a new landing page that reuses the same APIs.
+
+2. New Page: Points Welcome Landing
+
+Create a new page:
+
+File: client/src/pages/rewards/PointsWelcomeLandingPage.tsx
+
+Route: /rewards/welcome (client-side)
+
+It should accept the same customer token mechanism as the existing portal:
+
+If the portal uses ?token=, this page also reads from ?token=.
+
+If it uses /rewards/portal/:token, then this page should work with /rewards/welcome/:token.
+
+Reuse whatever helper/hook currently loads the customer + points for the portal.
+
+2.1. Data & hooks
+
+In PointsWelcomeLandingPage:
+
+Reuse existing hook/service to load the current customer & points:
+
+If there’s a hook like useRewardsPortal(token) or useRewardsSummary, use that.
+
+Data we want:
+
+Customer first name (or fallback to “there”)
+
+Current points balance
+
+Rewards catalog (rewards with point cost + description)
+
+Handle loading & error states:
+
+Loading: show a short branded skeleton (logo, “Loading your points…”).
+
+Error: show a friendly message and a “Try again” button, not raw errors.
+
+2.2. Visual + layout
+
+Use the existing UI system:
+
+Card, Button, Badge, Avatar, Separator, Tabs, Carousel (if you have a gallery/carousel component), etc. from @/components/ui/...
+
+Tailwind and motion/animation conventions already in the project.
+
+Layout (desktop):
+
+Full-height, centered content, single screen (no scroll if possible on desktop).
+
+2-column layout on md+:
+
+Left column: celebration & copy
+
+Right column: points card + reward highlights
+
+Mobile: stack vertically with top as celebration card.
+
+Key UI pieces:
+
+Celebration header
+
+Gradient background card with subtle motion and confetti.
+
+Use framer-motion if already used in the project (if not, a small fade/scale animation is fine).
+
+Copy (you can hard-code these strings; see copy section below):
+
+Headline:
+"Hey {firstName}, your Clean Machine points are live 🎉"
+
+Subheadline:
+"We dropped bonus points into your account as a thank-you for your patience while we upgraded our phone system."
+
+Show a big points number with a badge:
+
+Example:
+"Current balance: 750 points"
+Badge under it: "Worth up to $XX off your next detail" (if you can derive an approximate value from existing reward tiers; otherwise just show “Ready to redeem” type language).
+
+Reward highlights
+
+In the right column, a “What your points can do” card:
+
+Show 3–4 rewards pulled from the existing catalog, sorted by lowest point cost first.
+
+For each, show:
+
+Reward name
+
+Points required
+
+Short description
+
+Add a subtle progress indicator for “next reward” if easy:
+
+progress = points / nearestRewardPoints.
+
+Call-to-action row
+
+Below the celebration copy, big buttons:
+
+Primary CTA: “Book a Detail with My Points”
+
+This should link to the existing booking flow used elsewhere for Clean Machine.
+
+Reuse existing booking URL (whatever the main “Book Now” button uses on the home/rewards portal, e.g. /book, /book/cleanmachine, etc.).
+
+Secondary link/button: “Browse all rewards”
+
+Link to the main rewards portal page (same one used everywhere for points management).
+
+Holiday Gift Card mention
+
+In the lower part of the page, short card or text block:
+
+Title: "Gift cards make ridiculously easy holiday wins 🎁"
+
+Copy (see copy section).
+
+Button or link: “Get a gift card” linking to your existing gift card URL if one exists (or stub to /gift-cards if present in the app).
+
+Dynamic photo strip / carousel
+
+Find your existing gallery / hero photos for Clean Machine (whatever the home page uses).
+
+Reuse them as:
+
+Either a soft-scrolling strip of recent detail photos.
+
+Or a small carousel with auto-advance and dots.
+
+This is purely visual—no need for the “refresh layout” button in v1 if that’s heavy. (If it’s trivial to add a “shuffle photos” button that just randomizes order client-side, that’s fine.)
+
+2.3. Chat bubble
+
+Reuse any existing chat component if available:
+
+Search for ChatWidget, ChatBubble, SupportChat, etc.
+
+If none exists, create a small floating button component:
+
+File: client/src/components/chat/FloatingChatButton.tsx (or similar).
+
+Fixed bottom-right on the page.
+
+Circular button with message icon and a tiny label:
+
+On desktop: show icon + “Chat” label (Chat so they clearly know what it is).
+
+On mobile: icon only, but include aria-label="Chat with us" and a tooltip-like hover/press text if you have a tooltip system.
+
+Behavior:
+
+Default state: minimized.
+
+Clicking opens your existing chat widget / support assistant panel:
+
+If there’s a page-level chat, call its open() function or set a local state to show a slide-over.
+
+This bubble should not cover the main CTAs.
+
+3. Copy (you can hard-code these strings)
+
+Please use copy similar to this, adjusting slightly to fit existing i18n/patterns:
+
+Hero headline:
+
+“Hey {firstName}, your Clean Machine points are live 🎉”
+
+Subheadline:
+
+“We’ve been upgrading our phone system behind the scenes, and a few calls slipped through the cracks. To make it up to you, we loaded bonus loyalty points into your account so your next detail is easier to say yes to.”
+
+Points explanation block:
+
+“Every time you book with us, you earn points that stack toward free upgrades and discounted details. These bonus points are our way of saying thanks for your patience—and for being the kind of customer we never want to lose.”
+
+CTA text under buttons:
+
+“Grab a spot on the schedule now and we’ll automatically apply your points at the time of service.”
+
+Gift card block:
+
+Title:
+
+“Perfect time for gift cards 🎁”
+
+Body:
+
+“If you’ve got a car-lover, busy parent, or road warrior in your life, a Clean Machine gift card is a ridiculously easy win. You tap a few buttons, they get a spotless car and all the credit goes to you.”
+
+Button (if gift card URL exists):
+
+“Get a gift card”
+
+Chat helper hint:
+
+“Questions about your points or booking? Tap the chat bubble and we’ll help you out.”
+
+4. Routing & link from SMS campaigns (no breaking changes)
+
+Do not override existing database SMS templates.
+
+Instead:
+
+Make sure the new page can be linked as:
+
+https://cleanmachinetulsa.com/rewards/welcome?token=<customerToken>
+OR (if current portal uses path params)
+
+https://cleanmachinetulsa.com/rewards/welcome/<customerToken>
+
+Update documentation and comments to clearly state the desired link format so the operator (Jody) can paste that into the campaign templates.
+
+Do NOT auto-change the stored SMS templates in the DB. Just make it possible to point them at this route.
+
+5. Security & tenant behavior
+
+Assume this is currently only for the Clean Machine (root) tenant, but:
+
+Keep the code tenant-safe: use existing helpers that bind the rewards API calls to the current tenant.
+
+If a token is invalid / expired:
+
+Show a gentle message:
+
+“This link has expired or is already used. Tap the chat bubble or text us and we’ll resend your points link.”
+
+6. Tests & docs
+
+Add basic e2e test or Playwright scenario if you already use them:
+
+Visit /rewards/welcome with a valid test token.
+
+Assert:
+
+The greeting text renders.
+
+Points balance appears.
+
+Book Now button exists.
+
+Update replit.md or your main plan doc with a section:
+
+CM-REWARDS-WELCOME-LANDING
+
+Routes, main components, and how to build the SMS link.
+
+End of drop-in. Please implement exactly as described, preserving existing rewards & booking behavior.
+
+SMS COPY for your “Sorry I missed you + 500 points” campaign
+
+You’ll paste this yourself into the campaign template (so we don’t stomp anything in the DB):
+
+Subject / label (internal):
+Missed call apology + 500 bonus points
+
+SMS body (for regular customers):
+
+Hey {first_name}, it’s Jody at Clean Machine Auto Detail 🧼
+
+I’ve been upgrading my phone system and a few calls / messages slipped through the cracks 😔 That’s on me.
+
+To say thanks for your patience, I just dropped 500 loyalty points into your account (good toward upgrades and discounts on your next detail).
+
+Tap here to see your points and grab a spot on the schedule: {short_link_to_rew_welcome}
+
+If you have questions, you can also chat with me right from that page.
+
+VIP version (if you want one):
+
+Hey {first_name}, it’s Jody at Clean Machine 👋
+
+You’re one of my favorite regulars, and I hate that my phone upgrades caused me to miss you. So I added 1,000 loyalty points to your account as a thank-you.
+
+Tap here to see your points, check what they can get you, and grab your next detail: {short_link_to_rew_welcome}
+
+Where {short_link_to_rew_welcome} is your new page, e.g.:
+
+https://cleanmachinetulsa.com/rewards/welcome?token={customer_token}
