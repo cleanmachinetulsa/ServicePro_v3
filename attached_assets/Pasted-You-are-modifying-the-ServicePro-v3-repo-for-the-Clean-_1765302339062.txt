@@ -1,0 +1,141 @@
+You are modifying the ServicePro_v3 repo for the Clean Machine root tenant.
+
+GOAL
+=====
+
+Restore the custom voicemail greeting MP3 ("best best.mp3") so that:
+
+- When a caller reaches the **voicemail** for the Clean Machine number:
+  - Twilio plays the MP3 greeting (using <Play>) before the beep.
+  - It does NOT play the text-to-speech IVR version of the script.
+- This works correctly in the new multi-tenant / IVR setup.
+- The behavior is tenant-aware and does not break other tenants.
+
+ASSUMPTIONS & CONTEXT
+======================
+
+- There is an uploaded voicemail greeting asset named something like "best best.mp3".
+- Previously, this greeting was used before we refactored IVR + multi-tenant routing.
+- The current behavior is:
+  - IVR / robot voice <Say> plays a text version of the voicemail greeting.
+  - Then Twilio beeps and records the voicemail.
+- We want to go back to using the MP3 for the **voicemail greeting only**, while keeping IVR prompts intact.
+
+TASKS
+=====
+
+1. FIND CURRENT VOICEMAIL FLOW
+-------------------------------
+
+1.1. Locate the Twilio Voice webhook routes:
+  - Example file names (search for them):
+    - server/routes.twilioVoice.ts
+    - server/routes.twilio.voice.ts
+    - server/routes.twilio.ts
+  - Look for handlers that use:
+    - `<Gather>`
+    - `<Say>`
+    - `<Play>`
+    - `<Record>`
+    - "voicemail", "leave a message", etc.
+
+1.2. Identify the exact branch where a call is sent to **voicemail**:
+  - E.g., a route like `/api/twilio/voice/voicemail` or `handleVoicemail`.
+  - Confirm where the TwiML for the voicemail greeting is generated:
+    - Is it currently doing something like:
+      - `<Say>Sorry we missed your call...` then `<Record>`?
+
+1.3. Identify any tenant-aware logic:
+  - How does the code know which tenant (root / Clean Machine) the call belongs to?
+  - Are there helper functions like `getTenantForIncomingCall`, `wrapTenantDb`, or `getTenantVoiceConfig`?
+
+2. FIND VOICEMAIL GREETING CONFIG / MP3
+---------------------------------------
+
+2.1. Search for existing voicemail greeting config:
+  - Search for:
+    - "voicemail_greeting"
+    - "voicemailGreeting"
+    - "voice_greeting"
+    - ".mp3" references
+    - "best best.mp3"
+
+2.2. If there is a DB/setting for voicemail greeting:
+  - Note which table/column is used (e.g., tenant_telephony_settings.voicemail_greeting_url).
+  - Check if the Clean Machine root tenant has a record configured.
+
+2.3. If there is NOT a clear setting:
+  - Add one appropriate for the architecture:
+    - For example, in a tenant telephony config table:
+      - `voicemail_greeting_url` TEXT (nullable)
+    - Or in the JSON config column for telephony setup.
+  - Set it up so:
+    - Root tenant can have a specific MP3 URL.
+    - Other tenants can use default TTS or their own MP3 later.
+
+3. IMPLEMENT MP3 PLAYBACK FOR VOICEMAIL
+----------------------------------------
+
+3.1. Update the voicemail TwiML handler so that:
+  - It checks the tenant’s voicemail greeting config.
+  - Behavior:
+
+    - If `voicemail_greeting_url` is set for the tenant:
+      - Generate TwiML like:
+        - `<Play>https://.../best-best.mp3</Play>`
+        - `<Pause length="1" />`
+        - `<Record maxLength="120" ... />`
+
+    - Else (no custom greeting):
+      - Fallback to existing TTS <Say> behavior (so other tenants still work).
+
+3.2. For the Clean Machine root tenant:
+  - Wire the previously uploaded "best best.mp3" as the voicemail greeting URL.
+  - If there is a static/public URL already in the codebase, reuse it.
+  - If necessary, place the asset in the public/static assets folder and reference it via an HTTPS URL.
+
+3.3. Make sure:
+  - The IVR menu prompts still use TTS <Say>/<Play> as they do now.
+  - ONLY the **voicemail greeting** branch is changed to prefer the MP3.
+
+4. OPTIONAL ADMIN UI HOOK (LIGHTWEIGHT)
+---------------------------------------
+
+If there is already a telephony / phone config admin page:
+
+4.1. Add a **read-only display** of the voicemail greeting state for now:
+  - E.g., text: “Voicemail greeting: Custom MP3 set” or “Default TTS”.
+  - This is mainly for visibility; no need for a full upload UI yet.
+
+4.2. If it’s easy and doesn’t balloon scope:
+  - Add a simple text input for `voicemail_greeting_url` and wire it to the config.
+  - Otherwise, keep it as a hard-coded value for the root tenant in the seed or migration.
+
+5. TESTING
+-----------
+
+5.1. Add a small integration/unit test (or just log-based verification) that:
+  - Simulates an incoming call routed to voicemail for the root tenant.
+  - Asserts that the generated TwiML for voicemail includes:
+    - A `<Play>` tag pointing to the MP3 URL.
+    - A `<Record>` tag for the voicemail itself.
+
+5.2. In the dev environment:
+  - Hit the Twilio voicemail webhook route for the Clean Machine number.
+  - Confirm the XML shows <Play>MP3_URL</Play> before <Record>.
+
+CONSTRAINTS
+===========
+
+- Do NOT break existing IVR menu behavior for:
+  - “Press 1 for SMS link”
+  - “Press 2 to talk to someone”
+  - Etc.
+
+- The change should be:
+  - Tenant-aware (root = uses MP3)
+  - Backwards compatible (other tenants still get safe defaults).
+
+- Keep the code clean and well-commented, especially in:
+  - The voicemail TwiML handler
+  - Any voicemail greeting config changes.
