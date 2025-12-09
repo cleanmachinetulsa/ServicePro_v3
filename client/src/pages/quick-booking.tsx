@@ -96,6 +96,9 @@ export default function QuickBookingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [smsConsent, setSmsConsent] = useState(false);
 
+  // Preselected slot from chat deep link (Smart Availability Deep Links)
+  const [preselectedSlot, setPreselectedSlot] = useState<{ start: Date; source?: string } | null>(null);
+
   // Referral code state
   const [referralCode, setReferralCode] = useState("");
   const [referralValid, setReferralValid] = useState<boolean | null>(null);
@@ -118,6 +121,28 @@ export default function QuickBookingPage() {
       const normalized = refCode.toUpperCase();
       setReferralCode(normalized);
       validateReferralCode(normalized);
+    }
+  }, []);
+
+  // Smart Availability Deep Links: Parse slotStart from URL (from chat booking links)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const slotStartParam = params.get('slotStart');
+    const sourceParam = params.get('source');
+    
+    if (slotStartParam) {
+      try {
+        const slotDate = parseISO(slotStartParam);
+        // Validate the slot is in the future
+        if (slotDate > new Date()) {
+          setPreselectedSlot({ start: slotDate, source: sourceParam || undefined });
+          console.log('[BOOKING] Preselected slot from chat:', slotDate.toISOString());
+        } else {
+          console.warn('[BOOKING] Preselected slot is in the past, ignoring');
+        }
+      } catch (e) {
+        console.warn('[BOOKING] Invalid slotStart param:', slotStartParam);
+      }
     }
   }, []);
 
@@ -354,6 +379,31 @@ export default function QuickBookingPage() {
 
         setAvailableDates(availableDatesList);
         setDailyTimeSlots(timeSlotsByDay);
+        
+        // Smart Availability Deep Links: Auto-select preselected slot if it exists and is available
+        if (preselectedSlot) {
+          const preselectedDateKey = format(preselectedSlot.start, 'yyyy-MM-dd');
+          const preselectedTimeISO = preselectedSlot.start.toISOString();
+          
+          // Check if the preselected date is available
+          const matchingDate = availableDatesList.find(d => format(d, 'yyyy-MM-dd') === preselectedDateKey);
+          if (matchingDate) {
+            setSelectedDate(matchingDate);
+            
+            // Check if the exact time slot is available
+            const daySlots = timeSlotsByDay[preselectedDateKey] || [];
+            const matchingSlot = daySlots.find(slot => {
+              const slotTime = parseISO(slot);
+              // Match within 5 minutes to handle timezone edge cases
+              return Math.abs(slotTime.getTime() - preselectedSlot.start.getTime()) < 5 * 60 * 1000;
+            });
+            
+            if (matchingSlot) {
+              setSelectedTime(matchingSlot);
+              console.log('[BOOKING] Auto-selected preselected slot:', matchingSlot);
+            }
+          }
+        }
       } else {
         setAvailableDates([]);
         setDailyTimeSlots({});
@@ -931,6 +981,26 @@ export default function QuickBookingPage() {
                       </Card>
                     ) : (
                       <>
+                        {/* Preselected Slot Banner (Smart Availability Deep Links) */}
+                        {preselectedSlot && selectedTime && (
+                          <Card className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border-green-500/40">
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-3">
+                                <CalendarIcon className="w-5 h-5 text-green-400" />
+                                <div className="flex-1">
+                                  <p className="text-sm text-green-200/80">Pre-selected from chat</p>
+                                  <p className="font-medium text-green-100" data-testid="text-preselected-time">
+                                    {format(preselectedSlot.start, "EEEE, MMMM d 'at' h:mm a")}
+                                  </p>
+                                </div>
+                                <Badge variant="secondary" className="bg-green-500/20 text-green-300 text-xs">
+                                  You can change this below
+                                </Badge>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                        
                         {/* Date Selection */}
                         <Card className="bg-gray-800/50 border-blue-500/30">
                           <CardHeader>
