@@ -1,0 +1,691 @@
+📦 DROP-IN #1 – CLEAN MACHINE SETTINGS + CAMPAIGNS RESTORE
+
+You are the Replit AI/Architect working on the ServicePro_v3 repo.
+
+The user is the owner of the **root tenant** ("Clean Machine", tenantId = "root").
+
+Your goal in THIS DROP-IN is:
+
+1. Fix the Settings experience for the root tenant only.
+2. Make sure the rich **Campaigns** UI (including the "Welcome Back" 500-point SMS campaign, preview & send buttons) is reachable again.
+3. Do NOT touch any Twilio / IVR / SIP / server phone logic in this drop-in.
+4. Minimize changes: we will only touch **4 files**:
+   - `client/src/pages/settings-admin.tsx`
+   - `client/src/components/SettingsWorkspace.tsx`
+   - `client/src/config/settingsSections.tsx`
+   - `client/src/components/CommunicationsSettings.tsx`  (path may be `../components/CommunicationsSettings` depending on current structure – respect existing path if file already exists)
+
+If the existing file content already matches what I give you, do nothing for that file. Otherwise, replace the file with the version below.
+
+====================================================================
+1) settings-admin.tsx – Root tenant gets Settings Hub, others use workspace
+====================================================================
+
+Open: `client/src/pages/settings-admin.tsx`
+
+Replace the entire file contents with THIS:
+
+------------------------------------------------------------
+import { useEffect, useState } from 'react';
+import { useRoute, useLocation, Link } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import SettingsWorkspace from '@/components/SettingsWorkspace';
+import BackNavigation from '@/components/BackNavigation';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { 
+  Settings as SettingsIcon, 
+  Loader2, 
+  Users, 
+  Calendar, 
+  Palette, 
+  Phone, 
+  Gift, 
+  UserPlus, 
+  MessageSquare,
+  Bell,
+  Shield,
+  Building2,
+  ChevronRight
+} from 'lucide-react';
+import { settingsSections, findSectionForItem, isValidItem, isSectionValid } from '@/config/settingsSections';
+import { isRootTenant } from '@/utils/tenantRouting';
+
+/**
+ * CM-ROOT-HUB: Root tenant (Clean Machine) gets a Settings Hub at /settings
+ * that links to:
+ *  - Legacy /admin pages (employees, scheduling, homepage editor, etc.)
+ *  - New SettingsWorkspace sections (including Communications → Campaigns)
+ */
+const ROOT_TENANT_SETTINGS_SECTIONS = [
+  {
+    title: 'Operations',
+    description: 'Manage services, scheduling, and appointments',
+    items: [
+      // New workspace panels
+      { path: '/settings/operations/services', label: 'Services & Add-ons', icon: Building2 },
+      { path: '/settings/operations/recurring', label: 'Recurring Services', icon: Calendar },
+      { path: '/settings/operations/phone-settings', label: 'Phone & Voice', icon: Phone },
+      // Legacy rich page for scheduling
+      { path: '/admin/scheduling', label: 'Scheduling Dashboard', icon: Calendar },
+    ]
+  },
+  {
+    title: 'Customer Management',
+    description: 'Customers, loyalty, and referrals',
+    items: [
+      { path: '/settings/customers/customer-management', label: 'Customer Database (panel)', icon: Users },
+      { path: '/customer-database', label: 'Customer Database (full page)', icon: Users },
+      { path: '/settings/customers/loyalty', label: 'Loyalty Program', icon: Gift },
+      { path: '/settings/customers/referrals', label: 'Referral Program', icon: UserPlus },
+    ]
+  },
+  {
+    title: 'Communications',
+    description: 'Messaging, notifications, and campaigns',
+    items: [
+      { path: '/settings/communications/notifications', label: 'Notifications', icon: Bell },
+      { path: '/settings/communications/sms-templates', label: 'SMS Templates', icon: MessageSquare },
+      { path: '/settings/communications/email-templates', label: 'Email Templates', icon: MessageSquare },
+      { path: '/settings/communications/campaigns', label: 'Campaigns (Email + SMS)', icon: MessageSquare },
+      // This is where the "Welcome Back" 500-point SMS campaign lives
+      // via CommunicationsSettings component.
+      { path: '/settings/communications/upsell', label: 'Upsell Offers', icon: Gift },
+    ]
+  },
+  {
+    title: 'Business',
+    description: 'Business settings, billing, and AI agent',
+    items: [
+      { path: '/settings/business/business-settings', label: 'Business Settings', icon: Building2 },
+      { path: '/settings/business/agent-settings', label: 'AI Agent Settings', icon: Shield },
+      { path: '/settings/business/subscriptions', label: 'Subscription Plans', icon: Users },
+      { path: '/settings/business/billing-status', label: 'Billing & Usage', icon: Building2 },
+    ]
+  },
+  {
+    title: 'Website & Branding',
+    description: 'Homepage, appearance, and public pages',
+    items: [
+      // Panel view inside workspace
+      { path: '/settings/website/homepage-editor', label: 'Homepage Editor (panel)', icon: Palette },
+      // Legacy full-page editor
+      { path: '/admin/homepage-editor', label: 'Homepage Editor (full page)', icon: Palette },
+      { path: '/admin/public-site-settings', label: 'Public Site Settings', icon: Palette },
+      { path: '/admin/public-site-theme', label: 'Public Site Theme', icon: Palette },
+      { path: '/admin/gallery-management', label: 'Gallery Management', icon: Palette },
+    ]
+  },
+  {
+    title: 'Team & Security',
+    description: 'Employees and access management',
+    items: [
+      { path: '/admin/employees', label: 'Employees', icon: Users },
+      { path: '/user-management', label: 'User Management', icon: Users },
+      { path: '/settings/security/demo-mode', label: 'Demo Mode', icon: Shield },
+    ]
+  },
+];
+
+/**
+ * Root tenant settings hub - shows links to all legacy admin pages
+ * and key SettingsWorkspace panels.
+ */
+function RootTenantSettingsHub() {
+  return (
+    <div className="container mx-auto p-6 max-w-7xl" data-testid="root-settings-hub">
+      <div className="mb-4">
+        <BackNavigation fallbackPath="/dashboard" />
+      </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <SettingsIcon className="h-8 w-8" />
+          Settings
+        </h1>
+        <p className="text-muted-foreground mt-2">
+          Manage your Clean Machine operations, customers, communications, campaigns, and more.
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {ROOT_TENANT_SETTINGS_SECTIONS.map((section) => (
+          <Card key={section.title} className="hover:shadow-lg transition-shadow" data-testid={`settings-section-${section.title.toLowerCase().replace(/\s+/g, '-')}`}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">{section.title}</CardTitle>
+              <CardDescription>{section.description}</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <ul className="space-y-2">
+                {section.items.map((item) => {
+                  const testId = `settings-link-${item.label.toLowerCase().replace(/\s+/g, '-')}`;
+                  return (
+                    <li key={item.path}>
+                      <Link 
+                        href={item.path}
+                        data-testid={testId}
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors group"
+                      >
+                        <span className="flex items-center gap-2">
+                          <item.icon className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{item.label}</span>
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function SettingsAdmin() {
+  const [, params] = useRoute('/settings/:section?/:item?');
+  const [location, setLocation] = useLocation();
+  const [initialSection, setInitialSection] = useState<string | undefined>();
+  const [initialItem, setInitialItem] = useState<string | undefined>();
+  const [redirectChecked, setRedirectChecked] = useState(false);
+  
+  // Tenant context
+  const { data: authContext, isLoading: authLoading } = useQuery<{ user?: { tenantId?: string } }>({
+    queryKey: ['/api/auth/context'],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Minimal redirect logic: we only use this to normalize invalid URLs,
+  // not to force root tenant away from their hub.
+  useEffect(() => {
+    if (authLoading || !authContext) return;
+    if (redirectChecked) return;
+    setRedirectChecked(true);
+  }, [authContext, authLoading, redirectChecked]);
+  
+  // Are we exactly on /settings (no extra params)?
+  const isRootSettingsPath = !params?.section && !params?.item;
+
+  // Sync URL params into initialSection/initialItem for SettingsWorkspace
+  useEffect(() => {
+    if (!params) {
+      setInitialSection('operations');
+      setInitialItem('services');
+      return;
+    }
+
+    const { section, item } = params;
+
+    // Case 1: Both section and item provided
+    if (section && item) {
+      if (isValidItem(section, item)) {
+        setInitialSection(section);
+        setInitialItem(item);
+      } else {
+        console.warn(`Invalid settings path: section=${section}, item=${item}`);
+        setLocation('/settings', { replace: true });
+      }
+      return;
+    }
+
+    // Case 2: Only section provided
+    if (section && !item) {
+      if (isSectionValid(section)) {
+        const sectionData = settingsSections.find(s => s.id === section);
+        if (sectionData && sectionData.items.length > 0) {
+          setInitialSection(section);
+          setInitialItem(sectionData.items[0].id);
+        }
+      } else {
+        const foundSection = findSectionForItem(section);
+        if (foundSection) {
+          setInitialSection(foundSection);
+          setInitialItem(section);
+        } else {
+          console.warn(`Invalid settings path: ${section}`);
+          setLocation('/settings', { replace: true });
+        }
+      }
+      return;
+    }
+
+    setInitialSection('operations');
+    setInitialItem('services');
+  }, [params, setLocation]);
+  
+  // Loading state while auth context is loading
+  if (authLoading) {
+    return (
+      <div className="container mx-auto p-6 max-w-7xl flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const isRoot = isRootTenant(authContext?.user?.tenantId);
+
+  // Root tenant on /settings → Settings Hub (cards + links)
+  if (isRoot && isRootSettingsPath) {
+    return <RootTenantSettingsHub />;
+  }
+
+  // All other cases → SettingsWorkspace
+  return (
+    <div className="container mx-auto p-6 max-w-7xl">
+      <div className="mb-4">
+        <BackNavigation fallbackPath="/dashboard" />
+      </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <SettingsIcon className="h-8 w-8" />
+          Settings
+        </h1>
+        <p className="text-muted-foreground mt-2">
+          Manage your business operations, customers, communications, and more
+        </p>
+      </div>
+
+      <SettingsWorkspace 
+        initialSection={initialSection}
+        initialItem={initialItem}
+      />
+    </div>
+  );
+}
+------------------------------------------------------------
+
+==========================================================
+2) SettingsWorkspace.tsx – NO URL normalization for root tenant
+==========================================================
+
+Open: `client/src/components/SettingsWorkspace.tsx`
+
+Replace the entire file with THIS (or keep the existing one if it already matches):
+
+------------------------------------------------------------
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { ChevronLeft, ChevronRight, Menu, Settings as SettingsIcon } from "lucide-react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { settingsSections } from "@/config/settingsSections";
+import { isRootTenant } from "@/utils/tenantRouting";
+
+interface SettingsWorkspaceProps {
+  initialSection?: string;
+  initialItem?: string;
+}
+
+export default function SettingsWorkspace({ initialSection, initialItem }: SettingsWorkspaceProps = {}) {
+  const [, setLocation] = useLocation();
+  const [activeSection, setActiveSection] = useState<string | undefined>(initialSection);
+  const [activeItem, setActiveItem] = useState<string | undefined>(initialItem);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  const { data: authContext } = useQuery<{ user?: { tenantId?: string } }>({
+    queryKey: ['/api/auth/context'],
+    staleTime: 5 * 60 * 1000,
+  });
+  
+  const prevPropsRef = useRef({ section: initialSection, item: initialItem });
+
+  useEffect(() => {
+    const prevSection = prevPropsRef.current.section;
+    const prevItem = prevPropsRef.current.item;
+    prevPropsRef.current = { section: initialSection, item: initialItem };
+    
+    if (initialSection && initialItem) {
+      const propsActuallyChanged = prevSection !== initialSection || prevItem !== initialItem;
+      if (!isInitialized || propsActuallyChanged) {
+        setActiveSection(initialSection);
+        setActiveItem(initialItem);
+        setIsInitialized(true);
+      }
+      return;
+    }
+    
+    if (!isInitialized && !initialSection && !initialItem) {
+      const timer = setTimeout(() => {
+        setActiveSection(prev => prev || 'operations');
+        setActiveItem(prev => prev || 'services');
+        setIsInitialized(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [initialSection, initialItem, isInitialized]);
+
+  // URL NORMALIZATION – but NEVER for root tenant
+  useEffect(() => {
+    if (!isInitialized || !activeSection || !activeItem) return;
+
+    if (isRootTenant(authContext?.user?.tenantId)) {
+      // Root tenant uses /settings hub + explicit links: don't auto-normalize URLs
+      return;
+    }
+    
+    const currentPath = window.location.pathname;
+    const targetPath = `/settings/${activeSection}/${activeItem}`;
+    
+    if (currentPath.startsWith('/settings') && currentPath !== targetPath) {
+      setLocation(targetPath, { replace: true });
+    }
+  }, [activeSection, activeItem, setLocation, isInitialized, authContext?.user?.tenantId]);
+
+  const ActiveComponent = activeItem 
+    ? settingsSections.flatMap(s => s.items).find(item => item.id === activeItem)?.component || null
+    : null;
+
+  const SidebarNavigation = ({ isMobile = false, collapsed = false }: { isMobile?: boolean; collapsed?: boolean }) => (
+    <div className={`space-y-2 ${isMobile ? 'p-4' : ''}`}>
+      <div className={`flex items-center mb-4 px-3 ${collapsed ? 'justify-center' : 'gap-2'}`}>
+        <SettingsIcon className="h-5 w-5 text-primary" />
+        {!collapsed && <h2 className="text-lg font-semibold">Settings</h2>}
+      </div>
+      
+      {isMobile ? (
+        <Accordion type="single" collapsible className="w-full">
+          {settingsSections.map(section => (
+            <AccordionItem key={section.id} value={section.id}>
+              <AccordionTrigger className="hover:no-underline">
+                <div className="flex items-center gap-2">
+                  {section.icon}
+                  <span>{section.label}</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="flex flex-col gap-1 pl-6">
+                  {section.items.map(item => (
+                    <Button
+                      key={item.id}
+                      variant={activeItem === item.id ? "secondary" : "ghost"}
+                      className="justify-start"
+                      onClick={() => {
+                        setActiveItem(item.id);
+                        setActiveSection(section.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      data-testid={`settings-item-${item.id}`}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      ) : (
+        <div className="space-y-1">
+          {settingsSections.map(section => (
+            <div key={section.id} className="space-y-1">
+              <div className={`flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground ${collapsed ? 'justify-center' : ''}`}>
+                {section.icon}
+                {!collapsed && <span>{section.label}</span>}
+              </div>
+              {section.items.map(item => (
+                <Button
+                  key={item.id}
+                  variant={activeItem === item.id ? "secondary" : "ghost"}
+                  className={`w-full ${collapsed ? 'justify-center px-2' : 'justify-start pl-9'}`}
+                  onClick={() => {
+                    setActiveItem(item.id);
+                    setActiveSection(section.id);
+                  }}
+                  data-testid={`settings-item-${item.id}`}
+                  title={collapsed ? item.label : undefined}
+                >
+                  {collapsed ? item.label.charAt(0) : item.label}
+                </Button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 w-full">
+      <div className="lg:hidden w-full">
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="default" size="default" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+              <Menu className="h-5 w-5 mr-2" />
+              Settings Menu - Click to Open
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[280px] sm:w-[350px]">
+            <SidebarNavigation isMobile={true} />
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      <div className={`hidden lg:block flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'}`}>
+        <Card className="sticky top-4 relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute -right-3 top-4 z-10 h-6 w-6 rounded-full border bg-background shadow-md"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
+          <ScrollArea className="h-[calc(100vh-120px)]">
+            <SidebarNavigation collapsed={sidebarCollapsed} />
+          </ScrollArea>
+        </Card>
+      </div>
+
+      <div className="flex-1 w-full min-w-0">
+        {ActiveComponent ? <ActiveComponent /> : (
+          <Card>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground">Select a settings item from the menu</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+------------------------------------------------------------
+
+======================================================
+3) settingsSections.tsx – Ensure Communications → Campaigns is wired
+======================================================
+
+Open: `client/src/config/settingsSections.tsx`
+
+Make sure it matches this structure EXACTLY for the sections (especially the Communications section).
+
+If your file already matches, keep it. Otherwise, replace the content with this:
+
+------------------------------------------------------------
+import { 
+  Wrench, 
+  Users, 
+  MessageSquare, 
+  Building,
+  Palette,
+  Shield
+} from "lucide-react";
+import AgentSettings from "../components/AgentSettings";
+import BusinessSettings from "../pages/business-settings";
+import NotificationsSettings from "../pages/notifications-settings";
+import BillingStatusPanel from "../components/settings/BillingStatusPanel";
+import { UpsellManagement } from "../components/UpsellManagement";
+import RecurringServicesManager from "../components/RecurringServicesManager";
+import { EmailCampaignsManager } from "../components/EmailCampaignsManager";
+import { SmsTemplatesManager } from "../components/SmsTemplatesManager";
+import EmailTemplatesManager from "../components/EmailTemplatesManager";
+import CancellationDemo from "../components/CancellationDemo";
+import { CommunicationsSettings } from "../components/CommunicationsSettings";
+import SubscriptionManager from "../components/SubscriptionManager";
+import { PhoneSettings } from "../components/PhoneSettings";
+import ServicesManagement from "../components/ServicesManagement";
+import { CustomerManagement } from "../components/CustomerManagement";
+import { LoyaltyPointsSystem } from "../components/LoyaltyPointsSystem";
+import AdminReferralStats from "../components/AdminReferralStats";
+import HomepageEditor from "../pages/HomepageEditor";
+import DemoModeSettings from "../components/settings/DemoModeSettings";
+
+export interface SettingsItem {
+  id: string;
+  label: string;
+  component: React.ComponentType<any>;
+  props?: Record<string, any>;
+}
+
+export interface SettingsSection {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  items: SettingsItem[];
+}
+
+export const settingsSections: SettingsSection[] = [
+  {
+    id: 'operations',
+    label: 'Operations',
+    icon: <Wrench className="h-4 w-4" />,
+    items: [
+      { id: 'services', label: 'Services & Add-ons', component: ServicesManagement },
+      { id: 'recurring', label: 'Recurring Services', component: RecurringServicesManager },
+      { id: 'phone-settings', label: 'Phone & Voice', component: PhoneSettings },
+    ]
+  },
+  {
+    id: 'customers',
+    label: 'Customer Management',
+    icon: <Users className="h-4 w-4" />,
+    items: [
+      { id: 'customer-management', label: 'Customer Database', component: CustomerManagement },
+      { id: 'loyalty', label: 'Loyalty Program', component: LoyaltyPointsSystem },
+      { id: 'referrals', label: 'Referral Program', component: AdminReferralStats },
+    ]
+  },
+  {
+    id: 'communications',
+    label: 'Communications',
+    icon: <MessageSquare className="h-4 w-4" />,
+    items: [
+      { id: 'notifications', label: 'Notifications', component: NotificationsSettings },
+      { id: 'sms-templates', label: 'SMS Templates', component: SmsTemplatesManager },
+      { id: 'email-templates', label: 'Email Templates', component: EmailTemplatesManager },
+      // THIS PANEL CONTAINS:
+      //  - EmailCampaigns
+      //  - SMSCampaigns
+      //  - SpecialCampaignsSection
+      //  - WelcomeBackCampaign (500-point / 100-point campaign)
+      { id: 'campaigns', label: 'Campaigns', component: CommunicationsSettings },
+      { id: 'upsell', label: 'Upsell Offers', component: UpsellManagement },
+      { id: 'cancellation', label: 'Cancellation Feedback', component: CancellationDemo },
+    ]
+  },
+  {
+    id: 'business',
+    label: 'Business',
+    icon: <Building className="h-4 w-4" />,
+    items: [
+      { id: 'business-settings', label: 'Business Settings', component: BusinessSettings },
+      { id: 'agent-settings', label: 'Agent Settings', component: AgentSettings },
+      { id: 'subscriptions', label: 'Subscription Plans', component: SubscriptionManager },
+      { id: 'billing-status', label: 'Billing & Usage', component: BillingStatusPanel },
+    ]
+  },
+  {
+    id: 'website',
+    label: 'Website & Branding',
+    icon: <Palette className="h-4 w-4" />,
+    items: [
+      { id: 'homepage-editor', label: 'Homepage Editor', component: HomepageEditor },
+    ]
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    icon: <Shield className="h-4 w-4" />,
+    items: [
+      { id: 'demo-mode', label: 'Demo Mode', component: DemoModeSettings },
+    ]
+  },
+];
+
+export const findSectionForItem = (itemId: string): string | null => {
+  for (const section of settingsSections) {
+    if (section.items.some(item => item.id === itemId)) {
+      return section.id;
+    }
+  }
+  return null;
+};
+
+export const isValidItem = (sectionId: string, itemId: string): boolean => {
+  const section = settingsSections.find(s => s.id === sectionId);
+  return section ? section.items.some(item => item.id === itemId) : false;
+};
+
+export const isSectionValid = (sectionId: string): boolean => {
+  return settingsSections.some(s => s.id === sectionId);
+};
+------------------------------------------------------------
+
+=================================================================
+4) CommunicationsSettings.tsx – ensure WelcomeBackCampaign UI exists
+=================================================================
+
+Open the file that defines `CommunicationsSettings`. In your repo it likely already matches what the user pasted (with WelcomeBackCampaign, SpecialCampaignsSection, EmailCampaigns, SMSCampaigns).
+
+IF the file is missing, or does NOT contain the `WelcomeBackCampaign` component with:
+- 500-point VIP bonus
+- 100-point regular bonus
+- Preview and Send buttons for VIP/Regular
+- `/api/admin/campaigns/welcome-back` endpoints
+
+…then create or replace `client/src/components/CommunicationsSettings.tsx` with the exact implementation the user pasted.
+
+If the file already matches the version they provided, DO NOT modify it.
+
+=================================================================
+CHECKLIST AFTER CHANGES
+=================================================================
+
+1. Restart the dev server.
+2. Log in as the root tenant (Clean Machine).
+3. Click the "Settings" item in the main sidebar.
+   - You should land on the **Settings Hub** (cards grid).
+4. In the **Communications** card, click:
+   - **“Campaigns (Email + SMS)”** → this should go to `/settings/communications/campaigns`
+   - That route must render the **CommunicationsSettings** panel.
+5. Confirm that inside that panel you see:
+   - Tabs for **Email Campaigns** and **SMS Campaigns**.
+   - A **“Special Campaigns”** section with a **“Welcome Back Campaign”** card.
+   - Buttons for:
+     - Preview VIP
+     - Send VIP Campaign
+     - Preview Regular
+     - Send Regular Campaign
+   - Checkbox for “Send to ALL customers (not just loyalty program members)”.
+
+Do NOT change any Twilio, IVR, SIP, or phone routing in this drop-in.
+We are ONLY fixing the settings UI and campaigns visibility for the root tenant.
