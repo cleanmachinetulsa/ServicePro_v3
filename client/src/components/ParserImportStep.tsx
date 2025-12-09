@@ -7,7 +7,9 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, Upload, FileText, CheckCircle2, AlertCircle, Brain, ListPlus, MessageSquare, Sparkles, X, Wand2, Settings2, User, Shield, History } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Loader2, Upload, FileText, CheckCircle2, AlertCircle, Brain, ListPlus, MessageSquare, Sparkles, X, Wand2, Settings2, User, Shield, History, ChevronDown, Phone, Building2, Clock } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
@@ -92,6 +94,12 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
   const [applyTone, setApplyTone] = useState(false);
   const [applyPersona, setApplyPersona] = useState(true);
   const [buildSetupResult, setBuildSetupResult] = useState<BuildSetupResult | null>(null);
+  
+  const [businessName, setBusinessName] = useState('');
+  const [businessPhone, setBusinessPhone] = useState('');
+  const [threadGapMinutes, setThreadGapMinutes] = useState(60);
+  const [threadGapInput, setThreadGapInput] = useState('60');
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
   const hasServices = (parserResult?.preview?.servicesCount || 0) > 0;
   const hasFaqs = (parserResult?.preview?.faqCount || 0) > 0;
@@ -127,6 +135,16 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
       formData.append('includeToneProfile', 'true');
       formData.append('includeServices', 'true');
       formData.append('includeAnalytics', 'true');
+      
+      if (businessName.trim()) {
+        formData.append('businessName', businessName.trim());
+      }
+      if (businessPhone.trim()) {
+        formData.append('businessPhone', businessPhone.trim());
+      }
+      if (threadGapMinutes > 0) {
+        formData.append('threadGapMinutes', String(threadGapMinutes));
+      }
 
       const response = await fetch('/api/onboarding/parser/run', {
         method: 'POST',
@@ -760,6 +778,85 @@ export function ParserImportStep({ onComplete, showSkip = true }: ParserImportSt
             </AlertDescription>
           </Alert>
         )}
+
+        <Collapsible open={showAdvancedSettings} onOpenChange={setShowAdvancedSettings}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between px-2" data-testid="button-advanced-settings">
+              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Settings2 className="w-4 h-4" />
+                Advanced Settings
+              </span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${showAdvancedSettings ? 'rotate-180' : ''}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-4 pt-4 border-t mt-2">
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="businessName" className="text-sm flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-muted-foreground" />
+                  Business Name
+                </Label>
+                <Input
+                  id="businessName"
+                  placeholder="e.g., Clean Machine Auto Detail"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  data-testid="input-business-name"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Helps the parser identify your messages vs customer messages
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="businessPhone" className="text-sm flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
+                  Business Phone Number
+                </Label>
+                <Input
+                  id="businessPhone"
+                  placeholder="e.g., +19185551234"
+                  value={businessPhone}
+                  onChange={(e) => setBusinessPhone(e.target.value)}
+                  data-testid="input-business-phone"
+                />
+                <p className="text-xs text-muted-foreground">
+                  E.164 format (+1XXXXXXXXXX). Used to filter business-side messages
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="threadGap" className="text-sm flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  Thread Gap (minutes)
+                </Label>
+                <Input
+                  id="threadGap"
+                  type="number"
+                  min={15}
+                  max={1440}
+                  value={threadGapInput}
+                  onChange={(e) => setThreadGapInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseInt(threadGapInput, 10);
+                    if (isNaN(parsed) || threadGapInput.trim() === '') {
+                      setThreadGapMinutes(60);
+                      setThreadGapInput('60');
+                    } else {
+                      const clamped = Math.max(15, Math.min(1440, parsed));
+                      setThreadGapMinutes(clamped);
+                      setThreadGapInput(String(clamped));
+                    }
+                  }}
+                  data-testid="input-thread-gap"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Messages separated by more than this time will be split into new conversations (15-1440 min, default: 60)
+                </p>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="flex gap-3">
           <Button

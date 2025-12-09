@@ -13,6 +13,7 @@ export interface ReadinessItem {
   status: ReadinessStatus;
   details?: string;
   suggestion?: string;
+  fixUrl?: string;
 }
 
 export interface ReadinessCategory {

@@ -17,8 +17,10 @@ import {
   XCircle,
   ChevronRight,
   Activity,
+  ExternalLink,
 } from 'lucide-react';
 import { queryClient } from '@/lib/queryClient';
+import { useLocation } from 'wouter';
 import type {
   TenantReadinessReport,
   ReadinessCategory,
@@ -77,11 +79,33 @@ function StatusBadge({ status }: { status: ReadinessStatus }) {
 
 function ReadinessItemRow({ item }: { item: ReadinessItem }) {
   const config = STATUS_CONFIG[item.status];
+  const [, setLocation] = useLocation();
+  
+  const handleClick = () => {
+    if (item.fixUrl && item.status !== 'pass') {
+      setLocation(item.fixUrl);
+    }
+  };
+  
+  const isClickable = item.fixUrl && item.status !== 'pass';
   
   return (
     <div
-      className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+      className={`flex items-start gap-3 py-2 px-3 rounded-lg transition-colors ${
+        isClickable 
+          ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer border border-transparent hover:border-blue-200 dark:hover:border-blue-800' 
+          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+      }`}
       data-testid={`readiness-item-${item.key}`}
+      onClick={handleClick}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (isClickable && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
     >
       <StatusIcon status={item.status} className="w-5 h-5 mt-0.5 flex-shrink-0" />
       <div className="flex-1 min-w-0">
@@ -92,6 +116,9 @@ function ReadinessItemRow({ item }: { item: ReadinessItem }) {
           <Badge variant="outline" className={`${config.color} text-xs px-1.5 py-0`}>
             {item.status.toUpperCase()}
           </Badge>
+          {isClickable && (
+            <ExternalLink className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+          )}
         </div>
         {item.details && (
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
@@ -102,6 +129,11 @@ function ReadinessItemRow({ item }: { item: ReadinessItem }) {
           <p className="text-sm text-blue-600 dark:text-blue-400 mt-1 flex items-start gap-1">
             <ChevronRight className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{item.suggestion}</span>
+          </p>
+        )}
+        {isClickable && (
+          <p className="text-xs text-blue-500 dark:text-blue-400 mt-1 font-medium">
+            Click to fix this issue →
           </p>
         )}
       </div>

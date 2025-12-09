@@ -120,6 +120,7 @@ function checkBranding(tenant: TenantData): ReadinessCategory {
       status: 'warn',
       details: tenant.name || 'Not set',
       suggestion: 'Set a descriptive business name in tenant settings.',
+      fixUrl: '/admin/settings/branding',
     });
   }
 
@@ -128,6 +129,7 @@ function checkBranding(tenant: TenantData): ReadinessCategory {
     label: 'Tenant subdomain configured',
     status: tenant.subdomain ? 'pass' : 'warn',
     details: tenant.subdomain || 'Not set',
+    fixUrl: tenant.subdomain ? undefined : '/admin/settings/domains',
   });
 
   const hasLogo = !!tenant.logoUrl;
@@ -149,6 +151,7 @@ function checkBranding(tenant: TenantData): ReadinessCategory {
       suggestion: hasLogo 
         ? 'Customize your brand colors to match your logo.' 
         : 'Upload a logo in Settings → Branding.',
+      fixUrl: '/admin/settings/branding',
     });
   } else {
     items.push({
@@ -157,6 +160,7 @@ function checkBranding(tenant: TenantData): ReadinessCategory {
       status: 'warn',
       details: 'Using default branding.',
       suggestion: 'Upload a logo and customize colors in Settings → Branding.',
+      fixUrl: '/admin/settings/branding',
     });
   }
 
@@ -194,6 +198,7 @@ function checkWebsiteBooking(tenant: TenantData, serviceCount: number): Readines
       status: 'warn',
       details: 'No subdomain configured.',
       suggestion: 'Configure a subdomain to enable your public website.',
+      fixUrl: '/admin/settings/domains',
     });
 
     items.push({
@@ -202,6 +207,7 @@ function checkWebsiteBooking(tenant: TenantData, serviceCount: number): Readines
       status: 'warn',
       details: 'Cannot generate URL without subdomain.',
       suggestion: 'Set up a subdomain first.',
+      fixUrl: '/admin/settings/domains',
     });
   }
 
@@ -212,6 +218,7 @@ function checkWebsiteBooking(tenant: TenantData, serviceCount: number): Readines
       status: 'fail',
       details: '0 active services.',
       suggestion: 'Add at least one service so customers can book appointments.',
+      fixUrl: '/admin/services',
     });
   } else if (serviceCount < 3) {
     items.push({
@@ -220,6 +227,7 @@ function checkWebsiteBooking(tenant: TenantData, serviceCount: number): Readines
       status: 'warn',
       details: `${serviceCount} service(s) configured.`,
       suggestion: 'Consider adding more services to give customers more options.',
+      fixUrl: '/admin/services',
     });
   } else {
     items.push({
@@ -263,6 +271,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       status: 'fail',
       details: 'No phone configuration found.',
       suggestion: 'Set up a phone number in Admin → Phone Config.',
+      fixUrl: '/admin/telephony-settings',
     });
 
     items.push({
@@ -270,6 +279,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       label: 'SMS number configured',
       status: 'fail',
       details: 'No phone config row.',
+      fixUrl: '/admin/telephony-settings',
     });
 
     items.push({
@@ -277,6 +287,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       label: 'IVR mode configured',
       status: 'fail',
       details: 'No phone config row.',
+      fixUrl: '/admin/ivr',
     });
 
     return {
@@ -310,6 +321,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: `Number "${config.phoneNumber}" may not be in E.164 format.`,
       suggestion: 'Verify the phone number format is +1XXXXXXXXXX.',
+      fixUrl: '/admin/telephony-settings',
     });
   } else {
     items.push({
@@ -318,6 +330,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: 'Phone config exists but no number set.',
       suggestion: 'Add an SMS-capable phone number.',
+      fixUrl: '/admin/telephony-settings',
     });
   }
 
@@ -336,6 +349,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: `Mode "${config.ivrMode}" may be a placeholder.`,
       suggestion: 'Configure a valid IVR mode in Phone Settings.',
+      fixUrl: '/admin/ivr',
     });
   } else {
     items.push({
@@ -344,6 +358,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: 'IVR mode not set.',
       suggestion: 'Set an IVR mode (simple, full_ivr, or ai_concierge).',
+      fixUrl: '/admin/ivr',
     });
   }
 
@@ -361,6 +376,7 @@ async function checkTelephony(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: 'No MessagingServiceSid.',
       suggestion: 'Configure a Twilio Messaging Service for better SMS deliverability.',
+      fixUrl: '/admin/telephony-settings',
     });
   }
 
@@ -416,6 +432,7 @@ async function checkEmail(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: 'No tenant-specific email profile.',
       suggestion: 'Create an email profile to customize reply-to addresses.',
+      fixUrl: '/admin/settings/email',
     });
 
     items.push({
@@ -423,6 +440,7 @@ async function checkEmail(tenantId: string): Promise<ReadinessCategory> {
       label: 'Reply-to email configured',
       status: 'warn',
       details: 'Will use platform defaults.',
+      fixUrl: '/admin/settings/email',
     });
 
     return {
@@ -455,6 +473,7 @@ async function checkEmail(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: 'No reply-to email set.',
       suggestion: 'Set a reply-to email so customer responses go to the right inbox.',
+      fixUrl: '/admin/settings/email',
     });
   }
 
@@ -472,6 +491,7 @@ async function checkEmail(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: 'Last email send had an error.',
       suggestion: 'Check SendGrid dashboard and verify email settings.',
+      fixUrl: '/admin/settings/email',
     });
   } else {
     items.push({
@@ -480,6 +500,7 @@ async function checkEmail(tenantId: string): Promise<ReadinessCategory> {
       status: 'warn',
       details: `Status: ${profile.status || 'unknown'}`,
       suggestion: 'Send a test email to verify configuration.',
+      fixUrl: '/admin/settings/email',
     });
   }
 
@@ -508,6 +529,7 @@ function checkAiBookingEngine(tenant: TenantData): ReadinessCategory {
       status: 'warn',
       details: `Plan "${tenant.planTier}" may be invalid.`,
       suggestion: 'Verify plan tier is one of: free, starter, pro, elite, internal.',
+      fixUrl: '/admin/billing',
     });
   } else {
     items.push({
@@ -516,6 +538,7 @@ function checkAiBookingEngine(tenant: TenantData): ReadinessCategory {
       status: 'warn',
       details: 'No plan tier set.',
       suggestion: 'Set a plan tier for proper feature gating.',
+      fixUrl: '/admin/billing',
     });
   }
 
@@ -536,6 +559,7 @@ function checkAiBookingEngine(tenant: TenantData): ReadinessCategory {
       status: 'warn',
       details: `AI features not included in ${tenant.planTier || 'free'} plan.`,
       suggestion: 'Upgrade to Pro or higher for AI SMS and voice features.',
+      fixUrl: '/pricing',
     });
   }
 
@@ -553,6 +577,7 @@ function checkAiBookingEngine(tenant: TenantData): ReadinessCategory {
       status: 'warn',
       details: 'No industry selected.',
       suggestion: 'Select an industry for optimized AI behavior and templates.',
+      fixUrl: '/admin/settings/branding',
     });
   }
 
