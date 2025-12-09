@@ -48,15 +48,25 @@ router.post(
   upload.single('file'),
   async (req: Request, res: Response) => {
     const tenantId = req.session!.tenantId as string;
+    const dryRun = req.query.dryRun === 'true' || req.body?.dryRun === true;
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
     try {
-      const importJob = await createImportJob(tenantId, req.file.originalname);
+      // For dry run, we don't create an import job - just analyze the file
+      if (dryRun) {
+        const stats = await processImportZip(req.file.buffer, tenantId, 0, true);
+        return res.json({
+          success: true,
+          dryRun: true,
+          stats,
+        });
+      }
 
-      const stats = await processImportZip(req.file.buffer, tenantId, importJob.id);
+      const importJob = await createImportJob(tenantId, req.file.originalname);
+      const stats = await processImportZip(req.file.buffer, tenantId, importJob.id, false);
 
       res.json({
         success: true,

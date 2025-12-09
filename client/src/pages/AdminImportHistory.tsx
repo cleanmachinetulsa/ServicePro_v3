@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Upload, 
@@ -22,6 +24,8 @@ import {
   RefreshCw,
   Smartphone,
   Sparkles,
+  Phone,
+  Eye,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { format } from 'date-fns';
@@ -31,6 +35,7 @@ interface ImportStats {
   customersUpdated: number;
   conversationsCreated: number;
   messagesImported: number;
+  callsImported?: number;
   errorsCount: number;
   errors?: string[];
 }
@@ -53,6 +58,9 @@ export default function AdminImportHistory() {
   const { toast } = useToast();
   const [isDragging, setIsDragging] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [dryRunMode, setDryRunMode] = useState(false);
+  const [dryRunPreview, setDryRunPreview] = useState<ImportStats | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const { data: latestImport, isLoading } = useQuery<PhoneHistoryImport | null>({
     queryKey: ['/api/admin/import-history/latest'],
@@ -63,11 +71,15 @@ export default function AdminImportHistory() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, dryRun }: { file: File; dryRun: boolean }) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/admin/import-history/upload', {
+      const url = dryRun 
+        ? '/api/admin/import-history/upload?dryRun=true'
+        : '/api/admin/import-history/upload';
+
+      const response = await fetch(url, {
         method: 'POST',
         body: formData,
         credentials: 'include',
@@ -80,13 +92,24 @@ export default function AdminImportHistory() {
 
       return response.json();
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/import-history/latest'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/import-history/history'] });
-      toast({
-        title: 'Import Complete',
-        description: `Imported ${data.stats?.customersImported || 0} customers, ${data.stats?.conversationsCreated || 0} conversations, and ${data.stats?.messagesImported || 0} messages.`,
-      });
+    onSuccess: (data, variables) => {
+      if (variables.dryRun) {
+        setDryRunPreview(data.stats);
+        setPendingFile(variables.file);
+        toast({
+          title: 'Preview Ready',
+          description: `This will import ${data.stats?.customersImported || 0} customers, ${data.stats?.conversationsCreated || 0} conversations, ${data.stats?.messagesImported || 0} messages, and ${data.stats?.callsImported || 0} calls.`,
+        });
+      } else {
+        setDryRunPreview(null);
+        setPendingFile(null);
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/import-history/latest'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/import-history/history'] });
+        toast({
+          title: 'Import Complete',
+          description: `Imported ${data.stats?.customersImported || 0} customers, ${data.stats?.conversationsCreated || 0} conversations, ${data.stats?.messagesImported || 0} messages, and ${data.stats?.callsImported || 0} calls.`,
+        });
+      }
     },
     onError: (error: any) => {
       toast({
@@ -97,10 +120,18 @@ export default function AdminImportHistory() {
     },
   });
 
+  const handleConfirmImport = () => {
+    if (pendingFile) {
+      uploadMutation.mutate({ file: pendingFile, dryRun: false });
+    }
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      uploadMutation.mutate(file);
+      setDryRunPreview(null);
+      setPendingFile(null);
+      uploadMutation.mutate({ file, dryRun: dryRunMode });
     }
   };
 
@@ -110,7 +141,9 @@ export default function AdminImportHistory() {
       setIsDragging(false);
       const file = event.dataTransfer.files?.[0];
       if (file && (file.type === 'application/zip' || file.name.endsWith('.zip'))) {
-        uploadMutation.mutate(file);
+        setDryRunPreview(null);
+        setPendingFile(null);
+        uploadMutation.mutate({ file, dryRun: dryRunMode });
       } else {
         toast({
           title: 'Invalid File',
@@ -119,7 +152,7 @@ export default function AdminImportHistory() {
         });
       }
     },
-    [uploadMutation, toast]
+    [uploadMutation, toast, dryRunMode]
   );
 
   const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -186,10 +219,29 @@ export default function AdminImportHistory() {
               Bring Your Phone History
             </CardTitle>
             <CardDescription>
-              Upload a ZIP bundle generated by the Phone History Parser tool. The bundle should contain customers.csv/json and messages.csv/json files.
+              Upload a ZIP bundle generated by the Phone History Parser tool. The bundle should contain customers.csv/json, messages.csv/json, and calls.csv/json files.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4 text-blue-500" />
+                <Label htmlFor="dry-run-toggle" className="text-sm font-medium">
+                  Preview Mode (Dry Run)
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {dryRunMode ? 'Preview what will be imported without making changes' : 'Import directly'}
+                </span>
+                <Switch
+                  id="dry-run-toggle"
+                  checked={dryRunMode}
+                  onCheckedChange={setDryRunMode}
+                  data-testid="switch-dry-run"
+                />
+              </div>
+            </div>
             <div
               className={`
                 relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
@@ -243,6 +295,96 @@ export default function AdminImportHistory() {
           </CardContent>
         </Card>
 
+        {dryRunPreview && (
+          <Card className="border-2 border-yellow-400 dark:border-yellow-600 bg-yellow-50/50 dark:bg-yellow-950/20" data-testid="card-dry-run-preview">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                <Eye className="w-5 h-5" />
+                Import Preview (Dry Run)
+              </CardTitle>
+              <CardDescription className="text-yellow-600 dark:text-yellow-400">
+                This preview shows what will be imported. No data has been written yet.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 text-center border border-yellow-200 dark:border-yellow-800">
+                  <Users className="w-5 h-5 mx-auto mb-1 text-blue-500" />
+                  <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                    {dryRunPreview.customersImported}
+                  </div>
+                  <div className="text-xs text-gray-500">New Customers</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 text-center border border-yellow-200 dark:border-yellow-800">
+                  <CheckCircle className="w-5 h-5 mx-auto mb-1 text-green-500" />
+                  <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                    {dryRunPreview.customersUpdated}
+                  </div>
+                  <div className="text-xs text-gray-500">Updates</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 text-center border border-yellow-200 dark:border-yellow-800">
+                  <MessageSquare className="w-5 h-5 mx-auto mb-1 text-purple-500" />
+                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                    {dryRunPreview.conversationsCreated}
+                  </div>
+                  <div className="text-xs text-gray-500">Conversations</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 text-center border border-yellow-200 dark:border-yellow-800">
+                  <MessagesSquare className="w-5 h-5 mx-auto mb-1 text-orange-500" />
+                  <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                    {dryRunPreview.messagesImported}
+                  </div>
+                  <div className="text-xs text-gray-500">Messages</div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 text-center border border-yellow-200 dark:border-yellow-800">
+                  <Phone className="w-5 h-5 mx-auto mb-1 text-teal-500" />
+                  <div className="text-xl font-bold text-teal-600 dark:text-teal-400">
+                    {dryRunPreview.callsImported || 0}
+                  </div>
+                  <div className="text-xs text-gray-500">Calls</div>
+                </div>
+              </div>
+              
+              {dryRunPreview.errorsCount > 0 && (
+                <Alert className="bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-700">
+                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                  <AlertDescription className="text-yellow-700 dark:text-yellow-300">
+                    {dryRunPreview.errorsCount} potential issue{dryRunPreview.errorsCount > 1 ? 's' : ''} detected. These may cause errors during import.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <div className="flex gap-3 justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={() => { setDryRunPreview(null); setPendingFile(null); }}
+                  data-testid="button-cancel-preview"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleConfirmImport}
+                  disabled={uploadMutation.isPending}
+                  className="bg-green-600 hover:bg-green-700"
+                  data-testid="button-confirm-import"
+                >
+                  {uploadMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Confirm Import
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {isLoading ? (
           <Card>
             <CardContent className="py-8">
@@ -277,7 +419,7 @@ export default function AdminImportHistory() {
             </CardHeader>
             <CardContent className="space-y-6">
               {latestImport.stats && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                   <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-4 text-center" data-testid="stat-customers">
                     <Users className="w-6 h-6 mx-auto mb-2 text-blue-500" />
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
@@ -315,6 +457,16 @@ export default function AdminImportHistory() {
                     </div>
                     <div className="text-xs text-gray-600 dark:text-gray-400">
                       Messages
+                    </div>
+                  </div>
+                  
+                  <div className="bg-teal-50 dark:bg-teal-950/30 rounded-lg p-4 text-center" data-testid="stat-calls">
+                    <Phone className="w-6 h-6 mx-auto mb-2 text-teal-500" />
+                    <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">
+                      {latestImport.stats.callsImported || 0}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      Calls
                     </div>
                   </div>
                 </div>

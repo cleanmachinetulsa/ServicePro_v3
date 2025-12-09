@@ -33,11 +33,21 @@ export interface ConversationRecord {
   platform?: string;
 }
 
+export interface CallRecord {
+  phone: string;
+  timestamp: string;
+  direction: 'inbound' | 'outbound';
+  duration?: number; // in seconds
+  status?: string; // completed, missed, voicemail, etc.
+  transcription?: string; // voicemail transcription if any
+}
+
 export interface ImportStats {
   customersImported: number;
   customersUpdated: number;
   conversationsCreated: number;
   messagesImported: number;
+  callsImported: number;
   errorsCount: number;
   errors?: string[];
 }
@@ -153,21 +163,27 @@ function parseJSONFile(content: string): any[] {
 export async function processImportZip(
   zipBuffer: Buffer,
   tenantId: string,
-  importId: number
+  importId: number,
+  dryRun: boolean = false
 ): Promise<ImportStats> {
   const stats: ImportStats = {
     customersImported: 0,
     customersUpdated: 0,
     conversationsCreated: 0,
     messagesImported: 0,
+    callsImported: 0,
     errorsCount: 0,
     errors: [],
   };
 
   const tenantDb = wrapTenantDb(db, tenantId);
-
+  
   try {
-    await updateImportJob(importId, tenantId, 'processing');
+    if (!dryRun) {
+      await updateImportJob(importId, tenantId, 'processing');
+    } else {
+      console.log(`${LOG_PREFIX} Starting dry run - no data will be persisted`);
+    }
 
     const zip = new AdmZip(zipBuffer);
     const entries = zip.getEntries();
@@ -175,6 +191,7 @@ export async function processImportZip(
     let customers: CustomerRecord[] = [];
     let messages: MessageRecord[] = [];
     let conversations: ConversationRecord[] = [];
+    let calls: CallRecord[] = [];
 
     for (const entry of entries) {
       const entryName = entry.entryName.toLowerCase();
@@ -241,6 +258,30 @@ export async function processImportZip(
         }
         console.log(`${LOG_PREFIX} Found ${conversations.length} conversations in ${entryName}`);
       }
+
+      if (entryName.includes('calls') || entryName.includes('call_log') || entryName.includes('call-log')) {
+        if (entryName.endsWith('.csv')) {
+          calls = parseCSVFile(content).map((row) => ({
+            phone: row.phone || row.Phone || row.phone_number || row.caller || row.number || '',
+            timestamp: row.timestamp || row.Timestamp || row.date || row.Date || row.datetime || row.time || '',
+            direction: (row.direction || row.Direction || row.type || 'inbound').toLowerCase().includes('out') ? 'outbound' : 'inbound',
+            duration: parseInt(row.duration || row.Duration || row.length || '0', 10) || 0,
+            status: row.status || row.Status || row.result || 'completed',
+            transcription: row.transcription || row.Transcription || row.voicemail || '',
+          }));
+        } else if (entryName.endsWith('.json')) {
+          const parsed = parseJSONFile(content);
+          calls = parsed.map((row: any) => ({
+            phone: row.phone || row.phone_number || row.caller || row.number || '',
+            timestamp: row.timestamp || row.date || row.datetime || row.time || '',
+            direction: (row.direction || row.type || 'inbound').toLowerCase().includes('out') ? 'outbound' : 'inbound',
+            duration: parseInt(row.duration || row.length || '0', 10) || 0,
+            status: row.status || row.result || 'completed',
+            transcription: row.transcription || row.voicemail || '',
+          }));
+        }
+        console.log(`${LOG_PREFIX} Found ${calls.length} calls in ${entryName}`);
+      }
     }
 
     const phoneToCustomerId: Map<string, number> = new Map();
@@ -269,31 +310,35 @@ export async function processImportZip(
 
         if (existingResult.rows.length > 0) {
           const existingId = (existingResult.rows[0] as any).id;
-          await tenantDb.execute(sql`
-            UPDATE customers SET
-              name = COALESCE(NULLIF(${name}, ''), name),
-              address = COALESCE(NULLIF(${customer.address || ''}, ''), address),
-              vehicle_info = COALESCE(NULLIF(${customer.vehicleInfo || ''}, ''), vehicle_info),
-              notes = COALESCE(NULLIF(${customer.notes || ''}, ''), notes),
-              import_source = CONCAT(COALESCE(import_source, ''), ',phone_history')
-            WHERE id = ${existingId}
-          `);
+          if (!dryRun) {
+            await tenantDb.execute(sql`
+              UPDATE customers SET
+                name = COALESCE(NULLIF(${name}, ''), name),
+                address = COALESCE(NULLIF(${customer.address || ''}, ''), address),
+                vehicle_info = COALESCE(NULLIF(${customer.vehicleInfo || ''}, ''), vehicle_info),
+                notes = COALESCE(NULLIF(${customer.notes || ''}, ''), notes),
+                import_source = CONCAT(COALESCE(import_source, ''), ',phone_history')
+              WHERE id = ${existingId}
+            `);
+          }
           stats.customersUpdated++;
           if (normalizedPhone) {
             phoneToCustomerId.set(normalizedPhone, existingId);
           }
         } else {
-          const insertResult = await tenantDb.execute(sql`
-            INSERT INTO customers (tenant_id, name, phone, email, address, vehicle_info, notes, import_source)
-            VALUES (${tenantId}, ${name}, ${normalizedPhone}, ${customer.email || null},
-                    ${customer.address || null}, ${customer.vehicleInfo || null},
-                    ${customer.notes || null}, 'phone_history')
-            RETURNING id
-          `);
-          stats.customersImported++;
-          if (normalizedPhone) {
-            phoneToCustomerId.set(normalizedPhone, (insertResult.rows[0] as any).id);
+          if (!dryRun) {
+            const insertResult = await tenantDb.execute(sql`
+              INSERT INTO customers (tenant_id, name, phone, email, address, vehicle_info, notes, import_source)
+              VALUES (${tenantId}, ${name}, ${normalizedPhone}, ${customer.email || null},
+                      ${customer.address || null}, ${customer.vehicleInfo || null},
+                      ${customer.notes || null}, 'phone_history')
+              RETURNING id
+            `);
+            if (normalizedPhone) {
+              phoneToCustomerId.set(normalizedPhone, (insertResult.rows[0] as any).id);
+            }
           }
+          stats.customersImported++;
         }
       } catch (error: any) {
         stats.errors!.push(`Customer import error (${name}): ${error.message}`);
@@ -322,25 +367,30 @@ export async function processImportZip(
         if (existingConv.rows.length > 0) {
           phoneToConversationId.set(phone, (existingConv.rows[0] as any).id);
         } else {
-          const customerId = phoneToCustomerId.get(phone) || null;
-          let customerName = 'Unknown';
+          if (!dryRun) {
+            const customerId = phoneToCustomerId.get(phone) || null;
+            let customerName = 'Unknown';
 
-          if (customerId) {
-            const custResult = await tenantDb.execute(sql`
-              SELECT name FROM customers WHERE id = ${customerId} AND tenant_id = ${tenantId}
-            `);
-            if (custResult.rows.length > 0) {
-              customerName = (custResult.rows[0] as any).name || 'Unknown';
+            if (customerId) {
+              const custResult = await tenantDb.execute(sql`
+                SELECT name FROM customers WHERE id = ${customerId} AND tenant_id = ${tenantId}
+              `);
+              if (custResult.rows.length > 0) {
+                customerName = (custResult.rows[0] as any).name || 'Unknown';
+              }
             }
+
+            const insertConv = await tenantDb.execute(sql`
+              INSERT INTO conversations (tenant_id, customer_id, customer_phone, customer_name, platform, category, status)
+              VALUES (${tenantId}, ${customerId}, ${phone}, ${customerName}, 'sms', 'Imported', 'active')
+              RETURNING id
+            `);
+
+            phoneToConversationId.set(phone, (insertConv.rows[0] as any).id);
+          } else {
+            // For dry run, use a fake ID for tracking
+            phoneToConversationId.set(phone, -1);
           }
-
-          const insertConv = await tenantDb.execute(sql`
-            INSERT INTO conversations (tenant_id, customer_id, customer_phone, customer_name, platform, category, status)
-            VALUES (${tenantId}, ${customerId}, ${phone}, ${customerName}, 'sms', 'Imported', 'active')
-            RETURNING id
-          `);
-
-          phoneToConversationId.set(phone, (insertConv.rows[0] as any).id);
           stats.conversationsCreated++;
         }
       } catch (error: any) {
@@ -394,10 +444,12 @@ export async function processImportZip(
         `);
 
         if (existingMsg.rows.length === 0) {
-          await tenantDb.execute(sql`
-            INSERT INTO messages (conversation_id, tenant_id, content, sender, from_customer, timestamp, channel)
-            VALUES (${conversationId}, ${tenantId}, ${body}, ${sender}, ${fromCustomer}, ${timestamp}, 'sms')
-          `);
+          if (!dryRun) {
+            await tenantDb.execute(sql`
+              INSERT INTO messages (conversation_id, tenant_id, content, sender, from_customer, timestamp, channel)
+              VALUES (${conversationId}, ${tenantId}, ${body}, ${sender}, ${fromCustomer}, ${timestamp}, 'sms')
+            `);
+          }
           stats.messagesImported++;
         }
       } catch (error: any) {
@@ -406,15 +458,93 @@ export async function processImportZip(
       }
     }
 
-    await updateImportJob(importId, tenantId, 'success', stats);
-    console.log(`${LOG_PREFIX} Import complete:`, stats);
+    // Import calls
+    for (const call of calls) {
+      const normalizedPhone = normalizeE164(call.phone);
+      if (!normalizedPhone) {
+        stats.errors!.push(`Invalid phone in call: ${call.phone}`);
+        stats.errorsCount++;
+        continue;
+      }
+
+      let timestamp: Date;
+      try {
+        timestamp = new Date(call.timestamp);
+        if (isNaN(timestamp.getTime())) {
+          timestamp = new Date();
+        }
+      } catch {
+        timestamp = new Date();
+      }
+
+      const direction = call.direction || 'inbound';
+      const duration = call.duration || 0;
+      const status = call.status || 'completed';
+      const transcription = call.transcription?.trim() || null;
+
+      // Generate a unique call SID for imported calls
+      const importedCallSid = `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Determine from/to based on direction
+      const businessPhone = process.env.MAIN_PHONE_NUMBER || '+10000000000';
+      const fromNumber = direction === 'inbound' ? normalizedPhone : businessPhone;
+      const toNumber = direction === 'inbound' ? businessPhone : normalizedPhone;
+      const customerPhone = normalizedPhone;
+
+      // Link to existing conversation if available
+      const conversationId = phoneToConversationId.get(normalizedPhone) || null;
+
+      try {
+        // Check for duplicate call (same phone + timestamp + direction)
+        const existingCall = await tenantDb.execute(sql`
+          SELECT id FROM call_events
+          WHERE tenant_id = ${tenantId}
+            AND "from" = ${fromNumber}
+            AND "to" = ${toNumber}
+            AND created_at = ${timestamp}
+          LIMIT 1
+        `);
+
+        if (existingCall.rows.length === 0) {
+          if (!dryRun) {
+            await tenantDb.execute(sql`
+              INSERT INTO call_events (
+                tenant_id, conversation_id, call_sid, direction, "from", "to", 
+                customer_phone, status, duration, transcription_text, 
+                transcription_status, created_at
+              )
+              VALUES (
+                ${tenantId}, ${conversationId}, ${importedCallSid}, ${direction},
+                ${fromNumber}, ${toNumber}, ${customerPhone}, ${status},
+                ${duration}, ${transcription}, ${transcription ? 'completed' : null},
+                ${timestamp}
+              )
+            `);
+          }
+          stats.callsImported++;
+        }
+      } catch (error: any) {
+        stats.errors!.push(`Call import error: ${error.message}`);
+        stats.errorsCount++;
+      }
+    }
+
+    if (dryRun) {
+      console.log(`${LOG_PREFIX} Dry run complete - no data persisted:`, stats);
+    } else {
+      await updateImportJob(importId, tenantId, 'success', stats);
+      console.log(`${LOG_PREFIX} Import complete:`, stats);
+    }
 
     return stats;
   } catch (error: any) {
     console.error(`${LOG_PREFIX} Import failed:`, error);
     stats.errors!.push(`Fatal error: ${error.message}`);
     stats.errorsCount++;
-    await updateImportJob(importId, tenantId, 'failed', stats, error.message);
+    
+    if (!dryRun) {
+      await updateImportJob(importId, tenantId, 'failed', stats, error.message);
+    }
     throw error;
   }
 }
