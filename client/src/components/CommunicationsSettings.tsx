@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -99,6 +99,149 @@ function SpecialCampaignsSection() {
         <CollapsibleContent>
           <CardContent className="space-y-4">
             <WelcomeBackCampaign />
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+// Campaign Settings Editor - form for editing VIP/Regular bonus points and SMS templates
+interface CampaignSettingsEditorProps {
+  config: any;
+  isLoading: boolean;
+  onUpdate: (data: any) => void;
+  isPending: boolean;
+}
+
+function CampaignSettingsEditor({ config, isLoading, onUpdate, isPending }: CampaignSettingsEditorProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [vipPoints, setVipPoints] = useState<number>(500);
+  const [regularPoints, setRegularPoints] = useState<number>(100);
+  const [vipTemplate, setVipTemplate] = useState<string>('');
+  const [regularTemplate, setRegularTemplate] = useState<string>('');
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const { toast } = useToast();
+
+  // Sync form state when config loads (only on first load)
+  useEffect(() => {
+    if (config && !hasLoaded) {
+      setVipPoints(config.vipPointsBonus || 500);
+      setRegularPoints(config.regularPointsBonus || 100);
+      setVipTemplate(config.smsTemplateVip || '');
+      setRegularTemplate(config.smsTemplateRegular || '');
+      setHasLoaded(true);
+    }
+  }, [config, hasLoaded]);
+
+  const handleSave = () => {
+    if (vipTemplate.length < 10 || regularTemplate.length < 10) {
+      toast({ title: 'SMS templates must be at least 10 characters', variant: 'destructive' });
+      return;
+    }
+    onUpdate({
+      vipPointsBonus: vipPoints,
+      regularPointsBonus: regularPoints,
+      smsTemplateVip: vipTemplate,
+      smsTemplateRegular: regularTemplate,
+    });
+    setIsOpen(false);
+  };
+
+  return (
+    <Card>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
+          <CollapsibleTrigger className="w-full">
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <CardTitle className="text-sm font-medium">Campaign Settings</CardTitle>
+                <CardDescription className="text-xs">Customize points, SMS templates, and more</CardDescription>
+              </div>
+              {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-6 pt-0">
+            {isLoading ? (
+              <div className="text-center py-4 text-muted-foreground">Loading settings...</div>
+            ) : (
+              <>
+                {/* Points Configuration */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="vip-points">VIP Bonus Points</Label>
+                    <Input
+                      id="vip-points"
+                      type="number"
+                      min={0}
+                      max={10000}
+                      value={vipPoints}
+                      onChange={(e) => setVipPoints(parseInt(e.target.value) || 0)}
+                      data-testid="input-vip-points"
+                    />
+                    <p className="text-xs text-muted-foreground">Points awarded to VIP customers</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="regular-points">Regular Bonus Points</Label>
+                    <Input
+                      id="regular-points"
+                      type="number"
+                      min={0}
+                      max={10000}
+                      value={regularPoints}
+                      onChange={(e) => setRegularPoints(parseInt(e.target.value) || 0)}
+                      data-testid="input-regular-points"
+                    />
+                    <p className="text-xs text-muted-foreground">Points awarded to regular customers</p>
+                  </div>
+                </div>
+
+                {/* SMS Templates */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="vip-template">VIP SMS Template</Label>
+                    <Textarea
+                      id="vip-template"
+                      rows={5}
+                      value={vipTemplate}
+                      onChange={(e) => setVipTemplate(e.target.value)}
+                      placeholder="Enter VIP customer SMS message..."
+                      data-testid="textarea-vip-template"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Available variables: {'{{customerName}}'}, {'{{businessName}}'}, {'{{bookingLink}}'}, {'{{rewardsLink}}'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="regular-template">Regular SMS Template</Label>
+                    <Textarea
+                      id="regular-template"
+                      rows={5}
+                      value={regularTemplate}
+                      onChange={(e) => setRegularTemplate(e.target.value)}
+                      placeholder="Enter regular customer SMS message..."
+                      data-testid="textarea-regular-template"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Available variables: {'{{customerName}}'}, {'{{businessName}}'}, {'{{bookingLink}}'}, {'{{rewardsLink}}'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end">
+                  <Button 
+                    onClick={handleSave} 
+                    disabled={isPending}
+                    data-testid="button-save-campaign-settings"
+                  >
+                    {isPending ? 'Saving...' : 'Save Campaign Settings'}
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
@@ -239,7 +382,13 @@ function WelcomeBackCampaign() {
             <div>
               <Label className="text-xs text-muted-foreground">SMS Template Preview</Label>
               <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-900 rounded text-sm">
-                {config?.smsTemplateVip?.slice(0, 150)}...
+                {configLoading ? (
+                  <span className="text-muted-foreground italic">Loading template...</span>
+                ) : config?.smsTemplateVip ? (
+                  config.smsTemplateVip.slice(0, 150) + '...'
+                ) : (
+                  <span className="text-muted-foreground italic">No template configured</span>
+                )}
               </div>
             </div>
             <div className="flex gap-2">
@@ -247,7 +396,7 @@ function WelcomeBackCampaign() {
                 size="sm"
                 variant="outline"
                 onClick={() => handlePreview('vip')}
-                disabled={previewMode === 'vip'}
+                disabled={previewMode === 'vip' || configLoading}
                 data-testid="button-preview-vip"
               >
                 {previewMode === 'vip' ? 'Previewing...' : 'Preview'}
@@ -255,7 +404,7 @@ function WelcomeBackCampaign() {
               <Button
                 size="sm"
                 onClick={() => handleSend('vip')}
-                disabled={sending}
+                disabled={sending || configLoading}
                 data-testid="button-send-vip"
               >
                 {sending ? 'Sending...' : 'Send VIP Campaign'}
@@ -277,7 +426,13 @@ function WelcomeBackCampaign() {
             <div>
               <Label className="text-xs text-muted-foreground">SMS Template Preview</Label>
               <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-900 rounded text-sm">
-                {config?.smsTemplateRegular?.slice(0, 150)}...
+                {configLoading ? (
+                  <span className="text-muted-foreground italic">Loading template...</span>
+                ) : config?.smsTemplateRegular ? (
+                  config.smsTemplateRegular.slice(0, 150) + '...'
+                ) : (
+                  <span className="text-muted-foreground italic">No template configured</span>
+                )}
               </div>
             </div>
             <div className="flex gap-2">
@@ -285,7 +440,7 @@ function WelcomeBackCampaign() {
                 size="sm"
                 variant="outline"
                 onClick={() => handlePreview('regular')}
-                disabled={previewMode === 'regular'}
+                disabled={previewMode === 'regular' || configLoading}
                 data-testid="button-preview-regular"
               >
                 {previewMode === 'regular' ? 'Previewing...' : 'Preview'}
@@ -293,7 +448,7 @@ function WelcomeBackCampaign() {
               <Button
                 size="sm"
                 onClick={() => handleSend('regular')}
-                disabled={sending}
+                disabled={sending || configLoading}
                 data-testid="button-send-regular"
               >
                 {sending ? 'Sending...' : 'Send Regular Campaign'}
@@ -303,19 +458,8 @@ function WelcomeBackCampaign() {
         </Card>
       </div>
 
-      {/* Configuration Link */}
-      <Card>
-        <CardContent className="p-4">
-          <p className="text-sm text-muted-foreground">
-            Need to customize points, templates, or URLs?{' '}
-            <Button variant="link" className="p-0 h-auto" onClick={() => {
-              toast({ title: 'Campaign configuration editor coming soon!' });
-            }}>
-              Edit Campaign Settings →
-            </Button>
-          </p>
-        </CardContent>
-      </Card>
+      {/* Campaign Settings Editor */}
+      <CampaignSettingsEditor config={config} isLoading={configLoading} onUpdate={updateConfigMutation.mutate} isPending={updateConfigMutation.isPending} />
     </div>
   );
 }

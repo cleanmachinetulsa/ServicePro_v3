@@ -4,6 +4,7 @@ import { hasFeature } from '@shared/features';
 import { db } from './db';
 import { tenants } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { requireAuth } from './authMiddleware';
 import {
   getTenantWelcomeBackCampaignConfig,
   updateTenantWelcomeBackCampaignConfig,
@@ -18,17 +19,6 @@ const router = Router();
  * ServicePro v3 - Welcome Back Campaign Routes
  * Multi-tenant, white-label loyalty bonus campaign system
  */
-
-// SECURITY: Require authentication for all campaign routes
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required'
-    });
-  }
-  next();
-}
 
 // Feature gating: campaigns feature required
 async function requireCampaignsFeature(req: Request, res: Response, next: NextFunction) {
