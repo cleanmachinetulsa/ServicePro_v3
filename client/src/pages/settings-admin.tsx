@@ -26,52 +26,58 @@ import { isRootTenant } from '@/utils/tenantRouting';
  * CM-ROUTE-RESTORE: Legacy admin pages for root tenant (Clean Machine).
  * Root tenant gets dedicated admin pages with full functionality.
  * Other tenants use the simplified SettingsWorkspace.
+ * 
+ * IMPORTANT: These must use ACTUAL legacy page routes from App.tsx, not /settings/* workspace paths.
  */
 const ROOT_TENANT_SETTINGS_SECTIONS = [
   {
     title: 'Operations',
     description: 'Manage services, scheduling, and appointments',
     items: [
-      { path: '/settings/operations/services', label: 'Services & Add-ons', icon: Building2 },
-      { path: '/settings/operations/recurring', label: 'Recurring Services', icon: Calendar },
-      { path: '/settings/operations/phone-settings', label: 'Phone & Voice', icon: Phone },
+      { path: '/admin/scheduling', label: 'Scheduling Dashboard', icon: Calendar },
+      { path: '/phone-settings', label: 'Phone & Voice', icon: Phone },
+      { path: '/admin/ivr-config', label: 'IVR Configuration', icon: Phone },
+      { path: '/admin/phone-config', label: 'Phone Config', icon: Phone },
     ]
   },
   {
     title: 'Customer Management',
     description: 'Customers, loyalty, and referrals',
     items: [
-      { path: '/settings/customers/customer-management', label: 'Customer Database', icon: Users },
-      { path: '/settings/customers/loyalty', label: 'Loyalty Program', icon: Gift },
-      { path: '/settings/customers/referrals', label: 'Referral Program', icon: UserPlus },
+      { path: '/customer-database', label: 'Customer Database', icon: Users },
+      { path: '/rewards', label: 'Loyalty Program', icon: Gift },
+      { path: '/referrals', label: 'Referral Program', icon: UserPlus },
+      { path: '/admin/quote-requests', label: 'Quote Requests', icon: MessageSquare },
     ]
   },
   {
     title: 'Communications',
     description: 'Messaging, notifications, and campaigns',
     items: [
-      { path: '/settings/communications/notifications', label: 'Notifications', icon: Bell },
-      { path: '/settings/communications/sms-templates', label: 'SMS Templates', icon: MessageSquare },
-      { path: '/settings/communications/email-templates', label: 'Email Templates', icon: MessageSquare },
-      { path: '/settings/communications/campaigns', label: 'Campaigns', icon: MessageSquare },
-      { path: '/settings/communications/upsell', label: 'Upsell Offers', icon: Gift },
+      { path: '/notifications-settings', label: 'Notifications', icon: Bell },
+      { path: '/messages', label: 'Messages & SMS', icon: MessageSquare },
+      { path: '/settings/email', label: 'Email Templates', icon: MessageSquare },
+      { path: '/facebook-settings', label: 'Facebook/Instagram', icon: MessageSquare },
     ]
   },
   {
     title: 'Business',
     description: 'Business settings, billing, and AI agent',
     items: [
-      { path: '/settings/business/business-settings', label: 'Business Settings', icon: Building2 },
-      { path: '/settings/business/agent-settings', label: 'AI Agent Settings', icon: Shield },
-      { path: '/settings/business/subscriptions', label: 'Subscription Plans', icon: Users },
-      { path: '/settings/business/billing-status', label: 'Billing & Usage', icon: Building2 },
+      { path: '/business-settings', label: 'Business Settings', icon: Building2 },
+      { path: '/admin/concierge-setup', label: 'AI Agent Settings', icon: Shield },
+      { path: '/subscription', label: 'Subscription Plans', icon: Users },
+      { path: '/admin/usage-costs', label: 'Usage & Costs', icon: Building2 },
     ]
   },
   {
     title: 'Website & Branding',
     description: 'Homepage, appearance, and public pages',
     items: [
-      { path: '/settings/website/homepage-editor', label: 'Homepage Editor', icon: Palette },
+      { path: '/admin/homepage-editor', label: 'Homepage Editor', icon: Palette },
+      { path: '/admin/public-site-settings', label: 'Public Site Settings', icon: Palette },
+      { path: '/admin/public-site-theme', label: 'Site Theme', icon: Palette },
+      { path: '/admin/gallery-management', label: 'Gallery Management', icon: Palette },
     ]
   },
   {
@@ -79,7 +85,18 @@ const ROOT_TENANT_SETTINGS_SECTIONS = [
     description: 'Employees and access management',
     items: [
       { path: '/admin/employees', label: 'Employees', icon: Users },
-      { path: '/settings/security/demo-mode', label: 'Demo Mode', icon: Shield },
+      { path: '/user-management', label: 'User Management', icon: Users },
+      { path: '/security-settings', label: 'Security Settings', icon: Shield },
+    ]
+  },
+  {
+    title: 'System Admin',
+    description: 'Root tenant administration',
+    items: [
+      { path: '/admin/tenants', label: 'Tenant Management', icon: Building2 },
+      { path: '/root/system-usage', label: 'System Usage', icon: Shield },
+      { path: '/admin/system-billing', label: 'System Billing', icon: Building2 },
+      { path: '/escalations', label: 'Escalations', icon: Bell },
     ]
   },
 ];
