@@ -9,6 +9,17 @@ ServicePro is a multi-tenant, white-label SaaS platform that transforms service 
 
 ## Recent Changes (December 2024)
 
+### CM-VOICEMAIL-GREETING: Custom MP3 Voicemail Greeting (Dec 9, 2024)
+1. **Custom Voicemail Greeting Support**: Restored the custom MP3 voicemail greeting ("best best.mp3") for Clean Machine root tenant.
+
+2. **Key Files**:
+   - `server/services/ivrHelper.ts`: Updated `buildVoicemailTwiml()` to accept optional `voicemailGreetingUrl` parameter. Uses `<Play>` for custom MP3, falls back to `<Say>` TTS for tenants without custom greeting.
+   - `server/routes.twilioVoiceIvr.ts`: Updated `handleIvrSelection()` to fetch `voicemailGreetingUrl` from phone_lines table and pass to voicemail TwiML builder.
+
+3. **Configuration**: Root tenant's phone lines have `voicemail_greeting_url` set to `/media/best_best_1764888368444.mp3`. Other tenants use default TTS greeting.
+
+4. **Static File Serving**: MP3 files served from `/media` route (maps to `attached_assets/` directory).
+
 ### CM-REWARDS-WELCOME-LANDING: Token-Based Rewards Welcome Page (Dec 9, 2024)
 1. **Secure Customer Token System**: HMAC-SHA256 signed tokens for secure URL-based customer access without authentication. Tokens contain customer phone + tenant ID.
 
