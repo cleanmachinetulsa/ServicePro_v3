@@ -45,6 +45,8 @@ function getTierBadge(tier: string) {
     pro: 'bg-purple-100 text-purple-700',
     elite: 'bg-amber-100 text-amber-700',
     internal: 'bg-slate-100 text-slate-700',
+    family_free: 'bg-pink-100 text-pink-700',
+    family_paid: 'bg-rose-100 text-rose-700',
   };
   return <Badge variant="outline" className={colors[tier] || 'bg-gray-100'}>{tier}</Badge>;
 }
@@ -231,6 +233,8 @@ export default function AdminSystemUsagePage() {
                     <SelectItem value="pro">Pro</SelectItem>
                     <SelectItem value="elite">Elite</SelectItem>
                     <SelectItem value="internal">Internal</SelectItem>
+                    <SelectItem value="family_free">Family (Free)</SelectItem>
+                    <SelectItem value="family_paid">Family (Fee+Usage)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

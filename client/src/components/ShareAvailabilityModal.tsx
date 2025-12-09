@@ -99,19 +99,15 @@ export function ShareAvailabilityModal({
   // Generate availability message
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('/api/calendar/share-availability', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contactName,
-          contactFirstName,
-          channelType,
-          templateId: selectedTemplateId,
-          serviceDurationMinutes: serviceDuration,
-          daysAhead: 14,
-        }),
+      const response = await apiRequest('POST', '/api/calendar/share-availability', {
+        contactName,
+        contactFirstName,
+        channelType,
+        templateId: selectedTemplateId,
+        serviceDurationMinutes: serviceDuration,
+        daysAhead: 14,
       });
-      return response.json();
+      return (response as Response).json();
     },
     onSuccess: (data) => {
       if (data.success) {

@@ -164,11 +164,7 @@ export default function AdminIvrConfig() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: MenuFormData) => {
-      return await apiRequest('/api/admin/ivr/menu', {
-        method: 'PUT',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('PUT', '/api/admin/ivr/menu', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/ivr/menu'] });
@@ -189,9 +185,7 @@ export default function AdminIvrConfig() {
 
   const resetMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('/api/admin/ivr/menu/reset', {
-        method: 'POST',
-      });
+      return await apiRequest('POST', '/api/admin/ivr/menu/reset');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/ivr/menu'] });

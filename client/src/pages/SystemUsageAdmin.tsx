@@ -58,6 +58,8 @@ const planColors: Record<string, string> = {
   pro: 'bg-purple-100 text-purple-800',
   elite: 'bg-yellow-100 text-yellow-800',
   internal: 'bg-green-100 text-green-800',
+  family_free: 'bg-pink-100 text-pink-800',
+  family_paid: 'bg-rose-100 text-rose-800',
 };
 
 export default function SystemUsageAdmin() {
@@ -333,6 +335,8 @@ export default function SystemUsageAdmin() {
                     <SelectItem value="pro">Pro</SelectItem>
                     <SelectItem value="elite">Elite</SelectItem>
                     <SelectItem value="internal">Internal</SelectItem>
+                    <SelectItem value="family_free">Family (Free)</SelectItem>
+                    <SelectItem value="family_paid">Family (Fee+Usage)</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={sortBy} onValueChange={setSortBy}>

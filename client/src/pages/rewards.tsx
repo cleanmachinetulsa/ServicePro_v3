@@ -225,11 +225,7 @@ const CustomerRewardsPortal = () => {
   
   const optInMutation = useMutation<any, Error, { customerId: number }>({
     mutationFn: async ({ customerId }) => {
-      return apiRequest('/api/loyalty/opt-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId }),
-      });
+      return apiRequest('POST', '/api/loyalty/opt-in', { customerId });
     },
     onSuccess: (data) => {
       toast({ title: "Welcome to the rewards program!", description: "Start earning points on your next visit." });
@@ -246,11 +242,7 @@ const CustomerRewardsPortal = () => {
   const redeemMutation = useMutation<any, Error, { rewardId: number }>({
     mutationFn: async ({ rewardId }) => {
       if (!loyaltyData?.customer?.id) throw new Error('Customer not found');
-      return apiRequest('/api/loyalty/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: loyaltyData.customer.id, rewardServiceId: rewardId, quantity: 1 }),
-      });
+      return apiRequest('POST', '/api/loyalty/redeem', { customerId: loyaltyData.customer.id, rewardServiceId: rewardId, quantity: 1 });
     },
     onSuccess: (data) => {
       toast({ title: "Reward redeemed!", description: data.data.message || "We'll apply this to your next visit." });

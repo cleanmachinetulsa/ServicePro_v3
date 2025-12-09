@@ -580,6 +580,9 @@ export default function AdminPromos() {
                       <SelectItem value="starter">Starter</SelectItem>
                       <SelectItem value="pro">Pro</SelectItem>
                       <SelectItem value="elite">Elite</SelectItem>
+                      <SelectItem value="internal">Internal</SelectItem>
+                      <SelectItem value="family_free">Family (Free)</SelectItem>
+                      <SelectItem value="family_paid">Family (Fee+Usage)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

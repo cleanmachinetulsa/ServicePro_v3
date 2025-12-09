@@ -25,10 +25,7 @@ export function LanguageSelector({ showLabel = true, persistToServer = true, cla
   const updateLanguageMutation = useMutation({
     mutationFn: async (language: string) => {
       if (persistToServer) {
-        await apiRequest('/api/user/language', {
-          method: 'PUT',
-          body: JSON.stringify({ language }),
-        });
+        await apiRequest('PUT', '/api/user/language', { language });
       }
     },
     onSuccess: () => {

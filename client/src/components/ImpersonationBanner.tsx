@@ -32,10 +32,7 @@ export function ImpersonationBanner() {
 
   const exitImpersonationMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('/api/admin/impersonate/stop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return await apiRequest('POST', '/api/admin/impersonate/stop');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/auth/context'] });
