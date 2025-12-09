@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Calendar as CalendarIcon, Clock, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { AppShell } from '@/components/AppShell';
 
 export default function TechnicianSchedule() {
   const { data, isLoading } = useQuery<{ success: boolean; shifts: any[] }>({
@@ -18,6 +19,7 @@ export default function TechnicianSchedule() {
   const summary = hoursData?.summary;
 
   return (
+    <AppShell>
     <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">My Schedule</h1>
@@ -63,5 +65,6 @@ export default function TechnicianSchedule() {
         </div>
       )}
     </div>
+    </AppShell>
   );
 }

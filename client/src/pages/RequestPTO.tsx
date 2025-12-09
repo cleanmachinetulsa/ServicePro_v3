@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Palmtree, Calendar as CalendarIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
+import { AppShell } from '@/components/AppShell';
 
 export default function RequestPTO() {
   const [startDate, setStartDate] = useState<Date>();
@@ -58,6 +59,7 @@ export default function RequestPTO() {
   };
 
   return (
+    <AppShell>
     <div className="container mx-auto p-4 md:p-6 max-w-2xl">
       <Card>
         <CardHeader className="p-4 md:p-6">
@@ -169,5 +171,6 @@ export default function RequestPTO() {
         </CardContent>
       </Card>
     </div>
+    </AppShell>
   );
 }

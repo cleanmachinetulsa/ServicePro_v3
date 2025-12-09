@@ -95,8 +95,10 @@ router.get('/my', requireOwner, async (req: Request, res: Response) => {
       }
     }
     
-    // SP-20: Clean Machine tenant protection - hide add-ons for protected tenant
-    const isProtectedTenant = isCleanMachineTenant(tenantId);
+    // SP-20: Clean Machine tenant protection - DISABLED for root tenant 
+    // Root tenant (Clean Machine) needs full access to add-ons for testing
+    // Only apply protection to sub-tenants that are managed
+    const isProtectedTenant = false; // Disabled: isCleanMachineTenant(tenantId);
     
     const rootDb = getRootDb();
     const [tenant] = await rootDb

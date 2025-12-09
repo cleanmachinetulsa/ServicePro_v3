@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { AppShell } from '@/components/AppShell';
 
 export default function ShiftTrades() {
   const { toast } = useToast();
@@ -90,6 +91,7 @@ export default function ShiftTrades() {
   const trades = data?.trades || [];
 
   return (
+    <AppShell>
     <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Shift Trades</h1>
@@ -237,5 +239,6 @@ export default function ShiftTrades() {
         </DialogContent>
       </Dialog>
     </div>
+    </AppShell>
   );
 }
