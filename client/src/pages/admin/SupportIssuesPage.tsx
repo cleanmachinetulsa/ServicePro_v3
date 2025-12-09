@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertCircle, CheckCircle2, Clock, Info, AlertTriangle, Bug, Mail, ExternalLink } from 'lucide-react';
-import AppShell from '@/components/AppShell';
+import { AppShell } from '@/components/AppShell';
 
 interface SupportIssue {
   id: number;
