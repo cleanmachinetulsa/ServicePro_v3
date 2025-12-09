@@ -1,4 +1,5 @@
 import { Express, Request, Response } from 'express';
+import crypto from 'crypto';
 import {
   getLoyaltyPointsByPhone,
   getLoyaltyPointsByEmail,
@@ -21,6 +22,35 @@ import { getLoyaltyGuardrailSettings } from './gamificationService';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
 
+const REWARDS_TOKEN_SECRET = process.env.REWARDS_TOKEN_SECRET || process.env.SESSION_SECRET || 'rewards-fallback-secret';
+
+export function generateRewardsToken(phone: string, tenantId: string = 'root'): string {
+  const payload = `${phone}:${tenantId}`;
+  const signature = crypto.createHmac('sha256', REWARDS_TOKEN_SECRET)
+    .update(payload)
+    .digest('hex')
+    .substring(0, 16);
+  return Buffer.from(`${payload}:${signature}`).toString('base64url');
+}
+
+export function validateRewardsToken(token: string): { phone: string; tenantId: string } | null {
+  try {
+    const decoded = Buffer.from(token, 'base64url').toString('utf-8');
+    const parts = decoded.split(':');
+    if (parts.length !== 3) return null;
+    const [phone, tenantId, signature] = parts;
+    const payload = `${phone}:${tenantId}`;
+    const expectedSignature = crypto.createHmac('sha256', REWARDS_TOKEN_SECRET)
+      .update(payload)
+      .digest('hex')
+      .substring(0, 16);
+    if (signature !== expectedSignature) return null;
+    return { phone, tenantId };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Register loyalty program routes
  * 
@@ -35,6 +65,47 @@ import { db } from './db';
  * - POST /api/loyalty/redeem - Finalize redemption (requires customer context)
  */
 export function registerLoyaltyRoutes(app: Express) {
+  // CM-REWARDS-WELCOME-LANDING: Get loyalty points by token (PUBLIC)
+  app.get('/api/loyalty/points/token/:token', async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const validated = validateRewardsToken(token);
+      
+      if (!validated) {
+        return res.status(401).json({
+          success: false,
+          message: 'This link has expired or is invalid. Please contact us for a new link.',
+          expired: true
+        });
+      }
+      
+      const { phone, tenantId } = validated;
+      const tenantDb = wrapTenantDb(db, tenantId);
+      
+      const result = await getLoyaltyPointsByPhone(tenantDb, phone);
+      
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          message: 'Customer not found',
+          expired: false
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Error getting loyalty points by token:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve loyalty points information',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Get loyalty points by phone number (PUBLIC - Customer Rewards Portal V2)
   app.get('/api/loyalty/points/phone/:phone', async (req: Request, res: Response) => {
     try {

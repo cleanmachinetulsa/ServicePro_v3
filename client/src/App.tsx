@@ -37,6 +37,7 @@ const PricingPage = lazy(() => import("./pages/PricingPage"));
 const SchedulePage = lazy(() => import("@/pages/Schedule"));
 const QuickBookingPage = lazy(() => import("@/pages/quick-booking"));
 const LoyaltyPointsPage = lazy(() => import("@/pages/rewards"));
+const PointsWelcomeLandingPage = lazy(() => import("@/pages/rewards/PointsWelcomeLandingPage"));
 const GalleryPage = lazy(() => import("./pages/gallery"));
 const ReviewsPage = lazy(() => import("./pages/reviews"));
 const ChatPage = lazy(() => import("@/pages/chat"));
@@ -739,6 +740,10 @@ function Router() {
       </Route>
       <Route path="/rewards">
         <LazyPage><LoyaltyPointsPage /></LazyPage>
+      </Route>
+      {/* CM-REWARDS-WELCOME-LANDING: Points welcome landing from SMS campaigns */}
+      <Route path="/rewards/welcome">
+        <LazyPage><PointsWelcomeLandingPage /></LazyPage>
       </Route>
       <Route path="/referrals">
         <AuthGuard>
