@@ -4657,6 +4657,7 @@ export const phoneHistoryImports = pgTable("phone_history_imports", {
     customersUpdated: number;
     conversationsCreated: number;
     messagesImported: number;
+    callsImported?: number;
     errorsCount: number;
     errors?: string[];
   }>(),
