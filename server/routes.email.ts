@@ -430,7 +430,7 @@ export function registerEmailRoutes(app: Express) {
   // GET /api/settings/email - Get tenant email settings
   app.get('/api/settings/email', async (req: Request, res: Response) => {
     try {
-      const tenantId = req.tenantId;
+      const tenantId = req.session?.tenantId || req.user?.tenantId;
       if (!tenantId) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
@@ -481,7 +481,7 @@ export function registerEmailRoutes(app: Express) {
   // PUT /api/settings/email - Update tenant email settings
   app.put('/api/settings/email', async (req: Request, res: Response) => {
     try {
-      const tenantId = req.tenantId;
+      const tenantId = req.session?.tenantId || req.user?.tenantId;
       if (!tenantId) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
@@ -536,7 +536,7 @@ export function registerEmailRoutes(app: Express) {
   // POST /api/settings/email/test - Send test email using tenant profile
   app.post('/api/settings/email/test', async (req: Request, res: Response) => {
     try {
-      const tenantId = req.tenantId;
+      const tenantId = req.session?.tenantId || req.user?.tenantId;
       if (!tenantId) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
