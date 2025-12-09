@@ -147,11 +147,11 @@ async function generateConflictSafeFallbackSlots(serviceName: string): Promise<s
   const existingAppointments = await dbInstance
     .select({
       scheduledTime: appointments.scheduledTime,
-      serviceName: appointments.service,
+      serviceId: appointments.serviceId,
       serviceDuration: services.durationHours,
     })
     .from(appointments)
-    .leftJoin(services, eq(appointments.service, services.name))
+    .leftJoin(services, eq(appointments.serviceId, services.id))
     .where(gte(appointments.scheduledTime, now));
   
   console.log(`[FALLBACK] Found ${existingAppointments.length} existing appointments in database`);
@@ -833,16 +833,15 @@ export async function generateAvailableSlots(serviceName: string) {
   }
 
   // Load business settings from database
-  // TODO: Make this fully multi-tenant by passing tenant_id through the call chain
-  // For now, query root tenant settings since scheduling is currently root-tenant only
+  // businessSettings is a singleton table (one row with id=1), not tenant-scoped
   const { db: dbInstance } = await import('./db');
   const { businessSettings, serviceLimits } = await import('@shared/schema');
   const { eq, and, or, gte, lte, sql } = await import('drizzle-orm');
   
+  // Query singleton row (id=1) - businessSettings table doesn't have tenantId
   const settingsResult = await dbInstance
     .select()
     .from(businessSettings)
-    .where(eq(businessSettings.tenantId, 'root'))
     .limit(1);
     
   const settings = settingsResult[0] || {
