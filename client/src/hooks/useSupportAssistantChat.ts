@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { SupportAssistantMessage, SupportAssistantContext } from '@shared/supportAssistantTypes';
+import { reportFromAssistant } from '@/lib/supportIssueReporter';
 
 function nowIso() {
   return new Date().toISOString();
@@ -122,6 +123,12 @@ export function useSupportAssistantChat(initialContext: SupportAssistantContext 
               source: 'system',
             },
           ]);
+          reportFromAssistant(
+            text.trim(),
+            err instanceof Error ? err.message : 'Unknown error',
+            'error',
+            `Route: ${initialContext.currentRoute}`
+          ).catch(() => {});
         }
       } finally {
         setIsSending(false);
