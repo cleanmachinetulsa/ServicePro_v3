@@ -483,7 +483,9 @@ async function executeFunctionCall(
       }
       
       case "get_available_slots": {
+        console.log(`[AI FUNCTION CALL] ✅ AI is calling get_available_slots for service: "${args.service}", phone: ${args.phone}`);
         const result = await getAvailableSlots(args.phone, args.service);
+        console.log(`[AI FUNCTION CALL] get_available_slots returned ${result.length} slots`);
         return JSON.stringify(result);
       }
       

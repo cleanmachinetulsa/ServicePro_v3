@@ -228,16 +228,23 @@ export async function validateAddress(phone: string, address: string): Promise<A
  * Fetches real availability from Google Calendar
  */
 export async function getAvailableSlots(phone: string, service: string): Promise<TimeSlot[]> {
+  console.log(`[SCHEDULING TOOLS] ========== GET AVAILABLE SLOTS CALLED ==========`);
+  console.log(`[SCHEDULING TOOLS] Service: ${service}, Customer: ${phone}`);
+  
   try {
-    console.log(`[SCHEDULING TOOLS] Getting available slots for ${service}, customer: ${phone}`);
-    
     // Import the calendar function directly
     const { generateAvailableSlots } = await import('./calendarApi');
+    
+    console.log(`[SCHEDULING TOOLS] Calling generateAvailableSlots for service: "${service}"`);
     
     // Get slots from Google Calendar
     const slots = await generateAvailableSlots(service);
     
-    console.log(`[SCHEDULING TOOLS] Retrieved ${slots.length} available slots`);
+    console.log(`[SCHEDULING TOOLS] ✅ Calendar returned ${slots.length} available slots`);
+    
+    if (slots.length === 0) {
+      console.warn(`[SCHEDULING TOOLS] ⚠️ No slots returned - calendar may be fully booked or service not found`);
+    }
     
     // Format slots for AI (limit to 5 for readability)
     const formattedSlots: TimeSlot[] = slots.slice(0, 5).map((slotTime: string) => {
@@ -259,20 +266,25 @@ export async function getAvailableSlots(phone: string, service: string): Promise
       };
     });
     
-    console.log(`[SCHEDULING TOOLS] Formatted ${formattedSlots.length} slots for AI`);
+    console.log(`[SCHEDULING TOOLS] Formatted ${formattedSlots.length} slots for AI response:`);
+    formattedSlots.forEach((slot, i) => {
+      console.log(`  ${i + 1}. ${slot.formattedTime}`);
+    });
     
     // Store offered slots in conversation state
     conversationState.updateState(phone, {
       offeredTimeSlots: formattedSlots,
     });
     
+    console.log(`[SCHEDULING TOOLS] ========== END GET AVAILABLE SLOTS ==========`);
     return formattedSlots;
     
   } catch (error) {
-    console.error('❌ CALENDAR API ERROR - Failed to get available slots:', error);
-    console.error('Error details:', error);
-    // Return empty array to trigger fallback mode (natural language time input)
-    // This is intentional - allows manual confirmation workflow
+    console.error('[SCHEDULING TOOLS] ❌ CALENDAR API ERROR - Failed to get available slots');
+    console.error('[SCHEDULING TOOLS] Error:', error);
+    console.error('[SCHEDULING TOOLS] Stack:', (error as Error).stack);
+    // Return empty array but log the issue clearly
+    // This triggers fallback mode (natural language time input)
     return [];
   }
 }
