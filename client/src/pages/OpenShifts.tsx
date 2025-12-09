@@ -6,6 +6,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, Clock, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { AppShell } from '@/components/AppShell';
 
 export default function OpenShifts() {
   const { toast } = useToast();
@@ -34,6 +35,7 @@ export default function OpenShifts() {
   const shifts = data?.shifts || [];
 
   return (
+    <AppShell>
     <div className="container mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Open Shifts</h1>
@@ -78,5 +80,6 @@ export default function OpenShifts() {
         </div>
       )}
     </div>
+    </AppShell>
   );
 }

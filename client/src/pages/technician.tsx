@@ -95,6 +95,8 @@ const DEMO_JOBS = [
     longitude: '-122.4194',
     jobNotes: null,
     statusUpdatedAt: null,
+    addressConfirmedByCustomer: true,
+    addressNeedsReview: false,
   },
   {
     id: 99902,
@@ -110,6 +112,8 @@ const DEMO_JOBS = [
     longitude: '-122.4311',
     jobNotes: 'Customer prefers exterior detail only',
     statusUpdatedAt: new Date().toISOString(),
+    addressConfirmedByCustomer: true,
+    addressNeedsReview: false,
   },
   {
     id: 99903,
@@ -123,6 +127,8 @@ const DEMO_JOBS = [
     customerAddress: '789 Pine St, San Francisco, CA 94104',
     latitude: '37.7899',
     longitude: '-122.4036',
+    addressConfirmedByCustomer: false,
+    addressNeedsReview: true,
     jobNotes: null,
     statusUpdatedAt: null,
   },
@@ -486,6 +492,7 @@ export default function TechnicianPage() {
     <TechnicianProvider demoMode={demoMode} demoJobs={DEMO_JOBS}>
       <TechnicianContentWrapper 
         demoMode={demoMode} 
+        setDemoMode={setDemoMode}
         toggleDemoMode={toggleDemoMode}
         hasAutoEnabled={hasAutoEnabled}
         setHasAutoEnabled={setHasAutoEnabled}
@@ -498,6 +505,7 @@ export default function TechnicianPage() {
 
 function TechnicianContentWrapper({ 
   demoMode, 
+  setDemoMode,
   toggleDemoMode,
   hasAutoEnabled,
   setHasAutoEnabled,
@@ -505,6 +513,7 @@ function TechnicianContentWrapper({
   setUserPreferenceSet,
 }: { 
   demoMode: boolean; 
+  setDemoMode: (val: boolean) => void;
   toggleDemoMode: () => void;
   hasAutoEnabled: boolean;
   setHasAutoEnabled: (val: boolean) => void;
