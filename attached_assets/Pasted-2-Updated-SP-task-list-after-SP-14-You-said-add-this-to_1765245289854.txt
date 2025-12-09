@@ -1,0 +1,86 @@
+2. Updated SP task list after SP-14
+You said: “add this to the current task list to work in after task 14 then we do FULL v2 performance pass.”
+So here’s the updated sequence from SP-11 forward:
+Already in motion / defined:
+* SP-11 – Telephony Modes & routing options
+    * Let tenants choose how calls/texts behave (AI-first, human-first, hybrid, etc.) 
+* SP-12 – Voicemail UX v2
+    * Fix Twilio media auth, make in-app voicemail playback “just work”. 
+* SP-13 – Usage & Billing Foundations
+    * Normalize how we store usage (SMS, MMS, minutes, emails, AI tokens) per tenant per day. 
+* SP-14 – Tenant Billing Portal v1
+    * Let ServicePro customers:
+        * See plan, next bill date, base price 
+        * See high-level usage summary 
+        * Manage card on file / invoices 
+        * Cancel at end of period 
+Now, inserted after SP-14, per your list:
+SP-15 – Full Usage Metering Integration (Twilio / OpenAI / SendGrid)
+* Pull real usage from:
+    * Twilio (messages, minutes) 
+    * OpenAI (tokens, calls) 
+    * SendGrid (emails) 
+* Map it into our internal tenant_usage tables. 
+* Make sure everything is multi-tenant safe and summarized on one usage timeline. 
+SP-16 – Billing v2: Usage Billing + Dunning & Auto Suspension
+* Define pricing formulas per tier. 
+* Compute monthly bill = base plan + usage add-ons. 
+* Integrate with Stripe (or equivalent) to:
+    * Generate invoices 
+    * Charge automatically 
+* Add dunning:
+    * Reminders (email/SMS) before/after failed payments 
+    * Grace period 
+    * Auto-suspend tenant telephony + AI if they don’t pay 
+* Clear “account suspended, here’s why” UX for tenants. 
+SP-17 – Simple vs Advanced Dashboard Mode
+* Per-user or per-tenant uiMode = 'simple' | 'advanced'. 
+* Simple mode:
+    * Hides scary / optional config pages. 
+    * Uses non-technical language. 
+    * Emphasizes “Do these 3 things to go live”. 
+* Advanced mode:
+    * Shows all tuning knobs, logs, raw usage graphs, deep config. 
+SP-18 – Full Spanish Support v1 (Foundation)
+* Centralize all UI strings into i18n (EN + ES). 
+* Add a language selector:
+    * App UI language 
+    * Preferred customer-facing language (for default copy). 
+* Make sure key flows (booking, rewards, support AI system messages) respect language. 
+* Prepare infrastructure so we can add more language packs later (Ukrainian, Dari, Pashto, etc.) as future tasks. 
+SP-19 – Loyalty Identity Hardening v2 (OTP)
+* Put this on the REVISIT LIST as you said, but after the above:
+    * Add optional “verify by SMS code” before:
+        * Applying big redemptions 
+        * Changing phone number for an account 
+* Make it configurable:
+    * Off by default 
+    * Recommended for higher tiers or large point banks. 
+SP-20 – Add-on System for Upsells
+* Define “features” separate from base plan:
+    * e.g. Extra phone number, extra AI seats, advanced analytics, extra SMS pack. 
+* UI:
+    * “Add Features” panel where tenants can toggle add-ons. 
+* Tie into billing:
+    * Add-on price added to monthly bill automatically. 
+SP-21 – Demo Sandbox Mode v2 (Fix current broken demo)
+* Create a Demo Tenant with:
+    * Fake customers, jobs, messages, rewards, etc. 
+* Lock down outbound messaging:
+    * Only to a single test number the user enters. 
+    * 2-step confirmation before sending. 
+* Make sure:
+    * No access to root tenant data (Clean Machine). 
+    * The demo UI shows setup wizard / telephony / A2P / rewards / support AI as if it were live, but all backed by demo data. 
+SP-22 – Full v2 Performance Pass
+* Do a real perf audit:
+    * Client load times, bundle sizes, API latency, DB indices, N+1 queries. 
+* Fix:
+    * Slow pages (messages, dashboard, booking) 
+    * Any obvious backend bottlenecks. 
+* Aim to make the app feel snappy on a mid-range phone + average connection, not just “ok in dev”. 
+That gets you:
+* Clean CM v1 
+* SP core v1 
+* Then deep v2 polish on billing, usage, UX, languages, demo, and performance 
+
