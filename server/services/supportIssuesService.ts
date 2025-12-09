@@ -8,6 +8,7 @@
 import { db } from '../db';
 import { supportIssues, type SupportIssue, type CreateSupportIssue } from '@shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
+import { sendEmail } from '../notifications';
 
 export interface SupportIssueContext {
   tenantId: string;
@@ -46,6 +47,26 @@ export async function createSupportIssue(
     .returning({ id: supportIssues.id });
 
   console.log(`[SUPPORT ISSUES] Created issue #${issue.id} for tenant ${ctx.tenantId}: ${payload.errorCode}`);
+  
+  try {
+    await sendEmail({
+      to: 'info@cleanmachinetulsa.com',
+      subject: `[Support Issue #${issue.id}] ${payload.errorCode}`,
+      text: `New support issue reported:\n\nSeverity: ${payload.severity || 'error'}\nSource: ${payload.source || 'unknown'}\nTenant: ${ctx.tenantId}\n\nSummary:\n${payload.summary}\n\nDetails:\n${JSON.stringify(payload.details || {}, null, 2)}`,
+      html: `<h2>New Support Issue #${issue.id}</h2>
+<p><strong>Severity:</strong> ${payload.severity || 'error'}</p>
+<p><strong>Source:</strong> ${payload.source || 'unknown'}</p>
+<p><strong>Tenant:</strong> ${ctx.tenantId}</p>
+<p><strong>Error Code:</strong> ${payload.errorCode}</p>
+<h3>Summary</h3>
+<p>${payload.summary}</p>
+<h3>Details</h3>
+<pre>${JSON.stringify(payload.details || {}, null, 2)}</pre>`,
+    });
+    console.log(`[SUPPORT ISSUES] Email notification sent for issue #${issue.id}`);
+  } catch (emailError) {
+    console.error(`[SUPPORT ISSUES] Failed to send email for issue #${issue.id}:`, emailError);
+  }
   
   return { id: issue.id };
 }
