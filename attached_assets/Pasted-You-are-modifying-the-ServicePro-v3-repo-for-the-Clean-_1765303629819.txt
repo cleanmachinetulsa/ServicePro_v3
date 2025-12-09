@@ -1,0 +1,284 @@
+You are modifying the ServicePro_v3 repo for the Clean Machine root tenant.
+
+GOAL
+=====
+
+Wire the existing **rewards token system** into the **Welcome Back Campaign** so that:
+
+- Each customer in the campaign gets a **personalized rewards link**:
+  - `https://<tenant-domain>/rewards/welcome?token=...`
+- The link is generated with the existing:
+  - `generateRewardsToken(phone, tenantId, expiryDays)`
+- The SMS template can use `{rewards_link}` as a placeholder.
+- If `{rewards_link}` is missing from the template, the system will append the link automatically.
+- This works for both **VIP** and **Regular** audiences in `/api/admin/campaigns/welcome-back/send`.
+
+CONTEXT
+=======
+
+From earlier work, the following exists:
+
+- HMAC-SHA256 token generation:
+  - `generateRewardsToken(phone: string, tenantId: string, expiryDays = 30)`
+- Token validation and API:
+  - `validateRewardsToken(token)`
+  - `GET /api/loyalty/points/token/:token`
+- Frontend landing page:
+  - `PointsWelcomeLandingPage` at route: `/rewards/welcome?token=...`
+- Special Welcome Back campaign UI:
+  - `WelcomeBackCampaign` React component in:
+    - `client/src/pages/settings/CommunicationsSettings.tsx` (or similarly named)
+  - It calls:
+    - `POST /api/admin/campaigns/welcome-back/send` with:
+      - `{ audience: 'vip' | 'regular', previewOnly: boolean, includeNonLoyalty: boolean }`
+  - The backend responds with:
+    - `result.total`, `result.sampleMessage`, `result.success`, `result.failed`
+
+Your task is to connect all these pieces.
+
+TASKS
+=====
+
+1. LOCATE THE WELCOME-BACK CAMPAIGN ROUTES
+-------------------------------------------
+
+1.1. Find the backend route file that handles:
+  - `GET /api/admin/campaigns/welcome-back`
+  - `POST /api/admin/campaigns/welcome-back/send`
+
+  Likely in files such as:
+  - `server/routes.campaigns.welcomeBack.ts`
+  - or a grouped campaigns file:
+    - `server/routes.campaigns.ts`
+    - `server/routes.adminCampaigns.ts`
+
+1.2. Confirm the send handler signature:
+  - It should accept JSON body:
+    - `{ audience, previewOnly, includeNonLoyalty }`
+  - It should iterate over a set of customers and:
+    - Build an SMS body
+    - Send it via Twilio or your SMS service layer
+    - Track `total`, `success`, `failed`
+
+2. IMPORT TOKEN GENERATION
+---------------------------
+
+2.1. Locate the module where `generateRewardsToken` is defined.
+
+  - Search:
+    - `generateRewardsToken(` in `server/`
+  - This is likely in:
+    - `server/routes.loyalty.ts`
+    - OR `server/services/loyaltyService.ts`
+
+2.2. In the Welcome Back campaign send route, **import** `generateRewardsToken` from the correct module.
+
+  Example (adjust to your actual paths):
+
+  ```ts
+  import { generateRewardsToken } from './routes.loyalty';
+DETERMINE BASE URL FOR REWARDS LINK
+
+3.1. Define a helper to compute the public base URL for the tenant:
+
+Use this priority:
+
+Tenant custom domain, if set (e.g., cleanmachinetulsa.com)
+
+Public app base URL from env (e.g., PUBLIC_APP_BASE_URL)
+
+Fallback to the Replit deployment URL or a default like https://servicepro.replit.app
+
+3.2. Add (or reuse) a helper function, e.g.:
+
+ts
+Copy code
+function getTenantPublicBaseUrl(tenant: Tenant): string {
+  const envBase = process.env.PUBLIC_APP_BASE_URL;
+  if (tenant.customDomain) {
+    const protocol = envBase?.startsWith('https://') ? 'https://' : 'https://';
+    return `${protocol}${tenant.customDomain}`;
+  }
+  if (envBase) return envBase;
+  return 'https://servicepro.replit.app';
+}
+Use the actual tenant type and properties available in your codebase.
+
+GENERATE REWARDS LINK PER CUSTOMER
+
+4.1. Within the Welcome Back send handler, for each customer:
+
+Determine:
+
+tenantId (from the current tenant context, likely ctx.tenantId or tenant.id)
+
+phone (customer's phone, normalized to E.164 if possible)
+
+Generate a token:
+
+ts
+Copy code
+const token = generateRewardsToken(customer.phone, tenantId, 30);
+Compute the base URL:
+
+ts
+Copy code
+const baseUrl = getTenantPublicBaseUrl(currentTenant);
+Build the link:
+
+ts
+Copy code
+const rewardsLink = `${baseUrl}/rewards/welcome?token=${encodeURIComponent(token)}`;
+4.2. Make this rewardsLink available as a variable when creating the SMS message body.
+
+TEMPLATE INTERPOLATION WITH {rewards_link}
+
+5.1. The Welcome Back campaign config already has templates such as:
+
+config.smsTemplateVip
+
+config.smsTemplateRegular
+
+5.2. Implement a small interpolation helper, e.g.:
+
+ts
+Copy code
+function renderSmsTemplate(template: string, vars: { name?: string; rewardsLink?: string; pointsBonus?: number }): string {
+  let result = template;
+
+  if (vars.name) {
+    result = result.replace(/{name}/gi, vars.name);
+  }
+  if (vars.rewardsLink) {
+    result = result.replace(/{rewards_link}/gi, vars.rewardsLink);
+  }
+  if (typeof vars.pointsBonus === 'number') {
+    result = result.replace(/{points_bonus}/gi, String(vars.pointsBonus));
+  }
+
+  return result;
+}
+5.3. For each SMS:
+
+Identify:
+
+Customer first name
+
+VIP vs regular points bonus (e.g., 500 vs 100) from config.vipPointsBonus / config.regularPointsBonus
+
+Generate the message:
+
+ts
+Copy code
+const template = audience === 'vip' ? config.smsTemplateVip : config.smsTemplateRegular;
+let body = renderSmsTemplate(template, {
+  name: customer.firstName,
+  rewardsLink,
+  pointsBonus,
+});
+
+// If template did NOT contain {rewards_link}, append it at the end:
+if (!/{rewards_link}/i.test(template)) {
+  body += `\n\nView your rewards: ${rewardsLink}`;
+}
+5.4. Use this body as the SMS being sent via your existing SMS sending logic.
+
+PREVIEW-ONLY BEHAVIOR
+
+6.1. When previewOnly === true:
+
+DO NOT send any real SMS.
+
+Instead:
+
+Build one sample rewardsLink (you can:
+
+Either generate a real token for a sample customer, OR
+
+Use a fake placeholder like https://example.com/rewards/welcome?token=DEMO)
+
+Build a sample message using the same interpolation logic.
+
+In the response, return:
+
+ts
+Copy code
+{
+  success: true,
+  result: {
+    total: estimatedRecipientCount,
+    sampleMessage: body,
+    // other fields as used previously
+  }
+}
+Make sure the existing front-end WelcomeBackCampaign component still works:
+
+It expects result.total and result.sampleMessage.
+
+MULTI-TENANT SAFETY
+
+7.1. Ensure the implementation is tenant-aware:
+
+Token generation:
+
+Uses the current tenantId.
+
+Base URL:
+
+Derived per-tenant.
+
+Campaign send:
+
+Uses the correct Twilio number / messaging service bound to that tenant.
+
+7.2. For clean machine root tenant:
+
+Confirm that getTenantPublicBaseUrl resolves to the correct domain:
+
+https://cleanmachinetulsa.com
+
+Or whatever your production base is (using existing config/fields).
+
+TESTING
+
+8.1. Add or update tests to cover:
+
+Preview mode:
+
+previewOnly: true returns sampleMessage containing a URL with /rewards/welcome?token=.
+
+Regular send:
+
+AS A UNIT TEST, mock SMS sender and assert that:
+
+The body includes a full rewards link.
+
+{rewards_link} in the template is correctly replaced.
+
+If the template has no {rewards_link}, the link is appended.
+
+8.2. Log for debugging (in dev only):
+
+Log 1–2 sample rewards links (sanitized) when the campaign sends.
+
+Ensure sensitive data (like raw tokens) is not over-logged in production.
+
+DOCUMENTATION
+
+9.1. Update replit.md under the CM-REWARDS or campaigns section:
+
+Document that the Welcome Back campaign now supports {rewards_link} and {points_bonus} placeholders.
+
+Document that tokens are 30-day HMAC-signed URLs into /rewards/welcome?token=....
+
+Note that the system automatically appends a link if {rewards_link} is omitted.
+
+CONSTRAINTS
+Do NOT break any existing campaigns or email flows.
+
+Do NOT change the behavior of the rewards landing page itself.
+
+Keep all changes well-commented, especially where tokens and URLs are built.
+
+perl
+Copy code

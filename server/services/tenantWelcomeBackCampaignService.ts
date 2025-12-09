@@ -1,11 +1,12 @@
 import { db } from '../db';
 import type { TenantDb } from '../tenantDb';
-import { campaignConfigs, campaignSends, customers, loyaltyPoints, pointsTransactions, tenants } from '@shared/schema';
+import { campaignConfigs, campaignSends, customers, loyaltyPoints, pointsTransactions, tenants, tenantDomains } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { sendSMS, sendEmail } from '../notifications';
 import { addMonths } from 'date-fns';
 import { hasFeature } from '@shared/features';
 import { awardPromoPoints } from './promoEngine'; // Phase 14: Unified promo engine
+import { generateRewardsToken } from '../routes.loyalty'; // CM-REWARDS-WELCOME-LANDING: Token generation
 
 /**
  * ServicePro v3 - Multi-Tenant Welcome Back Campaign System
@@ -101,6 +102,53 @@ const DEFAULT_REGULAR_EMAIL_TEMPLATE = `<html>
   <p><a href="{{rewardsLink}}">View Your Rewards</a></p>
 </body>
 </html>`;
+
+/**
+ * Get the public base URL for a tenant
+ * Priority: verified custom domain > PUBLIC_APP_BASE_URL > Replit default
+ */
+async function getTenantPublicBaseUrl(tenantId: string): Promise<string> {
+  const envBase = process.env.PUBLIC_APP_BASE_URL;
+  
+  // Check for verified custom domain
+  try {
+    const [customDomain] = await db
+      .select()
+      .from(tenantDomains)
+      .where(
+        and(
+          eq(tenantDomains.tenantId, tenantId),
+          eq(tenantDomains.status, 'verified'),
+          eq(tenantDomains.isPrimary, true)
+        )
+      )
+      .limit(1);
+    
+    if (customDomain?.domain) {
+      return `https://${customDomain.domain}`;
+    }
+  } catch (err) {
+    console.error('[Campaign] Error fetching tenant domain:', err);
+  }
+  
+  // Fallback to environment variable or Replit default
+  if (envBase) return envBase;
+  
+  return 'https://servicepro.replit.app';
+}
+
+/**
+ * Generate personalized rewards link for a customer
+ */
+function generatePersonalizedRewardsLink(
+  baseUrl: string,
+  phone: string,
+  tenantId: string,
+  expiryDays: number = 30
+): string {
+  const token = generateRewardsToken(phone, tenantId, expiryDays);
+  return `${baseUrl}/rewards/welcome?token=${encodeURIComponent(token)}`;
+}
 
 /**
  * Get campaign configuration for a tenant
@@ -234,6 +282,7 @@ export async function updateTenantWelcomeBackCampaignConfig(
 
 /**
  * Interpolate template variables
+ * Supports both {{var}} and {var} syntax for flexibility
  */
 function interpolateTemplate(
   template: string,
@@ -243,14 +292,46 @@ function interpolateTemplate(
     bookingLink: string;
     rewardsLink: string;
     qrLink?: string;
+    pointsBonus?: number;
   }
 ): string {
-  return template
-    .replace(/\{\{customerName\}\}/g, vars.customerName)
-    .replace(/\{\{businessName\}\}/g, vars.businessName)
-    .replace(/\{\{bookingLink\}\}/g, vars.bookingLink)
-    .replace(/\{\{rewardsLink\}\}/g, vars.rewardsLink)
-    .replace(/\{\{qrLink\}\}/g, vars.qrLink ?? '');
+  let result = template;
+  
+  // Support both {{var}} (double curly) and {var} (single curly) syntax
+  // Customer name
+  result = result.replace(/\{\{customerName\}\}/gi, vars.customerName);
+  result = result.replace(/\{name\}/gi, vars.customerName);
+  
+  // Business name
+  result = result.replace(/\{\{businessName\}\}/gi, vars.businessName);
+  result = result.replace(/\{business_name\}/gi, vars.businessName);
+  
+  // Booking link
+  result = result.replace(/\{\{bookingLink\}\}/gi, vars.bookingLink);
+  result = result.replace(/\{booking_link\}/gi, vars.bookingLink);
+  
+  // Rewards link (personalized with token)
+  result = result.replace(/\{\{rewardsLink\}\}/gi, vars.rewardsLink);
+  result = result.replace(/\{rewards_link\}/gi, vars.rewardsLink);
+  
+  // QR link
+  result = result.replace(/\{\{qrLink\}\}/g, vars.qrLink ?? '');
+  result = result.replace(/\{qr_link\}/gi, vars.qrLink ?? '');
+  
+  // Points bonus
+  if (typeof vars.pointsBonus === 'number') {
+    result = result.replace(/\{\{pointsBonus\}\}/gi, String(vars.pointsBonus));
+    result = result.replace(/\{points_bonus\}/gi, String(vars.pointsBonus));
+  }
+  
+  return result;
+}
+
+/**
+ * Check if template contains a rewards link placeholder
+ */
+function templateHasRewardsLink(template: string): boolean {
+  return /\{\{rewardsLink\}\}|\{rewards_link\}/i.test(template);
 }
 
 /**
@@ -409,17 +490,34 @@ export async function sendTenantWelcomeBackCampaign(
     errors: [],
   };
 
-  // Preview mode - just return sample message
+  // Get tenant public base URL for personalized rewards links
+  const tenantBaseUrl = await getTenantPublicBaseUrl(tenantId);
+  console.log(`[Campaign] Using tenant base URL: ${tenantBaseUrl} for tenant ${tenantId}`);
+
+  // Preview mode - just return sample message with personalized link
   if (previewOnly) {
     if (targetCustomers.length > 0) {
       const sampleCustomer = targetCustomers[0];
-      const sampleMessage = interpolateTemplate(smsTemplate, {
+      
+      // Generate personalized rewards link for sample customer
+      const sampleRewardsLink = sampleCustomer.phone 
+        ? generatePersonalizedRewardsLink(tenantBaseUrl, sampleCustomer.phone, tenantId)
+        : `${tenantBaseUrl}/rewards/welcome?token=SAMPLE`;
+      
+      let sampleMessage = interpolateTemplate(smsTemplate, {
         customerName: sampleCustomer.name,
         businessName,
         bookingLink: config.bookingBaseUrl,
-        rewardsLink: config.rewardsBaseUrl,
+        rewardsLink: sampleRewardsLink,
         qrLink: qrUrl,
+        pointsBonus,
       });
+      
+      // Auto-append rewards link if template doesn't include it
+      if (!templateHasRewardsLink(smsTemplate)) {
+        sampleMessage += `\n\nView your rewards: ${sampleRewardsLink}`;
+      }
+      
       result.sampleMessage = sampleMessage;
     }
     return result;
@@ -459,13 +557,24 @@ export async function sendTenantWelcomeBackCampaign(
         console.log(`[Campaign] ${promoResult.pointsGranted} points GRANTED immediately to customer ${customer.id}`);
       }
 
-      // Build message
+      // Generate personalized rewards link for this customer
+      // Use phone number if available, otherwise use email-based fallback URL
+      let personalizedRewardsLink: string;
+      if (customer.phone) {
+        personalizedRewardsLink = generatePersonalizedRewardsLink(tenantBaseUrl, customer.phone, tenantId);
+      } else {
+        // Fallback to static rewards URL for customers without phone numbers
+        personalizedRewardsLink = config.rewardsBaseUrl;
+      }
+
+      // Build message template variables
       const templateVars = {
         customerName: customer.name,
         businessName,
         bookingLink: config.bookingBaseUrl,
-        rewardsLink: config.rewardsBaseUrl,
+        rewardsLink: personalizedRewardsLink,
         qrLink: qrUrl,
+        pointsBonus,
       };
 
       // Track which channels were successfully sent
@@ -474,17 +583,34 @@ export async function sendTenantWelcomeBackCampaign(
 
       // Send SMS
       if (customer.phone && customer.smsConsent) {
-        const smsMessage = interpolateTemplate(smsTemplate, templateVars);
+        let smsMessage = interpolateTemplate(smsTemplate, templateVars);
+        
+        // Auto-append rewards link if template doesn't include it
+        if (!templateHasRewardsLink(smsTemplate)) {
+          smsMessage += `\n\nView your rewards: ${personalizedRewardsLink}`;
+        }
+        
         const smsResult = await sendSMS(tenantDb, customer.phone, smsMessage);
         if (!smsResult.success) {
           throw new Error(`SMS failed: ${smsResult.error}`);
         }
         smsSent = true;
+        
+        // Log sample link for debugging (first customer only)
+        if (result.success === 0) {
+          console.log(`[Campaign] Sample personalized rewards link: ${personalizedRewardsLink.substring(0, 80)}...`);
+        }
       }
 
       // Send Email
       if (customer.email && emailTemplate) {
-        const emailBody = interpolateTemplate(emailTemplate, templateVars);
+        let emailBody = interpolateTemplate(emailTemplate, templateVars);
+        
+        // Auto-append rewards link in email if template doesn't include it
+        if (!templateHasRewardsLink(emailTemplate)) {
+          emailBody = emailBody.replace('</body>', `<p><a href="${personalizedRewardsLink}">View Your Personalized Rewards</a></p></body>`);
+        }
+        
         try {
           await sendEmail({
             to: customer.email,

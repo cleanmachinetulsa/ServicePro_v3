@@ -9,6 +9,22 @@ ServicePro is a multi-tenant, white-label SaaS platform that transforms service 
 
 ## Recent Changes (December 2024)
 
+### CM-WELCOME-BACK-TOKENS: Personalized Rewards Links in Campaigns (Dec 9, 2024)
+1. **Personalized Rewards Token Integration**: Welcome Back campaigns now include personalized HMAC-signed rewards links for each customer.
+
+2. **Key Files**:
+   - `server/services/tenantWelcomeBackCampaignService.ts`: Added token generation, tenant base URL helper, and template interpolation with `{rewards_link}` placeholder support.
+   - `server/routes.loyalty.ts`: Source of `generateRewardsToken()` function.
+
+3. **Template Variables**:
+   - Supports both `{{var}}` and `{var}` syntax for flexibility
+   - Available placeholders: `{name}`, `{business_name}`, `{booking_link}`, `{rewards_link}`, `{points_bonus}`
+   - Auto-appends rewards link if template doesn't include `{rewards_link}` or `{{rewardsLink}}`
+
+4. **Token URLs**: Generated as `https://<tenant-domain>/rewards/welcome?token=...` with 30-day expiry.
+
+5. **Multi-Tenant Safety**: Uses verified custom domain from `tenantDomains` table, falls back to `PUBLIC_APP_BASE_URL` or default Replit URL.
+
 ### CM-VOICEMAIL-GREETING: Custom MP3 Voicemail Greeting (Dec 9, 2024)
 1. **Custom Voicemail Greeting Support**: Restored the custom MP3 voicemail greeting ("best best.mp3") for Clean Machine root tenant.
 

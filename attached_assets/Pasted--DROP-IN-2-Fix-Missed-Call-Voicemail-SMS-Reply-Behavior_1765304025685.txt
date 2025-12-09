@@ -1,0 +1,374 @@
+## 🔹 DROP-IN #2 — Fix Missed Call + Voicemail → SMS Reply Behavior
+
+You’re right to suspect both **publishing** and **Twilio transcription**:
+
+- Twilio hits the **deployed** URL, not the dev one.
+- If voicemail → transcription isn’t making it into your app, the AI reply can’t run.
+- Also, the multi-tenant refactor may have broken the “missed call SMS” decision logic for root.
+
+This drop-in tells Architect to **audit and repair** the whole pipeline.
+
+**Title:** `CM-VOICEMAIL-MISSED-CALL-SMS-FIX`
+
+```text
+You are modifying the ServicePro_v3 repo for the Clean Machine root tenant.
+
+GOAL
+=====
+
+Audit and fix the **inbound call → voicemail → SMS** pipeline so that:
+
+1. When a customer calls and the call is **missed** (no human answers):
+   - They receive a **Missed Call SMS** (polite, branded, per-tenant).
+2. When the caller **leaves a voicemail** and it is **transcribed**:
+   - The system reads the transcription as fast as possible.
+   - It sends a **customized AI SMS reply** based on the voicemail content,
+   - Instead of (or in place of) just the generic missed-call SMS.
+3. This works correctly in the **multi-tenant setup** for the Clean Machine root tenant.
+4. No double-texting:
+   - If an AI voicemail reply is sent, do NOT also send a redundant generic missed-call SMS.
+5. This behavior is live for production once deployed.
+
+CURRENT SYMPTOM
+================
+
+- For a test call:
+  - The owner received the voicemail alert (email/notification).
+  - The caller did NOT receive:
+    - A missed call SMS, NOR
+    - An AI reply based on voicemail transcription.
+
+So:
+
+- Voicemail notification → working.
+- SMS flows → broken or bypassed.
+
+TASKS
+=====
+
+1. TRACE THE INBOUND CALL FLOW
+-------------------------------
+
+1.1. Locate Twilio Voice webhooks used for inbound calls:
+
+  - Search for:
+    - `/api/twilio/voice`
+    - `/api/voice/incoming`
+    - `Twilio.twiml.VoiceResponse`
+    - `<Gather>`, `<Say>`, `<Play>`, `<Record>`, `<Dial>`
+
+  Likely files:
+
+  - `server/routes.twilioVoice.ts`
+  - `server/routes.twilio.ts`
+  - `server/routes.twilio.inbound.ts`
+
+1.2. Identify:
+
+  - The handler that receives the **initial incoming call** (`CallStatus` is usually `ringing` or `in-progress`).
+  - The path where the call is sent to **voicemail**:
+    - Either:
+      - a dedicated `/voicemail` route with `<Record>`
+      - or a branch in the main handler that uses `<Record>`.
+
+1.3. Identify any **status callback** or **recording/transcription callback** routes:
+
+  - Search for:
+    - `RecordingUrl`
+    - `RecordingSid`
+    - `TranscriptionText`
+    - `TranscriptionStatus`
+
+  Find the routes that Twilio hits after voicemail and/or transcription completion.
+
+2. LOCATE MISSED-CALL & VOICEMAIL SMS LOGIC
+--------------------------------------------
+
+2.1. Search for services or helpers like:
+
+  - `sendMissedCallSms`
+  - `handleMissedCall`
+  - `handleVoicemailTranscription`
+  - `voicemailReplyService`
+  - `sendAiVoicemailReply`
+  - `createOrUpdateConversationFromCall`
+
+2.2. Identify the code path that decides:
+
+  - “This call was missed → send missed call SMS”
+  - “Voicemail was left and transcribed → generate AI reply SMS”
+
+2.3. Confirm where **multi-tenant context** is derived in this flow:
+
+  - For example:
+    - From the `To` number → map to a tenant
+    - Using a telephony config table:
+      - `tenant_phones`, `phone_numbers`, etc.
+    - Using `wrapTenantDb(tenantId)`.
+
+3. FIX MISSED CALL DETECTION
+-----------------------------
+
+3.1. Ensure there is a robust condition to detect a missed call:
+
+  Consider:
+
+  - Status callback `CallStatus` from Twilio:
+    - `no-answer`, `busy`, `failed`, `completed`
+  - If the call is:
+    - Never answered by a human,
+    - Or forwarded directly to voicemail,
+    - Then treat as a “missed call” event.
+
+3.2. Implement or fix a helper such as:
+
+  ```ts
+  function isMissedCallFromStatus(params: TwilioStatusParams): boolean {
+    // Example logic:
+    // - Call was inbound
+    // - No human answered (AnsweredBy is null or 'machine')
+    // - CallStatus is 'no-answer', 'busy', or 'failed'
+  }
+3.3. Ensure the missed call detection is integrated into the status callback route so that:
+
+For a Clean Machine inbound call that ends without human answer:
+
+A missed call event is created.
+
+This event can trigger an SMS (see step 4).
+
+RESTORE / ENSURE MISSED CALL SMS
+
+4.1. Identify the per-tenant SMS settings:
+
+E.g., some table like:
+
+notification_settings
+
+tenant_telephony_settings
+
+Look for keys like:
+
+missed_call_sms_enabled
+
+missed_call_template
+
+4.2. Implement or fix the missed call SMS sending:
+
+For root tenant Clean Machine:
+
+If missed-call SMS is enabled:
+
+Use the correct SMS sending helper (Twilio, etc.).
+
+Use the correct tenant phone (the one Twilio is configured for).
+
+Use a template such as:
+
+“Hey {name}, sorry we missed your call! This is Clean Machine Auto Detail. You can text here or tap to book: {booking_link}”
+
+Make sure:
+
+This SMS is sent when a missed call event is detected AND
+
+No AI voicemail reply has already been sent for that call (see step 6).
+
+4.3. Add logging in dev mode:
+
+When a missed-call SMS is queued or skipped:
+
+Log:
+
+tenantId
+
+caller phone
+
+reason (e.g., “sent generic missed call SMS” or “skipped because AI reply was sent”).
+
+FIX OR CONFIRM VOICEMAIL TRANSCRIPTION → AI REPLY PATH
+
+5.1. Find the code that handles the voicemail recording/transcription webhook:
+
+It should receive:
+
+RecordingUrl
+
+RecordingSid
+
+TranscriptionText (if transcription is enabled)
+
+Possibly CallSid, From, To
+
+5.2. Confirm that this handler:
+
+Attaches the voicemail & transcription to the conversation DB:
+
+e.g. conversations + messages tables
+
+Marks the conversation as needing human follow-up AND/OR
+
+Triggers an AI summary and reply.
+
+5.3. If there is an AI pipeline (OpenAI) for voicemail:
+
+Confirm it is called with the transcription text.
+
+Confirm it builds an SMS reply like:
+
+“Hey {name}, I heard your voicemail about {summary}. Here’s what we can do: …”
+
+5.4. If the AI reply path is present but disabled or swallowed by errors:
+
+Add proper error handling:
+
+Log OpenAI errors clearly.
+
+If AI fails:
+
+Fallback to a generic missed call SMS.
+
+5.5. If no AI voicemail reply exists yet:
+
+Create a simple service such as voicemailReplyService.ts:
+
+ts
+Copy code
+export async function sendAiReplyForVoicemail(params: {
+  tenantDb: Database;
+  tenantId: string;
+  from: string;        // caller
+  to: string;          // your Twilio number
+  transcription: string;
+}) {
+  // 1. Build prompt including transcription
+  // 2. Call OpenAI
+  // 3. Get a concise SMS-safe reply
+  // 4. Send SMS through existing SMS service with correct tenant config
+  // 5. Record the outbound message to the conversation history
+}
+Wire it into the transcription callback handler.
+
+PRIORITY: AI REPLY VS GENERIC MISSED CALL SMS
+
+6.1. Ensure the logic follows this priority for a call that ended in voicemail:
+
+If a voicemail with transcription exists and AI reply is enabled:
+
+Try to send AI voicemail reply SMS.
+
+If AI reply SENT successfully:
+
+Mark the call/conversation as “responded_by_ai”.
+
+Do NOT send generic missed-call SMS.
+
+If AI reply FAILED (OpenAI error, or no transcription text):
+
+Fallback: send a generic missed-call SMS.
+
+Mark as “responded_generic”.
+
+If the call ended with no voicemail/transcription but was still missed:
+
+Send generic missed-call SMS (if enabled).
+
+6.2. Implement a simple guard (in DB or code) so that for each CallSid or conversation:
+
+Only one outgoing automated SMS is sent in this missed-call/voicemail pipeline.
+
+This can be as simple as updating a callEvents or conversation flag like:
+
+last_auto_reply_type: 'ai' | 'generic' | null.
+
+MULTI-TENANT INTEGRATION
+
+7.1. Confirm that all of the above uses the correct tenant:
+
+Map the inbound To number to a tenant record:
+
+tenantId, telephonyConfig, SMS templates, etc.
+
+For the Clean Machine root tenant (tenantId = 'root'):
+
+Ensure that:
+
+The correct Twilio phone is used as the sender.
+
+The correct “missed call SMS” + “AI voicemail SMS” templates are used.
+
+Any per-tenant flags (like “enable_missed_call_sms”) are set so that the feature is active.
+
+7.2. Make sure the code is safe for other tenants:
+
+If a tenant has not configured missed call SMS or AI voicemail reply:
+
+Do not send SMS, or use safe defaults.
+
+Do not throw errors if telephony config is incomplete; log and skip instead.
+
+TESTING (DEV + LOGGING)
+
+8.1. In dev, simulate the full flow:
+
+Inbound call to Clean Machine number.
+
+Route to voicemail.
+
+Provide a fake transcription callback with test text.
+
+Verify:
+
+A new conversation or message is created with the transcription.
+
+Exactly one automated SMS is queued:
+
+Preferably AI reply using the transcription.
+
+Logs clearly show the decision path.
+
+8.2. Add targeted logs (keep them safe for production):
+
+When transcription webhook is received:
+
+Log: tenantId, caller, transcription length.
+
+When AI voicemail reply is attempted:
+
+Log: “AI voicemail reply attempted” and success/failure.
+
+When generic missed call SMS is used:
+
+Log: “Fallback: generic missed call SMS for CallSid X”.
+
+ANSWERING USER’S QUESTIONS EXPLICITLY
+
+Internally, add code comments noting:
+
+Publishing:
+
+Twilio webhooks hit the deployed app. New missed-call/voicemail-SMS logic only goes live after publishing.
+
+Transcription:
+
+If Twilio transcription is disabled or failing, AI reply cannot be generated.
+
+In that case, generic missed-call SMS is used as fallback (step 6).
+
+DOCUMENTATION
+
+10.1. Update replit.md with a “Voicemail & Missed Call SMS” section:
+
+Describe the decision tree:
+
+Missed call detected → voicemail? → transcription? → AI reply vs generic SMS.
+
+Note the telephony config flags required for Clean Machine.
+
+Note that the flow is tenant-aware and uses the correct phone + templates.
+
+CONSTRAINTS
+Do NOT break existing IVR / routing behavior (existing call menus must still work).
+
+Do NOT send duplicate SMS for the same missed call/voicemail.
+
+Keep all AI/OpenAI interactions wrapped with robust error handling and logging.
