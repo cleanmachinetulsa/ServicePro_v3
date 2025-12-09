@@ -9,6 +9,28 @@ ServicePro is a multi-tenant, white-label SaaS platform that transforms service 
 
 ## Recent Changes (December 2024)
 
+### CM-VOICEMAIL-MISSED-CALL-SMS-FIX: Atomic SMS Deduplication for Voicemail (Dec 9, 2024)
+1. **Problem Solved**: Prevented double-texting when callers leave voicemails or hang up without leaving a message.
+
+2. **Key Files**:
+   - `shared/schema.ts`: Added `call_sms_state` table with unique constraint on `callSid`
+   - `server/routes.twilioVoiceIvr.ts`: Implemented atomic `claimSmsForCall()` function
+
+3. **Deduplication Pattern**: Uses atomic "claim first, then send" approach:
+   - `claimSmsForCall(callSid, tenantId, smsType, recipientPhone)` atomically INSERTs a row
+   - Returns `true` if insert succeeded (claim won), `false` if already claimed
+   - Both handlers call claimSmsForCall() BEFORE sending any SMS
+   - Database unique constraint guarantees exactly one SMS per caller
+
+4. **Flow**:
+   - Short recordings (<3s): `handleRecordingStatus` claims + sends missed call SMS
+   - Empty transcription (silent voicemail): `handleVoicemailTranscribed` claims + sends missed call SMS
+   - Valid transcription: `handleVoicemailTranscribed` claims + sends AI reply (or fallback)
+
+5. **Multi-Tenant Support**: SMS messages use tenant-specific `businessName` and `bookingUrl` from `tenantConfig`.
+
+6. **Guarantees**: Race-condition-free, multi-instance safe, works across server restarts.
+
 ### CM-WELCOME-BACK-TOKENS: Personalized Rewards Links in Campaigns (Dec 9, 2024)
 1. **Personalized Rewards Token Integration**: Welcome Back campaigns now include personalized HMAC-signed rewards links for each customer.
 
