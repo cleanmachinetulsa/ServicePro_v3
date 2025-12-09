@@ -7,28 +7,33 @@ import { asc } from 'drizzle-orm';
 import { getCampaignContextForCustomer, getCustomerIdFromPhone, getCustomerIdFromEmail } from './services/campaignContextService';
 
 /**
- * SECURITY: Web chat conversation processor with privilege restrictions
+ * Web chat conversation processor - NOW WITH SCHEDULING SUPPORT
  * 
- * Anonymous web chat users can:
+ * Web chat users CAN:
  * - Ask questions about services
  * - Get general information
  * - Chat about detailing topics
+ * - CHECK AVAILABILITY (uses same calendar tools as SMS)
+ * - Get real time slots from Google Calendar
  * 
- * Anonymous web chat users CANNOT:
- * - Book appointments (redirect to phone/booking page)
+ * Web chat users CANNOT:
+ * - Create appointments directly (need phone for confirmation)
  * - Access customer database
  * - Trigger SMS/email sends
- * - Access pricing that requires customer lookup
  */
 
-// List of privileged function names that require customer verification
+// Functions that web chat CAN use (read-only scheduling info)
+const WEB_ALLOWED_FUNCTIONS = [
+  'get_available_slots',  // Can check availability
+  'get_upsell_offers',    // Can see upsell options
+];
+
+// Functions that REQUIRE verified identity (phone/SMS)
 const PRIVILEGED_FUNCTIONS = [
   'check_customer_database',
   'validate_address',
-  'get_available_slots',
   'create_appointment',
   'build_booking_summary',
-  'get_upsell_offers',
   'request_damage_photos',
   'request_specialty_quote',
   'add_appointment_notes',
@@ -55,7 +60,8 @@ export async function processConversation(
 }
 
 /**
- * RESTRICTED: Web chat processor - information only, no privileged actions
+ * Web chat processor - NOW WITH SCHEDULING/AVAILABILITY SUPPORT
+ * Uses the same AI tools as SMS agent for checking calendar availability
  */
 async function processWebChatConversation(
   tenantDb: TenantDb,
@@ -63,34 +69,11 @@ async function processWebChatConversation(
   message: string
 ): Promise<{ response: string }> {
   
-  // Detect booking intent
-  const bookingKeywords = [
-    'book', 'schedule', 'appointment', 'available', 'calendar',
-    'slot', 'time', 'date', 'when can', 'availability'
-  ];
-  
-  const hasBookingIntent = bookingKeywords.some(keyword => 
-    message.toLowerCase().includes(keyword)
-  );
-  
-  if (hasBookingIntent) {
-    // Redirect to proper booking channel
-    return {
-      response: `I'd be happy to help you book an appointment! 
-
-For the fastest service, you have 3 options:
-
-📱 **Call Us:** (918) 856-5304
-📅 **Online Booking:** Visit our booking page for real-time availability
-💬 **Text Us:** Send us a text at (918) 856-5304 and we'll get you scheduled right away
-
-Is there anything else I can help you with regarding our services or pricing?`
-    };
-  }
+  const tenantId = tenantDb.tenantId;
   
   // Get campaign context for AI awareness (if we can identify the customer)
   let customerId: number | null = null;
-  let campaignContext = { hasRecentCampaign: false };
+  let campaignContext: any = { hasRecentCampaign: false };
   
   try {
     // Try to identify customer from identifier (could be phone or email)
@@ -101,7 +84,6 @@ Is there anything else I can help you with regarding our services or pricing?`
     }
     
     if (customerId) {
-      const tenantId = tenantDb.tenantId;
       campaignContext = await getCampaignContextForCustomer({
         tenantDb,
         tenantId,
@@ -112,101 +94,59 @@ Is there anything else I can help you with regarding our services or pricing?`
     console.error('[WEB CHAT] Error loading campaign context:', error);
   }
   
-  // For general questions, use AI with restricted system prompt
+  // Get conversation history - simplified query without relations to avoid Drizzle issues
+  let conversationHistory: Array<{ content: string; role: 'user' | 'assistant'; sender: string; metadata: Record<string, any> | null }> = [];
+  
   try {
-    let restrictedPrompt = `You are a helpful assistant for Clean Machine Auto Detail's website.
+    // Try to find existing conversation and get messages
+    const conv = await tenantDb
+      .select()
+      .from(conversations)
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)))
+      .limit(1);
     
-You can answer questions about:
-- Services and pricing
-- What's included in each package
-- General detailing information
-- Business hours and service area
-- Care tips and recommendations
-
-CRITICAL RESTRICTIONS:
-- You CANNOT book appointments through this chat
-- You CANNOT access customer information
-- You CANNOT provide personalized quotes without photos
-- If someone wants to book, direct them to call (918) 856-5304 or use the online booking system
-- Keep responses concise and helpful`;
-
-    // Inject campaign awareness if available
-    if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
-      restrictedPrompt += `
-
-CAMPAIGN CONTEXT:
-- This customer recently received the "${campaignContext.campaignName}" campaign.
-- Bonus points from campaign: ${campaignContext.bonusPointsFromCampaign ?? 'N/A'}
-- Current total points: ${campaignContext.currentPoints ?? 'unknown'}
-
-If they mention the campaign, your message, or bonus points:
-- Acknowledge the campaign offer positively
-- Briefly explain how points work
-- Direct them to call or text to redeem: (918) 856-5304`;
+    if (conv.length > 0) {
+      const msgs = await tenantDb
+        .select()
+        .from(messagesTable)
+        .where(eq(messagesTable.conversationId, conv[0].id))
+        .orderBy(asc(messagesTable.timestamp))
+        .limit(15);
+      
+      conversationHistory = msgs.map((msg) => ({
+        content: msg.content,
+        role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
+        sender: msg.sender,
+        metadata: msg.metadata as Record<string, any> | null
+      }));
     }
+  } catch (historyError) {
+    console.error('[WEB CHAT] Error loading conversation history:', historyError);
+    // Continue without history - AI will still work
+  }
 
-    restrictedPrompt += `
-
-Customer message: ${message}`;
-
-    // Get conversation history (lookup by phone for web platform)
-    const conv = await tenantDb.query.conversations.findFirst({
-      where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)),
-      with: {
-        messages: {
-          orderBy: [asc(messagesTable.timestamp)],
-          limit: 10 // Last 10 messages for context
-        }
-      }
-    });
-
-    // Type the messages array explicitly to avoid 'never' inference issue
-    const messages = (conv?.messages ?? []) as (typeof messagesTable.$inferSelect)[];
-    const conversationHistory = messages.map((msg: typeof messagesTable.$inferSelect) => ({
-      content: msg.content,
-      role: msg.sender === 'customer' ? 'user' as const : 'assistant' as const,
-      sender: msg.sender,
-      metadata: msg.metadata as Record<string, any> | null
-    }));
-
-    // After 2-3 message exchanges, ask for contact info to enable booking
-    const customerMessageCount = conversationHistory.filter((m: { sender: string }) => m.sender === 'customer').length;
-    const shouldAskForContact = customerMessageCount >= 2;
+  try {
+    // Use web-enabled AI with READ-ONLY scheduling tools (get_available_slots only)
+    // Web chat can check availability but CANNOT create appointments
+    console.log('[WEB CHAT] Processing with web-safe scheduling AI for tenant:', tenantId);
     
-    // Enhanced prompt with contact collection after rapport building
-    const enhancedPrompt = shouldAskForContact ? 
-      `${restrictedPrompt}
-
-IMPORTANT: The customer has been chatting with you and seems interested. After answering their current question, NATURALLY ask for their phone number or email so you can help them book an appointment or follow up. Be friendly and conversational about it.
-
-Example: "I'd love to help you get this scheduled! What's the best number to text you at? That way I can send you available times and we can get you booked."
-
-Don't be pushy - make it feel like a natural next step to help them.` 
-      : restrictedPrompt;
-
-    // Call AI with NO function calling enabled (information only)
     const response = await generateAIResponse(
-      enhancedPrompt,
+      message,
       identifier,
-      'web',
+      'web',  // Use 'web' platform for read-only scheduling tools
       undefined,
-      conversationHistory
+      conversationHistory,
+      false, // not demo mode
+      tenantId, // Pass tenant ID for proper prompt building
+      'auto' // control mode
     );
 
     return { response: response || 'I apologize, but I had trouble processing that. Could you rephrase your question?' };
     
   } catch (error) {
-    console.error('[WEB CHAT RESTRICTED] Error:', error);
+    console.error('[WEB CHAT] Error:', error);
     return {
-      response: `I'm here to answer questions about our detailing services! 
-
-What would you like to know about:
-- Our service packages and pricing
-- What's included in each detail
-- Service area and availability
-- Detailing tips and recommendations
-
-Or, call us at (918) 856-5304 to book an appointment!`
+      response: `I'm here to help with scheduling and questions about our services! What can I help you with today?`
     };
   }
 }

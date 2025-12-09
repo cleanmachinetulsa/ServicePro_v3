@@ -462,12 +462,34 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 ];
 
 /**
+ * Web Chat Safe Functions - READ-ONLY scheduling tools only
+ * These are the ONLY tools web chat users can access
+ * No appointment creation or customer data modification
+ */
+const WEB_SAFE_FUNCTION_NAMES = ['get_available_slots', 'get_upsell_offers'];
+
+const WEB_SAFE_SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = 
+  SCHEDULING_FUNCTIONS.filter(tool => 
+    WEB_SAFE_FUNCTION_NAMES.includes((tool as any).function?.name)
+  );
+
+/**
  * Execute a function call requested by OpenAI
+ * @param isWebChat - If true, blocks privileged functions for security
  */
 async function executeFunctionCall(
   functionName: string,
-  args: any
+  args: any,
+  isWebChat: boolean = false
 ): Promise<string> {
+  // SECURITY: Block privileged functions for web chat users
+  if (isWebChat && !WEB_SAFE_FUNCTION_NAMES.includes(functionName)) {
+    console.warn(`[SECURITY] Blocked web chat attempt to call privileged function: ${functionName}`);
+    return JSON.stringify({ 
+      error: 'This action requires a verified phone number. Please call or text us at (918) 856-5304 to complete your booking.',
+      blocked: true
+    });
+  }
   try {
     console.log(`[FUNCTION CALL] Executing ${functionName} with args:`, args);
     
@@ -783,6 +805,130 @@ export async function generateAIResponse(
       } catch (smsPromptError) {
         console.error('[AI BEHAVIOR V2] Error with SMS prompt builder, falling back to standard prompt:', smsPromptError);
         // Fall through to standard prompt below
+      }
+    }
+    
+    // WEB CHAT: Use scheduling-enabled AI with READ-ONLY tools
+    if (platform === 'web' && tenantId) {
+      console.log('[WEB CHAT AI] Using web-safe scheduling tools for tenant:', tenantId);
+      
+      try {
+        const { buildSmsSystemPrompt } = await import('./ai/smsAgentPromptBuilder');
+        
+        // Build system prompt (same as SMS but web chat gets restricted tools)
+        const webSystemPrompt = await buildSmsSystemPrompt({ 
+          tenantId, 
+          phoneNumber,
+          conversationState: {},
+          controlMode: 'auto'
+        });
+        
+        // Add web-specific restrictions to the prompt
+        const webRestrictedPrompt = webSystemPrompt + `
+
+IMPORTANT WEB CHAT RESTRICTIONS:
+- You CAN check availability using get_available_slots - this is encouraged!
+- You CAN suggest add-ons using get_upsell_offers
+- You CANNOT create appointments directly (no create_appointment function)
+- When customer wants to book, say: "I've got those times available! To lock in your spot, just text or call us at (918) 856-5304 and we'll confirm your appointment right away."
+- Keep responses friendly and conversational`;
+        
+        // Build messages array
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          { role: "system", content: webRestrictedPrompt }
+        ];
+        
+        // Add conversation history
+        if (conversationHistory && conversationHistory.length > 0) {
+          const recentHistory = conversationHistory.slice(-10);
+          for (const msg of recentHistory) {
+            if (msg.sender === 'customer') {
+              messages.push({ role: "user", content: msg.content });
+            } else if (msg.sender === 'ai') {
+              messages.push({ role: "assistant", content: msg.content });
+            }
+          }
+        }
+        
+        // Add current user message
+        messages.push({ role: "user", content: userMessage });
+        
+        // Iterate with web-safe tools only
+        let currentMessages = [...messages];
+        const MAX_WEB_ITERATIONS = 3; // Fewer iterations for web
+        let iterations = 0;
+        let finalResponse = "";
+        
+        while (iterations < MAX_WEB_ITERATIONS) {
+          iterations++;
+          
+          // Make OpenAI call with WEB-SAFE scheduling functions only
+          const completion = await openai!.chat.completions.create({
+            model: SMS_AGENT_MODEL,
+            messages: currentMessages,
+            tools: WEB_SAFE_SCHEDULING_FUNCTIONS, // Only get_available_slots and get_upsell_offers
+            tool_choice: "auto",
+            max_completion_tokens: 400,
+          });
+          
+          // Log usage
+          try {
+            if (tenantId) {
+              const { recordAiMessage } = await import('./usage/usageRecorder');
+              const inputTokens = completion.usage?.prompt_tokens || 0;
+              const outputTokens = completion.usage?.completion_tokens || 0;
+              void recordAiMessage(tenantId, inputTokens + outputTokens, {
+                model: SMS_AGENT_MODEL,
+                inputTokens,
+                outputTokens,
+                platform: 'web',
+                iteration: iterations,
+              });
+            }
+          } catch (err) {
+            console.error('[WEB AI USAGE LOG] Error:', err);
+          }
+          
+          const responseMessage = completion.choices[0].message;
+          currentMessages.push(responseMessage);
+          
+          // If no tool calls, we have final response
+          if (!responseMessage.tool_calls || responseMessage.tool_calls.length === 0) {
+            finalResponse = responseMessage.content || "I'm here to help! What can I answer for you?";
+            console.log(`[WEB CHAT AI] Final response after ${iterations} iteration(s)`);
+            break;
+          }
+          
+          // Execute tool calls with isWebChat=true for security
+          console.log(`[WEB CHAT AI] Executing ${responseMessage.tool_calls.length} tool call(s) in iteration ${iterations}`);
+          for (const toolCall of responseMessage.tool_calls) {
+            const functionName = toolCall.function.name;
+            const functionArgs = JSON.parse(toolCall.function.arguments);
+            
+            console.log(`[WEB CHAT AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
+            
+            // SECURITY: Pass isWebChat=true to block privileged functions
+            const functionResult = await executeFunctionCall(functionName, functionArgs, true);
+            
+            currentMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: functionResult
+            });
+          }
+        }
+        
+        if (!finalResponse) {
+          console.warn(`[WEB CHAT AI] Reached max iterations without final response`);
+          finalResponse = "I'm here to help with scheduling and questions! Call or text us at (918) 856-5304 anytime.";
+        }
+        
+        console.log(`[WEB CHAT AI] Generated response (${finalResponse.length} chars)`);
+        return finalResponse;
+        
+      } catch (webChatError) {
+        console.error('[WEB CHAT AI] Error:', webChatError);
+        // Fall through to standard prompt
       }
     }
     
