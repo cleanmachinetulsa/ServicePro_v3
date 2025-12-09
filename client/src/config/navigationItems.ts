@@ -82,6 +82,7 @@ export const OWNER_ONLY_NAV_IDS = [
   'parser-history',
   'root-admin-usage',
   'admin-usage',
+  'support-issues',
 ];
 
 /**
@@ -519,6 +520,15 @@ export const navigationItems: NavigationItem[] = [
     path: '/admin/system-usage',
     badge: 'Owner',
     visibility: 'advancedOnly',
+  },
+  {
+    id: 'support-issues',
+    label: 'Support Issues',
+    icon: AlertCircle,
+    path: '/admin/support-issues',
+    badge: 'Owner',
+    visibility: 'advancedOnly',
+    complexity: 'advanced',
   },
   {
     id: 'usage-costs',

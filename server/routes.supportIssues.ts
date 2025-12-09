@@ -14,7 +14,7 @@ import {
   resolveSupportIssue,
   updateIssueStatus,
 } from './services/supportIssuesService';
-import { sendEmail } from './dashboardApi';
+import { sendEmail } from './notifications';
 import { ZodError } from 'zod';
 
 const router = Router();
