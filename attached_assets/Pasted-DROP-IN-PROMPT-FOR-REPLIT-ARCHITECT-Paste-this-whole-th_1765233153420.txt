@@ -1,0 +1,472 @@
+DROP-IN PROMPT FOR REPLIT ARCHITECT
+
+Paste this whole thing into the Replit AI/Architect chat for your ServicePro_v3 repo.
+
+You are modifying the ServicePro_v3 repo to FIX a root-tenant routing bug.
+
+CONTEXT (IMPORTANT):
+
+- The "root" tenant = Clean Machine (tenantId = "root").
+- The root tenant should use the older, RICH admin pages:
+  - /dashboard
+  - /customer-database
+  - /rewards
+  - /admin/scheduling
+  - /admin/homepage-editor
+  - /admin/public-site-settings
+  - /admin/public-site-theme
+  - /admin/gallery-management
+  - /admin/banner-management
+  - /referrals
+  - /analytics
+  - /billing
+  - /admin/usage-dashboard
+  - /admin/billing-usage
+  - /admin/concierge-setup
+  - /admin/setup-copilot
+  - /admin/tenants
+  - /admin/phone-config
+  - /admin/ivr-config
+  - /admin/system-usage
+  - /admin/usage-costs
+  - /root/system-usage
+  - /admin/billing-overview
+  - /admin/migration-wizard
+  - /admin/import-history
+  - /admin/parser-history
+  - /admin/employees
+  - /admin/quote-requests
+  - /admin/applications
+  - /admin/pto
+  - /admin/support-tickets
+  - /admin/theme-gallery
+  - etc. (see App.tsx)
+
+- NEW tenants should use the newer `/settings/:section?/:item?` SettingsWorkspace UI for configuration.
+
+- Currently, clicking "Settings" in the sidebar sends EVERYONE (including root) into the new SettingsWorkspace, which shows generic/empty panels instead of Jody’s original rich Clean Machine pages.
+
+
+=====================================
+TASK 1 – Create a LEGACY ROUTE REGISTRY
+=====================================
+
+1. Open `client/src/App.tsx`.
+
+2. Create a new file:
+
+   - `client/src/config/legacyRoutes.ts`
+
+3. In that file, export a **typed registry** of the important legacy admin/config routes that already exist in App.tsx. Use ONLY routes that actually exist in the router.
+
+   Example (you MUST base this on App.tsx – adjust if names differ):
+
+   ```ts
+   // client/src/config/legacyRoutes.ts
+
+   export const LEGACY_ROUTE_REGISTRY = {
+     // Core
+     dashboard: "/dashboard",
+
+     // Customer Management
+     customerDatabase: "/customer-database",
+     serviceHistory: "/service-history",
+     rewards: "/rewards",
+
+     // Scheduling & Operations
+     scheduling: "/admin/scheduling",
+     technicianHub: "/technician",
+     damageAssessment: "/damage-assessment",
+
+     // Marketing & Content
+     homepageEditor: "/admin/homepage-editor",
+     publicSiteSettings: "/admin/public-site-settings",
+     publicSiteTheme: "/admin/public-site-theme",
+     galleryManagement: "/admin/gallery-management",
+     bannerManagement: "/admin/banner-management",
+     referrals: "/referrals",
+     galleryPublic: "/gallery",
+
+     // Reports & Analytics
+     analytics: "/analytics",
+     callMetrics: "/call-metrics",
+
+     // Finance & Usage
+     billing: "/billing",
+     usageDashboard: "/admin/usage-dashboard",
+     billingUsage: "/admin/billing-usage",
+     adminBilling: "/admin/billing",
+     adminSystemBilling: "/admin/system-billing",
+     adminSystemUsage: "/admin/system-usage",
+     adminSystemUsageV2: "/admin/system-usage-v2",
+     rootSystemUsage: "/root/system-usage",
+     usageCosts: "/admin/usage-costs",
+     billingOverview: "/admin/billing-overview",
+
+     // Multi-tenant / Owner tools
+     conciergeSetup: "/admin/concierge-setup",
+     setupCopilot: "/admin/setup-copilot",
+     tenants: "/admin/tenants",
+     phoneConfig: "/admin/phone-config",
+     ivrConfig: "/admin/ivr-config",
+     themeGallery: "/admin/theme-gallery",
+     migrationWizard: "/admin/migration-wizard",
+     importHistory: "/admin/import-history",
+     parserHistory: "/admin/parser-history",
+
+     // Workforce / Jobs
+     employees: "/admin/employees",
+     quoteRequests: "/admin/quote-requests",
+     applications: "/admin/applications",
+     ptoManagement: "/admin/pto",
+
+     // Technician portal
+     techSchedule: "/tech/schedule",
+     techPto: "/tech/pto",
+     techOpenShifts: "/tech/open-shifts",
+     techShiftTrades: "/tech/shift-trades",
+
+     // Support
+     supportCenter: "/support",
+     adminSupportTickets: "/admin/support-tickets",
+
+     // Business / Settings
+     businessSettings: "/business-settings",
+     phoneSettings: "/phone-settings",
+     facebookSettings: "/facebook-settings",
+     notificationsSettings: "/notifications-settings",
+     securitySettings: "/security-settings",
+   } as const;
+
+   export type LegacyRouteKey = keyof typeof LEGACY_ROUTE_REGISTRY;
+
+
+This registry is just a map of semantic keys → ACTUAL paths from App.tsx.
+
+Do NOT invent new paths; use only what App.tsx already has.
+
+=================================================
+TASK 2 – Expose getCurrentTenantId in tenantRouting
+
+We want a simple way on the frontend to know “am I the root tenant?”.
+
+Open client/src/utils/tenantRouting.ts (it already exists; it’s imported as isRootTenant elsewhere).
+
+If there is ALREADY some helper that returns the current tenantId, just re-export it as getCurrentTenantId.
+
+If there is NOT, then:
+
+Implement getCurrentTenantId using the SAME mechanism that isRootTenant uses. For example, if isRootTenant checks authContext.user.tenantId === 'root' or reads it from a global, use that same source.
+
+Example shape (adapt to real implementation):
+
+let cachedTenantId: string | undefined;
+
+export function getCurrentTenantId(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  // If tenant is exposed on window
+  // @ts-expect-error - injected at runtime
+  if (window.__TENANT_ID__) {
+    cachedTenantId = window.__TENANT_ID__;
+    return cachedTenantId;
+  }
+
+  return cachedTenantId;
+}
+
+
+The exact implementation should follow how the app already knows the tenant. The point is: provide some stable, shared way to ask “what tenant is this UI on?”
+
+=====================================================
+TASK 3 – Make navigation tenant-aware using the registry
+
+We now want the nav to be able to say:
+
+“If I’m root, send me to the legacy route from the registry”
+
+Otherwise, send to the existing path (e.g. /settings/...).
+
+Open client/src/config/navigationItems.ts.
+
+At the top, import:
+
+import { LEGACY_ROUTE_REGISTRY, LegacyRouteKey } from "@/config/legacyRoutes";
+import { getCurrentTenantId } from "@/utils/tenantRouting";
+
+
+Add a helper function above the navigationItems export:
+
+function cmOrDefault<K extends LegacyRouteKey>(
+  key: K,
+  defaultPath: string
+): string {
+  try {
+    const tenantId = getCurrentTenantId?.();
+    if (tenantId === "root") {
+      return LEGACY_ROUTE_REGISTRY[key] ?? defaultPath;
+    }
+    return defaultPath;
+  } catch {
+    return defaultPath;
+  }
+}
+
+
+Now update ONLY the Settings & Administration section of navigationItems so that for the root tenant, key entries use legacy routes instead of /settings/....
+
+Specifically, change these items:
+
+{
+  id: 'settings',
+  label: 'Settings',
+  icon: Settings,
+  path: '/settings',
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'ui-mode',
+  label: 'Interface Mode',
+  icon: SlidersHorizontal,
+  path: '/settings/ui-mode',
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'dashboard-customize',
+  label: 'Customize Dashboard',
+  icon: LayoutDashboard,
+  path: '/settings/dashboard/customize',
+  complexity: 'advanced',
+},
+{
+  id: 'settings-billing',
+  label: 'Billing & Usage',
+  icon: CreditCard,
+  path: '/settings/billing',
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'settings-addons',
+  label: 'My Add-Ons',
+  icon: Package,
+  path: '/settings/billing/addons',
+  complexity: 'advanced',
+},
+{
+  id: 'settings-domains',
+  label: 'Custom Domains',
+  icon: Globe,
+  path: '/settings/domains',
+  visibility: 'advancedOnly',
+  complexity: 'expert',
+},
+{
+  id: 'business-settings',
+  label: 'Business Settings',
+  icon: Building2,
+  path: '/business-settings',
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'user-management',
+  label: 'User Management',
+  icon: UserCog,
+  path: '/user-management',
+  complexity: 'advanced',
+},
+{
+  id: 'security',
+  label: 'Security',
+  icon: Shield,
+  path: '/security-settings',
+  complexity: 'advanced',
+},
+{
+  id: 'notifications-settings',
+  label: 'Notifications',
+  icon: Bell,
+  path: '/notifications-settings',
+  complexity: 'advanced',
+},
+{
+  id: 'phone-settings',
+  label: 'Phone Settings',
+  icon: Phone,
+  path: '/phone-settings',
+  visibility: 'advancedOnly',
+  complexity: 'expert',
+},
+{
+  id: 'email-settings',
+  label: 'Email Settings',
+  icon: Mail,
+  path: '/settings/email',
+  visibility: 'advancedOnly',
+  complexity: 'expert',
+},
+{
+  id: 'a2p-campaign',
+  label: 'SMS Compliance',
+  icon: Shield,
+  path: '/settings/a2p',
+  visibility: 'advancedOnly',
+  complexity: 'expert',
+},
+
+
+Update ONLY the path values with cmOrDefault(...) where a meaningful legacy route exists.
+
+Example mappings:
+
+{
+  id: 'settings',
+  label: 'Settings',
+  icon: Settings,
+  // Root: go to business settings hub; Others: existing /settings workspace
+  path: cmOrDefault('businessSettings', '/settings'),
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'settings-billing',
+  label: 'Billing & Usage',
+  icon: CreditCard,
+  path: cmOrDefault('billingUsage', '/settings/billing'),
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'business-settings',
+  label: 'Business Settings',
+  icon: Building2,
+  path: cmOrDefault('businessSettings', '/business-settings'),
+  complexity: 'simple',
+  simpleDefault: true,
+},
+{
+  id: 'phone-settings',
+  label: 'Phone Settings',
+  icon: Phone,
+  path: cmOrDefault('phoneSettings', '/phone-settings'),
+  visibility: 'advancedOnly',
+  complexity: 'expert',
+},
+{
+  id: 'notifications-settings',
+  label: 'Notifications',
+  icon: Bell,
+  path: cmOrDefault('notificationsSettings', '/notifications-settings'),
+  complexity: 'advanced',
+},
+{
+  id: 'security',
+  label: 'Security',
+  icon: Shield,
+  path: cmOrDefault('securitySettings', '/security-settings'),
+  complexity: 'advanced',
+},
+
+
+For items like ui-mode, dashboard-customize, settings-addons, settings-domains, email-settings, a2p-campaign there is no legacy route, so you can leave their path as-is (no cmOrDefault needed). Root can still use these new pages.
+
+Goal: For root:
+
+Clicking “Settings” now sends them to the richer /business-settings page, NOT the blank-ish /settings workspace.
+
+Billing / phone / notifications / security use their legacy pages via the registry.
+
+For all non-root tenants, navigation behaves exactly as before.
+
+=========================================================
+TASK 4 – Guard any “URL normalization” for root tenant only
+
+The earlier “URL flapping” came from aggressive normalization (e.g. forcing any /settings/... to /settings/operations/services).
+
+Open:
+
+client/src/pages/settings-admin.tsx
+
+client/src/components/SettingsWorkspace.tsx
+
+In both files, look for any logic that automatically calls setLocation('/settings/...') or rewrites the current settings URL on mount.
+
+Things like:
+
+useEffect(() => {
+  // If no section/item set, redirect to default:
+  setLocation('/settings/operations/services', { replace: true });
+}, [...]);
+
+
+Wrap those normalization effects so they DO NOT run for the root tenant:
+
+import { getCurrentTenantId } from '@/utils/tenantRouting';
+
+useEffect(() => {
+  const tenantId = getCurrentTenantId?.();
+  if (tenantId === 'root') {
+    // For Clean Machine, DO NOT force-normalize settings URLs
+    return;
+  }
+
+  // existing normalization logic...
+}, [...]);
+
+
+This ensures:
+
+Other tenants still get the nice auto-default settings behavior.
+
+Root tenant is never forced back into /settings/... when they are trying to use legacy pages.
+
+==================
+TASK 5 – Verification
+
+After changes:
+
+Log in as root / Clean Machine admin.
+
+Confirm the root tenant has tenantId "root" (debug logs are fine).
+
+Click through sidebar:
+
+Dashboard → /dashboard (no change)
+
+Messages → /messages (no change)
+
+Customer Database → /customer-database (no change)
+
+Scheduling → /admin/scheduling (no change)
+
+Website Design → /admin/homepage-editor (no change)
+
+Phone Config → /admin/phone-config
+
+IVR Configurator → /admin/ivr-config
+
+Billing & Usage (under “Finance”) → /admin/billing-usage
+
+Settings (under “Settings & Administration”) → SHOULD NOW go to /business-settings (legacy rich hub) for root; others still use /settings.
+
+Confirm:
+
+No more URL “flapping”.
+
+Root sees their old, populated Clean Machine content on those admin pages.
+
+Non-root tenants still see the new SettingsWorkspace.
+
+Do NOT delete SettingsWorkspace or /settings routes.
+You are ONLY:
+
+Adding legacyRoutes.ts,
+
+Exposing getCurrentTenantId from tenantRouting,
+
+Using cmOrDefault for key nav items,
+
+Guarding settings URL normalization from running for tenantId === "root".
