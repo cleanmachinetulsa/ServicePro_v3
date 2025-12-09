@@ -1,0 +1,128 @@
+Concrete E2E test script (you can literally follow this list)
+
+I’ll assume:
+
+Custom domain: https://cleanmachinetulsa.com
+
+Root tenant = Clean Machine
+
+You’re logged in as your main owner account in one browser, and using incognito as a fake customer.
+
+1. Booking + SMS + Email confirmation
+
+Goal: Customer can book online, you get the job, they get SMS + email.
+
+Incognito window → customer side
+
+Go to your main booking entry (/book or whatever the Clean Machine homepage “Book Now” button links to).
+
+Book a test job under a fake name & your real email/phone (so you receive the messages).
+
+Check SMS
+
+You should get a booking confirmation SMS as defined in your templates.
+
+Check Email
+
+You should get a booking confirmation email:
+
+From name: “Clean Machine Auto Detail”
+
+Reply-To: info@cleanmachinetulsa.com
+
+Sender might be notify@servicepro.app or similar—that’s fine as long as it’s consistent.
+
+Back office
+
+Log into the admin dashboard.
+
+Verify the job appears in:
+
+Today / upcoming jobs list
+
+Conversation / customer history if you already link those.
+
+If email fails here: that’s the first place we fix.
+
+2. Missed call + voicemail + smart SMS reply
+
+Goal: Prove the voicemail → AI reply still works for Clean Machine after multi-tenant changes.
+
+From your real phone, call your Clean Machine Twilio number.
+
+Don’t answer, let it roll to voicemail, and leave a real question like:
+
+“Hey, do you have any openings Friday morning? I have a 2018 Camry that needs full interior detail.”
+
+Wait ~30–60s and check:
+
+Do you get the standard missed call SMS?
+
+Do you get a second, more specific SMS referencing the voicemail content (time / service)?
+
+In the admin UI:
+
+Does a conversation thread exist with:
+
+The voicemail transcription
+
+The AI reply
+
+Correct customer phone number
+
+Confirm that thread is clearly labeled as voicemail vs plain SMS.
+
+If you only see the generic missed call SMS and no custom voicemail response, then the voicemail pipeline needs attention.
+
+3. Points welcome landing + booking
+
+(once that drop-in finishes)
+
+In the admin, generate or copy a customer points link that includes a token.
+Format should look like:
+
+https://cleanmachinetulsa.com/rewards/welcome?token=XYZ
+
+Paste that link into an incognito window.
+
+Confirm:
+
+Page loads with your branding.
+
+It shows the test customer name (or at least something friendly).
+
+Points balance is visible.
+
+Reward options show up.
+
+Book Now leads to the booking flow AND the tenant/branding stays Clean Machine.
+
+If you already wired this into your apology SMS campaign, send a test SMS to yourself and click the link from the text too.
+
+4. Email “resolution” flow (post support-issue)
+
+Once SP-Support-A is built & email is working:
+
+Force a minor error through the setup/support assistant (e.g. intentionally misconfigure something simple).
+
+Confirm:
+
+The assistant logs a support_issues record.
+
+The admin panel shows it.
+
+Use the admin UI to mark it resolved.
+
+Confirm:
+
+A “we fixed it” email goes to the affected user:
+
+Explains what was broken,
+
+What you changed,
+
+Reassures that it’s working now,
+
+Invites them to reply or chat if anything still feels off.
+
+(We can write that email template once email is confirmed working.)

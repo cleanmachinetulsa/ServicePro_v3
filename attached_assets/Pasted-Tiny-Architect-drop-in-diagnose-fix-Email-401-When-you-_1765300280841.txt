@@ -1,0 +1,110 @@
+Tiny Architect drop-in: diagnose & fix Email 401
+
+When you’re ready, here’s a small prompt you can paste into Architect specifically to fix email settings:
+
+PROMPT TITLE: SP-EMAIL-FIX-CLEAN-MACHINE
+
+You are modifying the ServicePro_v3 repo.
+
+Goal: Fix the Email Settings save endpoint so that the Clean Machine tenant (root) can:
+
+Save “From Name” and “Reply-To” in /settings/email, and
+
+Actually send booking / reminder / support emails.
+
+Constraints:
+
+Do not break multi-tenant isolation.
+
+Do not expose platform-wide email credentials to tenants.
+
+Keep using the existing email provider and env vars (e.g. SendGrid).
+
+Tasks
+
+Find the Email Settings route & guard
+
+Locate the backend routes that handle email settings:
+
+Likely named server/routes.settings.email.ts, routes.emailSettings.ts or similar.
+
+Identify:
+
+The URL path (e.g. /api/settings/email).
+
+What auth/role guard is used (requireAuth, requireTenantOwner, requirePlatformAdmin, etc.).
+
+Find where the 401 {"success":false,"message":"Unauthorized"} is thrown.
+
+Correct the authorization logic
+
+Behavior we want:
+
+A tenant owner/manager for Clean Machine can update their tenant’s email profile (From Name, Reply-To).
+
+Platform-level credentials (SendGrid key, sender domain, etc.) remain protected and only editable by platform admins.
+
+If the route is currently using a platform-admin-only guard, refactor so that:
+
+Platform email config is stored/managed in a separate route (if not already).
+
+/api/settings/email (or the tenant-level route) reads platform config but only writes tenant-specific profile fields.
+
+Make sure the route returns 403 for truly forbidden roles and 401 only when not authenticated.
+
+Wire tenant email profile correctly
+
+Confirm where tenant-level email profile is stored (e.g. tenant_notification_settings, tenant_email_profiles, etc.).
+
+Ensure the Save Settings call in /settings/email updates the correct row keyed by tenant_id.
+
+If needed, add a small tenant_email_profiles table with:
+
+tenant_id (PK / FK)
+
+from_name
+
+reply_to_email
+
+updated_at
+
+Make sure Clean Machine’s owner can read/write their own profile.
+
+Send test email endpoint
+
+If there isn’t one already, add a POST /api/settings/email/test endpoint that:
+
+Uses the current tenant’s email profile + platform email configuration,
+
+Sends a simple “Test email from ServicePro / Clean Machine” to the current user’s email.
+
+Only accessible to authenticated tenant owners/managers.
+
+Frontend
+
+Update the /settings/email page to:
+
+Use the tenant-level profile fields (From Name, Reply-To).
+
+Show a “Send Test Email” button that calls /api/settings/email/test and shows a success/error toast.
+
+Handle 403/401 gracefully (toast: “You don’t have permission to change platform email settings. Contact support.”)
+
+Validation & tests
+
+Add basic validation for email address format.
+
+Add a small integration or e2e test that:
+
+Logs in as Clean Machine owner,
+
+Saves email profile,
+
+Calls “Send Test Email” and asserts a 200 OK from the API.
+
+Do not change anything related to SMS sending or Twilio configuration.
+Only make the minimal changes required to:
+
+Stop the 401 error when saving email settings for Clean Machine
+
+Allow sending a test and real emails using the existing provider.
