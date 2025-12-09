@@ -461,7 +461,7 @@ export default function AdminConciergeSetup() {
                         <RadioGroup
                           onValueChange={field.onChange}
                           defaultValue={field.value}
-                          className="grid grid-cols-4 gap-3"
+                          className="grid grid-cols-2 md:grid-cols-4 gap-3"
                         >
                           <div>
                             <RadioGroupItem
@@ -471,12 +471,13 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="starter"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer h-full"
                               data-testid="radio-tier-starter"
                             >
                               <span className="text-base font-semibold">Starter</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                                Basic
+                              <span className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">$49/mo</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                                SMS + booking website, 1 user
                               </span>
                             </Label>
                           </div>
@@ -488,12 +489,13 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="pro"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-blue-500 [&:has([data-state=checked])]:border-blue-500 cursor-pointer h-full"
                               data-testid="radio-tier-pro"
                             >
                               <span className="text-base font-semibold">Pro</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                                Advanced
+                              <span className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-1">$99/mo</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                                AI SMS agent + IVR, 3 users
                               </span>
                             </Label>
                           </div>
@@ -505,12 +507,13 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="elite"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-purple-500 [&:has([data-state=checked])]:border-purple-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 p-4 hover:bg-purple-100 dark:hover:bg-purple-900/30 peer-data-[state=checked]:border-purple-500 [&:has([data-state=checked])]:border-purple-500 cursor-pointer h-full"
                               data-testid="radio-tier-elite"
                             >
                               <span className="text-base font-semibold">Elite</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                                Full suite
+                              <span className="text-lg font-bold text-purple-600 dark:text-purple-400 mt-1">$199/mo</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                                Full AI + voice, unlimited users
                               </span>
                             </Label>
                           </div>
@@ -522,17 +525,21 @@ export default function AdminConciergeSetup() {
                             />
                             <Label
                               htmlFor="internal"
-                              className="flex flex-col items-center justify-between rounded-md border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 peer-data-[state=checked]:border-green-500 [&:has([data-state=checked])]:border-green-500 cursor-pointer"
+                              className="flex flex-col items-center justify-between rounded-md border-2 border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 p-4 hover:bg-green-100 dark:hover:bg-green-900/30 peer-data-[state=checked]:border-green-500 [&:has([data-state=checked])]:border-green-500 cursor-pointer h-full"
                               data-testid="radio-tier-internal"
                             >
                               <span className="text-base font-semibold">Internal</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                                Owner use
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400 mt-1">$0/mo</span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                                Owner/staff, all features
                               </span>
                             </Label>
                           </div>
                         </RadioGroup>
                       </FormControl>
+                      <FormDescription>
+                        Starter: Basic SMS + website. Pro: AI automation + IVR. Elite: Full voice AI. Internal: Free for owner use.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
