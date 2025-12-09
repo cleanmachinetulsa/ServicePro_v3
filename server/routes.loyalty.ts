@@ -23,29 +23,32 @@ import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
 
 const REWARDS_TOKEN_SECRET = process.env.REWARDS_TOKEN_SECRET || process.env.SESSION_SECRET || 'rewards-fallback-secret';
+const DEFAULT_TOKEN_EXPIRY_DAYS = 30;
 
-export function generateRewardsToken(phone: string, tenantId: string = 'root'): string {
-  const payload = `${phone}:${tenantId}`;
+export function generateRewardsToken(phone: string, tenantId: string = 'root', expiryDays: number = DEFAULT_TOKEN_EXPIRY_DAYS): string {
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + expiryDays);
+  const expiryTimestamp = expiry.getTime();
+  const payload = `${phone}:${tenantId}:${expiryTimestamp}`;
   const signature = crypto.createHmac('sha256', REWARDS_TOKEN_SECRET)
     .update(payload)
-    .digest('hex')
-    .substring(0, 16);
+    .digest('hex');
   return Buffer.from(`${payload}:${signature}`).toString('base64url');
 }
 
-export function validateRewardsToken(token: string): { phone: string; tenantId: string } | null {
+export function validateRewardsToken(token: string): { phone: string; tenantId: string; expired: boolean } | null {
   try {
     const decoded = Buffer.from(token, 'base64url').toString('utf-8');
     const parts = decoded.split(':');
-    if (parts.length !== 3) return null;
-    const [phone, tenantId, signature] = parts;
-    const payload = `${phone}:${tenantId}`;
+    if (parts.length !== 4) return null;
+    const [phone, tenantId, expiryTimestamp, signature] = parts;
+    const payload = `${phone}:${tenantId}:${expiryTimestamp}`;
     const expectedSignature = crypto.createHmac('sha256', REWARDS_TOKEN_SECRET)
       .update(payload)
-      .digest('hex')
-      .substring(0, 16);
+      .digest('hex');
     if (signature !== expectedSignature) return null;
-    return { phone, tenantId };
+    const expired = Date.now() > parseInt(expiryTimestamp, 10);
+    return { phone, tenantId, expired };
   } catch {
     return null;
   }
@@ -74,7 +77,15 @@ export function registerLoyaltyRoutes(app: Express) {
       if (!validated) {
         return res.status(401).json({
           success: false,
-          message: 'This link has expired or is invalid. Please contact us for a new link.',
+          message: 'This link is invalid. Please contact us for a new link.',
+          expired: false
+        });
+      }
+      
+      if (validated.expired) {
+        return res.status(401).json({
+          success: false,
+          message: 'This link has expired. Please contact us for a new link.',
           expired: true
         });
       }
