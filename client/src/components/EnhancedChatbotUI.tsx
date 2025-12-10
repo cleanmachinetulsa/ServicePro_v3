@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import MultiVehicleAppointmentScheduler from "./MultiVehicleAppointmentScheduler";
 
 // Markdown link parser: converts [text](url) to clickable links
+// Internal links (starting with /) open in same tab, external links open in new tab
 function renderMarkdownLinks(text: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
   const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -42,14 +43,18 @@ function renderMarkdownLinks(text: string): React.ReactNode {
       parts.push(<span key={`text-${keyCounter++}`}>{text.substring(lastIndex, match.index)}</span>);
     }
     
+    const url = match[2];
+    const isInternal = url.startsWith('/');
+    
     // Add the clickable link
+    // Internal links (/book, etc) stay in same tab
+    // External links open in new tab
     parts.push(
       <a
         key={`link-${keyCounter++}`}
-        href={match[2]}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 hover:text-blue-800 underline font-medium"
+        href={url}
+        {...(isInternal ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+        className="text-blue-600 hover:text-blue-800 underline font-medium cursor-pointer"
       >
         {match[1]}
       </a>
