@@ -1799,6 +1799,10 @@ export const businessSettings = pgTable("business_settings", {
   // UI Experience Mode - Controls dashboard complexity
   uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).notNull().default("simple"), // 'simple' or 'advanced'
   
+  // Business Timezone - Used for formatting all customer-facing times (SMS, emails, etc.)
+  // All appointment times are stored in UTC; this timezone is used for display/parsing
+  timezone: varchar("timezone", { length: 50 }).notNull().default("America/Chicago"),
+  
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: integer("updated_by").references(() => users.id),
 });
