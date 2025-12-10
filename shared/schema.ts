@@ -5049,3 +5049,27 @@ export const phoneHistoryConversationLinks = pgTable("phone_history_conversation
 }));
 
 export type PhoneHistoryConversationLink = typeof phoneHistoryConversationLinks.$inferSelect;
+
+// ============================================================
+// SMART AVAILABILITY DEEP LINKS L2: BOOKING INITIATION ANALYTICS
+// ============================================================
+
+export const bookingInitiationEvents = pgTable("booking_initiation_events", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  source: varchar("source", { length: 20 }).notNull(), // 'chat' | 'site' | 'other'
+  context: jsonb("context").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: index("booking_initiation_events_tenant_idx").on(table.tenantId),
+  sourceIdx: index("booking_initiation_events_source_idx").on(table.source),
+  createdAtIdx: index("booking_initiation_events_created_at_idx").on(table.createdAt),
+}));
+
+export const insertBookingInitiationEventSchema = createInsertSchema(bookingInitiationEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type BookingInitiationEvent = typeof bookingInitiationEvents.$inferSelect;
+export type InsertBookingInitiationEvent = z.infer<typeof insertBookingInitiationEventSchema>;
