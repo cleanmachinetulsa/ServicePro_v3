@@ -2,6 +2,7 @@ import { getConversationById } from './conversationService';
 import type { TenantDb } from './tenantDb';
 import { appointments, customers } from '@shared/schema';
 import { eq, and, gte } from 'drizzle-orm';
+import { getTenantTimezone, formatForSms } from './timezoneUtils';
 
 /**
  * Available template variables:
@@ -73,13 +74,9 @@ export async function replaceTemplateVariables(
         .limit(1);
 
       if (upcomingAppointment.length > 0) {
-        nextSlot = new Date(upcomingAppointment[0].scheduledTime).toLocaleString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        });
+        // Use tenant timezone for proper local time display
+        const timezone = await getTenantTimezone(tenantDb);
+        nextSlot = formatForSms(upcomingAppointment[0].scheduledTime, timezone);
       }
     }
   }

@@ -990,13 +990,10 @@ export function registerConversationRoutes(app: Express) {
             .limit(1);
 
           if (upcomingAppointment.length > 0) {
-            nextSlot = new Date(upcomingAppointment[0].scheduledTime).toLocaleString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-            });
+            // Use tenant timezone for proper local time display
+            const { getTenantTimezone, formatForSms } = await import('./timezoneUtils');
+            const timezone = await getTenantTimezone(req.tenantDb!);
+            nextSlot = formatForSms(upcomingAppointment[0].scheduledTime, timezone);
           }
         }
       }

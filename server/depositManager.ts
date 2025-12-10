@@ -15,6 +15,7 @@ import { eq, and, or, lt, isNull } from "drizzle-orm";
 import { sendSMS } from "./notifications";
 import { sendBusinessEmail } from "./emailService";
 import Stripe from "stripe";
+import { getTenantTimezone, formatDateOnly } from "./timezoneUtils";
 
 const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
 const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -109,7 +110,10 @@ export async function sendDepositReminder(
       final: 'FINAL NOTICE',
     };
 
-    const message = `${urgencyMap[reminderType]}: Your $${appt.depositAmount.toFixed(2)} deposit is due for your ${appt.serviceType} appointment on ${new Date(appt.scheduledTime).toLocaleDateString()}. Pay now: ${paymentLinkRecord.url}`;
+    // Use tenant timezone for proper local time display in reminder
+    const timezone = await getTenantTimezone(tenantDb);
+    const formattedDate = formatDateOnly(appt.scheduledTime, timezone);
+    const message = `${urgencyMap[reminderType]}: Your $${appt.depositAmount.toFixed(2)} deposit is due for your ${appt.serviceType} appointment on ${formattedDate}. Pay now: ${paymentLinkRecord.url}`;
 
     // Send via SMS (primary)
     let smsSuccess = false;
@@ -285,7 +289,7 @@ async function createStripePaymentLink(
       unit_amount: Math.round(appointment.depositAmount * 100), // Convert to cents
       product_data: {
         name: `Deposit - ${appointment.serviceType}`,
-        description: `Deposit for appointment on ${new Date(appointment.scheduledTime).toLocaleDateString()}`,
+        description: `Deposit for appointment on ${formatDateOnly(appointment.scheduledTime, 'America/Chicago')}`,
       },
     });
 

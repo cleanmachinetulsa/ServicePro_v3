@@ -102,8 +102,14 @@ export function utcToTenantLocal(
  * 
  * Useful for recurring scheduler when parsing "9:00 AM" preferred times.
  * 
- * @param date - The base date (typically in UTC)
- * @param hours - Hour (0-23)
+ * IMPORTANT: This function preserves the calendar date from the input,
+ * sets the specified local time, and converts to UTC. For example:
+ * - Input: 2025-12-12 (any time), hours=9, minutes=0, timezone=America/Chicago
+ * - Output: UTC time that represents 2025-12-12 09:00:00 America/Chicago
+ * - Stored as: 2025-12-12T15:00:00Z (or 14:00:00Z during DST)
+ * 
+ * @param date - The base date (we extract year/month/day from this)
+ * @param hours - Hour (0-23) in tenant's local timezone
  * @param minutes - Minutes (0-59)
  * @param timezone - The tenant's timezone
  * @returns Date object in UTC with the specified local time
@@ -114,9 +120,22 @@ export function setLocalTimeAndConvertToUtc(
   minutes: number,
   timezone: string = DEFAULT_TIMEZONE
 ): Date {
-  const zonedDate = toZonedTime(date, timezone);
-  zonedDate.setHours(hours, minutes, 0, 0);
-  return fromZonedTime(zonedDate, timezone);
+  // Extract the date components from the input date
+  // We use the UTC date to get the calendar date (since nextScheduledDate is stored as date-only)
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hoursStr = String(hours).padStart(2, '0');
+  const minutesStr = String(minutes).padStart(2, '0');
+  
+  // Construct an ISO-like string representing the local time
+  // This represents "December 12, 2025 at 9:00 AM in America/Chicago"
+  const localDateTimeStr = `${year}-${month}-${day}T${hoursStr}:${minutesStr}:00`;
+  
+  // Parse as if it were in the tenant's timezone, then convert to UTC
+  // fromZonedTime interprets the input as being in the specified timezone
+  const localDate = parseISO(localDateTimeStr);
+  return fromZonedTime(localDate, timezone);
 }
 
 /**
