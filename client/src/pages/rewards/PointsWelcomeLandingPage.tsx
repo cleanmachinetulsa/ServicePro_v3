@@ -344,6 +344,23 @@ export default function PointsWelcomeLandingPage() {
               >
                 Grab a spot on the schedule now and we'll automatically apply your points at the time of service.
               </motion.p>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.9 }}
+                className="text-center"
+              >
+                <Button
+                  variant="ghost"
+                  onClick={() => setLocation('/')}
+                  className="text-purple-300 hover:text-white hover:bg-white/10"
+                  data-testid="button-browse-services"
+                >
+                  Browse services & pricing
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </motion.div>
             </motion.div>
 
             <motion.div
