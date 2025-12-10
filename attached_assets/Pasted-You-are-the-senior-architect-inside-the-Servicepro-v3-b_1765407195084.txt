@@ -1,0 +1,128 @@
+You are the senior architect inside the `Servicepro-v3-base` Replit project (Clean Machine root tenant).
+
+⚠️ Problem
+
+A test booking was scheduled for **9:00 AM** (local business hours).  
+The reminder SMS that went out says **9:00 PM**.
+
+This indicates a **timezone / date-handling bug** in the booking + reminders pipeline.
+
+Your job is to:
+
+1. Find exactly where appointment times are stored and in what timezone.
+2. Fix the reminder SMS (and any related notifications) so they reflect the correct local time for the tenant.
+3. Centralize time formatting so we don’t get a 9 AM → 9 PM mismatch again.
+
+---
+
+🔍 Step 1 – Locate appointment + reminder code
+
+1. Find the appointment model + booking code:
+
+   - Likely under `server/routes.bookings.ts`, `server/bookingService.ts`, or similar.
+   - Identify the DB table where appointments are stored (e.g. `appointments`, `jobs`, etc.).
+   - Confirm the column type used for start times (e.g. `timestamptz`, `timestamp`, string).
+
+2. Find the reminder system:
+
+   - Look for any of:
+     - `reminder`, `upcoming`, `sendAppointmentReminder`, `bookingReminderJob`
+     - Cron/queue setup (e.g. in `server/reminderScheduler.ts`, `server/jobs`, or `server/backgroundWorkers.ts`).
+   - Identify where the reminder SMS body is built (Twilio call) and where it formats the time.
+
+Make notes as comments while you go: what timezone assumptions each piece is making.
+
+---
+
+🧠 Step 2 – Decide on the canonical time model
+
+We want a simple, safe invariant:
+
+- **All appointment times are stored in UTC in the database.**
+- Each tenant has a **timezone setting** (e.g. `'America/Chicago'`) used to display times to humans.
+- All outbound human-facing text uses:
+  - `formatTenantLocalTime(tenant, utcDate)`.
+
+If the current code is already following most of this, re-use what exists. If not, implement it now.
+
+1. Find the tenant settings model (where business hours live). Confirm where timezone is stored (or add a field if missing, defaulting Clean Machine to `America/Chicago`).
+
+2. Implement a small utility (or verify an existing one):
+
+   - e.g. `server/timezoneUtils.ts`:
+
+     ```ts
+     import { DateTime } from 'luxon';
+
+     export function formatTenantLocalTime(
+       tenant: Tenant,
+       utcDate: Date,
+       options?: { includeDate?: boolean }
+     ): string {
+       const zone = tenant.timezone || 'America/Chicago';
+       const dt = DateTime.fromJSDate(utcDate, { zone: 'utc' }).setZone(zone);
+       // Short, SMS-friendly format, e.g. "Thu Dec 12 at 9:00 AM"
+       return options?.includeDate === false
+         ? dt.toFormat('h:mm a')
+         : dt.toFormat('ccc LLL d \'at\' h:mm a');
+     }
+     ```
+
+   - Or adapt to whatever date library you already use (don’t add a second one).
+
+3. Also add a helper for **parsing** local booking choices into UTC when the booking is created (if this isn’t already correct).
+
+---
+
+🛠 Step 3 – Fix reminder scheduling and SMS content
+
+1. In the reminder scheduling logic:
+
+   - Confirm that the time saved in the DB is truly UTC. If the code currently does something like:
+
+     ```ts
+     const startTime = new Date(formInput.startTime); // where formInput was already local time string
+     ```
+
+     and then treats that as UTC, that will cause an offset.
+
+   - Fix it so:
+
+     - Time chosen in the UI is interpreted as tenant-local.
+     - Then converted to UTC **once** before saving to DB.
+     - The reminder job uses the stored UTC time directly for scheduling.
+
+2. In the SMS body builder:
+
+   - Replace any ad-hoc `toLocaleString` / manual formatting with the new helper:
+
+     ```ts
+     const prettyTime = formatTenantLocalTime(tenant, appointment.startTimeUtc);
+     const message = `Reminder: Your Clean Machine detail is scheduled for ${prettyTime}.`;
+     ```
+
+3. Repeat the same pattern anywhere else times are mentioned to the customer:
+
+   - Booking confirmation SMS
+   - Booking confirmation email
+   - Any AI agent templates that verbalize appointment times (if they interpolate raw dates).
+
+---
+
+🧪 Step 4 – Regression tests
+
+Create a simple manual test scenario in code comments and verify with actual bookings:
+
+1. For the Clean Machine tenant (timezone `America/Chicago`):
+
+   - Book an appointment for **tomorrow at 9:00 AM**.
+   - Verify in the DB (or logs) the stored UTC time is correct (15:00Z in winter, 14:00Z in summer).
+
+2. Trigger the reminder system (use a short test delay or a dev-only route if available).
+
+3. Confirm that:
+
+   - The SMS body says 9:00 AM (not 9:00 PM).
+   - The appointment time shown in the staff dashboard also matches 9:00 AM local.
+
+4. Add a short comment in the reminder code explaining the UTC + tenant-local timezone model so future changes don’t reintroduce the bug.

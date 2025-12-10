@@ -1,0 +1,169 @@
+You are the lead architect inside the `Servicepro-v3-base` Replit project (Clean Machine root tenant, multi-tenant ServicePro v3).
+
+⚠️ Problem summary
+
+In production at https://cleanmachinetulsa.com the booking address check is failing with:
+
+  GET /api/geocode?address=4644+S+Troost+Ave+Tulsa
+  → { "success": false, "error": "Failed to geocode address" }
+
+and the same for `/api/distance-check?address=...`.
+
+This prevents the booking wizard from validating addresses and is currently the LAST big blocker before sending a large SMS campaign.
+
+Your job in this task is to:
+
+1. Fix whatever is wrong in the **Google Maps integration** (geocoding + distance).
+2. Make the error messages and logs much more useful.
+3. Add a tiny health-check so we can quickly verify Maps is working in prod.
+
+Do NOT change any UI copy or flows beyond what’s required to make address check succeed and to expose more helpful errors.
+
+---
+
+🔍 Step 1 – Inspect current Maps / distance implementation
+
+1. Open these files (paths may be under `server/` or `services/` – search by name):
+
+   - `googleMapsApi.ts`  (or similarly named file that exports `geocodeAddress` and `checkDistanceToBusinessLocation`)
+   - `travelTimeService.ts`
+   - `serviceAreaEvaluator.ts`
+   - `addressNormalization.ts`
+   - The Express routes that back:
+       - `GET /api/geocode`
+       - `GET /api/distance-check`
+
+2. Confirm which **environment variable** the Maps code is reading. It should be exactly:
+
+   - `process.env.GOOGLE_MAPS_API_KEY`
+
+If it’s using a different name (e.g. `GOOGLE_MAPS_SERVER_KEY`, `MAPS_API_KEY`, etc.), note that for the next step.
+
+---
+
+🛠 Step 2 – Normalize environment variable usage
+
+Goal: The ENTIRE server should read one canonical env var for the Maps key.
+
+1. Pick **`GOOGLE_MAPS_API_KEY`** as the single source of truth.
+2. In all Maps-related files (`googleMapsApi.ts`, `travelTimeService.ts`, any direct callers):
+
+   - Ensure `const apiKey = process.env.GOOGLE_MAPS_API_KEY;`
+   - If there were old names, support them only as a fallback, e.g.:
+
+     ```ts
+     const apiKey =
+       process.env.GOOGLE_MAPS_API_KEY ??
+       process.env.GOOGLE_MAPS_SERVER_KEY ??
+       process.env.MAPS_API_KEY;
+     ```
+
+   - If fallback is used, log a WARN once at startup indicating which key name was actually populated.
+
+3. If `apiKey` is missing, do NOT call Google:
+   - Log a clear error: `"GOOGLE_MAPS_API_KEY is not set – cannot geocode address."`
+   - Return `{ success: false, error: 'Maps API key is missing on server' }`.
+
+---
+
+🧪 Step 3 – Improve geocode + distance error reporting
+
+Right now the caller only sees `"Failed to geocode address"`.
+
+1. In `googleMapsApi.ts`:
+
+   - When calling Google (Geocoding or Distance Matrix APIs), capture:
+
+     - HTTP status code
+     - The `status` field from the JSON body (`ZERO_RESULTS`, `OVER_QUERY_LIMIT`, `REQUEST_DENIED`, etc.)
+     - Any `error_message` field returned.
+
+   - On failure, log a structured error (one line JSON-style is fine), for example:
+
+     ```ts
+     console.error('MAPS_GEOCODE_ERROR', {
+       address,
+       status: response.status,
+       mapsStatus: data.status,
+       errorMessage: data.error_message,
+     });
+     ```
+
+   - Return a **more descriptive error** to the caller, while still being safe for clients, e.g.:
+
+     ```ts
+     return {
+       success: false,
+       error: data.error_message || data.status || 'Failed to geocode address',
+     };
+     ```
+
+2. Do the same for the distance calculation helper.
+
+3. In the `/api/geocode` and `/api/distance-check` Express routes:
+
+   - Pass through `result.error` in the JSON (no stack traces, just the human-readable string).
+   - Always set a non-200 status code when `success === false` (e.g. `res.status(502)`).
+
+---
+
+🧪 Step 4 – Add a Maps health-check endpoint for easier debugging
+
+Add a small, internal endpoint:
+
+- `GET /api/maps/health`
+
+Behavior:
+
+1. It should:
+
+   - Check if `GOOGLE_MAPS_API_KEY` is present.
+   - Attempt a very simple geocode of a **known good address** (e.g. `"Tulsa, OK"` or whatever you’ve already used in tests).
+   - Return:
+
+     ```json
+     {
+       "success": true,
+       "hasApiKey": true,
+       "geocodeStatus": "OK",
+       "sampleAddressLat": 36.xxxx,
+       "sampleAddressLng": -95.xxxx
+     }
+     ```
+
+   - Or, on failure:
+
+     ```json
+     {
+       "success": false,
+       "hasApiKey": false/true,
+       "geocodeStatus": "<Google status or error message>"
+     }
+     ```
+
+2. Protect it minimally (it’s fine if it’s not auth’d, this is mostly for you) but do NOT expose the actual API key or raw Google response in the client.
+
+---
+
+✅ Step 5 – Verify with the failing production address
+
+After changes are made:
+
+1. Hit, from the browser:
+
+   - `https://cleanmachinetulsa.com/api/maps/health`
+   - `https://cleanmachinetulsa.com/api/geocode?address=4644%20S%20Troost%20Ave%20Tulsa`
+   - `https://cleanmachinetulsa.com/api/distance-check?address=4644%20S%20Troost%20Ave%20Tulsa`
+
+2. Confirm:
+
+   - `/api/maps/health` returns `success: true`.
+   - `/api/geocode` returns a lat/lng and `success: true`.
+   - `/api/distance-check` returns `success: true` and a travel time/ classification.
+
+3. Then re-test the full booking flow in an incognito window:
+
+   - Enter the same address.
+   - Confirm that:
+     - The address check step succeeds.
+     - You are correctly classified as IN_AREA / EXTENDED / OUT_OF_AREA per your configuration.

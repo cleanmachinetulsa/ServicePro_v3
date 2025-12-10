@@ -99,7 +99,8 @@ import {
 } from './weatherService';
 import {
   geocodeAddress,
-  checkDistanceToBusinessLocation
+  checkDistanceToBusinessLocation,
+  checkMapsHealth
 } from './googleMapsApi';
 import { responseFormatter } from './responseFormatter';
 import { getFormatterSettings, updateFormatterSettings, resetFormatterSettings } from './formatterConfig';
@@ -382,6 +383,7 @@ export async function registerRoutes(app: Express) {
       '/api/available-slots',   // Public availability check
       '/api/geocode',           // Public address geocoding for booking flow
       '/api/distance-check',    // Public distance/service area validation for booking
+      '/api/maps/health',       // Public Maps API health check for debugging
       '/api/appointment-weather', // Public weather check for appointment dates
       '/api/services',          // Public service listing (needed for booking)
       '/api/addon-services',    // Public addon services
@@ -2753,7 +2755,12 @@ Follow up with this lead to set up their 14-day trial!
         });
       }
 
-      const result = await geocodeAddress(address as string);
+      // Pass db for tenant settings lookup (uses root tenant for public booking)
+      const result = await geocodeAddress(db, address as string);
+      
+      if (!result.success) {
+        return res.status(502).json(result);
+      }
       res.json(result);
     } catch (error) {
       console.error('Error geocoding address:', error);
@@ -2775,12 +2782,36 @@ Follow up with this lead to set up their 14-day trial!
         });
       }
 
-      const result = await checkDistanceToBusinessLocation(address as string);
+      // Pass db for tenant settings lookup (uses root tenant for public booking)
+      const result = await checkDistanceToBusinessLocation(db, address as string);
+      
+      if (!result.success) {
+        return res.status(502).json(result);
+      }
       res.json(result);
     } catch (error) {
       console.error('Error checking distance:', error);
       res.status(500).json({
         success: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Maps API health check endpoint for quick diagnostics
+  app.get('/api/maps/health', async (req: Request, res: Response) => {
+    try {
+      const result = await checkMapsHealth();
+      
+      if (!result.success) {
+        return res.status(503).json(result);
+      }
+      res.json(result);
+    } catch (error) {
+      console.error('Error checking maps health:', error);
+      res.status(500).json({
+        success: false,
+        hasApiKey: !!process.env.GOOGLE_MAPS_API_KEY,
         error: error instanceof Error ? error.message : String(error)
       });
     }
