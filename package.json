@@ -127,6 +127,7 @@
     "sharp": "^0.34.4",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
+    "square": "^43.2.1",
     "stripe": "^18.1.0",
     "supertest": "^7.1.4",
     "tailwind-merge": "^2.6.0",

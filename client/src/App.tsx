@@ -71,6 +71,7 @@ const UsageDashboardPage = lazy(() => import("./pages/settings/UsageDashboardPag
 const DomainsPage = lazy(() => import("./pages/settings/DomainsPage"));
 const DashboardCustomizePage = lazy(() => import("./pages/settings/DashboardCustomizePage"));
 const AddonsPage = lazy(() => import("./pages/settings/AddonsPage"));
+const GiftCardsAdminPage = lazy(() => import("./pages/settings/GiftCardsAdminPage"));
 const SettingsA2P = lazy(() => import("./pages/SettingsA2P"));
 
 // Billing pages
@@ -365,6 +366,11 @@ function Router() {
       <Route path="/settings/billing/addons">
         <AuthGuard>
           <LazyPage><AddonsPage /></LazyPage>
+        </AuthGuard>
+      </Route>
+      <Route path="/settings/gift-cards">
+        <AuthGuard>
+          <LazyPage><GiftCardsAdminPage /></LazyPage>
         </AuthGuard>
       </Route>
       <Route path="/admin/plans-and-addons">

@@ -42,6 +42,7 @@ import importHistoryRouter from "./routes.importHistory";
 import importHistoryParserRouter from "./routes.importHistoryParser";
 import customerImportFromSheetsRouter from "./routes.admin.customerImportFromSheets";
 import bookingAnalyticsRouter from "./routes.bookingAnalytics";
+import { registerGiftCardRoutes } from "./routes.giftCards";
 import adminUsageOverviewRouter from "./routes.adminUsageOverview";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
@@ -417,6 +418,8 @@ console.log('[CUSTOMER SHEETS IMPORT] Routes registered: /api/admin/import/custo
 // Register Smart Availability Deep Links L2 booking analytics routes
 app.use('/api/booking/analytics', bookingAnalyticsRouter);
 console.log('[BOOKING ANALYTICS] Routes registered: /api/booking/analytics');
+// Register SP-GIFTCARD-1: Square Gift Card Integration routes
+registerGiftCardRoutes(app);
 // Register parser tool hook (INT-5 - Parser Tool Hook Phase 1)
 app.use('/api/import-history', importHistoryParserRouter);
 // Register SP-18 Parser Integration routes (upload + apply knowledge)

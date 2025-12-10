@@ -2290,27 +2290,40 @@ export const paymentLinks = pgTable("payment_links", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Gift Cards - Track gift card codes, balances, and redemptions
+// Gift Cards - Track gift card codes, balances, and redemptions (SP-GIFTCARD-1: Square integration)
 export const giftCards = pgTable("gift_cards", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
-  code: text("code").notNull().unique(), // Gift card code (e.g., "GIFT-2024-ABC123")
-  initialValue: numeric("initial_value", { precision: 10, scale: 2 }).notNull(),
-  currentBalance: numeric("current_balance", { precision: 10, scale: 2 }).notNull(),
-  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-  purchasedBy: text("purchased_by"), // Name of purchaser
-  purchasedByEmail: text("purchased_by_email"),
-  purchasedByPhone: text("purchased_by_phone"),
-  recipientName: text("recipient_name"),
-  recipientEmail: text("recipient_email"),
-  giftMessage: text("gift_message"),
-  status: varchar("status", { length: 20 }).notNull().default("active"), // active, redeemed, expired, cancelled
-  issuedAt: timestamp("issued_at").defaultNow(),
-  expiresAt: timestamp("expires_at"), // Gift cards may have expiry dates
-  redeemedAt: timestamp("redeemed_at"), // When fully used
-  lastUsedAt: timestamp("last_used_at"),
-  createdAt: timestamp("created_at").defaultNow(),
+  provider: varchar("provider", { length: 50 }).notNull().default('square'),
+  providerCardId: varchar("provider_card_id", { length: 255 }),
+  referenceCode: varchar("reference_code", { length: 255 }).notNull(),
+  purchaserName: varchar("purchaser_name", { length: 255 }),
+  recipientName: varchar("recipient_name", { length: 255 }),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  initialAmountCents: integer("initial_amount_cents").notNull(),
+  currentBalanceCents: integer("current_balance_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default('USD'),
+  status: varchar("status", { length: 50 }).notNull().default('ACTIVE'),
+  externalUrl: varchar("external_url", { length: 500 }),
+  metadata: jsonb("metadata").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantProviderCardUnique: uniqueIndex("gift_cards_tenant_provider_card_unique")
+    .on(table.tenantId, table.provider, table.providerCardId),
+  tenantIdx: index("gift_cards_tenant_idx").on(table.tenantId),
+  statusIdx: index("gift_cards_status_idx").on(table.status),
+  referenceCodeIdx: index("gift_cards_reference_code_idx").on(table.referenceCode),
+}));
+
+export const insertGiftCardSchema = createInsertSchema(giftCards).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
+
+export type GiftCard = typeof giftCards.$inferSelect;
+export type InsertGiftCard = z.infer<typeof insertGiftCardSchema>;
 
 // Credit Ledger - Track customer service credits and awarded gift cards
 export const creditLedger = pgTable("credit_ledger", {
@@ -2969,14 +2982,6 @@ export const insertPaymentLinkSchema = createInsertSchema(paymentLinks).omit({
   paidAt: true,
   sentAt: true,
   lastReminderSent: true,
-});
-
-export const insertGiftCardSchema = createInsertSchema(giftCards).omit({
-  id: true,
-  createdAt: true,
-  issuedAt: true,
-  redeemedAt: true,
-  lastUsedAt: true,
 });
 
 export const insertCreditLedgerSchema = createInsertSchema(creditLedger).omit({
@@ -5073,3 +5078,26 @@ export const insertBookingInitiationEventSchema = createInsertSchema(bookingInit
 
 export type BookingInitiationEvent = typeof bookingInitiationEvents.$inferSelect;
 export type InsertBookingInitiationEvent = z.infer<typeof insertBookingInitiationEventSchema>;
+
+// Gift Card Redemptions (SP-GIFTCARD-1) - tracks usage of gift cards
+export const giftCardRedemptions = pgTable("gift_card_redemptions", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  giftCardId: integer("gift_card_id").notNull().references(() => giftCards.id),
+  bookingId: integer("booking_id"),
+  amountCents: integer("amount_cents").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  metadata: jsonb("metadata").notNull().default({}),
+}, (table) => ({
+  tenantIdx: index("gift_card_redemptions_tenant_idx").on(table.tenantId),
+  giftCardIdx: index("gift_card_redemptions_gift_card_idx").on(table.giftCardId),
+  bookingIdx: index("gift_card_redemptions_booking_idx").on(table.bookingId),
+}));
+
+export const insertGiftCardRedemptionSchema = createInsertSchema(giftCardRedemptions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type GiftCardRedemption = typeof giftCardRedemptions.$inferSelect;
+export type InsertGiftCardRedemption = z.infer<typeof insertGiftCardRedemptionSchema>;
