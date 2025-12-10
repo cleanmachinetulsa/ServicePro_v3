@@ -577,6 +577,14 @@ export const navigationItems: NavigationItem[] = [
     visibility: 'advancedOnly',
   },
   {
+    id: 'customer-sheets-import',
+    label: 'Sheets Import',
+    icon: RefreshCw,
+    path: '/admin/customer-sheets-import',
+    badge: 'Owner',
+    visibility: 'advancedOnly',
+  },
+  {
     id: 'parser-history',
     label: 'Parser History',
     icon: History,

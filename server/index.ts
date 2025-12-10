@@ -40,6 +40,7 @@ import { registerSupportRoutes } from "./routes.support";
 import { registerIndustryPackRoutes } from "./routes.industryPacks";
 import importHistoryRouter from "./routes.importHistory";
 import importHistoryParserRouter from "./routes.importHistoryParser";
+import customerImportFromSheetsRouter from "./routes.admin.customerImportFromSheets";
 import adminUsageOverviewRouter from "./routes.adminUsageOverview";
 import { setupGoogleOAuth } from "./googleOAuth";
 import publicSiteRouter from "./routes.publicSite";
@@ -409,6 +410,9 @@ console.log('[SP-SUPPORT-1] Routes registered: /api/support/issues');
 registerIndustryPackRoutes(app);
 // Register phone history import routes (INT-3 - Phone History Import Engine)
 app.use('/api/admin/import-history', importHistoryRouter);
+// Register Google Sheets customer import routes (SP-GSHEETS-CUSTOMER-RESYNC)
+app.use('/api/admin/import/customers-from-sheets', customerImportFromSheetsRouter);
+console.log('[CUSTOMER SHEETS IMPORT] Routes registered: /api/admin/import/customers-from-sheets');
 // Register parser tool hook (INT-5 - Parser Tool Hook Phase 1)
 app.use('/api/import-history', importHistoryParserRouter);
 // Register SP-18 Parser Integration routes (upload + apply knowledge)
