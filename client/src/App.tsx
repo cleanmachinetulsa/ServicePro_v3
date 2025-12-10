@@ -92,6 +92,7 @@ const AdminIvrConfig = lazy(() => import("./pages/AdminIvrConfig"));
 const AdminConciergeSetup = lazy(() => import("./pages/AdminConciergeSetup"));
 const AdminIndustryPacks = lazy(() => import("./pages/AdminIndustryPacks"));
 const AdminImportHistory = lazy(() => import("./pages/AdminImportHistory"));
+const CustomerSheetsImportPage = lazy(() => import("./pages/admin/CustomerSheetsImportPage"));
 const AdminMigrationWizard = lazy(() => import("./pages/AdminMigrationWizard"));
 const AdminParserHistory = lazy(() => import("./pages/admin/ParserHistory"));
 const AdminPlansAndAddons = lazy(() => import("./pages/AdminPlansAndAddons"));
@@ -546,6 +547,12 @@ function Router() {
       <Route path="/admin/import-history">
         <AuthGuard>
           <LazyDashboard><AdminImportHistory /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      {/* SP-GSHEETS-CUSTOMER-RESYNC: Customer Import from Google Sheets */}
+      <Route path="/admin/customer-sheets-import">
+        <AuthGuard>
+          <LazyDashboard><CustomerSheetsImportPage /></LazyDashboard>
         </AuthGuard>
       </Route>
       {/* INT-4: Migration Wizard */}
