@@ -1,0 +1,148 @@
+DROP-IN A: CHAT-WIDGET-LINK-RENDER-FIX
+Goal: Fix the CLEAN MACHINE HOMEPAGE POP-UP CHAT so that Markdown-style links like `[Thursday 12:00 PM](https://...)` show as clean clickable hyperlinks instead of raw text wrapping off the bubble.
+
+❗ IMPORTANT SCOPE LIMITS
+- Only touch the **public floating chat widget** used on:
+  - `client/src/pages/home.tsx` (Clean Machine homepage)
+  - The same widget when the app is served via `cleanmachinetulsa.com`
+- Do NOT modify:
+  - SMS agent behavior
+  - Admin / internal messaging views
+  - Any other chat components not used on the homepage
+
+------------------------------------------------------------------
+STEP 1 – Locate the correct chat widget
+------------------------------------------------------------------
+1. Search the client code for the homepage chat entry point:
+   - Look in `client/src/pages/home.tsx` for something like:
+     - `<FloatingChatButton` OR `<EnhancedChat` OR `<ChatWidget`
+   - Follow that component into its implementation, e.g. files like:
+     - `client/src/components/FloatingChatButton.tsx`
+     - `client/src/components/enhanced/EnhancedChatWindow.tsx`
+     - or similar (whatever actually renders the message bubbles).
+
+2. Confirm you are in the component that:
+   - Is mounted on `/home`
+   - Shows the “Clean Machine” avatar
+   - Renders assistant + user messages in bubbles.
+
+We will call this the **HomeChatWindow** component below, even if the actual filename is different. Use the real filename you find.
+
+------------------------------------------------------------------
+STEP 2 – Add a markdown-link renderer
+------------------------------------------------------------------
+In the **HomeChatWindow** component file (the one that maps a `message.text` to JSX):
+
+1. Create a small helper function near the top of the file:
+
+   ```ts
+   function renderMessageWithLinks(text: string): React.ReactNode {
+     // Very small markdown subset: [label](url)
+     const parts: React.ReactNode[] = [];
+     const linkRegex = /\[([^[\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+
+     let lastIndex = 0;
+     let match: RegExpExecArray | null;
+
+     while ((match = linkRegex.exec(text)) !== null) {
+       const [full, label, url] = match;
+       const start = match.index;
+
+       // Any plain text before this link
+       if (start > lastIndex) {
+         parts.push(text.slice(lastIndex, start));
+       }
+
+       // The clickable link
+       parts.push(
+         <a
+           key={`${url}-${start}`}
+           href={url}
+           target="_blank"
+           rel="noopener noreferrer"
+           className="chat-link"
+         >
+           {label}
+         </a>
+       );
+
+       lastIndex = start + full.length;
+     }
+
+     // Any remaining text after the last link
+     if (lastIndex < text.length) {
+       parts.push(text.slice(lastIndex));
+     }
+
+     // If no links were found, just return the original string
+     if (parts.length === 0) return text;
+
+     return parts;
+   }
+Find where each message bubble’s text is rendered.
+It will look something similar to:
+
+tsx
+Copy code
+<div className="message-text">{message.text}</div>
+Change ONLY the assistant messages to use the new renderer:
+
+tsx
+Copy code
+const isAssistant = message.role === "assistant"; // or whatever field is used
+
+<div className="message-text">
+  {isAssistant ? renderMessageWithLinks(message.text ?? "") : message.text}
+</div>
+If the role field is named differently (sender === "bot", from === "assistant", etc.), use the real one.
+
+STEP 3 – Basic styling for links inside bubbles
+In the same component file or a relevant CSS/SCSS module used by the chat:
+
+Add a small style for .chat-link:
+
+css
+Copy code
+.chat-link {
+  text-decoration: underline;
+  cursor: pointer;
+  /* Use the same accent color you use for buttons/chat header */
+  color: #7c3aed; /* or whatever your brand purple is */
+}
+
+.chat-link:hover {
+  text-decoration: none;
+}
+
+.message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+white-space: pre-wrap keeps the bullet formatting but lets long lines wrap.
+
+word-break: break-word prevents the URL from blowing out the bubble if one slips through.
+
+STEP 4 – Sanity checks
+From the Clean Machine homepage (/home or https://cleanmachinetulsa.com), open the floating chat.
+
+Ask: “When is your next opening for a Full Detail?”
+
+Verify that:
+
+Each bullet now renders like:
+
+• Thursday 12:00 PM (where “Thursday 12:00 PM” is clickable)
+
+No raw (https://...) text is visible.
+
+Click the link and confirm:
+
+It opens your /book page with the correct slotStart or focusDate.
+
+Confirm that:
+
+User messages still render normally.
+
+No other chat views (internal/admin) were affected.
+
+If anything fails, fix this component instead of changing prompts or other chat systems.
