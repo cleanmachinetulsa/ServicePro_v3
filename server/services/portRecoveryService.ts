@@ -28,6 +28,8 @@ import {
 import { eq, and, sql, ne, isNotNull, desc, or } from 'drizzle-orm';
 import { twilioClient } from '../twilioClient';
 import { awardPoints } from '../gamificationService';
+import { generateRewardsToken } from '../routes.loyalty';
+import { tenantDomains } from '@shared/schema';
 
 // Default SMS template for port recovery (holiday gift-card campaign version)
 const DEFAULT_SMS_TEMPLATE = `Hey {{firstNameOrFallback}}, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed a message from you — I'm really sorry about that. To make it right, I've added 500 reward points to your account good toward protectants or future details. You can check your rewards or book here: {{ctaUrl}} P.S. We now offer digital gift cards – perfect last-minute gifts. Reply STOP to unsubscribe.`;
@@ -95,8 +97,9 @@ const DEFAULT_EMAIL_HTML_TEMPLATE = `
 
 /**
  * Normalize phone number to E.164 format for deduplication
+ * SP-REWARDS-CAMPAIGN-TOKENS: Exported for reuse in preview endpoint
  */
-function normalizePhone(phone: string | null | undefined): string | null {
+export function normalizePhone(phone: string | null | undefined): string | null {
   if (!phone) return null;
   
   // Remove all non-digits
@@ -436,36 +439,101 @@ function getFirstName(fullName: string | null): string {
 }
 
 /**
+ * SP-REWARDS-CAMPAIGN-TOKENS: Get the public base URL for a tenant
+ * Priority: verified custom domain > PUBLIC_APP_BASE_URL > Replit default
+ * Exported for reuse in preview endpoints
+ */
+export async function getTenantPublicBaseUrl(tenantId: string): Promise<string> {
+  const envBase = process.env.PUBLIC_APP_BASE_URL;
+  
+  try {
+    const [customDomain] = await db
+      .select()
+      .from(tenantDomains)
+      .where(
+        and(
+          eq(tenantDomains.tenantId, tenantId),
+          eq(tenantDomains.status, 'verified'),
+          eq(tenantDomains.isPrimary, true)
+        )
+      )
+      .limit(1);
+    
+    if (customDomain?.domain) {
+      return `https://${customDomain.domain}`;
+    }
+  } catch (err) {
+    console.error('[PORT RECOVERY] Error fetching tenant domain:', err);
+  }
+  
+  if (envBase) return envBase;
+  
+  return 'https://cleanmachinetulsa.com';
+}
+
+/**
+ * SP-REWARDS-CAMPAIGN-TOKENS: Generate personalized rewards link with token
+ */
+function generatePersonalizedRewardsLink(
+  baseUrl: string,
+  phone: string,
+  tenantId: string,
+  expiryDays: number = 30
+): string {
+  const token = generateRewardsToken(phone, tenantId, expiryDays);
+  return `${baseUrl}/rewards/welcome?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * SP-REWARDS-CAMPAIGN-TOKENS: Check if template contains a rewards link placeholder
+ */
+function templateHasRewardsLink(template: string): boolean {
+  return /\{\{rewardsLink\}\}|\{rewards_link\}/i.test(template);
+}
+
+/**
  * Interpolate template variables
+ * SP-REWARDS-CAMPAIGN-TOKENS: Now supports {{rewardsLink}} and {{rewards_link}} for personalized token URLs
  */
 function interpolateTemplate(
   template: string,
   target: PortRecoveryTarget,
   ctaUrl: string,
-  points: number
+  points: number,
+  rewardsLink?: string
 ): string {
   const firstName = getFirstName(target.customerName);
   const firstNameOrFallback = firstName || 'there';
   const customerNameGreeting = target.customerName ? ` ${target.customerName}` : '';
   
-  return template
+  let result = template
     .replace(/\{\{firstNameOrFallback\}\}/g, firstNameOrFallback)
     .replace(/\{\{customerName\}\}/g, target.customerName || 'Valued Customer')
     .replace(/\{\{customerNameGreeting\}\}/g, customerNameGreeting)
     .replace(/\{\{ctaUrl\}\}/g, ctaUrl)
     .replace(/\{\{bookingUrl\}\}/g, ctaUrl)
     .replace(/\{\{points\}\}/g, points.toString());
+  
+  if (rewardsLink) {
+    result = result
+      .replace(/\{\{rewardsLink\}\}/gi, rewardsLink)
+      .replace(/\{rewards_link\}/gi, rewardsLink);
+  }
+  
+  return result;
 }
 
 /**
  * Send SMS for a target
+ * SP-REWARDS-CAMPAIGN-TOKENS: Now supports personalized rewards link
  */
 async function sendPortRecoverySms(
   target: PortRecoveryTarget,
   template: string,
   fromNumber: string,
   ctaUrl: string,
-  points: number
+  points: number,
+  rewardsLink?: string
 ): Promise<{ success: boolean; twilioSid?: string; error?: string }> {
   if (!target.phone) {
     return { success: false, error: 'No phone number' };
@@ -476,7 +544,11 @@ async function sendPortRecoverySms(
   }
   
   try {
-    const messageBody = interpolateTemplate(template, target, ctaUrl, points);
+    let messageBody = interpolateTemplate(template, target, ctaUrl, points, rewardsLink);
+    
+    if (rewardsLink && !templateHasRewardsLink(template)) {
+      messageBody += `\n\nView your rewards: ${rewardsLink}`;
+    }
     
     const message = await twilioClient.messages.create({
       to: target.phone,
@@ -604,6 +676,9 @@ export async function runPortRecoveryBatch(
   const smsEnabled = campaign.smsEnabled !== false;
   const emailEnabled = campaign.emailEnabled !== false;
   
+  const tenantId = campaign.tenantId;
+  const tenantBaseUrl = await getTenantPublicBaseUrl(tenantId);
+  
   for (const target of targets) {
     const updates: Partial<PortRecoveryTarget> = {
       processedAt: new Date(),
@@ -634,12 +709,20 @@ export async function runPortRecoveryBatch(
     
     // 2. Try SMS first if phone exists and SMS is enabled
     if (smsEnabled && target.phone && fromNumber) {
+      const personalizedRewardsLink = generatePersonalizedRewardsLink(
+        tenantBaseUrl,
+        target.phone,
+        tenantId,
+        30
+      );
+      
       const smsResult = await sendPortRecoverySms(
         target,
         smsTemplate,
         fromNumber,
         ctaUrl,
-        campaign.pointsPerCustomer
+        campaign.pointsPerCustomer,
+        personalizedRewardsLink
       );
       
       if (smsResult.success) {
@@ -739,6 +822,7 @@ export async function runPortRecoveryBatch(
 
 /**
  * Send a test SMS to the owner's phone
+ * SP-REWARDS-CAMPAIGN-TOKENS: Now generates personalized token URL for test sends
  */
 export async function sendTestSms(
   tenantDb: TenantDb,
@@ -767,11 +851,12 @@ export async function sendTestSms(
   try {
     const ctaUrl = campaign.ctaUrl || DEFAULT_CTA_URL;
     const smsTemplate = campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
+    const tenantId = campaign.tenantId;
     
     const testTarget: PortRecoveryTarget = {
       id: 0,
       campaignId,
-      tenantId: '',
+      tenantId,
       customerId: null,
       phone: ownerPhone,
       email: null,
@@ -787,7 +872,19 @@ export async function sendTestSms(
       updatedAt: new Date(),
     };
     
-    const messageBody = interpolateTemplate(smsTemplate, testTarget, ctaUrl, campaign.pointsPerCustomer);
+    const tenantBaseUrl = await getTenantPublicBaseUrl(tenantId);
+    const personalizedRewardsLink = generatePersonalizedRewardsLink(
+      tenantBaseUrl,
+      ownerPhone,
+      tenantId,
+      30
+    );
+    
+    let messageBody = interpolateTemplate(smsTemplate, testTarget, ctaUrl, campaign.pointsPerCustomer, personalizedRewardsLink);
+    
+    if (!templateHasRewardsLink(smsTemplate)) {
+      messageBody += `\n\nView your rewards: ${personalizedRewardsLink}`;
+    }
     
     await twilioClient.messages.create({
       to: ownerPhone,
@@ -795,7 +892,7 @@ export async function sendTestSms(
       body: `[TEST] ${messageBody}`,
     });
     
-    console.log(`[PORT RECOVERY] Test SMS sent to ${ownerPhone}`);
+    console.log(`[PORT RECOVERY] Test SMS sent to ${ownerPhone} with personalized rewards link`);
     return { success: true };
   } catch (error: any) {
     console.error('[PORT RECOVERY] Test SMS failed:', error.message);

@@ -21,9 +21,12 @@ import {
   getRecentRunHistory,
   updateCampaign,
   getOrCreateCampaignConfig,
+  normalizePhone,
+  getTenantPublicBaseUrl,
 } from './services/portRecoveryService';
 import { portRecoveryCampaigns } from '@shared/schema';
-import { eq, and, gte } from 'drizzle-orm';
+import { eq, gte } from 'drizzle-orm';
+import { generateRewardsToken } from './routes.loyalty';
 
 const router = Router();
 
@@ -61,14 +64,32 @@ router.get('/admin/preview', async (req, res) => {
     const points = (campaignConfig.pointsPerCustomer || 500).toString();
     
     // Format sample SMS with personalization using saved template
+    // SP-REWARDS-CAMPAIGN-TOKENS: Include sample rewards link in preview
     const sampleName = result.sampleTargets?.[0]?.customerName || 'Valued Customer';
+    const rawPhone = result.sampleTargets?.[0]?.phone || '+19185551234';
+    // Use production normalizePhone helper for consistent token generation
+    const samplePhone = normalizePhone(rawPhone) || '+19185551234';
     const firstName = sampleName.split(' ')[0] || 'there';
-    const sampleSms = savedTemplate
+    
+    // Generate sample rewards link for preview using production helper for parity
+    const tenantBaseUrl = await getTenantPublicBaseUrl(tenantId);
+    const sampleToken = generateRewardsToken(samplePhone, tenantId, 30);
+    const sampleRewardsLink = `${tenantBaseUrl}/rewards/welcome?token=${encodeURIComponent(sampleToken)}`;
+    
+    let sampleSms = savedTemplate
       .replace(/\{\{firstNameOrFallback\}\}/g, firstName)
       .replace(/\{\{customerName\}\}/g, sampleName)
       .replace(/\{\{ctaUrl\}\}/g, ctaUrl)
       .replace(/\{\{bookingUrl\}\}/g, ctaUrl)
-      .replace(/\{\{points\}\}/g, points);
+      .replace(/\{\{points\}\}/g, points)
+      .replace(/\{\{rewardsLink\}\}/gi, sampleRewardsLink)
+      .replace(/\{rewards_link\}/gi, sampleRewardsLink);
+    
+    // Auto-append rewards link if not in template
+    const hasRewardsLink = /\{\{rewardsLink\}\}|\{rewards_link\}/i.test(savedTemplate);
+    if (!hasRewardsLink) {
+      sampleSms += `\n\nView your rewards: ${sampleRewardsLink}`;
+    }
     
     res.json({
       success: true,
@@ -85,6 +106,15 @@ router.get('/admin/preview', async (req, res) => {
       runInProgress: !!runInProgress,
       stats: result.stats,
       sampleTargets: result.sampleTargets,
+      availableVariables: [
+        '{{firstNameOrFallback}}',
+        '{{customerName}}',
+        '{{ctaUrl}}',
+        '{{bookingUrl}}',
+        '{{points}}',
+        '{{rewardsLink}}',
+        '{rewards_link}',
+      ],
     });
   } catch (error: any) {
     console.error('[PORT RECOVERY] Error in admin preview:', error);
