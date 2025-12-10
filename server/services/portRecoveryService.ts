@@ -685,14 +685,29 @@ export async function runPortRecoveryBatch(
       updatedAt: new Date(),
     };
     
-    // 1. Grant points - try to find customer by phone if customerId is null
+    // 1. Grant points - try to find customer by phone, or auto-create if from conversations
     let customerId = target.customerId;
     if (!customerId && target.phone) {
+      // First try to find existing customer
       const foundCustomer = await findCustomerByPhone(tenantDb, target.phone);
       if (foundCustomer) {
         customerId = foundCustomer.id;
         updates.customerId = customerId;
         console.log(`[PORT RECOVERY] Found customer ${customerId} for target phone ${target.phone}`);
+      } else {
+        // Auto-create customer if target is from conversations
+        const autoCreatedId = await autoCreateCustomerIfNeeded(
+          tenantDb,
+          tenantId,
+          target.phone,
+          target.customerName,
+          target.source
+        );
+        if (autoCreatedId) {
+          customerId = autoCreatedId;
+          updates.customerId = customerId;
+          console.log(`[PORT RECOVERY] Auto-created customer ${customerId} for target phone ${target.phone}`);
+        }
       }
     }
     
@@ -982,6 +997,63 @@ async function findCustomerByPhone(
     if (customer) {
       return customer;
     }
+  }
+  
+  return null;
+}
+
+/**
+ * Auto-create a minimal customer record if one doesn't exist
+ * Used for port recovery targets from conversations
+ */
+async function autoCreateCustomerIfNeeded(
+  tenantDb: TenantDb,
+  tenantId: string,
+  phone: string | null,
+  name: string | null,
+  source: string
+): Promise<number | null> {
+  // Only auto-create for conversation participants (not random extracted contacts)
+  if (source !== 'conversations') {
+    return null;
+  }
+  
+  if (!phone) {
+    return null;
+  }
+  
+  // Check if customer already exists
+  const existing = await findCustomerByPhone(tenantDb, phone);
+  if (existing) {
+    return existing.id;
+  }
+  
+  try {
+    // Normalize phone to E.164 format for storage
+    const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      console.log(`[PORT RECOVERY] Could not normalize phone for auto-create: ${phone}`);
+      return null;
+    }
+    
+    // Create minimal customer record
+    const [newCustomer] = await tenantDb
+      .insert(customers)
+      .values({
+        tenantId,
+        phone: normalizedPhone,
+        name: name || null,
+        email: null,
+        smsConsent: null, // Neutral - they can opt-in/out later
+      })
+      .returning({ id: customers.id });
+    
+    if (newCustomer) {
+      console.log(`[PORT RECOVERY] Auto-created customer ${newCustomer.id} for phone ${normalizedPhone}`);
+      return newCustomer.id;
+    }
+  } catch (error: any) {
+    console.error(`[PORT RECOVERY] Error auto-creating customer for ${phone}:`, error.message);
   }
   
   return null;
