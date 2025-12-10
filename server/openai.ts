@@ -866,10 +866,12 @@ IMPORTANT WEB CHAT RESTRICTIONS:
 - You CAN check availability using get_available_slots - this is encouraged!
 - You CAN suggest add-ons using get_upsell_offers
 - You CANNOT create appointments directly (no create_appointment function)
-- When you show available times, ALWAYS include the booking link provided in the tool result
-- Format response like: "I can fit you in on [times]! 📅 See these openings on the calendar: [booking_link]"
+- When showing available times, ALWAYS format as markdown links: [9:00 AM](url) not full URLs
+- Format response like: "I can fit you in on [9:00 AM](booking_url) or [10:00 AM](booking_url)! You can also [see all openings](view_all_url)"
+- IMPORTANT: Use the labels and URLs from slot_links in the tool result - format as markdown links with time as link text
+- Never show full URLs - always use markdown link format [time](url)
 - Keep responses friendly and conversational
-- The booking link lets them visually pick a time and complete their booking`;
+- The links let them visually pick a time and complete their booking`;
         
         // Build messages array
         const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
