@@ -1,0 +1,364 @@
+DROP-IN: CM-MESSAGE-PERF + SERVICE-AREA-FIX + EXTENDED-AREA + VOICEMAIL-HARDEN
+
+Goal:
+Stabilize three critical areas for the Clean Machine (root tenant) production experience:
+
+Messaging Hub is extremely slow to load.
+
+Service area detection is wrong (valid address flagged as outside area) and extended-area flow is incomplete.
+
+Occasional broken voicemails (no audio, no caller, stuck at “transcription pending…”).
+
+All changes must be backwards-compatible and safe for other tenants.
+
+1) Messaging Hub performance – same behavior, much faster
+
+Current behavior
+
+/messages eventually loads, but is so slow it looks broken.
+
+Once loaded, threads and context behave correctly.
+
+Implement
+
+Back-end query limits + indexes
+
+Identify the API endpoints powering the Messaging Hub (conversation list + thread messages).
+
+Ensure queries:
+
+Are paginated (e.g., default limit 25–50 conversations).
+
+Use proper indexes such as:
+
+conversations(tenant_id, updated_at DESC)
+
+messages(conversation_id, created_at DESC)
+
+Use ORDER BY updated_at DESC (or equivalent) and only return what the UI needs for the initial paint.
+
+Avoid N+1 queries when fetching conversations with last message.
+
+Front-end loading
+
+The Messages shell should render instantly:
+
+Left-column conversation list skeleton
+
+Thread skeleton
+
+Initial load must:
+
+Fetch only the first page of conversations for the active inbox.
+
+Fetch messages only for the selected conversation (most recent or pinned).
+
+Any other tabs (Live / Attention / SMS / Web) should lazy-load when clicked, not up front.
+
+Performance logging
+
+Add lightweight logs around the messages API:
+
+For each call, log tenant_id, duration_ms, result_count.
+
+Only log when duration_ms > 1500ms to keep logs clean.
+
+Acceptance
+
+In prod at https://cleanmachinetulsa.com/messages:
+
+Layout + skeleton appear in < 1s.
+
+First batch of conversations + first thread load in ~2s or less.
+
+Switching threads feels similar to a normal SMS app.
+
+2) Service-area detection (the bug you just hit)
+
+Current bug
+
+An address inside your normal area (e.g. your own home address) is being flagged as “outside service area”.
+
+That forces the extended-area path and blocks a clean, end-to-end booking test.
+
+Intended behavior
+
+For each address, the system should:
+
+Geocode the address correctly.
+
+Use drive time from home base (not straight-line distance) via Distance Matrix.
+
+Classify:
+
+IN_AREA if driveTimeMinutes <= baseRadiusMinutes
+
+EXTENDED if baseRadiusMinutes < driveTimeMinutes <= extendedRadiusMinutes
+
+OUT_OF_AREA if driveTimeMinutes > extendedRadiusMinutes
+
+The wizard should:
+
+Follow normal booking flow for IN_AREA requests (no extended pop-ups).
+
+Only show extended-area UI when classification is EXTENDED.
+
+Implement
+
+Service area config sanity check
+
+For root tenant (Clean Machine), fetch config from the appropriate settings table:
+
+Home base lat/lng (should match ~E 47th & S Peoria in Tulsa).
+
+baseRadiusMinutes (normal radius, e.g. 20–25).
+
+extendedRadiusMinutes (optional outer ring).
+
+Ensure these values are correctly stored and not zero / null / swapped.
+
+Distance calculation logic
+
+In the service-area helper (where we call Google Distance Matrix):
+
+Use the “driving” time in seconds, convert to minutes (float).
+
+Do NOT accidentally compare meters to minutes.
+
+Implement the classification function explicitly:
+
+function classifyServiceArea({
+  driveTimeMinutes,
+  baseRadiusMinutes,
+  extendedRadiusMinutes,
+}): "IN_AREA" | "EXTENDED" | "OUT_OF_AREA" {
+  if (driveTimeMinutes <= baseRadiusMinutes) return "IN_AREA";
+  if (
+    extendedRadiusMinutes != null &&
+    driveTimeMinutes <= extendedRadiusMinutes
+  ) {
+    return "EXTENDED";
+  }
+  return "OUT_OF_AREA";
+}
+
+
+Make sure this is used consistently wherever we decide to show the “Outside Service Area” or “Extended Area” messaging.
+
+Logging for mis-classifications
+
+When classification is not "IN_AREA" for root tenant, log:
+
+Address string
+
+Geocoded lat/lng
+
+driveTimeMinutes
+
+baseRadiusMinutes, extendedRadiusMinutes
+
+Classification result
+
+This is for debugging only; do not leak any of this to users.
+
+Wizard routing
+
+For IN_AREA:
+
+Skip any extended-area messaging or map prompts.
+
+Proceed directly through the normal booking steps (service, add-ons, date/time, confirm).
+
+For EXTENDED:
+
+Trigger the extended-area behavior (see next section).
+
+For OUT_OF_AREA:
+
+Show the “Sorry, this is outside our area” message as it does today.
+
+Acceptance
+
+Using your actual in-area address:
+
+You are not shown the extended-area toast.
+
+Booking passes through the normal flow and can be completed.
+
+A clearly far-away address (outside Tulsa) still gets rejected appropriately.
+
+3) Extended-area map + escalations (build the intended flow)
+
+Current bug
+
+When something is treated as extended, you get the toast, but:
+
+No map confirm step appears.
+
+No escalation is created.
+
+No admin review happens.
+
+Implement
+
+State tracking
+
+When classification is "EXTENDED":
+
+Tag the flow (in session or booking draft) with isExtendedArea: true and driveTimeMinutes.
+
+Persist these fields into the eventual booking record.
+
+Wizard behavior
+
+If isExtendedArea === true:
+
+Insert the map step (or ensure it’s shown) so the user can confirm the pinned location.
+
+Keep the current “Extended area request” messaging.
+
+Escalation record
+
+When an extended-area request is submitted:
+
+Create an escalation row:
+
+type: "SERVICE_AREA"
+
+status: "pending_review"
+
+linked to booking/customer
+
+metadata: driveTimeMinutes, address text.
+
+Escalations UI should surface these with a clear label like “Extended Service Area Request”.
+
+Admin handling
+
+Allow admin to:
+
+Approve (booking proceeds / stays confirmed).
+
+Decline (booking is cancelled and customer can be notified via existing messaging system or a simple status change for now).
+
+Acceptance
+
+Test with clearly extended address:
+
+You see map confirm step.
+
+After submitting, an escalation appears in Escalations page as pending review.
+
+In-area address does not create an escalation.
+
+4) Booking → notifications pipeline sanity
+
+Once service-area classification is correct, we need to be sure a successful booking from the public wizard triggers the same pipeline you’ll rely on for your blast:
+
+Booking record in DB
+
+Calendar event (for Clean Machine)
+
+Customer notifications (SMS + email)
+
+Implement/check
+
+Booking creation
+
+Confirm that the final step of the wizard:
+
+Creates an appointment record scoped to the root tenant.
+
+Links it to the customer/contact record.
+
+Ensure this runs both for:
+
+Normal IN_AREA bookings
+
+Approved EXTENDED bookings.
+
+Calendar
+
+Confirm that when an appointment is created for root tenant and Google Calendar is configured:
+
+We call the function that creates/updates the Calendar event.
+
+Add error logging if calendar write fails, but don’t block booking creation.
+
+Notifications
+
+Verify the “booking confirmed” pipeline:
+
+SMS confirmation via main Twilio number.
+
+Email confirmation via the platform email service (if configured).
+
+For now, just ensure the existing confirmation job/handler is being called for web bookings the same way as for AI-scheduled bookings.
+
+Acceptance
+
+After a test in-area booking via https://cleanmachinetulsa.com/booking:
+
+Customer test number gets a confirmation SMS.
+
+Booking shows up in your Messages context with the correct customer.
+
+Appointment appears on your Google Calendar.
+
+5) Voicemail robustness (no more ghost voicemails)
+
+Current bug
+
+Some voicemails have:
+
+No audio
+
+No caller number
+
+“Transcription pending…” forever.
+
+Implement
+
+Harden Twilio webhook handlers
+
+For voicemail recording + transcription callbacks:
+
+Validate incoming payload has required fields:
+
+CallSid, From, and RecordingUrl (for recording callbacks).
+
+If required fields are missing:
+
+Log a clear error with callSid + raw payload.
+
+Do not create a blank voicemail record.
+
+If a record already exists but a later callback fails:
+
+Update status to something like "recording_failed" or "transcription_failed".
+
+Repair when possible
+
+When Twilio does send From or RecordingUrl, but our record is missing them:
+
+Update the existing voicemail entry to include them.
+
+UI
+
+For voicemail cards:
+
+If audio is missing but we have caller:
+
+Show “Voicemail received but recording failed. Call SID: XXXX.”
+
+Always display caller phone number if we have it.
+
+Acceptance
+
+Make test voicemails and verify:
+
+Normal voicemail: audio + number + transcription.
+
+If you temporarily break recording/transcription for a test:
+
+You still have the caller number and a clear error message in the UI/logs.

@@ -140,12 +140,33 @@ export function registerConversationRoutes(app: Express) {
     }
   }
 
-  // Get all conversations
+  // Get all conversations (CM-MESSAGE-PERF: supports pagination)
   app.get('/api/conversations', async (req: Request, res: Response) => {
     try {
-      const { status, phoneLineId } = req.query;
+      const { status, phoneLineId, limit, offset } = req.query;
       const phoneLineIdNum = phoneLineId ? parseInt(phoneLineId as string) : undefined;
-      const conversations = await getAllConversations(req.tenantDb!, status as string, phoneLineIdNum);
+      
+      // CM-MESSAGE-PERF: Parse pagination parameters
+      const paginationOptions: { limit?: number; offset?: number } = {};
+      if (limit && typeof limit === 'string') {
+        const limitNum = parseInt(limit);
+        if (!isNaN(limitNum) && limitNum > 0 && limitNum <= 100) {
+          paginationOptions.limit = limitNum;
+        }
+      }
+      if (offset && typeof offset === 'string') {
+        const offsetNum = parseInt(offset);
+        if (!isNaN(offsetNum) && offsetNum >= 0) {
+          paginationOptions.offset = offsetNum;
+        }
+      }
+      
+      const conversations = await getAllConversations(
+        req.tenantDb!, 
+        status as string, 
+        phoneLineIdNum,
+        paginationOptions
+      );
 
       res.json({
         success: true,
