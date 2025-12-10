@@ -5056,7 +5056,7 @@ export type PhoneHistoryConversationLink = typeof phoneHistoryConversationLinks.
 
 export const bookingInitiationEvents = pgTable("booking_initiation_events", {
   id: serial("id").primaryKey(),
-  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  tenantId: varchar("tenant_id", { length: 100 }).notNull(),
   source: varchar("source", { length: 20 }).notNull(), // 'chat' | 'site' | 'other'
   context: jsonb("context").notNull().default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
