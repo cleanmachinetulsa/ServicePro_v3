@@ -45,6 +45,43 @@ interface Message {
   };
 }
 
+// Markdown link parser: converts [text](url) to clickable links
+function renderMarkdownLinks(text: string) {
+  const parts: (string | React.ReactNode)[] = [];
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    // Add text before the link
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    
+    // Add the link
+    parts.push(
+      <a
+        key={`link-${match.index}`}
+        href={match[2]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline text-blue-300 hover:text-blue-200 transition-colors"
+      >
+        {match[1]}
+      </a>
+    );
+    
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
 const suggestionChips = [
   { text: "📋 Services & Pricing", icon: DollarSign },
   { text: "📅 Book Appointment", icon: Calendar },
@@ -350,7 +387,7 @@ export default function ChatPage() {
                         }`}
                       >
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {message.text}
+                          {renderMarkdownLinks(message.text)}
                         </p>
                       </div>
                       
@@ -411,7 +448,7 @@ export default function ChatPage() {
                         }`}
                       >
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {message.text}
+                          {renderMarkdownLinks(message.text)}
                         </p>
                       </div>
                       <span className="text-xs text-blue-400/60 px-1">
