@@ -28,6 +28,44 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import MultiVehicleAppointmentScheduler from "./MultiVehicleAppointmentScheduler";
 
+// Markdown link parser: converts [text](url) to clickable links
+function renderMarkdownLinks(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let lastIndex = 0;
+  let match;
+  let keyCounter = 0;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    // Add text before the link
+    if (match.index > lastIndex) {
+      parts.push(<span key={`text-${keyCounter++}`}>{text.substring(lastIndex, match.index)}</span>);
+    }
+    
+    // Add the clickable link
+    parts.push(
+      <a
+        key={`link-${keyCounter++}`}
+        href={match[2]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 hover:text-blue-800 underline font-medium"
+      >
+        {match[1]}
+      </a>
+    );
+    
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after the last link
+  if (lastIndex < text.length) {
+    parts.push(<span key={`text-${keyCounter++}`}>{text.substring(lastIndex)}</span>);
+  }
+
+  return parts.length > 0 ? <>{parts}</> : text;
+}
+
 interface Message {
   id: string;
   text: string;
@@ -884,7 +922,7 @@ export default function EnhancedChatbotUI() {
                       </div>
                     ) : (
                       <>
-                        <p>{message.text}</p>
+                        <p>{renderMarkdownLinks(message.text)}</p>
                         {message.mediaUrl && (
                           <div className="mt-2">
                             <a
