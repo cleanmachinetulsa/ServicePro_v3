@@ -412,9 +412,18 @@ async function handleDialStatus(req: Request, res: Response) {
 async function handleVoicemailComplete(req: Request, res: Response) {
   const { RecordingUrl, RecordingSid, CallSid, From, To } = req.body;
   
-  console.log(`[VOICEMAIL COMPLETE] CallSid=${CallSid}, From=${From}, RecordingSid=${RecordingSid}`);
+  // CM-VOICEMAIL-HARDEN: Log all fields for debugging
+  console.log(`[VOICEMAIL COMPLETE] CallSid=${CallSid}, From=${From}, To=${To}, RecordingSid=${RecordingSid}, RecordingUrl=${RecordingUrl ? 'present' : 'MISSING'}`);
   
-  // Send confirmation TwiML
+  // CM-VOICEMAIL-HARDEN: Validate required fields
+  if (!CallSid) {
+    console.error('[VOICEMAIL COMPLETE] CRITICAL: Missing CallSid in webhook payload:', JSON.stringify(req.body, null, 2));
+  }
+  if (!From) {
+    console.error(`[VOICEMAIL COMPLETE] WARNING: Missing caller From number. CallSid=${CallSid}, raw payload:`, JSON.stringify(req.body, null, 2));
+  }
+  
+  // Send confirmation TwiML (always respond to Twilio)
   const twiml = buildVoicemailCompleteTwiml();
   res.type('text/xml');
   res.send(twiml);
@@ -426,11 +435,29 @@ async function handleVoicemailComplete(req: Request, res: Response) {
  * CM-VOICEMAIL-MISSED-CALL-SMS-FIX: 
  * - If recording duration < 3s → no meaningful voicemail → send missed call SMS
  * - If recording duration >= 3s → voicemail left → AI reply sent at transcription callback
+ * 
+ * CM-VOICEMAIL-HARDEN: Added field validation to prevent ghost voicemails
  */
 async function handleRecordingStatus(req: Request, res: Response) {
   const { RecordingUrl, RecordingSid, RecordingStatus, RecordingDuration, CallSid, From, To, TranscriptionText } = req.body;
   
   console.log(`[RECORDING STATUS] CallSid=${CallSid}, RecordingSid=${RecordingSid}, Status=${RecordingStatus}, Duration=${RecordingDuration}s`);
+  
+  // CM-VOICEMAIL-HARDEN: Validate required fields
+  if (!CallSid) {
+    console.error('[RECORDING STATUS] CRITICAL: Missing CallSid in webhook payload:', JSON.stringify(req.body, null, 2));
+    return res.sendStatus(200); // Return early - can't process without CallSid
+  }
+  
+  if (!From) {
+    console.error(`[RECORDING STATUS] WARNING: Missing caller From number. CallSid=${CallSid}`);
+    // Continue processing - we may still have useful recording data
+  }
+  
+  if (!RecordingUrl && RecordingStatus === 'completed') {
+    console.error(`[RECORDING STATUS] WARNING: Recording completed but no RecordingUrl. CallSid=${CallSid}, From=${From || 'UNKNOWN'}`);
+    // Continue processing - sync a placeholder record
+  }
   
   // Normalize phone number for lookup
   const normalizedTo = normalizePhoneNumber(To);
@@ -548,12 +575,25 @@ async function handleRecordingStatus(req: Request, res: Response) {
  * - If transcription exists → send AI-powered contextual reply
  * - If transcription is empty (silent voicemail) → send fallback missed call SMS
  * This ensures every caller gets exactly one response
+ * 
+ * CM-VOICEMAIL-HARDEN: Added field validation
  */
 async function handleVoicemailTranscribed(req: Request, res: Response) {
   const { TranscriptionText, TranscriptionSid, RecordingSid, RecordingUrl, CallSid, From, To } = req.body;
   
   console.log(`[VOICEMAIL TRANSCRIBED] CallSid=${CallSid}, RecordingSid=${RecordingSid}, TranscriptionSid=${TranscriptionSid}`);
   console.log(`[VOICEMAIL TRANSCRIBED] Text: ${TranscriptionText?.substring(0, 100) || '(empty)'}...`);
+  
+  // CM-VOICEMAIL-HARDEN: Validate required fields
+  if (!CallSid) {
+    console.error('[VOICEMAIL TRANSCRIBED] CRITICAL: Missing CallSid in webhook payload:', JSON.stringify(req.body, null, 2));
+    return res.sendStatus(200); // Return early - can't process without CallSid
+  }
+  
+  if (!From) {
+    console.error(`[VOICEMAIL TRANSCRIBED] WARNING: Missing caller From number. CallSid=${CallSid}, TranscriptionSid=${TranscriptionSid}`);
+    // Continue - we may still update existing record
+  }
   
   // Normalize phone number for lookup first (needed for empty transcription case too)
   const normalizedTo = normalizePhoneNumber(To);
