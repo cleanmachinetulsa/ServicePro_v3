@@ -875,13 +875,47 @@ export interface BookingSlotLinkResult {
 
 /**
  * Build a booking URL with pre-selected slot for a tenant
- * Multi-tenant: queries tenant_domains for custom domain, falls back to env vars
+ * Multi-tenant: Uses RELATIVE URLs for web chat (browser resolves to current domain)
+ * For SMS/email: queries tenant_domains for custom domain, falls back to env vars
  */
 export async function buildBookingSlotLink(input: BookingSlotLinkInput): Promise<BookingSlotLinkResult | null> {
   try {
     const { tenantId, start, durationMinutes, source } = input;
     
-    // Determine base URL for the tenant
+    // Default to 'chat' if source not specified (most callers are web chat)
+    const effectiveSource = source || 'chat';
+    
+    // Build the booking URL with query params
+    const params = new URLSearchParams();
+    params.set('slotStart', start.toISOString());
+    if (durationMinutes) {
+      params.set('durationMinutes', durationMinutes.toString());
+    }
+    params.set('source', effectiveSource);
+    
+    // For web chat: use RELATIVE URLs - the browser will resolve to current domain
+    // This ensures links work correctly on cleanmachinetulsa.com AND Replit preview
+    if (effectiveSource === 'chat') {
+      const url = `/book?${params.toString()}`;
+      console.log(`[BOOKING LINK] Generated RELATIVE URL for web chat: ${url}`);
+      
+      const humanLabel = start.toLocaleString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'America/Chicago',
+      });
+      
+      return {
+        url,
+        startIso: start.toISOString(),
+        humanLabel,
+      };
+    }
+    
+    // For SMS/email: need absolute URLs since they're not in a browser context
     let baseUrl: string = '';
     
     // Try to get tenant's custom domain from tenant_domains table
@@ -904,24 +938,32 @@ export async function buildBookingSlotLink(input: BookingSlotLinkInput): Promise
       console.log('[BOOKING LINK] tenant_domains not available, using fallback URL');
     }
     
-    // Fallback: use environment variable or Replit URL
+    // Fallback chain for SMS/email: env var, then Replit URL
     if (!baseUrl) {
-      baseUrl = process.env.PUBLIC_APP_BASE_URL || 
-                (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER?.toLowerCase()}.repl.co` : '');
+      const replSlug = process.env.REPL_SLUG;
+      const replOwner = process.env.REPL_OWNER;
+      
+      if (process.env.PUBLIC_APP_BASE_URL) {
+        baseUrl = process.env.PUBLIC_APP_BASE_URL;
+      } else if (replSlug && replOwner) {
+        baseUrl = `https://${replSlug}.${replOwner.toLowerCase()}.repl.co`;
+      }
     }
     
     if (!baseUrl) {
-      console.warn('[BOOKING LINK] No base URL available for tenant:', tenantId);
-      return null;
+      console.warn('[BOOKING LINK] No base URL available for tenant:', tenantId, '- using relative URL as fallback');
+      // Fallback to relative URL even for SMS - better than failing entirely
+      const url = `/book?${params.toString()}`;
+      const humanLabel = start.toLocaleString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'America/Chicago',
+      });
+      return { url, startIso: start.toISOString(), humanLabel };
     }
-    
-    // Build the booking URL with query params
-    const params = new URLSearchParams();
-    params.set('slotStart', start.toISOString());
-    if (durationMinutes) {
-      params.set('durationMinutes', durationMinutes.toString());
-    }
-    params.set('source', source || 'chat');
     
     // Use /book path (the existing booking route)
     const url = `${baseUrl}/book?${params.toString()}`;
@@ -969,6 +1011,25 @@ export async function buildViewAllCalendarLink(input: ViewAllCalendarLinkInput):
   try {
     const { tenantId, focusDate, source } = input;
     
+    // Default to 'chat' if source not specified (most callers are web chat)
+    const effectiveSource = source || 'chat';
+    
+    const params = new URLSearchParams();
+    const focusDateStr = focusDate.toISOString().split('T')[0];
+    params.set('focusDate', focusDateStr);
+    params.set('source', effectiveSource);
+    
+    // For web chat: use RELATIVE URLs - the browser will resolve to current domain
+    if (effectiveSource === 'chat') {
+      const url = `/book?${params.toString()}`;
+      console.log(`[VIEW ALL LINK] Generated RELATIVE URL for web chat: ${url}`);
+      return {
+        url,
+        focusDateIso: focusDateStr,
+      };
+    }
+    
+    // For SMS/email: need absolute URLs
     let baseUrl: string = '';
     
     try {
@@ -988,20 +1049,23 @@ export async function buildViewAllCalendarLink(input: ViewAllCalendarLinkInput):
       console.log('[VIEW ALL LINK] tenant_domains not available, using fallback URL');
     }
     
+    // Fallback chain for SMS/email: env var, then Replit URL
     if (!baseUrl) {
-      baseUrl = process.env.PUBLIC_APP_BASE_URL || 
-                (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER?.toLowerCase()}.repl.co` : '');
+      const replSlug = process.env.REPL_SLUG;
+      const replOwner = process.env.REPL_OWNER;
+      
+      if (process.env.PUBLIC_APP_BASE_URL) {
+        baseUrl = process.env.PUBLIC_APP_BASE_URL;
+      } else if (replSlug && replOwner) {
+        baseUrl = `https://${replSlug}.${replOwner.toLowerCase()}.repl.co`;
+      }
     }
     
     if (!baseUrl) {
-      console.warn('[VIEW ALL LINK] No base URL available for tenant:', tenantId);
-      return null;
+      console.warn('[VIEW ALL LINK] No base URL available for tenant:', tenantId, '- using relative URL as fallback');
+      // Fallback to relative URL even for SMS - better than failing entirely
+      return { url: `/book?${params.toString()}`, focusDateIso: focusDateStr };
     }
-    
-    const params = new URLSearchParams();
-    const focusDateStr = focusDate.toISOString().split('T')[0];
-    params.set('focusDate', focusDateStr);
-    params.set('source', source || 'chat');
     
     const url = `${baseUrl}/book?${params.toString()}`;
     

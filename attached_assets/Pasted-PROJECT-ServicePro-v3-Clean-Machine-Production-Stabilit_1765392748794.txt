@@ -1,0 +1,176 @@
+PROJECT: ServicePro_v3 – Clean Machine Production Stability Fixes
+FOCUS: Fix booking link domains + chat behavior and stabilize Messages page in production
+
+GOAL
+Our production site at https://cleanmachinetulsa.com has two major issues:
+
+1) Web chat booking links currently:
+   - Render as long raw URLs to https://workspace.cleanmachinetul.repl.co/...
+   - Open in a new tab
+   - Fail with DNS errors (NXDOMAIN)
+   We want them to:
+   - ALWAYS use the current domain (custom domain in prod, Replit preview in dev)
+   - Be short, clean hyperlinks like “Thursday at 1:00 PM”
+   - Open in the SAME tab and go to /book (or /booking) with the right query params
+
+2) The published Messages page and some other internal pages:
+   - Show skeleton UI but never load content in production
+   - Sometimes hit a /launch route that doesn’t make sense for end users
+   - Throw a runtime error in the prod bundle instead of showing data or a friendly message
+
+You must:
+- Inspect the repo and logs.
+- Fix BOTH problems safely.
+- Do NOT break anything that’s currently working in dev.
+
+--------------------------------
+PART A – Fix booking link base URL + behavior
+--------------------------------
+
+1) Locate where booking URLs for AI / web chat are built.
+
+   Hints:
+   - Files likely include: server/conversationalScheduling.ts, server/schedulingTools.ts, server/calendarApi.ts or similar.
+   - Search for strings like:
+     - "slotStart="
+     - "source=chat"
+     - "bookingBaseUrl"
+     - "workspace.cleanmachinetul"
+     - "/book?slotStart"
+
+2) Create a shared helper to compute the correct public base URL for booking links.
+
+   Requirements:
+
+   - New helper in a shared place, e.g. shared/urlHelpers.ts (or a similar existing util file):
+
+     export function getPublicBaseUrlForTenant(tenantId?: string): string {
+       // Priority:
+       // 1) If window.location is available (browser), use `${window.location.origin}`
+       // 2) On the server, if a tenant custom domain exists in tenant_domains table, use that
+       // 3) Otherwise fall back to APP_BASE_URL or the Replit host env var
+     }
+
+   - For server-side usage:
+     - Use wrapTenantDb to look up any custom domain for the tenant from the tenant_domains (or equivalent) table.
+     - Fallback chain (server side):
+       - tenant-specific custom domain → e.g. https://cleanmachinetulsa.com
+       - process.env.APP_BASE_URL
+       - process.env.REPLIT_APP_URL (if we already store this)
+       - As an absolute last resort, use a relative “”“/”“” and let the browser resolve it.
+
+   - For client-side usage:
+     - Prefer window.location.origin, which will automatically be https://cleanmachinetulsa.com in production and the Replit preview URL in dev.
+
+3) Update all booking link builders to use the helper.
+
+   - Anywhere we currently build a full URL like:
+       https://workspace.cleanmachinetul.repl.co/book?slotStart=...&source=chat
+     change the logic to:
+
+       const base = getPublicBaseUrlForTenant(tenantId);
+       const path = `/book?slotStart=${encodeURIComponent(slotStartIso)}&source=${source}`;
+       const fullUrl = `${base}${path}`;
+
+   - For web chat messages that render markdown, CHANGE THEM to use **relative links**, so the Markdown renderer uses the current host:
+
+       - [Thursday at 1:00 PM](/book?slotStart=...&source=chat)
+
+     That way the browser automatically keeps the user on cleanmachinetulsa.com in prod.
+
+   - Make sure both:
+     - the single-slot direct “book this time” links, AND
+     - the “See all openings” / “View all available times” links
+     use this helper and relative paths.
+
+4) Ensure links stay in the same tab.
+
+   - Find the web chat bubble / widget renderer (likely in client/src/components/ChatWidget.tsx, FloatingChatButton.tsx, or similar).
+   - If we are overriding link rendering or explicitly setting target attributes, make sure chat links default to:
+       <a href="/book?...">...</a>
+     with NO target="_blank".
+   - Only keep target="_blank" for external domains (if any). Internal /book links should stay in the same tab.
+
+5) Verify in dev:
+
+   - Run the app.
+   - Open the homepage chat widget.
+   - Ask: “When’s your next availability for a Full Detail?”
+   - Confirm that:
+     - The agent suggests slots.
+     - Each slot displays as a SHORT hyperlink with anchor text like “Thursday at 1:00 PM”.
+     - When you click, you stay in the same tab and land on /book (or /booking) with the time prefilled.
+     - The base URL uses the current dev host (Replit preview), not workspace.cleanmachinetul.repl.co.
+
+--------------------------------
+PART B – Fix Messages page + /launch behavior in production
+--------------------------------
+
+1) Hunt for any hard-coded workspace URLs or dev-only hosts in the frontend.
+
+   - Search the entire client code for:
+     - "workspace.cleanmachinetul"
+     - "repl.co"
+     - "REPLIT_WORKSPACE"
+   - Replace any **absolute dev URLs** for API calls or routes with relative paths:
+     - e.g. axios.get("https://workspace.cleanmachinetul.repl.co/api/...") → axios.get("/api/...")
+   - Make sure our API base URL is consistently derived from window.location.origin or left relative.
+
+2) Audit the /launch route.
+
+   - Search for “/launch” in client/src and server.
+   - Determine what it was for. (Most likely an internal “open workspace” or dev helper.)
+   - For production:
+     - Either completely remove the /launch route from the router; OR
+     - Add a guard that redirects /launch → the correct starting route (e.g. “/messages” or “/dashboard”) for authenticated users.
+   - Ensure that nothing in the main navigation or root domain handler tries to send regular users to /launch.
+
+3) Stabilize the Messages page.
+
+   - Open the Messages page component(s), e.g. client/src/pages/MessagesPage.tsx or similar.
+   - Check its data-loading logic:
+     - It should be calling a tenant-safe API route like /api/conversations or /api/messages, not a dev URL.
+     - Wrap the main query in proper error handling (React Query error state, error banner, etc.) so that if something fails, the user sees a friendly message instead of a blank page.
+
+   - Add temporary console logging around the data load for easier debugging, for example:
+
+       console.error("[MessagesPage] failed to load conversations", error);
+
+   - Ensure any lazy loading / Suspense boundaries for Messages are not swallowing the error silently. If the component throws, React should show an error boundary, not an infinite skeleton.
+
+4) Test in dev:
+
+   - From the logged-in owner/admin account, go to the Messages page.
+   - Confirm:
+     - It loads conversations normally.
+     - No dev-only hostnames are used in the network panel.
+     - Navigating to /launch (if still present) either:
+       - cleanly redirects to the correct page, or
+       - is completely removed.
+
+5) Test in deployed/production context.
+
+   - After changes are applied, run the “Test your app” tool against the production URL (cleanmachinetulsa.com) if available.
+   - Specifically:
+     - Open Messages page.
+     - Confirm data loads and no runtime error is thrown.
+     - Confirm the homepage no longer tries to route through /launch in a way that breaks things.
+     - Re-check network requests to ensure no calls go to workspace.cleanmachinetul.repl.co.
+
+--------------------------------
+PART C – Guardrails & Non-Goals
+--------------------------------
+
+- Do NOT change tenant isolation or wrapTenantDb behavior.
+- Do NOT modify booking logic itself (pricing, services, durations). Only the URLs and routing behavior.
+- Do NOT remove any existing analytics; if you must touch analytics for booking links, keep existing event names and add only incremental fields if needed.
+- Keep everything multi-tenant safe:
+  - Booking links must respect the tenant’s custom domain if configured.
+  - Admin / Messages pages must continue to enforce auth and RBAC as they do now.
+
+When done:
+- Summarize:
+  - Which files were changed.
+  - How booking link generation now works.
+  - How Messages page behaves in production.
+  - Any remaining limitations we should know about.
