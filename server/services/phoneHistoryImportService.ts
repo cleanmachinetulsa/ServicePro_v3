@@ -136,18 +136,57 @@ export async function getImportHistory(
   return result.rows as PhoneHistoryImport[];
 }
 
-function parseCSVFile(content: string): any[] {
+function parseCSVFile(content: string, logHeaders: boolean = false, fileName: string = 'unknown'): any[] {
   try {
-    return parse(content, {
+    const rows = parse(content, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
       relax_column_count: true,
     });
+    
+    if (logHeaders && rows.length > 0) {
+      const headers = Object.keys(rows[0]);
+      console.log(`${LOG_PREFIX} [DEBUG] File: ${fileName}`);
+      console.log(`${LOG_PREFIX} [DEBUG] Headers found: ${JSON.stringify(headers)}`);
+      console.log(`${LOG_PREFIX} [DEBUG] Sample row: ${JSON.stringify(rows[0])}`);
+    }
+    
+    return rows;
   } catch (error) {
     console.error(`${LOG_PREFIX} CSV parse error:`, error);
     return [];
   }
+}
+
+function findPhoneColumn(row: any): string {
+  const phoneColumnNames = [
+    'phone', 'Phone', 'phone_number', 'address', 'Address',
+    'from', 'From', 'to', 'To', 'sender', 'Sender',
+    'recipient', 'Recipient', 'number', 'Number',
+    'contact', 'Contact', 'mobile', 'Mobile',
+    'phoneNumber', 'PhoneNumber', 'caller', 'Caller'
+  ];
+  
+  for (const col of phoneColumnNames) {
+    if (row[col] && String(row[col]).trim()) {
+      return row[col];
+    }
+  }
+  
+  const keys = Object.keys(row);
+  for (const key of keys) {
+    const lowerKey = key.toLowerCase();
+    if (lowerKey.includes('phone') || lowerKey.includes('number') || 
+        lowerKey.includes('address') || lowerKey.includes('mobile') ||
+        lowerKey.includes('contact') || lowerKey.includes('sender')) {
+      if (row[key] && String(row[key]).trim()) {
+        return row[key];
+      }
+    }
+  }
+  
+  return '';
 }
 
 function parseJSONFile(content: string): any[] {
@@ -223,46 +262,57 @@ export async function processImportZip(
 
       if (entryName.includes('messages')) {
         if (entryName.endsWith('.csv')) {
-          messages = parseCSVFile(content).map((row) => ({
-            phone: row.phone || row.Phone || row.phone_number || '',
-            body: row.body || row.Body || row.content || row.Content || row.text || row.message || '',
-            timestamp: row.timestamp || row.Timestamp || row.date || row.Date || row.datetime || '',
-            direction: (row.direction || row.Direction || 'inbound').toLowerCase() === 'outbound' ? 'outbound' : 'inbound',
+          const rows = parseCSVFile(content, true, entryName);
+          messages = rows.map((row) => ({
+            phone: findPhoneColumn(row),
+            body: row.body || row.Body || row.content || row.Content || row.text || row.Text ||
+                  row.message || row.Message || row.sms_body || row.sms || '',
+            timestamp: row.timestamp || row.Timestamp || row.date || row.Date || row.datetime ||
+                       row.time || row.Time || row.sent_at || row.created_at || row.readable_date || '',
+            direction: (row.direction || row.Direction || row.type || row.Type || 'inbound').toLowerCase() === 'outbound' ||
+                       String(row.type || '').includes('2') ? 'outbound' : 'inbound',
             channel: row.channel || row.Channel || 'sms',
           }));
         } else if (entryName.endsWith('.json')) {
           const parsed = parseJSONFile(content);
+          console.log(`${LOG_PREFIX} [DEBUG] JSON messages first item: ${JSON.stringify(parsed[0] || {})}`);
           messages = parsed.map((row: any) => ({
-            phone: row.phone || row.phone_number || '',
-            body: row.body || row.content || row.text || row.message || '',
-            timestamp: row.timestamp || row.date || row.datetime || '',
-            direction: (row.direction || 'inbound').toLowerCase() === 'outbound' ? 'outbound' : 'inbound',
+            phone: findPhoneColumn(row),
+            body: row.body || row.content || row.text || row.message || row.sms_body || row.sms || '',
+            timestamp: row.timestamp || row.date || row.datetime || row.time || row.sent_at || row.created_at || '',
+            direction: (row.direction || row.type || 'inbound').toLowerCase() === 'outbound' ||
+                       String(row.type || '').includes('2') ? 'outbound' : 'inbound',
             channel: row.channel || 'sms',
           }));
         }
-        console.log(`${LOG_PREFIX} Found ${messages.length} messages in ${entryName}`);
+        const phonesFound = messages.filter(m => m.phone).length;
+        console.log(`${LOG_PREFIX} Found ${messages.length} messages in ${entryName}, ${phonesFound} have phone numbers`);
       }
 
       if (entryName.includes('conversations') && !entryName.includes('messages')) {
         if (entryName.endsWith('.csv')) {
-          conversations = parseCSVFile(content).map((row) => ({
-            phone: row.phone || row.Phone || row.phone_number || '',
+          const rows = parseCSVFile(content, true, entryName);
+          conversations = rows.map((row) => ({
+            phone: findPhoneColumn(row),
             platform: row.platform || row.Platform || 'sms',
           }));
         } else if (entryName.endsWith('.json')) {
           const parsed = parseJSONFile(content);
+          console.log(`${LOG_PREFIX} [DEBUG] JSON conversations first item: ${JSON.stringify(parsed[0] || {})}`);
           conversations = parsed.map((row: any) => ({
-            phone: row.phone || row.phone_number || '',
+            phone: findPhoneColumn(row),
             platform: row.platform || 'sms',
           }));
         }
-        console.log(`${LOG_PREFIX} Found ${conversations.length} conversations in ${entryName}`);
+        const phonesFound = conversations.filter(c => c.phone).length;
+        console.log(`${LOG_PREFIX} Found ${conversations.length} conversations in ${entryName}, ${phonesFound} have phone numbers`);
       }
 
       if (entryName.includes('calls') || entryName.includes('call_log') || entryName.includes('call-log')) {
         if (entryName.endsWith('.csv')) {
-          calls = parseCSVFile(content).map((row) => ({
-            phone: row.phone || row.Phone || row.phone_number || row.caller || row.number || '',
+          const rows = parseCSVFile(content, true, entryName);
+          calls = rows.map((row) => ({
+            phone: findPhoneColumn(row),
             timestamp: row.timestamp || row.Timestamp || row.date || row.Date || row.datetime || row.time || '',
             direction: (row.direction || row.Direction || row.type || 'inbound').toLowerCase().includes('out') ? 'outbound' : 'inbound',
             duration: parseInt(row.duration || row.Duration || row.length || '0', 10) || 0,
@@ -271,8 +321,9 @@ export async function processImportZip(
           }));
         } else if (entryName.endsWith('.json')) {
           const parsed = parseJSONFile(content);
+          console.log(`${LOG_PREFIX} [DEBUG] JSON calls first item: ${JSON.stringify(parsed[0] || {})}`);
           calls = parsed.map((row: any) => ({
-            phone: row.phone || row.phone_number || row.caller || row.number || '',
+            phone: findPhoneColumn(row),
             timestamp: row.timestamp || row.date || row.datetime || row.time || '',
             direction: (row.direction || row.type || 'inbound').toLowerCase().includes('out') ? 'outbound' : 'inbound',
             duration: parseInt(row.duration || row.length || '0', 10) || 0,
@@ -280,7 +331,8 @@ export async function processImportZip(
             transcription: row.transcription || row.voicemail || '',
           }));
         }
-        console.log(`${LOG_PREFIX} Found ${calls.length} calls in ${entryName}`);
+        const phonesFound = calls.filter(c => c.phone).length;
+        console.log(`${LOG_PREFIX} Found ${calls.length} calls in ${entryName}, ${phonesFound} have phone numbers`);
       }
     }
 

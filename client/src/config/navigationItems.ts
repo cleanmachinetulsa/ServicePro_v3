@@ -709,6 +709,13 @@ export const navigationItems: NavigationItem[] = [
     complexity: 'advanced',
   },
   {
+    id: 'settings-gift-cards',
+    label: 'Gift Cards',
+    icon: Gift,
+    path: '/settings/gift-cards',
+    complexity: 'advanced',
+  },
+  {
     id: 'settings-domains',
     label: 'Custom Domains',
     icon: Globe,
