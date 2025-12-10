@@ -33,19 +33,24 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
   const { toast } = useToast();
 
   // Real service area check using Google Maps Distance Matrix API
-  const checkServiceArea = async (address: string): Promise<boolean> => {
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Returns 'IN_AREA' | 'EXTENDED' | 'OUT_OF_AREA' | 'UNKNOWN'
+  const checkServiceArea = async (address: string): Promise<'IN_AREA' | 'EXTENDED' | 'OUT_OF_AREA' | 'UNKNOWN'> => {
     setIsLoading(true);
     
     try {
       // First, geocode the address to get coordinates
       const geocodeResponse = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
       if (!geocodeResponse.ok) {
-        throw new Error('Failed to geocode address');
+        // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN for geocode API errors
+        console.error('Geocode API returned non-OK status');
+        return 'UNKNOWN';
       }
       
       const geocodeData = await geocodeResponse.json();
       if (!geocodeData.success || !geocodeData.location) {
-        throw new Error('Invalid address or geocoding failed');
+        // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN when geocoding fails
+        console.error('Geocoding failed for address:', address);
+        return 'UNKNOWN';
       }
       
       // Store lat/lng for map confirmation
@@ -55,12 +60,16 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
       // Now check distance from business location (Tulsa)
       const distanceResponse = await fetch(`/api/distance-check?address=${encodeURIComponent(address)}`);
       if (!distanceResponse.ok) {
-        throw new Error('Failed to check distance');
+        // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN for distance API errors
+        console.error('Distance check API returned non-OK status');
+        return 'UNKNOWN';
       }
       
       const distanceData = await distanceResponse.json();
       if (!distanceData.success) {
-        throw new Error('Distance check failed');
+        // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN when distance check fails
+        console.error('Distance check failed:', distanceData.error);
+        return 'UNKNOWN';
       }
       
       // Store the formatted address and distance information
@@ -76,16 +85,20 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
         setDriveTime(distanceData.driveTime.text);
       }
       
-      // If distance is less than or equal to the service radius (e.g., 30 miles), it's in the service area
-      return distanceData.isInServiceArea;
+      // SP-BOOKING-ADDRESS+PRICING-FIX: Return full classification
+      // The distance check now returns isInServiceArea (true for IN_AREA and EXTENDED)
+      // and isExtendedArea for EXTENDED classification
+      if (distanceData.isExtendedArea) {
+        return 'EXTENDED';
+      } else if (distanceData.isInServiceArea) {
+        return 'IN_AREA';
+      } else {
+        return 'OUT_OF_AREA';
+      }
     } catch (error) {
       console.error('Error checking service area:', error);
-      toast({
-        title: "Address Check Error",
-        description: "We had trouble verifying your address. Please ensure it's entered correctly.",
-        variant: "destructive",
-      });
-      return false;
+      // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN for any exceptions
+      return 'UNKNOWN';
     } finally {
       setIsLoading(false);
     }
@@ -103,9 +116,21 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
       return;
     }
     
-    const isInServiceArea = await checkServiceArea(address);
+    const classification = await checkServiceArea(address);
     
-    if (isInServiceArea) {
+    // SP-BOOKING-ADDRESS+PRICING-FIX: Handle all classification types
+    if (classification === 'UNKNOWN') {
+      // Geocode or routing failed - keep user on address step with helpful message
+      toast({
+        title: "Address Check Error",
+        description: "We had trouble verifying your address. Please double-check it and try again.",
+        variant: "destructive",
+      });
+      // Do NOT proceed or show out-of-area dialog - stay on address step
+      return;
+    }
+    
+    if (classification === 'IN_AREA') {
       // Address is in service area, proceed to next step
       toast({
         title: "Great news!",
@@ -113,8 +138,16 @@ export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckPro
       });
       // Use the formatted address from Google if available, and pass lat/lng
       onNext(formattedAddress || address, false, latitude, longitude);
+    } else if (classification === 'EXTENDED') {
+      // Extended area - allow booking but flag it
+      toast({
+        title: "Extended Service Area",
+        description: driveTime ? `You're in our extended service area (${driveTime} drive). Let's confirm your location.` : "You're in our extended service area. Let's confirm your location.",
+      });
+      // Pass isExtendedArea = true
+      onNext(formattedAddress || address, true, latitude, longitude);
     } else {
-      // Address is outside service area, show dialog
+      // OUT_OF_AREA - show dialog for hard decline with option to request anyway
       setShowOutOfAreaDialog(true);
     }
   };

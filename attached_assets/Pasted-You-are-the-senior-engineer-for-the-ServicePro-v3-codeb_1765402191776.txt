@@ -1,0 +1,90 @@
+You are the senior engineer for the ServicePro_v3 codebase.
+
+TASK NAME: SP-REWARDS-CAMPAIGN-TOKENS+WELCOME-CTA
+SCOPE:
+  1) Make SMS campaigns that are meant to push loyalty/rewards send REAL per-customer token links, not a static /rewards URL.
+  2) Ensure the "test send" path uses the exact same token logic as the real blast.
+  3) Add a secondary "Browse services & pricing" CTA to the Points Welcome Landing page, linking back to the public site home.
+
+--------------------------------
+PART 1 – Rewards Token in Campaigns
+--------------------------------
+
+1. Find the campaign sending pipeline, e.g.:
+   - server/smsCampaignService.ts
+   - server/routes.smsCampaigns.ts
+   - Any helper that builds the per-recipient SMS text.
+
+2. Behaviour we want:
+
+   a) For campaigns where the CTA URL points to a rewards-related path
+      (e.g. "/rewards" or "/rewards/welcome"), OR where the campaign type
+      is explicitly marked as a "rewards / loyalty" campaign:
+
+      - For each recipient:
+        - Generate a rewards token using the existing helper, something like:
+          generateRewardsToken(phoneNumber, tenantId, expiryDays)
+        - Build a personalized URL:
+          https://<tenant-domain>/rewards/welcome?token=<token>
+
+      - Expose this personalized URL to the template engine as:
+        - {rewards_link} AND {{rewardsLink}}
+        - Also make {{ctaUrl}} resolve to the same personalized value
+          for these specific campaigns so existing templates keep working.
+
+   b) Template rules:
+      - If the template explicitly references {rewards_link} or {{rewardsLink}},
+        use that value.
+      - If it only uses {{ctaUrl}}, it should still receive the personalized
+        rewards link for rewards-type campaigns.
+      - If neither is used, auto-append:
+        " " + personalizedRewardsUrl
+        to the end of the message, exactly as previously implemented.
+
+3. Test send vs real send:
+
+   - Ensure the "Send Test" / "Preview SMS to self" path calls the SAME
+     underlying function that builds the message as the real bulk send.
+   - When you send yourself a test using the Port Recovery campaign,
+     the SMS should show a full https://cleanmachinetulsa.com/rewards/welcome?token=... URL, not a plain /rewards link.
+
+--------------------------------
+PART 2 – Points Welcome Landing CTA
+--------------------------------
+
+1. Locate the Points Welcome Landing page component, e.g.:
+   - client/src/pages/loyalty/PointsWelcomeLandingPage.tsx
+
+2. Add a secondary CTA below the main points/booking CTAs:
+
+   - Label: "Browse services & pricing"
+   - Behaviour:
+     - Links back to the tenant's public home page.
+     - Use the same domain / host logic as existing links so that on
+       Clean Machine it goes to https://cleanmachinetulsa.com/ (or /home),
+       and for other tenants it goes to their own public home route.
+
+   - Styling:
+     - Match existing button styles on the page (glass/button theme).
+     - Lower visual emphasis than "Book with my points" but still easily visible.
+
+3. Optional UX polish:
+   - At the top of the Points Welcome page, add a small subtle link such as:
+     "← Back to home"
+     which also points to the public home page.
+
+--------------------------------
+FINAL CHECKLIST
+--------------------------------
+
+- [ ] In the Port Recovery / Welcome Back campaign editor:
+      - CTA URL can stay as https://cleanmachinetulsa.com/rewards.
+      - The preview under "Variables" shows {rewards_link} / {{rewardsLink}} available.
+- [ ] Send yourself a test SMS from that campaign:
+      - The SMS body contains a full personalized rewards URL with a token parameter.
+- [ ] Run a dry-run for a few dummy customers and log out the generated URLs
+      to confirm each phone number gets a unique token.
+- [ ] Visit a rewards welcome link from SMS and confirm:
+      - The page loads correctly.
+      - "Browse services & pricing" takes you back to the public home.
+- [ ] Ensure no errors in console and existing behaviour for non-rewards campaigns is unchanged.
