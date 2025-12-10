@@ -50,11 +50,17 @@ async function getTenantSquareConfig(tenantId: string): Promise<TenantSquareConf
     if (tenantId === 'root') {
       const accessToken = process.env.SQUARE_ACCESS_TOKEN;
       const locationId = process.env.SQUARE_LOCATION_ID;
+      const appId = process.env.SQUARE_APPLICATION_ID;
       
       if (!accessToken || !locationId) {
         console.warn(`${LOG_PREFIX} Root tenant: Square env vars not configured`);
         return null;
       }
+      
+      // Debug: log token format and environment
+      const tokenPrefix = accessToken ? accessToken.substring(0, 10) : 'MISSING';
+      const env = process.env.SQUARE_ENVIRONMENT || 'sandbox (default)';
+      console.log(`${LOG_PREFIX} Root tenant config: token=${tokenPrefix}..., locationId=${locationId}, appId=${appId?.substring(0, 10)}..., environment=${env}`);
       
       return { accessToken, locationId };
     }
