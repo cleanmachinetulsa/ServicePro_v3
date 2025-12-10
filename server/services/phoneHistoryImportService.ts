@@ -165,7 +165,8 @@ function findPhoneColumn(row: any): string {
     'from', 'From', 'to', 'To', 'sender', 'Sender',
     'recipient', 'Recipient', 'number', 'Number',
     'contact', 'Contact', 'mobile', 'Mobile',
-    'phoneNumber', 'PhoneNumber', 'caller', 'Caller'
+    'phoneNumber', 'PhoneNumber', 'caller', 'Caller',
+    'Phone (E.164)', 'phone (e.164)', 'Phone (E164)', 'phone_e164'
   ];
   
   for (const col of phoneColumnNames) {
@@ -179,7 +180,8 @@ function findPhoneColumn(row: any): string {
     const lowerKey = key.toLowerCase();
     if (lowerKey.includes('phone') || lowerKey.includes('number') || 
         lowerKey.includes('address') || lowerKey.includes('mobile') ||
-        lowerKey.includes('contact') || lowerKey.includes('sender')) {
+        lowerKey.includes('contact') || lowerKey.includes('sender') ||
+        lowerKey.includes('e.164') || lowerKey.includes('e164')) {
       if (row[key] && String(row[key]).trim()) {
         return row[key];
       }
@@ -406,20 +408,30 @@ export async function processImportZip(
       }
     }
 
-    for (const phone of phonesFromMessages) {
-      try {
-        const existingConv = await tenantDb.execute(sql`
-          SELECT id FROM conversations
-          WHERE tenant_id = ${tenantId}
-            AND customer_phone = ${phone}
-            AND platform = 'sms'
-          LIMIT 1
-        `);
+    console.log(`${LOG_PREFIX} Processing ${phonesFromMessages.size} unique phone numbers for conversations...`);
+    
+    // For dry run, skip database queries and just count
+    if (dryRun) {
+      for (const phone of phonesFromMessages) {
+        phoneToConversationId.set(phone, -1);
+        stats.conversationsCreated++;
+      }
+      console.log(`${LOG_PREFIX} [DRY RUN] Would create ${stats.conversationsCreated} conversations`);
+    } else {
+      let convProcessed = 0;
+      for (const phone of phonesFromMessages) {
+        try {
+          const existingConv = await tenantDb.execute(sql`
+            SELECT id FROM conversations
+            WHERE tenant_id = ${tenantId}
+              AND customer_phone = ${phone}
+              AND platform = 'sms'
+            LIMIT 1
+          `);
 
-        if (existingConv.rows.length > 0) {
-          phoneToConversationId.set(phone, (existingConv.rows[0] as any).id);
-        } else {
-          if (!dryRun) {
+          if (existingConv.rows.length > 0) {
+            phoneToConversationId.set(phone, (existingConv.rows[0] as any).id);
+          } else {
             const customerId = phoneToCustomerId.get(phone) || null;
             let customerName = 'Unknown';
 
@@ -439,126 +451,186 @@ export async function processImportZip(
             `);
 
             phoneToConversationId.set(phone, (insertConv.rows[0] as any).id);
-          } else {
-            // For dry run, use a fake ID for tracking
-            phoneToConversationId.set(phone, -1);
+            stats.conversationsCreated++;
           }
-          stats.conversationsCreated++;
+          
+          convProcessed++;
+          if (convProcessed % 100 === 0) {
+            console.log(`${LOG_PREFIX} Processed ${convProcessed}/${phonesFromMessages.size} conversations`);
+          }
+        } catch (error: any) {
+          stats.errors!.push(`Conversation creation error (${phone}): ${error.message}`);
+          stats.errorsCount++;
         }
-      } catch (error: any) {
-        stats.errors!.push(`Conversation creation error (${phone}): ${error.message}`);
-        stats.errorsCount++;
       }
     }
 
-    for (const msg of messages) {
-      const normalizedPhone = normalizeE164(msg.phone);
-      if (!normalizedPhone) {
-        stats.errors!.push(`Invalid phone in message: ${msg.phone}`);
-        stats.errorsCount++;
-        continue;
+    console.log(`${LOG_PREFIX} Processing ${messages.length} messages...`);
+    
+    // For dry run, just count valid messages without database queries
+    if (dryRun) {
+      let validMessages = 0;
+      let invalidPhones = 0;
+      let emptyBodies = 0;
+      
+      for (const msg of messages) {
+        const normalizedPhone = normalizeE164(msg.phone);
+        if (!normalizedPhone) {
+          invalidPhones++;
+          continue;
+        }
+        
+        const body = msg.body?.trim() || '';
+        if (!body) {
+          emptyBodies++;
+          continue;
+        }
+        
+        validMessages++;
       }
-
-      const conversationId = phoneToConversationId.get(normalizedPhone);
-      if (!conversationId) {
-        stats.errors!.push(`No conversation found for message phone: ${normalizedPhone}`);
-        stats.errorsCount++;
-        continue;
+      
+      stats.messagesImported = validMessages;
+      if (invalidPhones > 0) {
+        stats.errors!.push(`${invalidPhones} messages with invalid phone numbers`);
+        stats.errorsCount += invalidPhones;
       }
+      console.log(`${LOG_PREFIX} [DRY RUN] Would import ${validMessages} messages (${invalidPhones} invalid phones, ${emptyBodies} empty bodies)`);
+    } else {
+      let msgProcessed = 0;
+      for (const msg of messages) {
+        const normalizedPhone = normalizeE164(msg.phone);
+        if (!normalizedPhone) {
+          stats.errors!.push(`Invalid phone in message: ${msg.phone}`);
+          stats.errorsCount++;
+          continue;
+        }
 
-      let timestamp: Date;
-      try {
-        timestamp = new Date(msg.timestamp);
-        if (isNaN(timestamp.getTime())) {
+        const conversationId = phoneToConversationId.get(normalizedPhone);
+        if (!conversationId) {
+          stats.errors!.push(`No conversation found for message phone: ${normalizedPhone}`);
+          stats.errorsCount++;
+          continue;
+        }
+
+        let timestamp: Date;
+        try {
+          timestamp = new Date(msg.timestamp);
+          if (isNaN(timestamp.getTime())) {
+            timestamp = new Date();
+          }
+        } catch {
           timestamp = new Date();
         }
-      } catch {
-        timestamp = new Date();
-      }
 
-      const sender = msg.direction === 'outbound' ? 'agent' : 'customer';
-      const fromCustomer = msg.direction === 'inbound';
-      const body = msg.body?.trim() || '';
+        const sender = msg.direction === 'outbound' ? 'agent' : 'customer';
+        const fromCustomer = msg.direction === 'inbound';
+        const body = msg.body?.trim() || '';
 
-      if (!body) {
-        continue;
-      }
+        if (!body) {
+          continue;
+        }
 
-      try {
-        const existingMsg = await tenantDb.execute(sql`
-          SELECT id FROM messages
-          WHERE conversation_id = ${conversationId}
-            AND tenant_id = ${tenantId}
-            AND content = ${body}
-            AND timestamp = ${timestamp}
-            AND from_customer = ${fromCustomer}
-          LIMIT 1
-        `);
+        try {
+          const existingMsg = await tenantDb.execute(sql`
+            SELECT id FROM messages
+            WHERE conversation_id = ${conversationId}
+              AND tenant_id = ${tenantId}
+              AND content = ${body}
+              AND timestamp = ${timestamp}
+              AND from_customer = ${fromCustomer}
+            LIMIT 1
+          `);
 
-        if (existingMsg.rows.length === 0) {
-          if (!dryRun) {
+          if (existingMsg.rows.length === 0) {
             await tenantDb.execute(sql`
               INSERT INTO messages (conversation_id, tenant_id, content, sender, from_customer, timestamp, channel)
               VALUES (${conversationId}, ${tenantId}, ${body}, ${sender}, ${fromCustomer}, ${timestamp}, 'sms')
             `);
+            stats.messagesImported++;
           }
-          stats.messagesImported++;
+          
+          msgProcessed++;
+          if (msgProcessed % 500 === 0) {
+            console.log(`${LOG_PREFIX} Processed ${msgProcessed}/${messages.length} messages`);
+          }
+        } catch (error: any) {
+          stats.errors!.push(`Message import error: ${error.message}`);
+          stats.errorsCount++;
         }
-      } catch (error: any) {
-        stats.errors!.push(`Message import error: ${error.message}`);
-        stats.errorsCount++;
       }
     }
 
     // Import calls
-    for (const call of calls) {
-      const normalizedPhone = normalizeE164(call.phone);
-      if (!normalizedPhone) {
-        stats.errors!.push(`Invalid phone in call: ${call.phone}`);
-        stats.errorsCount++;
-        continue;
+    console.log(`${LOG_PREFIX} Processing ${calls.length} calls...`);
+    
+    if (dryRun) {
+      let validCalls = 0;
+      let invalidPhones = 0;
+      
+      for (const call of calls) {
+        const normalizedPhone = normalizeE164(call.phone);
+        if (!normalizedPhone) {
+          invalidPhones++;
+          continue;
+        }
+        validCalls++;
       }
+      
+      stats.callsImported = validCalls;
+      if (invalidPhones > 0) {
+        stats.errors!.push(`${invalidPhones} calls with invalid phone numbers`);
+        stats.errorsCount += invalidPhones;
+      }
+      console.log(`${LOG_PREFIX} [DRY RUN] Would import ${validCalls} calls (${invalidPhones} invalid phones)`);
+    } else {
+      let callsProcessed = 0;
+      for (const call of calls) {
+        const normalizedPhone = normalizeE164(call.phone);
+        if (!normalizedPhone) {
+          stats.errors!.push(`Invalid phone in call: ${call.phone}`);
+          stats.errorsCount++;
+          continue;
+        }
 
-      let timestamp: Date;
-      try {
-        timestamp = new Date(call.timestamp);
-        if (isNaN(timestamp.getTime())) {
+        let timestamp: Date;
+        try {
+          timestamp = new Date(call.timestamp);
+          if (isNaN(timestamp.getTime())) {
+            timestamp = new Date();
+          }
+        } catch {
           timestamp = new Date();
         }
-      } catch {
-        timestamp = new Date();
-      }
 
-      const direction = call.direction || 'inbound';
-      const duration = call.duration || 0;
-      const status = call.status || 'completed';
-      const transcription = call.transcription?.trim() || null;
+        const direction = call.direction || 'inbound';
+        const duration = call.duration || 0;
+        const status = call.status || 'completed';
+        const transcription = call.transcription?.trim() || null;
 
-      // Generate a unique call SID for imported calls
-      const importedCallSid = `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Generate a unique call SID for imported calls
+        const importedCallSid = `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Determine from/to based on direction
-      const businessPhone = process.env.MAIN_PHONE_NUMBER || '+10000000000';
-      const fromNumber = direction === 'inbound' ? normalizedPhone : businessPhone;
-      const toNumber = direction === 'inbound' ? businessPhone : normalizedPhone;
-      const customerPhone = normalizedPhone;
+        // Determine from/to based on direction
+        const businessPhone = process.env.MAIN_PHONE_NUMBER || '+10000000000';
+        const fromNumber = direction === 'inbound' ? normalizedPhone : businessPhone;
+        const toNumber = direction === 'inbound' ? businessPhone : normalizedPhone;
+        const customerPhone = normalizedPhone;
 
-      // Link to existing conversation if available
-      const conversationId = phoneToConversationId.get(normalizedPhone) || null;
+        // Link to existing conversation if available
+        const conversationId = phoneToConversationId.get(normalizedPhone) || null;
 
-      try {
-        // Check for duplicate call (same phone + timestamp + direction)
-        const existingCall = await tenantDb.execute(sql`
-          SELECT id FROM call_events
-          WHERE tenant_id = ${tenantId}
-            AND "from" = ${fromNumber}
-            AND "to" = ${toNumber}
-            AND created_at = ${timestamp}
-          LIMIT 1
-        `);
+        try {
+          // Check for duplicate call (same phone + timestamp + direction)
+          const existingCall = await tenantDb.execute(sql`
+            SELECT id FROM call_events
+            WHERE tenant_id = ${tenantId}
+              AND "from" = ${fromNumber}
+              AND "to" = ${toNumber}
+              AND created_at = ${timestamp}
+            LIMIT 1
+          `);
 
-        if (existingCall.rows.length === 0) {
-          if (!dryRun) {
+          if (existingCall.rows.length === 0) {
             await tenantDb.execute(sql`
               INSERT INTO call_events (
                 tenant_id, conversation_id, call_sid, direction, "from", "to", 
@@ -572,12 +644,17 @@ export async function processImportZip(
                 ${timestamp}
               )
             `);
+            stats.callsImported++;
           }
-          stats.callsImported++;
+          
+          callsProcessed++;
+          if (callsProcessed % 200 === 0) {
+            console.log(`${LOG_PREFIX} Processed ${callsProcessed}/${calls.length} calls`);
+          }
+        } catch (error: any) {
+          stats.errors!.push(`Call import error: ${error.message}`);
+          stats.errorsCount++;
         }
-      } catch (error: any) {
-        stats.errors!.push(`Call import error: ${error.message}`);
-        stats.errorsCount++;
       }
     }
 
