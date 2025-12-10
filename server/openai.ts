@@ -866,10 +866,12 @@ IMPORTANT WEB CHAT RESTRICTIONS:
 - You CAN check availability using get_available_slots - this is encouraged!
 - You CAN suggest add-ons using get_upsell_offers
 - You CANNOT create appointments directly (no create_appointment function)
-- When showing available times, ALWAYS format as markdown links: [9:00 AM](url) not full URLs
-- Format response like: "I can fit you in on [9:00 AM](booking_url) or [10:00 AM](booking_url)! You can also [see all openings](view_all_url)"
-- IMPORTANT: Use the labels and URLs from slot_links in the tool result - format as markdown links with time as link text
-- Never show full URLs - always use markdown link format [time](url)
+- When showing available times from slot_links, ALWAYS use this format: "I can fit you in on [9:00 AM](url) or [10:00 AM](url)!"
+- Use ONLY the time as link text: [9:00 AM] not [book now] or [click here]
+- DO NOT show any full URLs in your response - they clutter the chat
+- Format: [day time](booking_url) - example: "[Thu 9:00 AM](https://example.com/book?time=xxx)"
+- Also include "[See all times](view_all_url)" at the end so they can view more options
+- Get the exact labels and URLs from the slot_links array in the tool response
 - Keep responses friendly and conversational
 - The links let them visually pick a time and complete their booking`;
         
