@@ -685,11 +685,21 @@ export async function runPortRecoveryBatch(
       updatedAt: new Date(),
     };
     
-    // 1. Grant points if customer exists
-    if (target.customerId) {
+    // 1. Grant points - try to find customer by phone if customerId is null
+    let customerId = target.customerId;
+    if (!customerId && target.phone) {
+      const foundCustomer = await findCustomerByPhone(tenantDb, target.phone);
+      if (foundCustomer) {
+        customerId = foundCustomer.id;
+        updates.customerId = customerId;
+        console.log(`[PORT RECOVERY] Found customer ${customerId} for target phone ${target.phone}`);
+      }
+    }
+    
+    if (customerId) {
       const pointsResult = await grantPortRecoveryPoints(
         tenantDb,
-        target.customerId,
+        customerId,
         campaign.pointsPerCustomer,
         campaignId
       );
@@ -823,11 +833,12 @@ export async function runPortRecoveryBatch(
 /**
  * Send a test SMS to the owner's phone
  * SP-REWARDS-CAMPAIGN-TOKENS: Now generates personalized token URL for test sends
+ * FIXED: Now also awards points to the owner's customer record so the landing page works
  */
 export async function sendTestSms(
   tenantDb: TenantDb,
   campaignId: number
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; pointsAwarded?: number }> {
   const campaign = await getCampaign(tenantDb, campaignId);
   if (!campaign) {
     return { success: false, error: 'Campaign not found' };
@@ -853,17 +864,49 @@ export async function sendTestSms(
     const smsTemplate = campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
     const tenantId = campaign.tenantId;
     
+    // Find or create customer for owner's phone so points can be awarded
+    const normalizedPhone = normalizePhone(ownerPhone);
+    let customerId: number | null = null;
+    let customerName = 'Test Customer';
+    
+    if (normalizedPhone) {
+      // Look for existing customer by phone
+      const existingCustomer = await findCustomerByPhone(tenantDb, normalizedPhone);
+      if (existingCustomer) {
+        customerId = existingCustomer.id;
+        customerName = existingCustomer.name || 'Test Customer';
+        console.log(`[PORT RECOVERY] Test SMS: Found existing customer ${customerId} for phone ${normalizedPhone}`);
+      }
+    }
+    
+    // Award points if we found a customer record
+    let pointsAwarded = 0;
+    if (customerId) {
+      const pointsResult = await grantPortRecoveryPoints(
+        tenantDb,
+        customerId,
+        campaign.pointsPerCustomer,
+        campaignId
+      );
+      if (pointsResult.success) {
+        pointsAwarded = campaign.pointsPerCustomer;
+        console.log(`[PORT RECOVERY] Test SMS: Awarded ${pointsAwarded} points to customer ${customerId}`);
+      }
+    } else {
+      console.log(`[PORT RECOVERY] Test SMS: No customer found for ${normalizedPhone}, skipping points award`);
+    }
+    
     const testTarget: PortRecoveryTarget = {
       id: 0,
       campaignId,
       tenantId,
-      customerId: null,
+      customerId,
       phone: ownerPhone,
       email: null,
-      customerName: 'Test Customer',
+      customerName,
       smsStatus: 'pending',
       emailStatus: 'pending',
-      pointsGranted: 0,
+      pointsGranted: pointsAwarded,
       smsErrorMessage: null,
       emailErrorMessage: null,
       twilioSid: null,
@@ -892,12 +935,56 @@ export async function sendTestSms(
       body: `[TEST] ${messageBody}`,
     });
     
-    console.log(`[PORT RECOVERY] Test SMS sent to ${ownerPhone} with personalized rewards link`);
-    return { success: true };
+    console.log(`[PORT RECOVERY] Test SMS sent to ${ownerPhone} with personalized rewards link, points awarded: ${pointsAwarded}`);
+    return { success: true, pointsAwarded };
   } catch (error: any) {
     console.error('[PORT RECOVERY] Test SMS failed:', error.message);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Helper to find a customer by phone number
+ */
+async function findCustomerByPhone(
+  tenantDb: TenantDb,
+  phone: string
+): Promise<{ id: number; name: string | null } | null> {
+  // Try different phone formats
+  const formats = [
+    phone,
+    phone.replace(/^\+1/, ''),
+    phone.replace(/^\+/, ''),
+    phone.replace(/\D/g, ''),
+  ];
+  
+  for (const fmt of formats) {
+    const [customer] = await tenantDb
+      .select({ id: customers.id, name: customers.name })
+      .from(customers)
+      .where(eq(customers.phone, fmt))
+      .limit(1);
+    
+    if (customer) {
+      return customer;
+    }
+  }
+  
+  // Also try with +1 prefix if not present
+  if (!phone.startsWith('+')) {
+    const withPrefix = `+1${phone.replace(/\D/g, '')}`;
+    const [customer] = await tenantDb
+      .select({ id: customers.id, name: customers.name })
+      .from(customers)
+      .where(eq(customers.phone, withPrefix))
+      .limit(1);
+    
+    if (customer) {
+      return customer;
+    }
+  }
+  
+  return null;
 }
 
 /**
