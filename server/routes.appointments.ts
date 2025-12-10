@@ -193,13 +193,10 @@ router.post('/conversations/:conversationId/appointment', async (req, res) => {
     try {
       if (!conversation.appointmentId) {
         // Only notify for new appointments
-        const formattedDate = new Date(data.scheduledTime).toLocaleDateString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        });
+        // Use tenant timezone for proper local time display
+        const { getTenantTimezone, formatForPush } = await import('./timezoneUtils');
+        const timezone = await getTenantTimezone(req.tenantDb!);
+        const formattedDate = formatForPush(data.scheduledTime, timezone);
         
         await sendPushToAllUsers({
           title: '📅 New Appointment Booked!',

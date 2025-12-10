@@ -6,6 +6,7 @@ import { eq, and, lte, gte } from 'drizzle-orm';
 import { addDays, addWeeks, addMonths, addYears, format } from 'date-fns';
 import { processDepositReminders } from './depositManager';
 import { recordAppointmentCreated } from './customerBookingStats';
+import { getTenantTimezone, setLocalTimeAndConvertToUtc } from './timezoneUtils';
 
 /**
  * Calculate the next scheduled date based on frequency
@@ -85,24 +86,27 @@ async function processRecurringServices() {
 
         // Create the scheduled time for the appointment
         // Use preferred time if provided, otherwise default to 9:00 AM
-        const scheduledDate = new Date(recurringService.nextScheduledDate);
+        // TIMEZONE FIX: Convert tenant-local time to UTC for storage
+        const timezone = await getTenantTimezone(tenantDb);
+        const baseDate = new Date(recurringService.nextScheduledDate);
+        let hours = 9; // Default to 9:00 AM local time
+        let minutes = 0;
         
         if (recurringService.preferredTime) {
           // Parse preferred time (e.g., "9:00 AM", "2:30 PM")
           const timeMatch = recurringService.preferredTime.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM)?/i);
           if (timeMatch) {
-            let hours = parseInt(timeMatch[1]);
-            const minutes = parseInt(timeMatch[2] || '0');
+            hours = parseInt(timeMatch[1]);
+            minutes = parseInt(timeMatch[2] || '0');
             const meridiem = timeMatch[3]?.toUpperCase();
 
             if (meridiem === 'PM' && hours !== 12) hours += 12;
             if (meridiem === 'AM' && hours === 12) hours = 0;
-
-            scheduledDate.setHours(hours, minutes, 0, 0);
           }
-        } else {
-          scheduledDate.setHours(9, 0, 0, 0); // Default to 9:00 AM
         }
+        
+        // Convert tenant-local time to UTC for database storage
+        const scheduledDate = setLocalTimeAndConvertToUtc(baseDate, hours, minutes, timezone);
 
         // Create the appointment - wrap in transaction with stats update and recurring service update
         await tenantDb.transaction(async (tx) => {
