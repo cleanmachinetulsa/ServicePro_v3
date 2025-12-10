@@ -119,6 +119,7 @@ async function listGiftCardsFromSquare(config: TenantSquareConfig): Promise<Squa
       const response = await client.giftCards.list({
         limit: 100,
         cursor,
+        locationId: config.locationId,
       });
 
       if (response.giftCards) {
