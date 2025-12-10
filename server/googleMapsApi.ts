@@ -97,8 +97,11 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string) {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     
     if (!apiKey) {
-      console.error('Google Maps API key not found in environment variables');
-      return { success: false, error: 'API key configuration error' };
+      console.error('MAPS_GEOCODE_ERROR', { 
+        address, 
+        error: 'GOOGLE_MAPS_API_KEY is not set – cannot geocode address' 
+      });
+      return { success: false, error: 'Maps API key is missing on server' };
     }
 
     // Smart preprocessing: enhance incomplete addresses
@@ -113,19 +116,31 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string) {
     });
 
     if (response.data.status !== 'OK') {
-      console.error('Geocoding error:', response.data.status, response.data.error_message);
+      // Structured error logging for better debugging
+      console.error('MAPS_GEOCODE_ERROR', {
+        address,
+        enhancedAddress,
+        httpStatus: response.status,
+        mapsStatus: response.data.status,
+        errorMessage: response.data.error_message || null
+      });
       
-      // Provide more helpful error messages
-      if (response.data.status === 'ZERO_RESULTS') {
-        return { 
-          success: false, 
-          error: 'Address not found',
-          originalAddress: address,
-          enhancedAddress: enhancedAddress
-        };
-      }
+      // Provide more helpful error messages based on status
+      const errorMessages: Record<string, string> = {
+        'ZERO_RESULTS': 'Address not found. Please check the address and try again.',
+        'OVER_QUERY_LIMIT': 'Service temporarily unavailable. Please try again in a moment.',
+        'REQUEST_DENIED': 'Maps API access denied. Please contact support.',
+        'INVALID_REQUEST': 'Invalid address format. Please check the address.',
+        'UNKNOWN_ERROR': 'Maps service error. Please try again.'
+      };
       
-      return { success: false, error: 'Failed to geocode address' };
+      return { 
+        success: false, 
+        error: response.data.error_message || errorMessages[response.data.status] || 'Failed to geocode address',
+        mapsStatus: response.data.status,
+        originalAddress: address,
+        enhancedAddress: enhancedAddress
+      };
     }
 
     if (!response.data.results || response.data.results.length === 0) {
@@ -147,9 +162,13 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string) {
       originalAddress: address,
       enhancedAddress: enhancedAddress
     };
-  } catch (error) {
-    console.error('Error geocoding address:', error);
-    return { success: false, error: 'Failed to geocode address' };
+  } catch (error: any) {
+    console.error('MAPS_GEOCODE_ERROR', {
+      address,
+      error: error.message || String(error),
+      stack: error.stack
+    });
+    return { success: false, error: error.message || 'Failed to geocode address' };
   }
 }
 
@@ -161,8 +180,11 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     
     if (!apiKey) {
-      console.error('Google Maps API key not found in environment variables');
-      return { success: false, error: 'API key configuration error' };
+      console.error('MAPS_DISTANCE_ERROR', { 
+        address, 
+        error: 'GOOGLE_MAPS_API_KEY is not set – cannot check distance' 
+      });
+      return { success: false, error: 'Maps API key is missing on server' };
     }
 
     // First geocode the address
@@ -187,19 +209,45 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
     });
 
     if (response.data.status !== 'OK') {
-      console.error('Distance Matrix API error:', response.data.status, response.data.error_message);
-      return { success: false, error: 'Failed to check distance' };
+      console.error('MAPS_DISTANCE_ERROR', {
+        address,
+        httpStatus: response.status,
+        mapsStatus: response.data.status,
+        errorMessage: response.data.error_message || null
+      });
+      
+      const errorMessages: Record<string, string> = {
+        'OVER_QUERY_LIMIT': 'Service temporarily unavailable. Please try again in a moment.',
+        'REQUEST_DENIED': 'Maps API access denied. Please contact support.',
+        'INVALID_REQUEST': 'Invalid request. Please check the address.',
+        'UNKNOWN_ERROR': 'Maps service error. Please try again.'
+      };
+      
+      return { 
+        success: false, 
+        error: response.data.error_message || errorMessages[response.data.status] || 'Failed to check distance',
+        mapsStatus: response.data.status
+      };
     }
 
     if (!response.data.rows || response.data.rows.length === 0 || 
         !response.data.rows[0].elements || response.data.rows[0].elements.length === 0) {
+      console.error('MAPS_DISTANCE_ERROR', {
+        address,
+        error: 'No distance results in response',
+        responseData: JSON.stringify(response.data).slice(0, 500)
+      });
       return { success: false, error: 'No distance results found' };
     }
 
     const distanceElement = response.data.rows[0].elements[0];
     if (distanceElement.status !== 'OK') {
-      console.error('Distance calculation error:', distanceElement.status);
-      return { success: false, error: 'Failed to calculate distance' };
+      console.error('MAPS_DISTANCE_ERROR', {
+        address,
+        elementStatus: distanceElement.status,
+        error: 'Distance element status not OK'
+      });
+      return { success: false, error: `Distance calculation failed: ${distanceElement.status}` };
     }
 
     // Extract driving time in minutes from the response
@@ -225,9 +273,13 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
       isInServiceArea,
       formattedAddress: geocodeResult.formattedAddress
     };
-  } catch (error) {
-    console.error('Error checking distance:', error);
-    return { success: false, error: 'Failed to check distance to business location' };
+  } catch (error: any) {
+    console.error('MAPS_DISTANCE_ERROR', {
+      address,
+      error: error.message || String(error),
+      stack: error.stack
+    });
+    return { success: false, error: error.message || 'Failed to check distance to business location' };
   }
 }
 
@@ -279,5 +331,85 @@ export async function calculateETAAndGenerateNavLink(tenantDb: TenantDb, address
   } catch (error) {
     console.error('Error calculating ETA and navigation:', error);
     return { success: false, error: 'Failed to calculate ETA and navigation' };
+  }
+}
+
+/**
+ * Health check for Maps API - verifies API key is present and geocoding works
+ * Tests with a known good address (Tulsa, OK)
+ */
+export async function checkMapsHealth(): Promise<{
+  success: boolean;
+  hasApiKey: boolean;
+  geocodeStatus?: string;
+  sampleAddressLat?: number;
+  sampleAddressLng?: number;
+  error?: string;
+}> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  
+  if (!apiKey) {
+    console.error('MAPS_HEALTH_CHECK', { 
+      hasApiKey: false, 
+      error: 'GOOGLE_MAPS_API_KEY is not set' 
+    });
+    return {
+      success: false,
+      hasApiKey: false,
+      error: 'Maps API key is not configured on server'
+    };
+  }
+  
+  try {
+    // Test with a known good address
+    const testAddress = 'Tulsa, OK';
+    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+      params: {
+        address: testAddress,
+        key: apiKey
+      }
+    });
+    
+    if (response.data.status !== 'OK') {
+      console.error('MAPS_HEALTH_CHECK', {
+        hasApiKey: true,
+        geocodeStatus: response.data.status,
+        errorMessage: response.data.error_message
+      });
+      return {
+        success: false,
+        hasApiKey: true,
+        geocodeStatus: response.data.status,
+        error: response.data.error_message || `Geocode test failed: ${response.data.status}`
+      };
+    }
+    
+    const location = response.data.results[0]?.geometry?.location;
+    
+    console.log('MAPS_HEALTH_CHECK', { 
+      success: true, 
+      hasApiKey: true, 
+      geocodeStatus: 'OK',
+      lat: location?.lat,
+      lng: location?.lng
+    });
+    
+    return {
+      success: true,
+      hasApiKey: true,
+      geocodeStatus: 'OK',
+      sampleAddressLat: location?.lat,
+      sampleAddressLng: location?.lng
+    };
+  } catch (error: any) {
+    console.error('MAPS_HEALTH_CHECK', {
+      hasApiKey: true,
+      error: error.message || String(error)
+    });
+    return {
+      success: false,
+      hasApiKey: true,
+      error: error.message || 'Health check failed'
+    };
   }
 }
