@@ -15,7 +15,8 @@
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
 import { sql } from 'drizzle-orm';
-import { getGoogleSheetsReadClient } from '../googleIntegration';
+// Use Replit OAuth connector (auto-refreshing) instead of JWT-based client
+import { getGoogleSheetsClient } from '../googleSheetsConnector';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 
 const LOG_PREFIX = '[CUSTOMER SHEETS IMPORT]';
@@ -173,7 +174,7 @@ async function readCustomersFromSheets(
   const errors: string[] = [];
   
   try {
-    const sheetsClient = await getGoogleSheetsReadClient();
+    const sheetsClient = await getGoogleSheetsClient();
     if (!sheetsClient) {
       errors.push('Unable to initialize Google Sheets client');
       return { rows: allRows, errors };
@@ -414,7 +415,7 @@ export async function previewCustomersFromSheet(
   const tabsFound: string[] = [];
   
   try {
-    const sheetsClient = await getGoogleSheetsReadClient();
+    const sheetsClient = await getGoogleSheetsClient();
     if (!sheetsClient) {
       return { sampleRows: [], totalRows: 0, normalizedRows: 0, tabsFound: [] };
     }

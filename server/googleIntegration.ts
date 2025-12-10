@@ -61,9 +61,16 @@ async function ensureSheetsClient(scopeKey: string, scopes: string[]) {
     }
 
     // Fix private key line breaks - common issue with env vars
+    // Always attempt replacement - handles both escaped and double-escaped cases
     let privateKey = credentials.private_key;
-    if (privateKey && !privateKey.includes('\n')) {
+    if (privateKey) {
+      // Replace literal \n sequences with actual newlines
       privateKey = privateKey.replace(/\\n/g, '\n');
+      // Debug: log the key structure (redacted)
+      const keyLines = privateKey.split('\n').length;
+      const hasBegin = privateKey.includes('-----BEGIN');
+      const hasEnd = privateKey.includes('-----END');
+      console.log(`[SHEETS CLIENT] Private key structure: ${keyLines} lines, hasBegin: ${hasBegin}, hasEnd: ${hasEnd}`);
     }
 
     // Create scoped JWT auth client
