@@ -1,0 +1,154 @@
+You are the senior TypeScript/React/Node architect for the ServicePro_v3 codebase.
+
+TASK NAME: SP-BOOKING-ADDRESS+PRICING-FIX
+SCOPE: ONLY touch the minimum code needed for:
+  1) Correct address/service-area classification for Clean Machine.
+  2) A safe, basic extended-area flow (no map UI yet, but no broken state).
+  3) Correct application of referral/discount amounts in the booking price estimate AND final booking payload.
+
+DO NOT:
+  - Rename existing routes.
+  - Break existing working bookings for in-area customers.
+  - Change any tenant other than via generic, multi-tenant-aware logic.
+
+--------------------------------
+PART 1 – Address / Service Area Fix
+--------------------------------
+
+1. Locate the service area logic, e.g.:
+   - server/services/serviceAreaEvaluator.ts
+   - Any helpers used for Google Maps distance / drive-time checks.
+
+2. Fix these behaviours:
+
+   a) **Geocode / routing failures**
+      - If Google Maps OR your distance-matrix call fails (no lat/lng, API error, etc.), DO NOT classify as OUTSIDE.
+      - Introduce an internal classification such as "UNKNOWN" and:
+        - Surface a clear "We had trouble verifying your address, please double-check it" message.
+        - Keep the customer on the address step (no extended popup).
+      - Log an error with enough context (tenant, address string, error message).
+
+   b) **Clean Machine radius / extended thresholds**
+      - Keep three tiers:
+        - IN_AREA: <= regular service time (e.g. <= 22 minutes – use existing setting if configurable).
+        - EXTENDED: between regular limit and hard limit (e.g. ~35 minutes).
+        - OUTSIDE: beyond the hard limit.
+      - Ensure thresholds are using the *drive time* from Google, not just straight-line distance.
+      - Confirm Clean Machine’s real home base and radius are pulled from the existing tenant settings and not hard-coded dev values.
+
+   c) **UI messaging for extended vs outside**
+      - For EXTENDED:
+        - Keep the existing "Outside Service Area" modal copy, but make sure it clearly says "extended request" and NOT "we couldn't find your address".
+      - For UNKNOWN (geocode failure):
+        - Show the existing red toast "Address Check Error", but remove any misleading "26 minutes" etc. since we don't know.
+
+3. Add some debug logging:
+   - When classification is EXTENDED or OUTSIDE, log:
+     - tenantId, rawAddress, normalizedAddress, travelTimeMinutes, classification.
+   - Make logs easy to grep for "SERVICE_AREA_EVAL".
+
+--------------------------------
+PART 2 – Minimal Extended-Area Path (no map yet)
+--------------------------------
+
+Goal: if a request is legitimately EXTENDED, it should at least:
+  - Be explicitly tagged on the booking object.
+  - Create an escalation record so the owner can see it in the Escalations tab.
+  - NOT silently behave like a normal booking.
+
+1. Find where the booking is created:
+   - server/routes.booking*.ts or similar.
+
+2. When the serviceAreaEvaluator returns EXTENDED:
+   - Add a field to the booking / appointment record, e.g.:
+     - is_extended_area: boolean
+     - extended_travel_minutes: number | null
+   - After creating the booking in the DB:
+     - Also create an escalation record for that tenant:
+       - type: "EXTENDED_SERVICE_AREA"
+       - status: "OPEN"
+       - linked to the booking (booking_id) and customer (if available).
+       - include address and travel time in the metadata JSON.
+
+3. UI behaviour:
+   - For today, do NOT block the customer from finishing the booking.
+   - Instead:
+     - Allow them to continue through the steps as normal.
+     - Owner sees the escalation and can manually confirm/cancel.
+   - Ensure the Escalations page shows a basic row for this new type with the booking date, customer, and travel-time info.
+
+4. Add a very small badge or banner in the booking confirmation step that says:
+   - "This request is outside the regular service area and may require manual approval."
+   - Only show this when is_extended_area = true.
+
+--------------------------------
+PART 3 – Referral Discount + Price Math Fix
+--------------------------------
+
+Goal: when a referral / promo code is valid, its discount must actually change:
+  - The price estimate shown on the booking page.
+  - The final amount stored in the booking object.
+
+1. Locate the pricing pipeline:
+   - The code that computes:
+     - Base service price
+     - Add-on totals
+     - Any surcharges
+     - Loyalty point estimates
+     - Referral / promo discounts (if already partially implemented)
+
+2. Fix the discount flow:
+
+   a) Validation:
+      - Keep the existing referral-code validation logic (TEST-12345 etc.).
+      - Ensure the validated result returns a structured object, e.g.:
+        - { isValid: true, type: 'REFERRAL' | 'PROMO', amountOffCents?: number, percentOff?: number, description?: string }
+
+   b) Price calculation:
+      - After computing the subtotal for the booking (services + addons + surcharges),
+        apply exactly ONE discount object, in this priority:
+        - Explicit promo/referral from the user.
+        - Anything else that might be auto-applied (if such rules exist).
+
+      - Support both:
+        - Flat amount discounts (amountOffCents)
+        - Percentage discounts (percentOff)
+
+   c) UI:
+      - In the booking "Price Estimate" section:
+        - Show a clear line item, e.g.:
+          - "Referral Discount: -$25.00"
+        - Show a "New Total" that equals:
+          base subtotal - discount
+        - Ensure the loyalty points estimate is based on the **discounted** total (if that’s the intended behaviour; if not, keep current logic but make it explicit in code comments).
+
+   d) Booking persistence:
+      - The booking record saved to the database should include:
+        - originalSubtotalCents
+        - discountAmountCents (0 if none)
+        - finalTotalCents
+        - discountCodeApplied (string | null)
+
+3. Regression safety:
+   - Do NOT change behaviour for bookings with NO referral/promo code: totals should match existing behaviour.
+   - Add at least one unit/integration test where:
+     - A booking with known service + addon prices and a $25 referral code produces the correct finalTotalCents and UI summary.
+
+--------------------------------
+FINAL CHECKLIST
+--------------------------------
+
+Before you stop:
+
+- [ ] Create a test booking with a clearly in-area address and confirm:
+      - No "Outside Service Area" modal.
+      - Booking completes successfully.
+      - No EXTENDED escalation is created.
+- [ ] Create a booking with a clearly extended-area test address and confirm:
+      - An escalation record is created and visible for the owner.
+      - Booking has is_extended_area = true.
+- [ ] Create a booking with a known referral code:
+      - Referral code shows as valid.
+      - Discount line appears in the price estimate.
+      - Final total in the UI and DB is reduced by the correct amount.
+- [ ] Ensure no TypeScript errors and all existing tests still pass.

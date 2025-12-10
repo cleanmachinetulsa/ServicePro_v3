@@ -1,8 +1,10 @@
 import { Express, Request, Response } from 'express';
 import { eq, desc } from 'drizzle-orm';
-import { appointments, customers, loyaltyPoints } from '@shared/schema';
+import { appointments, customers, loyaltyPoints, humanEscalationRequests } from '@shared/schema';
 import { getEnhancedCustomerServiceHistory } from './enhancedCustomerSearch';
 import { recordAppointmentCreated } from './customerBookingStats';
+import { getRefereeRewardDescriptor } from './referralConfigService';
+import { validateReferralCode } from './referralService';
 
 /**
  * Register Quick Booking routes for returning customers
@@ -144,6 +146,7 @@ export function registerQuickBookingRoutes(app: Express) {
   /**
    * Submit quick booking with pre-filled data
    * POST /api/quick-booking/submit
+   * SP-BOOKING-ADDRESS+PRICING-FIX: Now handles extended areas and referral discounts
    */
   app.post('/api/quick-booking/submit', async (req: Request, res: Response) => {
     try {
@@ -160,9 +163,19 @@ export function registerQuickBookingRoutes(app: Express) {
         notes,
         smsConsent,
         referralCode,
+        // SP-BOOKING-ADDRESS+PRICING-FIX: Extended area and pricing fields
+        isExtendedArea,
+        extendedTravelMinutes,
+        originalSubtotalCents,
+        discountAmountCents,
+        finalTotalCents,
       } = req.body;
       
-      console.log(`[Quick Booking] Submitting booking for ${name}`, { referralCode: referralCode || 'none' });
+      console.log(`[Quick Booking] Submitting booking for ${name}`, { 
+        referralCode: referralCode || 'none',
+        isExtendedArea: isExtendedArea || false,
+        extendedTravelMinutes: extendedTravelMinutes || null,
+      });
       
       // Validate required fields
       if (!name || !phone || !service || !scheduledTime) {
@@ -172,24 +185,42 @@ export function registerQuickBookingRoutes(app: Express) {
         });
       }
 
-      // Track referral signup if code provided (non-blocking)
+      // SP-BOOKING-ADDRESS+PRICING-FIX: Validate and calculate discount if referral code provided
+      let validatedDiscountCents = 0;
+      let appliedDiscountCode: string | null = null;
+      
       if (referralCode && typeof referralCode === 'string') {
         try {
-          const { trackReferralSignup } = await import('./referralService');
-          console.log(`[Quick Booking] Tracking referral signup with code: ${referralCode}`);
+          const normalizedCode = referralCode.trim().toUpperCase();
+          const validation = await validateReferralCode(req.tenantDb!, normalizedCode);
           
-          await trackReferralSignup(
-            referralCode.trim().toUpperCase(),
-            {
+          if (validation.valid) {
+            // Get referee reward to calculate discount
+            const refereeReward = await getRefereeRewardDescriptor(req.tenantDb!);
+            
+            if (refereeReward) {
+              // Calculate discount based on reward type
+              if (refereeReward.type === 'FIXED_AMOUNT' && refereeReward.amount > 0) {
+                validatedDiscountCents = Math.round(refereeReward.amount * 100);
+              } else if (refereeReward.type === 'PERCENT' && refereeReward.amount > 0 && originalSubtotalCents) {
+                validatedDiscountCents = Math.round(originalSubtotalCents * (refereeReward.amount / 100));
+              }
+              
+              appliedDiscountCode = normalizedCode;
+              console.log(`[Quick Booking] Discount applied: ${validatedDiscountCents} cents from code ${normalizedCode}`);
+            }
+            
+            // Track referral signup
+            const { trackReferralSignup } = await import('./referralService');
+            await trackReferralSignup(normalizedCode, {
               phone: phone,
               email: email || undefined,
               name: name,
-            }
-          );
-          
-          console.log(`[Quick Booking] Referral signup tracked successfully`);
+            });
+            console.log(`[Quick Booking] Referral signup tracked successfully`);
+          }
         } catch (referralError) {
-          console.error('[Quick Booking] Failed to track referral signup (non-blocking):', referralError);
+          console.error('[Quick Booking] Failed to process referral code (non-blocking):', referralError);
         }
       }
       
@@ -220,6 +251,17 @@ export function registerQuickBookingRoutes(app: Express) {
           .where(req.tenantDb!.withTenantFilter(customers, eq(customers.id, customer.id)));
       }
       
+      // SP-BOOKING-ADDRESS+PRICING-FIX: Validate pricing data
+      // Only save pricing fields if they're valid integers
+      const safeOriginalSubtotalCents = typeof originalSubtotalCents === 'number' && originalSubtotalCents >= 0 
+        ? Math.round(originalSubtotalCents) : null;
+      const safeDiscountAmountCents = validatedDiscountCents > 0 
+        ? validatedDiscountCents 
+        : (typeof discountAmountCents === 'number' && discountAmountCents >= 0 ? Math.round(discountAmountCents) : 0);
+      const safeFinalTotalCents = typeof finalTotalCents === 'number' && finalTotalCents >= 0 
+        ? Math.round(finalTotalCents) 
+        : (safeOriginalSubtotalCents !== null ? Math.max(0, safeOriginalSubtotalCents - safeDiscountAmountCents) : null);
+      
       // Create appointment - wrap in transaction with stats update
       let appointment: any;
       await req.tenantDb!.transaction(async (tx) => {
@@ -234,6 +276,14 @@ export function registerQuickBookingRoutes(app: Express) {
           addressNeedsReview: req.body.addressNeedsReview || false,
           addOns: addOns || null,
           additionalRequests: notes ? [notes] : null,
+          // SP-BOOKING-ADDRESS+PRICING-FIX: Extended area tracking (validated)
+          isExtendedArea: isExtendedArea === true,
+          extendedTravelMinutes: typeof extendedTravelMinutes === 'number' ? Math.round(extendedTravelMinutes) : null,
+          // SP-BOOKING-ADDRESS+PRICING-FIX: Discount tracking (validated)
+          discountCodeApplied: appliedDiscountCode,
+          originalSubtotalCents: safeOriginalSubtotalCents,
+          discountAmountCents: safeDiscountAmountCents,
+          finalTotalCents: safeFinalTotalCents,
         }).returning();
         
         appointment = newAppointment;
@@ -242,10 +292,48 @@ export function registerQuickBookingRoutes(app: Express) {
         await recordAppointmentCreated(customer.id, new Date(scheduledTime), tx);
       });
       
+      // SP-BOOKING-ADDRESS+PRICING-FIX: Create escalation for extended area bookings
+      // Only create escalation if isExtendedArea is explicitly true and has valid travel time
+      if (isExtendedArea === true && typeof extendedTravelMinutes === 'number' && extendedTravelMinutes > 0) {
+        try {
+          // Find or create a conversation for this customer to link escalation
+          const { conversations } = await import('@shared/schema');
+          let conversation = await req.tenantDb!.query.conversations.findFirst({
+            where: req.tenantDb!.withTenantFilter(conversations, eq(conversations.customerPhone, phone)),
+          });
+          
+          if (conversation) {
+            await req.tenantDb!.insert(humanEscalationRequests).values({
+              conversationId: conversation.id,
+              reason: `Extended service area booking - ${extendedTravelMinutes} minute travel time`,
+              triggerMessage: `Customer ${name} booked at address: ${address}`,
+              status: 'pending',
+              metadata: {
+                type: 'EXTENDED_SERVICE_AREA',
+                bookingId: appointment.id,
+                address: address,
+                travelMinutes: extendedTravelMinutes,
+                customerId: customer.id,
+                scheduledTime: scheduledTime,
+              },
+            });
+            console.log(`[Quick Booking] Created escalation for extended area booking ${appointment.id}`);
+          } else {
+            console.warn(`[Quick Booking] No conversation found for customer ${phone}, skipping escalation`);
+          }
+        } catch (escalationError) {
+          console.error('[Quick Booking] Failed to create escalation (non-blocking):', escalationError);
+        }
+      } else if (isExtendedArea) {
+        console.warn(`[Quick Booking] Extended area flag set but missing valid travel time: ${extendedTravelMinutes}`);
+      }
+      
       console.log(`[Quick Booking] Appointment created:`, {
         appointmentId: appointment.id,
         customerId: customer.id,
-        service
+        service,
+        isExtendedArea: isExtendedArea || false,
+        discountApplied: validatedDiscountCents > 0,
       });
       
       return res.json({
@@ -255,8 +343,13 @@ export function registerQuickBookingRoutes(app: Express) {
           customerName: name,
           service,
           scheduledTime: appointment.scheduledTime,
+          isExtendedArea: isExtendedArea || false,
+          discountAmountCents: validatedDiscountCents,
+          discountCodeApplied: appliedDiscountCode,
         },
-        message: 'Appointment booked successfully!'
+        message: isExtendedArea 
+          ? 'Appointment booked! This request is outside our regular service area and may require manual approval.'
+          : 'Appointment booked successfully!'
       });
       
     } catch (error) {

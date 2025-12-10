@@ -291,6 +291,7 @@ export const tenantConfig = pgTable("tenant_config", {
   
   // Service area validation settings
   serviceAreaMaxMinutes: integer("service_area_max_minutes").default(25), // Max allowed travel time from home base
+  serviceAreaExtendedMinutes: integer("service_area_extended_minutes"), // Extended radius (null = disabled)
   serviceAreaSoftDeclineMessage: text("service_area_soft_decline_message"), // Custom message for out-of-area requests
   
   // Onboarding progress tracking (Phase: Self-Service Onboarding)
@@ -665,6 +666,16 @@ export const appointments = pgTable("appointments", {
   addressNeedsReview: boolean("address_needs_review").default(false), // Manual review needed if customer moved pin but validation failed
   jobNotes: text("job_notes"), // Field technician notes during job
   statusUpdatedAt: timestamp("status_updated_at"), // Last status change timestamp
+  
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Extended service area tracking
+  isExtendedArea: boolean("is_extended_area").default(false), // True if outside normal radius but within extended limit
+  extendedTravelMinutes: integer("extended_travel_minutes"), // Drive time in minutes for extended area
+  
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Referral/discount tracking
+  discountCodeApplied: text("discount_code_applied"), // Referral or promo code used
+  originalSubtotalCents: integer("original_subtotal_cents"), // Price before discount
+  discountAmountCents: integer("discount_amount_cents").default(0), // Discount amount in cents
+  finalTotalCents: integer("final_total_cents"), // Final price after discount
 }, (table) => ({
   // Indexes for technician queries
   technicianScheduleIdx: index("appointments_technician_schedule_idx").on(table.technicianId, table.scheduledTime), // Composite for "today's jobs" queries

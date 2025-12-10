@@ -5,12 +5,13 @@ import { eq } from 'drizzle-orm';
 import { getTravelTimeMinutes } from './travelTimeService';
 
 /**
- * SERVICE-AREA-FIX: Service area classification enum
+ * SP-BOOKING-ADDRESS+PRICING-FIX: Service area classification enum
  * - IN_AREA: Within normal service radius, proceed with booking
- * - EXTENDED: Beyond normal radius but within extended radius, needs map confirmation + escalation
+ * - EXTENDED: Beyond normal radius but within extended radius, needs escalation
  * - OUT_OF_AREA: Beyond all service radii, reject with message
+ * - UNKNOWN: Geocode/routing failed, cannot determine area (keep customer on address step)
  */
-export type ServiceAreaClassification = 'IN_AREA' | 'EXTENDED' | 'OUT_OF_AREA';
+export type ServiceAreaClassification = 'IN_AREA' | 'EXTENDED' | 'OUT_OF_AREA' | 'UNKNOWN';
 
 /**
  * SERVICE-AREA-FIX: Classify address based on drive time thresholds
@@ -34,14 +35,16 @@ export function classifyServiceArea({
 }
 
 /**
- * SERVICE-AREA-FIX: Enhanced service area evaluation with IN_AREA/EXTENDED/OUT_OF_AREA classification
+ * SP-BOOKING-ADDRESS+PRICING-FIX: Enhanced service area evaluation result
  */
 export interface ServiceAreaResult {
   classification: ServiceAreaClassification;
   inServiceArea: boolean; // Backwards compat: true for IN_AREA and EXTENDED
   isExtendedArea: boolean;
+  isUnknown: boolean; // True when geocode/routing failed
   travelMinutes: number | null;
   softDeclineMessage: string | null;
+  unknownMessage: string | null; // User-facing message for UNKNOWN classification
   // Debug info for troubleshooting (logged but not exposed to users)
   debug?: {
     address?: string;
@@ -51,6 +54,7 @@ export interface ServiceAreaResult {
     homeBaseLng?: number;
     baseRadiusMinutes?: number;
     extendedRadiusMinutes?: number | null;
+    errorReason?: string;
   };
 }
 
@@ -66,14 +70,25 @@ export async function evaluateServiceArea(
   targetLng: number | null,
   addressString?: string
 ): Promise<ServiceAreaResult> {
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN when coordinates missing (geocode failed)
   if (!targetLat || !targetLng) {
-    // Cannot evaluate without coordinates - treat as inside service area
+    console.error('[SERVICE_AREA_EVAL] UNKNOWN - Missing coordinates', {
+      tenantId,
+      address: addressString || '(not provided)',
+      reason: 'Geocode failed or no coordinates provided',
+    });
     return { 
-      classification: 'IN_AREA',
-      inServiceArea: true, 
+      classification: 'UNKNOWN',
+      inServiceArea: false, 
       isExtendedArea: false,
+      isUnknown: true,
       travelMinutes: null, 
-      softDeclineMessage: null 
+      softDeclineMessage: null,
+      unknownMessage: 'We had trouble verifying your address. Please double-check it and try again.',
+      debug: {
+        address: addressString,
+        errorReason: 'missing_coordinates',
+      },
     };
   }
 
@@ -86,14 +101,16 @@ export async function evaluateServiceArea(
     .limit(1);
 
   if (!config?.homeBaseLat || !config?.homeBaseLng) {
-    // If tenant has not configured home base, treat as inside service area
-    console.warn('[SERVICE AREA] No home base configured for tenant:', tenantId);
+    // If tenant has not configured home base, allow booking (no restriction)
+    console.warn('[SERVICE_AREA_EVAL] No home base configured for tenant:', tenantId);
     return { 
       classification: 'IN_AREA',
       inServiceArea: true, 
       isExtendedArea: false,
+      isUnknown: false,
       travelMinutes: null, 
-      softDeclineMessage: null 
+      softDeclineMessage: null,
+      unknownMessage: null,
     };
   }
 
@@ -101,8 +118,9 @@ export async function evaluateServiceArea(
   const homeBaseLat = Number(config.homeBaseLat);
   const homeBaseLng = Number(config.homeBaseLng);
   const baseRadiusMinutes = config.serviceAreaMaxMinutes ?? 25;
-  // SERVICE-AREA-FIX: Support extended radius from config
-  const extendedRadiusMinutes = (config as any).serviceAreaExtendedMinutes ?? null;
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Support extended radius from config
+  // null means extended area is disabled (no fallback to default)
+  const extendedRadiusMinutes = config.serviceAreaExtendedMinutes ?? null;
 
   const travelMinutes = await getTravelTimeMinutes(
     homeBaseLat,
@@ -111,15 +129,33 @@ export async function evaluateServiceArea(
     targetLng
   );
 
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Return UNKNOWN when travel time calculation fails
   if (travelMinutes == null) {
-    // Could not calculate travel time - treat as inside service area
-    console.warn('[SERVICE AREA] Could not calculate travel time for tenant:', tenantId);
+    console.error('[SERVICE_AREA_EVAL] UNKNOWN - Travel time calculation failed', {
+      tenantId,
+      address: addressString || '(not provided)',
+      targetLat,
+      targetLng,
+      homeBaseLat,
+      homeBaseLng,
+      reason: 'Distance Matrix API failed or returned no data',
+    });
     return { 
-      classification: 'IN_AREA',
-      inServiceArea: true, 
+      classification: 'UNKNOWN',
+      inServiceArea: false, 
       isExtendedArea: false,
+      isUnknown: true,
       travelMinutes: null, 
-      softDeclineMessage: null 
+      softDeclineMessage: null,
+      unknownMessage: 'We had trouble calculating the drive time to your address. Please verify the address is correct.',
+      debug: {
+        address: addressString,
+        geocodedLat: targetLat,
+        geocodedLng: targetLng,
+        homeBaseLat,
+        homeBaseLng,
+        errorReason: 'travel_time_calculation_failed',
+      },
     };
   }
 
@@ -134,15 +170,13 @@ export async function evaluateServiceArea(
     config.serviceAreaSoftDeclineMessage ??
     'It appears your location is slightly outside our service area, but we do sometimes make exceptions.';
 
-  // SERVICE-AREA-FIX: Log misclassifications for debugging (non-IN_AREA only)
-  if (classification !== 'IN_AREA' && tenantId === 'root') {
-    console.warn('[SERVICE AREA] Non-IN_AREA classification for root tenant:', {
+  // SP-BOOKING-ADDRESS+PRICING-FIX: Log EXTENDED and OUT_OF_AREA for debugging
+  if (classification !== 'IN_AREA') {
+    console.warn('[SERVICE_AREA_EVAL]', classification, {
+      tenantId,
       address: addressString || '(not provided)',
-      geocodedLat: targetLat,
-      geocodedLng: targetLng,
-      homeBaseLat,
-      homeBaseLng,
-      travelMinutes,
+      normalizedAddress: addressString || '(raw)',
+      travelTimeMinutes: travelMinutes,
       baseRadiusMinutes,
       extendedRadiusMinutes,
       classification,
@@ -153,8 +187,10 @@ export async function evaluateServiceArea(
     classification,
     inServiceArea: classification !== 'OUT_OF_AREA', // IN_AREA or EXTENDED both allow booking
     isExtendedArea: classification === 'EXTENDED',
+    isUnknown: false,
     travelMinutes,
     softDeclineMessage: classification === 'OUT_OF_AREA' ? softDeclineMessage : null,
+    unknownMessage: null,
     debug: {
       address: addressString,
       geocodedLat: targetLat,
