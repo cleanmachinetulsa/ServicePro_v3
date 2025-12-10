@@ -38,6 +38,23 @@ interface TimeSlot {
   formattedTime: string;
 }
 
+/**
+ * Smart Availability Deep Links L2 - Enhanced slot models
+ * Supports both individual "book" links and "view all" calendar links
+ */
+export interface SuggestedSlot {
+  start: Date;
+  end: Date;
+  humanLabel: string;
+  bookUrl: string;       // deep link to book THIS specific slot
+}
+
+export interface SuggestedSlotSet {
+  slots: SuggestedSlot[];
+  viewAllUrl?: string;   // deep link to open calendar focused on first slot's week
+  source?: 'chat' | 'site';
+}
+
 interface UpsellOffer {
   name: string;
   price: string;
@@ -929,6 +946,134 @@ export async function buildBookingSlotLink(input: BookingSlotLinkInput): Promise
     
   } catch (error) {
     console.error('[BOOKING LINK] Error building link:', error);
+    return null;
+  }
+}
+
+/**
+ * Smart Availability Deep Links L2: Build a "View All" calendar link
+ * Opens the booking page focused on a specific date without preselecting a slot
+ */
+export interface ViewAllCalendarLinkInput {
+  tenantId: string;
+  focusDate: Date;
+  source?: string;
+}
+
+export interface ViewAllCalendarLinkResult {
+  url: string;
+  focusDateIso: string;
+}
+
+export async function buildViewAllCalendarLink(input: ViewAllCalendarLinkInput): Promise<ViewAllCalendarLinkResult | null> {
+  try {
+    const { tenantId, focusDate, source } = input;
+    
+    let baseUrl: string = '';
+    
+    try {
+      const { db } = await import('./db');
+      const { tenantDomains } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      const domains = await db.select()
+        .from(tenantDomains)
+        .where(eq(tenantDomains.tenantId, tenantId))
+        .limit(1);
+      
+      if (domains.length > 0 && domains[0].isVerified && domains[0].domain) {
+        baseUrl = `https://${domains[0].domain}`;
+      }
+    } catch (dbError) {
+      console.log('[VIEW ALL LINK] tenant_domains not available, using fallback URL');
+    }
+    
+    if (!baseUrl) {
+      baseUrl = process.env.PUBLIC_APP_BASE_URL || 
+                (process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER?.toLowerCase()}.repl.co` : '');
+    }
+    
+    if (!baseUrl) {
+      console.warn('[VIEW ALL LINK] No base URL available for tenant:', tenantId);
+      return null;
+    }
+    
+    const params = new URLSearchParams();
+    const focusDateStr = focusDate.toISOString().split('T')[0];
+    params.set('focusDate', focusDateStr);
+    params.set('source', source || 'chat');
+    
+    const url = `${baseUrl}/book?${params.toString()}`;
+    
+    console.log(`[VIEW ALL LINK] Generated for ${tenantId}: ${url}`);
+    
+    return {
+      url,
+      focusDateIso: focusDateStr,
+    };
+    
+  } catch (error) {
+    console.error('[VIEW ALL LINK] Error building link:', error);
+    return null;
+  }
+}
+
+/**
+ * Smart Availability Deep Links L2: Build multiple slot links with viewAll
+ * Creates individual book URLs for each slot and a single viewAll URL
+ */
+export async function buildSuggestedSlotSet(
+  tenantId: string,
+  slots: Array<{ time: string; formattedTime: string }>,
+  durationMinutes?: number,
+  source: 'chat' | 'site' = 'chat'
+): Promise<SuggestedSlotSet | null> {
+  try {
+    if (slots.length === 0) {
+      return null;
+    }
+    
+    const suggestedSlots: SuggestedSlot[] = [];
+    
+    for (const slot of slots.slice(0, 5)) {
+      const slotDate = new Date(slot.time);
+      const endDate = new Date(slotDate.getTime() + (durationMinutes || 120) * 60 * 1000);
+      
+      const bookLink = await buildBookingSlotLink({
+        tenantId,
+        start: slotDate,
+        durationMinutes,
+        source,
+      });
+      
+      if (bookLink) {
+        suggestedSlots.push({
+          start: slotDate,
+          end: endDate,
+          humanLabel: slot.formattedTime,
+          bookUrl: bookLink.url,
+        });
+      }
+    }
+    
+    if (suggestedSlots.length === 0) {
+      return null;
+    }
+    
+    const viewAllLink = await buildViewAllCalendarLink({
+      tenantId,
+      focusDate: suggestedSlots[0].start,
+      source,
+    });
+    
+    return {
+      slots: suggestedSlots,
+      viewAllUrl: viewAllLink?.url,
+      source,
+    };
+    
+  } catch (error) {
+    console.error('[SLOT SET] Error building slot set:', error);
     return null;
   }
 }

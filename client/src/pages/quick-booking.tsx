@@ -98,6 +98,9 @@ export default function QuickBookingPage() {
 
   // Preselected slot from chat deep link (Smart Availability Deep Links)
   const [preselectedSlot, setPreselectedSlot] = useState<{ start: Date; source?: string } | null>(null);
+  
+  // Smart Availability Deep Links L2: Focus date for calendar view (without preselecting a slot)
+  const [focusDate, setFocusDate] = useState<Date | null>(null);
 
   // Referral code state
   const [referralCode, setReferralCode] = useState("");
@@ -124,16 +127,17 @@ export default function QuickBookingPage() {
     }
   }, []);
 
-  // Smart Availability Deep Links: Parse slotStart from URL (from chat booking links)
+  // Smart Availability Deep Links: Parse slotStart and focusDate from URL (from chat booking links)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const slotStartParam = params.get('slotStart');
+    const focusDateParam = params.get('focusDate');
     const sourceParam = params.get('source');
     
+    // L1: Handle specific slot preselection
     if (slotStartParam) {
       try {
         const slotDate = parseISO(slotStartParam);
-        // Validate the slot is in the future
         if (slotDate > new Date()) {
           setPreselectedSlot({ start: slotDate, source: sourceParam || undefined });
           console.log('[BOOKING] Preselected slot from chat:', slotDate.toISOString());
@@ -143,6 +147,51 @@ export default function QuickBookingPage() {
       } catch (e) {
         console.warn('[BOOKING] Invalid slotStart param:', slotStartParam);
       }
+    } 
+    // L2: Handle focus date (no slot preselection, just calendar focus)
+    else if (focusDateParam) {
+      try {
+        // Parse as date-only (YYYY-MM-DD), allowing same-day focus
+        const focusDateValue = new Date(focusDateParam + 'T12:00:00');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (focusDateValue >= today) {
+          setFocusDate(focusDateValue);
+          setSelectedDate(focusDateValue);
+          console.log('[BOOKING] Calendar focused on date:', focusDateParam);
+        }
+      } catch (e) {
+        console.warn('[BOOKING] Invalid focusDate param:', focusDateParam);
+      }
+    }
+    
+    // L2: Log booking initiation analytics (uses server-side tenant detection)
+    if (sourceParam && (slotStartParam || focusDateParam)) {
+      const logAnalytics = async () => {
+        try {
+          // Let the backend determine tenantId from session/context
+          await fetch('/api/booking/analytics/initiation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              tenantId: 'detect', // Signal server to auto-detect from context
+              source: sourceParam === 'chat' ? 'chat' : sourceParam === 'site' ? 'site' : 'other',
+              context: {
+                slotStart: slotStartParam || undefined,
+                focusDate: focusDateParam || undefined,
+                channel: 'web',
+                hostname: window.location.hostname,
+              },
+            }),
+          });
+          console.log('[BOOKING] Analytics logged for source:', sourceParam);
+        } catch (e) {
+          console.warn('[BOOKING] Failed to log analytics:', e);
+        }
+      };
+      logAnalytics();
     }
   }, []);
 

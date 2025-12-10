@@ -511,31 +511,36 @@ async function executeFunctionCall(
         const result = await getAvailableSlots(args.phone, args.service);
         console.log(`[AI FUNCTION CALL] get_available_slots returned ${result.length} slots`);
         
-        // Smart Availability Deep Links: Add booking link for web chat
+        // Smart Availability Deep Links L2: Add multi-slot booking links for web chat
         if (isWebChat && tenantId && result.length > 0) {
           try {
-            const { buildBookingSlotLink } = await import('./schedulingTools');
-            // Use the first available slot for the booking link
-            const firstSlot = result[0];
-            if (firstSlot && firstSlot.time) {
-              const slotDate = new Date(firstSlot.time);
-              const bookingLink = await buildBookingSlotLink({
-                tenantId,
-                start: slotDate,
-                source: 'chat'
+            const { buildSuggestedSlotSet } = await import('./schedulingTools');
+            
+            // Build the full slot set with individual book URLs and viewAll URL
+            const slotSet = await buildSuggestedSlotSet(tenantId, result, undefined, 'chat');
+            
+            if (slotSet && slotSet.slots.length > 0) {
+              console.log(`[WEB CHAT] Generated ${slotSet.slots.length} slot links + viewAll`);
+              
+              // Format for AI with individual slot links
+              const formattedSlots = slotSet.slots.map((slot, idx) => ({
+                time: slot.start.toISOString(),
+                formattedTime: slot.humanLabel,
+                bookUrl: slot.bookUrl,
+              }));
+              
+              return JSON.stringify({
+                slots: formattedSlots,
+                slot_links: slotSet.slots.map(s => ({ label: s.humanLabel, bookUrl: s.bookUrl })),
+                view_all_url: slotSet.viewAllUrl,
+                view_all_label: "📅 See all openings on the calendar",
+                instructions: result.length > 1 
+                  ? "Present 2-3 specific options with their book links, then mention the view_all_url for more options."
+                  : "Present this slot with its book link. Also mention the view_all_url to see other times."
               });
-              if (bookingLink) {
-                console.log(`[WEB CHAT] Generated booking link: ${bookingLink.url}`);
-                // Add booking link to the result for AI to include in response
-                return JSON.stringify({
-                  slots: result,
-                  booking_link: bookingLink.url,
-                  booking_link_label: "📅 See openings on the calendar and book your time"
-                });
-              }
             }
           } catch (linkError) {
-            console.error('[WEB CHAT] Error generating booking link:', linkError);
+            console.error('[WEB CHAT] Error generating multi-slot links:', linkError);
           }
         }
         
