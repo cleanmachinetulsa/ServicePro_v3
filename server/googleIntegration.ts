@@ -60,11 +60,17 @@ async function ensureSheetsClient(scopeKey: string, scopes: string[]) {
       return null;
     }
 
+    // Fix private key line breaks - common issue with env vars
+    let privateKey = credentials.private_key;
+    if (privateKey && !privateKey.includes('\n')) {
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+
     // Create scoped JWT auth client
     const auth = new google.auth.JWT(
       credentials.client_email,
       undefined,
-      credentials.private_key,
+      privateKey,
       scopes
     );
 
