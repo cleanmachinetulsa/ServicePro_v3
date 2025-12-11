@@ -20,6 +20,7 @@ import BannerDisplay from "@/components/BannerDisplay";
 import PasswordChangeModal from "./components/PasswordChangeModal";
 import RootDomainHandler from "@/components/RootDomainHandler";
 import { SupportAssistantWidget } from "./components/SupportAssistantWidget";
+import FeedbackWidget from "./components/FeedbackWidget";
 
 // ==========================
 // LAZY-LOADED HEAVY PAGES
@@ -851,6 +852,7 @@ function App() {
               <BannerDisplay />
               <Router />
               {!isCustomerFacingPage() && <SupportAssistantWidget />}
+              {!isCustomerFacingPage() && <FeedbackWidget />}
             </DashboardPreferencesProvider>
           </UiExperienceProvider>
         </PwaProvider>
