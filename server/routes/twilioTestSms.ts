@@ -129,6 +129,11 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
     
     const conversationHistory = await getConversationHistory(tenantDb, conversation.id);
     
+    // HOTFIX-SMS-CM: Add debug logging for SMS agent state
+    console.log('[SMS HOTFIX] Inbound SMS for tenant:', tenantId, 'customer:', From, 'entrypoint: handleServiceProInboundSms');
+    console.log('[SMS HOTFIX] Conversation ID:', conversation.id, 'Control mode:', conversation.controlMode || 'auto');
+    console.log('[SMS HOTFIX] History length:', conversationHistory.length);
+    
     // SP-22: Include language context in user message for AI
     const languageContext = customerLanguage === 'es' 
       ? '\n[SYSTEM: Customer prefers Spanish. Respond in Spanish.]' 
@@ -171,12 +176,28 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
   console.log("[TWILIO SMS INBOUND] Raw body:", req.body);
 
   try {
-    if (shouldRouteToLegacyCleanMachine(req)) {
-      console.log("[TWILIO SMS INBOUND] Routing to legacy Clean Machine app.");
+    // HOTFIX-SMS-CM: Clean Machine production number now uses AI Behavior V2 brain
+    // instead of legacy webhook forwarding. The legacy webhook was causing:
+    // - Generic GPT tone instead of Clean Machine personality
+    // - Context loss after address confirmation
+    // - Not asking about services
+    // - Inappropriate "we'll send this to our team" then re-listing availability
+    //
+    // To re-enable legacy routing for Clean Machine, set env var:
+    // CLEAN_MACHINE_USE_LEGACY_SMS=true
+    const useLegacySms = process.env.CLEAN_MACHINE_USE_LEGACY_SMS === 'true';
+    
+    if (useLegacySms && shouldRouteToLegacyCleanMachine(req)) {
+      console.log("[TWILIO SMS INBOUND] Legacy mode enabled - routing to legacy Clean Machine app.");
       return forwardToLegacyCleanMachine(req, res);
     }
+    
+    // Log if we WOULD have routed to legacy but V2 is active
+    if (shouldRouteToLegacyCleanMachine(req)) {
+      console.log("[TWILIO SMS INBOUND] HOTFIX-SMS-CM: Bypassing legacy routing - using AI Behavior V2 for Clean Machine.");
+    }
 
-    console.log("[TWILIO SMS INBOUND] Routing to ServicePro AI SMS handler.");
+    console.log("[TWILIO SMS INBOUND] Routing to ServicePro AI Behavior V2 handler.");
     return handleServiceProInboundSms(req, res);
   } catch (err: any) {
     console.error("[TWILIO SMS INBOUND] Unhandled error in router:", err);

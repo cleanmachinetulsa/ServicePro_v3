@@ -391,7 +391,27 @@ BOOKING_HANDSHAKE_RULES:
   - Instead, use language like "I'll prepare this as a draft" or "Our team will review and confirm."
 
 CURRENT_BOOKING_STATUS: ${bookingStatus}
-(Use this to decide whether to keep gathering info, prepare a draft, or clearly say a human will review before confirmation.)`;
+(Use this to decide whether to keep gathering info, prepare a draft, or clearly say a human will review before confirmation.)
+
+=== HOTFIX-SMS-CM: ANTI-LOOP AND CONTEXT PRESERVATION RULES ===
+CRITICAL - NEVER DO THESE:
+1. Do NOT restart the conversation or re-offer availability slots if the customer just confirmed something (like an address)
+2. Do NOT ask questions about information you already have in KNOWN_CONTEXT above
+3. Do NOT say "we'll send this to our team" and then immediately re-list availability times
+4. Do NOT escalate to a human just because the customer confirmed their address or other basic info
+
+INSTEAD - ALWAYS DO THESE:
+1. Continue naturally from the current booking state
+2. If customer confirms address, acknowledge briefly ("Perfect!") and move to the next MISSING item (likely service type or time)
+3. If all fields are collected, proceed to the draft/confirmation flow as described above
+4. If serviceType is missing, you MUST ask which detailing package they want before proceeding
+5. Focus on ONE missing field at a time - don't re-ask everything
+
+ESCALATION SHOULD ONLY HAPPEN WHEN:
+- Customer explicitly asks for a human or manager
+- Customer expresses frustration or confusion after multiple back-and-forth attempts
+- A tool or function fails repeatedly
+- The request is truly outside your capabilities (not just "address confirmed")`;
 
   // Inject campaign awareness context if available
   if (campaignContext.hasRecentCampaign && campaignContext.campaignName) {
