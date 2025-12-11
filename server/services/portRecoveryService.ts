@@ -722,7 +722,12 @@ export async function runPortRecoveryBatch(
       if (pointsResult.success) {
         updates.pointsGranted = campaign.pointsPerCustomer;
         totalPointsGranted += campaign.pointsPerCustomer;
+        console.log(`[PORT RECOVERY] Awarded ${campaign.pointsPerCustomer} points to customer ${customerId}`);
+      } else {
+        console.log(`[PORT RECOVERY] Failed to award points to customer ${customerId}: ${pointsResult}`);
       }
+    } else {
+      console.log(`[PORT RECOVERY] No customer matched for target phone=${target.phone} email=${target.email}`);
     }
     
     // Channel priority: SMS-first, email-only-fallback
