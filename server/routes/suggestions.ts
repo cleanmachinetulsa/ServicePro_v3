@@ -167,6 +167,50 @@ suggestionsRouter.post('/public/:subdomain', async (req: Request, res: Response)
 });
 
 /**
+ * User feedback widget endpoint: submit feedback/bug reports from floating widget
+ * POST /api/user-feedback
+ * Auth: Required
+ */
+suggestionsRouter.post('/user-feedback', requireAuth, async (req: any, res: Response) => {
+  try {
+    const tenantId = req.tenantId as string;
+    if (!tenantId) {
+      return res.status(400).json({ success: false, error: 'Tenant context required' });
+    }
+
+    const { title, category, message, contactInfo } = req.body ?? {};
+    
+    if (!title || typeof title !== 'string') {
+      return res.status(400).json({ success: false, error: 'Title is required' });
+    }
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ success: false, error: 'Message is required' });
+    }
+    if (!category || !['bug', 'feature', 'improvement', 'other'].includes(category)) {
+      return res.status(400).json({ success: false, error: 'Invalid category' });
+    }
+
+    // Save to suggestions table as tenant owner feedback
+    const [row] = await db
+      .insert(suggestions)
+      .values({
+        tenantId,
+        source: 'tenant_owner',
+        context: category,
+        message: `[${category.toUpperCase()}] ${title}\n\n${message}${contactInfo ? `\n\nContact: ${contactInfo}` : ''}`,
+        name: req.user?.fullName ?? req.user?.username ?? 'Anonymous',
+        contact: contactInfo ?? null,
+      })
+      .returning();
+
+    return res.json({ success: true, suggestion: row });
+  } catch (err) {
+    console.error('[USER FEEDBACK ERROR]', err);
+    return res.status(500).json({ success: false, error: 'Failed to submit feedback' });
+  }
+});
+
+/**
  * Mark suggestion handled / add notes
  * Tenant-scoped: can only update suggestions belonging to the user's tenant
  * Platform admins (root tenant) can update platform suggestions (tenantId = null)
