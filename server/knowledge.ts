@@ -69,9 +69,50 @@ function formatKnowledgeBase(): string {
   // Add business information
   knowledgeBase += `## Business Information\n`;
   knowledgeBase += `- Location: Mobile service in Tulsa, OK area (26-minute drive radius)\n`;
-  knowledgeBase += `- Service Hours: 9 AM - 3 PM (no appointments start after 3 PM)\n`;
+  knowledgeBase += `- Business Hours: 9 AM - 6 PM Monday through Friday\n`;
+  knowledgeBase += `- Latest Appointment Start Time: 3 PM (we need time to complete services before 6 PM)\n`;
   knowledgeBase += `- Service Area: Within 26 minutes drive time from Tulsa\n`;
-  knowledgeBase += `- Contact: cleanmachinetulsa@gmail.com\n\n`;
+  knowledgeBase += `- Contact: cleanmachinetulsa@gmail.com\n`;
+  knowledgeBase += `- Phone: 918-856-5711\n\n`;
+
+  // Add loyalty program information (from old Clean Machine system)
+  knowledgeBase += `## Loyalty Rewards Program\n\n`;
+  knowledgeBase += `### How It Works\n`;
+  knowledgeBase += `- Customers earn points for every dollar spent on services\n`;
+  knowledgeBase += `- Points can be redeemed for free services and upgrades\n`;
+  knowledgeBase += `- Points are valid for 2 years from the date earned\n`;
+  knowledgeBase += `- Check points balance at cleanmachinetulsa.com/rewards using phone or email\n\n`;
+  
+  knowledgeBase += `### Loyalty Tiers\n`;
+  knowledgeBase += `- **Bronze**: 500-999 points\n`;
+  knowledgeBase += `- **Silver**: 1,000-1,999 points\n`;
+  knowledgeBase += `- **Gold**: 2,000-2,999 points (VIP tier)\n`;
+  knowledgeBase += `- **Platinum**: 3,000+ points (VIP tier)\n\n`;
+  
+  knowledgeBase += `### Available Rewards\n`;
+  knowledgeBase += `- **500 Points**: Free Leather/Upholstery Protector or Engine Bay Cleaning\n`;
+  knowledgeBase += `- **1,000 Points**: Free Maintenance Detail\n`;
+  knowledgeBase += `- **2,000 Points**: Free Paint Enhancement\n`;
+  knowledgeBase += `- **3,000 Points**: Free 1 Year Ceramic Coating\n\n`;
+  
+  knowledgeBase += `### How to Redeem\n`;
+  knowledgeBase += `1. Visit cleanmachinetulsa.com/rewards and enter your phone or email\n`;
+  knowledgeBase += `2. View your points balance and available rewards\n`;
+  knowledgeBase += `3. Click "Redeem Offer" on any reward you qualify for\n`;
+  knowledgeBase += `4. Book your appointment right away (rewards must be scheduled within 90 days)\n`;
+  knowledgeBase += `5. Points are deducted immediately upon redemption\n\n`;
+  
+  knowledgeBase += `### Using Points During Booking\n`;
+  knowledgeBase += `- Points can be used to upgrade existing appointments\n`;
+  knowledgeBase += `- For example: Use 500 points to add free Leather Protector to your detail\n`;
+  knowledgeBase += `- Call/text 918-856-5711 to use points when booking\n`;
+  knowledgeBase += `- Points are awarded ONLY after the service is completed\n\n`;
+  
+  knowledgeBase += `### Welcome Back Campaign\n`;
+  knowledgeBase += `- VIP customers (Gold/Platinum) receive 500 bonus points\n`;
+  knowledgeBase += `- Regular customers (Bronze/Silver) receive 200 bonus points\n`;
+  knowledgeBase += `- Bonus points are added immediately when campaign is sent\n`;
+  knowledgeBase += `- Check your points at cleanmachinetulsa.com/rewards\n\n`;
 
   return knowledgeBase;
 }
@@ -279,10 +320,12 @@ export function extractKnowledgeBase(): string {
 # Clean Machine Auto Detail Information
 
 ## Business Information
-- Location: Mobile service in Tulsa, OK area
-- Service Hours: 9 AM - 3 PM (no appointments start after 3 PM)
+- Location: Mobile service in Tulsa, OK area (26-minute drive radius)
+- Business Hours: 9 AM - 6 PM Monday through Friday
+- Latest Appointment Start Time: 3 PM (we need time to complete services before 6 PM)
 - Service Area: Within 26 minutes drive time from Tulsa
 - Contact: cleanmachinetulsa@gmail.com
+- Phone: 918-856-5711
 
 Note: For current service pricing and details, please visit cleanmachinetulsa.com or ask for specific services.
 `;
