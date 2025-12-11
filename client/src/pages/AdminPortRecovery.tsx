@@ -313,16 +313,18 @@ export default function AdminPortRecovery() {
     const sampleName = previewData?.sampleTargets?.[0]?.customerName || 'Sarah';
     const firstName = sampleName.split(' ')[0] || 'there';
     const points = (currentCampaign?.pointsPerCustomer || 500).toString();
+    const finalCtaUrl = ctaUrl && ctaUrl.trim() ? ctaUrl : 'https://cleanmachinetulsa.com/book';
     return template
       .replace(/\{\{firstNameOrFallback\}\}/g, firstName)
       .replace(/\{\{customerName\}\}/g, sampleName)
-      .replace(/\{\{ctaUrl\}\}/g, ctaUrl || 'https://cleanmachinetulsa.com/book')
-      .replace(/\{\{bookingUrl\}\}/g, ctaUrl || 'https://cleanmachinetulsa.com/book')
+      .replace(/\{\{ctaUrl\}\}/g, finalCtaUrl)
+      .replace(/\{\{bookingUrl\}\}/g, finalCtaUrl)
       .replace(/\{\{points\}\}/g, points);
   };
   
   const smsCharCount = smsTemplate.length;
   const smsSegments = Math.ceil(smsCharCount / 160);
+  const isMultiSegment = smsSegments > 2; // Only show red warning for 3+ segments
 
   return (
     <AppShell>
@@ -591,7 +593,7 @@ export default function AdminPortRecovery() {
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
                               <Label className="text-sm text-gray-300">SMS Template</Label>
-                              <span className={`text-xs ${smsCharCount > 320 ? 'text-red-400' : 'text-gray-500'}`}>
+                              <span className={`text-xs ${isMultiSegment ? 'text-amber-400' : 'text-gray-500'}`}>
                                 {smsCharCount} chars · {smsSegments} segment{smsSegments !== 1 ? 's' : ''}
                               </span>
                             </div>
