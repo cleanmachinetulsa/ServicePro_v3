@@ -13,6 +13,7 @@ import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { runCustomerBackfill, type BackfillStats } from './services/customerBackfillService';
 import { importCustomersFromSheet, previewCustomersFromSheet, type CustomerSheetImportSummary } from './services/customerImportFromSheetsService';
+import { getLastCustomersSheetsSync, runSheetsCustomerBackfillForTenant } from './services/sheetsCustomerAutoSyncService';
 import { z } from 'zod';
 
 const router = Router();
@@ -250,7 +251,9 @@ router.post('/customers/from-sheets', async (req: Request, res: Response) => {
 
     console.log(`[ADMIN BACKFILL] Sheets import requested (dryRun: ${dryRun}) by user:`, req.session.userId);
 
-    const summary: CustomerSheetImportSummary = await importCustomersFromSheet('root', { dryRun });
+    const summary: CustomerSheetImportSummary = dryRun 
+      ? await importCustomersFromSheet('root', { dryRun: true })
+      : await runSheetsCustomerBackfillForTenant('root', 'manual');
 
     console.log('[ADMIN BACKFILL] Sheets import complete:', summary);
 
@@ -266,6 +269,60 @@ router.post('/customers/from-sheets', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Sheets import failed',
+      error: errorMsg,
+    });
+  }
+});
+
+/**
+ * GET /api/admin/backfill/customers-sheets/last-auto-sync
+ * 
+ * Health-check endpoint returning the most recent customers-sheets import
+ * Works whether the run was triggered by cron or manually
+ */
+router.get('/customers-sheets/last-auto-sync', async (req: Request, res: Response) => {
+  try {
+    const tenantId = 'root';
+    const lastRun = await getLastCustomersSheetsSync(tenantId);
+
+    if (!lastRun) {
+      return res.json({
+        hasRun: false,
+        lastRunAt: null,
+        triggerSource: null,
+        summary: null,
+      });
+    }
+
+    let notes: any = null;
+    try {
+      notes = lastRun.notes ? JSON.parse(lastRun.notes) : null;
+    } catch {
+      notes = null;
+    }
+
+    return res.json({
+      hasRun: true,
+      lastRunAt: lastRun.completedAt ?? lastRun.startedAt,
+      triggerSource: notes?.triggerSource ?? 'unknown',
+      summary: notes ? {
+        totalRows: notes.totalRows,
+        normalizedRows: notes.normalizedRows,
+        created: notes.created,
+        updated: notes.updated,
+        skipped: notes.skipped,
+        normalizationFailures: notes.normalizationFailures,
+        errorCount: notes.errorCount,
+        error: notes.error,
+      } : null,
+    });
+  } catch (error) {
+    console.error('[ADMIN BACKFILL] Error fetching last auto-sync:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch last auto-sync status',
       error: errorMsg,
     });
   }

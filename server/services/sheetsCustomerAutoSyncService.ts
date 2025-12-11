@@ -13,9 +13,13 @@
  */
 
 import cron from 'node-cron';
-import { importCustomersFromSheet } from './customerImportFromSheetsService';
+import { importCustomersFromSheet, type CustomerSheetImportSummary } from './customerImportFromSheetsService';
+import { db } from '../db';
+import { migrationLog } from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
 
 const LOG_PREFIX = '[SHEETS AUTO-SYNC]';
+const MIGRATION_TYPE = 'customers_sheets_import';
 
 const CLEAN_MACHINE_TENANT_ID = 'root';
 
@@ -36,16 +40,96 @@ export function getCleanMachineTenantId(): string {
 
 /**
  * Run the Google Sheets customer backfill for a specific tenant
+ * Records history to migrationLog with triggerSource in notes
  */
-export async function runSheetsCustomerBackfillForTenant(tenantId: string) {
-  console.log(`${LOG_PREFIX} Starting customer backfill for tenant: ${tenantId}`);
+export async function runSheetsCustomerBackfillForTenant(
+  tenantId: string,
+  triggerSource: 'auto' | 'manual' = 'manual'
+): Promise<CustomerSheetImportSummary> {
+  console.log(`${LOG_PREFIX} Starting customer backfill for tenant: ${tenantId} (trigger: ${triggerSource})`);
   
-  const summary = await importCustomersFromSheet(tenantId, {
-    dryRun: false,
-    tabNames: AUTO_SYNC_TABS,
-  });
+  const startedAt = new Date();
+  let migrationLogId: number | undefined;
   
-  return summary;
+  try {
+    const [logEntry] = await db
+      .insert(migrationLog)
+      .values({
+        type: MIGRATION_TYPE,
+        tenantId,
+        startedAt,
+        notes: JSON.stringify({ triggerSource, startedAt: startedAt.toISOString() }),
+      })
+      .returning({ id: migrationLog.id });
+    
+    migrationLogId = logEntry?.id;
+  } catch (err) {
+    console.error(`${LOG_PREFIX} Error creating migration log entry:`, err);
+  }
+  
+  try {
+    const summary = await importCustomersFromSheet(tenantId, {
+      dryRun: false,
+      tabNames: AUTO_SYNC_TABS,
+    });
+    
+    if (migrationLogId) {
+      await db
+        .update(migrationLog)
+        .set({
+          completedAt: new Date(),
+          notes: JSON.stringify({
+            triggerSource,
+            startedAt: startedAt.toISOString(),
+            completedAt: new Date().toISOString(),
+            totalRows: summary.totalRows,
+            normalizedRows: summary.normalizedRows,
+            created: summary.created,
+            updated: summary.updated,
+            skipped: summary.skipped,
+            normalizationFailures: summary.normalizationFailures,
+            errorCount: summary.errors.length,
+          }),
+        })
+        .where(eq(migrationLog.id, migrationLogId));
+    }
+    
+    return summary;
+  } catch (err: any) {
+    if (migrationLogId) {
+      await db
+        .update(migrationLog)
+        .set({
+          completedAt: new Date(),
+          notes: JSON.stringify({
+            triggerSource,
+            startedAt: startedAt.toISOString(),
+            error: err?.message,
+          }),
+        })
+        .where(eq(migrationLog.id, migrationLogId));
+    }
+    throw err;
+  }
+}
+
+/**
+ * Get the most recent customers-sheets import for a tenant
+ */
+export async function getLastCustomersSheetsSync(tenantId: string) {
+  const [entry] = await db
+    .select()
+    .from(migrationLog)
+    .where(
+      and(
+        eq(migrationLog.tenantId, tenantId),
+        eq(migrationLog.type, MIGRATION_TYPE)
+      )
+    )
+    .orderBy(desc(migrationLog.startedAt))
+    .limit(1);
+  
+  return entry ?? null;
 }
 
 /**
@@ -71,7 +155,7 @@ export function initializeSheetsCustomerAutoSync() {
       }
       
       console.log(`${LOG_PREFIX} Starting customer backfill for Clean Machine...`);
-      const summary = await runSheetsCustomerBackfillForTenant(tenantId);
+      const summary = await runSheetsCustomerBackfillForTenant(tenantId, 'auto');
       console.log(`${LOG_PREFIX} Completed`, {
         totalRows: summary.totalRows,
         normalizedRows: summary.normalizedRows,
