@@ -14,6 +14,9 @@ import { db } from './db';
 import { runCustomerBackfill, type BackfillStats } from './services/customerBackfillService';
 import { importCustomersFromSheet, previewCustomersFromSheet, type CustomerSheetImportSummary } from './services/customerImportFromSheetsService';
 import { getLastCustomersSheetsSync, runSheetsCustomerBackfillForTenant } from './services/sheetsCustomerAutoSyncService';
+import { getPortRecoveryTransactionsByCampaignIds, awardPoints } from './gamificationService';
+import { portRecoveryCampaigns } from '@shared/schema';
+import { eq, sql as drizzleSql } from 'drizzle-orm';
 import { z } from 'zod';
 
 const router = Router();
@@ -323,6 +326,197 @@ router.get('/customers-sheets/last-auto-sync', async (req: Request, res: Respons
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch last auto-sync status',
+      error: errorMsg,
+    });
+  }
+});
+
+// ============================================================
+// PORT RECOVERY CAMPAIGN POINTS NORMALIZATION
+// ============================================================
+
+const PORT_RECOVERY_CAMPAIGN_KEY = 'port-recovery-2025-12-11';
+
+/**
+ * POST /api/admin/backfill/loyalty/normalize-port-recovery-2025-12-11
+ * 
+ * One-time correction tool to fix customers who received more than 500 points
+ * from the port recovery campaign. Creates negative adjustments to bring
+ * net campaign points to exactly 500.
+ */
+router.post('/loyalty/normalize-port-recovery-2025-12-11', async (req: Request, res: Response) => {
+  try {
+    console.log('[LOYALTY NORMALIZE] Port recovery normalization requested by user:', req.session?.userId);
+
+    const campaignRecords = await db
+      .select({ id: portRecoveryCampaigns.id })
+      .from(portRecoveryCampaigns)
+      .where(eq(portRecoveryCampaigns.name, PORT_RECOVERY_CAMPAIGN_KEY));
+    
+    const campaignIds = campaignRecords.map(c => c.id);
+    
+    console.log(`[LOYALTY NORMALIZE] Found ${campaignIds.length} campaigns matching "${PORT_RECOVERY_CAMPAIGN_KEY}": [${campaignIds.join(', ')}]`);
+
+    if (campaignIds.length === 0) {
+      return res.json({
+        success: true,
+        campaignKey: PORT_RECOVERY_CAMPAIGN_KEY,
+        message: 'No campaigns found matching this campaign key',
+        scannedTransactions: 0,
+        customersAnalyzed: 0,
+        correctedCustomers: 0,
+        corrections: [],
+      });
+    }
+
+    const txs = await getPortRecoveryTransactionsByCampaignIds(db, campaignIds);
+
+    console.log(`[LOYALTY NORMALIZE] Found ${txs.length} port_recovery transactions for these campaigns`);
+
+    const byCustomer = new Map<number, { total: number; transactions: typeof txs }>();
+
+    for (const tx of txs) {
+      if (!tx.customerId) continue;
+      
+      const entry = byCustomer.get(tx.customerId) ?? { total: 0, transactions: [] };
+      entry.total += tx.amount;
+      entry.transactions.push(tx);
+      byCustomer.set(tx.customerId, entry);
+    }
+
+    const corrections: Array<{ customerId: number; excess: number; previousTotal: number }> = [];
+
+    for (const [customerId, info] of byCustomer.entries()) {
+      if (info.total > 500) {
+        const excess = info.total - 500;
+        corrections.push({ customerId, excess, previousTotal: info.total });
+      }
+    }
+
+    console.log(`[LOYALTY NORMALIZE] Found ${corrections.length} customers with excess points`);
+
+    const results: Array<{ customerId: number; correctedBy: number; previousTotal: number; newTotal: number }> = [];
+
+    for (const { customerId, excess, previousTotal } of corrections) {
+      const adjustmentPoints = -excess;
+
+      try {
+        const result = await awardPoints(
+          db,
+          customerId,
+          adjustmentPoints,
+          'port_recovery_correction',
+          null,
+          `Port recovery correction - reducing by ${excess} points [${PORT_RECOVERY_CAMPAIGN_KEY}]`
+        );
+
+        results.push({
+          customerId,
+          correctedBy: adjustmentPoints,
+          previousTotal,
+          newTotal: result.currentPoints,
+        });
+
+        console.log(`[LOYALTY NORMALIZE] Corrected customer ${customerId}: ${previousTotal} → ${previousTotal + adjustmentPoints} points`);
+      } catch (err) {
+        console.error(`[LOYALTY NORMALIZE] Error correcting customer ${customerId}:`, err);
+      }
+    }
+
+    return res.json({
+      success: true,
+      campaignKey: PORT_RECOVERY_CAMPAIGN_KEY,
+      scannedTransactions: txs.length,
+      customersAnalyzed: byCustomer.size,
+      correctedCustomers: results.length,
+      corrections: results,
+    });
+  } catch (error) {
+    console.error('[LOYALTY NORMALIZE] Error normalizing port-recovery points:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to normalize port-recovery loyalty points',
+      error: errorMsg,
+    });
+  }
+});
+
+/**
+ * GET /api/admin/backfill/loyalty/port-recovery-2025-12-11/status
+ * 
+ * Preview the current state of port recovery campaign points
+ * Shows which customers have received points and any over-awards
+ */
+router.get('/loyalty/port-recovery-2025-12-11/status', async (req: Request, res: Response) => {
+  try {
+    const campaignRecords = await db
+      .select({ id: portRecoveryCampaigns.id })
+      .from(portRecoveryCampaigns)
+      .where(eq(portRecoveryCampaigns.name, PORT_RECOVERY_CAMPAIGN_KEY));
+    
+    const campaignIds = campaignRecords.map(c => c.id);
+    
+    if (campaignIds.length === 0) {
+      return res.json({
+        success: true,
+        campaignKey: PORT_RECOVERY_CAMPAIGN_KEY,
+        message: 'No campaigns found matching this campaign key',
+        totalTransactions: 0,
+        uniqueCustomers: 0,
+        correctlyAwarded: { count: 0, totalPoints: 0 },
+        overAwardedCustomers: 0,
+        overAwardedDetails: [],
+      });
+    }
+
+    const txs = await getPortRecoveryTransactionsByCampaignIds(db, campaignIds);
+
+    const byCustomer = new Map<number, { total: number; transactionCount: number }>();
+
+    for (const tx of txs) {
+      if (!tx.customerId) continue;
+      
+      const entry = byCustomer.get(tx.customerId) ?? { total: 0, transactionCount: 0 };
+      entry.total += tx.amount;
+      entry.transactionCount += 1;
+      byCustomer.set(tx.customerId, entry);
+    }
+
+    const overAwardedCustomers: Array<{ customerId: number; total: number; excess: number; transactionCount: number }> = [];
+    const correctlyAwardedCount = { count: 0, totalPoints: 0 };
+
+    for (const [customerId, info] of byCustomer.entries()) {
+      if (info.total > 500) {
+        overAwardedCustomers.push({
+          customerId,
+          total: info.total,
+          excess: info.total - 500,
+          transactionCount: info.transactionCount,
+        });
+      } else if (info.total > 0) {
+        correctlyAwardedCount.count++;
+        correctlyAwardedCount.totalPoints += info.total;
+      }
+    }
+
+    return res.json({
+      success: true,
+      campaignKey: PORT_RECOVERY_CAMPAIGN_KEY,
+      totalTransactions: txs.length,
+      uniqueCustomers: byCustomer.size,
+      correctlyAwarded: correctlyAwardedCount,
+      overAwardedCustomers: overAwardedCustomers.length,
+      overAwardedDetails: overAwardedCustomers,
+    });
+  } catch (error) {
+    console.error('[LOYALTY STATUS] Error fetching port-recovery status:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch port-recovery status',
       error: errorMsg,
     });
   }

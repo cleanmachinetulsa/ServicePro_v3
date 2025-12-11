@@ -1,0 +1,337 @@
+You are editing the ServicePro v3 / Clean Machine repo.
+
+BUSINESS GOAL (high priority, keep scope tight):
+The “port-recovery-2025-12-11” SMS campaign awards 500 loyalty points to each customer. 
+Some customers may have accidentally received points multiple times (e.g., 1000 or 1500 points) if they were targeted in multiple sends.
+
+We must:
+1) Make campaign points idempotent going forward:
+   - Each customer gets at most 500 points total from this specific campaign, no matter how many times we resend SMS.
+2) Add a one-time correction tool:
+   - Scan loyalty/points history.
+   - For this specific campaign, detect customers with more than 500 points.
+   - Automatically add a negative adjustment so their net from this campaign equals 500, not more.
+
+We do NOT:
+- Change the SMS content.
+- Change campaign sending logic or quiet-hours logic.
+- Change database schema or add new tables.
+- Affect any other campaigns or loyalty features.
+
+==================================================
+A) DISCOVER EXISTING LOYALTY / POINTS LOGIC
+==================================================
+
+1. Search the repo for the current loyalty / points functions:
+   - Look for functions like:
+     - `awardPoints`, `addPointsTransaction`, `grantLoyaltyPoints`, or similar.
+   - These are probably in files like:
+     - `server/services/loyaltyService.ts`
+     - `server/services/rewardsService.ts`
+     - `server/services/customerRewardsService.ts`
+     - or similar.
+
+2. Identify:
+   - The table/model used to store loyalty point transactions (e.g. `loyaltyTransactions`, `rewardPoints`, etc.).
+   - How a transaction is structured:
+     - It should include: customerId, points (positive or negative), maybe reason/description, metadata, createdAt, etc.
+
+3. Also locate the specific place where the **port-recovery campaign** awards the 500 points:
+   - This is likely in `server/services/portRecoveryService.ts` or similar.
+   - Look for code near where the SMS is sent that calls the loyalty function with a value of `500` and some reason like `'port_recovery'` or `'port-recovery-2025-12-11'`.
+
+Do NOT modify anything yet; just locate the correct code paths.
+
+==================================================
+B) IMPLEMENT awardCampaignPointsOnce HELPER
+==================================================
+
+In the loyalty/points service file (where the main award function lives), add a new helper:
+
+- Name: `awardCampaignPointsOnce`
+- Signature (adjust types to match existing code):
+
+  ```ts
+  export async function awardCampaignPointsOnce(
+    tenantDb: TenantDbType,
+    customerId: string,
+    points: number,
+    campaignKey: string,
+    metadata: Record<string, any> = {}
+  ): Promise<LoyaltyTransaction | null> {
+    // Implementation described below
+  }
+Behavior:
+
+Use the existing loyalty transactions table/model to check if this customer already has a transaction for this campaign:
+
+We want to find any transaction for:
+
+this customerId, and
+
+with metadata.campaignKey === campaignKey
+OR description/reason includes the campaignKey if metadata isn’t available.
+
+Pseudocode (adapt to Drizzle / query builder you use):
+
+ts
+Copy code
+const existing = await tenantDb.query.loyaltyTransactions.findFirst({
+  where: (row, { eq, and }) => and(
+    eq(row.customerId, customerId),
+    eq(row.metadata->>'campaignKey', campaignKey) // adjust to actual metadata structure
+  ),
+});
+If metadata is stored as JSON or text, use the existing patterns in your codebase for querying it. If there is no structured metadata field, fallback to searching a “reason” or “description” text field for the campaignKey substring.
+
+If an existing transaction is found:
+
+Log and skip:
+
+ts
+Copy code
+console.log('[LOYALTY] Skipping extra points; already awarded for campaign', {
+  customerId,
+  campaignKey,
+});
+return null;
+If no existing transaction is found:
+
+Call the existing award function to create a new transaction, passing through metadata plus the campaignKey:
+
+ts
+Copy code
+const finalMetadata = {
+  ...metadata,
+  campaignKey,
+};
+
+const tx = await awardPoints(tenantDb, customerId, points, {
+  ...metadata,
+  campaignKey,
+});
+
+return tx;
+Do NOT change how awardPoints works internally; just wrap it.
+
+If the underlying award function expects a different object shape (e.g. { reason, source, notes }), adapt accordingly while ensuring campaignKey is included somewhere in metadata/notes.
+
+Error handling:
+
+Any errors should be logged and then re-thrown OR handled consistent with existing patterns, but do NOT crash callers unexpectedly.
+
+==================================================
+C) WIRE PORT-RECOVERY CAMPAIGN TO USE awardCampaignPointsOnce
+In the port recovery service file (e.g. server/services/portRecoveryService.ts):
+
+Find where points are awarded, something like:
+
+ts
+Copy code
+await awardPoints(tenantDb, customerId, 500, {
+  reason: 'port_recovery_campaign',
+  // other metadata…
+});
+Replace that call with:
+
+ts
+Copy code
+await awardCampaignPointsOnce(
+  tenantDb,
+  customerId,
+  500,
+  'port-recovery-2025-12-11',
+  {
+    reason: 'port_recovery_campaign',
+    campaignSlug: 'port-recovery-2025-12-11',
+  }
+);
+Use a stable campaignKey string that clearly identifies this campaign. If the campaign has a stored slug or id (e.g. from the DB), you can use that instead of a hard-coded string, but keep it deterministic and identical each time.
+
+Ensure that:
+
+SMS sending still happens regardless of whether the points were newly awarded or skipped.
+
+If the points helper throws an error, it’s logged but does not stop the rest of the campaign pipeline unless this is consistent with existing behavior.
+
+==================================================
+D) ONE-TIME CORRECTION TOOL FOR EXISTING OVER-AWARDED POINTS
+Now we need a way to FIX any customers who already received more than 500 points from this campaign.
+
+Approach:
+
+Add an admin-only endpoint that:
+
+Scans loyalty transactions for this campaign.
+
+Computes, per customer, total points attributed to this campaign.
+
+For any customer whose total > 500, create a negative adjustment so their net is exactly 500.
+
+Logs a summary of what it did.
+
+In an appropriate admin routes file (e.g. server/routes.adminLoyalty.ts or server/routes.adminPortRecovery.ts), add:
+
+Route: POST /api/admin/loyalty/normalize-port-recovery-2025-12-11
+
+Protected with the same owner/root auth used for other admin/backfill endpoints.
+
+Implementation (pseudocode):
+
+ts
+Copy code
+adminRouter.post(
+  '/loyalty/normalize-port-recovery-2025-12-11',
+  requireOwnerAuth, // use your existing owner/root middleware
+  async (req, res) => {
+    try {
+      const tenantDb = wrapTenantDb(db, 'root'); // or whatever you use for Clean Machine root tenant
+
+      const campaignKey = 'port-recovery-2025-12-11';
+
+      // 1) Fetch all loyalty transactions related to this campaign.
+      const txs = await getCampaignTransactionsForPortRecovery(tenantDb, campaignKey);
+
+      // 2) Group by customerId and sum points.
+      const byCustomer = new Map<string, { total: number; transactions: LoyaltyTransaction[] }>();
+
+      for (const tx of txs) {
+        const entry = byCustomer.get(tx.customerId) ?? { total: 0, transactions: [] };
+        entry.total += tx.points; // points may be positive or negative
+        entry.transactions.push(tx);
+        byCustomer.set(tx.customerId, entry);
+      }
+
+      const corrections: Array<{ customerId: string; excess: number }> = [];
+
+      for (const [customerId, info] of byCustomer.entries()) {
+        if (info.total > 500) {
+          const excess = info.total - 500;
+          corrections.push({ customerId, excess });
+        }
+      }
+
+      // 3) For each customer with excess > 0, create a negative adjustment transaction.
+      const results = [];
+
+      for (const { customerId, excess } of corrections) {
+        const adjustmentPoints = -excess; // negative to bring total down
+
+        const tx = await awardPoints(tenantDb, customerId, adjustmentPoints, {
+          reason: 'port_recovery_correction',
+          campaignKey,
+        });
+
+        results.push({
+          customerId,
+          correctedBy: adjustmentPoints,
+        });
+      }
+
+      return res.json({
+        success: true,
+        campaignKey,
+        scannedTransactions: txs.length,
+        correctedCustomers: results.length,
+        corrections: results,
+      });
+    } catch (err) {
+      console.error('[LOYALTY] normalize-port-recovery-2025-12-11 error', {
+        error: (err as any)?.message,
+        stack: (err as any)?.stack,
+      });
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to normalize port-recovery loyalty points',
+        error: (err as any)?.message,
+      });
+    }
+  }
+);
+Adjust:
+
+requireOwnerAuth to your actual owner/root middleware.
+
+wrapTenantDb(db, 'root') to however you obtain the Clean Machine tenant DB.
+
+LoyaltyTransaction and awardPoints types to match your code.
+
+Implement getCampaignTransactionsForPortRecovery (in the loyalty service or near the route), reusing existing patterns for reading transactions:
+
+ts
+Copy code
+async function getCampaignTransactionsForPortRecovery(
+  tenantDb: TenantDbType,
+  campaignKey: string
+): Promise<LoyaltyTransaction[]> {
+  // Use the same table that stores loyalty points.
+  // Filter by metadata.campaignKey === campaignKey OR reason/description includes campaignKey.
+
+  return tenantDb.query.loyaltyTransactions.findMany({
+    where: (row, { and, eq, ilike }) => {
+      // Prefer structured metadata if available:
+      // - If metadata JSON has campaignKey, use that.
+      // - Otherwise, fallback to a reason/description "ilike" match.
+    },
+  });
+}
+Follow whatever query patterns exist already (JSON column, text column, etc.). The key is to capture all transactions that belong to this specific campaign.
+
+==================================================
+E) SAFETY & EXECUTION INSTRUCTIONS
+After implementing everything:
+
+Run npm run build to confirm TypeScript/compilation success.
+
+Run npm run dev and watch server logs for any startup errors.
+
+To NORMALIZE existing points:
+
+While logged in as an owner in the admin panel, call:
+
+POST /api/admin/loyalty/normalize-port-recovery-2025-12-11
+
+This can be done by:
+
+Temporarily visiting this URL from the browser using a tool that allows POST (or via a small admin button you wire later),
+OR by using an API client like Thunder Client / Postman.
+
+For now, you can also temporarily allow GET for this route if you want to trigger it from the browser URL bar, then revert to POST later.
+
+The endpoint will:
+
+Scan all loyalty transactions for the campaign.
+
+Calculate total points per customer.
+
+For any customer with >500 points, add a negative adjustment to bring them down to exactly 500.
+
+The JSON response should show:
+
+correctedCustomers count
+
+A list of { customerId, correctedBy } entries for each correction.
+
+Going forward:
+
+The awardCampaignPointsOnce helper will ensure that:
+
+Even if SMS is resent or campaign resent, customers will not get more than 500 points total for this specific campaign.
+
+IMPORTANT:
+
+Do NOT change any DB schema.
+
+Do NOT affect any other campaign’s points behavior.
+
+Keep all new functions and routes clearly labeled as port recovery campaign specific, and keep logging concise.
+
+Stop after implementing:
+
+awardCampaignPointsOnce
+
+Port recovery wiring to use it
+
+The normalization route + helper
+
+Do not introduce additional refactors in this prompt.
