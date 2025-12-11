@@ -7,17 +7,19 @@
  * Features:
  * - Reads customer rows from configurable Google Sheets tabs
  * - Normalizes phone numbers to E.164 format
- * - Deduplicates by phone/email match
+ * - Deduplicates by phone/email match using unified Customer Identity Service
  * - Supports dry-run mode for safe preview
  * - Merges data without overwriting existing non-empty fields
+ * 
+ * Updated to use findOrCreateCustomer from customerIdentityService for proper deduplication
  */
 
 import { db } from '../db';
-import { wrapTenantDb } from '../tenantDb';
+import { wrapTenantDb, type TenantDb } from '../tenantDb';
 import { sql } from 'drizzle-orm';
-// Use Replit OAuth connector (auto-refreshing) instead of JWT-based client
 import { getGoogleSheetsClient } from '../googleSheetsConnector';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
+import { findOrCreateCustomer, findOrCreateCustomerPreview, type CustomerIdentityInput } from './customerIdentityService';
 
 const LOG_PREFIX = '[CUSTOMER SHEETS IMPORT]';
 
@@ -59,6 +61,7 @@ export interface CustomerSheetImportSummary {
   created: number;
   updated: number;
   skipped: number;
+  normalizationFailures: number;
   errors: string[];
   sampleRows?: NormalizedSheetCustomer[];
 }
@@ -259,6 +262,7 @@ export async function importCustomersFromSheet(
     created: 0,
     updated: 0,
     skipped: 0,
+    normalizationFailures: 0,
     errors: [],
     sampleRows: [],
   };
@@ -280,7 +284,7 @@ export async function importCustomersFromSheet(
   for (const row of sheetRows) {
     const normalized = normalizeCustomer(row);
     if (!normalized) {
-      summary.skipped++;
+      summary.normalizationFailures++;
       continue;
     }
     
@@ -311,73 +315,39 @@ export async function importCustomersFromSheet(
   
   for (const customer of normalizedCustomers) {
     try {
-      let existingId: number | null = null;
+      const identityInput: CustomerIdentityInput = {
+        tenantId,
+        phone: customer.phone,
+        email: customer.email,
+        fullName: customer.name,
+        address: customer.address,
+        vehicleDescription: customer.vehicleInfo,
+        notes: customer.notes,
+        source: 'google_sheets',
+      };
       
-      if (customer.phone) {
-        const phoneResult = await tenantDb.execute(sql`
-          SELECT id FROM customers
-          WHERE tenant_id = ${tenantId}
-            AND phone = ${customer.phone}
-          LIMIT 1
-        `);
-        if (phoneResult.rows.length > 0) {
-          existingId = (phoneResult.rows[0] as any).id;
+      if (dryRun) {
+        // Use preview mode for accurate dry-run metrics
+        const preview = await findOrCreateCustomerPreview(tenantDb, identityInput);
+        if (preview.wouldCreate) {
+          summary.created++;
+        } else if (preview.wouldUpdate) {
+          summary.updated++;
+        } else {
+          summary.skipped++;
         }
+        continue;
       }
       
-      if (!existingId && customer.email) {
-        const emailResult = await tenantDb.execute(sql`
-          SELECT id FROM customers
-          WHERE tenant_id = ${tenantId}
-            AND email = ${customer.email}
-          LIMIT 1
-        `);
-        if (emailResult.rows.length > 0) {
-          existingId = (emailResult.rows[0] as any).id;
-        }
-      }
+      // Actual import mode
+      const result = await findOrCreateCustomer(tenantDb, identityInput);
       
-      if (existingId) {
-        summary.updated++;
-        if (!dryRun) {
-          await tenantDb.execute(sql`
-            UPDATE customers SET
-              name = COALESCE(NULLIF(${customer.name}, ''), name),
-              phone = COALESCE(${customer.phone}, phone),
-              email = COALESCE(${customer.email}, email),
-              address = COALESCE(NULLIF(${customer.address}, ''), address),
-              vehicle_info = COALESCE(NULLIF(${customer.vehicleInfo}, ''), vehicle_info),
-              notes = COALESCE(NULLIF(${customer.notes}, ''), notes),
-              import_source = CASE 
-                WHEN import_source IS NULL THEN 'google_sheets'
-                WHEN import_source NOT LIKE '%google_sheets%' THEN CONCAT(import_source, ',google_sheets')
-                ELSE import_source
-              END,
-              last_interaction = COALESCE(${customer.lastServiceAt}, last_interaction, NOW())
-            WHERE id = ${existingId} AND tenant_id = ${tenantId}
-          `);
-        }
-      } else {
+      if (result.createdNew) {
         summary.created++;
-        if (!dryRun) {
-          const customerName = customer.name || 'Unknown';
-          await tenantDb.execute(sql`
-            INSERT INTO customers (
-              tenant_id, name, phone, email, address, vehicle_info, notes, 
-              import_source, last_interaction
-            ) VALUES (
-              ${tenantId}, 
-              ${customerName}, 
-              ${customer.phone}, 
-              ${customer.email}, 
-              ${customer.address}, 
-              ${customer.vehicleInfo}, 
-              ${customer.notes}, 
-              'google_sheets',
-              ${customer.lastServiceAt || new Date()}
-            )
-          `);
-        }
+      } else if (result.updatedExisting) {
+        summary.updated++;
+      } else {
+        summary.skipped++;
       }
     } catch (error: any) {
       console.error(`${LOG_PREFIX} Error processing customer:`, error);
@@ -389,6 +359,7 @@ export async function importCustomersFromSheet(
   console.log(`${LOG_PREFIX} Import complete:`, {
     totalRows: summary.totalRows,
     normalizedRows: summary.normalizedRows,
+    normalizationFailures: summary.normalizationFailures,
     created: summary.created,
     updated: summary.updated,
     skipped: summary.skipped,

@@ -12,6 +12,7 @@
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { runCustomerBackfill, type BackfillStats } from './services/customerBackfillService';
+import { importCustomersFromSheet, previewCustomersFromSheet, type CustomerSheetImportSummary } from './services/customerImportFromSheetsService';
 import { z } from 'zod';
 
 const router = Router();
@@ -183,6 +184,88 @@ router.get('/customers/history', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch backfill history',
+      error: errorMsg,
+    });
+  }
+});
+
+// ============================================================
+// GOOGLE SHEETS CUSTOMER BACKFILL (New Identity Service)
+// ============================================================
+
+/**
+ * POST /api/admin/backfill/customers/from-sheets/preview
+ * 
+ * Preview customers from Google Sheets before import
+ */
+router.post('/customers/from-sheets/preview', async (req: Request, res: Response) => {
+  try {
+    console.log('[ADMIN BACKFILL] Sheets preview requested by user:', req.session.userId);
+
+    const result = await previewCustomersFromSheet('root', { dryRun: true });
+
+    return res.json({
+      success: true,
+      message: 'Preview generated from Google Sheets',
+      data: {
+        totalRows: result.totalRows,
+        normalizedRows: result.normalizedRows,
+        tabsFound: result.tabsFound,
+        sampleRows: result.sampleRows.slice(0, 10),
+      },
+    });
+  } catch (error) {
+    console.error('[ADMIN BACKFILL] Error in sheets preview:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Sheets preview failed',
+      error: errorMsg,
+    });
+  }
+});
+
+/**
+ * POST /api/admin/backfill/customers/from-sheets
+ * 
+ * Import customers from Google Sheets using unified Customer Identity Service.
+ * This uses findOrCreateCustomer for proper deduplication and merge.
+ */
+router.post('/customers/from-sheets', async (req: Request, res: Response) => {
+  try {
+    const bodySchema = z.object({
+      confirm: z.boolean().optional(),
+      dryRun: z.boolean().optional().default(false),
+    });
+
+    const { confirm, dryRun } = bodySchema.parse(req.body);
+
+    if (!dryRun && confirm !== true) {
+      return res.status(400).json({
+        success: false,
+        message: 'For real import, set { "confirm": true, "dryRun": false }',
+      });
+    }
+
+    console.log(`[ADMIN BACKFILL] Sheets import requested (dryRun: ${dryRun}) by user:`, req.session.userId);
+
+    const summary: CustomerSheetImportSummary = await importCustomersFromSheet('root', { dryRun });
+
+    console.log('[ADMIN BACKFILL] Sheets import complete:', summary);
+
+    return res.json({
+      success: true,
+      message: dryRun ? 'Dry-run completed (no changes made)' : 'Import completed successfully',
+      summary,
+    });
+  } catch (error) {
+    console.error('[ADMIN BACKFILL] Error in sheets import:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Sheets import failed',
       error: errorMsg,
     });
   }
