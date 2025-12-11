@@ -13,7 +13,7 @@ import {
   type InsertCustomerAchievement,
   type InsertLoyaltyTier
 } from "@shared/schema";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { eq, and, gte, sql, ilike } from "drizzle-orm";
 
 /**
  * Loyalty Guardrail Result Type
@@ -219,6 +219,199 @@ export async function awardPoints(
       currentPoints: 0 
     };
   }
+}
+
+/**
+ * Award campaign points idempotently - only awards once per customer per campaign
+ * Uses source + sourceId (campaign ID) for idempotency check since these are already
+ * present in existing transactions.
+ * 
+ * @param tenantDb - Tenant database instance
+ * @param customerId - Customer ID to award points to
+ * @param amount - Number of points to award
+ * @param campaignKey - Unique identifier for the campaign (for logging/description)
+ * @param source - Source category (e.g. 'port_recovery')
+ * @param sourceId - Campaign ID - REQUIRED for idempotency
+ * @param description - Human-readable description
+ * @returns Object with success status, wasSkipped flag, and current points
+ */
+export async function awardCampaignPointsOnce(
+  tenantDb: TenantDb,
+  customerId: number,
+  amount: number,
+  campaignKey: string,
+  source: string,
+  sourceId: number,
+  description: string
+): Promise<{ success: boolean; wasSkipped: boolean; currentPoints: number }> {
+  try {
+    const customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
+    
+    if (customerPoints) {
+      const existingTx = await tenantDb
+        .select()
+        .from(pointsTransactions)
+        .where(
+          and(
+            eq(pointsTransactions.loyaltyPointsId, customerPoints.id),
+            eq(pointsTransactions.source, source),
+            eq(pointsTransactions.sourceId, sourceId)
+          )
+        )
+        .limit(1);
+      
+      if (existingTx.length > 0) {
+        console.log('[LOYALTY] Skipping extra points; already awarded for campaign', {
+          customerId,
+          campaignKey,
+          sourceId,
+          existingTxId: existingTx[0].id,
+        });
+        return { 
+          success: true, 
+          wasSkipped: true, 
+          currentPoints: customerPoints.points 
+        };
+      }
+    }
+    
+    const descriptionWithKey = description.includes(campaignKey) 
+      ? description 
+      : `${description} [${campaignKey}]`;
+    
+    const result = await awardPoints(tenantDb, customerId, amount, source, sourceId, descriptionWithKey);
+    
+    return { 
+      success: result.success, 
+      wasSkipped: false, 
+      currentPoints: result.currentPoints 
+    };
+  } catch (error) {
+    console.error('[LOYALTY] Error in awardCampaignPointsOnce:', error);
+    return { success: false, wasSkipped: false, currentPoints: 0 };
+  }
+}
+
+/**
+ * Get campaign transactions by source and sourceId
+ * Used for normalization/correction of over-awarded points
+ * 
+ * @param tenantDb - Tenant database instance  
+ * @param sourceId - Campaign ID to find transactions for
+ * @param source - Source category (default: 'port_recovery')
+ */
+export async function getCampaignTransactionsBySourceId(
+  tenantDb: TenantDb,
+  sourceId: number,
+  source: string = 'port_recovery'
+): Promise<Array<{
+  id: number;
+  customerId: number;
+  amount: number;
+  description: string;
+  loyaltyPointsId: number;
+  sourceId: number | null;
+}>> {
+  const transactions = await tenantDb
+    .select({
+      id: pointsTransactions.id,
+      amount: pointsTransactions.amount,
+      description: pointsTransactions.description,
+      loyaltyPointsId: pointsTransactions.loyaltyPointsId,
+      sourceId: pointsTransactions.sourceId,
+    })
+    .from(pointsTransactions)
+    .where(
+      and(
+        eq(pointsTransactions.source, source),
+        eq(pointsTransactions.sourceId, sourceId)
+      )
+    );
+  
+  const lpToCustomer = new Map<number, number>();
+  const loyaltyPointsIds = [...new Set(transactions.map(t => t.loyaltyPointsId))];
+  
+  if (loyaltyPointsIds.length > 0) {
+    const lpRecords = await tenantDb
+      .select({ id: loyaltyPoints.id, customerId: loyaltyPoints.customerId })
+      .from(loyaltyPoints)
+      .where(sql`${loyaltyPoints.id} IN (${sql.join(loyaltyPointsIds.map(id => sql`${id}`), sql`, `)})`);
+    
+    for (const lp of lpRecords) {
+      lpToCustomer.set(lp.id, lp.customerId);
+    }
+  }
+  
+  return transactions.map(t => ({
+    id: t.id,
+    customerId: lpToCustomer.get(t.loyaltyPointsId) ?? 0,
+    amount: t.amount,
+    description: t.description ?? '',
+    loyaltyPointsId: t.loyaltyPointsId,
+    sourceId: t.sourceId,
+  }));
+}
+
+/**
+ * Get port_recovery transactions for specific campaign IDs
+ * Used for normalization - scoped to the exact campaigns we want to correct
+ * 
+ * @param tenantDb - Tenant database instance
+ * @param campaignIds - Array of campaign IDs to include in the search
+ */
+export async function getPortRecoveryTransactionsByCampaignIds(
+  tenantDb: TenantDb,
+  campaignIds: number[]
+): Promise<Array<{
+  id: number;
+  customerId: number;
+  amount: number;
+  description: string;
+  loyaltyPointsId: number;
+  sourceId: number | null;
+}>> {
+  if (campaignIds.length === 0) {
+    return [];
+  }
+  
+  const transactions = await tenantDb
+    .select({
+      id: pointsTransactions.id,
+      amount: pointsTransactions.amount,
+      description: pointsTransactions.description,
+      loyaltyPointsId: pointsTransactions.loyaltyPointsId,
+      sourceId: pointsTransactions.sourceId,
+    })
+    .from(pointsTransactions)
+    .where(
+      and(
+        eq(pointsTransactions.source, 'port_recovery'),
+        sql`${pointsTransactions.sourceId} IN (${sql.join(campaignIds.map(id => sql`${id}`), sql`, `)})`
+      )
+    );
+  
+  const lpToCustomer = new Map<number, number>();
+  const loyaltyPointsIds = [...new Set(transactions.map(t => t.loyaltyPointsId))];
+  
+  if (loyaltyPointsIds.length > 0) {
+    const lpRecords = await tenantDb
+      .select({ id: loyaltyPoints.id, customerId: loyaltyPoints.customerId })
+      .from(loyaltyPoints)
+      .where(sql`${loyaltyPoints.id} IN (${sql.join(loyaltyPointsIds.map(id => sql`${id}`), sql`, `)})`);
+    
+    for (const lp of lpRecords) {
+      lpToCustomer.set(lp.id, lp.customerId);
+    }
+  }
+  
+  return transactions.map(t => ({
+    id: t.id,
+    customerId: lpToCustomer.get(t.loyaltyPointsId) ?? 0,
+    amount: t.amount,
+    description: t.description ?? '',
+    loyaltyPointsId: t.loyaltyPointsId,
+    sourceId: t.sourceId,
+  }));
 }
 
 /**

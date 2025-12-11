@@ -27,7 +27,7 @@ import {
 } from '@shared/schema';
 import { eq, and, sql, ne, isNotNull, desc, or } from 'drizzle-orm';
 import { twilioClient } from '../twilioClient';
-import { awardPoints } from '../gamificationService';
+import { awardPoints, awardCampaignPointsOnce } from '../gamificationService';
 import { generateRewardsToken } from '../routes.loyalty';
 import { tenantDomains } from '@shared/schema';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -463,24 +463,33 @@ export async function getCampaignTargets(
   return { targets, total };
 }
 
+const PORT_RECOVERY_CAMPAIGN_KEY = 'port-recovery-2025-12-11';
+
 /**
  * Grant points to a customer for port recovery
- * Uses existing gamificationService for consistency
+ * Uses idempotent awardCampaignPointsOnce to prevent duplicate awards
  */
 async function grantPortRecoveryPoints(
   tenantDb: TenantDb,
   customerId: number,
   points: number,
   campaignId: number
-): Promise<{ success: boolean; currentPoints: number }> {
-  return await awardPoints(
+): Promise<{ success: boolean; currentPoints: number; wasSkipped?: boolean }> {
+  const result = await awardCampaignPointsOnce(
     tenantDb,
     customerId,
     points,
+    PORT_RECOVERY_CAMPAIGN_KEY,
     'port_recovery',
     campaignId,
     `Port recovery apology - ${points} loyalty points`
   );
+  
+  return {
+    success: result.success,
+    currentPoints: result.currentPoints,
+    wasSkipped: result.wasSkipped,
+  };
 }
 
 /**
