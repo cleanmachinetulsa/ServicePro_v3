@@ -76,14 +76,17 @@ export function CustomerManagement() {
   const [editedCustomer, setEditedCustomer] = useState<Customer | null>(null);
   const [viewTab, setViewTab] = useState("details");
 
-  // Fetch all customers
+  // Fetch all customers with auto-refresh for always-live data
   const { data: customersData, isLoading, refetch } = useQuery<{
     success: boolean;
     customers: Customer[];
   }>({
     queryKey: ['/api/enhanced/customers'],
     enabled: true,
-    refetchInterval: 30000, // Refetch every 30 seconds to stay synced
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Search customers
