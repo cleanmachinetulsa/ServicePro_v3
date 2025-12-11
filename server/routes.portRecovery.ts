@@ -23,6 +23,7 @@ import {
   getOrCreateCampaignConfig,
   normalizePhone,
   getTenantPublicBaseUrl,
+  backfillTargetsWithCustomerData,
 } from './services/portRecoveryService';
 import { portRecoveryCampaigns } from '@shared/schema';
 import { eq, gte } from 'drizzle-orm';
@@ -575,6 +576,39 @@ router.post('/campaigns/:id/test-sms', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error('[PORT RECOVERY] Error sending test SMS:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * Backfill targets with customer_id and email for campaign
+ * POST /api/port-recovery/campaigns/:id/backfill
+ * 
+ * This uses improved phone matching (digits-only) to:
+ * 1. Match targets to customer records by phone
+ * 2. Populate missing emails from customer records
+ * 3. Award points to matched customers who haven't received them yet
+ */
+router.post('/campaigns/:id/backfill', async (req, res) => {
+  try {
+    const tenantId = req.session?.tenantId || 'default';
+    const tenantDb = wrapTenantDb(db, tenantId);
+    const campaignId = parseInt(req.params.id);
+    
+    console.log(`[PORT RECOVERY] Starting backfill for campaign ${campaignId}`);
+    
+    const result = await backfillTargetsWithCustomerData(tenantDb, campaignId);
+    
+    res.json({
+      success: true,
+      ...result,
+      message: `Backfill complete: ${result.customersMatched} customers matched, ${result.emailsPopulated} emails populated, ${result.pointsAwarded} points awarded`,
+    });
+  } catch (error: any) {
+    console.error('[PORT RECOVERY] Error running backfill:', error);
     res.status(500).json({
       success: false,
       error: error.message,
