@@ -1,0 +1,131 @@
+Deployment
+Source
+Log
+2025-12-11 15:39:59.84
+db3a022f
+User
+}
+2025-12-11 15:40:22.19
+db3a022f
+User
+NumSegments: '1',
+2025-12-11 15:40:22.19
+db3a022f
+User
+ToCountry: 'US',
+2025-12-11 15:40:22.19
+db3a022f
+User
+[SMS ROUTER] Routing decision {
+2025-12-11 15:40:22.19
+db3a022f
+User
+ApiVersion: '2010-04-01'
+2025-12-11 15:40:22.19
+db3a022f
+User
+[TWILIO TEST SMS INBOUND] Parsed fields: {
+2025-12-11 15:40:22.19
+db3a022f
+User
+FromState: 'TX',
+2025-12-11 15:40:22.19
+db3a022f
+User
+MessagingServiceSid: 'MG3c825f1ef8b2f6ad805524645fd9008b',
+2025-12-11 15:40:22.19
+db3a022f
+User
+LEGACY_WEBHOOK_URL_present: false
+2025-12-11 15:40:22.19
+db3a022f
+User
+[TWILIO SMS INBOUND] Raw body: [Object: null prototype] {
+2025-12-11 15:40:22.19
+db3a022f
+User
+FromZip: '',
+2025-12-11 15:40:22.19
+db3a022f
+User
+From: '+17373661084',
+2025-12-11 15:40:22.19
+db3a022f
+User
+FromCity: '',
+2025-12-11 15:40:22.19
+db3a022f
+User
+normalizedTo: '+19188565304',
+2025-12-11 15:40:22.19
+db3a022f
+User
+NumMedia: '0',
+2025-12-11 15:40:22.42
+db3a022f
+User
+[AI BEHAVIOR V2] Using state-aware SMS prompt builder
+2025-12-11 15:40:22.42
+db3a022f
+User
+[SMS HOTFIX] Inbound SMS for tenant: root customer: +17373661084 entrypoint: handleServiceProInboundSms
+2025-12-11 15:40:22.42
+db3a022f
+User
+[SMS HOTFIX] Conversation ID: 85 Control mode: auto
+2025-12-11 15:40:22.42
+db3a022f
+User
+[SMS HOTFIX] History length: 15
+2025-12-11 15:40:22.52
+db3a022f
+User
+[SMS PROMPT] Loaded 16 behavior rules for tenant root
+2025-12-11 15:40:23.68
+db3a022f
+User
+[USAGE TRACKER] Logged openai tokens: 5932 units, $0.015032499999999999
+
+2025-12-11 15:40:23.72
+db3a022f
+User
+[FUNCTION CALL] Executing check_customer_database with args: { phone: '+17373661084' }
+2025-12-11 15:40:23.72
+db3a022f
+User
+[SMS AI] Executing 1 tool call(s) in iteration 1
+2025-12-11 15:40:23.72
+db3a022f
+User
+[SMS AI FUNCTION CALL] check_customer_database({"phone":"+17373661084"})
+2025-12-11 15:40:27.46
+db3a022f
+User
+[USAGE TRACKER] Logged openai tokens: 5986 units, $0.0152875
+2025-12-11 15:40:27.49
+db3a022f
+User
+[SMS AI] Final response after 2 iteration(s)
+2025-12-11 15:40:27.49
+db3a022f
+User
+[AI BEHAVIOR V2] Generated response (115 chars)
+2025-12-11 15:40:27.53
+db3a022f
+User
+[TWILIO TEST SMS INBOUND] Responding with TwiML: <?xml version="1.0" encoding="UTF-8"?><Response><Message>Hey Jody! Yep, I can check it for you 👍
+2025-12-11 15:40:27.53
+db3a022f
+User
+What’s the full address you’d want us to come to? (Stree
+2025-12-11 15:40:27.53
+db3a022f
+User
+What’s the full address you’d want us to come to? (Street, city, state)</Message></Response>
+2025-12-11 15:40:27.53
+db3a022f
+User
+[TWILIO TEST SMS INBOUND] AI reply sent: Hey Jody! Yep, I can check it for you 👍
+2025-12-11 15:40:27.53
+db3a022f
+User
