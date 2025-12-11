@@ -37,7 +37,8 @@ import {
   ChevronDown,
   Save,
   Eye,
-  Link as LinkIcon
+  Link as LinkIcon,
+  BarChart3
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -233,6 +234,30 @@ export default function AdminPortRecovery() {
     },
   });
 
+  const sendAllMutation = useMutation({
+    mutationFn: async (campaignId: number) => {
+      setIsRunning(true);
+      return await apiRequest('POST', `/api/port-recovery/campaigns/${campaignId}/send-all`, {});
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: '✅ All Messages Sent!',
+        description: `${data.smsSent} messages delivered${data.totalFailed > 0 ? ` (${data.totalFailed} failed)` : ''} in ${data.iterations} batches`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/history'] });
+      setIsRunning(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to send all messages',
+        variant: 'destructive',
+      });
+      setIsRunning(false);
+    },
+  });
+
   const saveSettingsMutation = useMutation({
     mutationFn: async () => {
       if (!campaignConfigData?.campaign?.id) throw new Error('No campaign to update');
@@ -248,9 +273,10 @@ export default function AdminPortRecovery() {
     },
     onSuccess: () => {
       toast({
-        title: 'Settings Saved',
-        description: 'Campaign settings have been updated',
+        title: '✅ Settings Saved',
+        description: 'Campaign settings have been updated successfully',
       });
+      setSettingsOpen(false);
       queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/campaign'] });
       queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/preview'] });
     },
@@ -715,50 +741,115 @@ export default function AdminPortRecovery() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 bg-slate-900/50 border-slate-700/50 text-gray-300 hover:bg-slate-800"
-                    onClick={() => testSmsMutation.mutate(activeCampaign.id)}
-                    disabled={testSmsMutation.isPending}
-                    data-testid="button-test-sms"
-                  >
-                    {testSmsMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    ) : (
-                      <Beaker className="h-4 w-4 mr-1" />
-                    )}
-                    Test SMS
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
-                    onClick={() => runBatchMutation.mutate(activeCampaign.id)}
-                    disabled={isRunning || activeCampaign.status === 'completed'}
-                    data-testid="button-run-batch"
-                  >
-                    {isRunning ? (
-                      <>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 bg-slate-900/50 border-slate-700/50 text-gray-300 hover:bg-slate-800"
+                      onClick={() => testSmsMutation.mutate(activeCampaign.id)}
+                      disabled={testSmsMutation.isPending}
+                      data-testid="button-test-sms"
+                    >
+                      {testSmsMutation.isPending ? (
                         <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        Sending...
-                      </>
-                    ) : activeCampaign.status === 'completed' ? (
-                      <>
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Complete
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle className="h-4 w-4 mr-1" />
-                        Send Next 50
-                      </>
-                    )}
-                  </Button>
+                      ) : (
+                        <Beaker className="h-4 w-4 mr-1" />
+                      )}
+                      Test SMS
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                      onClick={() => runBatchMutation.mutate(activeCampaign.id)}
+                      disabled={isRunning || activeCampaign.status === 'completed'}
+                      data-testid="button-run-batch"
+                    >
+                      {isRunning ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Sending...
+                        </>
+                      ) : activeCampaign.status === 'completed' ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Complete
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="h-4 w-4 mr-1" />
+                          Send Next 50
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  {activeCampaign.status !== 'completed' && activeCampaign.totalSmsSent < activeCampaign.totalTargets && (
+                    <Button
+                      size="sm"
+                      className="w-full bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-semibold"
+                      onClick={() => sendAllMutation.mutate(activeCampaign.id)}
+                      disabled={isRunning || activeCampaign.status === 'completed'}
+                      data-testid="button-send-all-remaining"
+                    >
+                      {isRunning ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending All...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Send All Remaining ({activeCampaign.totalTargets - activeCampaign.totalSmsSent})
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ) : null}
+
+          {/* Analytics Card - NEW */}
+          {activeCampaign && activeCampaign.totalTargets > 0 && (
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-blue-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-white text-sm flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-blue-400" />
+                  Campaign Analytics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-green-400">{activeCampaign.totalSmsSent}</div>
+                    <div className="text-xs text-green-300">Delivered</div>
+                    <div className="text-xs text-green-200/60 mt-1">
+                      {activeCampaign.totalTargets > 0 ? Math.round((activeCampaign.totalSmsSent / activeCampaign.totalTargets) * 100) : 0}%
+                    </div>
+                  </div>
+                  <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-red-400">{activeCampaign.totalSmsFailed || 0}</div>
+                    <div className="text-xs text-red-300">Failed</div>
+                    <div className="text-xs text-red-200/60 mt-1">
+                      {activeCampaign.totalTargets > 0 ? Math.round(((activeCampaign.totalSmsFailed || 0) / activeCampaign.totalTargets) * 100) : 0}%
+                    </div>
+                  </div>
+                  <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-yellow-400">{activeCampaign.totalTargets - activeCampaign.totalSmsSent - (activeCampaign.totalSmsFailed || 0)}</div>
+                    <div className="text-xs text-yellow-300">Pending</div>
+                    <div className="text-xs text-yellow-200/60 mt-1">
+                      {activeCampaign.totalTargets > 0 ? Math.round(((activeCampaign.totalTargets - activeCampaign.totalSmsSent - (activeCampaign.totalSmsFailed || 0)) / activeCampaign.totalTargets) * 100) : 0}%
+                    </div>
+                  </div>
+                </div>
+                <Separator className="bg-slate-700/50" />
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Total Recipients: <span className="text-white font-semibold">{activeCampaign.totalTargets}</span></span>
+                  <span>Points Awarded: <span className="text-yellow-400 font-semibold">{activeCampaign.totalPointsGranted?.toLocaleString()}</span></span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Send Campaign Panel - NEW for Block B */}
           {!activeCampaign && previewData?.canRun && stats && stats.totalUnique > 0 && (

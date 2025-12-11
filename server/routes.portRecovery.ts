@@ -508,6 +508,58 @@ router.post('/campaigns/:id/run-batch', async (req, res) => {
 });
 
 /**
+ * Send ALL remaining messages in the campaign
+ * POST /api/port-recovery/campaigns/:id/send-all
+ */
+router.post('/campaigns/:id/send-all', async (req, res) => {
+  try {
+    const tenantId = req.session?.tenantId || 'default';
+    const tenantDb = wrapTenantDb(db, tenantId);
+    const campaignId = parseInt(req.params.id);
+    
+    let totalSent = 0;
+    let totalFailed = 0;
+    let totalPoints = 0;
+    let isComplete = false;
+    const maxIterations = 200; // Safety limit (200 * 50 = 10k messages)
+    let iterations = 0;
+    
+    // Keep running batches until all messages are sent
+    while (!isComplete && iterations < maxIterations) {
+      iterations++;
+      const result = await runPortRecoveryBatch(tenantDb, campaignId, 50);
+      
+      totalSent += result.smsSent || 0;
+      totalFailed += result.smsErrors?.length || 0;
+      totalPoints += result.pointsGranted || 0;
+      isComplete = result.isComplete || false;
+      
+      // Small delay between batches to avoid overwhelming the system
+      if (!isComplete) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    res.json({
+      success: true,
+      smsSent: totalSent,
+      emailSent: 0,
+      pointsGranted: totalPoints,
+      totalFailed,
+      isComplete,
+      iterations,
+      message: `Sent ${totalSent} messages${totalFailed > 0 ? ` (${totalFailed} failed)` : ''} in ${iterations} batches`,
+    });
+  } catch (error: any) {
+    console.error('[PORT RECOVERY] Error sending all:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * Send test SMS to owner
  * POST /api/port-recovery/campaigns/:id/test-sms
  */
