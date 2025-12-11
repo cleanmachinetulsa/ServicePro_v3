@@ -382,6 +382,23 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "confirm_address_validation",
+      description: "Call this when the customer CONFIRMS an address that was already provided (e.g., responds 'yes', 'correct', 'that's right', 'yep' after you asked them to confirm). This marks the address as validated so you can proceed with booking. DO NOT call validate_address again - use this function instead when customer confirms verbally.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: {
+            type: "string",
+            description: "Customer's phone number"
+          }
+        },
+        required: ["phone"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "get_existing_appointment",
       description: "Check if customer has an existing/upcoming appointment. Use this when customer contacts you about an already-scheduled service.",
       parameters: {
@@ -587,6 +604,33 @@ async function executeFunctionCall(
         const { getExistingAppointment } = await import('./schedulingTools');
         const result = await getExistingAppointment(args.phone);
         return JSON.stringify(result);
+      }
+      
+      case "confirm_address_validation": {
+        // Mark the address as validated after customer verbally confirms
+        const state = conversationState.getState(args.phone);
+        if (state.address) {
+          conversationState.updateState(args.phone, {
+            addressValidated: true,
+            stepsCompleted: {
+              ...state.stepsCompleted,
+              addressValidated: true,
+            },
+          });
+          console.log(`[CONFIRM ADDRESS] ✅ Address confirmed for ${args.phone}: ${state.address}`);
+          return JSON.stringify({
+            success: true,
+            address: state.address,
+            addressValidated: true,
+            message: "Address confirmed! You can now proceed to book the appointment.",
+          });
+        } else {
+          console.log(`[CONFIRM ADDRESS] ❌ No address found to confirm for ${args.phone}`);
+          return JSON.stringify({
+            success: false,
+            error: "No address found to confirm. Please collect the address first.",
+          });
+        }
       }
       
       case "update_appointment_address": {

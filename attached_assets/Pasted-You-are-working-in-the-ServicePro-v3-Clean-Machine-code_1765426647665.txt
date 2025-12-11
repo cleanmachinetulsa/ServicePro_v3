@@ -1,0 +1,206 @@
+You are working in the ServicePro v3 / Clean Machine codebase (server, client, shared).
+
+Context:
+- Webchat agent behavior is good.
+- SMS agent is misbehaving:
+  - Uses generic GPT-y tone
+  - Asks for car / address / date, but
+  - After address confirmation it says “we’ll send this to our team” and then re-lists availability, as if it forgot context
+  - Never explicitly asks which SERVICE the customer wants
+- Rewards portal:
+  - Customers who got the Welcome Back campaign see 0 points when the text says 500
+  - Some accounts (e.g. owner account) show more than 500 (e.g. 1500) from dev / test activity
+- We must NOT refactor big pieces or break working code. Only surgical, additive changes and very small, clearly-scoped edits.
+
+GOAL OF THIS HOTFIX:
+A) Fix SMS agent wiring / behavior so it matches the Clean Machine AI Behavior v2 brain and doesn’t loop or forget context.
+B) Make the Welcome Back 500-point bonus behave as advertised (customers see 500, no weird over-earning) and normalize the early data so no one has more than 500 points right now for Clean Machine.
+
+==================================================
+A) SMS AGENT HOTFIX – WIRING + BEHAVIOR
+==================================================
+
+1) Verify SMS is using the AI Behavior V2 brain
+
+- Locate the **SMS inbound Twilio routes** and AI handler:
+  - Check:
+    - `server/routes.ts`
+    - `server/routes.smsFallback.ts`
+    - `server/routes.twilioTestSms.ts`
+    - `server/services/smsRouter.ts`
+    - Any other SMS-related route/service.
+- Identify the route that currently handles **production SMS** from the Clean Machine Twilio number (the main number, not debug/test).
+  - Add temporary logging like:
+    - `[SMS HOTFIX] Inbound SMS for tenant <tenantId>, customer <customerId>, entrypoint <routeName>`
+- Confirm that this path ultimately calls the **AI SMS agent brain** that uses:
+  - `shared/ai/smsAgentConfig.ts`
+  - `server/ai/smsAgentPromptBuilder.ts`
+  - `server/conversationState.ts`
+- If inbound SMS is still using **older generic logic** (e.g. `openai.ts` direct prompt building or `routes.smsFallback.ts`), then:
+  - For Clean Machine’s main number ONLY, route SMS into the **canonical SMS AI flow** instead of fallback.
+  - Do not break any existing debug/test endpoints; keep them working.
+
+Implementation detail:
+- If there is a central handler like `handleInboundSmsConversation` or similar, ensure it is the one used for the Clean Machine number.
+- Make sure it passes a `channel` or `platform` value of `"sms"` so the AI uses SMS-specific behavior.
+
+2) Ensure SMS agent uses the same Clean Machine booking brain and state
+
+- In `server/ai/smsAgentPromptBuilder.ts` and `shared/ai/smsAgentConfig.ts`:
+  - Confirm that required booking fields for SMS include:
+    - customerName
+    - vehicle
+    - **serviceType** (IMPORTANT)
+    - dateTime
+    - address
+  - If `serviceType` is currently treated as “soft” or optional for SMS, fix that so that for Clean Machine / auto_detailing:
+    - `serviceType` is treated as **required** before final booking.
+  - Ensure the system prompt:
+    - Reads from `conversationState` and clearly lists what’s already known vs missing.
+    - Explicitly instructs the AI:
+      - “Do NOT restart the conversation or re-offer slots if the customer just confirmed something. Continue from the current booking state.”
+      - “Once the customer has provided vehicle, service type, date/time preference, and address, proceed toward final confirmation instead of re-asking earlier questions.”
+
+3) Fix the “we’ll send this to our team” + loop behavior
+
+- Search for any prompt text / logic that generates:
+  - “we’ll send this to our team” or similar human-escalation messages.
+    - This may live in:
+      - `smsAgentPromptBuilder`
+      - `smsAgentConfig`
+      - generic fallback logic in the AI handler
+- Adjust this behavior:
+  - Only escalate to human / “we’ll send this to our team” when:
+    - The customer explicitly asks for a human, OR
+    - The AI genuinely cannot proceed (e.g., repeated address failures, tools failing).
+  - When escalation happens:
+    - Set `conversation.controlMode` or equivalent to manual/human as needed,
+    - BUT do NOT immediately restart the AI flow afterwards in the same thread.
+- Add protective logic so that:
+  - After sending the escalation message, the AI will not re-run the “offer availability” script unless the **customer** sends a new message that calls for it.
+  - If the conversation already has a nearly-complete booking state (all major fields present), AI should focus on either:
+    - Clear final confirmation (“We’re confirmed for [service] on [date/time] at [address]”), or
+    - Clarifying the one missing field, not starting over.
+
+4) Enforce serviceType asking on SMS
+
+- In the SMS system prompt and/or booking state logic:
+  - For SMS channel, add explicit instruction such as:
+    - “If you know the customer’s vehicle, date, and address but NOT their service type, you MUST ask which detailing package they want. Do NOT skip this and do NOT try to book with an unspecified service.”
+  - Ensure that the function(s) that assemble the final booking payload:
+    - Refuse to mark `readyToBook` as `true` if `serviceType` is missing.
+    - Surface a clear message to the AI like:
+      - “Booking not ready: missing serviceType” so the AI asks the right question.
+
+5) Tone alignment for SMS
+
+- In `smsAgentPromptBuilder`:
+  - When building the system prompt, detect when:
+    - `businessName` contains “Clean Machine” OR
+    - `industryType` indicates auto detailing.
+  - Inject Clean Machine flavored personality hints, consistent with what the webchat agent uses:
+    - Local Tulsa, mobile detailer, friendly, casual, but professional.
+  - Make sure SMS messages:
+    - Keep 1–2 sentence length.
+    - Avoid corporate phrases like “our team will review this request” unless truly escalating.
+
+6) Logging & verification
+
+- Add targeted debug logs around SMS-agent decision points (only for server-side logs, not leaking to customers):
+  - `[SMS HOTFIX] Booking state summary: { ... }`
+  - `[SMS HOTFIX] Missing fields: [ ... ]`
+  - `[SMS HOTFIX] Escalation triggered because: <reason>`
+- After code changes:
+  - Ensure `npm run build` passes.
+  - Ensure `npm run dev` runs.
+  - Do NOT refactor other parts of the system; keep changes tightly scoped.
+
+==================================================
+B) WELCOME BACK POINTS – BEHAVIOR + NORMALIZATION
+==================================================
+
+Goal:
+- When you tell customers “we’ve added 500 bonus points”, they should actually see 500 available points in the portal.
+- No one should have >500 points right now for Clean Machine, since no one has “earned” ongoing points yet.
+- Avoid long-term abuse by retaining promo rules, but tweak behavior for this early phase.
+
+1) Make Welcome Back promo immediate (for now)
+
+- In `server/config/promoRules.ts`, for the `welcome_back_v1` rule:
+  - Change `awardMode` from `'pending_until_next_completed_job'` to `'immediate'`.
+  - Keep the anti-abuse limits:
+    - `perCustomerLifetimeMax: 1`
+    - `perCustomerPerYearMax: 1`
+    - `perHouseholdPerYearMax: 1`
+- This means:
+  - Going forward, when `tenantWelcomeBackCampaignService.sendTenantWelcomeBackCampaign` calls `awardPromoPoints` with promoKey `'welcome_back_v1'`, customers will actually see the 500 points immediately in `loyalty_points.points`.
+
+2) One-time Clean Machine normalization endpoint
+
+- Create a small admin-only endpoint or script for the Clean Machine tenant, e.g. in a new file:
+  - `server/routes.adminLoyaltyHotfix.ts` OR reusing an existing admin/backfill router.
+- This endpoint should:
+  - Accept a tenantId or, if simpler, just operate on the Clean Machine tenant (hard-code if needed, but comment clearly that this is a one-time CM-only hotfix).
+  - Logic:
+    1. For all customers of this tenant:
+       - Fetch their current points from `loyalty_points`.
+       - Optionally look at `pointsTransactions` for context, but do not overcomplicate.
+    2. For this early phase, we want:
+       - `points` to be **capped at 500** for everyone (no one has “earned” more yet).
+    3. Implement a clamp:
+       - For any row where `points > 500`, either:
+         - Set `points = 500` directly, OR
+         - Insert an adjustment transaction and update `loyalty_points.points` accordingly.
+       - For rows where `points < 0`, set to 0.
+  - Return a JSON summary, e.g.:
+    - `{ success: true, adjustedCustomers: X }`
+- Protect this endpoint with:
+  - `requireAuth` and admin/owner role checks.
+- Document in comments:
+  - That this is a **one-time Clean Machine bootstrap normalization**, safe to remove later after data stabilizes.
+
+3) Optional: fix 0-points for already-sent campaign customers
+
+- If you want customers who already received the Welcome Back SMS to see 500 now:
+  - Extend the same hotfix endpoint to:
+    - Identify customers who:
+      - Were targeted by `welcome_back_v1` campaign, AND
+      - Currently have <500 points.
+    - For those, award up to 500 total points (e.g. set to exactly 500).
+- If this is too complex right now, the simpler version (clamp >500 down to 500 and switch the promo to `immediate`) is already a huge win:
+  - New customers will behave correctly.
+  - You can manually check and adjust a couple of edge cases in the DB if needed.
+
+4) Verification
+
+- After implementing:
+  - `npm run build`
+  - `npm run dev`
+- Then:
+  - Open your **own portal account**:
+    - Confirm it now shows 500 (not 1500).
+  - Open the rewards page via a Welcome Back link:
+    - Confirm the sample recipient shows 500 points, not 0.
+- Check server logs for:
+  - `[PROMO ENGINE] Evaluating welcome_back_v1...`
+  - Ensure it logs “awarded” once per customer and respects lifetime limits.
+
+==================================================
+GENERAL GUIDELINES
+==================================================
+
+- Do NOT refactor or rename core services.
+- Keep all changes:
+  - Localized to:
+    - `ai/smsAgentPromptBuilder.ts`
+    - SMS inbound routing / handler
+    - `config/promoRules.ts`
+    - A new admin hotfix route/file for loyalty
+  - Small, explicit edits.
+- Add clear comments labeled:
+  - `// HOTFIX-SMS-CM` for SMS changes
+  - `// HOTFIX-LOYALTY-CM` for the loyalty normalization
+- Once everything is working in production, these hotfix flags/routes can be cleaned up in a later phase.
+
+Implement everything described above, then stop.
+Do not invent new features beyond this scope.
