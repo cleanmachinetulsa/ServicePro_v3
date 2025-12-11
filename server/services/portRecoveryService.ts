@@ -495,7 +495,7 @@ function interpolateTemplate(
   rewardsLink?: string
 ): string {
   const firstName = getFirstName(target.customerName);
-  const firstNameOrFallback = firstName || 'there';
+  const firstNameOrFallback = (firstName && firstName !== 'unknown') ? firstName : 'there';
   const customerNameGreeting = target.customerName ? ` ${target.customerName}` : '';
   
   let result = template
