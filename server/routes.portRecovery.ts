@@ -510,6 +510,7 @@ router.post('/campaigns/:id/run-batch', async (req, res) => {
 /**
  * Send ALL remaining messages in the campaign
  * POST /api/port-recovery/campaigns/:id/send-all
+ * FIXED: Returns iterations, totalFailed, smsSent, totalPoints
  */
 router.post('/campaigns/:id/send-all', async (req, res) => {
   try {
@@ -521,8 +522,8 @@ router.post('/campaigns/:id/send-all', async (req, res) => {
     let totalFailed = 0;
     let totalPoints = 0;
     let isComplete = false;
-    const maxIterations = 200; // Safety limit (200 * 50 = 10k messages)
     let iterations = 0;
+    const maxIterations = 200; // Safety limit (200 * 50 = 10k messages)
     
     // Keep running batches until all messages are sent
     while (!isComplete && iterations < maxIterations) {
