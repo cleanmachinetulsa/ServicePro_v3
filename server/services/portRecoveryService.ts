@@ -30,6 +30,68 @@ import { twilioClient } from '../twilioClient';
 import { awardPoints } from '../gamificationService';
 import { generateRewardsToken } from '../routes.loyalty';
 import { tenantDomains } from '@shared/schema';
+import { formatInTimeZone } from 'date-fns-tz';
+
+// Oklahoma quiet hours: 8pm-8am CST - no campaign messages during this time
+const OKLAHOMA_TIMEZONE = 'America/Chicago';
+const QUIET_HOURS_START = 20; // 8:00 PM
+const QUIET_HOURS_END = 8;    // 8:00 AM
+
+/**
+ * Check if current time is within Oklahoma quiet hours (8pm-8am CST)
+ * Oklahoma law mandates no campaign messages during this time.
+ * @returns true if it's quiet hours (sending blocked), false if sending is allowed
+ */
+export function isQuietHours(): boolean {
+  const now = new Date();
+  // Get current hour in Oklahoma timezone
+  const oklahomaNow = formatInTimeZone(now, OKLAHOMA_TIMEZONE, 'HH');
+  const currentHour = parseInt(oklahomaNow, 10);
+  
+  // Quiet hours are 8pm (20:00) to 8am (08:00)
+  // So blocked hours are: 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7
+  const isInQuietHours = currentHour >= QUIET_HOURS_START || currentHour < QUIET_HOURS_END;
+  
+  if (isInQuietHours) {
+    console.log(`[PORT RECOVERY] QUIET HOURS: Current Oklahoma time ${currentHour}:00 - SMS blocked until 8:00 AM CST`);
+  }
+  
+  return isInQuietHours;
+}
+
+/**
+ * Get the next allowed send time (after quiet hours end)
+ * @returns Date object for when sending is next allowed
+ */
+export function getNextAllowedSendTime(): Date {
+  const now = new Date();
+  // Create a date for 8:00 AM Oklahoma time today
+  const today8am = new Date();
+  today8am.setHours(0, 0, 0, 0);
+  
+  // Get current Oklahoma hour
+  const oklahomaNow = formatInTimeZone(now, OKLAHOMA_TIMEZONE, 'HH');
+  const currentHour = parseInt(oklahomaNow, 10);
+  
+  // If before 8am, next allowed is today at 8am
+  // If after 8pm, next allowed is tomorrow at 8am
+  if (currentHour < QUIET_HOURS_END) {
+    // Before 8am today - can send at 8am today
+    const nextSend = new Date();
+    // Set to 8am in Oklahoma timezone
+    nextSend.setUTCHours(14, 0, 0, 0); // 8am CST = 14:00 UTC (standard time)
+    return nextSend;
+  } else if (currentHour >= QUIET_HOURS_START) {
+    // After 8pm - can send at 8am tomorrow
+    const nextSend = new Date();
+    nextSend.setDate(nextSend.getDate() + 1);
+    nextSend.setUTCHours(14, 0, 0, 0); // 8am CST = 14:00 UTC
+    return nextSend;
+  }
+  
+  // Currently in allowed hours
+  return now;
+}
 
 // Default SMS template for port recovery (holiday gift-card campaign version)
 const DEFAULT_SMS_TEMPLATE = `Hey {{firstNameOrFallback}}, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed a message from you — I'm really sorry about that. To make it right, I've added 500 reward points to your account good toward protectants or future details. You can check your rewards or book here: {{ctaUrl}} P.S. We now offer digital gift cards – perfect last-minute gifts. Reply STOP to unsubscribe.`;
@@ -604,11 +666,14 @@ async function sendPortRecoveryEmail(
 
 /**
  * Process a batch of targets for the campaign
+ * 
+ * OKLAHOMA COMPLIANCE: Respects quiet hours (8pm-8am CST) - will throw error if attempted during quiet hours
  */
 export async function runPortRecoveryBatch(
   tenantDb: TenantDb,
   campaignId: number,
-  limit: number = 100
+  limit: number = 100,
+  options: { bypassQuietHoursCheck?: boolean } = {}
 ): Promise<{
   processed: number;
   smsSent: number;
@@ -616,7 +681,23 @@ export async function runPortRecoveryBatch(
   pointsGranted: number;
   errors: number;
   isComplete: boolean;
+  blockedByQuietHours?: boolean;
 }> {
+  // OKLAHOMA QUIET HOURS COMPLIANCE: Block SMS campaigns during 8pm-8am CST
+  if (!options.bypassQuietHoursCheck && isQuietHours()) {
+    const nextAllowed = getNextAllowedSendTime();
+    console.log(`[PORT RECOVERY] BLOCKED: Oklahoma quiet hours in effect. Next allowed send time: ${nextAllowed.toISOString()}`);
+    return {
+      processed: 0,
+      smsSent: 0,
+      emailSent: 0,
+      pointsGranted: 0,
+      errors: 0,
+      isComplete: false,
+      blockedByQuietHours: true,
+    };
+  }
+  
   // Get campaign
   const campaign = await getCampaign(tenantDb, campaignId);
   if (!campaign) {
