@@ -1,0 +1,196 @@
+You are working in the ServicePro v3 / Clean Machine repo.
+
+Context:
+- Customer Identity Service is implemented (findOrCreateCustomer, etc.).
+- Google Sheets backfill endpoints already exist:
+  - POST /api/admin/backfill/customers-sheets/preview
+  - POST /api/admin/backfill/customers-sheets/run
+  - GET  /api/admin/backfill/customers-sheets/history
+- Auto-sync scheduler is active when ENABLE_SHEETS_CUSTOMER_AUTO_SYNC="1":
+  - Cron runs every 15 minutes in America/Chicago
+  - Logs: 
+    - [SHEETS AUTO-SYNC] Auto-sync ENABLED - scheduling every 15 minutes
+    - [SHEETS AUTO-SYNC] Scheduler initialized (runs every 15 minutes in America/Chicago timezone)
+    - It uses the same underlying import logic and records history.
+
+GOAL OF THIS PHASE:
+Add a small, admin-only health-check endpoint:
+
+  GET /api/admin/backfill/customers-sheets/last-auto-sync
+
+This endpoint should:
+- Return the most recent entry from the existing backfill/import history for Google Sheets customers.
+- Work whether the run was triggered by cron or manually.
+- Be safe, read-only, and tenant-aware.
+- Not duplicate or reinvent the history storage; reuse whatever the current `/history` uses.
+
+==================================================
+A) FIND EXISTING HISTORY STORAGE
+==================================================
+
+1) Locate the code for:
+   - `GET /api/admin/backfill/customers-sheets/history`
+
+   It will likely live in a route file such as:
+   - `server/routes.adminBackfillCustomersSheets.ts`
+   - `server/routes.adminBackfill.ts`
+   - or similar.
+
+2) Inspect how history is stored:
+   - Find the model / table / repository used to record history, e.g.:
+     - `customersSheetsBackfillHistory`
+     - `backfillHistory` with a `type` or `job` column.
+   - Note:
+     - Fields like `id`, `tenantId`, `startedAt`, `finishedAt`, `summary`, `triggerSource` (if present), etc.
+   - We want to reuse the *same* mechanism.
+
+==================================================
+B) IMPLEMENT last-auto-sync LOOKUP FUNCTION
+==================================================
+
+1) In the same service/repository that backs `/history`, add a helper function:
+
+   Example (adjust names/types to match repo):
+
+   ```ts
+   export async function getLastCustomersSheetsAutoSync(
+     db: DbType,
+     tenantId: string
+   ): Promise<BackfillHistoryRow | null> {
+     // BackfillHistoryRow = the type you already use for history entries.
+     // This function should return the MOST RECENT entry for this tenant
+     // where job/type is the customers-sheets import.
+
+     return await db.query.customersSheetsBackfillHistory.findFirst({
+       where: (row, { eq }) => eq(row.tenantId, tenantId),
+       orderBy: (row, { desc }) => [desc(row.finishedAt ?? row.startedAt)],
+     });
+   }
+Notes:
+
+Use the same table and criteria as your /history endpoint:
+
+If /history filters by a jobType or source column (e.g. 'customers_sheets'), include the same filter here.
+
+If you already have a generic getHistory/getLatestHistory helper, you can just call that with appropriate filters instead of writing new SQL.
+
+If there is a concept of triggerSource (e.g. 'cron' vs 'manual'):
+
+Make sure your insert logic (the place that records history after a run) is already distinguishing that:
+
+Cron job path should mark triggerSource = 'auto' or 'cron'.
+
+Manual /run endpoint should mark triggerSource = 'manual'.
+
+If this is not implemented yet and is easy to add:
+
+Update the history-writing function so it sets triggerSource appropriately.
+
+This is optional but useful; do not break existing reads.
+
+==================================================
+C) ADD THE HEALTH-CHECK ENDPOINT
+In the same route module as /history, add:
+
+GET /api/admin/backfill/customers-sheets/last-auto-sync
+
+Example:
+
+ts
+Copy code
+adminRouter.get(
+  '/backfill/customers-sheets/last-auto-sync',
+  requireAdminAuth, // use the same auth middleware as /history
+  async (req, res) => {
+    try {
+      const tenantId = await resolveAdminTenantId(req); 
+      // Use the same tenant resolution logic you use for /history.
+      if (!tenantId) {
+        return res.status(400).json({ error: 'Missing tenantId' });
+      }
+
+      const db = getGlobalDb(); // or however you access the DB
+      const lastRun = await getLastCustomersSheetsAutoSync(db, tenantId);
+
+      if (!lastRun) {
+        return res.json({
+          hasRun: false,
+          lastRunAt: null,
+          triggerSource: null,
+          summary: null,
+        });
+      }
+
+      res.json({
+        hasRun: true,
+        lastRunAt: lastRun.finishedAt ?? lastRun.startedAt,
+        triggerSource: lastRun.triggerSource ?? 'unknown',
+        summary: lastRun.summary ?? null,
+      });
+    } catch (err) {
+      console.error('[SHEETS AUTO-SYNC] last-auto-sync error', {
+        error: (err as any)?.message,
+        stack: (err as any)?.stack,
+      });
+      res.status(500).json({ error: 'Failed to fetch last auto-sync status' });
+    }
+  }
+);
+Adjust:
+
+adminRouter, requireAdminAuth, resolveAdminTenantId, and getGlobalDb() to the actual names used in your repo.
+
+lastRun.summary type:
+
+If summary is stored as JSON or a structured object, you can pass it straight through.
+
+If it’s a string, that’s fine too.
+
+Ensure the route is admin-only:
+
+Use the exact same auth/role middleware as you use for /history.
+
+This endpoint is for you/other owners, not for regular tenants.
+
+==================================================
+D) OPTIONAL: SMALL FRONTEND UTIL (IF EASY)
+If your admin UI already has pages/components for backfill history:
+
+Add a tiny hook or API call in the admin area to hit:
+
+GET /api/admin/backfill/customers-sheets/last-auto-sync
+
+Display somewhere in the admin panel, e.g.:
+
+“Last Sheets Auto-Sync: 11:00 PM CST (auto, createdNew: 2, updatedExisting: 5)”
+
+This is optional. If implementing UI feels non-trivial, skip and just keep the endpoint + JSON.
+
+==================================================
+E) FINAL CHECKS
+Run npm run build and ensure it passes.
+
+Run npm run dev.
+
+From a REST client or browser (while authenticated as admin), call:
+
+GET /api/admin/backfill/customers-sheets/last-auto-sync
+
+Expect:
+
+If no history yet:
+
+{ hasRun: false, lastRunAt: null, triggerSource: null, summary: null }
+
+After at least one manual or cron run:
+
+{ hasRun: true, lastRunAt: "...", triggerSource: "cron" | "manual" | "unknown", summary: {...} }
+
+Confirm:
+
+The endpoint matches tenant scoping (returns Clean Machine data for the appropriate tenant).
+
+No changes to existing /preview, /run, or /history behavior.
+
+Stop after implementing this endpoint and verifying it in development.
+Do NOT alter cron timing or other auto-sync behavior in this phase
