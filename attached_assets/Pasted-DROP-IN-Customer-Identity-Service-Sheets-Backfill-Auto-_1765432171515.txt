@@ -1,0 +1,386 @@
+DROP-IN: Customer Identity Service + Sheets Backfill + Auto-Merge
+You are working in the ServicePro v3 / Clean Machine repo.
+
+Context recap:
+- Canonical customer DB = tenant-scoped customers table in Postgres (Drizzle + wrapTenantDb).
+- Current customers come mainly from:
+  - Google Voice SMS import (~1,900 customers).
+  - Some app-created records (web form, agent, etc.).
+- We also have a Google Sheet with at least two important tabs:
+  - "Live Client Requests"
+  - "Customer_Info_Sheet"
+- The system currently UNDER-COUNTS total customers (should be 2,400+), and customer data is fragmented:
+  - Some have only phone, some only email, some have full detail.
+- Goal is to make the customer DB:
+  - **Self-enriching** over time (as we learn new info via SMS/web form/etc.).
+  - **Unified** (no stale duplicates).
+  - **Fully backfilled** from Google Sheets.
+
+IMPORTANT:
+- Do NOT touch Twilio routing, SMS campaign scheduling, geocoding, or rewards logic in this phase.
+- All changes should be additive and local to customer identity/import behavior.
+- Keep tenant isolation intact (always tenant-aware via wrapTenantDb or equivalent).
+
+==================================================
+A) CREATE SHARED CUSTOMER IDENTITY SERVICE
+==================================================
+
+Create a new service module, e.g.:
+
+- `server/services/customerIdentityService.ts`
+
+Responsibilities:
+
+1) Normalization helpers:
+
+   ```ts
+   export function normalizePhone(raw?: string | null): string | null {
+     if (!raw) return null;
+     // Strip non-digits, handle leading +1. Keep last 10 digits as normalized US number.
+     const digits = raw.replace(/\D+/g, '');
+     if (!digits) return null;
+     if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+     if (digits.length === 10) return digits;
+     // For now, if length is weird, keep it null rather than throwing.
+     return null;
+   }
+
+   export function normalizeEmail(raw?: string | null): string | null {
+     if (!raw) return null;
+     const trimmed = raw.trim();
+     if (!trimmed) return null;
+     return trimmed.toLowerCase();
+   }
+
+
+Identity input shape:
+
+export interface CustomerIdentityInput {
+  tenantId: string;
+  phone?: string | null;
+  email?: string | null;
+  fullName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  // optional metadata
+  city?: string | null;
+  vehicleDescription?: string | null;
+  notes?: string | null;
+  source?: string | null; // 'google_sheet', 'google_voice', 'web_form', 'sms_agent', etc.
+}
+
+
+The main function:
+
+export interface FindOrCreateResult {
+  customer: CustomerRowType; // use the actual Drizzle type or a compatible interface
+  createdNew: boolean;
+  updatedExisting: boolean;
+}
+
+export async function findOrCreateCustomer(
+  tenantDb: TenantDbType,
+  input: CustomerIdentityInput
+): Promise<FindOrCreateResult> {
+  const normalizedPhone = normalizePhone(input.phone);
+  const normalizedEmail = normalizeEmail(input.email);
+
+  // 1) Try to find existing customer by phone/email
+  let existing: CustomerRowType | null = null;
+
+  if (normalizedPhone) {
+    existing = await customerRepository.findByPhone(tenantDb, normalizedPhone);
+  }
+
+  if (!existing && normalizedEmail) {
+    existing = await customerRepository.findByEmail(tenantDb, normalizedEmail);
+  }
+
+  if (existing) {
+    // 2) Merge data into existing record
+    const updatedFields: Partial<CustomerRowType> = {};
+
+    // Names: fill blanks; don’t trash existing good data
+    // Use whatever name fields exist in schema (fullName, firstName, lastName, displayName, etc.)
+    // Example:
+    if (!existing.fullName && input.fullName) {
+      updatedFields.fullName = input.fullName;
+    }
+
+    if (!existing.firstName && input.firstName) {
+      updatedFields.firstName = input.firstName;
+    }
+
+    if (!existing.lastName && input.lastName) {
+      updatedFields.lastName = input.lastName;
+    }
+
+    // Phone/Email: if normalized value exists but DB is missing it, fill it.
+    if (normalizedPhone && !existing.phone) {
+      updatedFields.phone = normalizedPhone;
+    }
+
+    if (normalizedEmail && !existing.email) {
+      updatedFields.email = normalizedEmail;
+    }
+
+    // City, vehicleDescription, notes: only fill if blank today and provided now.
+    if (!existing.city && input.city) {
+      updatedFields.city = input.city;
+    }
+
+    if (!existing.vehicleDescription && input.vehicleDescription) {
+      updatedFields.vehicleDescription = input.vehicleDescription;
+    }
+
+    // For notes, you may want to append instead of overwrite:
+    if (input.notes) {
+      updatedFields.notes = existing.notes
+        ? `${existing.notes}\n[${input.source ?? 'import'}] ${input.notes}`
+        : input.notes;
+    }
+
+    if (Object.keys(updatedFields).length > 0) {
+      const updated = await customerRepository.updateCustomer(tenantDb, existing.id, updatedFields);
+      return { customer: updated, createdNew: false, updatedExisting: true };
+    }
+
+    return { customer: existing, createdNew: false, updatedExisting: false };
+  }
+
+  // 3) No existing record: create new
+  const nameForInsert = input.fullName || `${input.firstName ?? ''} ${input.lastName ?? ''}`.trim() || null;
+
+  const newCustomerData: Partial<CustomerRowType> = {
+    tenantId: input.tenantId,
+    fullName: nameForInsert,
+    firstName: input.firstName ?? null,
+    lastName: input.lastName ?? null,
+    phone: normalizePhone(input.phone),
+    email: normalizeEmail(input.email),
+    city: input.city ?? null,
+    vehicleDescription: input.vehicleDescription ?? null,
+    notes: input.notes ?? null,
+    // any other required default fields in your schema (createdAt, etc.) should be handled by repo or DB defaults
+  };
+
+  const created = await customerRepository.createCustomer(tenantDb, newCustomerData);
+
+  return { customer: created, createdNew: true, updatedExisting: false };
+}
+
+
+Implement customerRepository helpers if they don’t exist yet:
+
+findByPhone(tenantDb, normalizedPhone)
+
+findByEmail(tenantDb, normalizedEmail)
+
+updateCustomer(tenantDb, id, partial)
+
+createCustomer(tenantDb, data)
+
+Place these in an appropriate module (e.g. server/services/customerRepository.ts) and reuse the existing Drizzle schema and patterns already in the repo. Respect tenant scoping.
+
+==================================================
+B) WIRE ENTRY POINTS THROUGH IDENTITY SERVICE
+
+For each of the following, locate the relevant code and update it to use findOrCreateCustomer:
+
+Google Voice SMS import
+
+Find the module that imported Google Voice logs and created customers (look for “google voice”, “smsLogsCsv”, etc.).
+
+Where it currently does something like “create customer with phone only”:
+
+Replace that logic with a call to findOrCreateCustomer(tenantDb, { tenantId, phone, source: 'google_voice' }).
+
+This ensures those ~1,900 customers are all normalized and future re-imports won’t create duplicates.
+
+Web form / Live Client Requests
+
+Find the API route that handles new client requests (Google Form webhook or similar).
+
+It likely reads fields from the “Live Client Requests” sheet or directly from a request payload.
+
+When a new request comes in, build a CustomerIdentityInput:
+
+await findOrCreateCustomer(tenantDb, {
+  tenantId,
+  phone: request.phone,
+  email: request.email,
+  fullName: request.name,
+  city: request.city,
+  vehicleDescription: request.vehicle,
+  notes: request.notes,
+  source: 'web_form',
+});
+
+
+Use the returned customer.id for linking the request/job instead of creating an ad-hoc customer row.
+
+SMS agent when learning new info
+
+Find wherever inbound SMS conversations are associated with a customer:
+
+Look for something like getOrCreateCustomerForSms, resolveCustomerByPhone, etc.
+
+When the SMS agent or parsing logic extracts an email/name for a known phone:
+
+Call findOrCreateCustomer with both phone and email, so the email gets attached to the same record.
+
+This will give you the behavior:
+
+“We only had phone; now we learn email via SMS → same customer record gets enriched.”
+
+Do not change AI prompts here; just make sure the back-end call uses the identity service.
+
+Any other importer
+
+If there are any other CSV/Sheets imports for customers, convert them to call findOrCreateCustomer instead of directly inserting rows.
+
+==================================================
+C) IMPLEMENT TOLERANT GOOGLE SHEETS BACKFILL
+
+Create a new service, or extend an existing one, e.g.:
+
+server/services/googleSheetsCustomerImportService.ts
+
+Responsibilities:
+
+Use the existing Google Sheets integration client.
+
+Read BOTH tabs:
+
+"Live Client Requests"
+
+"Customer_Info_Sheet"
+
+For each row, map columns into CustomerIdentityInput:
+
+fullName or first/last from whichever columns exist.
+
+phone (may be blank).
+
+email (may be blank).
+
+city, vehicleDescription, notes if present.
+
+source should be 'google_sheet_live_requests' or 'google_sheet_info_sheet' accordingly.
+
+For each normalized row:
+
+const result = await findOrCreateCustomer(tenantDb, identityInput);
+// track stats: createdNew / updatedExisting / skipped
+
+
+Only skip rows that are truly empty (no name, no phone, no email, no useful data).
+
+Do NOT throw for partial data; partial is acceptable.
+
+At the end of a run, log a summary:
+
+console.log('[SHEETS IMPORT] Summary', {
+  tenantId,
+  sourceTabs: ['Live Client Requests', 'Customer_Info_Sheet'],
+  totalRowsProcessed,
+  newCustomersCreated,
+  existingCustomersUpdated,
+  rowsSkipped,
+});
+
+==================================================
+D) ADMIN ENDPOINT TO TRIGGER BACKFILL
+
+Add an admin-only route, e.g.:
+
+POST /api/admin/customers/backfill-from-sheets
+
+Implementation:
+
+Resolve the tenantId for Clean Machine (or accept tenantId in body with admin checks).
+
+Inside handler:
+
+const tenantDb = wrapTenantDb(globalDb, tenantId);
+const summary = await googleSheetsCustomerImportService.backfillForTenant(tenantDb, tenantId);
+res.json(summary);
+
+
+Protect it with the same auth/role middleware you use for other admin tools.
+
+Ensure the backfill is idempotent:
+
+Running multiple times just merges more data, doesn’t create duplicates thanks to findOrCreateCustomer.
+
+==================================================
+E) BEHAVIOR RULES FOR AUTO-GROWING CUSTOMER RECORDS
+
+When implementing customerRepository and wiring findOrCreateCustomer, follow these behavior rules:
+
+Always merge, never blindly overwrite good data:
+
+Only overwrite a field if the existing value is empty/null and the new value is non-empty.
+
+For notes, append with a source tag instead of overwriting.
+
+Phone numbers:
+
+If your schema supports only one phone field:
+
+Store the most useful, SMS-capable number there.
+
+If Twilio marks a number as landline/non-SMS, do not delete it; keep it but also store the SMS-capable one when discovered.
+
+If you have a separate phone numbers table:
+
+Insert new numbers as additional rows.
+
+Mark isPrimary and isSmsCapable appropriately.
+
+In either case, when a customer tells you “use this new mobile instead of my landline”, you should:
+
+Mark the new number primary/SMS-capable.
+
+Keep the old one as secondary or mark it not SMS-capable.
+
+Emails:
+
+Normalize to lowercase.
+
+If existing email is blank and new one appears, set it.
+
+If existing email is present and a different one appears:
+
+Prefer the newer as primary; optionally store the older in notes or a secondary field if schema allows.
+
+Missing data is okay:
+
+If you only have phone OR email OR name, still create a customer row.
+
+Later calls to findOrCreateCustomer with more info will enrich the same row.
+
+==================================================
+F) FINAL CHECKS
+
+Run npm run build and ensure it passes.
+
+Run npm run dev.
+
+In dev or staging:
+
+Call the new admin endpoint /api/admin/customers/backfill-from-sheets once for Clean Machine.
+
+Check logs for [SHEETS IMPORT] Summary and confirm newCustomersCreated + existingCustomersUpdated look reasonable.
+
+Verify customer count in the DB or admin UI:
+
+Total should increase from ~1,900 toward ~2,400+.
+
+Spot-check a few customers:
+
+One originally from Google Voice with only phone, later enriched with email from Sheets → confirm they’re a single merged record.
+
+One who exists in both Live Client Requests and Customer_Info_Sheet → confirm they didn’t get duplicated.
+
+Stop after implementing these changes. Do not modify Twilio config, campaign scheduler, rewards points, or geocoding logic in this phase.

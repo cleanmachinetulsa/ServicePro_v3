@@ -10,6 +10,7 @@ import {
 } from './websocketService';
 import { getBookingStatusFromState, BookingStatus } from '@shared/ai/smsAgentConfig';
 import { conversationState } from './conversationState';
+import { findOrCreateCustomer } from './services/customerIdentityService';
 
 /**
  * CM-MESSAGE-PERF: Optimized conversation list with pagination and eliminated N+1 queries
@@ -328,42 +329,44 @@ export async function getOrCreateConversation(
       return { conversation: existingConversation[0], isNew: false };
     }
 
-    // Try to find customer ID by phone or email (if available)
+    // Use unified Customer Identity Service to find or create customer
+    // This ensures proper deduplication and data enrichment
     let customerId: number | null = null;
-    if (customerPhone) {
-      const customer = await tenantDb
-        .select()
-        .from(customers)
-        .where(tenantDb.withTenantFilter(customers, eq(customers.phone, customerPhone)))
-        .limit(1);
-
-      if (customer && customer.length > 0) {
-        customerId = customer[0].id;
-      }
-    } else if (emailAddress) {
-      // Try to find customer by email
-      const customer = await tenantDb
-        .select()
-        .from(customers)
-        .where(tenantDb.withTenantFilter(customers, eq(customers.email, emailAddress)))
-        .limit(1);
-
-      if (customer && customer.length > 0) {
-        customerId = customer[0].id;
-      } else {
-        // Auto-create customer record for email-only contacts
-        const newCustomer = await tenantDb
-          .insert(customers)
-          .values({
-            name: customerName || 'Email Customer',
-            email: emailAddress,
-            phone: null, // Email-only customer
-            smsConsent: false,
-          })
-          .returning();
+    const tenantId = (tenantDb as any).tenantId || 'root';
+    
+    if (customerPhone || emailAddress) {
+      try {
+        const platformSource = platform === 'sms' ? 'sms' 
+          : platform === 'email' ? 'email'
+          : platform === 'facebook' || platform === 'instagram' ? 'social'
+          : 'web';
         
-        customerId = newCustomer[0].id;
-        console.log(`Created new email-only customer: ${emailAddress} (ID: ${customerId})`);
+        const result = await findOrCreateCustomer(tenantDb, {
+          tenantId,
+          phone: customerPhone || null,
+          email: emailAddress || null,
+          fullName: customerName || null,
+          source: platformSource,
+        });
+        
+        customerId = result.customer.id;
+        
+        if (result.createdNew) {
+          console.log(`[CONVERSATION] Created new customer via identity service: ${customerPhone || emailAddress} (ID: ${customerId})`);
+        }
+      } catch (identityError) {
+        console.error('[CONVERSATION] Error with customer identity service:', identityError);
+        // Fallback to existing lookup if identity service fails
+        if (customerPhone) {
+          const customer = await tenantDb
+            .select()
+            .from(customers)
+            .where(tenantDb.withTenantFilter(customers, eq(customers.phone, customerPhone)))
+            .limit(1);
+          if (customer && customer.length > 0) {
+            customerId = customer[0].id;
+          }
+        }
       }
     }
 
