@@ -287,6 +287,7 @@ function buildKnownContext(state: ConversationStateInfo | undefined): string {
 /**
  * Build SMS-optimized system prompt for AI agent
  * AI BEHAVIOR V2: Now includes conversation state and control mode awareness
+ * CM-TENANT-PROMPT-FIX: Uses database system_prompt rule as base when available
  */
 export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<string> {
   const { tenantId, phoneNumber, customerId, conversationState, controlMode, recentHumanMessages } = params;
@@ -299,7 +300,11 @@ export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<str
   
   // CM-TENANT-AI-FIX: Load tenant-specific AI behavior rules from database
   const behaviorRules = await getTenantBehaviorRules(tenantId);
-  const behaviorInstructions = buildBehaviorInstructions(behaviorRules);
+  
+  // CM-TENANT-PROMPT-FIX: Check for tenant-specific system_prompt rule to use as base
+  const systemPromptRule = behaviorRules.find(r => r.ruleKey === 'system_prompt');
+  const otherRules = behaviorRules.filter(r => r.ruleKey !== 'system_prompt');
+  const behaviorInstructions = buildBehaviorInstructions(otherRules);
   
   // Build booking link
   const bookingLink = buildBookingLink(subdomain, tenantId);
@@ -324,15 +329,26 @@ export async function buildSmsSystemPrompt(params: SmsPromptParams): Promise<str
     // Continue without campaign context - don't break prompt builder
   }
 
-  // AI BEHAVIOR V2: Start with template-based system prompt
-  let systemPrompt = SYSTEM_PROMPT_TEMPLATE
-    .replace('{businessName}', businessName)
-    .replace('{industryType}', industryType);
+  // CM-TENANT-PROMPT-FIX: Use database system_prompt as base when available, otherwise fallback to generic template
+  let systemPrompt: string;
+  if (systemPromptRule && systemPromptRule.content) {
+    // Use tenant-specific system prompt from database
+    systemPrompt = systemPromptRule.content
+      .replace('{businessName}', businessName)
+      .replace('{industryType}', industryType);
+    console.log(`[SMS PROMPT] Using tenant-specific system_prompt rule for ${tenantId}`);
+  } else {
+    // Fallback to generic template for tenants without custom rules
+    systemPrompt = SYSTEM_PROMPT_TEMPLATE
+      .replace('{businessName}', businessName)
+      .replace('{industryType}', industryType);
+    console.log(`[SMS PROMPT] Using generic SYSTEM_PROMPT_TEMPLATE for ${tenantId}`);
+  }
   
   // Add services list
   systemPrompt += `\n\n${servicesList}`;
   
-  // CM-TENANT-AI-FIX: Inject tenant-specific behavior rules into system prompt
+  // CM-TENANT-AI-FIX: Inject tenant-specific behavior rules (excluding system_prompt which is already the base)
   if (behaviorInstructions) {
     systemPrompt += behaviorInstructions;
   }
