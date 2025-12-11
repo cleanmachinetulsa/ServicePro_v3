@@ -25,7 +25,7 @@ export function checkConsentKeyword(messageContent: string): ConsentCheckResult 
     return {
       isConsentKeyword: true,
       keyword: 'STOP',
-      autoResponse: "You've been unsubscribed from Clean Machine Auto Detail SMS messages. Reply START to opt back in anytime. For help, reply HELP."
+      autoResponse: "You're unsubscribed from Clean Machine Auto Detail texts. You won't receive more messages. Reply START to rejoin."
     };
   }
   
