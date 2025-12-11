@@ -4,12 +4,9 @@ import { apiUsageLogs, serviceHealth } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import OpenAI from 'openai';
-
-// Initialize API clients
-const twilioClient = require('twilio')(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+// HOTFIX-SMS-CM: Use shared Twilio client instead of dynamic require('twilio')
+// This fixes "Dynamic require of 'twilio' is not supported" error in bundled environment
+import { twilioClient } from './twilioClient';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-04-30.basil',
@@ -84,8 +81,15 @@ async function isAlreadyLoggedWithMetadata(
 
 /**
  * Fetch Twilio usage from API (last 24 hours)
+ * HOTFIX-SMS-CM: Added null check for twilioClient to prevent runtime errors
  */
 export async function fetchTwilioUsage() {
+  // HOTFIX-SMS-CM: Guard against null twilioClient
+  if (!twilioClient) {
+    console.warn('[USAGE TRACKER] Twilio client not available; skipping Twilio usage logging.');
+    return { success: false, error: 'Twilio client not configured', skipped: true };
+  }
+  
   try {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
