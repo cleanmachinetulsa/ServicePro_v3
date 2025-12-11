@@ -14,13 +14,13 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === 'undefined') {
-      return false;
+      return true;
     }
     const stored = localStorage.getItem('theme');
     if (stored) {
       return stored === 'dark';
     }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return true; // Default to dark mode for all customers
   });
 
   const [dashboardTheme, setDashboardThemeState] = useState<DashboardTheme>(() => {
