@@ -36,9 +36,25 @@ async function getMaxDriveTime(tenantDb: TenantDb): Promise<number> {
  * - Adds "Tulsa, OK" if city/state missing
  * - Normalizes common abbreviations
  * - Makes validation smoother for customers
+ * 
+ * HOTFIX-SMS-CM: Guards against undefined/null address to prevent TypeError on .trim()
  */
-function preprocessAddress(rawAddress: string): string {
-  let address = rawAddress.trim();
+function preprocessAddress(rawAddress: string | undefined | null): string {
+  // HOTFIX-SMS-CM: Guard against missing or undefined address
+  if (!rawAddress || typeof rawAddress !== 'string') {
+    const err = new Error('Missing or empty address for preprocessAddress');
+    (err as any).code = 'MISSING_ADDRESS';
+    throw err;
+  }
+  
+  const trimmed = rawAddress.trim();
+  if (!trimmed) {
+    const err = new Error('Address is empty after trimming');
+    (err as any).code = 'MISSING_ADDRESS';
+    throw err;
+  }
+  
+  let address = trimmed;
   
   // Normalize common street abbreviations (case-insensitive)
   const abbreviations: Record<string, string> = {
@@ -91,8 +107,10 @@ function preprocessAddress(rawAddress: string): string {
 /**
  * Geocode an address to get its coordinates
  * Now includes smart preprocessing for incomplete addresses
+ * 
+ * HOTFIX-SMS-CM: Added error handling for MISSING_ADDRESS to return structured error
  */
-export async function geocodeAddress(tenantDb: TenantDb, address: string) {
+export async function geocodeAddress(tenantDb: TenantDb, address: string | undefined | null) {
   try {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     
@@ -105,7 +123,26 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string) {
     }
 
     // Smart preprocessing: enhance incomplete addresses
-    const enhancedAddress = preprocessAddress(address);
+    // HOTFIX-SMS-CM: This now throws with code='MISSING_ADDRESS' if address is undefined/empty
+    let enhancedAddress: string;
+    try {
+      enhancedAddress = preprocessAddress(address);
+    } catch (preprocessError: any) {
+      if (preprocessError?.code === 'MISSING_ADDRESS') {
+        console.error('MAPS_GEOCODE_ERROR', {
+          error: preprocessError.message,
+          code: 'MISSING_ADDRESS',
+          address,
+        });
+        return {
+          success: false,
+          errorCode: 'MISSING_ADDRESS',
+          error: 'No address was provided. Please share your full street address so I can check your location.',
+          originalAddress: address,
+        };
+      }
+      throw preprocessError; // Re-throw other errors
+    }
 
     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
       params: {
@@ -174,21 +211,63 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string) {
 
 /**
  * Check if an address is within the service area
+ * 
+ * HOTFIX-SMS-CM: Added overload support - can be called as:
+ * - checkDistanceToBusinessLocation(tenantDb, address) - original signature
+ * - checkDistanceToBusinessLocation(address) - convenience signature (for schedulingTools.ts)
+ * 
+ * Also added guard against undefined address.
  */
-export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, address: string) {
+export async function checkDistanceToBusinessLocation(tenantDbOrAddress: TenantDb | string | undefined | null, address?: string | undefined | null) {
+  // HOTFIX-SMS-CM: Support both calling conventions
+  // If first arg is a string, it's actually the address (old callers passed only address)
+  let actualTenantDb: TenantDb;
+  let actualAddress: string | undefined | null;
+  
+  // Import db and wrapTenantDb lazily to create fallback tenantDb
+  const { db } = await import('./db');
+  const { wrapTenantDb } = await import('./tenantDb');
+  
+  if (typeof tenantDbOrAddress === 'string' || tenantDbOrAddress === undefined || tenantDbOrAddress === null) {
+    // Called as checkDistanceToBusinessLocation(address) - legacy pattern from schedulingTools.ts
+    actualAddress = tenantDbOrAddress as string | undefined | null;
+    // HOTFIX-SMS-CM: Create proper tenantDb for Clean Machine (root tenant) instead of null
+    actualTenantDb = wrapTenantDb(db, 'root');
+    console.log('[MAPS API] checkDistanceToBusinessLocation called with single argument (address only), using root tenant');
+  } else {
+    // Called as checkDistanceToBusinessLocation(tenantDb, address) - new pattern
+    actualTenantDb = tenantDbOrAddress;
+    actualAddress = address;
+  }
+  
+  // HOTFIX-SMS-CM: Guard against missing address
+  if (!actualAddress || typeof actualAddress !== 'string' || !actualAddress.trim()) {
+    console.error('MAPS_DISTANCE_ERROR', { 
+      address: actualAddress, 
+      error: 'Missing or empty address parameter',
+      code: 'MISSING_ADDRESS'
+    });
+    return { 
+      success: false, 
+      errorCode: 'MISSING_ADDRESS',
+      error: 'No address was provided. Please share your full street address so I can check if we service your area.',
+      originalAddress: actualAddress
+    };
+  }
+  
   try {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     
     if (!apiKey) {
       console.error('MAPS_DISTANCE_ERROR', { 
-        address, 
+        address: actualAddress, 
         error: 'GOOGLE_MAPS_API_KEY is not set – cannot check distance' 
       });
       return { success: false, error: 'Maps API key is missing on server' };
     }
 
     // First geocode the address
-    const geocodeResult = await geocodeAddress(tenantDb, address);
+    const geocodeResult = await geocodeAddress(actualTenantDb, actualAddress);
     if (!geocodeResult.success) {
       return geocodeResult; // Return the error from geocoding
     }
@@ -210,7 +289,7 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
 
     if (response.data.status !== 'OK') {
       console.error('MAPS_DISTANCE_ERROR', {
-        address,
+        address: actualAddress,
         httpStatus: response.status,
         mapsStatus: response.data.status,
         errorMessage: response.data.error_message || null
@@ -233,7 +312,7 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
     if (!response.data.rows || response.data.rows.length === 0 || 
         !response.data.rows[0].elements || response.data.rows[0].elements.length === 0) {
       console.error('MAPS_DISTANCE_ERROR', {
-        address,
+        address: actualAddress,
         error: 'No distance results in response',
         responseData: JSON.stringify(response.data).slice(0, 500)
       });
@@ -243,7 +322,7 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
     const distanceElement = response.data.rows[0].elements[0];
     if (distanceElement.status !== 'OK') {
       console.error('MAPS_DISTANCE_ERROR', {
-        address,
+        address: actualAddress,
         elementStatus: distanceElement.status,
         error: 'Distance element status not OK'
       });
@@ -256,7 +335,8 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
     const driveTimeMinutes = distanceElement.duration.value / 60; // Convert seconds to minutes
 
     // Get configurable max drive time from business settings
-    const maxDriveTime = await getMaxDriveTime(tenantDb);
+    // HOTFIX-SMS-CM: actualTenantDb is now always valid (we create one for single-arg calls)
+    const maxDriveTime = await getMaxDriveTime(actualTenantDb);
     
     // Determine if the address is within the service area based on drive time
     const isInServiceArea = driveTimeMinutes <= maxDriveTime;
@@ -275,7 +355,7 @@ export async function checkDistanceToBusinessLocation(tenantDb: TenantDb, addres
     };
   } catch (error: any) {
     console.error('MAPS_DISTANCE_ERROR', {
-      address,
+      address: actualAddress,
       error: error.message || String(error),
       stack: error.stack
     });

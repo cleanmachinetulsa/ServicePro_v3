@@ -1,0 +1,194 @@
+You are working in the ServicePro v3 / Clean Machine repo.
+We already switched production SMS to the AI Behavior V2 handler (handleServiceProInboundSms) and added SMS HOTFIX logs.
+
+From the server logs I see two concrete problems:
+
+1) [SMS AI USAGE LOG] Error: Error: Dynamic require of "twilio" is not supported
+   at server/usageTracker.ts ... at generateAIResponse(...)
+2) MAPS_GEOCODE_ERROR with stack:
+   TypeError: Cannot read properties of undefined (reading 'trim')
+     at preprocessAddress(...)
+     at validateAddress(...)
+     at checkDistanceToBusinessLocation(...)
+     at geocodeAddress2(...)
+     at generateAIResponse(...)
+     at executeFunctionCall(...)
+     at handleServiceProInboundSms(...)
+   and the log shows: address: undefined
+
+GOAL OF THIS HOTFIX:
+- Make the address geocoding pipeline robust to missing/undefined address for SMS so it doesn’t blow up on `.trim()` and instead returns a structured error the AI can use to ask the user for a proper address.
+- Remove the dynamic `require("twilio")` usage from `server/usageTracker.ts` so we stop seeing “Dynamic require of 'twilio' is not supported” in the logs. If Twilio client is not available in that context, usageTracker should simply no-op instead of throwing.
+
+Do NOT refactor unrelated code or change public behavior beyond what’s needed for these two issues.
+
+==================================================
+A) FIX MAPS_GEOCODE_ERROR (address undefined)
+==================================================
+
+1) Locate the source file that defines:
+   - `preprocessAddress`
+   - `validateAddress`
+   - `checkDistanceToBusinessLocation`
+   - `geocodeAddress2`
+These appear in the stack trace. Search in `server/` and `shared/` for those function names.
+
+2) In the implementation of `preprocessAddress` (or whatever function first accepts the `address: string`):
+
+   - Currently it likely assumes `address` is a defined string and calls `address.trim()` directly.
+   - Add an early guard:
+
+     ```ts
+     export function preprocessAddress(rawAddress: string | undefined, /* other params */) {
+       if (!rawAddress || typeof rawAddress !== 'string' || !rawAddress.trim()) {
+         const err = new Error('Missing or empty address for preprocessAddress');
+         (err as any).code = 'MISSING_ADDRESS';
+         throw err;
+       }
+
+       const address = rawAddress.trim();
+       // existing logic using `address` continues here
+     }
+     ```
+
+   - This ensures that if something calls preprocessAddress with `undefined` or an empty string, we throw a **typed error** with `code = 'MISSING_ADDRESS'` instead of causing a TypeError.
+
+3) In the higher-level geocode tool wrapper, e.g. `geocodeAddress2`:
+
+   - Wrap the call to the lower-level address functions in `try/catch` and map the MISSING_ADDRESS error into a structured result that the AI can understand:
+
+     ```ts
+     export async function geocodeAddress2(params: GeocodeAddressParams): Promise<GeocodeAddressResult> {
+       try {
+         // existing logic:
+         //   - preprocessAddress(params.address, ...)
+         //   - validateAddress(...)
+         //   - checkDistanceToBusinessLocation(...)
+         //   - return success result
+       } catch (err) {
+         const error = err as any;
+
+         // Existing MAPS_GEOCODE_ERROR logging – keep it, but add better metadata:
+         console.error('MAPS_GEOCODE_ERROR', {
+           error: error?.message,
+           code: error?.code,
+           stack: error?.stack,
+           address: params?.address,
+         });
+
+         // New: graceful structured return instead of propagating raw error
+         if (error?.code === 'MISSING_ADDRESS') {
+           return {
+             success: false,
+             errorCode: 'MISSING_ADDRESS',
+             message: 'No address was provided to geocodeAddress2; ask the user for a full address.',
+           };
+         }
+
+         // Fallback for other errors:
+         return {
+           success: false,
+           errorCode: 'GEOCODE_ERROR',
+           message: 'There was a problem validating the address. Ask the user to re-send it clearly.',
+         };
+       }
+     }
+     ```
+
+   - Adjust types (GeocodeAddressParams / GeocodeAddressResult) to match your existing code. The important part is:
+     - NEVER throw a raw TypeError on `.trim()`.
+     - ALWAYS return a JSON object with `success: false` and an error code the tool-calling layer can pass back to the AI.
+
+4) In the function-calling handler that interprets the tool result for geocoding (inside the AI SMS agent logic):
+
+   - If it isn’t already doing so, add explicit handling for `success: false` and `errorCode: 'MISSING_ADDRESS'`:
+     - When this happens, the AI should be given a clear message in the tool result like:
+       - “Address was missing or invalid; ask the user to provide their full street address, city, and state in one message.”
+   - This can be implemented either by:
+     - Including `errorCode` and `message` in the tool JSON result (as above), and
+     - Ensuring the AI system prompt instructs the model to read that message and respond accordingly.
+
+   Do not rewrite the whole function-calling system; just make sure failed geocodes now give the AI a clean, descriptive error instead of a silent crash.
+
+==================================================
+B) FIX USAGETRACKER DYNAMIC REQUIRE OF "twilio"
+==================================================
+
+1) Open `server/usageTracker.ts`.
+
+2) Find any code that does a dynamic `require("twilio")` or similar pattern. It might look like:
+
+   ```ts
+   const twilio = require('twilio');
+   // or inside a function: const twilio = require('twilio');
+This pattern is causing the “Dynamic require of 'twilio' is not supported” error inside the bundled environment.
+
+Check if you already have a shared Twilio client / service elsewhere in the project. From startup logs we saw lines like:
+
+Twilio client initialized successfully
+
+[SMS CAMPAIGN] Twilio client initialized for campaigns
+
+[SMS FALLBACK] Twilio client initialized for fallback service
+
+[TWILIO TEST] Inbound SMS handler READY at /api/twilio/sms/inbound
+
+That implies there is a shared module that centralizes Twilio client creation. Search in server/ for something like twilioClient, twilioService, or twilio.ts.
+
+Refactor usageTracker.ts to use that existing shared Twilio client instead of creating its own via require("twilio"):
+
+At the top of usageTracker.ts:
+
+ts
+Copy code
+// Example – adjust the import path to match the actual shared Twilio module in the repo.
+import { twilioClient } from './services/twilioClient'; // or whatever is correct
+Inside any function that previously did require('twilio') or built a new Twilio client, replace that logic with:
+
+ts
+Copy code
+if (!twilioClient) {
+  console.warn('[USAGE TRACKER] Twilio client not available; skipping Twilio usage logging.');
+  return;
+}
+
+// Use twilioClient here if you truly need Twilio REST calls for usage;
+// if this tracker only logs AI tokens or internal metrics, then you may not
+// need Twilio at all – in that case, simply remove the Twilio-dependent code.
+If usageTracker.ts does not actually need Twilio and was originally trying to create a client just for something minor, it is acceptable to remove the Twilio dependency from usageTracker entirely and rely solely on your existing internal usage logging.
+
+Wrap any remaining Twilio-related calls in try/catch so that usage tracking never breaks SMS:
+
+ts
+Copy code
+try {
+  // Twilio usage logging code
+} catch (err) {
+  console.error('[SMS AI USAGE LOG] Twilio usage logging failed', {
+    error: (err as any)?.message,
+  });
+  // Do NOT rethrow
+}
+The point is: usage tracking is “nice to have”, not critical path. It should never throw out of generateAIResponse.
+
+==================================================
+C) FINAL CHECKS
+Run npm run build and ensure it succeeds.
+
+Run npm run dev.
+
+Test SMS again:
+
+Start a conversation.
+
+Provide vehicle, service, date, and address.
+
+If you intentionally send a message that does NOT contain a real address and the AI calls the geocode tool:
+
+The logs should show MAPS_GEOCODE_ERROR with code: 'MISSING_ADDRESS' but no stack about .trim.
+
+The AI should ask you to provide your full address again instead of restarting the whole flow.
+
+Confirm that the [SMS AI USAGE LOG] Error: Dynamic require of "twilio" is not supported line no longer appears in logs.
+
+Stop after these changes. Do not introduce new features; just fix the two issues above.

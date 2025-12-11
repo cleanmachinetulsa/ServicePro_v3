@@ -153,8 +153,20 @@ export async function checkCustomerDatabase(phone: string): Promise<CustomerData
 /**
  * Tool 2: Validate Address
  * Checks if address is within service area using Google Maps API
+ * 
+ * HOTFIX-SMS-CM: Guards against undefined/null address with early validation
  */
-export async function validateAddress(phone: string, address: string): Promise<AddressValidationResult> {
+export async function validateAddress(phone: string, address: string | undefined | null): Promise<AddressValidationResult> {
+  // HOTFIX-SMS-CM: Guard against missing address before calling Maps API
+  if (!address || typeof address !== 'string' || !address.trim()) {
+    console.warn('[VALIDATE ADDRESS] Missing or empty address provided', { phone, address });
+    return {
+      valid: false,
+      inServiceArea: false,
+      message: 'No address was provided. Please share your full street address (e.g., "2710 South Hudson Place, Tulsa") so I can confirm we service your area.',
+    };
+  }
+  
   try {
     const result = await checkDistanceToBusinessLocation(address);
     
