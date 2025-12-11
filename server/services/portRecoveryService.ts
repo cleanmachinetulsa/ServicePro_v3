@@ -168,7 +168,8 @@ export async function buildTargetListForPortRecovery(
   let totalFromCustomers = 0;
   let totalFromConversations = 0;
   
-  // 1. Pull from customers table
+  // 1. Pull from customers table - include ALL customers, defer SMS consent check to send step
+  // This ensures every customer gets their customer_id set for points awarding
   const customerRows = await tenantDb
     .select({
       id: customers.id,
@@ -178,16 +179,7 @@ export async function buildTargetListForPortRecovery(
       smsConsent: customers.smsConsent,
     })
     .from(customers)
-    .where(
-      and(
-        eq(customers.tenantId, tenantId),
-        // Respect SMS consent - include customers who have consented or never responded
-        or(
-          eq(customers.smsConsent, true),
-          sql`${customers.smsConsent} IS NULL`
-        )
-      )
-    );
+    .where(eq(customers.tenantId, tenantId));
   
   for (const c of customerRows) {
     totalFromCustomers++;
@@ -687,12 +679,19 @@ export async function runPortRecoveryBatch(
     
     // 1. Grant points - try to find customer by phone, or auto-create if from conversations
     let customerId = target.customerId;
+    let targetEmail = target.email;
+    
     if (!customerId && target.phone) {
       // First try to find existing customer
       const foundCustomer = await findCustomerByPhone(tenantDb, target.phone);
       if (foundCustomer) {
         customerId = foundCustomer.id;
         updates.customerId = customerId;
+        // Also capture email from customer record if target doesn't have one
+        if (!targetEmail && foundCustomer.email) {
+          targetEmail = foundCustomer.email;
+          updates.email = targetEmail;
+        }
         console.log(`[PORT RECOVERY] Found customer ${customerId} for target phone ${target.phone}`);
       } else {
         // Auto-create customer if target is from conversations
@@ -738,7 +737,26 @@ export async function runPortRecoveryBatch(
     let sentViaSms = false;
     
     // 2. Try SMS first if phone exists and SMS is enabled
-    if (smsEnabled && target.phone && fromNumber) {
+    // Check SMS consent if we have a customer record - respect opt-outs
+    let hasConsentToSms = true; // Default to true for unknown contacts
+    if (customerId) {
+      try {
+        const [customerRecord] = await tenantDb
+          .select({ smsConsent: customers.smsConsent })
+          .from(customers)
+          .where(eq(customers.id, customerId))
+          .limit(1);
+        // Only block if explicitly opted out (smsConsent = false)
+        // Allow if true or null (not yet specified)
+        if (customerRecord?.smsConsent === false) {
+          hasConsentToSms = false;
+        }
+      } catch (err) {
+        // Continue if we can't check consent
+      }
+    }
+    
+    if (smsEnabled && target.phone && fromNumber && hasConsentToSms) {
       const personalizedRewardsLink = generatePersonalizedRewardsLink(
         tenantBaseUrl,
         target.phone,
@@ -766,6 +784,9 @@ export async function runPortRecoveryBatch(
         smsFailed++;
         errors++;
       }
+    } else if (!hasConsentToSms) {
+      updates.smsStatus = 'skipped';
+      updates.smsErrorMessage = 'Customer opted out of SMS';
     } else if (!smsEnabled) {
       updates.smsStatus = 'skipped';
       updates.smsErrorMessage = 'SMS disabled for this campaign';
@@ -775,9 +796,12 @@ export async function runPortRecoveryBatch(
     }
     
     // 3. Send email only as fallback if SMS wasn't sent successfully
-    if (!sentViaSms && emailEnabled && target.email) {
+    // Use targetEmail which may have been populated from customer lookup
+    if (!sentViaSms && emailEnabled && targetEmail) {
+      // Create a modified target with the resolved email for sending
+      const targetWithEmail = { ...target, email: targetEmail };
       const emailResult = await sendPortRecoveryEmail(
-        target,
+        targetWithEmail,
         emailSubject,
         emailHtmlTemplate,
         ctaUrl,
@@ -798,6 +822,7 @@ export async function runPortRecoveryBatch(
       updates.emailErrorMessage = 'Skipped - SMS sent successfully';
     } else {
       updates.emailStatus = 'skipped';
+      updates.emailErrorMessage = 'No email address available';
     }
     
     // Update target record
@@ -965,43 +990,79 @@ export async function sendTestSms(
 
 /**
  * Helper to find a customer by phone number
+ * Uses digits-only comparison to handle any phone format
  */
 async function findCustomerByPhone(
   tenantDb: TenantDb,
   phone: string
-): Promise<{ id: number; name: string | null } | null> {
-  // Try different phone formats
-  const formats = [
-    phone,
-    phone.replace(/^\+1/, ''),
-    phone.replace(/^\+/, ''),
-    phone.replace(/\D/g, ''),
-  ];
+): Promise<{ id: number; name: string | null; email: string | null } | null> {
+  // Extract just the digits from the input phone
+  const inputDigits = phone.replace(/\D/g, '');
   
-  for (const fmt of formats) {
-    const [customer] = await tenantDb
-      .select({ id: customers.id, name: customers.name })
-      .from(customers)
-      .where(eq(customers.phone, fmt))
-      .limit(1);
-    
-    if (customer) {
-      return customer;
-    }
+  // Handle 10-digit vs 11-digit (with country code)
+  const last10Digits = inputDigits.length >= 10 
+    ? inputDigits.slice(-10) 
+    : inputDigits;
+  
+  if (last10Digits.length < 10) {
+    return null;
   }
   
-  // Also try with +1 prefix if not present
-  if (!phone.startsWith('+')) {
-    const withPrefix = `+1${phone.replace(/\D/g, '')}`;
-    const [customer] = await tenantDb
-      .select({ id: customers.id, name: customers.name })
-      .from(customers)
-      .where(eq(customers.phone, withPrefix))
-      .limit(1);
-    
-    if (customer) {
-      return customer;
-    }
+  // Query using SQL to strip non-digits from stored phone and compare
+  const [customer] = await tenantDb
+    .select({ 
+      id: customers.id, 
+      name: customers.name,
+      email: customers.email 
+    })
+    .from(customers)
+    .where(
+      sql`RIGHT(REGEXP_REPLACE(${customers.phone}, '\\D', '', 'g'), 10) = ${last10Digits}`
+    )
+    .limit(1);
+  
+  if (customer) {
+    return customer;
+  }
+  
+  return null;
+}
+
+/**
+ * Helper to find a customer by name (exact match, case-insensitive)
+ * Used as fallback when phone matching fails
+ */
+async function findCustomerByName(
+  tenantDb: TenantDb,
+  tenantId: string,
+  name: string
+): Promise<{ id: number; name: string | null; email: string | null; phone: string | null } | null> {
+  if (!name || name.length < 2) {
+    return null;
+  }
+  
+  // Clean and normalize the name for matching
+  const normalizedName = name.trim().toLowerCase();
+  
+  // Query using case-insensitive matching
+  const [customer] = await tenantDb
+    .select({ 
+      id: customers.id, 
+      name: customers.name,
+      email: customers.email,
+      phone: customers.phone
+    })
+    .from(customers)
+    .where(
+      and(
+        eq(customers.tenantId, tenantId),
+        sql`LOWER(TRIM(${customers.name})) = ${normalizedName}`
+      )
+    )
+    .limit(1);
+  
+  if (customer) {
+    return customer;
   }
   
   return null;
@@ -1189,4 +1250,128 @@ export async function previewTargetList(
   }));
   
   return { stats, sampleTargets };
+}
+
+/**
+ * Backfill existing port_recovery_targets to populate missing customer_id and email
+ * This uses the improved findCustomerByPhone with digits-only matching
+ */
+export async function backfillTargetsWithCustomerData(
+  tenantDb: TenantDb,
+  campaignId: number
+): Promise<{
+  processed: number;
+  customersMatched: number;
+  emailsPopulated: number;
+  pointsAwarded: number;
+}> {
+  let processed = 0;
+  let customersMatched = 0;
+  let emailsPopulated = 0;
+  let pointsAwarded = 0;
+  
+  // Get campaign for points value
+  const campaign = await getCampaign(tenantDb, campaignId);
+  if (!campaign) {
+    throw new Error(`Campaign ${campaignId} not found`);
+  }
+  
+  // Get all targets that need backfill (no customer_id and have phone)
+  const targetsToBackfill = await tenantDb
+    .select()
+    .from(portRecoveryTargets)
+    .where(
+      and(
+        eq(portRecoveryTargets.campaignId, campaignId),
+        sql`${portRecoveryTargets.customerId} IS NULL`,
+        isNotNull(portRecoveryTargets.phone)
+      )
+    );
+  
+  console.log(`[PORT RECOVERY BACKFILL] Processing ${targetsToBackfill.length} targets for campaign ${campaignId}`);
+  
+  let matchedByPhone = 0;
+  let matchedByName = 0;
+  
+  for (const target of targetsToBackfill) {
+    processed++;
+    
+    if (!target.phone) continue;
+    
+    // Try to find customer by phone first
+    let foundCustomer = await findCustomerByPhone(tenantDb, target.phone);
+    let matchMethod = 'phone';
+    
+    // If no phone match, try matching by name
+    if (!foundCustomer && target.customerName) {
+      foundCustomer = await findCustomerByName(tenantDb, campaign.tenantId, target.customerName);
+      matchMethod = 'name';
+    }
+    
+    if (foundCustomer) {
+      customersMatched++;
+      if (matchMethod === 'phone') matchedByPhone++;
+      if (matchMethod === 'name') matchedByName++;
+      
+      const updates: Partial<PortRecoveryTarget> = {
+        customerId: foundCustomer.id,
+        updatedAt: new Date(),
+      };
+      
+      // Populate email if missing
+      if (!target.email && foundCustomer.email) {
+        updates.email = foundCustomer.email;
+        emailsPopulated++;
+      }
+      
+      // NOTE: Removed phone backfill to customer records - target phone data from 
+      // Google Voice imports is unverified and could corrupt legitimate customer data.
+      // Customer phone numbers should be updated through verified sources only.
+      
+      // Award points if not already awarded
+      if (!target.pointsGranted || target.pointsGranted === 0) {
+        try {
+          const pointsResult = await grantPortRecoveryPoints(
+            tenantDb,
+            foundCustomer.id,
+            campaign.pointsPerCustomer,
+            campaignId
+          );
+          
+          if (pointsResult.success) {
+            updates.pointsGranted = campaign.pointsPerCustomer;
+            pointsAwarded += campaign.pointsPerCustomer;
+          }
+        } catch (err) {
+          console.error(`[BACKFILL] Error awarding points to customer ${foundCustomer.id}:`, err);
+        }
+      }
+      
+      // Update the target record
+      await tenantDb
+        .update(portRecoveryTargets)
+        .set(updates)
+        .where(eq(portRecoveryTargets.id, target.id));
+    }
+    
+    // Log progress every 100 records
+    if (processed % 100 === 0) {
+      console.log(`[BACKFILL] Processed ${processed}/${targetsToBackfill.length}, matched ${customersMatched} (phone:${matchedByPhone}, name:${matchedByName})`);
+    }
+  }
+  
+  console.log(`[BACKFILL] Match breakdown: phone=${matchedByPhone}, name=${matchedByName}`);
+  
+  // Update campaign totals
+  await tenantDb
+    .update(portRecoveryCampaigns)
+    .set({
+      totalPointsGranted: sql`${portRecoveryCampaigns.totalPointsGranted} + ${pointsAwarded}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(portRecoveryCampaigns.id, campaignId));
+  
+  console.log(`[PORT RECOVERY BACKFILL] Complete: processed=${processed}, matched=${customersMatched}, emails=${emailsPopulated}, points=${pointsAwarded}`);
+  
+  return { processed, customersMatched, emailsPopulated, pointsAwarded };
 }
