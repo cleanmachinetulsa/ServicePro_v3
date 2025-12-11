@@ -66,7 +66,10 @@ export default function CustomersPane() {
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['/api/calls/customers'],
-    refetchInterval: 30000,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     retry: 3,
   });
 

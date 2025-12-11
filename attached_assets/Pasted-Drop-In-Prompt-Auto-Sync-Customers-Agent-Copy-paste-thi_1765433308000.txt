@@ -1,0 +1,272 @@
+Drop-In Prompt: Auto-Sync Customers & Agent
+
+Copy-paste this into Replit as your next task:
+
+You are working in the ServicePro v3 / Clean Machine repo.
+
+Context (already implemented in previous phase):
+- Customer Identity Service exists with:
+  - findOrCreateCustomer
+  - findOrCreateCustomerPreview
+  - International phone normalization (normalizePhoneE164 / contactUtils)
+  - Usage in conversation service for SMS
+- Google Sheets backfill endpoints exist:
+  - POST /api/admin/backfill/customers-sheets/preview
+  - POST /api/admin/backfill/customers-sheets/run
+  - GET  /api/admin/backfill/customers-sheets/history
+
+Goal of this phase:
+Make customer data feel “always live” without manual “refresh customers” steps by:
+
+1) Automatically syncing Google Sheets → customer DB on a schedule (for Clean Machine).
+2) Making frontend customer lists auto-refresh using React Query options.
+3) Ensuring AI agents always fetch customer data via APIs/tools, not static snapshots.
+
+IMPORTANT:
+- Do NOT change Twilio routing, campaign schedules, or rewards logic.
+- Do NOT change how the Google Form submits to the Sheet. The Sheet must continue to receive submissions as a backup path.
+- All changes should be additive and safe; respect tenant isolation.
+
+==================================================
+A) AUTO-SYNC GOOGLE SHEETS → CUSTOMER DB (CRON)
+==================================================
+
+1) Locate the existing node-cron setup:
+   - Search for where node-cron is initialized (e.g. files like:
+     - server/cron.ts
+     - server/services/cronService.ts
+     - or wherever the NODE-CRON warnings came from).
+   - Confirm there is a shared scheduler instance used for other jobs (e.g. A2P checks, cleanup, etc.).
+
+2) Import the sheets backfill service (or its underlying function) instead of calling HTTP:
+   - Reuse the same internal function that backs:
+     - POST /api/admin/backfill/customers-sheets/run
+   - If that function lives in something like:
+     - `server/services/googleSheetsCustomerImportService.ts`
+     then import it into the cron module.
+
+   Ideally we want a function like:
+
+   ```ts
+   async function runSheetsCustomerBackfillForTenant(tenantId: string) {
+     const tenantDb = wrapTenantDb(globalDb, tenantId);
+     return googleSheetsCustomerImportService.backfillForTenant(tenantDb, tenantId, {
+       sourceTabs: ['Live Client Requests', 'Customer_Info_Sheet'],
+       dryRun: false,
+     });
+   }
+
+
+Use the already-implemented backfill service. Do NOT duplicate logic.
+
+Identify the Clean Machine tenantId:
+
+Use the existing tenant lookup helper (e.g. TenantService, TENANTS config, or seed data).
+
+If there is a constant or configuration for the Clean Machine root tenant, use that.
+
+If not, add a small, well-commented helper that can resolve Clean Machine’s tenantId from the global DB (e.g. by slug or domain).
+
+Keep this helper in a reusable place, e.g. server/services/tenantLookupService.ts.
+
+Add a cron job that periodically runs the backfill for Clean Machine:
+
+In the cron setup file, add:
+
+import cron from 'node-cron';
+// import runSheetsCustomerBackfillForTenant and tenant lookup helper here
+
+const ENABLE_SHEETS_CUSTOMER_AUTO_SYNC = process.env.ENABLE_SHEETS_CUSTOMER_AUTO_SYNC === '1';
+
+if (ENABLE_SHEETS_CUSTOMER_AUTO_SYNC) {
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const tenantId = await getCleanMachineTenantId(/* globalDb or config */);
+      if (!tenantId) {
+        console.warn('[SHEETS AUTO-SYNC] Clean Machine tenantId not found; skipping run.');
+        return;
+      }
+
+      console.log('[SHEETS AUTO-SYNC] Starting customer backfill for Clean Machine...');
+      const summary = await runSheetsCustomerBackfillForTenant(tenantId);
+      console.log('[SHEETS AUTO-SYNC] Completed', summary);
+    } catch (err) {
+      console.error('[SHEETS AUTO-SYNC] Error during backfill', {
+        error: (err as any)?.message,
+        stack: (err as any)?.stack,
+      });
+    }
+  });
+}
+
+
+Schedule every 15 minutes (*/15 * * * *) so it’s frequent enough to feel live but not abusive.
+
+The backing function is idempotent thanks to findOrCreateCustomer, so multiple runs are safe.
+
+Make this feature opt-in via env variable:
+
+In .replit / userenv configs, add:
+
+ENABLE_SHEETS_CUSTOMER_AUTO_SYNC = "1" for development and production once you’re ready.
+
+If the env var is not set, the cron job should not run.
+
+==================================================
+B) FRONTEND: AUTO-REFRESH CUSTOMER LISTS
+
+Find the React Query hooks / components that fetch customer lists:
+
+Search in client/ for useQuery( where the query key includes 'customers' or similar.
+
+Typical files might be:
+
+client/src/hooks/useCustomers.ts
+
+client/src/pages/customers/*
+
+client/src/components/customers/*
+
+For the main customer list queries, update the React Query options to make them auto-refresh:
+
+Ensure each customer list query uses something like:
+
+const query = useQuery({
+  queryKey: ['customers', tenantId],
+  queryFn: fetchCustomers,
+  staleTime: 60_000, // 1 minute; adjust if needed
+  refetchOnWindowFocus: true,
+  refetchOnReconnect: true,
+  refetchInterval: 60_000, // optional: refetch every minute while tab is open
+});
+
+
+The key ideas:
+
+Data is considered “stale” quickly (e.g. 1 minute).
+
+When the user comes back to the tab, it silently refetches.
+
+Optionally, it refetches every N seconds while open.
+
+After any mutation that changes customers, invalidate queries:
+
+For functions that create or update customers (e.g. “edit customer”, “add customer”, imports triggered from UI), ensure they call:
+
+await mutationFn();
+queryClient.invalidateQueries({ queryKey: ['customers', tenantId] });
+
+
+This ensures manual actions instantly refresh the list without requiring any manual “Refresh customers” button.
+
+If there is an explicit “Refresh” button in the UI:
+
+Keep it if it’s useful, but implement it as just queryClient.invalidateQueries(['customers', tenantId]) so it works with the same query system.
+
+The presence of this button should be optional; the system must stay fresh even if you never click it.
+
+==================================================
+C) AI AGENT: ALWAYS FETCH CUSTOMERS LIVE
+
+Locate AI agent config and tools related to customers:
+
+Search for:
+
+customerTool, customersTool, listCustomers, getCustomerById, getCustomerByPhone
+
+or any functions used by the AI to fetch customer information.
+
+Also look for any “preload”/“snapshot” behavior like:
+
+preloadedCustomersForAgent
+
+a big serialized array of customers placed directly into prompts.
+
+If there is a static “customers list for AI” snapshot:
+
+Either remove it or restrict it to very short-lived, and add a comment explaining that customers may be created at any time and the agent should rely on tools, not snapshots.
+
+Specifically, the AI should:
+
+Use a tool to look up a customer by phone/email when needed.
+
+Not embed a full customer list in the system prompt.
+
+Ensure tools exist for basic customer operations:
+
+At minimum, confirm the AI has a tool or API route for:
+
+getCustomerByPhone(phone)
+
+getCustomerById(id)
+
+Possibly searchCustomers(query) if needed.
+
+Make sure these tools use the Postgres customers table for the active tenant.
+
+Do NOT invent new schema; reuse the existing customer service/repository.
+
+Update the AI system prompt(s) to explicitly prefer tools:
+
+For the SMS and web chat agents, in the system prompt builder (e.g. smsAgentPromptBuilder, webChatAgentPromptBuilder):
+
+Add instructions along the lines of:
+
+"When you need customer information (name, past visits, points, etc.), do NOT assume you have a full list. Instead, call the appropriate customer tool (e.g., getCustomerByPhone, getCustomerById) to query the live database."
+
+Ensure there is no mention of “refreshing the customer list” to the user. That behavior should be internal only (via cron + DB).
+
+If there is an internal “cache” that the agent uses for customer lookups:
+
+Make sure it is:
+
+Tenant-aware.
+
+Short-lived (e.g. TTL ≤ 5 minutes).
+
+Invalidated after imports or major sync jobs, if implemented.
+
+But ideally, just lean on the live DB queries instead of a custom cache.
+
+==================================================
+D) FINAL CHECKS
+
+Enable the cron for development:
+
+Set ENABLE_SHEETS_CUSTOMER_AUTO_SYNC = "1" in the environment.
+
+Restart the dev server.
+
+Verify logs:
+
+Watch for [SHEETS AUTO-SYNC] Starting customer backfill... and Completed logs every 15 minutes.
+
+Confirm no uncaught errors.
+
+Create a new test entry via the old website / Google Form:
+
+Submit a dummy request (it should still go into the Google Sheet as usual).
+
+Wait for one cron run or manually call the /api/admin/backfill/customers-sheets/run endpoint once in dev.
+
+Check the customer list in the app:
+
+Confirm the new customer appears without manually clicking any “refresh” button.
+
+Test the frontend refresh behavior:
+
+Open the customer list in the app.
+
+In another tab, trigger a new customer creation (form, SMS, or admin tool).
+
+Return to the customer-list tab:
+
+On window focus or after the refetch interval, the new customer should appear.
+
+Test AI agent behavior:
+
+Start an SMS conversation with a number that is not yet in the DB but is (or will be) in the Sheet.
+
+After the cron brings it in, the agent should be able to look up that customer by phone via its tools without you ever “refreshing” customers.
+
+Stop after these changes are implemented and verified. Do not modify any unrelated features.

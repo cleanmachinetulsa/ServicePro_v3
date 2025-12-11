@@ -606,6 +606,10 @@ async function startDeferredInitialization() {
     startHealthMonitoring();
     console.log('[SERVER] System health monitoring started - checks every 5 minutes, sends URGENT alerts for critical issues');
 
+    // SP-SHEETS-AUTO-SYNC: Initialize Google Sheets → Customer DB auto-sync
+    const { initializeSheetsCustomerAutoSync } = await import('./services/sheetsCustomerAutoSyncService');
+    initializeSheetsCustomerAutoSync();
+
     console.log('[DEFERRED INIT] Background initialization complete');
   } catch (error) {
     console.error('[DEFERRED INIT] Error during background initialization:', error);

@@ -60,7 +60,7 @@ const CustomerSearch = () => {
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
   const { toast } = useToast();
 
-  // Fetch all customers when no search is active
+  // Fetch all customers when no search is active (auto-refresh for always-live data)
   const allCustomersQuery = useQuery({
     queryKey: ['/api/customers'],
     queryFn: async () => {
@@ -71,7 +71,10 @@ const CustomerSearch = () => {
       const data = await response.json();
       return data.customers as CustomerRecord[];
     },
-    enabled: !debouncedSearchQuery
+    enabled: !debouncedSearchQuery,
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Search customers based on search terms
