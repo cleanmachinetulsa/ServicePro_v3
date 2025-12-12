@@ -1,0 +1,52 @@
+YOU ARE THE REPLIT AGENT.
+
+Goal: Fix the SMS agent "forgetting / repeating questions" by making conversation context assembly deterministic, logged, and correct.
+
+Background:
+- SMS dedupe is now implemented and logs are calm.
+- The agent still repeats questions, which suggests we are not correctly loading prior conversation messages OR not persisting inbound/outbound messages consistently.
+- We need deep logging + a single canonical function to fetch/build LLM context.
+
+Requirements:
+1) Find the handler that builds the LLM prompt for inbound SMS in the ServicePro AI Behavior V2 path.
+   Search keywords:
+   - handleServiceProInboundSms
+   - AI Behavior V2
+   - buildPrompt
+   - conversation history
+   - messages
+   - getConversation
+   - conversationId
+
+2) Implement a SINGLE canonical function, e.g.:
+   server/services/smsConversationContextService.ts
+   export async function buildSmsLlmContext({ tenantId, fromPhone, toPhone, conversationId }): returns:
+     - conversationId
+     - normalized phones used
+     - recentMessages (last 30, ordered oldest->newest)
+     - behaviorSettings summary (if present)
+     - a formatted "transcript" string for the model
+
+3) Ensure persistence order:
+   - Inbound SMS must be written to DB BEFORE calling the LLM.
+   - Outbound AI reply must be written to DB AFTER sending (or before, but must exist).
+   If either is missing, fix it.
+
+4) Add high-signal logs (INFO) on every inbound:
+   - [SMS CONTEXT] tenant=<id> conv=<id> from=<from> to=<to>
+   - [SMS CONTEXT] loaded_messages=<n> first_ts=<...> last_ts=<...>
+   - [SMS CONTEXT] last_3_messages_preview=<role: first 60 chars> x3
+   - [SMS CONTEXT] behaviorSettings_keys=<list>
+
+5) Guardrails:
+   - If loaded_messages is 0 or 1 when it should be more, log WARN with:
+     [SMS CONTEXT WARN] suspicious_history tenant=<id> conv=<id> from=<from> to=<to>
+   - Never include duplicate messages in the transcript.
+
+6) Integrate the canonical context builder into the SMS AI handler so every turn uses it.
+
+Deliver:
+- New file path(s)
+- Updated handler path(s)
+- Confirm in output that inbound is saved before LLM call and outbound is saved after.
+- Ensure no secrets required.
