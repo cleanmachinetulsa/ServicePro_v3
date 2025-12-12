@@ -1,0 +1,62 @@
+You are working in Servicepro-v3-base (Node/Express/TS). We need Port Recovery blasting to work NOW.
+
+PROBLEM (from logs):
+- Many recipients show: sms_attempted=false while points_attempted=true (SMS skipped silently).
+- We still see: TypeError Cannot read properties of undefined (reading 'points') inside grantPortRecoveryPoints.
+- We also see Twilio failures for invalid To numbers (expected) but should NOT block batch.
+Goal: Make SMS sending the PRIMARY action and never silently skipped without an explicit skip reason. Make points fail-open (never throws). Add high-signal logs.
+
+MAKE THESE CHANGES:
+
+1) server/services/portRecoveryService.ts
+Find the batch loop (runPortRecoveryBatch / grantPortRecoveryPoints / sendPortRecoverySms / whatever names exist).
+Implement:
+
+A) Add helpers in this file:
+- normalizePhoneE164(input: string): string | null
+  - trim
+  - remove spaces, dashes, parentheses
+  - if starts with "+", keep as-is
+  - else if 10 digits, prefix +1
+  - else if 11 digits and starts with "1", prefix "+"
+  - else return null
+- isValidE164(phone: string): boolean  (regex: /^\+[1-9]\d{1,14}$/)
+
+B) In the per-recipient processing:
+- Compute normalizedTo = normalizePhoneE164(rawPhone)
+- Determine opt-out:
+  - If there is a field like customer.smsConsent === false OR customer.smsOptOut === true OR customer.unsubscribed === true -> skip SMS with skip_reason="opted_out"
+  - Otherwise allow SMS attempt (treat null/undefined consent as allowed). We cannot have sms_attempted=false unless a skip_reason is logged.
+
+C) Ensure channel toggle respected:
+- If the port recovery campaign config has smsEnabled false, skip_reason="sms_disabled_campaign"
+- If Twilio is not configured, skip_reason="twilio_not_configured" (but DO NOT throw; mark sms_ok=false and continue)
+
+D) Wrap the SMS send in try/catch:
+- Always set sms_attempted=true when we try to send
+- sms_ok=true only if Twilio returns SID
+- On Twilio error, log:
+  [PORT RECOVERY] sms_failed phone=<normalizedTo> code=<twilioCode> msg=<message>
+  Continue loop.
+
+E) Fix points fail-open COMPLETELY:
+- In grantPortRecoveryPoints (or equivalent), guard points value:
+   const points = Number(campaign.pointsPerCustomer ?? campaign.points ?? campaign.points_award ?? 0);
+   if (!Number.isFinite(points) || points <= 0) { log skip_reason="invalid_points"; return { attempted:false, ok:false }; }
+- Wrap ALL points awarding in try/catch that NEVER throws.
+- Points should NEVER prevent SMS sending or continuing the loop.
+
+F) Add ONE summary log per recipient (ALWAYS), like:
+[PORT RECOVERY] recipient phone_raw=<raw> phone=<normalizedOrNull> customerId=<idOrNone> sms_attempted=<bool> sms_ok=<bool> sms_skip_reason=<reasonOrEmpty> points_attempted=<bool> points_ok=<bool> points_skip_reason=<reasonOrEmpty>
+
+2) Ensure the UI "Send All" / "Send Next 50" uses the same batch path and returns success even if some recipients fail.
+No crashes.
+
+3) After changes, run:
+- npm run check (or compile)
+- Use existing Port Recovery UI: click "Test SMS" to a known-valid number and confirm logs show sms_attempted=true and sms_ok=true.
+
+Deliverables:
+- Only modify existing files; keep it small.
+- Do not introduce data-loss or migrations.
+- Keep behavior deterministic and safe.
