@@ -5129,3 +5129,36 @@ export const insertGiftCardRedemptionSchema = createInsertSchema(giftCardRedempt
 
 export type GiftCardRedemption = typeof giftCardRedemptions.$inferSelect;
 export type InsertGiftCardRedemption = z.infer<typeof insertGiftCardRedemptionSchema>;
+
+// ============================================================
+// SMS BOOKING RECORDS: Far-future booking confirmation workflow
+// ============================================================
+
+export const smsBookingRecords = pgTable("sms_booking_records", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  eventId: text("event_id").notNull(),
+  startTime: timestamp("start_time").notNull(),
+  service: text("service").notNull(),
+  address: text("address"),
+  needsConfirmation: boolean("needs_confirmation").default(false).notNull(),
+  confirmedAt: timestamp("confirmed_at"),
+  lastConfirmationReminderAt: timestamp("last_confirmation_reminder_at"),
+  autoCanceledAt: timestamp("auto_canceled_at"),
+  rescheduleRequested: boolean("reschedule_requested").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantPhoneIdx: index("sms_booking_records_tenant_phone_idx").on(table.tenantId, table.phone),
+  eventIdIdx: uniqueIndex("sms_booking_records_event_id_idx").on(table.tenantId, table.eventId),
+  startTimeIdx: index("sms_booking_records_start_time_idx").on(table.startTime),
+  needsConfirmIdx: index("sms_booking_records_needs_confirm_idx").on(table.needsConfirmation),
+}));
+
+export const insertSmsBookingRecordSchema = createInsertSchema(smsBookingRecords).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SmsBookingRecord = typeof smsBookingRecords.$inferSelect;
+export type InsertSmsBookingRecord = z.infer<typeof insertSmsBookingRecordSchema>;

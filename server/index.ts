@@ -615,6 +615,11 @@ async function startDeferredInitialization() {
       // SP-SHEETS-AUTO-SYNC: Initialize Google Sheets → Customer DB auto-sync
       const { initializeSheetsCustomerAutoSync } = await import('./services/sheetsCustomerAutoSyncService');
       initializeSheetsCustomerAutoSync();
+      
+      // BOOKING CONFIRMATION MONITOR: Sends 7-day and 48-hour reminders, optional auto-cancel
+      const { startConfirmationMonitorCron } = await import('./services/bookingConfirmationMonitor');
+      startConfirmationMonitorCron();
+      console.log('[SERVER] Booking confirmation monitor started - checks hourly for reminders');
     } else {
       console.log('[SERVER] Background jobs DISABLED (PLATFORM_BG_JOBS_ENABLED=0). SMS inbound is still active.');
     }
