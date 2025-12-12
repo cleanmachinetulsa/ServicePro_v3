@@ -221,6 +221,59 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // Log draft state for debugging
     console.log('[SMS DRAFT] State:', getSmsBookingStateSummary(smsBookingState));
     
+    // === CONFIRM / RESCHEDULE COMMAND HANDLING (before LLM) ===
+    const confirmMatch = /^confirm\b/i.test(Body.trim());
+    const rescheduleMatch = /^(reschedule|change)\b/i.test(Body.trim());
+    
+    if (confirmMatch) {
+      const { findUpcomingUnconfirmedBooking, confirmBooking } = await import('../services/smsBookingRecordService');
+      const upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
+      
+      if (upcomingBooking) {
+        await confirmBooking(tenantId, upcomingBooking.id);
+        const { formatInTimeZone } = await import('date-fns-tz');
+        const bookingDay = formatInTimeZone(new Date(upcomingBooking.startTime), 'America/Chicago', 'EEEE MMM d');
+        const bookingTime = formatInTimeZone(new Date(upcomingBooking.startTime), 'America/Chicago', 'h:mm a');
+        const confirmReply = truncateSmsResponse(`Confirmed! See you ${bookingDay} at ${bookingTime}. Reply CHANGE if you need to reschedule.`);
+        await addMessage(tenantDb, conversation.id, confirmReply, 'ai');
+        twimlResponse.message(confirmReply);
+        console.log(`[CONFIRM] phone=${From} eventId=${upcomingBooking.eventId} confirmedAt=${new Date().toISOString()}`);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      } else {
+        const noBookingReply = truncateSmsResponse("I couldn't find an upcoming booking that needs confirmation. Would you like to schedule a new appointment?");
+        await addMessage(tenantDb, conversation.id, noBookingReply, 'ai');
+        twimlResponse.message(noBookingReply);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      }
+    }
+    
+    if (rescheduleMatch) {
+      const { findUpcomingUnconfirmedBooking, markRescheduleRequested } = await import('../services/smsBookingRecordService');
+      const upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
+      
+      if (upcomingBooking) {
+        await markRescheduleRequested(tenantId, upcomingBooking.id);
+        // Reset booking state to re-offer slots for the same service
+        const newState = createResetBookingState(
+          'reschedule_requested',
+          undefined,
+          upcomingBooking.service,
+          From,
+          persistedState
+        );
+        await updateSmsBookingState(tenantDb, conversation.id, newState);
+        const rescheduleReply = truncateSmsResponse(`No problem! Let's find a new time for your ${upcomingBooking.service}. When would work better for you?`);
+        await addMessage(tenantDb, conversation.id, rescheduleReply, 'ai');
+        twimlResponse.message(rescheduleReply);
+        console.log(`[CONFIRM] Reschedule requested phone=${From} eventId=${upcomingBooking.eventId}`);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      }
+      // If no booking found, continue to normal flow
+    }
+    
     // 3. Check for DETERMINISTIC slot selection BEFORE calling LLM
     const slotSelection = detectSlotSelection(Body, smsBookingState);
     
@@ -310,8 +363,33 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               stage: 'booked',
             });
             
-            // REAL confirmation SMS - only if eventId was created
-            deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
+            // === FAR-FUTURE BOOKING: Compute days until and create booking record ===
+            const bookingStartTime = new Date(slotSelection.chosenSlotIso || new Date().toISOString());
+            const daysUntil = Math.floor((bookingStartTime.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+            const needsConfirmation = daysUntil >= 14;
+            
+            // Create booking record for confirmation workflow
+            try {
+              const { createSmsBookingRecord } = await import('../services/smsBookingRecordService');
+              await createSmsBookingRecord(tenantId, {
+                phone: From,
+                eventId: bookingEventId,
+                startTime: bookingStartTime,
+                service: smsBookingState.service || 'Unknown Service',
+                address: smsBookingState.address,
+                needsConfirmation,
+              });
+              console.log(`[CONFIRM] Booking record created eventId=${bookingEventId} daysUntil=${daysUntil} needsConfirmation=${needsConfirmation}`);
+            } catch (recordErr) {
+              console.error('[CONFIRM] Failed to create booking record:', recordErr);
+            }
+            
+            // Adjust confirmation message based on how far out the booking is
+            if (needsConfirmation) {
+              deterministicReply = `You're all set for ${slotSelection.chosenSlotLabel}! I'll text you closer to the date to confirm. Reply CHANGE to reschedule.`;
+            } else {
+              deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
+            }
             
             // Notify business owner
             try {
