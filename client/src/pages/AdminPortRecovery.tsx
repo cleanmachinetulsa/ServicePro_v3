@@ -456,6 +456,216 @@ export default function AdminPortRecovery() {
             </Card>
           ) : null}
 
+          {/* Active/Recent Campaign */}
+          {campaignsLoading ? (
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md">
+              <CardContent className="py-8 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+              </CardContent>
+            </Card>
+          ) : activeCampaign ? (
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-purple-500">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Send className="h-5 w-5 text-purple-400" />
+                    {activeCampaign.name}
+                  </CardTitle>
+                  <Badge 
+                    className={`${STATUS_COLORS[activeCampaign.status]} text-white`}
+                  >
+                    {STATUS_LABELS[activeCampaign.status]}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Progress */}
+                {activeCampaign.totalTargets > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-gray-400">
+                      <span>Progress</span>
+                      <span>
+                        {activeCampaign.totalSmsSent}/{activeCampaign.totalTargets} sent
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(activeCampaign.totalSmsSent / activeCampaign.totalTargets) * 100} 
+                      className="h-2"
+                    />
+                  </div>
+                )}
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-slate-900/50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-green-400">
+                      {activeCampaign.totalSmsSent}
+                    </div>
+                    <div className="text-[10px] text-gray-400">SMS Sent</div>
+                  </div>
+                  <div className="bg-slate-900/50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-blue-400">
+                      {activeCampaign.totalEmailSent}
+                    </div>
+                    <div className="text-[10px] text-gray-400">Emails</div>
+                  </div>
+                  <div className="bg-slate-900/50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-yellow-400">
+                      {activeCampaign.totalPointsGranted?.toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-gray-400">Points</div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 bg-slate-900/50 border-slate-700/50 text-gray-300 hover:bg-slate-800"
+                      onClick={() => testSmsMutation.mutate(activeCampaign.id)}
+                      disabled={testSmsMutation.isPending}
+                      data-testid="button-test-sms"
+                    >
+                      {testSmsMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Beaker className="h-4 w-4 mr-1" />
+                      )}
+                      Test SMS
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                      onClick={() => runBatchMutation.mutate(activeCampaign.id)}
+                      disabled={isRunning || activeCampaign.status === 'completed'}
+                      data-testid="button-run-batch"
+                    >
+                      {isRunning ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Sending...
+                        </>
+                      ) : activeCampaign.status === 'completed' ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Complete
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="h-4 w-4 mr-1" />
+                          Send Next 50
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Custom Phone Test */}
+                  <div className="flex gap-2">
+                    <Input
+                      type="tel"
+                      placeholder="+19185551234"
+                      value={testPhoneInput}
+                      onChange={(e) => setTestPhoneInput(e.target.value)}
+                      className="flex-1 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-gray-500"
+                      disabled={sendTestPhoneMutation.isPending}
+                      data-testid="input-test-phone"
+                    />
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => {
+                        const isValidE164 = /^\+[1-9]\d{1,14}$/.test(testPhoneInput.trim());
+                        if (!isValidE164) {
+                          toast({
+                            title: 'Invalid Phone',
+                            description: 'Phone must be in E.164 format (e.g., +19185551234)',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        sendTestPhoneMutation.mutate(testPhoneInput);
+                      }}
+                      disabled={sendTestPhoneMutation.isPending || !testPhoneInput}
+                      data-testid="button-send-test-custom-phone"
+                    >
+                      {sendTestPhoneMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-1" />
+                      )}
+                      Send Test
+                    </Button>
+                  </div>
+                  {activeCampaign.status !== 'completed' && activeCampaign.totalSmsSent < activeCampaign.totalTargets && (
+                    <Button
+                      size="sm"
+                      className="w-full bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-semibold"
+                      onClick={() => sendAllMutation.mutate(activeCampaign.id)}
+                      disabled={isRunning || activeCampaign.status === 'completed'}
+                      data-testid="button-send-all-remaining"
+                    >
+                      {isRunning ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending All...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4 mr-2" />
+                          Send All Remaining ({activeCampaign.totalTargets - activeCampaign.totalSmsSent})
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {/* Analytics Card - NEW */}
+          {activeCampaign && activeCampaign.totalTargets > 0 && (
+            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-blue-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-white text-sm flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-blue-400" />
+                  Campaign Analytics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-green-400">{activeCampaign.totalSmsSent}</div>
+                    <div className="text-xs text-green-300">Delivered</div>
+                    <div className="text-xs text-green-200/60 mt-1">
+                      {activeCampaign.totalTargets > 0 ? Math.round((activeCampaign.totalSmsSent / activeCampaign.totalTargets) * 100) : 0}%
+                    </div>
+                  </div>
+                  <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-red-400">{activeCampaign.totalSmsFailed || 0}</div>
+                    <div className="text-xs text-red-300">Failed</div>
+                    <div className="text-xs text-red-200/60 mt-1">
+                      {activeCampaign.totalTargets > 0 ? Math.round(((activeCampaign.totalSmsFailed || 0) / activeCampaign.totalTargets) * 100) : 0}%
+                    </div>
+                  </div>
+                  <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-yellow-400">{activeCampaign.totalTargets - activeCampaign.totalSmsSent - (activeCampaign.totalSmsFailed || 0)}</div>
+                    <div className="text-xs text-yellow-300">Pending</div>
+                    <div className="text-xs text-yellow-200/60 mt-1">
+                      {activeCampaign.totalTargets > 0 ? Math.round(((activeCampaign.totalTargets - activeCampaign.totalSmsSent - (activeCampaign.totalSmsFailed || 0)) / activeCampaign.totalTargets) * 100) : 0}%
+                    </div>
+                  </div>
+                </div>
+                <Separator className="bg-slate-700/50" />
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Total Recipients: <span className="text-white font-semibold">{activeCampaign.totalTargets}</span></span>
+                  <span>Points Awarded: <span className="text-yellow-400 font-semibold">{activeCampaign.totalPointsGranted?.toLocaleString()}</span></span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Sample SMS Preview - Uses local state for live preview */}
           {(smsTemplate || previewData?.sampleSms) && smsEnabled && (
             <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-green-500">
@@ -703,216 +913,6 @@ export default function AdminPortRecovery() {
               </CollapsibleContent>
             </Card>
           </Collapsible>
-
-          {/* Active/Recent Campaign */}
-          {campaignsLoading ? (
-            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md">
-              <CardContent className="py-8 flex items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
-              </CardContent>
-            </Card>
-          ) : activeCampaign ? (
-            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-purple-500">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Send className="h-5 w-5 text-purple-400" />
-                    {activeCampaign.name}
-                  </CardTitle>
-                  <Badge 
-                    className={`${STATUS_COLORS[activeCampaign.status]} text-white`}
-                  >
-                    {STATUS_LABELS[activeCampaign.status]}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Progress */}
-                {activeCampaign.totalTargets > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs text-gray-400">
-                      <span>Progress</span>
-                      <span>
-                        {activeCampaign.totalSmsSent}/{activeCampaign.totalTargets} sent
-                      </span>
-                    </div>
-                    <Progress 
-                      value={(activeCampaign.totalSmsSent / activeCampaign.totalTargets) * 100} 
-                      className="h-2"
-                    />
-                  </div>
-                )}
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-900/50 rounded-lg p-2 text-center">
-                    <div className="text-lg font-bold text-green-400">
-                      {activeCampaign.totalSmsSent}
-                    </div>
-                    <div className="text-[10px] text-gray-400">SMS Sent</div>
-                  </div>
-                  <div className="bg-slate-900/50 rounded-lg p-2 text-center">
-                    <div className="text-lg font-bold text-blue-400">
-                      {activeCampaign.totalEmailSent}
-                    </div>
-                    <div className="text-[10px] text-gray-400">Emails</div>
-                  </div>
-                  <div className="bg-slate-900/50 rounded-lg p-2 text-center">
-                    <div className="text-lg font-bold text-yellow-400">
-                      {activeCampaign.totalPointsGranted?.toLocaleString()}
-                    </div>
-                    <div className="text-[10px] text-gray-400">Points</div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 bg-slate-900/50 border-slate-700/50 text-gray-300 hover:bg-slate-800"
-                      onClick={() => testSmsMutation.mutate(activeCampaign.id)}
-                      disabled={testSmsMutation.isPending}
-                      data-testid="button-test-sms"
-                    >
-                      {testSmsMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      ) : (
-                        <Beaker className="h-4 w-4 mr-1" />
-                      )}
-                      Test SMS
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
-                      onClick={() => runBatchMutation.mutate(activeCampaign.id)}
-                      disabled={isRunning || activeCampaign.status === 'completed'}
-                      data-testid="button-run-batch"
-                    >
-                      {isRunning ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Sending...
-                        </>
-                      ) : activeCampaign.status === 'completed' ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          Complete
-                        </>
-                      ) : (
-                        <>
-                          <PlayCircle className="h-4 w-4 mr-1" />
-                          Send Next 50
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Custom Phone Test */}
-                  <div className="flex gap-2">
-                    <Input
-                      type="tel"
-                      placeholder="+19185551234"
-                      value={testPhoneInput}
-                      onChange={(e) => setTestPhoneInput(e.target.value)}
-                      className="flex-1 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-gray-500"
-                      disabled={sendTestPhoneMutation.isPending}
-                      data-testid="input-test-phone"
-                    />
-                    <Button
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={() => {
-                        const isValidE164 = /^\+[1-9]\d{1,14}$/.test(testPhoneInput.trim());
-                        if (!isValidE164) {
-                          toast({
-                            title: 'Invalid Phone',
-                            description: 'Phone must be in E.164 format (e.g., +19185551234)',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
-                        sendTestPhoneMutation.mutate(testPhoneInput);
-                      }}
-                      disabled={sendTestPhoneMutation.isPending || !testPhoneInput}
-                      data-testid="button-send-test-custom-phone"
-                    >
-                      {sendTestPhoneMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4 mr-1" />
-                      )}
-                      Send Test
-                    </Button>
-                  </div>
-                  {activeCampaign.status !== 'completed' && activeCampaign.totalSmsSent < activeCampaign.totalTargets && (
-                    <Button
-                      size="sm"
-                      className="w-full bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-semibold"
-                      onClick={() => sendAllMutation.mutate(activeCampaign.id)}
-                      disabled={isRunning || activeCampaign.status === 'completed'}
-                      data-testid="button-send-all-remaining"
-                    >
-                      {isRunning ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Sending All...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="h-4 w-4 mr-2" />
-                          Send All Remaining ({activeCampaign.totalTargets - activeCampaign.totalSmsSent})
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {/* Analytics Card - NEW */}
-          {activeCampaign && activeCampaign.totalTargets > 0 && (
-            <Card className="bg-slate-800/80 border-slate-700/50 backdrop-blur-md border-l-4 border-l-blue-500">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-white text-sm flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-blue-400" />
-                  Campaign Analytics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-green-400">{activeCampaign.totalSmsSent}</div>
-                    <div className="text-xs text-green-300">Delivered</div>
-                    <div className="text-xs text-green-200/60 mt-1">
-                      {activeCampaign.totalTargets > 0 ? Math.round((activeCampaign.totalSmsSent / activeCampaign.totalTargets) * 100) : 0}%
-                    </div>
-                  </div>
-                  <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-red-400">{activeCampaign.totalSmsFailed || 0}</div>
-                    <div className="text-xs text-red-300">Failed</div>
-                    <div className="text-xs text-red-200/60 mt-1">
-                      {activeCampaign.totalTargets > 0 ? Math.round(((activeCampaign.totalSmsFailed || 0) / activeCampaign.totalTargets) * 100) : 0}%
-                    </div>
-                  </div>
-                  <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-yellow-400">{activeCampaign.totalTargets - activeCampaign.totalSmsSent - (activeCampaign.totalSmsFailed || 0)}</div>
-                    <div className="text-xs text-yellow-300">Pending</div>
-                    <div className="text-xs text-yellow-200/60 mt-1">
-                      {activeCampaign.totalTargets > 0 ? Math.round(((activeCampaign.totalTargets - activeCampaign.totalSmsSent - (activeCampaign.totalSmsFailed || 0)) / activeCampaign.totalTargets) * 100) : 0}%
-                    </div>
-                  </div>
-                </div>
-                <Separator className="bg-slate-700/50" />
-                <div className="flex justify-between text-xs text-gray-400">
-                  <span>Total Recipients: <span className="text-white font-semibold">{activeCampaign.totalTargets}</span></span>
-                  <span>Points Awarded: <span className="text-yellow-400 font-semibold">{activeCampaign.totalPointsGranted?.toLocaleString()}</span></span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {/* Send Campaign Panel - NEW for Block B */}
           {!activeCampaign && previewData?.canRun && stats && stats.totalUnique > 0 && (
