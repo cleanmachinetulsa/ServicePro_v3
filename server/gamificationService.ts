@@ -245,7 +245,17 @@ export async function awardCampaignPointsOnce(
   description: string
 ): Promise<{ success: boolean; wasSkipped: boolean; currentPoints: number }> {
   try {
-    const customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
+    let customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
+    
+    // Create loyalty points record if it doesn't exist
+    if (!customerPoints) {
+      const [created] = await tenantDb.insert(loyaltyPoints).values({
+        customerId,
+        points: 0,
+      }).returning();
+      customerPoints = created;
+      console.log('[LOYALTY] Created loyalty points record for customer', { customerId });
+    }
     
     if (customerPoints) {
       const existingTx = await tenantDb
