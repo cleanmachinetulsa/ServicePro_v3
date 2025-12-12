@@ -890,6 +890,18 @@ export const messages = pgTable("messages", {
   metadata: jsonb("metadata"), // Attachments, links, forwarded info: { attachments: [{url, type, name, size}], ... }
 });
 
+// SMS Inbound Deduplication - Track processed Twilio MessageSids to prevent duplicate webhook processing
+export const smsInboundDedup = pgTable("sms_inbound_dedup", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
+  messageSid: text("message_sid").notNull(),
+  from: text("from"),
+  to: text("to"),
+  receivedAt: timestamp("received_at").defaultNow(),
+}, (table) => ({
+  messageSidIdx: uniqueIndex("sms_inbound_dedup_message_sid_idx").on(table.messageSid),
+}));
+
 // Message Reactions - Emoji reactions on messages (like iMessage tapbacks)
 export const messageReactions = pgTable("message_reactions", {
   id: serial("id").primaryKey(),
