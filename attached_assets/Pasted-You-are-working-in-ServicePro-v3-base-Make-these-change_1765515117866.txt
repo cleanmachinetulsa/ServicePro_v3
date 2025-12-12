@@ -1,0 +1,63 @@
+You are working in ServicePro_v3-base. Make these changes carefully and DO NOT break prod SMS.
+
+GOALS
+A) Fix sms inbound dedupe table properly (no more “relation does not exist” and no more SQL syntax errors).
+B) Fix SMS “forgetting/repeating” caused by stale smsBookingState not resetting when a new booking starts or when service changes.
+C) Stop saying “you’ll receive final confirmation shortly” unless a booking is actually created. When user selects a slot, deterministically book it (create the calendar event / appointment) and send a real confirmation + notify owner.
+
+STEP 1 — DEDUPE TABLE MIGRATION (REQUIRED)
+1) Find where smsInboundDedup is defined (likely shared/schema.ts) and what the actual table name is supposed to be.
+2) Create a Drizzle migration that creates the table in the correct schema with the correct name and a UNIQUE constraint/index on (tenantId, messageSid) or at minimum messageSid, depending on how tenant isolation is implemented.
+   - Columns: id, tenantId, messageSid, fromNumber, toNumber, receivedAt (timestamp)
+   - IMPORTANT: do NOT name any column “from” or “to”. Use fromNumber/toNumber.
+3) Ensure migration runs in your normal migration flow. If this repo has a migrations folder, add the migration there. If it uses drizzle-kit, follow existing pattern.
+
+STEP 2 — REMOVE BROKEN “ENSURE TABLE” SQL
+1) Find server/services/smsInboundDedup.ts (or similar). If there is any “ensureTable()” that runs raw CREATE TABLE SQL, delete it OR make it safe.
+2) The dedupe service should:
+   - Query/insert into the dedupe table
+   - If table truly missing (should not happen after migration), log ONE WARN and fail-open WITHOUT throwing (but do NOT try to auto-create with raw SQL).
+3) Keep logs:
+   - [SMS INBOUND] sid=...
+   - [SMS DEDUPE] Duplicate inbound ignored sid=...
+   - [SMS DEDUPE] WARN dedupe unavailable (fail-open)  (only once per process boot; use a module-level flag)
+
+STEP 3 — FIX STATE DRIFT (THE REAL “FORGETTING”)
+1) Locate where smsBookingState is stored (conversation.behaviorSettings.smsBookingState).
+2) Implement a “booking session reset” rule BEFORE building the LLM prompt:
+   Reset smsBookingState when ANY of these are true:
+   - The inbound message clearly starts a new booking (“book”, “schedule”, “need an appointment”, etc.) AND the last booking session is older than X hours OR is already “completed”.
+   - The user explicitly names a service that differs from smsBookingState.service (e.g. “interior detail” vs “full detail”). In that case: keep address if present, but reset service-specific fields, offeredSlots, selectedSlot, and any “stage” markers.
+3) Add a log:
+   - [SMS STATE] Reset booking state: reason=<...> prev_service=<...> new_service=<...>
+
+STEP 4 — STOP FAKE CONFIRMATIONS; BOOK FOR REAL WHEN SLOT IS CHOSEN
+1) Find the deterministic slot selection logic you added (the branch that detects “9am”, “first one”, etc).
+2) When slot selection is detected AND you have enough required fields (service, address confirmed, vehicle if required by your business rules):
+   - Call the REAL booking function/tool used in this codebase (search for scheduling tool that actually creates an appointment / calendar event).
+     Examples might be: create_booking, book_appointment, schedule_appointment, create_calendar_event, confirm_slot, etc.
+   - If booking succeeds:
+     - Send SMS confirmation with: service, date/time, address, and “Reply CHANGE to reschedule”.
+     - Notify the business owner phone (BUSINESS_OWNER_PERSONAL_PHONE) via SMS with a short alert including customer number + booking details.
+     - Persist smsBookingState.stage = "booked" and store bookingId/calendarEventId.
+   - If booking fails:
+     - Send SMS: “I couldn’t finalize that slot automatically — want me to try the next option or a different day?” (no fake “confirmation shortly”)
+3) Ensure outbound confirmation is saved to the conversation messages table like other AI replies.
+
+STEP 5 — VERIFY / ACCEPTANCE TESTS
+Add/confirm logs so we can verify in one run:
+- [SMS CONTEXT] loaded_messages=...
+- [SMS STATE] Reset booking state...
+- [SMS DEDUPE] Duplicate inbound ignored...
+- [SCHEDULING] Booking created eventId=... OR booking failed reason=...
+- [OWNER NOTIFY] sent=true/false
+
+Then run typecheck/build if project has it. Do not leave any TODOs.
+
+DELIVERABLE
+Commit all changes. Summarize exactly:
+- migration filename
+- table name
+- files edited
+- what function performs the booking creation
+- the exact SMS confirmation text format
