@@ -18,6 +18,8 @@ import {
   createResetBookingState,
   getSessionContextWindowStart,
   detectUpsellResponse,
+  detectEmailAddress,
+  detectSkipEmail,
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
@@ -275,6 +277,64 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       // If no booking found, continue to normal flow
     }
     
+    // === EMAIL CONFIRMATION STAGE (after booking) ===
+    if (smsBookingState.stage === 'booked' && smsBookingState.emailStage === 'asking') {
+      const detectedEmail = detectEmailAddress(Body);
+      const skipEmail = detectSkipEmail(Body);
+      
+      if (detectedEmail) {
+        // Save email to customer record
+        try {
+          await tenantDb.update(customers).set({ email: detectedEmail }).where(
+            tenantDb.withTenantFilter(customers, eq(customers.phone, From))
+          );
+          
+          // Send confirmation email
+          const { sendBookingConfirmationEmail } = await import('../emailService');
+          const bookingTimeStr = smsBookingState.chosenSlotLabel || 'Scheduled';
+          const subject = `Booking Confirmation - ${smsBookingState.service || 'Auto Detail'}`;
+          const emailBody = `Hi! Your booking is confirmed:\n\nService: ${smsBookingState.service}\nTime: ${bookingTimeStr}\nAddress: ${smsBookingState.address}\n\nThank you for choosing us!`;
+          
+          try {
+            await sendBookingConfirmationEmail(detectedEmail, subject, emailBody);
+            console.log(`[EMAIL] confirmation_sent=true email=${detectedEmail} phone=${From}`);
+          } catch (emailErr) {
+            console.error(`[EMAIL] confirmation_failed email=${detectedEmail}:`, emailErr);
+            // Don't fail - email is non-blocking
+          }
+          
+          // Mark email stage complete
+          await updateSmsBookingState(tenantDb, conversation.id, { emailStage: 'done', customerEmail: detectedEmail });
+          
+          const emailReply = truncateSmsResponse(`Perfect — email confirmation sent to ${detectedEmail}. 👍`);
+          await addMessage(tenantDb, conversation.id, emailReply, 'ai');
+          twimlResponse.message(emailReply);
+          console.log(`[EMAIL] collected=true phone=${From} email=${detectedEmail}`);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        } catch (emailErr) {
+          console.error(`[EMAIL] save_failed phone=${From}:`, emailErr);
+          // Continue anyway - ask again
+        }
+      } else if (skipEmail) {
+        // Customer skipped email
+        await updateSmsBookingState(tenantDb, conversation.id, { emailStage: 'done' });
+        const skipReply = truncateSmsResponse(`No problem! Booking confirmed. Reply CHANGE if you need to reschedule.`);
+        await addMessage(tenantDb, conversation.id, skipReply, 'ai');
+        twimlResponse.message(skipReply);
+        console.log(`[EMAIL] skipped=true phone=${From}`);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      } else {
+        // Invalid response - ask again
+        const emailReply = truncateSmsResponse(`I didn't get that. Please reply with your email (e.g., name@example.com) or SKIP.`);
+        await addMessage(tenantDb, conversation.id, emailReply, 'ai');
+        twimlResponse.message(emailReply);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      }
+    }
+    
     // 3. Check for DETERMINISTIC slot selection BEFORE calling LLM
     const slotSelection = detectSlotSelection(Body, smsBookingState);
     
@@ -471,11 +531,32 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               recordPersisted = false;
             }
             
-            // Step 5: Send customer confirmation SMS (ONLY if eventId exists)
+            // Step 5: Prepare confirmation SMS and check if customer has email for optional email confirmation
+            const hasCustomerEmail = conversation.email && conversation.email.length > 0;
+            
             if (needsConfirmation) {
               deterministicReply = `You're all set for ${slotSelection.chosenSlotLabel}! I'll text you closer to the date to confirm. Reply CHANGE to reschedule.`;
             } else {
               deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
+            }
+            
+            // Add email confirmation prompt if no email on record
+            if (!hasCustomerEmail) {
+              const emailPrompt = truncateSmsResponse(`\nWant an email confirmation too? Reply with your email, or reply SKIP.`);
+              deterministicReply += ` ${emailPrompt}`;
+              // Mark email stage as asking
+              await updateSmsBookingState(tenantDb, conversation.id, { emailStage: 'asking' });
+            } else {
+              // Already have email - send email now
+              try {
+                const { sendBookingConfirmationEmail } = await import('../emailService');
+                const subject = `Booking Confirmation - ${smsBookingState.service || 'Auto Detail'}`;
+                const emailBody = `Hi! Your booking is confirmed:\n\nService: ${smsBookingState.service}\nTime: ${slotSelection.chosenSlotLabel}\nAddress: ${smsBookingState.address}\n\nThank you!`;
+                await sendBookingConfirmationEmail(conversation.email, subject, emailBody);
+                console.log(`[EMAIL] confirmation_sent=true email=${conversation.email} phone=${From}`);
+              } catch (emailErr) {
+                console.error(`[EMAIL] confirmation_failed:`, emailErr);
+              }
             }
             
             // Step 6: Send owner notification (ONLY if eventId exists)
