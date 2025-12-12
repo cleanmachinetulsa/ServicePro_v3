@@ -17,6 +17,7 @@ import {
   shouldResetBookingState,
   createResetBookingState,
   getSessionContextWindowStart,
+  detectUpsellResponse,
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
@@ -300,14 +301,50 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         await addMessage(tenantDb, conversation.id, truncatedMsg, 'ai');
         twimlResponse.message(truncatedMsg);
         console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=choosing_slot action=ask_service`);
-      } else {
-        // Have all required fields - CREATE REAL BOOKING
+      } else if (smsBookingState.stage === 'offering_upsells') {
+        // === UPSELL STAGE: Handle YES/NO response ===
+        const upsellResponse = detectUpsellResponse(Body);
+        
+        if (upsellResponse) {
+          console.log('[UPSELL] customer_response=' + upsellResponse);
+          
+          if (upsellResponse === 'yes') {
+            // Mark selected upsells (store the IDs shown)
+            await updateSmsBookingState(tenantDb, conversation.id, {
+              selectedUpsells: smsBookingState.lastUpsellOfferIdsShown || [],
+              declinedUpsells: false,
+            });
+            console.log(`[UPSELL] accepted offerIds=${smsBookingState.lastUpsellOfferIdsShown?.join(',') || 'none'}`);
+          } else {
+            // Customer declined
+            await updateSmsBookingState(tenantDb, conversation.id, {
+              declinedUpsells: true,
+              selectedUpsells: [],
+            });
+            console.log('[UPSELL] declined');
+          }
+          
+          // Proceed to booking (moved to below)
+        } else {
+          // Invalid response - ask again
+          const upsellReply = truncateSmsResponse("I didn't catch that. Would you like to add the service? Reply YES or NO.");
+          await addMessage(tenantDb, conversation.id, upsellReply, 'ai');
+          twimlResponse.message(upsellReply);
+          console.log(`[SMS TRACE] sid=${MessageSid} from=${From} stage=offering_upsells action=ask_again`);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+      }
+      
+      // Have all required fields OR just answered upsells - CREATE REAL BOOKING
+      if (smsBookingState.service && smsBookingState.address && slotSelection) {
         console.log('[BOOKING ATTEMPT]', {
           service: smsBookingState.service,
           slot: slotSelection.chosenSlotLabel,
           phone: From,
           address: smsBookingState.address,
           vehicle: smsBookingState.vehicle || 'unknown',
+          selectedUpsells: smsBookingState.selectedUpsells || [],
         });
         
         let bookingSuccess = false;
@@ -315,6 +352,40 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         let bookingError = '';
         let recordPersisted = false;
         let ownerNotified = false;
+        let appointmentId = 0;
+        
+        // Check if we should offer upsells first (only once per session)
+        if (!smsBookingState.stage?.includes('offering_upsells') && !smsBookingState.declinedUpsells && !smsBookingState.selectedUpsells?.length) {
+          try {
+            const { getTopUpsellsForServiceName } = await import('../upsellService');
+            const topUpsells = await getTopUpsellsForServiceName(tenantDb, smsBookingState.service || '', 2);
+            
+            if (topUpsells.length > 0) {
+              // Build upsell prompt
+              const offerName = topUpsells[0].name;
+              const offerPrice = topUpsells[0].price ? `+$${topUpsells[0].price}` : '';
+              const upsellPrompt = truncateSmsResponse(`Quick question — want to add ${offerName} ${offerPrice}? Reply YES or NO.`);
+              
+              // Store offer IDs and move to upsell stage
+              await updateSmsBookingState(tenantDb, conversation.id, {
+                stage: 'offering_upsells',
+                lastUpsellOfferIdsShown: topUpsells.map(u => u.id),
+              });
+              
+              await addMessage(tenantDb, conversation.id, upsellPrompt, 'ai');
+              twimlResponse.message(upsellPrompt);
+              console.log(`[UPSELL] offers_shown=${topUpsells.length} offerIds=${topUpsells.map(u => u.id).join(',')}`);
+              console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=offering_upsells action=show_offers`);
+              res.type('text/xml').send(twimlResponse.toString());
+              return;
+            } else {
+              console.log('[UPSELL] skipping (none applicable)');
+            }
+          } catch (upsellErr) {
+            console.error('[UPSELL] error fetching offers:', upsellErr);
+            // Continue to booking anyway
+          }
+        }
         
         try {
           // Step 1: Attempt calendar booking
@@ -359,10 +430,23 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             console.log(`[BOOKING RESULT] success=false reason=missing_eventid eventId=null`);
             deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
           } else {
-            // Step 3: Only if eventId exists, mark booking complete
+            // Step 3: Only if eventId exists, mark booking complete and record upsells
             await updateSmsBookingState(tenantDb, conversation.id, {
               stage: 'booked',
             });
+            
+            // Store selected upsells in appointmentUpsells (if appointment was found)
+            if (appointmentId && smsBookingState.selectedUpsells?.length) {
+              try {
+                const { createAppointmentUpsell } = await import('../upsellService');
+                for (const offerId of smsBookingState.selectedUpsells) {
+                  await createAppointmentUpsell(tenantDb, appointmentId, offerId);
+                }
+                console.log(`[UPSELL] recorded_to_appointment offerId_count=${smsBookingState.selectedUpsells.length}`);
+              } catch (recordErr) {
+                console.error('[UPSELL] failed to record appointment upsells:', recordErr);
+              }
+            }
             
             // Step 4: Persist booking record
             const bookingStartTime = new Date(slotSelection.chosenSlotIso || new Date().toISOString());
@@ -406,7 +490,10 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                 });
                 const vehicleStr = smsBookingState.vehicle ? ` • Vehicle: ${smsBookingState.vehicle}` : '';
                 const confirmStr = needsConfirmation ? ' (needs confirm)' : '';
-                const ownerMsg = `📱 BOOKING${confirmStr}: ${smsBookingState.service}\n${bookingTimeStr} at ${smsBookingState.address}\nCustomer: ${From}${vehicleStr}`;
+                const upsellsStr = (smsBookingState.selectedUpsells && smsBookingState.selectedUpsells.length > 0) 
+                  ? ` • Upsells: ${smsBookingState.selectedUpsells.join(', ')}` 
+                  : '';
+                const ownerMsg = `📱 BOOKING${confirmStr}: ${smsBookingState.service}\n${bookingTimeStr} at ${smsBookingState.address}\nCustomer: ${From}${vehicleStr}${upsellsStr}`;
                 
                 const twilioClient = (await import('twilio')).default(
                   process.env.TWILIO_ACCOUNT_SID,
@@ -418,7 +505,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                   body: ownerMsg,
                 });
                 ownerNotified = true;
-                console.log(`[OWNER NOTIFY] sent=true eventId=${bookingEventId} phone=${ownerPhone}`);
+                console.log(`[OWNER NOTIFY] sent=true eventId=${bookingEventId} phone=${ownerPhone} upsells=${smsBookingState.selectedUpsells?.length || 0}`);
               } else if (!ownerPhone) {
                 console.log('[OWNER NOTIFY] sent=false reason=no_phone_configured');
               } else {

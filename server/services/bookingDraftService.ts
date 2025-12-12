@@ -25,7 +25,7 @@ export interface SmsBookingState {
   lastOfferedSlots?: Array<{ label: string; iso?: string }>;
   chosenSlotLabel?: string;
   chosenSlotIso?: string;
-  stage?: string; // 'selecting_service', 'confirming_address', 'choosing_slot', 'booked'
+  stage?: string; // 'selecting_service', 'confirming_address', 'choosing_slot', 'offering_upsells', 'booked'
   lastResetReason?: string; // For tracking why state was reset
   lastResetTimestamp?: number; // For detecting stale bookings
   // Session tracking - prevents old history from poisoning new bookings
@@ -36,6 +36,10 @@ export interface SmsBookingState {
   // Availability horizon expansion (for smart slot presentation)
   horizonDays?: number; // Default 10, max 90. Set by parseAvailabilityHorizonDays
   lastAvailabilityMeta?: Record<string, any>; // Store minimal meta like rangeStart, rangeEnd, earliestIso
+  // Upsell tracking
+  lastUpsellOfferIdsShown?: number[]; // Offer IDs already shown in this session (prevent repeats)
+  selectedUpsells?: number[]; // Upsell offer IDs customer selected (accepted)
+  declinedUpsells?: boolean; // Customer declined all upsells
 }
 
 interface HistoryMessage {
@@ -55,6 +59,25 @@ const TIME_PATTERNS = [
   { pattern: /\b3\s*(?:pm|:00\s*pm?|oclock|o'clock)?\b/i, hour: 15 },
   { pattern: /\b4\s*(?:pm|:00\s*pm?|oclock|o'clock)?\b/i, hour: 16 },
 ];
+
+/**
+ * Detect YES/NO response (deterministic, no LLM)
+ */
+export function detectUpsellResponse(userText: string): 'yes' | 'no' | null {
+  const text = userText.toLowerCase().trim();
+  
+  // YES patterns
+  if (/^(yes|yep|yeah|yea|ok|okay|sure|absolutely|fine|good|let's do it|add it|include|yes please)\b/i.test(text)) {
+    return 'yes';
+  }
+  
+  // NO patterns
+  if (/^(no|nope|nah|not now|skip|decline|no thanks|later|next time)\b/i.test(text)) {
+    return 'no';
+  }
+  
+  return null;
+}
 
 /**
  * Detect if user text is selecting one of the previously offered slots
