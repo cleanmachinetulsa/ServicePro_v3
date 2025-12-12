@@ -313,7 +313,8 @@ export default function AdminPortRecovery() {
 
   const stats = previewData?.stats;
   const campaigns = campaignsData?.campaigns || [];
-  const activeCampaign = campaigns.find(c => c.status === 'draft' || c.status === 'running');
+  // Prioritize draft campaign (for editing) over running campaign
+  const activeCampaign = campaigns.find(c => c.status === 'draft') || campaigns.find(c => c.status === 'running');
   const runs = historyData?.runs || [];
   const currentCampaign = campaignConfigData?.campaign;
 
