@@ -14,9 +14,12 @@ import {
   getSmsBookingState,
   updateSmsBookingState,
   getSmsBookingStateSummary,
+  shouldResetBookingState,
+  createResetBookingState,
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
+import { handleBook } from '../calendarApi';
 
 export const twilioTestSmsRouter = Router();
 
@@ -158,9 +161,22 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
     // 1. Load persisted SMS booking state from database
-    const persistedState = await getSmsBookingState(tenantDb, conversation.id);
+    let persistedState = await getSmsBookingState(tenantDb, conversation.id);
     
-    // 2. Extract fresh state from conversation history and merge with persisted
+    // 2. Check if we need to reset state (new booking or service changed)
+    const resetCheck = shouldResetBookingState(Body, persistedState);
+    if (resetCheck.shouldReset) {
+      console.log(`[SMS STATE] Reset booking state: reason=${resetCheck.reason} prev_service=${persistedState.service || 'none'} new_service=${resetCheck.newService || 'none'}`);
+      const newState = createResetBookingState(
+        resetCheck.reason || 'unknown',
+        persistedState.address, // Preserve address on service change
+        resetCheck.newService
+      );
+      await updateSmsBookingState(tenantDb, conversation.id, newState);
+      persistedState = newState;
+    }
+    
+    // 3. Extract fresh state from conversation history and merge with persisted
     const historyState = extractSmsBookingStateFromHistory(conversationHistory);
     const smsBookingState: SmsBookingState = {
       ...historyState,
@@ -188,13 +204,104 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       let deterministicReply: string;
       if (!smsBookingState.address) {
         deterministicReply = `Perfect — I've got you down for ${slotSelection.chosenSlotLabel}. What's the address where we'll be working?`;
+        await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
+        twimlResponse.message(deterministicReply);
+      } else if (!smsBookingState.service) {
+        deterministicReply = `Got it, ${slotSelection.chosenSlotLabel}. What service are you interested in?`;
+        await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
+        twimlResponse.message(deterministicReply);
       } else {
-        // Have address, confirm the booking
-        deterministicReply = `Great! I have you scheduled for ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. We'll send a confirmation shortly!`;
+        // Have all required fields - CREATE REAL BOOKING
+        console.log('[SCHEDULING] Attempting to create booking...', {
+          service: smsBookingState.service,
+          slot: slotSelection.chosenSlotLabel,
+          address: smsBookingState.address,
+          phone: From,
+        });
+        
+        try {
+          // Create mock request/response for handleBook
+          const bookingReq = {
+            body: {
+              name: conversation.customerName || 'SMS Customer',
+              phone: From,
+              address: smsBookingState.address,
+              service: smsBookingState.service,
+              time: slotSelection.chosenSlotIso || new Date().toISOString(),
+              vehicles: smsBookingState.vehicle ? [{ description: smsBookingState.vehicle }] : [],
+              notes: `Booked via SMS. Slot: ${slotSelection.chosenSlotLabel}`,
+              smsConsent: true,
+            }
+          };
+          
+          let bookingSuccess = false;
+          let bookingError = '';
+          
+          const bookingRes = {
+            status: (code: number) => ({
+              json: (data: any) => {
+                if (code === 200 && data.success) {
+                  bookingSuccess = true;
+                  console.log(`[SCHEDULING] Booking created eventId=${data.eventId || 'unknown'}`);
+                } else {
+                  bookingError = data.message || 'Unknown error';
+                  console.log(`[SCHEDULING] Booking failed reason=${bookingError}`);
+                }
+              }
+            }),
+            json: (data: any) => {
+              if (data.success) {
+                bookingSuccess = true;
+                console.log(`[SCHEDULING] Booking created eventId=${data.eventId || 'unknown'}`);
+              } else {
+                bookingError = data.message || 'Unknown error';
+              }
+            }
+          };
+          
+          await handleBook(bookingReq, bookingRes);
+          
+          if (bookingSuccess) {
+            // Mark booking as complete
+            await updateSmsBookingState(tenantDb, conversation.id, {
+              stage: 'booked',
+            });
+            
+            // Real confirmation SMS
+            deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
+            
+            // Notify business owner
+            try {
+              const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+              if (ownerPhone) {
+                const twilioClient = (await import('twilio')).default(
+                  process.env.TWILIO_ACCOUNT_SID,
+                  process.env.TWILIO_AUTH_TOKEN
+                );
+                await twilioClient.messages.create({
+                  to: ownerPhone,
+                  from: To,
+                  body: `NEW BOOKING: ${smsBookingState.service} on ${slotSelection.chosenSlotLabel}. Customer: ${From}. Address: ${smsBookingState.address}`,
+                });
+                console.log('[OWNER NOTIFY] sent=true');
+              } else {
+                console.log('[OWNER NOTIFY] sent=false reason=no_owner_phone');
+              }
+            } catch (notifyErr) {
+              console.error('[OWNER NOTIFY] sent=false error:', notifyErr);
+            }
+          } else {
+            // Booking failed - offer alternatives without fake confirmation
+            deterministicReply = `I couldn't finalize that slot automatically — want me to try the next available option or a different day?`;
+          }
+        } catch (bookingErr) {
+          console.error('[SCHEDULING] Booking failed with exception:', bookingErr);
+          deterministicReply = `I couldn't finalize that slot automatically — want me to try the next available option or a different day?`;
+        }
+        
+        await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
+        twimlResponse.message(deterministicReply);
       }
-      
-      await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
-      twimlResponse.message(deterministicReply);
       
       console.log('[SMS DRAFT] Deterministic slot response sent');
       res.type('text/xml').send(twimlResponse.toString());
