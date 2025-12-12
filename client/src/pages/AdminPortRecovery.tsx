@@ -300,6 +300,7 @@ export default function AdminPortRecovery() {
       setSettingsOpen(false);
       queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/campaign'] });
       queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/admin/preview'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/port-recovery/campaigns'] });
     },
     onError: (error: any) => {
       toast({
