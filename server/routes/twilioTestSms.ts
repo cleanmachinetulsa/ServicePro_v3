@@ -22,6 +22,7 @@ import {
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
 import { handleBook } from '../calendarApi';
 import { truncateSmsResponse } from '../utils/smsLength';
+import { parseAvailabilityHorizonDays, buildAvailabilitySms, type AvailabilitySlot } from '../services/smsSlotPresentationService';
 
 export const twilioTestSmsRouter = Router();
 
@@ -151,6 +152,14 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
     // 1. Load persisted SMS booking state from database
     let persistedState = await getSmsBookingState(tenantDb, conversation.id);
+    
+    // Parse availability horizon expansion from customer message
+    const parsedHorizonDays = parseAvailabilityHorizonDays(Body);
+    if (parsedHorizonDays !== null) {
+      const clampedDays = Math.max(7, Math.min(parsedHorizonDays, 90));
+      persistedState.horizonDays = clampedDays;
+      console.log(`[SLOT OFFER] Horizon expanded to ${clampedDays} days (parsed from message)`);
+    }
     
     // Get session context window start BEFORE building context
     const sessionStartedAt = getSessionContextWindowStart(persistedState);
@@ -369,9 +378,25 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       const offeredSlots = extractSlotsFromMessage(aiReply);
       if (offeredSlots.length > 0) {
         console.log('[SMS DRAFT] Persisting offered slots:', offeredSlots.length);
+        // Also persist the current horizon days and metadata
+        const currentHorizon = persistedState.horizonDays || 10;
+        const includePreview = !!(offeredSlots.length > 0 && 
+          offeredSlots[0].iso && 
+          new Date(offeredSlots[0].iso) > new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+        
         await updateSmsBookingState(tenantDb, conversation.id, {
           lastOfferedSlots: offeredSlots,
+          horizonDays: currentHorizon,
+          lastAvailabilityMeta: {
+            offeredAt: new Date().toISOString(),
+            count: offeredSlots.length,
+            hasPreview: includePreview,
+          },
         });
+        
+        // High-signal logging for slot offer tracking
+        console.log(`[SLOT OFFER] horizonDays=${currentHorizon} primarySlots=${offeredSlots.length} preview=${includePreview} earliest=${offeredSlots[0]?.iso || 'unknown'} options=${Math.min(offeredSlots.length, 3)}`);
+        console.log(`[SLOT OFFER] smsChars=${truncateSmsResponse(aiReply).length}`);
       }
     }
     

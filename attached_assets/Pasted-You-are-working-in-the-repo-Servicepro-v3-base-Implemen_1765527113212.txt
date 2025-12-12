@@ -1,0 +1,75 @@
+You are working in the repo "Servicepro-v3-base". Implement smart, concise, psychology-guided SMS slot offering.
+
+GOALS:
+- Default: show a ~7–10 day “relevant window” (not every day listed). Emphasize earliest slot.
+- Also include a very short “next week” preview (1 line) ONLY when earliest availability is >7 days away OR customer asks.
+- Support horizon expansion up to 90 days when customer asks (“next month”, “2 months”, “in March”, “3 months”, etc).
+- Do NOT spam individual times. Provide:
+  (a) a range-based summary (“Tue–Thu starting around 9am; late morning openings 11–1”)
+  (b) 2–3 concrete pickable options (numbered) for deterministic selection.
+- Ensure SMS-safe output: final message <= 300 chars (single segment), always.
+
+IMPLEMENTATION:
+1) Create a new file: server/services/smsSlotPresentationService.ts
+   Export:
+   - parseAvailabilityHorizonDays(text: string): number | null
+   - buildAvailabilitySms(params): { smsText: string, options: Array<{label:string, startIso:string}> , meta: any }
+     Where params includes:
+     - availableSlots: Array<{ startIso: string, endIso?: string }>
+     - nowIso: string
+     - defaultHorizonDays: number (use 10)
+     - maxHorizonDays: number (use 90)
+     - includeNextWeekPreview: boolean
+     - timezone: string (use tenant tz if you have it; else America/Chicago)
+   Behavior:
+   - Sort slots by startIso ascending.
+   - Compute earliest slot.
+   - Compute “primary window” = [now, now + horizonDays]
+   - If no slots in primary window, extend window to 14 days automatically (still concise).
+   - Build a summary string:
+     - Mention earliest day/time: “Earliest: Tue Dec 16 ~9:00am”
+     - Mention day span for the week window: “Also openings Tue–Thu (AM starts 9–11).”
+     - Mention “late morning/early afternoon” if any slots fall between 11:00–14:00.
+   - If includeNextWeekPreview:
+     - Add 1 short preview line: “Next week: Mon–Wed (AM starts).”
+   - Always include 2–3 numbered pick options from the earliest slots in the primary window (or earliest overall if empty).
+     Example options labels:
+       1) Tue 9:00
+       2) Tue 11:00
+       3) Thu 9:00
+   - End with a guided question:
+     “Which works best—reply 1/2/3, or tell me a day + ‘morning’/‘late morning’/‘early afternoon’.”
+
+2) Wire this into server/routes/twilioTestSms.ts
+   - Find where you currently format the available slots for the AI / customer.
+   - BEFORE asking the model to write a long response, produce this deterministic availability SMS using buildAvailabilitySms().
+   - Store these option startIso values into your existing “offered slots” persistence (whatever you use now) so that replying “1” or “Tue 9” maps deterministically.
+
+3) Update booking draft state (where you store smsBookingState):
+   - Add fields:
+     - horizonDays?: number (default 10)
+     - lastAvailabilityMeta?: any (store minimal meta like rangeStart, rangeEnd, earliestIso)
+   - On inbound message:
+     - Call parseAvailabilityHorizonDays(Body). If it returns a number:
+       - clamp 7..90
+       - set state.horizonDays = that
+       - set includeNextWeekPreview = true
+     - If Body contains “next week”, “following week”, “week after”, set horizonDays=14 and include preview.
+     - If Body contains “this week” set horizonDays=7.
+
+4) Ensure SMS length:
+   - Use your existing truncateSmsResponse() (or create one) and apply it to the final deterministic message AND any AI-generated message at the final TwiML send path.
+
+5) Logging:
+   Add high-signal logs (single-line) so we can verify behavior:
+   - [SLOT OFFER] horizonDays=10 primarySlots=12 preview=true earliest=2025-12-16T15:00:00Z options=3
+   - [SLOT OFFER] smsChars=247
+
+Do not remove existing tool calling. This is an additional deterministic “slot offering” layer that keeps the conversation short.
+
+After implementation, run TypeScript build and ensure no errors.
+
+Return a summary of files changed and what to test:
+- Ask “Can I book interior detail?”
+- If earliest is >7 days out, confirm the “next week” preview appears
+- Ask “What about next month?” and confirm horizon expands without listing every day.

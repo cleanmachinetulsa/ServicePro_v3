@@ -1,0 +1,66 @@
+Implement booking confirmation requirements for far-future bookings (up to 90 days) with reminder-confirm workflow.
+
+GOALS:
+- Allow booking creation up to 90 days out (already implied by availability horizon).
+- For bookings scheduled >= 14 days away: mark as "needs_confirmation".
+- Send reminders:
+  - 7 days before: “Reply CONFIRM to keep your appointment”
+  - 48 hours before: “Reply CONFIRM or RESCHEDULE”
+- If customer replies CONFIRM: mark confirmed and stop confirmation reminders.
+- Auto-cancel is OPTIONAL and OFF by default. If enabled via env AUTO_CANCEL_UNCONFIRMED=1:
+  - If not confirmed by 24 hours before, cancel the calendar event and notify owner + customer.
+- Always notify owner when booking is created AND when booking is auto-canceled (if enabled).
+
+IMPLEMENTATION DETAILS:
+1) Update your booking persistence model:
+   - Locate the table/model you use for bookings (or appointments).
+   - Add columns/fields:
+     - needsConfirmation boolean default false
+     - confirmedAt timestamp nullable
+     - confirmationToken optional (can be blank; not required)
+     - lastConfirmationReminderAt timestamp nullable
+     - autoCanceledAt timestamp nullable
+   If you don’t have a bookings table and you only rely on Google Calendar events:
+   - Create a lightweight table “sms_booking_records” keyed by tenant_id + phone + event_id with the fields above plus start_time, service, address.
+   - Use Drizzle schema in shared/schema.ts.
+
+2) Update booking creation path:
+   - In server/routes/twilioTestSms.ts wherever you call handleBook()/create calendar event:
+     - After success (eventId exists), compute daysUntil = (startTime - now)/days
+     - If daysUntil >= 14:
+       - set needsConfirmation=true on the booking record
+       - Include in confirmation SMS:
+         “You’re all set for {Day} {Time}. I’ll text you closer to confirm.”
+     - If daysUntil < 14:
+       - normal confirmation SMS.
+
+3) Add SMS command handling for CONFIRM / RESCHEDULE:
+   - In inbound SMS handler, BEFORE LLM:
+     - If Body matches /^confirm\b/i:
+       - Find the most recent upcoming booking record for that phone+tenant within next 90 days that needsConfirmation=true and confirmedAt is null
+       - Set confirmedAt=now, needsConfirmation=false
+       - Reply deterministically: “Confirmed ✅ See you {Day} at {Time}. Reply CHANGE if you need to reschedule.”
+     - If Body matches /^reschedule\b|^change\b/i:
+       - Mark booking as “reschedule_requested” (add field) and route to availability offering flow for that service.
+
+4) Add a small cron job/service:
+   - Create server/services/bookingConfirmationMonitor.ts
+     - Runs every hour
+     - Finds upcoming bookings with needsConfirmation=true and confirmedAt null
+     - If now is ~7 days before and lastConfirmationReminderAt is null or older than 6 days -> send reminder SMS
+     - If now is ~48 hours before and lastConfirmationReminderAt older than 36h -> send reminder SMS
+     - If AUTO_CANCEL_UNCONFIRMED=1 and now is within 24 hours and still unconfirmed -> cancel event + mark autoCanceledAt + notify owner + customer
+   - Plug into your existing cron bootstrap file (where unanswered monitor / campaign jobs run).
+   - Make sure it is tenant-scoped and safe.
+
+5) Logging (must-have):
+   - [CONFIRM MONITOR] tenant=<id> due7d=3 due48h=2 autocancel=0
+   - [CONFIRM] phone=... eventId=... confirmedAt=...
+   - [AUTO CANCEL] phone=... eventId=... reason=unconfirmed_24h
+
+6) SMS length:
+   - Apply truncateSmsResponse() to these deterministic reminder/confirm replies too.
+
+Return a summary + exact tests:
+- Create a booking 20+ days out -> verify needsConfirmation set and reminder text style
+- Send “CONFIRM” -> verify it marks confirmed and monitor stops reminding.
