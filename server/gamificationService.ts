@@ -159,6 +159,7 @@ export async function getLoyaltyGuardrailSettings(_tenantId: string = 'root'): P
 
 /**
  * Award points to a customer
+ * FAIL-OPEN: Never throws, guards points value, returns safe failure result
  */
 export async function awardPoints(
   tenantDb: TenantDb,
@@ -169,6 +170,12 @@ export async function awardPoints(
   description: string
 ): Promise<{ success: boolean; currentPoints: number }> {
   try {
+    // Guard: Validate amount is a valid positive number
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      console.log(`[LOYALTY] awardPoints skip invalid points amount=${amount} customerId=${customerId}`);
+      return { success: false, currentPoints: 0 };
+    }
+    
     // Get or create loyalty points record for customer
     let customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
     
@@ -212,8 +219,8 @@ export async function awardPoints(
       success: true, 
       currentPoints: updatedPoints.points 
     };
-  } catch (error) {
-    console.error("Error awarding points:", error);
+  } catch (error: any) {
+    console.log(`[LOYALTY] awardPoints exception customerId=${customerId} err=${error.message}`);
     return { 
       success: false, 
       currentPoints: 0 

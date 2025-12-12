@@ -230,6 +230,28 @@ function isValidE164(phone: string): boolean {
 }
 
 /**
+ * Check if phone should be skipped due to invalid patterns
+ * Skips test numbers (555), invalid placeholders (XXXX), etc.
+ */
+function shouldSkipPhone(phone: string | null): boolean {
+  if (!phone) return false;
+  // Skip test 555 pattern: /^\+?1?555/
+  if (/^\+?1?555/.test(phone)) return true;
+  // Skip placeholder patterns
+  if (/XXXX|xxx/i.test(phone)) return true;
+  return false;
+}
+
+/**
+ * Validate email format
+ * Basic regex: something@something.something
+ */
+function isValidEmail(email: string | null): boolean {
+  if (!email) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/**
  * Build consolidated target list from all customer sources
  * Returns unique customers by normalized phone/email
  */
@@ -651,6 +673,7 @@ function interpolateTemplate(
 /**
  * Send SMS for a target
  * SP-REWARDS-CAMPAIGN-TOKENS: Now supports personalized rewards link
+ * Prefers MessagingServiceSid if available, prevents to=from
  */
 async function sendPortRecoverySms(
   target: PortRecoveryTarget,
@@ -668,6 +691,11 @@ async function sendPortRecoverySms(
     return { success: false, error: 'Twilio client not configured' };
   }
   
+  // Prevent to=from (Twilio error: "To and From cannot be the same")
+  if (target.phone === fromNumber) {
+    return { success: false, error: 'to_equals_from' };
+  }
+  
   try {
     let messageBody = interpolateTemplate(template, target, ctaUrl, points, rewardsLink);
     
@@ -675,13 +703,24 @@ async function sendPortRecoverySms(
       messageBody += `\n\nView your rewards: ${rewardsLink}`;
     }
     
-    const message = await twilioClient.messages.create({
-      to: target.phone,
-      from: fromNumber,
-      body: messageBody,
-    });
+    // Prefer MessagingServiceSid if configured
+    const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
     
-    return { success: true, twilioSid: message.sid };
+    if (messagingServiceSid) {
+      const message = await twilioClient.messages.create({
+        messagingServiceSid,
+        to: target.phone,
+        body: messageBody,
+      });
+      return { success: true, twilioSid: message.sid };
+    } else {
+      const message = await twilioClient.messages.create({
+        to: target.phone,
+        from: fromNumber,
+        body: messageBody,
+      });
+      return { success: true, twilioSid: message.sid };
+    }
   } catch (error: any) {
     console.error(`[PORT RECOVERY] SMS failed for ${target.phone}:`, error.message);
     return { success: false, error: error.message };
@@ -875,7 +914,11 @@ export async function runPortRecoveryBatch(
     if (!smsEnabled) {
       smsSkipReason = 'sms_disabled_campaign';
     }
-    // Step 3: Check phone validity
+    // Step 3: Check for invalid phone patterns (555, XXXX)
+    else if (shouldSkipPhone(target.phone)) {
+      smsSkipReason = 'invalid_phone';
+    }
+    // Step 4: Check phone validity
     else if (!normalizedPhone) {
       smsSkipReason = 'invalid_phone_format';
     }
@@ -967,31 +1010,45 @@ export async function runPortRecoveryBatch(
     }
     
     // PHASE 3: EMAIL FALLBACK - only if SMS wasn't sent successfully
-    if (!sentViaSms && emailEnabled && targetEmail) {
-      const targetWithEmail = { ...target, email: targetEmail };
-      const emailResult = await sendPortRecoveryEmail(
-        targetWithEmail,
-        emailSubject,
-        emailHtmlTemplate,
-        ctaUrl,
-        campaign.pointsPerCustomer
-      );
-      
-      if (emailResult.success) {
-        updates.emailStatus = 'sent';
-        emailSent++;
+    let emailAttempted = false;
+    let emailOk = false;
+    let emailSkipReason = '';
+    
+    if (!sentViaSms && emailEnabled) {
+      if (!targetEmail) {
+        emailSkipReason = 'no_email_address';
+      } else if (!isValidEmail(targetEmail)) {
+        emailSkipReason = 'invalid_email';
       } else {
-        updates.emailStatus = 'failed';
-        updates.emailErrorMessage = emailResult.error;
+        emailAttempted = true;
+        const targetWithEmail = { ...target, email: targetEmail };
+        const emailResult = await sendPortRecoveryEmail(
+          targetWithEmail,
+          emailSubject,
+          emailHtmlTemplate,
+          ctaUrl,
+          campaign.pointsPerCustomer
+        );
+        
+        if (emailResult.success) {
+          updates.emailStatus = 'sent';
+          emailSent++;
+          emailOk = true;
+        } else {
+          updates.emailStatus = 'failed';
+          updates.emailErrorMessage = emailResult.error;
+          emailOk = false;
+        }
       }
     } else if (!emailEnabled) {
-      updates.emailStatus = 'skipped';
+      emailSkipReason = 'email_disabled';
     } else if (sentViaSms) {
+      emailSkipReason = 'sms_sent_successfully';
+    }
+    
+    if (!emailAttempted && emailSkipReason) {
       updates.emailStatus = 'skipped';
-      updates.emailErrorMessage = 'Skipped - SMS sent successfully';
-    } else {
-      updates.emailStatus = 'skipped';
-      updates.emailErrorMessage = 'No email address available';
+      updates.emailErrorMessage = emailSkipReason;
     }
     
     // PHASE 4: POINTS AWARDING - Fail-open, NEVER throws, guards points value
@@ -1037,7 +1094,7 @@ export async function runPortRecoveryBatch(
     }
     
     // ONE SUMMARY LOG per recipient with all signals
-    console.log(`[PORT RECOVERY] recipient phone_raw=${target.phone} phone=${normalizedPhone || 'null'} customerId=${customerId || 'none'} sms_attempted=${smsAttempted} sms_ok=${smsOk} sms_skip_reason=${smsSkipReason} points_attempted=${pointsAttempted} points_ok=${pointsOk} points_skip_reason=${pointsSkipReason}`);
+    console.log(`[PORT RECOVERY] recipient phone_raw=${target.phone} phone=${normalizedPhone || 'null'} customerId=${customerId || 'none'} sms_attempted=${smsAttempted} sms_ok=${smsOk} sms_skip_reason=${smsSkipReason} email_attempted=${emailAttempted} email_ok=${emailOk} email_skip_reason=${emailSkipReason} points_attempted=${pointsAttempted} points_ok=${pointsOk} points_skip_reason=${pointsSkipReason}`);
     
     // Update target record
     await tenantDb
