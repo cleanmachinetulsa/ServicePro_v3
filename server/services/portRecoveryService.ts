@@ -467,8 +467,6 @@ export async function getCampaignTargets(
   return { targets, total };
 }
 
-const PORT_RECOVERY_CAMPAIGN_KEY = 'port-recovery-2025-12-11';
-
 /**
  * Grant points to a customer for port recovery
  * Uses idempotent awardCampaignPointsOnce to prevent duplicate awards
@@ -487,11 +485,14 @@ async function grantPortRecoveryPoints(
       return { success: false, currentPoints: 0, wasSkipped: true };
     }
 
+    // Use dynamic campaign key based on the actual campaign ID (not hardcoded)
+    const campaignKey = `port-recovery-campaign-${campaignId}`;
+
     const result = await awardCampaignPointsOnce(
       tenantDb,
       customerId,
       points,
-      PORT_RECOVERY_CAMPAIGN_KEY,
+      campaignKey,
       'port_recovery',
       campaignId,
       `Port recovery apology - ${points} loyalty points`
