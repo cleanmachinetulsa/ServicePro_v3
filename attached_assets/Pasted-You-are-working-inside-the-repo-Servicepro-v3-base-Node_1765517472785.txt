@@ -1,0 +1,84 @@
+You are working inside the repo "Servicepro-v3-base" (Node/TS + Drizzle + Neon + Twilio + Google Calendar).
+
+GOAL: Make SMS booking reliable, quiet, and truth-based. Fix repeating questions by implementing booking-session boundaries and disabling noisy background services by default. Ensure SMS replies never exceed safe length. Ensure booking confirmation is only sent when a real Google Calendar event was created (eventId exists). Make logs high-signal.
+
+CONSTRAINTS:
+- Do NOT add new dependencies.
+- Keep changes minimal but correct.
+- Must be multi-tenant safe (tenant isolation preserved).
+- Prefer feature flags/env vars to control background jobs.
+- If database schema changes are required, update Drizzle schema and ensure migrations/db:push path is correct.
+- Provide a short "How to Verify" section in code comments or /docs.
+
+TASKS:
+
+(1) QUIET MODE FOR DEBUGGING
+Create a single feature flag env var: PLATFORM_BG_JOBS_ENABLED (default "0"/false).
+- Any cron/background service should only start when PLATFORM_BG_JOBS_ENABLED=1.
+- Keep SMS inbound handling ALWAYS enabled.
+- Apply this gating to: sheets import/backfill cron, unanswered monitor, campaign schedulers, sms template auto-init loops, damage assessment monitor, timeout monitor, etc. If you can’t gate a service cleanly, at least reduce it to log once and no-op when disabled.
+
+(2) SMS INBOUND DEDUPE - CORRECT + QUIET
+Ensure dedupe table exists via Drizzle schema, not raw SQL.
+- Table name: sms_inbound_dedup
+- Columns: id, tenantId, messageSid, fromNumber, toNumber, receivedAt
+- Unique constraint: (tenantId, messageSid) OR unique on messageSid if globally unique in your architecture (prefer tenant+sid).
+- Remove any "ensureTableExists" raw SQL that can syntax error.
+- In smsInboundDedup service: if table missing, log ONE warning once per process and proceed fail-open (do not crash SMS).
+
+(3) BOOKING SESSION BOUNDARY (THIS IS THE REAL FIX FOR REPEATS)
+Implement booking sessions so old conversation history/state doesn’t poison new bookings.
+Approach:
+- Store bookingSessionId and bookingSessionStartedAt in conversation.behaviorSettings.smsBookingState (or sibling keys).
+- When user expresses NEW booking intent (e.g., “book”, “schedule”, “interior detail”, etc.), start a new bookingSessionId UUID and set bookingSessionStartedAt=now.
+- When building SMS LLM context, only include messages AFTER bookingSessionStartedAt (plus optionally the last 2-3 messages before for continuity).
+- Reset smsBookingState fields when starting a new session, but preserve verified address if it was confirmed very recently (e.g., within last 24h) AND the phone matches.
+- Add logs:
+  [SMS SESSION] started id=<...> reason=<...>
+  [SMS SESSION] context_window_start=<ts> included_messages=<n>
+
+(4) TRUTH-BASED BOOKING CONFIRMATION
+In the SMS booking flow:
+- Only send “You’re all set / booked / confirmed” if the booking creation returns a real calendar eventId and the DB booking row is created.
+- If Google Calendar auth fails or booking fails, respond with a graceful fallback: “I couldn’t finalize that automatically — reply YES and I’ll have a human confirm, or pick another slot: 1/2/3.”
+- Add log lines:
+  [SCHEDULING] booking_attempt service=<...> slot=<...>
+  [SCHEDULING] booking_created eventId=<...>
+  [SCHEDULING] booking_failed reason=<...> err=<...>
+
+(5) SMS LENGTH + LIST CONTROL
+Add a utility to hard-cap SMS responses:
+- Max 300 characters (safe single-segment-ish) OR if you already have segment logic, enforce <= 2 segments total.
+- If response is too long, automatically shorten:
+  - prefer removing fluff
+  - reduce slot lists to max 3 options
+  - remove long addresses (use short form: “3318 S 73rd W Ave”)
+- Add log:
+  [SMS LENGTH] truncated from <n> to <n>
+
+FILES / LOCATIONS:
+- Find current Twilio inbound SMS route (likely server/routes/twilioTestSms.ts or equivalent).
+- Find sms context builder service (server/services/smsConversationContextService.ts or similar).
+- Find background services init/startup area (server/index.ts or server/bootstrap).
+- Find Drizzle schema file (shared/schema.ts).
+- Find smsInboundDedup service (server/services/smsInboundDedup.ts).
+
+DELIVERABLE:
+- Implement changes across the codebase with correct imports/types.
+- Ensure TS compiles.
+- Ensure app boots with QUIET MODE default (PLATFORM_BG_JOBS_ENABLED not set) and logs are calm.
+- Add a short docs note in docs/SMS_DEBUGGING.md describing:
+  - env vars to set
+  - how to run db push
+  - how to confirm a booking is real (eventId + calendar check)
+  - how to interpret the new logs
+
+After edits, print:
+- list of files changed
+- key env vars
+- exact verification steps
+
+IMPORTANT:
+- Do NOT claim “booking confirmed” unless eventId exists.
+- Do NOT include raw SQL table creation.
+- Preserve tenant isolation and do not mix tenants in template init or session logic.

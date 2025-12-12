@@ -42,6 +42,7 @@ export interface SmsConversationContext {
  * @param params.toPhone - Business phone
  * @param params.tenantDb - Tenant database connection
  * @param params.behaviorSettings - Conversation behavior settings (optional)
+ * @param params.sessionStartedAt - Session start timestamp (only include messages after this)
  * @returns Complete context ready for LLM
  */
 export async function buildSmsLlmContext(
@@ -52,9 +53,10 @@ export async function buildSmsLlmContext(
     toPhone: string;
     tenantDb: any;
     behaviorSettings?: Record<string, any>;
+    sessionStartedAt?: number; // Unix timestamp - filter messages to current session
   }
 ): Promise<SmsConversationContext> {
-  const { tenantId, conversationId, fromPhone, toPhone, tenantDb, behaviorSettings } = params;
+  const { tenantId, conversationId, fromPhone, toPhone, tenantDb, behaviorSettings, sessionStartedAt } = params;
   
   // === Load conversation history ===
   const allMessages = await tenantDb
@@ -73,8 +75,25 @@ export async function buildSmsLlmContext(
   const deduplicatedMessages = Array.from(seenContentMap.values())
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   
+  // === SESSION BOUNDARY: Filter to current session + 2-3 continuity messages ===
+  let filteredMessages = deduplicatedMessages;
+  if (sessionStartedAt && sessionStartedAt > 0) {
+    const sessionStart = new Date(sessionStartedAt);
+    
+    // Find messages after session start
+    const sessionMsgs = deduplicatedMessages.filter((m: any) => m.timestamp >= sessionStart);
+    
+    // Include up to 3 messages before session for continuity
+    const preSessionMsgs = deduplicatedMessages.filter((m: any) => m.timestamp < sessionStart);
+    const continuityMsgs = preSessionMsgs.slice(-3);
+    
+    filteredMessages = [...continuityMsgs, ...sessionMsgs];
+    
+    console.log(`[SMS SESSION] context_window_start=${sessionStart.toISOString()} included_messages=${filteredMessages.length} (${continuityMsgs.length} continuity + ${sessionMsgs.length} session)`);
+  }
+  
   // === Format messages for LLM ===
-  const recentMessages = deduplicatedMessages.map((msg: typeof messagesTable.$inferSelect) => ({
+  const recentMessages = filteredMessages.map((msg: typeof messagesTable.$inferSelect) => ({
     content: msg.content,
     role: msg.sender === 'customer' ? ('user' as const) : ('assistant' as const),
     sender: msg.sender,

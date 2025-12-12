@@ -16,10 +16,12 @@ import {
   getSmsBookingStateSummary,
   shouldResetBookingState,
   createResetBookingState,
+  getSessionContextWindowStart,
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
 import { handleBook } from '../calendarApi';
+import { truncateSmsResponse } from '../utils/smsLength';
 
 export const twilioTestSmsRouter = Router();
 
@@ -146,6 +148,13 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       customerLanguage = conversation.customerLanguage as SupportedLanguage;
     }
     
+    // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
+    // 1. Load persisted SMS booking state from database
+    let persistedState = await getSmsBookingState(tenantDb, conversation.id);
+    
+    // Get session context window start BEFORE building context
+    const sessionStartedAt = getSessionContextWindowStart(persistedState);
+    
     // === Build SMS LLM context with canonical context builder ===
     const smsContext = await buildSmsLlmContext({
       tenantId,
@@ -154,26 +163,43 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       toPhone: To,
       tenantDb,
       behaviorSettings: conversation.behaviorSettings as Record<string, any>,
+      sessionStartedAt, // Filter to current booking session
     });
     
     // Use formatted messages from context builder
     const conversationHistory = smsContext.recentMessages;
     
-    // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
-    // 1. Load persisted SMS booking state from database
-    let persistedState = await getSmsBookingState(tenantDb, conversation.id);
-    
     // 2. Check if we need to reset state (new booking or service changed)
-    const resetCheck = shouldResetBookingState(Body, persistedState);
+    const resetCheck = shouldResetBookingState(Body, persistedState, From);
     if (resetCheck.shouldReset) {
       console.log(`[SMS STATE] Reset booking state: reason=${resetCheck.reason} prev_service=${persistedState.service || 'none'} new_service=${resetCheck.newService || 'none'}`);
+      // Let createResetBookingState decide what to preserve (address is auto-preserved if recently verified)
       const newState = createResetBookingState(
         resetCheck.reason || 'unknown',
-        persistedState.address, // Preserve address on service change
-        resetCheck.newService
+        undefined, // Let the function decide based on verification metadata
+        resetCheck.newService,
+        From,
+        persistedState
       );
       await updateSmsBookingState(tenantDb, conversation.id, newState);
       persistedState = newState;
+      
+      // Rebuild context with new session window
+      const newSessionStart = getSessionContextWindowStart(newState);
+      if (newSessionStart) {
+        // Re-fetch context with new session window
+        const updatedContext = await buildSmsLlmContext({
+          tenantId,
+          conversationId: conversation.id,
+          fromPhone: From,
+          toPhone: To,
+          tenantDb,
+          behaviorSettings: conversation.behaviorSettings as Record<string, any>,
+          sessionStartedAt: newSessionStart,
+        });
+        // Note: We don't reassign conversationHistory here since current message 
+        // was just added and will be included in the session
+      }
     }
     
     // 3. Extract fresh state from conversation history and merge with persisted
@@ -336,11 +362,14 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       }
     }
     
-    await addMessage(tenantDb, conversation.id, aiReply || "Thanks for your message!", 'ai');
+    // Apply SMS length control to ensure response fits in safe segment count
+    const truncatedReply = truncateSmsResponse(aiReply || "Thanks for your message!");
     
-    twimlResponse.message(aiReply || "Thanks for your message! We'll follow up shortly.");
+    await addMessage(tenantDb, conversation.id, truncatedReply, 'ai');
     
-    console.log('[TWILIO TEST SMS INBOUND] AI reply sent:', aiReply?.substring(0, 100));
+    twimlResponse.message(truncatedReply);
+    
+    console.log('[TWILIO TEST SMS INBOUND] AI reply sent:', truncatedReply.substring(0, 100));
     console.log("[TWILIO TEST SMS INBOUND] Responding with TwiML:", twimlResponse.toString());
     
     res.type('text/xml').send(twimlResponse.toString());

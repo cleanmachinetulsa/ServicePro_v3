@@ -28,6 +28,11 @@ export interface SmsBookingState {
   stage?: string; // 'selecting_service', 'confirming_address', 'choosing_slot', 'booked'
   lastResetReason?: string; // For tracking why state was reset
   lastResetTimestamp?: number; // For detecting stale bookings
+  // Session tracking - prevents old history from poisoning new bookings
+  bookingSessionId?: string;
+  bookingSessionStartedAt?: number; // Unix timestamp - only include messages after this
+  verifiedAddressPhone?: string; // Phone that confirmed the address - preserve if recent
+  verifiedAddressTimestamp?: number; // When address was last confirmed
 }
 
 interface HistoryMessage {
@@ -292,13 +297,25 @@ export function getSmsBookingStateSummary(state: SmsBookingState): string {
   return parts.length > 0 ? parts.join(', ') : 'empty';
 }
 
+// Session staleness thresholds
+const SESSION_STALE_HOURS = 24;
+const ADDRESS_VERIFICATION_HOURS = 24;
+
+/**
+ * Generate a short session ID for tracking
+ */
+function generateSessionId(): string {
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+}
+
 /**
  * Determine if booking state should be reset based on user message
  * Returns reset reason or null if no reset needed
  */
 export function shouldResetBookingState(
   userMessage: string, 
-  currentState: SmsBookingState
+  currentState: SmsBookingState,
+  fromPhone?: string
 ): { shouldReset: boolean; reason?: string; newService?: string } {
   const text = userMessage.toLowerCase().trim();
   
@@ -310,15 +327,19 @@ export function shouldResetBookingState(
   
   // Check if this is a new booking intent when state is already 'booked' or stale
   const hasBookingIntent = BOOKING_INTENT_PATTERNS.some(p => p.test(text));
-  const STALE_HOURS = 24;
-  const staleThreshold = Date.now() - (STALE_HOURS * 60 * 60 * 1000);
-  const isStale = currentState.lastResetTimestamp && currentState.lastResetTimestamp < staleThreshold;
-  const isBooked = currentState.stage === 'booked';
+  const staleThreshold = Date.now() - (SESSION_STALE_HOURS * 60 * 60 * 1000);
   
-  if (hasBookingIntent && (isBooked || isStale)) {
+  // Stale session detection - use session start time if available, else fall back to reset timestamp
+  const sessionTimestamp = currentState.bookingSessionStartedAt || currentState.lastResetTimestamp || 0;
+  const isStale = sessionTimestamp > 0 && sessionTimestamp < staleThreshold;
+  const isBooked = currentState.stage === 'booked';
+  const hasNoSession = !currentState.bookingSessionId;
+  
+  // Start new session if: booking intent + (completed/stale/no session)
+  if (hasBookingIntent && (isBooked || isStale || hasNoSession)) {
     return { 
       shouldReset: true, 
-      reason: isBooked ? 'new_booking_after_completed' : 'stale_session'
+      reason: isBooked ? 'new_booking_after_completed' : (isStale ? 'stale_session' : 'new_session')
     };
   }
   
@@ -351,20 +372,67 @@ export function shouldResetBookingState(
 }
 
 /**
- * Reset booking state, optionally preserving certain fields
+ * Reset booking state with new session, preserving address by default unless explicitly clearing
+ * 
+ * Address preservation rules:
+ * - Always preserve if explicitly passed
+ * - Preserve if old address exists and was set within 24h (even without verification metadata)
+ * - Clear only if oldState is missing or address was set more than 24h ago
  */
 export function createResetBookingState(
   reason: string,
   preserveAddress?: string,
-  newService?: string
+  newService?: string,
+  fromPhone?: string,
+  oldState?: SmsBookingState
 ): SmsBookingState {
+  const now = Date.now();
+  const sessionId = generateSessionId();
+  
+  // Preserve address more liberally - only clear if truly stale
+  let addressToPreserve = preserveAddress;
+  if (!addressToPreserve && oldState?.address) {
+    const addressStaleThreshold = now - (ADDRESS_VERIFICATION_HOURS * 60 * 60 * 1000);
+    
+    // Check verified timestamp first, fall back to lastResetTimestamp, then session start
+    const addressTimestamp = oldState.verifiedAddressTimestamp || 
+      oldState.lastResetTimestamp || 
+      oldState.bookingSessionStartedAt || 0;
+    
+    const isAddressRecent = addressTimestamp > addressStaleThreshold || addressTimestamp === 0;
+    const samePhone = !fromPhone || !oldState.verifiedAddressPhone || 
+      oldState.verifiedAddressPhone === fromPhone;
+    
+    // Preserve address if it's recent OR if no timestamp info (assume fresh)
+    if (isAddressRecent && samePhone) {
+      addressToPreserve = oldState.address;
+      console.log(`[SMS SESSION] Preserving address: ${addressToPreserve?.substring(0, 25)}...`);
+    } else {
+      console.log(`[SMS SESSION] Clearing stale address (timestamp=${addressTimestamp} threshold=${addressStaleThreshold})`);
+    }
+  }
+  
+  console.log(`[SMS SESSION] started id=${sessionId} reason=${reason}`);
+  
   return {
     service: newService,
-    address: preserveAddress,
+    address: addressToPreserve,
     lastResetReason: reason,
-    lastResetTimestamp: Date.now(),
+    lastResetTimestamp: now,
     stage: newService ? 'selecting_service' : undefined,
+    bookingSessionId: sessionId,
+    bookingSessionStartedAt: now,
+    verifiedAddressPhone: addressToPreserve ? (fromPhone || oldState?.verifiedAddressPhone) : undefined,
+    verifiedAddressTimestamp: addressToPreserve ? (oldState?.verifiedAddressTimestamp || now) : undefined,
   };
+}
+
+/**
+ * Get session context window start timestamp
+ * Returns the timestamp after which messages should be included in LLM context
+ */
+export function getSessionContextWindowStart(state: SmsBookingState): number | undefined {
+  return state.bookingSessionStartedAt;
 }
 
 export async function buildBookingDraftFromConversation(
