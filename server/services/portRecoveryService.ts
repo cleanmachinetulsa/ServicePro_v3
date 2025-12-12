@@ -1244,10 +1244,10 @@ export async function updateCampaign(
     .filter(([, value]) => value !== undefined)
     .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
   
-  console.log(`[PORT RECOVERY] cleanUpdates for campaign ${campaignId}:`, {
-    ...cleanUpdates,
-    smsTemplate: cleanUpdates.smsTemplate ? `${(cleanUpdates.smsTemplate as string).substring(0, 50)}...` : undefined,
-  });
+  console.log(`[PORT RECOVERY] updateCampaign() CALLED for campaign ${campaignId}`);
+  console.log(`[PORT RECOVERY] cleanUpdates keys:`, Object.keys(cleanUpdates));
+  console.log(`[PORT RECOVERY] cleanUpdates.smsTemplate:`, 
+    cleanUpdates.smsTemplate ? `"${(cleanUpdates.smsTemplate as string).substring(0, 80)}..."` : 'UNDEFINED/NULL');
   
   const [campaign] = await tenantDb
     .update(portRecoveryCampaigns)
@@ -1258,8 +1258,8 @@ export async function updateCampaign(
     .where(eq(portRecoveryCampaigns.id, campaignId))
     .returning();
   
-  console.log(`[PORT RECOVERY] Campaign ${campaignId} updated successfully, new smsTemplate:`, 
-    campaign?.smsTemplate ? `${campaign.smsTemplate.substring(0, 50)}...` : 'null/empty');
+  console.log(`[PORT RECOVERY] ✅ Campaign ${campaignId} UPDATE returned:`, 
+    campaign ? `smsTemplate="${campaign.smsTemplate ? campaign.smsTemplate.substring(0, 80) : 'NULL'}..."` : 'NO CAMPAIGN RETURNED');
   
   return campaign || null;
 }
