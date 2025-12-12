@@ -389,18 +389,42 @@ export async function resolveCustomerIdentity(
 
   // If no customer found, create a minimal one
   if (!customer) {
-    const [newCustomer] = await db
-      .insert(customers)
-      .values({
-        tenantId,
-        name: normalizedEmail || normalizedPhone || 'New Customer',
-        phone: normalizedPhone,
-        email: normalizedEmail,
-      })
-      .returning();
-    
-    customer = newCustomer;
-    console.log(`[CustomerIdentity] Created new customer ID ${customer.id} for ${normalizedPhone || normalizedEmail}`);
+    try {
+      const [newCustomer] = await db
+        .insert(customers)
+        .values({
+          tenantId,
+          name: normalizedEmail || normalizedPhone || 'New Customer',
+          phone: normalizedPhone,
+          email: normalizedEmail,
+        })
+        .returning();
+      
+      customer = newCustomer;
+      console.log(`[CustomerIdentity] Created new customer ID ${customer.id} for ${normalizedPhone || normalizedEmail}`);
+    } catch (error: any) {
+      // Handle duplicate phone constraint (23505) - customer may have been created by another process
+      if (error.code === '23505' && error.constraint === 'customers_phone_unique' && normalizedPhone) {
+        console.log(`[CustomerIdentity] Duplicate phone detected, fetching existing customer: ${normalizedPhone}`);
+        const existing = await db
+          .select()
+          .from(customers)
+          .where(and(
+            eq(customers.tenantId, tenantId),
+            eq(customers.phone, normalizedPhone)
+          ))
+          .limit(1);
+        
+        if (existing[0]) {
+          customer = existing[0];
+          console.log(`[CustomerIdentity] Using existing customer ID ${customer.id} for ${normalizedPhone}`);
+        } else {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
   }
 
   // Ensure identity record exists (upsert)
