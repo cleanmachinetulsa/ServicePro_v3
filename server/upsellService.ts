@@ -87,6 +87,34 @@ export async function getUpsellOfferById(tenantDb: TenantDb, id: number): Promis
 }
 
 /**
+ * Get top N applicable upsells for a service name (SMS booking)
+ * Returns active, applicable offers sorted by displayOrder
+ */
+export async function getTopUpsellsForServiceName(
+  tenantDb: TenantDb, 
+  serviceName: string,
+  limit: number = 2
+): Promise<UpsellOffer[]> {
+  try {
+    const allActive = await getActiveUpsellOffers(tenantDb);
+    
+    // Filter offers applicable to this service
+    const applicable = allActive.filter(offer => {
+      if (!offer.applicableServiceIds || offer.applicableServiceIds.length === 0) {
+        return true; // Applies to all services
+      }
+      return offer.applicableServiceIds.includes(serviceName);
+    });
+    
+    // Return top N by displayOrder (already sorted from getActiveUpsellOffers)
+    return applicable.slice(0, limit);
+  } catch (error) {
+    console.error('Error getting top upsells for service:', error);
+    return [];
+  }
+}
+
+/**
  * Deletes an upsell offer
  */
 export async function deleteUpsellOffer(tenantDb: TenantDb, id: number): Promise<boolean> {
