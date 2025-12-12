@@ -1,0 +1,70 @@
+REPLIT QUICK DROP-IN (Timezone Fix + Owner/Admin SMS consistency)
+
+Goal:
+Fix the timezone / time display mismatch in owner/admin SMS notifications and any human-facing time strings related to bookings.
+The system currently logs/uses UTC (e.g. 2025-12-12T18:46:51.763Z) but owner SMS sometimes displays the wrong local time or wrong day.
+We want:
+- Keep storage/logic in UTC
+- Format ALL human-facing times (owner SMS + customer SMS confirmations + emails where applicable) using tenant timezone, default "America/Chicago"
+- Do NOT break existing booking creation or calendar integration
+- Add minimal, high-signal logs to verify formatting
+
+Instructions:
+1) Search the codebase for where the owner/admin SMS is constructed/sent. Likely keywords:
+   - "BUSINESS_OWNER_PERSONAL_PHONE"
+   - "OWNER NOTIFY"
+   - "admin"
+   - "notify"
+   - "Booked via SMS"
+   - "Appointment scheduled"
+   - "New booking"
+   - "CHANGE to reschedule"
+   - "sendSms(" or "twilio.messages.create"
+   Identify the exact file(s) and function(s) that build the message body.
+
+2) Implement a single shared helper utility used everywhere for formatting:
+   Create: server/utils/timeFormat.ts
+   Export:
+     - getTenantTimeZone(tenant?: any): string  // returns tenant.timezone or process.env.DEFAULT_TIMEZONE or "America/Chicago"
+     - formatLocalDateTime(date: Date | string, tz: string, style?: "short" | "long"): string
+       Use date-fns-tz if already installed; if not installed, add a minimal dependency OR use Intl.DateTimeFormat with timeZone.
+       Desired output examples:
+         "Sat Dec 13 at 9:00 AM"
+         "Fri Dec 12 at 12:46 PM"
+       Always include day + time for bookings.
+
+3) Apply the helper to owner/admin SMS:
+   - Wherever the admin SMS currently uses:
+       new Date(), toLocaleString(), Date.toString(), or raw ISO timestamps
+     replace with:
+       formatLocalDateTime(eventStart, tz, "long")
+   - Ensure the message uses the BOOKED SLOT time, not "now".
+   - If the booking payload has a "slot" string and also a Date/ISO, prefer the real Date/ISO for correctness.
+
+4) Apply the helper to customer-facing confirmation SMS/email too (only where time is shown):
+   - If you find customer confirmation uses a local slot string already, leave it.
+   - If it formats Date objects, enforce tenant timezone.
+
+5) Add verification logs (do not log secrets):
+   In the booking success path (where eventId exists), add ONE log line:
+     [TIMEZONE FIX] tenant=<id or slug> tz=<tz> eventStartUtc=<iso> local=<formatted>
+   And for owner notify:
+     [OWNER NOTIFY] tz=<tz> localTime=<formatted> phone=<masked last4>
+
+6) Safety:
+   - Fail-open: If formatting fails, fall back to existing slot string.
+   - Do not change booking logic, only formatting.
+
+7) After changes:
+   - Ensure TypeScript compiles
+   - Run: npm run check
+   - Run: npm run smoke:sms
+   - Provide me a short summary: which files changed, where the owner SMS lives, and 1 example log line showing UTC vs local formatting.
+
+Deliverables:
+- server/utils/timeFormat.ts (new)
+- Modified owner/admin SMS send location(s)
+- Any modified customer confirmation formatting location(s)
+- Added [TIMEZONE FIX] logs
+
+Make the changes now.
