@@ -172,7 +172,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // 2. Check if we need to reset state (new booking or service changed)
     const resetCheck = shouldResetBookingState(Body, persistedState, From);
     if (resetCheck.shouldReset) {
-      console.log(`[SMS STATE] Reset booking state: reason=${resetCheck.reason} prev_service=${persistedState.service || 'none'} new_service=${resetCheck.newService || 'none'}`);
+      console.log(`[SMS STATE] reset=true reason=${resetCheck.reason} prev_service=${persistedState.service || 'none'} new_service=${resetCheck.newService || 'none'}`);
       // Let createResetBookingState decide what to preserve (address is auto-preserved if recently verified)
       const newState = createResetBookingState(
         resetCheck.reason || 'unknown',
@@ -184,22 +184,20 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       await updateSmsBookingState(tenantDb, conversation.id, newState);
       persistedState = newState;
       
-      // Rebuild context with new session window
+      // Rebuild context with new session window - CRITICAL for preventing stale messages
       const newSessionStart = getSessionContextWindowStart(newState);
-      if (newSessionStart) {
-        // Re-fetch context with new session window
-        const updatedContext = await buildSmsLlmContext({
-          tenantId,
-          conversationId: conversation.id,
-          fromPhone: From,
-          toPhone: To,
-          tenantDb,
-          behaviorSettings: conversation.behaviorSettings as Record<string, any>,
-          sessionStartedAt: newSessionStart,
-        });
-        // Note: We don't reassign conversationHistory here since current message 
-        // was just added and will be included in the session
-      }
+      const rebuildContext = await buildSmsLlmContext({
+        tenantId,
+        conversationId: conversation.id,
+        fromPhone: From,
+        toPhone: To,
+        tenantDb,
+        behaviorSettings: conversation.behaviorSettings as Record<string, any>,
+        sessionStartedAt: newSessionStart,
+      });
+      // CRITICAL: Use rebuilt context for this session - NOT stale context
+      conversationHistory = rebuildContext.recentMessages;
+      console.log(`[SMS CONTEXT] Rebuilt after state reset: loaded=${conversationHistory.length} messages`);
     }
     
     // 3. Extract fresh state from conversation history and merge with persisted
@@ -230,12 +228,16 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       let deterministicReply: string;
       if (!smsBookingState.address) {
         deterministicReply = `Perfect — I've got you down for ${slotSelection.chosenSlotLabel}. What's the address where we'll be working?`;
-        await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
-        twimlResponse.message(deterministicReply);
+        const truncatedMsg = truncateSmsResponse(deterministicReply);
+        await addMessage(tenantDb, conversation.id, truncatedMsg, 'ai');
+        twimlResponse.message(truncatedMsg);
+        console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=choosing_slot action=ask_address`);
       } else if (!smsBookingState.service) {
         deterministicReply = `Got it, ${slotSelection.chosenSlotLabel}. What service are you interested in?`;
-        await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
-        twimlResponse.message(deterministicReply);
+        const truncatedMsg = truncateSmsResponse(deterministicReply);
+        await addMessage(tenantDb, conversation.id, truncatedMsg, 'ai');
+        twimlResponse.message(truncatedMsg);
+        console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=choosing_slot action=ask_service`);
       } else {
         // Have all required fields - CREATE REAL BOOKING
         console.log('[SCHEDULING] Attempting to create booking...', {
@@ -261,39 +263,45 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           };
           
           let bookingSuccess = false;
+          let bookingEventId = '';
           let bookingError = '';
           
           const bookingRes = {
             status: (code: number) => ({
               json: (data: any) => {
-                if (code === 200 && data.success) {
+                // CRITICAL: Only claim success if code=200 AND eventId exists
+                if (code === 200 && data.success && data.eventId) {
                   bookingSuccess = true;
-                  console.log(`[SCHEDULING] Booking created eventId=${data.eventId || 'unknown'}`);
+                  bookingEventId = data.eventId;
+                  console.log(`[SCHEDULING] Booking created eventId=${bookingEventId}`);
                 } else {
-                  bookingError = data.message || 'Unknown error';
+                  bookingError = data.message || 'Missing eventId or error code';
                   console.log(`[SCHEDULING] Booking failed reason=${bookingError}`);
                 }
               }
             }),
             json: (data: any) => {
-              if (data.success) {
+              // CRITICAL: Only claim success if success=true AND eventId exists
+              if (data.success && data.eventId) {
                 bookingSuccess = true;
-                console.log(`[SCHEDULING] Booking created eventId=${data.eventId || 'unknown'}`);
+                bookingEventId = data.eventId;
+                console.log(`[SCHEDULING] Booking created eventId=${bookingEventId}`);
               } else {
-                bookingError = data.message || 'Unknown error';
+                bookingError = data.message || 'Missing eventId or error response';
               }
             }
           };
           
           await handleBook(bookingReq, bookingRes);
           
-          if (bookingSuccess) {
+          // STRICT RULE: ONLY send confirmation if we have a real eventId
+          if (bookingSuccess && bookingEventId) {
             // Mark booking as complete
             await updateSmsBookingState(tenantDb, conversation.id, {
               stage: 'booked',
             });
             
-            // Real confirmation SMS
+            // REAL confirmation SMS - only if eventId was created
             deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
             
             // Notify business owner
@@ -309,7 +317,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                   from: To,
                   body: `NEW BOOKING: ${smsBookingState.service} on ${slotSelection.chosenSlotLabel}. Customer: ${From}. Address: ${smsBookingState.address}`,
                 });
-                console.log('[OWNER NOTIFY] sent=true');
+                console.log('[OWNER NOTIFY] sent=true eventId=' + bookingEventId);
               } else {
                 console.log('[OWNER NOTIFY] sent=false reason=no_owner_phone');
               }
@@ -317,16 +325,21 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               console.error('[OWNER NOTIFY] sent=false error:', notifyErr);
             }
           } else {
-            // Booking failed - offer alternatives without fake confirmation
-            deterministicReply = `I couldn't finalize that slot automatically — want me to try the next available option or a different day?`;
+            // Booking failed - DO NOT claim it booked - offer alternatives
+            console.log(`[SCHEDULING] Booking failed: no eventId received reason=${bookingError}`);
+            deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
           }
         } catch (bookingErr) {
           console.error('[SCHEDULING] Booking failed with exception:', bookingErr);
-          deterministicReply = `I couldn't finalize that slot automatically — want me to try the next available option or a different day?`;
+          deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
         }
         
-        await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
-        twimlResponse.message(deterministicReply);
+        const truncatedSlotReply = truncateSmsResponse(deterministicReply);
+        await addMessage(tenantDb, conversation.id, truncatedSlotReply, 'ai');
+        twimlResponse.message(truncatedSlotReply);
+        
+        const action = bookingSuccess && bookingEventId ? 'booked' : (deterministicReply.includes('lock') ? 'booking_failed' : 'offer_slots');
+        console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=${smsBookingState.stage || 'booked'} session_msgs=${conversationHistory.length} action=${action}`);
       }
       
       console.log('[SMS DRAFT] Deterministic slot response sent');
@@ -368,6 +381,11 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     await addMessage(tenantDb, conversation.id, truncatedReply, 'ai');
     
     twimlResponse.message(truncatedReply);
+    
+    // Trace for debugging
+    const hasSlots = smsBookingState.lastOfferedSlots && smsBookingState.lastOfferedSlots.length > 0;
+    const action = hasSlots ? 'offer_slots' : (smsBookingState.address ? 'offer_slots' : (smsBookingState.service ? 'ask_address' : 'ask_service'));
+    console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=${smsBookingState.stage || 'selecting_service'} session_msgs=${conversationHistory.length} action=${action}`);
     
     console.log('[TWILIO TEST SMS INBOUND] AI reply sent:', truncatedReply.substring(0, 100));
     console.log("[TWILIO TEST SMS INBOUND] Responding with TwiML:", twimlResponse.toString());

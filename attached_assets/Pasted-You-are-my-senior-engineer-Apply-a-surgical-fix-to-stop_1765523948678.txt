@@ -1,0 +1,95 @@
+You are my senior engineer. Apply a surgical fix to stop SMS booking from using stale context and to ensure we only claim a booking when we actually created a calendar event.
+
+GOALS
+1) Fix “agent repeating / wrong service” by limiting LLM context to a recent SMS session window (not full history). The logs currently show loaded_messages=122 which is causing stale messages to dominate.
+2) Fix “it says scheduled but didn’t book” by enforcing: we ONLY send “You’re all set / scheduled” if a booking eventId was created successfully. Otherwise we must ask the customer to pick again (or escalate), and log clearly.
+3) Enforce SMS length: keep outgoing SMS <= 300 chars (safe single segment-ish). If more, auto-compress (remove fluff + list fewer slots) and/or split into 2 messages max.
+
+CONSTRAINTS
+- Preserve multi-tenant isolation (wrapTenantDb).
+- Keep current route structure (/api/twilio/sms/inbound and twilioTestSms handler) but refactor safely.
+- Add high-signal logs so I can verify in Replit logs.
+- No breaking schema changes unless absolutely required.
+
+IMPLEMENTATION DETAILS
+
+A) Add “SMS session windowing”
+Create/Update: server/services/smsSessionContextService.ts (or update existing smsConversationContextService.ts if already present)
+Implement a single canonical function:
+  buildSmsSessionContext({ tenantDb, tenantId, conversationId, from, to })
+It must:
+  - Load message history but return TWO things:
+    1) fullCount (for diagnostics)
+    2) sessionMessages used for LLM (the actual context)
+  - Define a session window start time:
+      sessionWindowStart = now - 6 hours (configurable via env SMS_SESSION_HOURS default 6)
+    AND cap max messages:
+      maxMessages = 20 (configurable via env SMS_MAX_CONTEXT_MESSAGES default 20)
+  - sessionMessages = last maxMessages messages that are >= sessionWindowStart.
+  - If that yields < 4 messages, fall back to last 8 messages regardless of time (still capped).
+  - Deduplicate by (role + body + timestamp rounded to minute) to prevent duplicates.
+  - Return previews in logs but do not spam.
+
+Add logs (INFO):
+  [SMS CONTEXT] tenant=<id> conv=<id> full_messages=<n> session_messages=<m> window_hours=<h>
+  [SMS CONTEXT] last_3_session_preview=<role: first 60 chars> x3
+
+IMPORTANT: The LLM MUST ONLY receive sessionMessages, NOT full history.
+
+B) Fix booking state reset + service extraction
+Update booking draft/state logic so that when a new session starts, we clear stale service/vehicle/upsells.
+Rules:
+  - If session is “new” (no messages in last 6 hours OR last message in session is older than 6 hours), reset smsBookingState to a fresh object.
+  - When the user message contains “interior” then service MUST be set to “Interior Detail” (canonical) immediately before LLM call (do not rely on stale state).
+  - If user says “full detail” set service = “Full Detail”.
+  - If user changes service mid-flow, reset stage back to selecting_service and clear slot/offeredSlots.
+
+Add log:
+  [SMS STATE] reset=true reason=<...> prev_service=<...> new_service=<...> stage=<...>
+
+C) Enforce “no fake booking”
+In the SMS inbound handler path where “slot selection detected” happens:
+  - If we detect a slot choice, we must attempt booking creation (handleBook or equivalent).
+  - Only if booking succeeds AND we have eventId do we send:
+      “You’re all set! <service> on <date/time> at <address>. Reply CHANGE to reschedule.”
+    and log:
+      [SCHEDULING] Booking created eventId=<id>
+  - If booking fails (exception OR no eventId), we must NOT claim it booked. Respond:
+      “I couldn’t lock in that time automatically. Want me to try the next available slot?”
+    and log:
+      [SCHEDULING] Booking failed reason=<message>
+  - If booking requires missing fields (e.g., address not confirmed), do not attempt booking; ask for the missing field.
+
+D) SMS length enforcement
+Add util: server/services/smsLengthGuard.ts
+Function:
+  formatSmsResponse(text, { maxChars=300, maxSegments=2 })
+Behavior:
+  - If <= maxChars, return as-is
+  - Else compress by:
+      - Remove emojis
+      - Remove extra sentences
+      - If it contains a list of slots, keep only first 3
+  - If still too long, hard-truncate to maxChars with “…” (do NOT exceed 2 segments)
+Log:
+  [SMS LENGTH] original=<n> final=<m> compressed=<true/false>
+
+Wire this guard right before returning TwiML / sending message.
+
+E) Wire everything in handler
+Update server/routes/twilioTestSms.ts (and/or the real inbound handler) so:
+  - It calls buildSmsSessionContext() and passes ONLY sessionMessages to the LLM.
+  - It applies booking-state reset based on session start.
+  - It applies the no-fake-booking rule.
+  - It applies sms length guard before replying.
+
+F) Verification
+Add a concise “one-line” trace per inbound:
+  [SMS TRACE] sid=<sid> from=<from> service=<service> stage=<stage> session_msgs=<m> action=<ask_service|ask_address|offer_slots|booked|booking_failed>
+
+After implementing, ensure:
+- Build passes
+- No runtime exceptions
+- Behavior fixed: asking for interior detail no longer responds with ceramic/full detail unless user asked it in THIS session window.
+
+Make changes directly in the repo and keep it clean.
