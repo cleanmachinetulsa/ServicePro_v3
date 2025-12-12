@@ -7,6 +7,7 @@ import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq, asc } from 'drizzle-orm';
 import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
 import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
+import { isDuplicateInboundSms, recordProcessedInboundSms } from '../services/smsInboundDedup';
 import { 
   extractSmsBookingStateFromHistory, 
   detectSlotSelection, 
@@ -83,11 +84,17 @@ async function addMessage(tenantDb: any, conversationId: number, content: string
     });
 }
 
-async function handleServiceProInboundSms(req: Request, res: Response) {
+async function handleServiceProInboundSms(req: Request, res: Response, dedupeMessageSid?: string) {
   const twimlResponse = new MessagingResponse();
   
   try {
     const { Body, From, To, MessageSid, NumMedia } = req.body || {};
+    const messageSid = dedupeMessageSid || MessageSid;
+    
+    // Record this MessageSid as processed (idempotent, safe to call)
+    if (messageSid) {
+      void recordProcessedInboundSms(messageSid, From, To, 'root');
+    }
     
     console.log("[TWILIO TEST SMS INBOUND] Parsed fields:", {
       From: (req.body as any)?.From,
@@ -232,13 +239,25 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
 }
 
 twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
-  // DEBUG: Log incoming webhook for troubleshooting
-  console.log(`[/api/twilio/sms/inbound] WEBHOOK RECEIVED - Method: ${req.method}`);
-  console.log(`[/api/twilio/sms/inbound] MessageSid: ${req.body.MessageSid}, From: ${req.body.From}, To: ${req.body.To}`);
-  console.log(`[/api/twilio/sms/inbound] Body: ${req.body.Body?.substring(0, 100) || '(empty)'}`);
-  console.log(`[/api/twilio/sms/inbound] AccountSid: ${req.body.AccountSid}, MessagingServiceSid: ${req.body.MessagingServiceSid || 'none'}`);
+  // Extract MessageSid first for deduplication and logging
+  const messageSid = req.body.MessageSid || req.body.SmsMessageSid;
+  const from = req.body.From;
+  const to = req.body.To;
+  const body = req.body.Body?.substring(0, 80) || '(empty)';
   
-  console.log("[TWILIO SMS INBOUND] Raw body:", req.body);
+  // Diagnostic log at start
+  console.log(`[SMS INBOUND] sid=${messageSid} from=${from} to=${to} body=${body}`);
+  
+  // === IDEMPOTENCY CHECK: Prevent duplicate processing for same MessageSid ===
+  if (messageSid) {
+    const isDuplicate = await isDuplicateInboundSms(messageSid);
+    if (isDuplicate) {
+      console.log(`[SMS DEDUPE] Duplicate inbound ignored sid=${messageSid}`);
+      // Return 200 to stop Twilio retries, but don't process again
+      res.type('text/xml').status(200).send(new MessagingResponse().toString());
+      return;
+    }
+  }
 
   try {
     // HOTFIX-SMS-CM: Clean Machine production number now uses AI Behavior V2 brain
@@ -263,7 +282,7 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
     }
 
     console.log("[TWILIO SMS INBOUND] Routing to ServicePro AI Behavior V2 handler.");
-    return handleServiceProInboundSms(req, res);
+    return handleServiceProInboundSms(req, res, messageSid);
   } catch (err: any) {
     console.error("[TWILIO SMS INBOUND] Unhandled error in router:", err);
     const twimlResponse = new MessagingResponse();
