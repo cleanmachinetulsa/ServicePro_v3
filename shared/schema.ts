@@ -5162,3 +5162,34 @@ export const insertSmsBookingRecordSchema = createInsertSchema(smsBookingRecords
 
 export type SmsBookingRecord = typeof smsBookingRecords.$inferSelect;
 export type InsertSmsBookingRecord = z.infer<typeof insertSmsBookingRecordSchema>;
+
+// ============================================================
+// PORT RECOVERY SMS SEND LOG: Deduplication guard
+// ============================================================
+
+export const portRecoverySmsRemoteSends = pgTable("port_recovery_sms_sends", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  campaignKey: text("campaign_key").notNull(),
+  toPhone: varchar("to_phone", { length: 20 }).notNull(),
+  messageSid: text("message_sid"),
+  status: varchar("status", { length: 20 }).notNull().default("reserved"), // 'reserved' | 'sent' | 'failed'
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  sentAt: timestamp("sent_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueKey: uniqueIndex("port_recovery_sms_sends_unique_key").on(table.tenantId, table.campaignKey, table.toPhone),
+  tenantIdx: index("port_recovery_sms_sends_tenant_idx").on(table.tenantId),
+  campaignIdx: index("port_recovery_sms_sends_campaign_idx").on(table.campaignKey),
+  statusIdx: index("port_recovery_sms_sends_status_idx").on(table.status),
+}));
+
+export const insertPortRecoverySmsRemoteSendSchema = createInsertSchema(portRecoverySmsRemoteSends).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type PortRecoverySmsRemoteSend = typeof portRecoverySmsRemoteSends.$inferSelect;
+export type InsertPortRecoverySmsRemoteSend = z.infer<typeof insertPortRecoverySmsRemoteSendSchema>;
