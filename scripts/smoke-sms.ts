@@ -40,6 +40,18 @@ async function test(name: string, fn: () => Promise<void> | void): Promise<void>
 // Run all tests
 (async () => {
   console.log('\n🔍 SMS Booking Smoke Test\n');
+  
+  // Print database connection info (redacted)
+  try {
+    const dbUrl = process.env.DATABASE_URL;
+    if (dbUrl) {
+      const urlObj = new URL(dbUrl);
+      const redactedUrl = `${urlObj.protocol}//${urlObj.hostname}/${urlObj.pathname.split('/').pop()}`;
+      console.log(`📍 Testing database: ${redactedUrl}\n`);
+    }
+  } catch {
+    // Ignore parsing errors
+  }
 
   // Test 1: DB connectivity
   await test('DB Connectivity', async () => {
