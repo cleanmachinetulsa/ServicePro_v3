@@ -134,13 +134,14 @@ export async function getLastCustomersSheetsSync(tenantId: string) {
 
 /**
  * Initialize the Google Sheets customer auto-sync scheduler
- * Only runs if ENABLE_SHEETS_CUSTOMER_AUTO_SYNC=1
+ * Only runs if ENABLE_SHEETS_CUSTOMER_IMPORT=true
+ * Disabled by default to prevent log spam from duplicate key errors
  */
 export function initializeSheetsCustomerAutoSync() {
-  const isEnabled = process.env.ENABLE_SHEETS_CUSTOMER_AUTO_SYNC === '1';
+  const isEnabled = process.env.ENABLE_SHEETS_CUSTOMER_IMPORT === 'true';
   
   if (!isEnabled) {
-    console.log(`${LOG_PREFIX} Auto-sync DISABLED (set ENABLE_SHEETS_CUSTOMER_AUTO_SYNC=1 to enable)`);
+    console.log(`${LOG_PREFIX} Auto-sync DISABLED by default (set ENABLE_SHEETS_CUSTOMER_IMPORT=true to enable)`);
     return;
   }
   
