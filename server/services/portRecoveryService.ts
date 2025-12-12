@@ -20,6 +20,7 @@ import {
   messages,
   loyaltyPoints,
   pointsTransactions,
+  portRecoverySmsRemoteSends,
   type PortRecoveryCampaign,
   type PortRecoveryTarget,
   type InsertPortRecoveryCampaign,
@@ -671,6 +672,96 @@ function interpolateTemplate(
 }
 
 /**
+ * Check and claim SMS send for a recipient (deduplication guard)
+ * Returns: { shouldSkip: true, skipReason: string } if already successfully sent
+ * Returns: { shouldSkip: false } if safe to attempt send
+ */
+async function checkAndClaimSmsSend(
+  tenantDb: TenantDb,
+  tenantId: string,
+  campaignKey: string,
+  phone: string
+): Promise<{ shouldSkip: boolean; skipReason?: string }> {
+  try {
+    // Try to claim the recipient with atomic insert
+    const [claimed] = await tenantDb
+      .insert(portRecoverySmsRemoteSends)
+      .values({
+        tenantId,
+        campaignKey,
+        toPhone: phone,
+        status: 'reserved',
+      })
+      .onConflictDoNothing()
+      .returning();
+    
+    if (claimed) {
+      // Successfully claimed - safe to send
+      return { shouldSkip: false };
+    }
+    
+    // Already exists - check status
+    const [existing] = await tenantDb
+      .select()
+      .from(portRecoverySmsRemoteSends)
+      .where(
+        and(
+          eq(portRecoverySmsRemoteSends.tenantId, tenantId),
+          eq(portRecoverySmsRemoteSends.campaignKey, campaignKey),
+          eq(portRecoverySmsRemoteSends.toPhone, phone)
+        )
+      )
+      .limit(1);
+    
+    if (existing && (existing.status === 'sent' || existing.messageSid)) {
+      // Already successfully sent - skip
+      return { shouldSkip: true, skipReason: 'already_sent_success' };
+    }
+    
+    // Status is 'failed' or 'reserved' - allow retry
+    return { shouldSkip: false };
+  } catch (error) {
+    console.warn(`[PORT RECOVERY] Dedup check failed for ${phone}:`, error);
+    // Fail open - allow send attempt
+    return { shouldSkip: false };
+  }
+}
+
+/**
+ * Update SMS send status after Twilio attempt
+ */
+async function updateSmsSendStatus(
+  tenantDb: TenantDb,
+  tenantId: string,
+  campaignKey: string,
+  phone: string,
+  success: boolean,
+  messageSid?: string,
+  error?: string
+): Promise<void> {
+  try {
+    await tenantDb
+      .update(portRecoverySmsRemoteSends)
+      .set({
+        status: success ? 'sent' : 'failed',
+        messageSid: success ? messageSid : undefined,
+        sentAt: success ? new Date() : undefined,
+        lastError: error,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(portRecoverySmsRemoteSends.tenantId, tenantId),
+          eq(portRecoverySmsRemoteSends.campaignKey, campaignKey),
+          eq(portRecoverySmsRemoteSends.toPhone, phone)
+        )
+      );
+  } catch (error) {
+    console.warn(`[PORT RECOVERY] Failed to update send status for ${phone}:`, error);
+  }
+}
+
+/**
  * Send SMS for a target
  * SP-REWARDS-CAMPAIGN-TOKENS: Now supports personalized rewards link
  * Prefers MessagingServiceSid if available, prevents to=from
@@ -949,50 +1040,90 @@ export async function runPortRecoveryBatch(
       
       // If no skip reason set yet, we can attempt SMS
       if (!smsSkipReason && hasConsentToSms) {
-        smsAttempted = true;
-        try {
-          const personalizedRewardsLink = generatePersonalizedRewardsLink(
-            tenantBaseUrl,
-            normalizedPhone,
-            tenantId,
-            30
-          );
-          
-          // Create target with normalized phone for sending
-          const targetForSending = { ...target, phone: normalizedPhone };
-          const smsResult = await sendPortRecoverySms(
-            targetForSending,
-            smsTemplate,
-            fromNumber,
-            ctaUrl,
-            campaign.pointsPerCustomer,
-            personalizedRewardsLink
-          );
-          
-          if (smsResult.success) {
-            updates.smsStatus = 'sent';
-            updates.twilioSid = smsResult.twilioSid;
-            smsSent++;
-            sentViaSms = true;
-            smsOk = true;
-          } else {
+        // Check deduplication guard - skip if already successfully sent
+        const dedupCheck = await checkAndClaimSmsSend(
+          tenantDb,
+          tenantId,
+          campaign.campaignKey,
+          normalizedPhone
+        );
+        
+        if (dedupCheck.shouldSkip) {
+          // Already sent successfully - skip this recipient
+          updates.smsStatus = 'skipped';
+          updates.smsErrorMessage = dedupCheck.skipReason;
+          smsSkipReason = dedupCheck.skipReason;
+          // Don't count as attempt
+        } else {
+          // Safe to attempt send
+          smsAttempted = true;
+          try {
+            const personalizedRewardsLink = generatePersonalizedRewardsLink(
+              tenantBaseUrl,
+              normalizedPhone,
+              tenantId,
+              30
+            );
+            
+            // Create target with normalized phone for sending
+            const targetForSending = { ...target, phone: normalizedPhone };
+            const smsResult = await sendPortRecoverySms(
+              targetForSending,
+              smsTemplate,
+              fromNumber,
+              ctaUrl,
+              campaign.pointsPerCustomer,
+              personalizedRewardsLink
+            );
+            
+            // Update dedup log with result
+            await updateSmsSendStatus(
+              tenantDb,
+              tenantId,
+              campaign.campaignKey,
+              normalizedPhone,
+              smsResult.success,
+              smsResult.twilioSid,
+              smsResult.error
+            );
+            
+            if (smsResult.success) {
+              updates.smsStatus = 'sent';
+              updates.twilioSid = smsResult.twilioSid;
+              smsSent++;
+              sentViaSms = true;
+              smsOk = true;
+            } else {
+              updates.smsStatus = 'failed';
+              updates.smsErrorMessage = smsResult.error;
+              smsFailed++;
+              errors++;
+              smsOk = false;
+              // Extract Twilio error code if available
+              const errorMsg = smsResult.error || 'unknown';
+              console.log(`[PORT RECOVERY] sms_failed phone=${normalizedPhone} msg=${errorMsg}`);
+            }
+          } catch (err: any) {
+            // Catch any unexpected errors during SMS send
             updates.smsStatus = 'failed';
-            updates.smsErrorMessage = smsResult.error;
+            updates.smsErrorMessage = err.message;
             smsFailed++;
             errors++;
             smsOk = false;
-            // Extract Twilio error code if available
-            const errorMsg = smsResult.error || 'unknown';
-            console.log(`[PORT RECOVERY] sms_failed phone=${normalizedPhone} msg=${errorMsg}`);
+            
+            // Update dedup log with error
+            await updateSmsSendStatus(
+              tenantDb,
+              tenantId,
+              campaign.campaignKey,
+              normalizedPhone,
+              false,
+              undefined,
+              err.message
+            );
+            
+            console.log(`[PORT RECOVERY] sms_exception phone=${normalizedPhone} err=${err.message}`);
           }
-        } catch (err: any) {
-          // Catch any unexpected errors during SMS send
-          updates.smsStatus = 'failed';
-          updates.smsErrorMessage = err.message;
-          smsFailed++;
-          errors++;
-          smsOk = false;
-          console.log(`[PORT RECOVERY] sms_exception phone=${normalizedPhone} err=${err.message}`);
         }
       } else {
         // Skip reason was already set above
