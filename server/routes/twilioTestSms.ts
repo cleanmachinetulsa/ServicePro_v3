@@ -16,6 +16,7 @@ import {
   getSmsBookingStateSummary,
   type SmsBookingState
 } from '../services/bookingDraftService';
+import { buildSmsLlmContext } from '../services/smsConversationContextService';
 
 export const twilioTestSmsRouter = Router();
 
@@ -142,12 +143,18 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       customerLanguage = conversation.customerLanguage as SupportedLanguage;
     }
     
-    const conversationHistory = await getConversationHistory(tenantDb, conversation.id);
+    // === Build SMS LLM context with canonical context builder ===
+    const smsContext = await buildSmsLlmContext({
+      tenantId,
+      conversationId: conversation.id,
+      fromPhone: From,
+      toPhone: To,
+      tenantDb,
+      behaviorSettings: conversation.behaviorSettings as Record<string, any>,
+    });
     
-    // HOTFIX-SMS-CM: Add debug logging for SMS agent state
-    console.log('[SMS HOTFIX] Inbound SMS for tenant:', tenantId, 'customer:', From, 'entrypoint: handleServiceProInboundSms');
-    console.log('[SMS HOTFIX] Conversation ID:', conversation.id, 'Control mode:', conversation.controlMode || 'auto');
-    console.log('[SMS HOTFIX] History length:', conversationHistory.length);
+    // Use formatted messages from context builder
+    const conversationHistory = smsContext.recentMessages;
     
     // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
     // 1. Load persisted SMS booking state from database
