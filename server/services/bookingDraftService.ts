@@ -288,7 +288,83 @@ export function getSmsBookingStateSummary(state: SmsBookingState): string {
   if (state.address) parts.push(`address=${state.address.substring(0, 20)}...`);
   if (state.chosenSlotLabel) parts.push(`slot=${state.chosenSlotLabel}`);
   if (state.lastOfferedSlots?.length) parts.push(`offered=${state.lastOfferedSlots.length} slots`);
+  if (state.stage) parts.push(`stage=${state.stage}`);
   return parts.length > 0 ? parts.join(', ') : 'empty';
+}
+
+/**
+ * Determine if booking state should be reset based on user message
+ * Returns reset reason or null if no reset needed
+ */
+export function shouldResetBookingState(
+  userMessage: string, 
+  currentState: SmsBookingState
+): { shouldReset: boolean; reason?: string; newService?: string } {
+  const text = userMessage.toLowerCase().trim();
+  
+  // Booking intent keywords
+  const BOOKING_INTENT_PATTERNS = [
+    /\b(book|schedule|appointment|reserve|need\s+an?\s+appointment|set\s+up|sign\s+me\s+up)\b/i,
+    /\b(when\s+can|available|availability)\b/i,
+  ];
+  
+  // Check if this is a new booking intent when state is already 'booked' or stale
+  const hasBookingIntent = BOOKING_INTENT_PATTERNS.some(p => p.test(text));
+  const STALE_HOURS = 24;
+  const staleThreshold = Date.now() - (STALE_HOURS * 60 * 60 * 1000);
+  const isStale = currentState.lastResetTimestamp && currentState.lastResetTimestamp < staleThreshold;
+  const isBooked = currentState.stage === 'booked';
+  
+  if (hasBookingIntent && (isBooked || isStale)) {
+    return { 
+      shouldReset: true, 
+      reason: isBooked ? 'new_booking_after_completed' : 'stale_session'
+    };
+  }
+  
+  // Service change detection
+  const SERVICE_PATTERNS: Array<{ pattern: RegExp; service: string }> = [
+    { pattern: /\b(full\s*detail|full\s*service)\b/i, service: 'Full Detail' },
+    { pattern: /\b(interior\s*detail|interior\s*only|inside\s*only|interior)\b/i, service: 'Interior Detail' },
+    { pattern: /\b(exterior|outside\s*only|wash\s*and\s*wax)\b/i, service: 'Exterior Detail' },
+    { pattern: /\b(premium\s*wash)\b/i, service: 'Premium Wash' },
+    { pattern: /\b(maintenance\s*detail|maintenance\s*program)\b/i, service: 'Maintenance Detail' },
+    { pattern: /\b(ceramic\s*coat)/i, service: 'Ceramic Coating' },
+    { pattern: /\b(paint\s*correction|polish)/i, service: 'Paint Enhancement' },
+  ];
+  
+  for (const { pattern, service } of SERVICE_PATTERNS) {
+    if (pattern.test(text)) {
+      // User mentioned a service
+      if (currentState.service && currentState.service !== service) {
+        // Service changed - reset service-specific fields but keep address
+        return {
+          shouldReset: true,
+          reason: 'service_changed',
+          newService: service,
+        };
+      }
+    }
+  }
+  
+  return { shouldReset: false };
+}
+
+/**
+ * Reset booking state, optionally preserving certain fields
+ */
+export function createResetBookingState(
+  reason: string,
+  preserveAddress?: string,
+  newService?: string
+): SmsBookingState {
+  return {
+    service: newService,
+    address: preserveAddress,
+    lastResetReason: reason,
+    lastResetTimestamp: Date.now(),
+    stage: newService ? 'selecting_service' : undefined,
+  };
 }
 
 export async function buildBookingDraftFromConversation(
