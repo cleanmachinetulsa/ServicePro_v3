@@ -1,0 +1,179 @@
+DROP-IN: SMS AI DEBUG SNAPSHOT (model / tools / prompts)
+You are working on the Servicepro-v3-base repo (Clean Machine root tenant).
+Goal: add very clear debug logging ONLY for the SMS AI path, so we can see exactly what model, tools, and prompts are used every time an SMS hits the agent.
+
+1️⃣ File to edit
+Work ONLY in:
+
+
+server/openai.ts
+
+
+(Optional tiny tweak in the SMS handler file if needed, but do not change any behavior logic)
+
+
+Do not refactor or rename anything. Keep all existing logic; we’re just adding logs.
+
+2️⃣ Locate the SMS model + main AI function
+
+
+In server/openai.ts, find the SMS agent model constant (something like):
+
+
+const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL || 'gpt-4o';
+
+There is already some logging like "SMS agent model". Leave that as-is.
+
+
+In the same file, find the main function that actually calls OpenAI for conversations.
+You will see it calling either:
+
+
+
+
+client.chat.completions.create(...)  or
+
+
+client.responses.create(...)
+
+
+and it will receive some indication of channel / entrypoint such as 'sms', 'web', etc.
+Examples of things to look for:
+
+
+channel === 'sms'
+
+
+channelType === 'sms'
+
+
+entrypoint: 'sms'
+
+
+a parameter named isSms or similar
+
+
+Identify the single place where the SMS path ends up right before the OpenAI call.
+
+3️⃣ Add a structured SMS debug log BEFORE the OpenAI call
+In that function, right before the actual OpenAI API call, add a block like this (adapt naming to match the existing variables in the file):
+if (channel === 'sms') {
+  const systemPromptPreview =
+    (typeof systemPrompt === 'string' ? systemPrompt : '')?.slice(0, 280) || '';
+  const behaviorRulesPreview =
+    (typeof behaviorRules === 'string' ? behaviorRules : '')?.slice(0, 200) || '';
+  
+  // Try to get the last user message text safely
+  let lastUserMessagePreview = '';
+  try {
+    const lastMsg = messages?.[messages.length - 1];
+    if (typeof lastMsg === 'string') {
+      lastUserMessagePreview = lastMsg.slice(0, 200);
+    } else if (lastMsg && Array.isArray(lastMsg.content)) {
+      const textPart = lastMsg.content.find((c: any) => c.type === 'text');
+      if (textPart?.text?.length) {
+        lastUserMessagePreview = textPart.text.slice(0, 200);
+      }
+    } else if (lastMsg?.content && typeof lastMsg.content === 'string') {
+      lastUserMessagePreview = lastMsg.content.slice(0, 200);
+    }
+  } catch (err) {
+    lastUserMessagePreview = '[ERROR extracting last user message preview]';
+  }
+
+  const toolNames =
+    (tools || [])
+      .map((t: any) => t?.function?.name)
+      .filter(Boolean);
+
+  console.log('[SMS DEBUG] About to call OpenAI for SMS conversation', {
+    model,
+    hasTools: !!tools && tools.length > 0,
+    toolNames,
+    systemPromptPreview,
+    behaviorRulesPreview,
+    lastUserMessagePreview,
+  });
+}
+
+Important constraints:
+
+
+Use the actual variable names from this file:
+
+
+If the function uses modelName instead of model, update the log accordingly.
+
+
+If messages is named differently, adjust.
+
+
+
+
+Do not change anything about how the API call itself works.
+
+
+Keep previews short (like above) so logs don’t explode.
+
+
+
+4️⃣ Add a “post-call” success/error log (still in openai.ts)
+Right after the OpenAI API call resolves (inside the try block, just after you get completion / response), add:
+if (channel === 'sms') {
+  console.log('[SMS DEBUG] OpenAI SMS call success', {
+    model,
+    toolCalls:
+      (completion as any)?.choices?.[0]?.message?.tool_calls?.map((tc: any) => tc?.function?.name) ||
+      (response as any)?.output?.[0]?.content?.filter?.((c: any) => c.type === 'tool_use')?.map((c: any) => c.name) ||
+      [],
+  });
+}
+
+And inside the catch for that same call, add:
+if (channel === 'sms') {
+  console.error('[SMS DEBUG] OpenAI SMS call FAILED', {
+    model,
+    error: err instanceof Error ? { name: err.name, message: err.message } : err,
+  });
+}
+
+Again, adapt completion / response to whatever variable is actually used.
+
+5️⃣ Optional: tiny log in the Twilio SMS handler
+Only if it’s trivial and already present:
+In the file that defines handleServiceProInboundSms (you’ve already got the [SMS HOTFIX] log), add nothing new except maybe one line just before it calls into the AI / conversation service:
+console.log('[SMS DEBUG] handleServiceProInboundSms → calling AI', {
+  tenantId,
+  from: fromNumber,
+  body: inboundBody,
+});
+
+Do this only if that call is easy to find; otherwise skip this step.
+
+6️⃣ Quality checks
+
+
+TypeScript must still compile with zero new errors.
+
+
+Do not change public APIs, exports, or function signatures.
+
+
+Do not modify any business logic or prompts beyond adding these logs.
+
+
+
+7️⃣ After changes
+Once done, rebuild / republish and I will:
+
+
+Send a test SMS
+
+
+Then check the Production logs for lines starting with [SMS DEBUG]
+
+
+Use those log snapshots (model, systemPromptPreview, toolNames, etc.) to debug the behavior.
+
+
+That’s the entire task: patch-only, minimal, logging-focused update in server/openai.ts (plus optional 1-line log in the SMS handler).
