@@ -1,0 +1,38 @@
+You are working in Servicepro-v3-base. Implement FAST, FAIL-OPEN fixes so Port Recovery blasting sends SMS reliably and logs clear skip reasons.
+
+GOALS:
+1) Prevent Twilio "To and From cannot be the same" by always using MessagingServiceSid if available, otherwise a configured From number that is NOT equal to recipient phone.
+2) Filter/skip invalid phone numbers and known test "555" patterns with explicit sms_skip_reason.
+3) Email fallback: validate email format; never attempt to email non-email strings. Log skip reason invalid_email.
+4) Points awarding: fix the remaining crash by making gamificationService.awardPoints() NEVER throw even if campaign/points is undefined. It must fail-open, log a single line, and return a safe failure result so Port Recovery continues.
+5) Ensure Port Recovery per-recipient summary log ALWAYS includes: phone_raw, phone, sms_attempted, sms_ok, sms_skip_reason, email_attempted, email_ok, email_skip_reason, points_attempted, points_ok, points_skip_reason.
+
+IMPLEMENTATION DETAILS:
+
+A) server/services/portRecoveryService.ts
+- Centralize SMS send config:
+  - Prefer process.env.TWILIO_MESSAGING_SERVICE_SID if set (use messages.create({ messagingServiceSid, to, body }))
+  - Else use a tenant/campaign from number (existing config) or process.env.MAIN_PHONE_NUMBER
+  - If computed fromPhone equals recipient phone, DO NOT SEND; set sms_attempted=true, sms_ok=false, sms_skip_reason="to_equals_from" and continue.
+- Add phone skip rules:
+  - If phone matches /^\+1?555/ or contains 'XXXX' or fails E.164 => sms_skip_reason="invalid_phone"
+- Email fallback:
+  - Before sending, validate email with regex /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  - If invalid => email_attempted=false, email_ok=false, email_skip_reason="invalid_email"
+- Ensure opted_out gating produces sms_skip_reason="opted_out" and still continues loop.
+
+B) server/gamificationService.ts
+- Locate awardPoints() around line ~213.
+- Add full fail-open guard:
+  - If campaign or points source is undefined OR points is not finite/positive => log "[LOYALTY] awardPoints skip invalid points" with campaignKey + customerId and RETURN { ok:false, skipped:true, reason:"invalid_points" } (or boolean false if current signature requires).
+  - Wrap entire function in try/catch and NEVER throw. On error return safe failure and log once.
+- Ensure awardCampaignPointsOnce() and any callers handle the safe failure without throwing.
+
+C) Add/adjust logs so Port Recovery no longer produces red stack traces for points, and SMS sending is not blocked by points/email errors.
+
+After changes:
+- Run `npm run smoke:sms` (should still pass).
+- Run Port Recovery "Test SMS" to a non-sending-number phone.
+- Confirm logs show sms_attempted=true and sms_ok=true for a valid recipient.
+
+Make minimal code changes, keep TypeScript happy, and do not remove existing features.
