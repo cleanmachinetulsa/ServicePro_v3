@@ -12,7 +12,7 @@
  * - SMS agent model
  */
 
-import { Express, Request, Response } from 'express';
+import { Express, Request, Response, NextFunction } from 'express';
 import { db } from '../db';
 import { smsInboundDedup, smsBookingRecords } from '@shared/schema';
 import { gte, desc } from 'drizzle-orm';
@@ -33,8 +33,40 @@ interface SmsSanityStatus {
   errors: string[];
 }
 
+/**
+ * Middleware: Require DEBUG_SMS_TOKEN for /api/debug/sms-sanity
+ * 
+ * Rules:
+ * - If DEBUG_SMS_TOKEN env var is set: require token match via ?token= query param or x-debug-token header
+ * - If DEBUG_SMS_TOKEN NOT set: allow in non-production (NODE_ENV !== 'production'), deny in production
+ * - Invalid/missing token: return 401 JSON { ok: false, message: 'Authentication required' }
+ * - Never log the token value
+ */
+function requireDebugToken(req: Request, res: Response, next: NextFunction) {
+  const debugToken = process.env.DEBUG_SMS_TOKEN;
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  
+  // If token is configured, require it
+  if (debugToken) {
+    const providedToken = (req.query.token as string) || req.get('x-debug-token');
+    
+    if (!providedToken || providedToken !== debugToken) {
+      return res.status(401).json({ ok: false, message: 'Authentication required' });
+    }
+    
+    return next();
+  }
+  
+  // If token is NOT configured, allow only in non-production
+  if (nodeEnv === 'production') {
+    return res.status(401).json({ ok: false, message: 'Authentication required' });
+  }
+  
+  next();
+}
+
 export function registerSmsSanityRoutes(app: Express) {
-  app.get('/api/debug/sms-sanity', async (req: Request, res: Response) => {
+  app.get('/api/debug/sms-sanity', requireDebugToken, async (req: Request, res: Response) => {
     const status: SmsSanityStatus = {
       timestamp: new Date().toISOString(),
       ok: true,
