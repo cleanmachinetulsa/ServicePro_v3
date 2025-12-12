@@ -1231,10 +1231,15 @@ export async function updateCampaign(
     pointsPerCustomer?: number;
   }
 ): Promise<PortRecoveryCampaign | null> {
+  // Filter out undefined values to prevent overwriting existing fields with NULL
+  const cleanUpdates = Object.entries(updates)
+    .filter(([, value]) => value !== undefined)
+    .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+  
   const [campaign] = await tenantDb
     .update(portRecoveryCampaigns)
     .set({
-      ...updates,
+      ...cleanUpdates,
       updatedAt: new Date(),
     })
     .where(eq(portRecoveryCampaigns.id, campaignId))
