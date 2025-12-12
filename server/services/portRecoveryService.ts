@@ -394,6 +394,10 @@ export async function getCampaign(
     .where(eq(portRecoveryCampaigns.id, campaignId))
     .limit(1);
   
+  if (campaign) {
+    console.log(`[PORT RECOVERY] getCampaign(${campaignId}): smsTemplate = "${campaign.smsTemplate ? campaign.smsTemplate.substring(0, 50) : 'null'}..."`);
+  }
+  
   return campaign || null;
 }
 
@@ -975,6 +979,8 @@ export async function sendTestSms(
   campaignId: number,
   phoneOverride?: string
 ): Promise<{ success: boolean; error?: string; pointsAwarded?: number }> {
+  console.log(`[PORT RECOVERY] sendTestSms() CALLED for campaign ${campaignId}, phone override: ${phoneOverride ? 'YES' : 'NO'}`);
+  
   const campaign = await getCampaign(tenantDb, campaignId);
   if (!campaign) {
     return { success: false, error: 'Campaign not found' };
@@ -998,6 +1004,7 @@ export async function sendTestSms(
   try {
     const ctaUrl = campaign.ctaUrl || DEFAULT_CTA_URL;
     const smsTemplate = campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
+    console.log(`[PORT RECOVERY] sendTestSms: Using template: "${smsTemplate.substring(0, 50)}..."`);
     const tenantId = campaign.tenantId;
     
     // Find or create customer for owner's phone so points can be awarded
