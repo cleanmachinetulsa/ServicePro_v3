@@ -683,6 +683,23 @@ export async function handleBook(req: any, res: any) {
 
           const statsMsg = statsRecorded ? 'recorded=true' : 'recorded=false reason=transaction-failed';
           console.log(`[BOOKING STATS] ${statsMsg} eventId=${eventId}`);
+
+          // Create SMS booking confirmation record for bookings >= 14 days out (fail-open)
+          try {
+            const daysDiff = (startTime.getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000);
+            if (daysDiff >= 14) {
+              const { createSmsBookingRecord } = await import('./services/smsBookingRecordService');
+              await createSmsBookingRecord('root', {
+                phone,
+                eventId,
+                service,
+                startTime,
+                needsConfirmation: true,
+              });
+            }
+          } catch (smsRecordError) {
+            console.warn('[SMS RECORD] Failed to create booking record (fail-open):', smsRecordError);
+          }
           console.log('[DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
         } catch (dbError) {
           console.error('[DB] Error saving appointment to database:', dbError);
@@ -748,11 +765,12 @@ export async function handleBook(req: any, res: any) {
       const fallbackServiceId = fallbackServiceInfo.serviceId;
 
       // Create appointment record with lat/lng - wrap in transaction with stats update
+      const fallbackStartTime = new Date(time);
       await dbInst.transaction(async (tx) => {
         await tx.insert(appointments).values({
           customerId: customer.id,
           serviceId: fallbackServiceId,
-          scheduledTime: new Date(time),
+          scheduledTime: fallbackStartTime,
           address: address || '',
           latitude: latitude || null,
           longitude: longitude || null,
@@ -763,10 +781,28 @@ export async function handleBook(req: any, res: any) {
         });
 
         // Track booking stats for customer - in same transaction
-        await recordAppointmentCreated(customer.id, new Date(time), tx);
+        await recordAppointmentCreated(customer.id, fallbackStartTime, tx);
       });
 
       console.log('[FALLBACK DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
+
+      // Create SMS booking confirmation record for fallback bookings >= 14 days out (fail-open)
+      try {
+        const daysDiff = (fallbackStartTime.getTime() - new Date().getTime()) / (24 * 60 * 60 * 1000);
+        if (daysDiff >= 14) {
+          const { createSmsBookingRecord } = await import('./services/smsBookingRecordService');
+          const fallbackEventId = `fallback-${customer.id}-${fallbackStartTime.getTime()}`;
+          await createSmsBookingRecord('root', {
+            phone,
+            eventId: fallbackEventId,
+            service,
+            startTime: fallbackStartTime,
+            needsConfirmation: true,
+          });
+        }
+      } catch (smsRecordError) {
+        console.warn('[SMS RECORD FALLBACK] Failed to create booking record (fail-open):', smsRecordError);
+      }
     } catch (dbError) {
       console.error('[FALLBACK DB] Error saving appointment to database:', dbError);
       // Continue - notifications will still be sent
