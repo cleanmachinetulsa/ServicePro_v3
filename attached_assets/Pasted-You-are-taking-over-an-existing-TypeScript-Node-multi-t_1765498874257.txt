@@ -1,0 +1,231 @@
+You are taking over an existing TypeScript/Node multi-tenant SaaS project called ServicePro_v3-base.
+
+CONTEXT (VERY IMPORTANT):
+- There is a Clean Machine root tenant (mobile detailing business in Tulsa).
+- The **web chat agent is working correctly** – it uses the proper tools, database state, and booking workflow.
+- The **SMS agent now has the correct Clean Machine prompt** in `shared/ai/smsAgentConfig.ts`, but:
+  - It is not reliably calling the scheduler / address / booking tools.
+  - It is not reliably using conversation history (keeps re-asking things like service type).
+  - It appears to just “talk in circles” and hallucinate times instead of using real availability.
+- We do NOT want to design a brand new system. We want the SMS path to reuse the same core AI/tooling stack that already works for the web chat.
+
+YOUR JOB:
+Make the **SMS inbound flow** use the same AI/tooling pipeline as the working web chat agent, while keeping SMS-specific constraints (short messages, 1 question at a time, etc).
+
+### Step 1 – Find the moving pieces
+
+1. Find the **SMS inbound handler** for Twilio messages. It will be something like:
+   - `handleServiceProInboundSms`, or
+   - a route under `server/routes/sms*.ts`, `server/routes/twilio*.ts`, or similar.
+
+2. Find the **web chat AI pipeline**:
+   - The function that handles web chat messages (not SMS).
+   - The place where it calls OpenAI **with tools/function calling enabled**.
+   - The place where it loads:
+     - customer record,
+     - conversation history,
+     - ai_behavior_rules / knowledge base.
+
+3. Confirm the new SMS prompt location:
+   - `shared/ai/smsAgentConfig.ts`
+   - It already has `SYSTEM_PROMPT_TEMPLATE` with:
+     - power/water requirements,
+     - 8-step booking workflow,
+     - points & campaign handling, etc.
+   - DO NOT rewrite that file beyond minor wiring imports if needed. Treat it as source of truth for SMS behavior.
+
+### Step 2 – Unify the AI stack (SMS should use the same “brain”)
+
+Goal: SMS should call into the same *core* AI runner as web chat, just with a different system prompt and slightly different message shaping.
+
+Do this:
+
+1. Identify the **core OpenAI call** used by web chat – the one that:
+   - Passes `messages: [...]`
+   - Uses `tools` / `functions` for:
+     - checking availability,
+     - validating address / distance,
+     - creating appointments,
+     - looking up/upserting customer,
+     - getting upsell offers, etc.
+   - Parses tool calls and loops until it gets a final “assistant” message.
+
+2. Create (or reuse) a helper like:
+
+   ```ts
+   // pseudo-name, adapt to existing structure
+   async function runSmsAgent(options: {
+     tenantDb: DatabaseHandle;
+     tenantId: string;
+     phoneNumber: string;
+     customer: Customer | null;
+     conversationHistory: Message[];
+     userMessage: string;
+   }): Promise<{ replyText: string; toolResults?: any }>
+
+Implementation rules:
+
+Use the SAME OpenAI client and tools array as the web chat agent.
+
+Use SYSTEM_PROMPT_TEMPLATE from shared/ai/smsAgentConfig.ts as the system message.
+
+Build the messages array like:
+
+const systemMessage = {
+  role: 'system',
+  content: SYSTEM_PROMPT_TEMPLATE
+    .replace('{businessName}', 'Clean Machine Auto Detail')
+    .replace('{industryType}', 'mobile auto detailing')
+    .replace('{phoneNumber}', customerPhoneNumber)
+    .replace('{knowledgeBase}', knowledgeBaseTextOrEmpty),
+};
+
+const historyMessages = mapConversationToMessages(conversationHistory);
+const userMessageObj = { role: 'user', content: userMessage };
+
+const messages = [systemMessage, ...historyMessages, userMessageObj];
+
+Make sure the tools list includes ALL booking-related tools the web chat uses:
+
+availability / calendar,
+
+address validation + distance checks,
+
+customer DB lookups/creates,
+
+booking creation,
+
+upsell suggestions.
+
+
+The tool-handling loop should work the same as web chat:
+
+detect tool calls,
+
+run the corresponding server-side function,
+
+feed tool results back to the model,
+
+finally return a short assistant reply.
+
+
+
+3. VERY IMPORTANT: In this SMS path, we don’t want the model to hallucinate times.
+
+The only way it should mention specific dates/times is after a real get_available_slots tool call.
+
+The same is true for address distance and booking confirmation.
+
+
+
+
+Step 3 – Wire SMS inbound to the unified runner
+
+In the Twilio SMS inbound handler:
+
+1. Make sure it:
+
+Normalizes the incoming phone number (E.164).
+
+Loads the tenant / tenantDb for Clean Machine.
+
+Loads or creates a customer using the existing Customer Identity service.
+
+Loads the conversation history for that phone number / customer from your conversations table.
+
+Appends the new incoming SMS to the conversation history (as a user message).
+
+
+
+2. Call the new runSmsAgent helper with:
+
+tenantDb, tenantId,
+
+phone number,
+
+customer record,
+
+full conversation history including this new message,
+
+the incoming user text.
+
+
+
+3. Get back the AI’s reply text and:
+
+Save it to the conversation table as the assistant message.
+
+Send it as an SMS reply via Twilio.
+
+(If tool calls created/updated appointments, they should already be persisted in that tool logic.)
+
+
+
+4. Add debug logs (short, not spammy) around this path, e.g.:
+
+console.log('[SMS AI] Incoming', { phoneNumber, text: body });
+console.log('[SMS AI] Using tools:', tools.map(t => t.name));
+console.log('[SMS AI] History length:', conversationHistory.length);
+console.log('[SMS AI] Reply:', replyText);
+
+Do NOT log secrets or full payloads, just enough to confirm wiring.
+
+
+
+Step 4 – DO NOT BREAK WEB CHAT
+
+Do not modify the existing web chat handler other than possibly extracting shared helpers.
+
+If you extract a shared runAiWithTools function, keep web chat behavior identical.
+
+The only new behavior difference should be for the SMS path.
+
+
+Step 5 – Quick test plan
+
+After changes:
+
+1. Run the app, then send an SMS:
+
+> “Can I schedule a detail appointment?”
+
+
+
+EXPECTED:
+
+SMS agent:
+
+asks for service + vehicle,
+
+asks for address,
+
+clearly states power/water requirements,
+
+calls availability tool once it has service + rough timing,
+
+offers real time slots (from calendar),
+
+once user picks a time and confirms address, creates the appointment via tool,
+
+confirms booking (does NOT re-ask service / time).
+
+
+
+
+2. Check logs to confirm:
+
+[SMS AI] Using tools: shows non-empty tools.
+
+At least one tool call for availability, one for booking, etc.
+
+Conversation history length grows as you text back and forth.
+
+
+
+3. Confirm that the new appointment actually appears in whatever calendar / DB the web chat uses.
+
+
+
+If you need to choose between “clever refactor” and “boring but safe wiring”, choose boring and safe. The goal is a working SMS agent TODAY that uses the same tools and state as the already-correct web chat, without any generic GPT fallback behavior.
+
+---
