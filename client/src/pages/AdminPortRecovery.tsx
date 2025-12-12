@@ -118,6 +118,7 @@ export default function AdminPortRecovery() {
   const [confirmSend, setConfirmSend] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'sms' | 'email'>('sms');
+  const [testPhoneInput, setTestPhoneInput] = useState('');
   
   const [smsTemplate, setSmsTemplate] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
@@ -255,6 +256,26 @@ export default function AdminPortRecovery() {
         variant: 'destructive',
       });
       setIsRunning(false);
+    },
+  });
+
+  const sendTestPhoneMutation = useMutation({
+    mutationFn: async (phone: string) => {
+      return await apiRequest('POST', `/api/campaigns/sms/${activeCampaign?.id}/send-test`, { phone });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Test SMS Sent',
+        description: `Test message sent to ${testPhoneInput}`,
+      });
+      setTestPhoneInput('');
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Test SMS Failed',
+        description: error.message || 'Failed to send test SMS',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -783,6 +804,44 @@ export default function AdminPortRecovery() {
                           Send Next 50
                         </>
                       )}
+                    </Button>
+                  </div>
+
+                  {/* Custom Phone Test */}
+                  <div className="flex gap-2">
+                    <Input
+                      type="tel"
+                      placeholder="+19185551234"
+                      value={testPhoneInput}
+                      onChange={(e) => setTestPhoneInput(e.target.value)}
+                      className="flex-1 bg-slate-900/50 border-slate-700/50 text-white placeholder:text-gray-500"
+                      disabled={sendTestPhoneMutation.isPending}
+                      data-testid="input-test-phone"
+                    />
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => {
+                        const isValidE164 = /^\+[1-9]\d{1,14}$/.test(testPhoneInput.trim());
+                        if (!isValidE164) {
+                          toast({
+                            title: 'Invalid Phone',
+                            description: 'Phone must be in E.164 format (e.g., +19185551234)',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+                        sendTestPhoneMutation.mutate(testPhoneInput);
+                      }}
+                      disabled={sendTestPhoneMutation.isPending || !testPhoneInput}
+                      data-testid="button-send-test-custom-phone"
+                    >
+                      {sendTestPhoneMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-1" />
+                      )}
+                      Send Test
                     </Button>
                   </div>
                   {activeCampaign.status !== 'completed' && activeCampaign.totalSmsSent < activeCampaign.totalTargets && (
