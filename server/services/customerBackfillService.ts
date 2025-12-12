@@ -619,10 +619,20 @@ async function upsertCustomers(
           stats.customersUpdated++;
         } else {
           // Insert new customer
-          await tenantDb
-            .insert(customers)
-            .values(customerData);
-          stats.customersInserted++;
+          try {
+            await tenantDb
+              .insert(customers)
+              .values(customerData);
+            stats.customersInserted++;
+          } catch (insertError: any) {
+            // Handle duplicate phone constraint (23505) - treat as existing customer
+            if (insertError.code === '23505' && insertError.constraint === 'customers_phone_unique' && customer.phone) {
+              console.log(`[BACKFILL] Duplicate phone handled for ${customer.phone}, skipping insert`);
+              // Don't increment stats since this was a duplicate - treat as already existing
+            } else {
+              throw insertError;
+            }
+          }
         }
       }
     } catch (error) {
