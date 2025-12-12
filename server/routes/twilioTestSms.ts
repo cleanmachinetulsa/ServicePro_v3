@@ -302,15 +302,22 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=choosing_slot action=ask_service`);
       } else {
         // Have all required fields - CREATE REAL BOOKING
-        console.log('[SCHEDULING] Attempting to create booking...', {
+        console.log('[BOOKING ATTEMPT]', {
           service: smsBookingState.service,
           slot: slotSelection.chosenSlotLabel,
-          address: smsBookingState.address,
           phone: From,
+          address: smsBookingState.address,
+          vehicle: smsBookingState.vehicle || 'unknown',
         });
         
+        let bookingSuccess = false;
+        let bookingEventId = '';
+        let bookingError = '';
+        let recordPersisted = false;
+        let ownerNotified = false;
+        
         try {
-          // Create mock request/response for handleBook
+          // Step 1: Attempt calendar booking
           const bookingReq = {
             body: {
               name: conversation.customerName || 'SMS Customer',
@@ -324,30 +331,21 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             }
           };
           
-          let bookingSuccess = false;
-          let bookingEventId = '';
-          let bookingError = '';
-          
           const bookingRes = {
             status: (code: number) => ({
               json: (data: any) => {
-                // CRITICAL: Only claim success if code=200 AND eventId exists
                 if (code === 200 && data.success && data.eventId) {
                   bookingSuccess = true;
                   bookingEventId = data.eventId;
-                  console.log(`[SCHEDULING] Booking created eventId=${bookingEventId}`);
                 } else {
                   bookingError = data.message || 'Missing eventId or error code';
-                  console.log(`[SCHEDULING] Booking failed reason=${bookingError}`);
                 }
               }
             }),
             json: (data: any) => {
-              // CRITICAL: Only claim success if success=true AND eventId exists
               if (data.success && data.eventId) {
                 bookingSuccess = true;
                 bookingEventId = data.eventId;
-                console.log(`[SCHEDULING] Booking created eventId=${bookingEventId}`);
               } else {
                 bookingError = data.message || 'Missing eventId or error response';
               }
@@ -356,19 +354,21 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           
           await handleBook(bookingReq, bookingRes);
           
-          // STRICT RULE: ONLY send confirmation if we have a real eventId
-          if (bookingSuccess && bookingEventId) {
-            // Mark booking as complete
+          // Step 2: Check eventId exists before proceeding
+          if (!bookingSuccess || !bookingEventId) {
+            console.log(`[BOOKING RESULT] success=false reason=missing_eventid eventId=null`);
+            deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
+          } else {
+            // Step 3: Only if eventId exists, mark booking complete
             await updateSmsBookingState(tenantDb, conversation.id, {
               stage: 'booked',
             });
             
-            // === FAR-FUTURE BOOKING: Compute days until and create booking record ===
+            // Step 4: Persist booking record
             const bookingStartTime = new Date(slotSelection.chosenSlotIso || new Date().toISOString());
             const daysUntil = Math.floor((bookingStartTime.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
             const needsConfirmation = daysUntil >= 14;
             
-            // Create booking record for confirmation workflow
             try {
               const { createSmsBookingRecord } = await import('../services/smsBookingRecordService');
               await createSmsBookingRecord(tenantId, {
@@ -379,22 +379,35 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                 address: smsBookingState.address,
                 needsConfirmation,
               });
-              console.log(`[CONFIRM] Booking record created eventId=${bookingEventId} daysUntil=${daysUntil} needsConfirmation=${needsConfirmation}`);
+              recordPersisted = true;
+              console.log(`[BOOKING RECORD] persisted=true eventId=${bookingEventId} daysUntil=${daysUntil} confirmRequired=${needsConfirmation}`);
             } catch (recordErr) {
-              console.error('[CONFIRM] Failed to create booking record:', recordErr);
+              console.error('[BOOKING RECORD] persisted=false error:', recordErr);
+              // Still allow booking to proceed, record persistence is non-critical
+              recordPersisted = false;
             }
             
-            // Adjust confirmation message based on how far out the booking is
+            // Step 5: Send customer confirmation SMS (ONLY if eventId exists)
             if (needsConfirmation) {
               deterministicReply = `You're all set for ${slotSelection.chosenSlotLabel}! I'll text you closer to the date to confirm. Reply CHANGE to reschedule.`;
             } else {
               deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
             }
             
-            // Notify business owner
+            // Step 6: Send owner notification (ONLY if eventId exists)
             try {
-              const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
-              if (ownerPhone) {
+              const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE || process.env.MAIN_PHONE_NUMBER;
+              if (ownerPhone && ownerPhone !== From) {
+                const bookingTimeStr = bookingStartTime.toLocaleString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric', 
+                  hour: '2-digit', 
+                  minute: '2-digit'
+                });
+                const vehicleStr = smsBookingState.vehicle ? ` • Vehicle: ${smsBookingState.vehicle}` : '';
+                const confirmStr = needsConfirmation ? ' (needs confirm)' : '';
+                const ownerMsg = `📱 BOOKING${confirmStr}: ${smsBookingState.service}\n${bookingTimeStr} at ${smsBookingState.address}\nCustomer: ${From}${vehicleStr}`;
+                
                 const twilioClient = (await import('twilio')).default(
                   process.env.TWILIO_ACCOUNT_SID,
                   process.env.TWILIO_AUTH_TOKEN
@@ -402,31 +415,40 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                 await twilioClient.messages.create({
                   to: ownerPhone,
                   from: To,
-                  body: `NEW BOOKING: ${smsBookingState.service} on ${slotSelection.chosenSlotLabel}. Customer: ${From}. Address: ${smsBookingState.address}`,
+                  body: ownerMsg,
                 });
-                console.log('[OWNER NOTIFY] sent=true eventId=' + bookingEventId);
+                ownerNotified = true;
+                console.log(`[OWNER NOTIFY] sent=true eventId=${bookingEventId} phone=${ownerPhone}`);
+              } else if (!ownerPhone) {
+                console.log('[OWNER NOTIFY] sent=false reason=no_phone_configured');
               } else {
-                console.log('[OWNER NOTIFY] sent=false reason=no_owner_phone');
+                console.log('[OWNER NOTIFY] sent=false reason=owner_phone_equals_customer');
               }
             } catch (notifyErr) {
               console.error('[OWNER NOTIFY] sent=false error:', notifyErr);
+              ownerNotified = false;
             }
-          } else {
-            // Booking failed - DO NOT claim it booked - offer alternatives
-            console.log(`[SCHEDULING] Booking failed: no eventId received reason=${bookingError}`);
-            deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
+            
+            // Final result log
+            console.log(`[BOOKING RESULT] success=true eventId=${bookingEventId} persisted=${recordPersisted} notifiedOwner=${ownerNotified} confirmRequired=${needsConfirmation}`);
           }
         } catch (bookingErr) {
-          console.error('[SCHEDULING] Booking failed with exception:', bookingErr);
+          console.error('[BOOKING ERROR] exception:', bookingErr);
+          console.log(`[BOOKING RESULT] success=false reason=exception eventId=null`);
           deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
         }
         
+        // Final: Truncate and send customer reply
         const truncatedSlotReply = truncateSmsResponse(deterministicReply);
+        const charCount = truncatedSlotReply.length;
+        const segmentsEstimate = Math.ceil(charCount / 160);
+        console.log(`[SMS OUT] chars=${charCount} segmentsEstimate=${segmentsEstimate} message="${truncatedSlotReply.substring(0, 80)}..."`);
+        
         await addMessage(tenantDb, conversation.id, truncatedSlotReply, 'ai');
         twimlResponse.message(truncatedSlotReply);
         
-        const action = bookingSuccess && bookingEventId ? 'booked' : (deterministicReply.includes('lock') ? 'booking_failed' : 'offer_slots');
-        console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=${smsBookingState.stage || 'booked'} session_msgs=${conversationHistory.length} action=${action}`);
+        const action = bookingSuccess && bookingEventId ? 'booked' : 'booking_failed';
+        console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=booked session_msgs=${conversationHistory.length} action=${action}`);
       }
       
       console.log('[SMS DRAFT] Deterministic slot response sent');
