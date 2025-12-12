@@ -257,12 +257,17 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
   
   // === IDEMPOTENCY CHECK: Prevent duplicate processing for same MessageSid ===
   if (messageSid) {
-    const isDuplicate = await isDuplicateInboundSms(messageSid);
-    if (isDuplicate) {
-      console.log(`[SMS DEDUPE] Duplicate inbound ignored sid=${messageSid}`);
-      // Return 200 to stop Twilio retries, but don't process again
-      res.type('text/xml').status(200).send(new MessagingResponse().toString());
-      return;
+    try {
+      const isDuplicate = await isDuplicateInboundSms(messageSid);
+      if (isDuplicate) {
+        console.log(`[SMS DEDUPE] Duplicate inbound ignored sid=${messageSid}`);
+        // Return 200 to stop Twilio retries, but don't process again
+        res.type('text/xml').status(200).send(new MessagingResponse().toString());
+        return;
+      }
+    } catch (dedupeError) {
+      // If dedupe check fails (e.g., table missing), log and continue (fail-open)
+      console.warn(`[SMS DEDUPE] Check failed, continuing anyway:`, dedupeError instanceof Error ? dedupeError.message.substring(0, 60) : 'unknown error');
     }
   }
 
