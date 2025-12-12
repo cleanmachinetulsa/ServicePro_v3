@@ -258,6 +258,15 @@ router.put('/admin/campaign', async (req, res) => {
       });
     }
     
+    console.log(`[PORT RECOVERY] Updating campaign ${campaignId} with:`, {
+      smsTemplate: smsTemplate ? `${smsTemplate.substring(0, 50)}...` : undefined,
+      emailSubject,
+      ctaUrl,
+      smsEnabled,
+      emailEnabled,
+      pointsPerCustomer,
+    });
+    
     const updatedCampaign = await updateCampaign(tenantDb, campaignId, {
       smsTemplate,
       emailSubject,
