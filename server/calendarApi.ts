@@ -654,6 +654,10 @@ export async function handleBook(req: any, res: any) {
           customerId = customer.id;
 
           // Create appointment record with lat/lng - wrap in transaction with stats update
+          const eventId = response.data.id;
+          console.log(`[SCHEDULING] Booking created eventId=${eventId} (stats_write=attempting)`);
+          
+          let statsRecorded = false;
           await dbInstance.transaction(async (tx) => {
             await tx.insert(appointments).values({
               customerId: customer.id,
@@ -668,10 +672,17 @@ export async function handleBook(req: any, res: any) {
               additionalRequests: notes ? [notes] : null,
             });
 
-            // Track booking stats for customer - in same transaction
-            await recordAppointmentCreated(customer.id, startTime, tx);
+            // Track booking stats for customer - in same transaction (fail-open)
+            statsRecorded = await recordAppointmentCreated(customer.id, startTime, tx, {
+              tenantId: 'root',
+              phone: phone,
+              service: service,
+              eventId: eventId
+            });
           });
 
+          const statsMsg = statsRecorded ? 'recorded=true' : 'recorded=false reason=transaction-failed';
+          console.log(`[BOOKING STATS] ${statsMsg} eventId=${eventId}`);
           console.log('[DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
         } catch (dbError) {
           console.error('[DB] Error saving appointment to database:', dbError);

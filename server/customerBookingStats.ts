@@ -20,19 +20,27 @@ import { eq, and, sql, desc, asc } from 'drizzle-orm';
  * - Set firstAppointmentAt if null
  * - Update lastAppointmentAt
  * 
+ * FAIL-OPEN: This function will never throw or break the booking flow.
+ * All errors are logged but swallowed to ensure bookings succeed even if stats write fails.
+ * 
+ * @param tenantDb - TenantDb instance
  * @param customerId - Customer ID
  * @param scheduledTime - Appointment scheduled time
  * @param txInstance - Optional transaction instance (for nested transactions)
+ * @param context - Optional context for detailed error logging (tenantId, phone, service, eventId)
  */
 export async function recordAppointmentCreated(
   tenantDb: TenantDb,
   customerId: number,
   scheduledTime: Date,
-  txInstance?: any
-): Promise<void> {
+  txInstance?: any,
+  context?: { tenantId?: string; phone?: string; service?: string; eventId?: string }
+): Promise<boolean> {
   try {
-    console.log(`[BOOKING STATS] Recording appointment created for customer ${customerId}`);
-
+    const ctx = context || {};
+    const contextStr = Object.entries(ctx).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(' ');
+    const contextLog = contextStr ? ` [${contextStr}]` : '';
+    
     // FIXED: Detect if transaction is passed and use directly without nesting
     if (txInstance) {
       // Use passed transaction directly - NO nesting
@@ -48,8 +56,8 @@ export async function recordAppointmentCreated(
         .limit(1);
 
       if (!customer) {
-        console.error(`[BOOKING STATS] Customer ${customerId} not found`);
-        return;
+        console.error(`[BOOKING STATS] Customer ${customerId} not found${contextLog}`);
+        return false;
       }
 
       // Calculate new values
@@ -72,16 +80,56 @@ export async function recordAppointmentCreated(
         })
         .where(eq(customers.id, customerId));
 
-      console.log(`[BOOKING STATS] Updated customer ${customerId}:`, {
-        totalAppointments: newTotalAppointments,
-        firstAppointmentAt,
-        lastAppointmentAt,
-      });
+      console.log(`[BOOKING STATS] Updated customer ${customerId}: total=${newTotalAppointments}${contextLog}`);
+      return true;
     } else {
-      // Create new transaction
-      await tenantDb.transaction(async (tx: any) => {
-        // Get current customer data
-        const [customer] = await tx
+      // Try transaction if available, else fall back to direct update
+      const hasTransaction = tenantDb && typeof tenantDb.transaction === 'function';
+      
+      if (hasTransaction) {
+        await tenantDb.transaction(async (tx: any) => {
+          // Get current customer data
+          const [customer] = await tx
+            .select({
+              id: customers.id,
+              totalAppointments: customers.totalAppointments,
+              firstAppointmentAt: customers.firstAppointmentAt,
+              lastAppointmentAt: customers.lastAppointmentAt,
+            })
+            .from(customers)
+            .where(eq(customers.id, customerId))
+            .limit(1);
+
+          if (!customer) {
+            console.error(`[BOOKING STATS] Customer ${customerId} not found${contextLog}`);
+            return;
+          }
+
+          // Calculate new values
+          const newTotalAppointments = (customer.totalAppointments || 0) + 1;
+          const firstAppointmentAt = customer.firstAppointmentAt || scheduledTime;
+          
+          // Update lastAppointmentAt if this is later than current
+          let lastAppointmentAt = customer.lastAppointmentAt;
+          if (!lastAppointmentAt || scheduledTime > lastAppointmentAt) {
+            lastAppointmentAt = scheduledTime;
+          }
+
+          // Update customer stats
+          await tx
+            .update(customers)
+            .set({
+              totalAppointments: newTotalAppointments,
+              firstAppointmentAt,
+              lastAppointmentAt,
+            })
+            .where(eq(customers.id, customerId));
+
+          console.log(`[BOOKING STATS] Updated customer ${customerId}: total=${newTotalAppointments}${contextLog}`);
+        });
+      } else {
+        // Fallback: Direct update without transaction
+        const [customer] = await tenantDb
           .select({
             id: customers.id,
             totalAppointments: customers.totalAppointments,
@@ -93,22 +141,21 @@ export async function recordAppointmentCreated(
           .limit(1);
 
         if (!customer) {
-          console.error(`[BOOKING STATS] Customer ${customerId} not found`);
-          return;
+          console.error(`[BOOKING STATS] Customer ${customerId} not found${contextLog}`);
+          return false;
         }
 
         // Calculate new values
         const newTotalAppointments = (customer.totalAppointments || 0) + 1;
         const firstAppointmentAt = customer.firstAppointmentAt || scheduledTime;
         
-        // Update lastAppointmentAt if this is later than current
         let lastAppointmentAt = customer.lastAppointmentAt;
         if (!lastAppointmentAt || scheduledTime > lastAppointmentAt) {
           lastAppointmentAt = scheduledTime;
         }
 
-        // Update customer stats
-        await tx
+        // Direct update
+        await tenantDb
           .update(customers)
           .set({
             totalAppointments: newTotalAppointments,
@@ -117,16 +164,17 @@ export async function recordAppointmentCreated(
           })
           .where(eq(customers.id, customerId));
 
-        console.log(`[BOOKING STATS] Updated customer ${customerId}:`, {
-          totalAppointments: newTotalAppointments,
-          firstAppointmentAt,
-          lastAppointmentAt,
-        });
-      });
+        console.log(`[BOOKING STATS] Updated customer ${customerId}: total=${newTotalAppointments} (no-tx fallback)${contextLog}`);
+      }
+      return true;
     }
   } catch (error) {
-    console.error(`[BOOKING STATS] Error recording appointment created for customer ${customerId}:`, error);
-    // Don't throw - this is a non-blocking operation
+    // FAIL-OPEN: Log error but NEVER throw - booking must succeed
+    const ctx = context || {};
+    const contextStr = Object.entries(ctx).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(' ');
+    const errorMsg = String(error).substring(0, 100);
+    console.error(`[BOOKING STATS] FAIL-OPEN: stats write failed for customer ${customerId}: ${errorMsg}${contextStr ? ` [${contextStr}]` : ''}`);
+    return false;
   }
 }
 

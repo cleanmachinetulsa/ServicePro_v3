@@ -124,8 +124,18 @@ async function processRecurringServices() {
             })
             .returning();
 
-          // Track booking stats for customer - in same transaction
-          await recordAppointmentCreated(customer.id, scheduledDate, tx);
+          console.log(`[SCHEDULING] Booking created eventId=${newAppointment.id} (stats_write=attempting)`);
+
+          // Track booking stats for customer - in same transaction (fail-open)
+          const statsRecorded = await recordAppointmentCreated(customer.id, scheduledDate, tx, {
+            tenantId: 'root',
+            phone: customer.phone,
+            service: service.name,
+            eventId: String(newAppointment.id)
+          });
+          
+          const statsMsg = statsRecorded ? 'recorded=true' : 'recorded=false reason=transaction-failed';
+          console.log(`[BOOKING STATS] ${statsMsg} eventId=${newAppointment.id}`);
 
           console.log(`[RECURRING] Created appointment ${newAppointment.id} for ${customer.name} - ${service.name}`);
 

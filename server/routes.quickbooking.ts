@@ -264,6 +264,10 @@ export function registerQuickBookingRoutes(app: Express) {
       
       // Create appointment - wrap in transaction with stats update
       let appointment: any;
+      const bookingId = `qb-${Date.now()}`;
+      console.log(`[SCHEDULING] Booking created bookingId=${bookingId} (stats_write=attempting)`);
+      
+      let statsRecorded = false;
       await req.tenantDb!.transaction(async (tx) => {
         const [newAppointment] = await tx.insert(appointments).values({
           customerId: customer.id,
@@ -288,9 +292,17 @@ export function registerQuickBookingRoutes(app: Express) {
         
         appointment = newAppointment;
         
-        // Track booking stats for customer - in same transaction
-        await recordAppointmentCreated(customer.id, new Date(scheduledTime), tx);
+        // Track booking stats for customer - in same transaction (fail-open)
+        statsRecorded = await recordAppointmentCreated(customer.id, new Date(scheduledTime), tx, {
+          tenantId: req.tenantDb!.tenantId,
+          phone: phone,
+          service: serviceName || 'Unknown',
+          eventId: bookingId
+        });
       });
+      
+      const statsMsg = statsRecorded ? 'recorded=true' : 'recorded=false reason=transaction-failed';
+      console.log(`[BOOKING STATS] ${statsMsg} bookingId=${bookingId}`);
       
       // SP-BOOKING-ADDRESS+PRICING-FIX: Create escalation for extended area bookings
       // Only create escalation if isExtendedArea is explicitly true and has valid travel time
