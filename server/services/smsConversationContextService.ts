@@ -75,21 +75,23 @@ export async function buildSmsLlmContext(
   const deduplicatedMessages = Array.from(seenContentMap.values())
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   
-  // === SESSION BOUNDARY: Filter to current session + 2-3 continuity messages ===
+  // === SESSION BOUNDARY: Enforce strict session windowing ===
+  // Only include messages from current session - NO pre-session continuity
+  // This prevents old booking info from poisoning new sessions
   let filteredMessages = deduplicatedMessages;
   if (sessionStartedAt && sessionStartedAt > 0) {
     const sessionStart = new Date(sessionStartedAt);
     
-    // Find messages after session start
-    const sessionMsgs = deduplicatedMessages.filter((m: any) => m.timestamp >= sessionStart);
+    // STRICT: Only messages after session start
+    filteredMessages = deduplicatedMessages.filter((m: any) => m.timestamp >= sessionStart);
     
-    // Include up to 3 messages before session for continuity
-    const preSessionMsgs = deduplicatedMessages.filter((m: any) => m.timestamp < sessionStart);
-    const continuityMsgs = preSessionMsgs.slice(-3);
-    
-    filteredMessages = [...continuityMsgs, ...sessionMsgs];
-    
-    console.log(`[SMS SESSION] context_window_start=${sessionStart.toISOString()} included_messages=${filteredMessages.length} (${continuityMsgs.length} continuity + ${sessionMsgs.length} session)`);
+    // If session yields <4 messages, fall back to last 8 messages (still strict - no pre-session)
+    if (filteredMessages.length < 4) {
+      filteredMessages = deduplicatedMessages.slice(-8);
+      console.log(`[SMS SESSION] context_window_start=${sessionStart.toISOString()} insufficient_session_msgs=${filteredMessages.length} fallback_to_last_8`);
+    } else {
+      console.log(`[SMS SESSION] context_window_start=${sessionStart.toISOString()} session_messages=${filteredMessages.length}`);
+    }
   }
   
   // === Format messages for LLM ===
