@@ -28,6 +28,7 @@ import { truncateSmsResponse } from '../utils/smsLength';
 import { parseAvailabilityHorizonDays, buildAvailabilitySms, type AvailabilitySlot } from '../services/smsSlotPresentationService';
 import { getCompactSlotsSms } from '../services/slotOfferSummary';
 import { getTenantTimeZone, formatLocalDateTime } from '../utils/timeFormat';
+import { formatApptLocal } from '../utils/formatLocalTime';
 
 export const twilioTestSmsRouter = Router();
 
@@ -565,9 +566,8 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             try {
               const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE || process.env.MAIN_PHONE_NUMBER;
               if (ownerPhone && ownerPhone !== From) {
-                // Get tenant timezone for formatting
-                const tenantTz = getTenantTimeZone(conversation.tenant);
-                const bookingTimeStr = formatLocalDateTime(bookingStartTime, tenantTz, 'long');
+                // Format appointment time to local "America/Chicago" time
+                const bookingTimeStr = formatApptLocal(bookingStartTime);
                 const vehicleStr = smsBookingState.vehicle ? ` • Vehicle: ${smsBookingState.vehicle}` : '';
                 const confirmStr = needsConfirmation ? ' (needs confirm)' : '';
                 const upsellsStr = (smsBookingState.selectedUpsells && smsBookingState.selectedUpsells.length > 0) 
@@ -586,8 +586,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                 });
                 ownerNotified = true;
                 const ownerPhoneMasked = ownerPhone.slice(-4).padStart(ownerPhone.length, '*');
-                console.log(`[OWNER NOTIFY] sent=true tz=${tenantTz} localTime="${bookingTimeStr}" eventId=${bookingEventId} phone=${ownerPhoneMasked} upsells=${smsBookingState.selectedUpsells?.length || 0}`);
-                console.log(`[TIMEZONE FIX] tenant=${tenantId} tz=${tenantTz} eventStartUtc=${bookingStartTime.toISOString()} local="${bookingTimeStr}"`);
+                console.log(`[OWNER NOTIFY] sent=true time_local="${bookingTimeStr}" time_raw="${bookingStartTime.toISOString()}" eventId=${bookingEventId} phone=${ownerPhoneMasked} upsells=${smsBookingState.selectedUpsells?.length || 0}`);
               } else if (!ownerPhone) {
                 console.log('[OWNER NOTIFY] sent=false reason=no_phone_configured');
               } else {
