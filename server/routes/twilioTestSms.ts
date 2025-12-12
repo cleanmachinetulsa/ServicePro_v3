@@ -177,7 +177,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     });
     
     // Use formatted messages from context builder
-    const conversationHistory = smsContext.recentMessages;
+    let conversationHistory = smsContext.recentMessages;
     
     // 2. Check if we need to reset state (new booking or service changed)
     const resetCheck = shouldResetBookingState(Body, persistedState, From);
