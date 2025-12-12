@@ -1,0 +1,80 @@
+You are working in Servicepro-v3-base. Add a CLEAN, HARD “do-not-resend if already successfully sent” guard for Port Recovery SMS.
+
+Definition:
+- “Successfully sent” = Twilio accepted the message and returned a Message SID (i.e., messages.create succeeded).
+- “Attempted” / “failed” should NOT mark as success.
+- If previously success, SKIP and log skip_reason=already_sent_success.
+
+GOALS:
+1) Persist per-recipient Port Recovery SMS send results in DB with a UNIQUE key so reruns cannot duplicate successful sends.
+2) Only skip when prior status is success (sid exists / status='sent').
+3) Allow retry when prior status is failed or never attempted.
+4) Make the guard race-safe: if two batches run, only one can “claim” a recipient for sending.
+
+IMPLEMENTATION:
+
+A) Add a new DB table in shared/schema.ts (Drizzle) called port_recovery_sms_sends (or reuse an existing campaign send log if one already exists; prefer creating this table if not present).
+
+Columns:
+- id (serial pk)
+- tenantId (text, not null)
+- campaignKey (text, not null)  // e.g. "port-recovery-2025-12-11"
+- toPhone (text, not null)      // normalized E.164
+- messageSid (text, nullable)   // set only on success
+- status (text, not null)       // 'reserved' | 'sent' | 'failed'
+- lastError (text, nullable)
+- createdAt (timestamptz default now)
+- sentAt (timestamptz nullable)
+- updatedAt (timestamptz default now)
+
+Unique index:
+UNIQUE(tenantId, campaignKey, toPhone)
+
+B) Apply migration safely:
+- Add a tiny script like scripts/create-port-recovery-sends.ts OR a safe SQL helper similar to the sms_inbound_dedup creation flow.
+- Use CREATE TABLE IF NOT EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS.
+- Do NOT run drizzle-kit push if it threatens destructive changes; use safe SQL creation.
+
+C) Update server/services/portRecoveryService.ts:
+Before sending SMS for a recipient:
+1) Normalize phone to E.164 as you already do.
+2) “Claim” the recipient with an atomic insert:
+   INSERT INTO port_recovery_sms_sends (tenantId, campaignKey, toPhone, status)
+   VALUES (...)
+   ON CONFLICT (tenantId, campaignKey, toPhone) DO NOTHING
+   RETURNING id;
+- If INSERT returns 0 rows:
+   - Query existing row (by unique key).
+   - If existing.status == 'sent' OR messageSid not null:
+       -> set sms_attempted=false, sms_ok=false, sms_skip_reason="already_sent_success" and continue.
+   - Else (existing.status == 'failed' or 'reserved'):
+       -> allow retry BUT avoid race: update row to 'reserved' with updatedAt=now and continue.
+       (If row is stuck 'reserved' for > X minutes, treat as retryable.)
+
+After Twilio send:
+- On success (sid exists):
+   UPDATE row SET status='sent', messageSid=?, sentAt=now, updatedAt=now, lastError=null
+- On failure:
+   UPDATE row SET status='failed', lastError=?, updatedAt=now
+
+Ensure per-recipient summary log includes sms_skip_reason="already_sent_success" when applicable.
+
+D) Add a UI-visible counter (optional but quick):
+In whatever endpoint powers the Port Recovery dashboard, add:
+- alreadySentSuccessCount
+- failedCount
+- pendingCount
+so you can verify you’re not double-sending.
+
+E) IMPORTANT:
+- This must be tenant-safe (tenantId included in unique key).
+- Do not break existing flows.
+- Keep TypeScript clean.
+
+After implementing:
+- Run smoke:sms (should still pass).
+- Run Port Recovery “Test SMS” twice to the same phone:
+  1st run should send and store status='sent'
+  2nd run should SKIP with skip_reason=already_sent_success (no Twilio call)
+
+Make minimal, surgical changes and include clear logs.
