@@ -774,6 +774,7 @@ export async function generateAIResponse(
         const MAX_SMS_ITERATIONS = 5; // Limit iterations for SMS to control costs
         let iterations = 0;
         let finalResponse = "";
+        let toolCallsExecuted = false; // Track if any tool calls happened
         
         while (iterations < MAX_SMS_ITERATIONS) {
           iterations++;
@@ -842,12 +843,19 @@ export async function generateAIResponse(
           
           // If no tool calls, we have final response - break the loop
           if (!responseMessage.tool_calls || responseMessage.tool_calls.length === 0) {
-            finalResponse = responseMessage.content || "I apologize, but I didn't generate a proper response. Please try again.";
+            // Smart fallback: if tool calls happened but no final text, ask about the options sent
+            if (!responseMessage.content && toolCallsExecuted) {
+              finalResponse = "Got it — what time works best from the options I sent?";
+              console.log(`[SMS AI] Tool calls completed but no final text - using smart fallback`);
+            } else {
+              finalResponse = responseMessage.content || "Thanks for your message! How can I help you today?";
+            }
             console.log(`[SMS AI] Final response after ${iterations} iteration(s)`);
             break;
           }
           
           // Execute tool calls
+          toolCallsExecuted = true;
           console.log(`[SMS AI] Executing ${responseMessage.tool_calls.length} tool call(s) in iteration ${iterations}`);
           for (const toolCall of responseMessage.tool_calls) {
             const functionName = toolCall.function.name;
@@ -1346,7 +1354,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
       
       // If no tool calls, we have final response
       if (!responseMessage.tool_calls || responseMessage.tool_calls.length === 0) {
-        let finalResponse = responseMessage.content || "I apologize, but I didn't generate a proper response. Please try again.";
+        let finalResponse = responseMessage.content || "Thanks for your message! How can I help you today?";
         
         // Only append maintenance detail recommendation if not in booking flow
         if (offerMaintenanceDetail && !needsDeeperCleaning && 

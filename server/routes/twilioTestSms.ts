@@ -7,6 +7,14 @@ import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq, asc } from 'drizzle-orm';
 import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
 import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
+import { 
+  extractSmsBookingStateFromHistory, 
+  detectSlotSelection, 
+  getSmsBookingState,
+  updateSmsBookingState,
+  getSmsBookingStateSummary,
+  type SmsBookingState
+} from '../services/bookingDraftService';
 
 export const twilioTestSmsRouter = Router();
 
@@ -134,6 +142,51 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
     console.log('[SMS HOTFIX] Conversation ID:', conversation.id, 'Control mode:', conversation.controlMode || 'auto');
     console.log('[SMS HOTFIX] History length:', conversationHistory.length);
     
+    // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
+    // 1. Load persisted SMS booking state from database
+    const persistedState = await getSmsBookingState(tenantDb, conversation.id);
+    
+    // 2. Extract fresh state from conversation history and merge with persisted
+    const historyState = extractSmsBookingStateFromHistory(conversationHistory);
+    const smsBookingState: SmsBookingState = {
+      ...historyState,
+      ...persistedState, // Persisted state takes precedence (has chosenSlotLabel etc.)
+      // But use fresh lastOfferedSlots from history if available
+      lastOfferedSlots: historyState.lastOfferedSlots || persistedState.lastOfferedSlots,
+    };
+    
+    // Log draft state for debugging
+    console.log('[SMS DRAFT] State:', getSmsBookingStateSummary(smsBookingState));
+    
+    // 3. Check for DETERMINISTIC slot selection BEFORE calling LLM
+    const slotSelection = detectSlotSelection(Body, smsBookingState);
+    
+    if (slotSelection) {
+      console.log('[SMS DRAFT] Slot selection detected:', slotSelection.chosenSlotLabel);
+      
+      // Persist the chosen slot
+      await updateSmsBookingState(tenantDb, conversation.id, {
+        chosenSlotLabel: slotSelection.chosenSlotLabel,
+        chosenSlotIso: slotSelection.chosenSlotIso,
+      });
+      
+      // Deterministic response - ask for address if not collected yet
+      let deterministicReply: string;
+      if (!smsBookingState.address) {
+        deterministicReply = `Perfect — I've got you down for ${slotSelection.chosenSlotLabel}. What's the address where we'll be working?`;
+      } else {
+        // Have address, confirm the booking
+        deterministicReply = `Great! I have you scheduled for ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. We'll send a confirmation shortly!`;
+      }
+      
+      await addMessage(tenantDb, conversation.id, deterministicReply, 'ai');
+      twimlResponse.message(deterministicReply);
+      
+      console.log('[SMS DRAFT] Deterministic slot response sent');
+      res.type('text/xml').send(twimlResponse.toString());
+      return;
+    }
+    
     // SP-22: Include language context in user message for AI
     const languageContext = customerLanguage === 'es' 
       ? '\n[SYSTEM: Customer prefers Spanish. Respond in Spanish.]' 
@@ -149,6 +202,18 @@ async function handleServiceProInboundSms(req: Request, res: Response) {
       tenantId,
       conversation.controlMode || 'auto'
     );
+    
+    // === Persist offered slots if AI just sent availability ===
+    if (aiReply) {
+      const { extractSlotsFromMessage } = await import('../services/bookingDraftService');
+      const offeredSlots = extractSlotsFromMessage(aiReply);
+      if (offeredSlots.length > 0) {
+        console.log('[SMS DRAFT] Persisting offered slots:', offeredSlots.length);
+        await updateSmsBookingState(tenantDb, conversation.id, {
+          lastOfferedSlots: offeredSlots,
+        });
+      }
+    }
     
     await addMessage(tenantDb, conversation.id, aiReply || "Thanks for your message!", 'ai');
     
