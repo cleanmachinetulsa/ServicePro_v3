@@ -350,7 +350,16 @@ export async function importCustomersFromSheet(
         summary.skipped++;
       }
     } catch (error: any) {
-      console.error(`${LOG_PREFIX} Error processing customer:`, error);
+      // Log at WARN level for duplicate constraint errors, ERROR for others
+      const isDuplicateError = error.code === '23505' || error.message?.includes('unique constraint');
+      const logLevel = isDuplicateError ? 'warn' : 'error';
+      
+      if (isDuplicateError) {
+        console.warn(`${LOG_PREFIX} Duplicate customer (${customer.phone || customer.email}): ${error.message}`);
+      } else {
+        console.error(`${LOG_PREFIX} Error processing customer:`, error);
+      }
+      
       summary.errors.push(`Customer error (${customer.phone || customer.email}): ${error.message}`);
       summary.skipped++;
     }

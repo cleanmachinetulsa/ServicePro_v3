@@ -99,16 +99,26 @@ export interface FindOrCreatePreviewResult {
 /**
  * Find or create a customer with smart merge behavior.
  * 
+ * IDEMPOTENT: Safe to call multiple times with same phone/email.
+ * If a duplicate phone constraint is hit during creation, the repository
+ * layer will catch it and return the existing customer. No error thrown.
+ * 
  * Logic:
  * 1. Normalize phone/email
  * 2. Search for existing customer by phone, then by email
  * 3. If found: merge new data into existing (fill blanks, append notes)
  * 4. If not found: create new customer with all provided data
+ *    (idempotent via customerRepository.createCustomer duplicate handling)
  * 
  * Merge rules:
  * - Never overwrites existing non-empty fields
  * - Notes are appended with source tag
  * - Phone/email are filled if blank
+ * 
+ * Smoke test:
+ * const result1 = await findOrCreateCustomer(db, { tenantId: 't1', phone: '+11234567890' });
+ * const result2 = await findOrCreateCustomer(db, { tenantId: 't1', phone: '+11234567890' });
+ * assert(result1.customer.id === result2.customer.id); // Same ID, no throw
  */
 export async function findOrCreateCustomer(
   db: TenantDb,
