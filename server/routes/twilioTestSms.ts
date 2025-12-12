@@ -26,6 +26,7 @@ import { buildSmsLlmContext } from '../services/smsConversationContextService';
 import { handleBook } from '../calendarApi';
 import { truncateSmsResponse } from '../utils/smsLength';
 import { parseAvailabilityHorizonDays, buildAvailabilitySms, type AvailabilitySlot } from '../services/smsSlotPresentationService';
+import { getCompactSlotsSms } from '../services/slotOfferSummary';
 
 export const twilioTestSmsRouter = Router();
 
@@ -640,7 +641,8 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       conversation.controlMode || 'auto'
     );
     
-    // === Persist offered slots if AI just sent availability ===
+    // === Persist offered slots if AI just sent availability + COMPACT SUMMARIZATION ===
+    let finalReply = aiReply;
     if (aiReply) {
       const { extractSlotsFromMessage } = await import('../services/bookingDraftService');
       const offeredSlots = extractSlotsFromMessage(aiReply);
@@ -662,14 +664,25 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           },
         });
         
+        // === COMPACT SLOT SUMMARIZATION: Replace verbose slot list with concise format ===
+        try {
+          const compactSlots = offeredSlots.map(s => ({ isoStart: s.iso, isoEnd: undefined }));
+          const compactSummary = getCompactSlotsSms(compactSlots, 'America/Chicago', truncateSmsResponse);
+          finalReply = compactSummary;
+          console.log(`[SLOT SUMMARIZER] compressed=${offeredSlots.length} slots→${compactSummary.length} chars (${Math.round((1 - compactSummary.length / truncateSmsResponse(aiReply).length) * 100)}% reduction)`);
+        } catch (summarizerErr) {
+          console.error('[SLOT SUMMARIZER] failed, using full AI response:', summarizerErr);
+          // Fallback: use original AI reply if summarizer fails
+        }
+        
         // High-signal logging for slot offer tracking
         console.log(`[SLOT OFFER] horizonDays=${currentHorizon} primarySlots=${offeredSlots.length} preview=${includePreview} earliest=${offeredSlots[0]?.iso || 'unknown'} options=${Math.min(offeredSlots.length, 3)}`);
-        console.log(`[SLOT OFFER] smsChars=${truncateSmsResponse(aiReply).length}`);
+        console.log(`[SLOT OFFER] smsChars_before=${truncateSmsResponse(aiReply).length} smsChars_after=${finalReply.length}`);
       }
     }
     
     // Apply SMS length control to ensure response fits in safe segment count
-    const truncatedReply = truncateSmsResponse(aiReply || "Thanks for your message!");
+    const truncatedReply = truncateSmsResponse(finalReply || "Thanks for your message!");
     
     await addMessage(tenantDb, conversation.id, truncatedReply, 'ai');
     
