@@ -1,0 +1,40 @@
+You are working in the repo Servicepro-v3-base. Goal: fix Twilio SMS inbound handler crashing with Postgres error 42P01 "relation sms_inbound_dedup does not exist". We must (1) make SMS reply even if dedupe table is missing (fail-open) and (2) ensure the dedupe table exists in DB automatically.
+
+DO ALL CHANGES AUTOMATICALLY. Do not ask me questions. Make the smallest safe changes and keep tenant isolation.
+
+STEPS:
+
+A) Locate the SMS inbound dedupe service file that contains isDuplicateInboundSms / recordProcessedInboundSms (likely server/services/smsInboundDedup.ts or similar). Implement a one-time bootstrap that ensures the table exists by running SQL:
+- CREATE TABLE IF NOT EXISTS sms_inbound_dedup (
+    id uuid primary key default gen_random_uuid(),
+    tenant_id uuid not null,
+    message_sid text not null,
+    from_number text,
+    to_number text,
+    received_at timestamptz not null default now()
+  );
+- CREATE UNIQUE INDEX IF NOT EXISTS sms_inbound_dedup_message_sid_unique ON sms_inbound_dedup (message_sid);
+- CREATE INDEX IF NOT EXISTS sms_inbound_dedup_tenant_id_idx ON sms_inbound_dedup (tenant_id);
+
+Use the existing db client / drizzle connection used by that service. Add an internal module-level boolean like _ensured=false; on first call, run the SQL in a try/catch then set ensured=true.
+
+B) Fail-open guard:
+Wrap the dedupe SELECT/INSERT in try/catch. If error.code === '42P01' (missing relation) or message includes 'does not exist', log a single WARN like:
+  [SMS DEDUPE WARN] dedupe table missing; proceeding without dedupe (fail-open)
+and return:
+- isDuplicateInboundSms => false
+- recordProcessedInboundSms => do nothing (return)
+
+This guarantees SMS replies even if migrations didn’t run yet.
+
+C) Twilio route protection:
+In server/routes/twilioTestSms.ts (or the live inbound route), ensure the dedupe check cannot throw and kill the handler. If needed, wrap calls to isDuplicateInboundSms / recordProcessedInboundSms in try/catch and continue.
+
+D) After code changes, add a tiny startup log once when bootstrap succeeds:
+  [SMS DEDUPE] ensured sms_inbound_dedup table exists
+and if it fails:
+  [SMS DEDUPE WARN] failed to ensure table (will fail-open) <error summary>
+
+E) IMPORTANT: Do NOT change any secrets. Do NOT change Twilio configs. Do NOT remove tenant scoping. Keep behavior identical except preventing crash.
+
+Finally: run typecheck/build if available and report the exact files changed + key code blocks + confirm SMS inbound no longer crashes when table is missing.
