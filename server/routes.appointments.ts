@@ -467,8 +467,17 @@ router.post('/create-manual', async (req, res) => {
         })
         .returning();
 
-      // Track booking stats (within same transaction)
-      await recordAppointmentCreated(customer.id, scheduledTime, tx);
+      // Track booking stats (within same transaction, fail-open)
+      const statsRecorded = await recordAppointmentCreated(customer.id, scheduledTime, tx, {
+        tenantId: req.tenantDb!.tenantId,
+        phone: customer.phone,
+        service: service?.name || 'Unknown',
+        eventId: `apt-${apt.id}`
+      });
+      
+      if (!statsRecorded) {
+        console.warn(`[BOOKING STATS] Stats write failed for appointment ${apt.id}, but booking created successfully`);
+      }
 
       return { appointment: apt, customer };
     });
