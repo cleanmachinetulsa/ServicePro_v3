@@ -33,6 +33,9 @@ export interface SmsBookingState {
   bookingSessionStartedAt?: number; // Unix timestamp - only include messages after this
   verifiedAddressPhone?: string; // Phone that confirmed the address - preserve if recent
   verifiedAddressTimestamp?: number; // When address was last confirmed
+  // Availability horizon expansion (for smart slot presentation)
+  horizonDays?: number; // Default 10, max 90. Set by parseAvailabilityHorizonDays
+  lastAvailabilityMeta?: Record<string, any>; // Store minimal meta like rangeStart, rangeEnd, earliestIso
 }
 
 interface HistoryMessage {
