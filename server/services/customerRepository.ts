@@ -110,26 +110,43 @@ export async function updateCustomer(
 
 /**
  * Create a new customer record (tenant-scoped)
+ * Idempotent: if phone already exists, returns existing customer instead of throwing
  */
 export async function createCustomer(
   db: TenantDb,
   tenantId: string,
   data: Partial<InsertCustomer>
 ): Promise<CustomerRow> {
-  const [created] = await db
-    .insert(customers)
-    .values({
-      tenantId,
-      name: data.name || 'Unknown',
-      email: data.email || null,
-      phone: data.phone || null,
-      address: data.address || null,
-      vehicleInfo: data.vehicleInfo || null,
-      notes: data.notes || null,
-    })
-    .returning();
+  try {
+    const [created] = await db
+      .insert(customers)
+      .values({
+        tenantId,
+        name: data.name || 'Unknown',
+        email: data.email || null,
+        phone: data.phone || null,
+        address: data.address || null,
+        vehicleInfo: data.vehicleInfo || null,
+        notes: data.notes || null,
+      })
+      .returning();
 
-  return created;
+    return created;
+  } catch (error: any) {
+    // Handle unique constraint violation on phone (error code 23505)
+    if (error.code === '23505' && error.constraint === 'customers_phone_unique') {
+      // Phone already exists for this tenant - fetch and return existing customer
+      if (data.phone) {
+        const existing = await findByPhone(db, tenantId, data.phone);
+        if (existing) {
+          console.log(`[CUSTOMER REPO] Duplicate phone, returning existing customer: ${data.phone} id=${existing.id}`);
+          return existing;
+        }
+      }
+    }
+    // Re-throw if not a phone unique constraint error
+    throw error;
+  }
 }
 
 /**

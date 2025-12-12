@@ -1,0 +1,38 @@
+YOU ARE THE REPLIT AGENT.
+
+Goal: Fix recurring cron errors: duplicate key violates unique constraint "customers_phone_unique" (Postgres error code 23505) during Google Sheets customer import. This is polluting logs and can destabilize background jobs. Implement a safe upsert / duplicate-handling path.
+
+Context clues from logs / stack traces:
+- server/services/customerRepository.ts around createCustomer (seen near line ~119)
+- server/services/customerIdentityService.ts findOrCreateCustomer (seen near line ~209)
+- server/services/customerImportFromSheetsService.ts importCustomersFromSheet (seen near line ~343)
+- server/services/sheetsCustomerAutoSyncService.ts cron runner
+
+Requirements:
+1) Ensure customer creation is idempotent for the same normalized phone.
+2) If an insert hits 23505 customers_phone_unique, DO NOT throw; instead:
+   - fetch the existing customer by phone (and tenant if applicable)
+   - return that existing customer
+3) In the Google Sheets import loop:
+   - if createCustomer returns existing due to duplicate, log at INFO/WARN (not ERROR)
+   - continue processing other rows
+4) Do NOT change the DB schema.
+5) Keep tenant isolation intact. If customers are tenant-scoped, always query with tenantId too.
+6) Add minimal, clear logging:
+   - one line like: "[CUSTOMER IMPORT] Duplicate phone, using existing customer: <phone> id=<id>"
+7) Add a unit-like smoke test helper (optional but preferred):
+   - a small function in customerIdentityService that demonstrates calling findOrCreateCustomer twice with same phone returns same id (no throw). If test framework exists, add a test; otherwise add a comment + dev-only log.
+
+Implementation guidance:
+- Prefer a proper UPSERT if the repository is using Drizzle with SQL support:
+  INSERT ... ON CONFLICT (phone) DO UPDATE SET updated_at=NOW() RETURNING *
+  If Drizzle doesn't make this easy in this codebase, then use try/catch around insert:
+   - if err.code === '23505' OR err.constraint === 'customers_phone_unique':
+       return await getCustomerByPhone(...)
+   - else rethrow.
+
+Deliverables:
+- Modified files with code changes
+- No unrelated refactors
+- App should boot without repeated red cron errors
+- Sheet auto-sync should keep running even with duplicates
