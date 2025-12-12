@@ -40,6 +40,9 @@ export interface SmsBookingState {
   lastUpsellOfferIdsShown?: number[]; // Offer IDs already shown in this session (prevent repeats)
   selectedUpsells?: number[]; // Upsell offer IDs customer selected (accepted)
   declinedUpsells?: boolean; // Customer declined all upsells
+  // Email confirmation tracking
+  emailStage?: 'asking' | 'done'; // 'asking'=asking for email, 'done'=email saved or skipped
+  customerEmail?: string; // Email provided by customer (if any)
 }
 
 interface HistoryMessage {
@@ -77,6 +80,23 @@ export function detectUpsellResponse(userText: string): 'yes' | 'no' | null {
   }
   
   return null;
+}
+
+/**
+ * Detect email address in user text
+ */
+export function detectEmailAddress(userText: string): string | null {
+  const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+  const match = userText.match(emailPattern);
+  return match ? match[0] : null;
+}
+
+/**
+ * Check if user wants to skip email
+ */
+export function detectSkipEmail(userText: string): boolean {
+  const text = userText.toLowerCase().trim();
+  return /^(skip|no|nope|not now|later|no thanks|next time)\b/i.test(text);
 }
 
 /**
