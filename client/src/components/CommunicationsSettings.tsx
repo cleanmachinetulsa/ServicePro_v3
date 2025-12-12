@@ -684,8 +684,38 @@ function EmailCampaigns() {
                     </div>
                   </div>
                 </div>
+                {/* Test Send Section */}
+                <div className="border-t pt-4">
+                  <div className="text-sm font-medium mb-3">Test Send</div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="+1234567890"
+                      value={testPhoneMap[campaign.id] || ''}
+                      onChange={(e) => setTestPhoneMap({ ...testPhoneMap, [campaign.id]: e.target.value })}
+                      data-testid={`input-test-phone-${campaign.id}`}
+                      className="text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const phone = testPhoneMap[campaign.id];
+                        if (!phone) {
+                          toast({ title: 'Enter a phone number', variant: 'destructive' });
+                          return;
+                        }
+                        sendTestMutation.mutate({ id: campaign.id, phone });
+                      }}
+                      disabled={sendTestMutation.isPending}
+                      data-testid={`button-test-send-${campaign.id}`}
+                    >
+                      Send Test
+                    </Button>
+                  </div>
+                </div>
+
                 {campaign.status === 'draft' && (
-                  <div className="mt-4">
+                  <div className="border-t pt-4">
                     <Button
                       size="sm"
                       onClick={() => sendNowMutation.mutate(campaign.id)}
@@ -709,6 +739,7 @@ function EmailCampaigns() {
 function SMSCampaigns() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [testPhoneMap, setTestPhoneMap] = useState<Record<number, string>>({});
 
   const { data: campaigns, isLoading } = useQuery({
     queryKey: ['/api/campaigns/sms']
@@ -735,6 +766,26 @@ function SMSCampaigns() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns/sms'] });
       toast({ title: 'SMS campaign is being sent' });
+    }
+  });
+
+  const sendTestMutation = useMutation({
+    mutationFn: async ({ id, phone }: { id: number; phone: string }) => {
+      const response = await apiRequest('POST', `/api/campaigns/sms/${id}/send-test`, { phone });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: 'Test SMS sent successfully',
+        description: `SID: ${data.sid?.substring(0, 20)}... (${data.previewChars} chars)`
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Test SMS failed',
+        description: error.message || 'Unknown error',
+        variant: 'destructive'
+      });
     }
   });
 
@@ -864,7 +915,7 @@ function SMSCampaigns() {
                   <CampaignStatusBadge status={campaign.status} />
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
                     <div className="text-muted-foreground">Recipients</div>
