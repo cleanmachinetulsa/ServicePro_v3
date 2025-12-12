@@ -972,14 +972,15 @@ export async function runPortRecoveryBatch(
  */
 export async function sendTestSms(
   tenantDb: TenantDb,
-  campaignId: number
+  campaignId: number,
+  phoneOverride?: string
 ): Promise<{ success: boolean; error?: string; pointsAwarded?: number }> {
   const campaign = await getCampaign(tenantDb, campaignId);
   if (!campaign) {
     return { success: false, error: 'Campaign not found' };
   }
   
-  const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+  const ownerPhone = phoneOverride || process.env.BUSINESS_OWNER_PERSONAL_PHONE;
   const fromNumber = process.env.MAIN_PHONE_NUMBER || process.env.TWILIO_TEST_SMS_NUMBER;
   
   if (!ownerPhone) {

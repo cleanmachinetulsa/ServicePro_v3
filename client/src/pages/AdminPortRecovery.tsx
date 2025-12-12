@@ -261,7 +261,7 @@ export default function AdminPortRecovery() {
 
   const sendTestPhoneMutation = useMutation({
     mutationFn: async (phone: string) => {
-      return await apiRequest('POST', `/api/campaigns/sms/${activeCampaign?.id}/send-test`, { phone });
+      return await apiRequest('POST', `/api/port-recovery/campaigns/${activeCampaign?.id}/test-sms`, { phone });
     },
     onSuccess: () => {
       toast({
