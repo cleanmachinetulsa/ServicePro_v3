@@ -1,0 +1,67 @@
+REPLIT QUICK TASK — Fix admin/owner SMS timezone formatting (Tulsa/Chicago)
+
+Goal:
+- Any owner/admin SMS (and any booking-related SMS that formats a time) must show local Tulsa time.
+- Example: "Sat Dec 13 at 9:00 AM" (no “Tulsa time” suffix).
+- Must stop showing UTC or shifted times (e.g., 6-hour offset or wrong day).
+
+Instructions:
+1) Search the codebase for the admin/owner SMS body template. Use ripgrep patterns:
+   - "Booked via SMS"
+   - "SMS Customer"
+   - "New booking"
+   - "Booking created"
+   - "Owner notify"
+   - "BUSINESS_OWNER_PERSONAL_PHONE"
+   - "[OWNER NOTIFY]"
+   - "notifyOwner"
+   - "sendOwner"
+2) Identify the function that builds the admin SMS string and the variables used (startTime / slot / when / appointmentTime).
+3) Add a shared helper utility (create if missing):
+   File: server/utils/formatLocalTime.ts
+   Export function:
+     formatApptLocal(input: string|Date|number): string
+   Implementation rules:
+   - Interpret input as an ISO string or Date.
+   - Format using Intl.DateTimeFormat with timeZone "America/Chicago".
+   - Output format: "Sat Dec 13 at 9:00 AM"
+   - No seconds, no timezone label.
+   - If parsing fails, fallback to original string.
+
+   Example implementation:
+
+   export function formatApptLocal(input: any): string {
+     try {
+       const d = (input instanceof Date) ? input : new Date(input);
+       if (isNaN(d.getTime())) return String(input);
+       const parts = new Intl.DateTimeFormat("en-US", {
+         timeZone: "America/Chicago",
+         weekday: "short",
+         month: "short",
+         day: "numeric",
+         hour: "numeric",
+         minute: "2-digit",
+         hour12: true,
+       }).formatToParts(d);
+       const get = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+       // Example: Sat Dec 13 at 9:00 AM
+       return `${get("weekday")} ${get("month")} ${get("day")} at ${get("hour")}:${get("minute")} ${get("dayPeriod")}`.replace("  ", " ");
+     } catch {
+       return String(input);
+     }
+   }
+
+4) In the admin/owner SMS builder, replace any usage of:
+   - toISOString()
+   - new Date(...).toLocaleString() without timeZone
+   - UTC-based formatting
+   with:
+   - formatApptLocal(startTimeISO or eventStartTime or appointment.startTime)
+
+5) Ensure tests/logs:
+   - Add log line (once per notify): [OWNER NOTIFY] time_local="<formatted>" time_raw="<raw>"
+   - Confirm a Saturday booking shows Saturday, not Friday.
+
+6) Do not change booking creation logic. Only time formatting and messaging text.
+7) Run TypeScript check. Ensure no TS errors.
+8) Provide me the exact file(s) modified and the line(s) where formatting changed.

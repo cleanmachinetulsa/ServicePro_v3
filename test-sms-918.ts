@@ -1,4 +1,4 @@
-import { sendSMS } from './server/notifications.js';
+-sendimport { sendSMS } from './server/notifications.js';
 
 async function testTwilioSMS() {
   const businessPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE || '+19188565304';
