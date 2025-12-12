@@ -61,6 +61,7 @@ import usageMeteringRouter from "./routes/usageMeteringRoutes";
 import parserRoutes from "./routes/parserRoutes";
 import billingHealthRouter from "./routes/billingHealthRoutes";
 import supportIssuesRouter from "./routes.supportIssues";
+import { registerSmsSanityRoutes } from "./routes/debugSmsSanity";
 import path from "path";
 import { runStartupHealthChecks } from "./healthChecks";
 import { db } from './db';
@@ -366,6 +367,8 @@ app.use(payerApprovalRouter);
 registerBackupBookingRoutes(app);
 // Register banner management routes
 registerBannerRoutes(app);
+// Register SMS sanity check route (debug endpoint)
+registerSmsSanityRoutes(app);
 // Register Stripe webhook routes (public, verified via signature)
 app.use(stripeWebhooksRouter);
 // Register SendGrid webhook routes (public, verified via signature)

@@ -1,0 +1,58 @@
+Implement deterministic SMS upsell prompting using the existing upsell system.
+
+CURRENT CONTEXT:
+- SMS booking uses booking draft state in conversation.behaviorSettings.smsBookingState with stages.
+- We already have get_available_slots, validate_address, and booking creation via handleBook().
+- Existing deterministic upsell engine exists in server/upsellService.ts (getApplicableUpsellsForAppointment / matching logic using applicableServiceIds).
+- Upsell offers live in DB table upsellOffers; booking decisions should be persisted to state and recorded on appointment booking (appointmentUpsells).
+
+GOALS:
+1) Extend SmsBookingState to include:
+   - stage: add new stage "offering_upsells"
+   - selectedUpsells: array of offer ids or names
+   - declinedUpsells: boolean
+   - lastUpsellOfferIdsShown: array (so we don’t repeat)
+
+2) Where to trigger:
+   After service + address are confirmed AND before calling booking creation.
+   When user has picked a slot AND required fields are present, run:
+   - if upsells not asked yet for this booking session:
+       move to "offering_upsells"
+       deterministically fetch applicable offers for the chosen service (use upsellService)
+       choose top 1-2 by displayOrder, active=true
+       store in state.lastUpsellOfferIdsShown
+       return a short SMS asking yes/no:
+         Example: "Quick question — want to add {Offer1} for +$X? Reply YES or NO."
+       do NOT book yet.
+   - if user replies YES:
+       store selectedUpsells and proceed to booking creation
+   - if user replies NO:
+       set declinedUpsells=true and proceed to booking creation
+
+3) Deterministic parsing:
+   Implement a small parser that detects YES/NO/NAH/NOPE/YEP/OK etc for upsell response when stage=offering_upsells.
+   This must bypass the LLM (deterministic).
+
+4) On successful booking creation (eventId exists):
+   - record selected upsells into appointmentUpsells if the schema supports it; if appointment id not available, store in conversation or booking record that exists today (choose best existing linkage).
+   - ensure owner notify includes "Upsells: <list or none>"
+
+5) Keep SMS short:
+   - Use truncateSmsResponse on the upsell prompt and booking confirmation.
+
+FILES TO TOUCH:
+- server/services/bookingDraftService.ts (state machine + helpers)
+- server/routes/twilioTestSms.ts (wire deterministic upsell stage before booking)
+- server/upsellService.ts only if needed for a helper to fetch top offers by service name
+- shared/schema.ts ONLY IF NECESSARY; prefer not to change schema in this prompt
+
+CONSTRAINTS:
+- Do NOT let the LLM invent upsells.
+- Do NOT repeat upsell prompts in the same session.
+- If no applicable upsells exist, skip upsell stage and book normally.
+- Add logs:
+  [UPSELL] offers_shown=... selected=... declined=...
+  [UPSELL] skipping (none applicable)
+
+DELIVERABLE:
+- Works end-to-end in SMS flow with deterministic YES/NO handling.
