@@ -1,0 +1,66 @@
+You are working in the Servicepro-v3-base repo.
+
+GOAL: Fix SMS agent “looping/forgetting” and apology fallback by persisting booking draft state and deterministically handling slot selections BEFORE calling the LLM.
+
+DO NOT rewrite the whole AI system. Make surgical edits. Keep existing behavior rules + smsAgentConfig prompt. Keep existing tools.
+
+STEPS:
+
+1) Create new file: server/services/bookingDraftService.ts
+- Export types:
+  - BookingDraft = { service?: string; vehicle?: string; address?: string; city?: string; needsPower?: boolean; needsWater?: boolean; lastOfferedSlots?: Array<{ label: string; iso?: string }>; chosenSlotLabel?: string; }
+- Export functions:
+  - extractDraftFromHistory(historyMessages: Array<{ sender: string; content: string; metadata?: any }>): BookingDraft
+    * Parse common patterns:
+      - Service keywords: “interior”, “full detail”, “premium wash”, “exterior”
+      - Vehicle line like “2010 versa nissan”
+      - Address line with number + street (very loose)
+      - If assistant previously listed slots, capture them into lastOfferedSlots as labels (e.g., “Saturday, December 13 at 9:00 AM”)
+  - detectSlotSelection(userText: string, draft: BookingDraft): { chosenSlotLabel?: string } | null
+    * If userText matches “9am/9:00/10am/11am/12pm/1pm”, pick the best match from draft.lastOfferedSlots by hour.
+    * If userText contains “Saturday 9am” etc, match similarly.
+  - mergeDraft(oldDraft: BookingDraft, patch: Partial<BookingDraft>): BookingDraft
+
+2) Modify server/conversationService.ts (or the file that adds messages / creates conversations) to support storing draft state.
+- Add helper:
+  - async function updateConversationDraft(tenantDb, conversationId: number, patch: Partial<BookingDraft>): Promise<void>
+    * Store JSON in conversations.metadata.bookingDraft (merge, don’t overwrite other metadata).
+- Ensure this is tenant-safe (use existing tenantDb filtering patterns).
+
+3) Modify the SMS inbound handler that your logs show is used:
+- Find the function named handleServiceProInboundSms (logs show: entrypoint: handleServiceProInboundSms).
+- Before calling generateAIResponse / processConversation:
+  a) Load last 20 messages for the conversation (you already do “History length: 15” somewhere).
+  b) Build draft = extractDraftFromHistory(history).
+  c) Run sel = detectSlotSelection(inboundBody, draft).
+  d) If sel?.chosenSlotLabel exists:
+      - Persist it via updateConversationDraft(..., { chosenSlotLabel: sel.chosenSlotLabel })
+      - Immediately respond with a deterministic next-step SMS WITHOUT the LLM:
+        “Perfect — I’ve got you down for {chosenSlotLabel}. What’s the address where we’ll be working?”
+      - Return TwiML with that message.
+  e) If inboundBody looks like an address and draft.service exists but address missing:
+      - Persist address in draft
+      - Continue to LLM (or optionally deterministically ask for vehicle if missing)
+
+4) Modify wherever you format and send availability slots to ALSO persist lastOfferedSlots:
+- When get_available_slots returns formatted slot labels, persist them into conversations.metadata.bookingDraft.lastOfferedSlots (store the labels).
+- This makes detectSlotSelection reliable next turn.
+
+5) Apology fallback:
+- Find the code path that returns:
+  “I apologize, but I didn't generate a proper response. Please try again.”
+- Change it so it only triggers if:
+  - the LLM response is empty AND no tool calls happened AND no deterministic handler responded
+- If tool calls happened but final text is empty, fallback should instead:
+  “Got it — what time works best from the options I sent?”
+  (Never the “didn’t generate” message.)
+
+6) Logging:
+- Add one clear log line on each inbound SMS:
+  - Draft summary (service/address/chosenSlotLabel present?)
+  - Whether deterministic slot handler triggered
+
+7) Do not touch Twilio webhook URLs. Do not change model names. No refactors.
+
+After changes:
+- Provide the exact files changed and summarize the behavior.
