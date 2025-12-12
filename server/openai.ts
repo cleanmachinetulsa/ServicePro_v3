@@ -17,8 +17,8 @@ import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPerson
 import { recordAiUsage } from "./services/usageEventService";
 
 // SMS Agent Model Configuration
-// GPT-5.1 upgrade requested - centralized config for easy switching
-export const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL ?? "gpt-5.1";
+// Centralized config for easy switching - must use valid OpenAI model with function calling
+export const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL ?? "gpt-4o";
 
 const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
 
