@@ -186,6 +186,50 @@ export function normalizePhone(phone: string | null | undefined): string | null 
 }
 
 /**
+ * Normalize phone to E.164 format for SMS sending
+ * Follows strict E.164 rules: +[1-9]\d{1,14}
+ */
+function normalizePhoneE164(input: string | null | undefined): string | null {
+  if (!input) return null;
+  
+  // Trim and remove spaces, dashes, parentheses
+  const cleaned = input.trim().replace(/[\s\-()]/g, '');
+  
+  if (!cleaned) return null;
+  
+  // If already starts with +, validate and return as-is
+  if (cleaned.startsWith('+')) {
+    // Basic E.164 validation: +[1-9]\d{1,14}
+    if (/^\+[1-9]\d{1,14}$/.test(cleaned)) {
+      return cleaned;
+    }
+    return null;
+  }
+  
+  // Remove all non-digits for length check
+  const digits = cleaned.replace(/\D/g, '');
+  
+  // Handle 10-digit US numbers
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+  
+  // Handle 11-digit numbers starting with 1
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+${digits}`;
+  }
+  
+  return null;
+}
+
+/**
+ * Validate if phone is valid E.164 format
+ */
+function isValidE164(phone: string): boolean {
+  return /^\+[1-9]\d{1,14}$/.test(phone);
+}
+
+/**
  * Build consolidated target list from all customer sources
  * Returns unique customers by normalized phone/email
  */
@@ -818,73 +862,112 @@ export async function runPortRecoveryBatch(
       }
     }
     
-    // PHASE 2: SMS FIRST - Check SMS consent and send (NEVER block on points errors)
-    let hasConsentToSms = true; // Default to true for unknown contacts
-    let sentViaSms = false;
+    // PHASE 2: SMS FIRST - Always attempt unless explicit skip reason
+    let smsAttempted = false;
     let smsOk = false;
+    let smsSkipReason = '';
+    let sentViaSms = false;
     
-    if (customerId) {
-      try {
-        const [customerRecord] = await tenantDb
-          .select({ smsConsent: customers.smsConsent })
-          .from(customers)
-          .where(eq(customers.id, customerId))
-          .limit(1);
-        // Only block if explicitly opted out (smsConsent = false)
-        // Allow if true or null (not yet specified)
-        if (customerRecord?.smsConsent === false) {
-          hasConsentToSms = false;
+    // Step 1: Normalize phone
+    const normalizedPhone = normalizePhoneE164(target.phone);
+    
+    // Step 2: Check SMS channel toggle
+    if (!smsEnabled) {
+      smsSkipReason = 'sms_disabled_campaign';
+    }
+    // Step 3: Check phone validity
+    else if (!normalizedPhone) {
+      smsSkipReason = 'invalid_phone_format';
+    }
+    // Step 4: Check from number configured
+    else if (!fromNumber) {
+      smsSkipReason = 'twilio_not_configured';
+    }
+    // Step 5: Check SMS consent
+    else {
+      // Check consent from database if we have customer ID
+      let hasConsentToSms = true;
+      if (customerId) {
+        try {
+          const [customerRecord] = await tenantDb
+            .select({ smsConsent: customers.smsConsent })
+            .from(customers)
+            .where(eq(customers.id, customerId))
+            .limit(1);
+          // Only block if explicitly opted out (smsConsent = false)
+          if (customerRecord?.smsConsent === false) {
+            hasConsentToSms = false;
+            smsSkipReason = 'opted_out';
+          }
+        } catch (err) {
+          // Continue if we can't check consent
         }
-      } catch (err) {
-        // Continue if we can't check consent
+      }
+      
+      // If no skip reason set yet, we can attempt SMS
+      if (!smsSkipReason && hasConsentToSms) {
+        smsAttempted = true;
+        try {
+          const personalizedRewardsLink = generatePersonalizedRewardsLink(
+            tenantBaseUrl,
+            normalizedPhone,
+            tenantId,
+            30
+          );
+          
+          // Create target with normalized phone for sending
+          const targetForSending = { ...target, phone: normalizedPhone };
+          const smsResult = await sendPortRecoverySms(
+            targetForSending,
+            smsTemplate,
+            fromNumber,
+            ctaUrl,
+            campaign.pointsPerCustomer,
+            personalizedRewardsLink
+          );
+          
+          if (smsResult.success) {
+            updates.smsStatus = 'sent';
+            updates.twilioSid = smsResult.twilioSid;
+            smsSent++;
+            sentViaSms = true;
+            smsOk = true;
+          } else {
+            updates.smsStatus = 'failed';
+            updates.smsErrorMessage = smsResult.error;
+            smsFailed++;
+            errors++;
+            smsOk = false;
+            // Extract Twilio error code if available
+            const errorMsg = smsResult.error || 'unknown';
+            console.log(`[PORT RECOVERY] sms_failed phone=${normalizedPhone} msg=${errorMsg}`);
+          }
+        } catch (err: any) {
+          // Catch any unexpected errors during SMS send
+          updates.smsStatus = 'failed';
+          updates.smsErrorMessage = err.message;
+          smsFailed++;
+          errors++;
+          smsOk = false;
+          console.log(`[PORT RECOVERY] sms_exception phone=${normalizedPhone} err=${err.message}`);
+        }
+      } else {
+        // Skip reason was already set above
+        updates.smsStatus = 'skipped';
+        if (smsSkipReason) {
+          updates.smsErrorMessage = smsSkipReason;
+        }
       }
     }
     
-    if (smsEnabled && target.phone && fromNumber && hasConsentToSms) {
-      const personalizedRewardsLink = generatePersonalizedRewardsLink(
-        tenantBaseUrl,
-        target.phone,
-        tenantId,
-        30
-      );
-      
-      const smsResult = await sendPortRecoverySms(
-        target,
-        smsTemplate,
-        fromNumber,
-        ctaUrl,
-        campaign.pointsPerCustomer,
-        personalizedRewardsLink
-      );
-      
-      if (smsResult.success) {
-        updates.smsStatus = 'sent';
-        updates.twilioSid = smsResult.twilioSid;
-        smsSent++;
-        sentViaSms = true;
-        smsOk = true;
-      } else {
-        updates.smsStatus = 'failed';
-        updates.smsErrorMessage = smsResult.error;
-        smsFailed++;
-        errors++;
-        smsOk = false;
-      }
-    } else if (!hasConsentToSms) {
+    // If we set smsSkipReason but didn't attempt, mark as skipped
+    if (!smsAttempted && smsSkipReason) {
       updates.smsStatus = 'skipped';
-      updates.smsErrorMessage = 'Customer opted out of SMS';
-    } else if (!smsEnabled) {
-      updates.smsStatus = 'skipped';
-      updates.smsErrorMessage = 'SMS disabled for this campaign';
-    } else {
-      updates.smsStatus = 'skipped';
-      updates.smsErrorMessage = !target.phone ? 'No phone number' : 'No from number configured';
+      updates.smsErrorMessage = smsSkipReason;
     }
     
     // PHASE 3: EMAIL FALLBACK - only if SMS wasn't sent successfully
-    // Use targetEmail which may have been populated from customer lookup
     if (!sentViaSms && emailEnabled && targetEmail) {
-      // Create a modified target with the resolved email for sending
       const targetWithEmail = { ...target, email: targetEmail };
       const emailResult = await sendPortRecoveryEmail(
         targetWithEmail,
@@ -911,41 +994,50 @@ export async function runPortRecoveryBatch(
       updates.emailErrorMessage = 'No email address available';
     }
     
-    // PHASE 4: POINTS AWARDING - Best-effort, FAIL-OPEN (never blocks loop)
+    // PHASE 4: POINTS AWARDING - Fail-open, NEVER throws, guards points value
+    let pointsAttempted = false;
     let pointsOk = false;
+    let pointsSkipReason = '';
+    
     if (customerId) {
+      pointsAttempted = true;
       try {
-        const pointsResult = await grantPortRecoveryPoints(
-          tenantDb,
-          customerId,
-          campaign.pointsPerCustomer,
-          campaignId
-        );
-        
-        if (pointsResult.success) {
-          updates.pointsGranted = campaign.pointsPerCustomer;
-          totalPointsGranted += campaign.pointsPerCustomer;
-          pointsOk = true;
-          console.log(`[PORT RECOVERY] Awarded ${campaign.pointsPerCustomer} points to customer ${customerId}`);
+        // Guard points value
+        const points = Number(campaign.pointsPerCustomer ?? campaign.points ?? 0);
+        if (!Number.isFinite(points) || points <= 0) {
+          pointsSkipReason = 'invalid_points';
+          console.log(`[PORT RECOVERY] Skipping points: invalid value (${points}) for customer ${customerId}`);
         } else {
-          pointsOk = false;
-          if (pointsResult.wasSkipped) {
-            console.log(`[PORT RECOVERY] Skipped points (already awarded): customer ${customerId}`);
+          const pointsResult = await grantPortRecoveryPoints(
+            tenantDb,
+            customerId,
+            points,
+            campaignId
+          );
+          
+          if (pointsResult.success) {
+            updates.pointsGranted = points;
+            totalPointsGranted += points;
+            pointsOk = true;
           } else {
-            console.log(`[PORT RECOVERY] Failed to award points to customer ${customerId}`);
+            pointsOk = false;
+            if (pointsResult.wasSkipped) {
+              pointsSkipReason = 'already_awarded';
+            } else {
+              pointsSkipReason = 'award_failed';
+            }
           }
         }
       } catch (err: any) {
-        // FAIL-OPEN: Never let points errors abort processing
-        console.error(`[PORT RECOVERY] points_award_failed customerId=${customerId} phone=${target.phone} err=${err.message}`);
+        // FAIL-OPEN: Catch all errors, never throw
         pointsOk = false;
+        pointsSkipReason = `exception: ${err.message}`;
+        console.error(`[PORT RECOVERY] points_exception customerId=${customerId} err=${err.message}`);
       }
     }
     
-    // HIGH-SIGNAL LOG per recipient showing what succeeded/failed
-    const smsAttempted = smsEnabled && target.phone && fromNumber && hasConsentToSms;
-    const pointsAttempted = !!customerId;
-    console.log(`[PORT RECOVERY] recipient phone=${target.phone} customerId=${customerId || 'none'} sms_attempted=${smsAttempted} sms_ok=${smsOk} points_attempted=${pointsAttempted} points_ok=${pointsOk}`);
+    // ONE SUMMARY LOG per recipient with all signals
+    console.log(`[PORT RECOVERY] recipient phone_raw=${target.phone} phone=${normalizedPhone || 'null'} customerId=${customerId || 'none'} sms_attempted=${smsAttempted} sms_ok=${smsOk} sms_skip_reason=${smsSkipReason} points_attempted=${pointsAttempted} points_ok=${pointsOk} points_skip_reason=${pointsSkipReason}`);
     
     // Update target record
     await tenantDb
