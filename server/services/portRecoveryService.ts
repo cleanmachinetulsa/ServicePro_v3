@@ -472,6 +472,7 @@ const PORT_RECOVERY_CAMPAIGN_KEY = 'port-recovery-2025-12-11';
 /**
  * Grant points to a customer for port recovery
  * Uses idempotent awardCampaignPointsOnce to prevent duplicate awards
+ * FAIL-OPEN: Never throws - returns gracefully if points config is missing
  */
 async function grantPortRecoveryPoints(
   tenantDb: TenantDb,
@@ -479,21 +480,33 @@ async function grantPortRecoveryPoints(
   points: number,
   campaignId: number
 ): Promise<{ success: boolean; currentPoints: number; wasSkipped?: boolean }> {
-  const result = await awardCampaignPointsOnce(
-    tenantDb,
-    customerId,
-    points,
-    PORT_RECOVERY_CAMPAIGN_KEY,
-    'port_recovery',
-    campaignId,
-    `Port recovery apology - ${points} loyalty points`
-  );
-  
-  return {
-    success: result.success,
-    currentPoints: result.currentPoints,
-    wasSkipped: result.wasSkipped,
-  };
+  try {
+    // Defensive: If points is not a valid number, skip awarding and continue
+    if (!points || typeof points !== 'number' || points <= 0) {
+      console.log(`[PORT RECOVERY] Skipping points award: invalid points value (${points}) for customer ${customerId}`);
+      return { success: false, currentPoints: 0, wasSkipped: true };
+    }
+
+    const result = await awardCampaignPointsOnce(
+      tenantDb,
+      customerId,
+      points,
+      PORT_RECOVERY_CAMPAIGN_KEY,
+      'port_recovery',
+      campaignId,
+      `Port recovery apology - ${points} loyalty points`
+    );
+    
+    return {
+      success: result.success,
+      currentPoints: result.currentPoints,
+      wasSkipped: result.wasSkipped,
+    };
+  } catch (error: any) {
+    // FAIL-OPEN: Never let points errors abort the loop
+    console.error(`[PORT RECOVERY] points_award_failed customerId=${customerId} campaignId=${campaignId} err=${error.message}`);
+    return { success: false, currentPoints: 0 };
+  }
 }
 
 /**
@@ -771,7 +784,7 @@ export async function runPortRecoveryBatch(
       updatedAt: new Date(),
     };
     
-    // 1. Grant points - try to find customer by phone, or auto-create if from conversations
+    // PHASE 1: Find or create customer record (for customer lookup/email/points later)
     let customerId = target.customerId;
     let targetEmail = target.email;
     
@@ -804,35 +817,11 @@ export async function runPortRecoveryBatch(
       }
     }
     
-    if (customerId) {
-      const pointsResult = await grantPortRecoveryPoints(
-        tenantDb,
-        customerId,
-        campaign.pointsPerCustomer,
-        campaignId
-      );
-      
-      if (pointsResult.success) {
-        updates.pointsGranted = campaign.pointsPerCustomer;
-        totalPointsGranted += campaign.pointsPerCustomer;
-        console.log(`[PORT RECOVERY] Awarded ${campaign.pointsPerCustomer} points to customer ${customerId}`);
-      } else {
-        console.log(`[PORT RECOVERY] Failed to award points to customer ${customerId}: ${pointsResult}`);
-      }
-    } else {
-      console.log(`[PORT RECOVERY] No customer matched for target phone=${target.phone} email=${target.email}`);
-    }
-    
-    // Channel priority: SMS-first, email-only-fallback
-    // If target has phone + SMS enabled -> send SMS only
-    // If target has no phone/no consent but has email + email enabled -> send email
-    // Never send both to same person in same run
-    
-    let sentViaSms = false;
-    
-    // 2. Try SMS first if phone exists and SMS is enabled
-    // Check SMS consent if we have a customer record - respect opt-outs
+    // PHASE 2: SMS FIRST - Check SMS consent and send (NEVER block on points errors)
     let hasConsentToSms = true; // Default to true for unknown contacts
+    let sentViaSms = false;
+    let smsOk = false;
+    
     if (customerId) {
       try {
         const [customerRecord] = await tenantDb
@@ -872,11 +861,13 @@ export async function runPortRecoveryBatch(
         updates.twilioSid = smsResult.twilioSid;
         smsSent++;
         sentViaSms = true;
+        smsOk = true;
       } else {
         updates.smsStatus = 'failed';
         updates.smsErrorMessage = smsResult.error;
         smsFailed++;
         errors++;
+        smsOk = false;
       }
     } else if (!hasConsentToSms) {
       updates.smsStatus = 'skipped';
@@ -889,7 +880,7 @@ export async function runPortRecoveryBatch(
       updates.smsErrorMessage = !target.phone ? 'No phone number' : 'No from number configured';
     }
     
-    // 3. Send email only as fallback if SMS wasn't sent successfully
+    // PHASE 3: EMAIL FALLBACK - only if SMS wasn't sent successfully
     // Use targetEmail which may have been populated from customer lookup
     if (!sentViaSms && emailEnabled && targetEmail) {
       // Create a modified target with the resolved email for sending
@@ -918,6 +909,42 @@ export async function runPortRecoveryBatch(
       updates.emailStatus = 'skipped';
       updates.emailErrorMessage = 'No email address available';
     }
+    
+    // PHASE 4: POINTS AWARDING - Best-effort, FAIL-OPEN (never blocks loop)
+    let pointsOk = false;
+    if (customerId) {
+      try {
+        const pointsResult = await grantPortRecoveryPoints(
+          tenantDb,
+          customerId,
+          campaign.pointsPerCustomer,
+          campaignId
+        );
+        
+        if (pointsResult.success) {
+          updates.pointsGranted = campaign.pointsPerCustomer;
+          totalPointsGranted += campaign.pointsPerCustomer;
+          pointsOk = true;
+          console.log(`[PORT RECOVERY] Awarded ${campaign.pointsPerCustomer} points to customer ${customerId}`);
+        } else {
+          pointsOk = false;
+          if (pointsResult.wasSkipped) {
+            console.log(`[PORT RECOVERY] Skipped points (already awarded): customer ${customerId}`);
+          } else {
+            console.log(`[PORT RECOVERY] Failed to award points to customer ${customerId}`);
+          }
+        }
+      } catch (err: any) {
+        // FAIL-OPEN: Never let points errors abort processing
+        console.error(`[PORT RECOVERY] points_award_failed customerId=${customerId} phone=${target.phone} err=${err.message}`);
+        pointsOk = false;
+      }
+    }
+    
+    // HIGH-SIGNAL LOG per recipient showing what succeeded/failed
+    const smsAttempted = smsEnabled && target.phone && fromNumber && hasConsentToSms;
+    const pointsAttempted = !!customerId;
+    console.log(`[PORT RECOVERY] recipient phone=${target.phone} customerId=${customerId || 'none'} sms_attempted=${smsAttempted} sms_ok=${smsOk} points_attempted=${pointsAttempted} points_ok=${pointsOk}`);
     
     // Update target record
     await tenantDb
@@ -1022,18 +1049,25 @@ export async function sendTestSms(
       }
     }
     
-    // Award points if we found a customer record
+    // Award points if we found a customer record - FAIL-OPEN: never block test SMS on points errors
     let pointsAwarded = 0;
     if (customerId) {
-      const pointsResult = await grantPortRecoveryPoints(
-        tenantDb,
-        customerId,
-        campaign.pointsPerCustomer,
-        campaignId
-      );
-      if (pointsResult.success) {
-        pointsAwarded = campaign.pointsPerCustomer;
-        console.log(`[PORT RECOVERY] Test SMS: Awarded ${pointsAwarded} points to customer ${customerId}`);
+      try {
+        const pointsResult = await grantPortRecoveryPoints(
+          tenantDb,
+          customerId,
+          campaign.pointsPerCustomer,
+          campaignId
+        );
+        if (pointsResult.success) {
+          pointsAwarded = campaign.pointsPerCustomer;
+          console.log(`[PORT RECOVERY] Test SMS: Awarded ${pointsAwarded} points to customer ${customerId}`);
+        } else {
+          console.log(`[PORT RECOVERY] Test SMS: Points award skipped for customer ${customerId} (already awarded or invalid)`);
+        }
+      } catch (err: any) {
+        console.error(`[PORT RECOVERY] Test SMS: points_award_failed for customer ${customerId}: ${err.message}`);
+        // Continue - never let points errors block test SMS
       }
     } else {
       console.log(`[PORT RECOVERY] Test SMS: No customer found for ${normalizedPhone}, skipping points award`);

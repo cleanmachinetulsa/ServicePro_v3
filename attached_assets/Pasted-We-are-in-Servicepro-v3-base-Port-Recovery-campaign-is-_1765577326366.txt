@@ -1,0 +1,36 @@
+We are in Servicepro-v3-base. Port Recovery campaign is failing. Logs show:
+"Error awarding points: TypeError: Cannot read properties of undefined (reading 'points')"
+Stack mentions:
+runPortRecoveryBatch(...)
+awardCampaignPointsOnce(...)
+grantPortRecoveryPoints(...)
+awardPoints(...)
+
+Goal: FIX IN MINUTES. Make Port Recovery sending FAIL-OPEN like booking stats:
+- Points awarding must NEVER prevent SMS sending.
+- If points config is missing/undefined, skip points, log, continue.
+- Ensure SMS sending actually happens and is logged.
+
+Tasks:
+1) Locate the port recovery batch runner (likely server-side service/route that handles /admin/port-recovery Send Next 50 / Send All).
+2) Identify the exact "award points" call that throws due to reading `.points` of undefined.
+   - Add defensive guards: if campaign or config or customer record is missing points settings, set pointsToAward = 0 and continue.
+   - Wrap points awarding in try/catch that never throws, log as:
+     [PORT RECOVERY] points_award_failed customerId=... phone=... err=...
+3) Reorder the flow so SMS send is attempted even if points fail:
+   - Preferred order: (a) Render + send SMS, (b) award points (best-effort), (c) mark recipient status.
+   - If you cannot reorder quickly, at least ensure an exception in points step does not abort the loop.
+4) Add a high-signal log line per recipient:
+   [PORT RECOVERY] recipient phone=... customerId=... sms_attempted=true sms_ok=true/false points_attempted=true points_ok=true/false
+5) Ensure the UI counters reflect partial success:
+   - If SMS succeeds but points fails, mark as "sent_with_points_error" (or still "sent" but record points error).
+6) After patch: run one single-recipient path (use existing Test SMS or temporarily add a CLI function) and show logs proving:
+   - Twilio messages.create called
+   - SID returned
+   - Loop continues even if points errors
+
+Constraints:
+- Do NOT touch unrelated schema.
+- Do NOT require drizzle-kit push.
+- Minimal changes, surgical.
+Return: list of files changed + exact what to click to test + expected log output.
