@@ -25,6 +25,9 @@ export interface SmsBookingState {
   lastOfferedSlots?: Array<{ label: string; iso?: string }>;
   chosenSlotLabel?: string;
   chosenSlotIso?: string;
+  stage?: string; // 'selecting_service', 'confirming_address', 'choosing_slot', 'booked'
+  lastResetReason?: string; // For tracking why state was reset
+  lastResetTimestamp?: number; // For detecting stale bookings
 }
 
 interface HistoryMessage {

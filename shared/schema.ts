@@ -895,11 +895,12 @@ export const smsInboundDedup = pgTable("sms_inbound_dedup", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
   messageSid: text("message_sid").notNull(),
-  from: text("from"),
-  to: text("to"),
+  fromNumber: text("from_number"),
+  toNumber: text("to_number"),
   receivedAt: timestamp("received_at").defaultNow(),
 }, (table) => ({
   messageSidIdx: uniqueIndex("sms_inbound_dedup_message_sid_idx").on(table.messageSid),
+  tenantIdIdx: index("sms_inbound_dedup_tenant_id_idx").on(table.tenantId),
 }));
 
 // Message Reactions - Emoji reactions on messages (like iMessage tapbacks)
