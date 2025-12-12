@@ -1,0 +1,46 @@
+GOAL:
+Fix campaign test-send so it uses the SAME template rendering logic as real campaign sends (no stub regex replacement), and force a single-link output (rewards link only). Also match Twilio send behavior (prefer MessagingServiceSid).
+
+TASKS:
+
+1) Find the production campaign send implementation that runs when the user clicks “Send next 50” / “Send all”.
+   - Locate the function that renders campaign.message with variables (firstNameOrFallback, rewardsLink, bookingLink, etc).
+   - Identify and reuse that exact renderer in the test-send route.
+
+2) Update file: server/routes/campaignSendTest.ts
+   - DELETE the local function renderCampaignMessage(template: string).
+   - Import the production renderer you found in step (1). Example names could be:
+     - renderSmsCampaignTemplate
+     - renderCampaignMessage
+     - renderTemplate
+     - buildSmsCampaignBody
+     - campaignRenderService.render(...)
+   - Use the same variable map the production path uses, but for TEST:
+     - firstNameOrFallback => "Friend"
+     - businessName => tenant business name (if available), else "Clean Machine"
+     - rewardsLink => generate the REAL tokenized rewards link exactly how production does it (if production does).
+       If production requires a customer record, ensure test-send resolves/creates customer by phone first (same as production).
+     - bookingLink => "" (empty string) to prevent a second link
+
+   - After rendering:
+     - run truncateSmsResponse(rendered) as you already do.
+
+3) Twilio send behavior:
+   - Prefer Messaging Service if available:
+     - If process.env.TWILIO_MESSAGING_SERVICE_SID exists, send using:
+       { messagingServiceSid: ..., to: phone, body: finalMessage }
+     - Else fallback to fromPhone as currently implemented.
+
+4) Logging:
+   - Log one line on success:
+     [CAMPAIGN TEST SEND] ok=true campaignId=<id> to=<phone> chars=<len> sid=<sid>
+   - Log one line on failure with twilio code/message.
+
+5) IMPORTANT:
+   - Do NOT log secrets or token values.
+   - Keep tenant isolation intact (use req.tenantDb and tenantId as you do now).
+
+After edits, run TypeScript check/build and ensure no errors.
+
+DELIVERABLE:
+Updated campaignSendTest.ts that uses production renderer and guarantees single-link output.
