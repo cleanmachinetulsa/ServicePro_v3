@@ -17,8 +17,22 @@ import { buildCustomerContext, buildPersonalizedSystemPrompt } from "./gptPerson
 import { recordAiUsage } from "./services/usageEventService";
 
 // SMS Agent Model Configuration
-// Centralized config for easy switching - must use valid OpenAI model with function calling
-export const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL ?? "gpt-4o";
+// Valid OpenAI models with function calling support - exact matches or known patterns
+const VALID_SMS_MODEL_PREFIXES = ["gpt-4o", "gpt-4-turbo", "gpt-4-", "gpt-3.5-turbo"];
+const envModel = process.env.SMS_AGENT_MODEL?.trim();
+// Validate: must match a known prefix AND not be a fake model like "gpt-4.1"
+const isValidModel = envModel && (
+  envModel === "gpt-4" ||
+  envModel === "gpt-4o" || 
+  envModel === "gpt-4o-mini" ||
+  envModel.startsWith("gpt-4o-") ||
+  envModel.startsWith("gpt-4-turbo") ||
+  envModel.startsWith("gpt-3.5-turbo")
+);
+export const SMS_AGENT_MODEL = isValidModel ? envModel : "gpt-4o";
+if (envModel && !isValidModel) {
+  console.warn(`[AI] Invalid SMS_AGENT_MODEL "${envModel}" - falling back to gpt-4o. Valid: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo`);
+}
 
 const OPENAI_ENABLED = !!process.env.OPENAI_API_KEY;
 
