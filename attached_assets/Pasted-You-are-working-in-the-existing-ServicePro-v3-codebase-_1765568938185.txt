@@ -1,0 +1,87 @@
+You are working in the existing ServicePro v3 codebase (Replit). Implement a “Send Test (Real Pipeline)” feature for campaigns.
+
+GOALS
+1) Backend: Add POST /api/campaigns/:id/send-test that sends exactly ONE real SMS using the same template rendering + CTA logic as the real campaign sender, but WITHOUT advancing campaign batch counters or sending to multiple recipients.
+2) UI: Add an input field for a phone number and a “Send Test” button near the existing campaign send controls (next to “Send next 50” / “Send all”).
+3) Diagnostics: Log a delivery attempt row for the test send including Twilio sid and any error code/message if it fails.
+
+CONSTRAINTS
+- Do NOT require the user to run any DB destructive migrations.
+- If a DB table for delivery attempts does not exist, create a minimal one via Drizzle schema + db:push-safe (add-only) migration. If adding a table would cause destructive drift warnings, then instead log attempts to server logs only and return structured JSON (ok, sid, errorCode, errorMessage).
+- Keep multi-tenant isolation correct (tenantId).
+- Keep SMS length safety (use existing truncateSmsResponse() if available).
+- Respect the existing campaign template variables system (e.g., {{firstNameOrFallback}} and CTA URL / rewardsLink logic). If the system uses “CTA / Booking URL” field + body, ensure the test uses the SAME behavior as real sends.
+
+BACKEND IMPLEMENTATION
+A) Create a new route file:
+- server/routes/campaignSendTest.ts
+Export a function registerCampaignSendTestRoutes(app) or a router.
+
+Route:
+POST /api/campaigns/:id/send-test
+Body: { phone: string }
+Behavior:
+- Validate phone looks like E.164 (starts with + and 10-15 digits). If not, return 400 with helpful message.
+- Determine tenantId from the authenticated session/context the same way other campaign routes do.
+- Load campaign by id + tenantId using existing db access pattern.
+- Render the SMS exactly like production campaign send:
+  - Take campaign.smsTemplate (or equivalent field)
+  - Compute variables for preview. For test send, use a safe default:
+    firstNameOrFallback = "Test"
+    points = campaign points amount if present else 500
+  - Compute CTA:
+    If campaign has CTA URL field set, use it. If it supports template variables like {{rewardsLink}}, render it too.
+  - Build final message:
+    If your system appends CTA link automatically, preserve that behavior.
+    Otherwise append "\n" + ctaUrl at end.
+  - Apply truncateSmsResponse() at the final step so the test never exceeds your SMS safety cap.
+- Send SMS via the SAME Twilio sending helper used by campaign batch sending (do not duplicate low-level Twilio code if a helper exists).
+- Return JSON:
+  { ok: true, sid: "...", to: phone, campaignId, previewChars, messagePreview }
+On error, return:
+  { ok: false, error: "…", twilioErrorCode?, twilioErrorMessage? } with 500.
+
+B) Diagnostics logging
+1) First, search for any existing campaign send logging / delivery tracking tables. If present, reuse it.
+2) If none exist and it is safe to add:
+   - Add a drizzle table campaign_message_attempts with columns:
+     id (serial/uuid), tenant_id, campaign_id, to_number, status, message_sid, error_code, error_message, created_at
+   - Insert a row for success/failure.
+3) If adding a table triggers destructive drift warnings, DO NOT do it; instead:
+   - Log a single structured line:
+     [CAMPAIGN TEST SEND] ok=false tenant=<...> campaignId=<...> to=<...> errorCode=<...> error=<...>
+
+C) Wire the route
+- In server/index.ts, register the new route next to other campaign routes.
+
+FRONTEND IMPLEMENTATION
+A) Locate the Campaign Settings / Campaign page that currently has buttons like “Send next 50” and “Send all”.
+Add a small “Send Test” panel:
+- Input: phone number (placeholder: +19185551234)
+- Button: “Send Test”
+- On click: POST /api/campaigns/{id}/send-test with { phone }
+- Show toast/alert:
+  - success: “Test sent to +1… (sid: …)”
+  - failure: show error message returned from server
+
+B) Keep UI styling consistent with existing components.
+
+FILES TO ADD/MODIFY (expected)
+- server/routes/campaignSendTest.ts (new)
+- server/index.ts (modify to mount route)
+- shared/schema.ts (ONLY if safe to add attempts table; otherwise skip)
+- client/ui campaign page component (modify)
+- any api client helper file used for POST requests (if needed)
+
+VALIDATION CHECKLIST
+- Works for one number without advancing campaign send state.
+- Uses same campaign rendering/link logic as production.
+- Returns useful error info if Twilio rejects number or formatting.
+- Does not exceed SMS length safety cap.
+- Multi-tenant safe.
+
+After implementation, output:
+1) The exact URL and example curl:
+curl -X POST http://localhost:5000/api/campaigns/<ID>/send-test -H "Content-Type: application/json" -d '{"phone":"+1918..."}'
+2) Where the UI button appears and what it’s labeled.
+3) Any new env vars or config used (should be none).

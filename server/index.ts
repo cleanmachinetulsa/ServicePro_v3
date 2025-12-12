@@ -29,6 +29,7 @@ import sendgridWebhookRouter from "./routes.sendgridWebhook";
 import twilioVoiceRouter from "./routes.twilioVoice";
 import { twilioTestVoiceRouter } from "./routes/twilioTestVoice";
 import campaignsRouter from "./routes.campaigns";
+import { campaignSendTestRouter } from "./routes/campaignSendTest";
 import smsTemplatesRouter from "./routes.smsTemplates";
 import a2pCampaignRouter from "./routes.a2pCampaign";
 import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
@@ -386,6 +387,7 @@ app.use(billingRouter);
 app.use(billingHealthRouter);
 // Register campaign management routes (requires auth)
 app.use('/api/campaigns', campaignsRouter);
+app.use('/api/campaigns', campaignSendTestRouter);
 // Register Welcome Back Campaign routes (tenant admin, requires 'campaigns' feature)
 app.use('/api/admin/campaigns', welcomeBackCampaignRouter);
 // Register SMS templates routes (requires auth)
