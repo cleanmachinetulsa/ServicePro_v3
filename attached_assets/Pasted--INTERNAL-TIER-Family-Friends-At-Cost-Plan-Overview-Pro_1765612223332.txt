@@ -1,0 +1,87 @@
+# INTERNAL TIER (Family / Friends / At-Cost Plan)
+
+## Overview
+Provide select tenants (family, friends, partners, internal demo tenants) with full platform access but with:
+- No subscription fee
+- No markup
+- All usage billed to the platform owner (Jody)
+- All features unlocked without restriction
+
+This gives “at-cost” access: the tenant only incurs raw usage costs (SMS, voice, AI) which the platform absorbs.
+
+## Implementation
+
+### 1. Schema Update – Add 'internal' Tier
+Extend planTier enum:
+
+starter | pro | elite | internal
+
+For internal tenants:
+- planTier = 'internal'
+- status = 'active' (no Stripe subscription required)
+
+### 2. Feature Map
+Add TIER_FEATURES.internal with everything unlocked:
+
+{
+  aiSmsAgent: true,
+  aiVoiceAgent: true,
+  dedicatedNumber: true,
+  campaigns: true,
+  dataExport: true,
+  websiteGenerator: true
+}
+
+### 3. Billing Logic
+Modify billing/subscription checks:
+
+If tenant.planTier === 'internal':
+  - Skip Stripe subscription creation
+  - Skip payment enforcement
+  - Disable “update card” and “upgrade” UI for this tenant
+  - Mark tenant visually as INTERNAL in admin dashboard
+
+### 4. Usage Billing
+All usage (SMS/calls/OpenAI/SendGrid) is billed to the platform super-tenant account.
+
+No changes required — this behavior is already native.
+
+### 5. Admin UI Additions
+In /admin/tenants:
+- Add INTERNAL badge (distinct style)
+- Remove or gray-out billing fields for internal tenants
+- Allow selecting “Internal” when creating/editing tenants (owner-only)
+
+### 6. Support & Concierge Implications
+Internal tenants automatically receive:
+- Highest-level AI agents (SMS + voice)
+- Full telephony support
+- All industry packs
+- All website templates
+- Concierge setup included by default
+
+This becomes your “family/friends at-cost” tier.
+
+📍 WHERE THIS FITS IN THE BUILD PLAN
+It should be inserted into your MASTER_PLAN_v3.2.md after Phase 7 and before Phase 8, because:
+* Phase 7 is “Billing, Plans, Status, Stripe” 
+* That’s the place where adding an “Internal Tier” makes the most sense 
+* Phase 8 (“Industry Packs & Auto-Setup”) is a different layer and shouldn’t get mixed with billing logic 
+So it belongs as a new section:
+
+📄 EXACT POSITION IN FILE
+Search for this header:
+
+## 7. PHASE 7 – TIERS, BILLING, AND PLAN FEATURES
+Then scroll until the section ends.
+In the current v3.2 format, Phase 7 ends around line ~820–830 (depending on spacing).
+Insert the Internal Tier block immediately after Phase 7 and before Phase 8.
+So it becomes:
+
+## 7. PHASE 7 – TIERS, BILLING, AND PLAN FEATURES
+   (existing content...)
+
+--- INSERT INTERNAL TIER SNIPPET HERE ---
+
+## 8. PHASE 8 – INDUSTRY PACKS & AUTO-SETUP
+If you want the exact line number once your file is in place, you can paste your MASTER_PLAN_v3.2.md into a message, and I’ll tell you the exact line to insert.

@@ -1,0 +1,306 @@
+✅ SERVICEPRO MULTI-TENANT SUPER-SYSTEM – MASTER PLAN (FULL UPDATED VERSION)
+(Replace your existing MD file with this)
+
+0. Overview
+ServicePro is a full multi-tenant SaaS platform designed to power service-based businesses (detailing, cleaning, lawncare, HVAC, pet grooming, etc.) with:
+* Automated onboarding 
+* AI scheduling agent 
+* AI support agent 
+* Tiered subscription system 
+* White-label branding 
+* Automated SMS/email systems 
+* Website generator 
+* Super-tenant (root) control panel 
+* Tenant-specific data isolation 
+* Operator iPad/Technician mode 
+* Dynamic booking frontend & agent 
+* Optional BYO integrations or one-click fully-hosted integrations 
+* Complete automation suite: SMS, email, voice, IVR, calendar, reviews, billing 
+The Clean Machine app becomes the root tenant of ServicePro and serves as the “gold-standard configuration” for all future tenants.
+
+1. Multi-Tenant Architecture
+1.1 Tenant Isolation (COMPLETED Phases 1A–1H)
+* tenantDb wrapper 
+* tenantMiddleware 
+* tenant-scoped INSERT/SELECT/UPDATE/DELETE 
+* All routes & service layers migrated 
+* Background jobs migrated 
+* Root tenant fully isolated 
+* Every record has tenant_id 
+* Tests passing: 11/11 
+* Server stable 
+* No remaining db imports in server code 
+1.2 Future Tenant Routing
+* Subdomain → tenant lookup 
+* Custom domain support 
+* Per-tenant feature flags 
+* Per-tenant branding assets 
+* Tenant-specific keys/settings 
+
+2. Tier System (Final)
+A 3-tier system:
+
+Tier 1 — Basic (BYO Integrations)
+For very small businesses. Features:
+* Bring-your-own Twilio / A2P 
+* Connect your own SendGrid / domain / calendars 
+* Guided onboarding agent (Tier 1 version) 
+* AI scheduling agent 
+* Dynamic booking page 
+* Website generator with limited templates 
+* Basic support agent 
+* Basic dashboard 
+* Limited automations 
+* Lower monthly cost 
+This tier is intentionally more manual and less automated so we can upsell to Tier 2.
+
+Tier 2 — Fully Hosted (Recommended Tier)
+Everything from Tier 1 plus:
+* ServicePro-owned Twilio subaccounts 
+* Automated A2P registration (hands-free) 
+* Zero technical setup 
+* 10+ premium website templates 
+* White-labeled hosting 
+* Full automation suite (SMS, email, reviews, calendars, reminders) 
+* Mid-tier simplified onboarding agent 
+* AI customer booking agent customized per tenant 
+* Preloaded industry templates 
+* Multi-language support 
+* Priority automation routing 
+This is the “shopify-level done-for-you solution.”
+
+Tier 3 — Enterprise / Custom
+Everything from Tier 2 plus:
+* Custom development 
+* Custom automations 
+* Dedicated account manager 
+* Dedicated AI support agent tuning 
+* Multi-location/professional setups 
+* Support SLAs 
+* Full white-label with custom domain + custom root experience 
+* Permission for internal employee accounts 
+This is where we generate high-ticket revenue.
+
+3. Agents System (VERY IMPORTANT)
+ServicePro includes four major agents:
+
+3.1 ONBOARDING AGENT (Tier 1 & Tier 2)
+Purpose: Walk new users through the entire setup.
+Tier 1 agent
+* BYO Twilio 
+* BYO SendGrid 
+* BYO domain 
+* Step-by-step guided integration 
+* Generates copy/paste keys 
+* Knows all instructions 
+* Minimal jargon 
+* Spanish support 
+* Keeps memory/notepad of keys 
+* Checks errors 
+* Validates keys 
+* Helps configure:
+    * Booking settings 
+    * Services 
+    * Pricing 
+    * Calendar 
+    * Business profile 
+    * Website 
+Tier 2 agent
+* Much simpler 
+* No BYO setup 
+* Automatically provisions Twilio subaccount 
+* Automatically configures A2P 
+* Automatically creates phone numbers 
+* Automatically injects keys into tenant settings 
+* Only asks business questions:
+    * What services do you offer? 
+    * What’s your service area? 
+    * Hours, main service types 
+    * Preferred style for website 
+Tier 2 onboarding is nearly effortless.
+
+3.2 CUSTOMER BOOKING AGENT (Per Tenant)
+One of the most important features.
+* Answers questions from customers 
+* Books appointments via agent 
+* Knows all pricing, services, availability 
+* Learns from tenant history (“we often recommend interior protection…”) 
+* Uses scheduling logic & service area logic 
+* Works over SMS, web chat, and future voice 
+* Integrates with IVR 
+* Multi-language 
+* Customizable tone (friendly/local/premium/etc.) 
+
+3.3 CUSTOMER SUPPORT AGENT (For Tenants)
+A “ServicePro Copilot” that:
+* Helps tenant owners understand the app 
+* Can look things up using internal tools 
+* Can take safe actions 
+* Can configure settings 
+* Can troubleshoot Twilio/scheduling/email 
+* Has access to:
+    * Tenant profile 
+    * Feature flags 
+    * Error logs 
+    * Review recent events 
+    * View last agent actions 
+* Can escalate to a human & open support tickets 
+* Works inside dashboard and help center 
+This agent dramatically reduces support load.
+
+3.4 MID-TIER CONFIG AGENT (New)
+Simpler version for Tier 2, super easy setup.
+
+4. Website Generator System (New Features Added)
+We now add these requirements to the master plan:
+4.1 Built-in Website Generator
+* Ten pre-built ultra-premium templates 
+* Fully responsive 
+* App-level animations, page transitions 
+* Hover effects, polished UI 
+* Designed for high conversion 
+* Automatically generated from onboarding answers 
+* Auto-filled with tenant details:
+    * Services 
+    * Pricing 
+    * Photos 
+    * Hours 
+    * Policies 
+    * About info 
+* Built with:
+    * React 
+    * Tailwind 
+    * Vite 
+    * SSR option later 
+4.2 External-page support
+Clayton’s external website generator can be plugged in.
+4.3 Add-on marketplace
+Website Generator Pack is a paid add-on for Tier 1. Included for Tier 2 and Tier 3.
+
+5. Dashboard (Root + Tenant)
+5.1 Tenant Dashboard
+Clean Machine dashboard expanded for multi-tenant:
+* Full business management 
+* Schedule 
+* Booking manager 
+* Customer CRM 
+* Conversations 
+* AI insights 
+* Technician mode 
+* Service/proposal builder 
+* Invoice/Referral Reward system 
+* Analytics 
+* User roles 
+* Website customization 
+* Integrations 
+* Live chatbot config 
+* AI agent tuning 
+5.2 Root Super-Tenant Dashboard
+A brand-new admin system that Clean Machine (you) uses:
+* Tenant list 
+* Usage metrics (SMS, calls, emails, etc.) 
+* Billing (Stripe) 
+* Feature flags 
+* Template manager (websites, SMS, emails) 
+* Automated updates to all tenants 
+* Version management 
+* Push updates to tenants 
+* Health and error monitoring 
+Root tenant = your command center.
+
+6. Free Trial System
+* 14-day free trial 
+* No credit card required (optional) 
+* Automated provisioning 
+* Automated reminder sequence 
+* Soft lock on expiration 
+* Auto-migrate to paid 
+* Integrated with onboarding agent 
+* Trial sandbox (demo mode) 
+
+7. Demo Mode (Already Partially Built)
+* Mock data 
+* No external calls 
+* Full simulated experience 
+* Replaces Clean Machine content 
+* Used in marketing & investor demos 
+* Great sales tool 
+* Selectable demo businesses (future) 
+
+8. Customer-Facing Booking Page
+* CleanMachine booking → converted to multi-tenant 
+* AI agent for Q&A + scheduling 
+* Multi-step booking form 
+* Mobile-first 
+* Feature flags per tenant 
+* Dynamically generated booking logic 
+* Each tenant can theme it 
+* Integrated service area logic 
+* Standard + advanced style themes 
+
+9. IVR + Voice Agent
+(Currently in progress)
+* Tier 1 → optional, BYO Twilio 
+* Tier 2 → auto-provisioned 
+* Fancy AI voice
+    * Polly first 
+    * OpenAI or ElevenLabs next 
+* Conversational voice scheduling 
+* Hidden Easter-egg button 
+* On-hold music 
+* Customer routing logic 
+* Press 1 → Agent 
+* Option W → Smart scheduler 
+* Option 3 → Call back between appointments 
+
+10. Developer Plan Integration
+Replit Agent is being guided phase-by-phase. MASTER_PLAN_V3.md informs all future actions.
+Each phase includes:
+* Step-by-step instructions 
+* How to migrate 
+* How to update code 
+* Verification checklist 
+* Rollback safety 
+* Zero business logic changes 
+This file rules the system.
+
+11. Current Phase Summary (COMPLETE)
+Phase 1A → 1H is now complete:
+* Full tenant isolation 
+* Entire codebase migrated 
+* Background jobs migrated 
+* Service layers migrated 
+* All db calls updated 
+* Tests passing 
+* No regressions 
+* Server running 
+We now enter Phase 2.
+
+12. Phase 2 Roadmap (Immediate)
+1. Tenant Routing 
+2. Tenant Onboarding 
+3. Tier System Activation 
+4. Agent System (Onboarding + Support) 
+5. Website Generator 
+6. Booking Agent improvements 
+7. Free Trial system 
+8. Root Dashboard 
+9. Pricing configuration UI 
+10. Subscription + billing enforcement 
+
+13. Phase 3 (Coming Next)
+* Advanced voice agent 
+* Cross-device technician app 
+* App store integrations 
+* Multiple services per industry 
+* Prebuilt industry templates 
+* Multi-location accounts 
+* Enterprise features 
+* Integrations marketplace 
+* Performance enhancements 
+
+14. Appendix
+(Reserved for data models, system diagrams, and full tier breakdown.)
+
+✔️ END OF MASTER PLAN
+This is now the definitive version

@@ -1,0 +1,186 @@
+8. Plan Tiers, Upgrades, and Usage Billing (v3.1)
+8.1 Tier Model
+Tenants live in a single tenants table and have a plan + status:
+* tenants
+    * id 
+    * name 
+    * planTier → "starter" | "pro" | "elite" 
+    * status → "active" | "trialing" | "past_due" | "suspended" | "cancelled" 
+    * (later: trialEndsAt, cancellationAt, etc.) 
+Billing metadata is stored separately:
+* tenantBilling
+    * tenantId 
+    * stripeCustomerId 
+    * stripeSubscriptionId 
+    * subscriptionStatus 
+    * latestInvoiceStatus 
+    * lastPaymentAt 
+Feature gates live in code (or a config table) so the app can quickly check what’s allowed:
+
+export const TIER_FEATURES = {
+  starter: {
+    aiSmsAgent: false,
+    aiVoiceAgent: false,
+    dedicatedNumber: false,
+    campaigns: false,
+    dataExport: true,
+  },
+  pro: {
+    aiSmsAgent: true,
+    aiVoiceAgent: false,
+    dedicatedNumber: true,
+    campaigns: true,
+    dataExport: true,
+  },
+  elite: {
+    aiSmsAgent: true,
+    aiVoiceAgent: true,
+    dedicatedNumber: true,
+    campaigns: true,
+    dataExport: true,
+  },
+} as const;
+Every feature check in the app should go through a small helper, e.g. hasFeature(tenant, 'aiSmsAgent'), not scattered “if tier === 'pro'” checks.
+
+8.2 Upgrade Flow: Starter → Pro (no re-setup)
+Goal: Upgrading plans should feel like “flipping a switch,” not re-onboarding.
+Flow:
+1. User clicks “Upgrade to Pro” in the app. 
+2. Frontend calls /api/billing/upgrade with targetTier = "pro". 
+3. Backend:
+    * Looks up tenantBilling for the current tenant. 
+    * Calls Stripe to update the subscription to the Pro price. 
+    * On success:
+        * Updates tenants.planTier = 'pro'. 
+        * Optionally logs an audit event like plan_changed with old/new tier. 
+4. After success:
+    * UI refreshes features using TIER_FEATURES. 
+    * Pro features just unlock against the same data:
+        * Same customers 
+        * Same calendar 
+        * Same automations (now allowed to use SMS/AI/etc.). 
+    * Telephony provisioning (below) auto-runs to assign a dedicated number if they didn’t have one. 
+No data is copied or recreated. Tenant ID stays the same; only capabilities change.
+
+8.3 Handling Non-Payment (Suspend but Don’t Delete)
+Principles:
+* Never delete tenant data on first non-payment. 
+* Suspend access, not information. 
+* Make reactivation painless. 
+Implementation:
+* Stripe webhook (e.g. invoice.payment_failed, customer.subscription.updated) calls a backend handler. 
+* That handler:
+    * Updates tenantBilling.subscriptionStatus. 
+    * Applies a simple policy:
+        * If payment fails / subscription goes past_due:
+            * Set tenants.status = 'past_due'. 
+            * Allow login but:
+                * Show a “billing issue” banner. 
+                * Block new appointments, SMS, and campaigns. 
+                * Keep existing data intact. 
+        * If subscription is cancelled or long-term unpaid:
+            * Set tenants.status = 'suspended'. 
+            * Allow only:
+                * Read-only dashboard 
+                * Data export 
+                * Billing page to fix payment / re-subscribe. 
+* Data retention window (configurable):
+    * e.g. keep data for 6–12 months after suspension. 
+    * Later: optional “archive tenant” process (cold storage, but still exportable). 
+
+8.4 Built-in Upsell / Upgrade Nudges
+To push users from Starter → Pro without being annoying:
+* In-app plan card:
+    * On settings or billing page:
+        * “Current Plan: Starter” 
+        * Side-by-side comparison of Starter vs Pro vs Elite. 
+        * One-click “Upgrade to Pro” button. 
+* Feature wall messaging:
+    * When a Starter tenant clicks a Pro-only feature:
+        * Show modal: “This feature is part of Pro. Upgrade to unlock AI SMS agent, your own business number, and campaigns. Your existing data stays exactly the same.”  
+* Usage-based prompts:
+    * Example: if a Starter is sending a lot of manual messages:
+        * “You’ve sent 180 SMS manually this month. Pro can automate follow-ups and reminders. [See Pro benefits]” 
+These are pure UI + a simple hasFeature helper, no extra data structures needed.
+
+9. Telephony Model & Twilio UX (v3.1)
+9.1 Core Principle: Platform-Managed by Default
+For most tenants (Pro / Elite):
+* They should never need to log into Twilio. 
+* You act as the “carrier”:
+    * You own the Twilio account. 
+    * You provision numbers on their behalf. 
+    * You manage A2P, webhooks, etc. 
+* The tenant only sees:
+    * “Your Business Number: (XXX) XXX-XXXX” 
+    * Basic call/SMS analytics 
+    * Settings like business hours / routing, not underlying provider details. 
+
+9.2 Telephony Config Schema
+A shared table connects tenants to phone numbers:
+
+export const tenantPhoneConfig = pgTable('tenant_phone_config', {
+  id: varchar('id').primaryKey(),
+  tenantId: varchar('tenant_id')
+    .references(() => tenants.id)
+    .notNull(),
+  phoneNumber: varchar('phone_number').notNull(), // Twilio number in E.164
+  messagingServiceSid: varchar('messaging_service_sid'),
+  sipDomain: varchar('sip_domain'),        // e.g. cleanmachinetulsa.sip.twilio.com
+  sipUsername: varchar('sip_username'),    // e.g. 'jody'
+  sipPasswordEncrypted: varchar('sip_password_encrypted'),
+  ivrMode: varchar('ivr_mode').default('simple'), // 'simple' | 'ivr' | 'ai-voice'
+  createdAt: timestamp('created_at').defaultNow(),
+});
+Root tenant (Clean Machine) already has a row; new tenants get a row when they reach a plan tier that includes a dedicated number.
+
+9.3 Provisioning Flow (New Pro/Elite Tenant or Upgrade)
+Whenever a tenant:
+* Signs up directly on Pro/Elite, or 
+* Upgrades from Starter → Pro/Elite 
+Backend runs a provisioning service, e.g. provisionTenantNumber(tenantId):
+1. Look up tenant’s service location (city/state/area code). 
+2. Use platform Twilio credentials to:
+    * Search for an appropriate local number. 
+    * Purchase it. 
+    * Attach standard webhooks:
+        * Voice: /twilio/voice/incoming 
+        * SMS: /twilio/sms/incoming 
+3. Create/Update tenantPhoneConfig row with:
+    * phoneNumber 
+    * messagingServiceSid (if used) 
+    * Defaults (e.g. ivrMode = 'simple'). 
+4. Notify the tenant in-app: “Your new business number is (XXX) XXX-XXXX. Calls and texts will now route through ServicePro.”  
+If provisioning fails (e.g. no numbers available in that area):
+* Log error + show a friendly message: “We couldn’t automatically find a local number. We’ll email you with options or you can contact support.”  
+
+9.4 BYO Twilio (Advanced / Optional)
+This is not the primary path. It’s an advanced option for power users and agencies.
+* Hidden or clearly labeled “Advanced” page. 
+* Collect:
+    * accountSid 
+    * authToken 
+    * messagingServiceSid (optional) 
+* Validate via a test API call. 
+* Mark in DB that this tenant uses their own Twilio credentials. 
+* Use this config in telephony code instead of the platform’s default. 
+Most tenants won’t ever touch this and will just use your managed telephony.
+
+9.5 “Suspend but Don’t Break” Behavior for Telephony
+When tenants.status is:
+* active or trialing:
+    * All telephony flows work normally. 
+* past_due:
+    * Option A: allow inbound calls/SMS but block outbound campaigns. 
+    * Option B: show in-app warning and limit usage gradually (soft throttle). 
+    * Either way, no number is immediately released from Twilio. 
+* suspended:
+    * Option: stop processing campaigns / automations. 
+    * Still keep the number assigned and tenantPhoneConfig intact for a retention window. 
+    * Allow them to reactivate via billing. 
+Later, if you ever need to free up resources, you can build:
+* A script to identify long-term suspended tenants. 
+* Manual/controlled process to:
+    * export their data, 
+    * release their number (if you choose), 
+    * mark them as archived. 

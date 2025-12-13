@@ -1,0 +1,754 @@
+Phase 1 DROP-IN CAMPAIGN MANAGER+  You are taking over work on an existing multi-tenant SaaS platform called ServicePro v3, running in a Replit Node.js + Postgres environment. The root tenant is my own business, Clean Machine Auto Detail (Tulsa-based, all customers in Oklahoma / Central time). You MUST treat the existing repo as production-critical: do not refactor, do not reorganize, do not introduce breaking changes. All changes should be additive, minimal, and carefully integrated into the current code structure.
+
+Key environment facts (from .replit):
+- Node.js 20
+- PostgreSQL 16
+- run command: `npm run dev`
+- deployment run: `NODE_ENV=production node dist/index.js`
+- Modules: nodejs-20, web, postgresql-16
+- Twilio from number: TWILIO_VOICE_FROM_NUMBER = +19188565304
+- Nix packages: curl, git-filter-repo, zip, imagemagick
+
+There is an existing Twilio integration with:
+- Inbound SMS webhook(s)
+- Outbound SMS sending
+- Port Recovery style campaigns (portRecoveryService, portRecovery routes)
+
+Your job in this session is to implement a **safe, additive, ROBUST campaign sending + management layer** for SMS campaigns (starting with Port Recovery) with full compliance and scheduling, WITHOUT breaking any working behavior.
+
+========================
+HIGH-LEVEL GOALS
+========================
+
+1. Twilio Opt-Out Compliance (21610 / STOP)
+2. Oklahoma Quiet Hours Enforcement for Campaigns (8pm–8am local CST/CDT)
+3. Scheduled Campaign Sending (e.g. “run Port Recovery for all at 11:00am tomorrow”)
+4. Campaign Management Dashboard & API (stats, history, schedule)
+5. STRICT non-breaking changes: no large refactors, no moving files, no drastic rewrites. All edits must be surgical.
+
+========================
+IMPORTANT BUSINESS RULES
+========================
+
+1. Opt-Out / 21610:
+   - Twilio error 21610 means: the recipient previously sent STOP (or another opt-out keyword). Twilio will block all further sends to that number until the subscriber sends START.
+   - We MUST:
+     - Not send any custom reply after STOP. Twilio will send its own confirmation message.
+     - Mark such numbers as unsubscribed in our own DB and exclude them from future campaigns.
+
+2. STOP/START Handling:
+   - On inbound messages with STOP keywords (STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT):
+     - Update the corresponding customer/phone record:
+       - sms_opt_in = false
+       - sms_opt_out_at = now
+       - phone_status = 'unsubscribed'
+     - DO NOT send any reply from our app (let Twilio auto-reply).
+   - On inbound messages with START/UNSTOP (opt-in):
+     - Set sms_opt_in = true
+     - Clear sms_opt_out_at
+     - phone_status = 'active'
+     - It is OK to send a short confirmation like: "You’re resubscribed for Clean Machine updates."
+
+3. Outbound Filtering:
+   - Before sending any campaign or marketing SMS:
+     - Filter out any records where:
+       - sms_opt_in = false, or
+       - phone_status IN ('unsubscribed', 'invalid', 'unreachable')
+   - This applies especially to the existing Port Recovery campaign.
+
+4. Quiet Hours – Clean Machine (Oklahoma):
+   - For now, assume all Clean Machine customers are in America/Chicago timezone (Central).
+   - “Quiet hours” = 8:00pm to 8:00am local time.
+   - We must NEVER send campaign/marketing SMS during these hours.
+   - Behavior:
+     - If the current local time (America/Chicago) is <08:00 or >=20:00, campaign sends must be blocked or rescheduled.
+     - Non-campaign, transactional messages (e.g. appointment confirmations) may be allowed in the future, but for this task, apply the guard to the Port Recovery / marketing campaign system.
+
+========================
+TECHNICAL TASKS (BACKEND)
+========================
+
+IMPORTANT: Before editing anything, do a repo-wide scan to understand existing structure. Look for:
+- Twilio inbound webhook handlers (e.g. server/routes/twilio.ts, twilioWebhook.ts, or similar).
+- Outbound SMS sending service(s).
+- Port Recovery service and route, e.g.:
+  - server/services/portRecoveryService.ts
+  - server/routes.portRecovery.ts or routes/portRecovery.ts
+- DB models and migrations related to customers, phone numbers, or campaigns.
+
+Work in the following order:
+
+----------------------------------
+A. DB / MODEL UPDATES (MIGRATIONS)
+----------------------------------
+
+1. Find the existing customer/phone-related table(s) used to send SMS.
+   - Add (if not present) the following fields via a new migration:
+     - sms_opt_in: boolean (default true)
+     - sms_opt_out_at: timestamp nullable
+     - phone_status: text or enum with values like:
+       - 'active'
+       - 'unsubscribed'
+       - 'invalid'
+       - 'unreachable'
+   - If a stricter enum pattern is already in place, extend it minimally instead of introducing a new pattern.
+
+2. Create a new table for scheduled campaign runs, e.g. `scheduled_campaign_runs`:
+   - id (uuid or serial)
+   - tenant_id (for multi-tenant)
+   - campaign_type (text) -- e.g. 'port_recovery'
+   - scheduled_for (timestamptz) -- UTC
+   - executed_at (timestamptz, nullable)
+   - status (text) -- e.g. 'pending' | 'running' | 'completed' | 'failed'
+   - notes (text, nullable) -- free-form log or error message
+   - created_at, updated_at
+
+3. If a general `campaigns` or `campaign_runs` table already exists:
+   - Prefer extending it with the above fields rather than duplicating.
+   - Keep changes minimal and backward-compatible.
+
+---------------------------------------
+B. INBOUND TWILIO WEBHOOK – STOP/START
+---------------------------------------
+
+1. Locate the Twilio inbound SMS webhook route (e.g. POST /api/twilio/sms).
+2. Add logic to inspect the inbound message body (case-insensitive, trimmed).
+3. Implement STOP handling:
+   - If body is in { "stop", "stopall", "unsubscribe", "cancel", "end", "quit" }:
+     - Locate the customer/phone record by the "From" number.
+     - Set:
+       - sms_opt_in = false
+       - sms_opt_out_at = now
+       - phone_status = 'unsubscribed'
+     - Do NOT send any response via Twilio from this webhook handler.
+   - Make sure no existing "nice STOP reply" is sent. Remove or bypass any custom STOP-response text we were using before.
+
+4. Implement START/UNSTOP handling:
+   - If body is in { "start", "unstop" }:
+     - Locate the customer/phone record by "From".
+     - Set:
+       - sms_opt_in = true
+       - sms_opt_out_at = null
+       - phone_status = 'active'
+     - Optionally send a short, compliant confirmation SMS using our Twilio client.
+
+-------------------------------
+C. OUTBOUND SENDING & CALLBACKS
+-------------------------------
+
+1. Locate the service responsible for sending Port Recovery SMS and other bulk sends (e.g. portRecoveryService).
+2. Add a helper function that wraps the actual Twilio send and:
+   - Checks the DB record for sms_opt_in and phone_status before sending.
+   - Skips sending and records a local status (e.g. 'skipped_unsubscribed') if they’re opted out or invalid.
+   - Logs the Twilio Message SID, status, and error code (if any) for each attempt into the DB (either via a dedicated table or existing message log).
+
+3. Locate the Twilio status callback handler for outbound SMS (if any).
+   - On callbacks, update per-message delivery records with:
+     - final status: delivered, undelivered, failed, etc.
+     - Twilio error code (if present).
+   - If error_code = 21610:
+     - Mark the phone as:
+       - sms_opt_in = false
+       - sms_opt_out_at = now
+       - phone_status = 'unsubscribed'
+   - If error_code is one of the invalid/unreachable group (30003, 30005, 30006, 30008, 21211, 21408, 21266, 14107 or similar):
+       - phone_status = 'invalid' or 'unreachable' (choose a consistent mapping).
+   - This error-classification must be additive and not break existing logic.
+
+----------------------------------
+D. QUIET HOURS LOGIC (CLEAN MACHINE)
+----------------------------------
+
+1. Create a small utility module, e.g. `server/utils/quietHours.ts` with:
+   - A function `isWithinQuietHoursForTenant(tenantId: string, now: Date): boolean`.
+   - For now, implement only the Clean Machine behavior:
+     - If tenant is Clean Machine (root tenant), convert `now` to America/Chicago and return true if hour < 8 or >= 20.
+   - Use a reliable timezone conversion (e.g. Luxon, date-fns-tz, or a minimal implementation already used in repo). If no timezone lib exists, prefer a simple, minimal solution plus a clear TODO comment for future enhancement.
+
+2. In the Port Recovery sending service:
+   - Before sending any messages, call the quiet hours helper.
+   - If `isWithinQuietHoursForTenant(...)` is true:
+     - Do not send the batch.
+     - If triggered by a scheduled run, leave the scheduled_campaign_runs row as 'pending' or reschedule to the next allowed time (e.g. next day at 11:00).
+     - Log clearly in notes/status why it did not send.
+
+3. Make sure the quiet hours check is ONLY applied to campaign/marketing flows, not to internal system messages (unless the code already uses one shared path for all SMS, in which case add a way to label calls as "campaign" vs "transactional" and only enforce for campaign type).
+
+------------------------------------
+E. SCHEDULER FOR SCHEDULED CAMPAIGNS
+------------------------------------
+
+1. Implement a basic in-process scheduler in the Node server:
+   - In server startup code, add a `setInterval` (e.g. every 60 seconds) that:
+     - Queries `scheduled_campaign_runs` for:
+       - status = 'pending'
+       - scheduled_for <= now
+     - For each match:
+       - Acquire a lock/transaction to avoid double-running in autoscaled environments (e.g. update status to 'running' with a WHERE status='pending' condition).
+       - Call into the appropriate campaign handler, e.g. a function in portRecoveryService that performs a "send to all remaining" run.
+       - After completion:
+         - Set status = 'completed'
+         - Set executed_at = now
+         - Update notes with summary (counts of sent, skipped, failed).
+       - On error:
+         - Set status = 'failed'
+         - Populate notes with the error message.
+
+2. For Port Recovery:
+   - Add a function like `runPortRecoveryForScheduledRun(runId)` that:
+     - Looks up the run row and tenant.
+     - Applies quiet hours check.
+     - Applies opt-out and phone_status filtering.
+     - Uses existing Port Recovery logic to send messages to all remaining eligible contacts.
+   - Ensure the function is idempotent or properly guarded so that a failed halfway run can be retried manually later without double-texting the same recipients.
+
+3. This scheduler must be written conservatively:
+   - No heavy refactors.
+   - Clearly commented.
+   - Fairly easy to disable if needed.
+
+========================
+TECHNICAL TASKS (FRONTEND)
+========================
+
+IMPORTANT: Don’t blow up the existing layout or navigation. Add new components/pages in the same patterns used today.
+
+1. Create an admin-facing "Campaigns" page (or extend an existing page if there is already a campaigns section):
+   - File name should follow existing conventions, e.g.:
+     - `client/src/pages/admin/CampaignsPage.tsx`
+     - or `client/src/components/admin/CampaignsPanel.tsx`
+   - Fetch from a new backend endpoint, e.g.:
+     - GET `/api/admin/campaigns/scheduled` (returns scheduled runs)
+   - Display a table with:
+     - Campaign type (Port Recovery, etc.)
+     - Scheduled For (local time)
+     - Status (pending/running/completed/failed)
+     - Executed At (if not null)
+     - Notes/summary
+
+2. Add a simple control for Port Recovery:
+   - Button: “Send Port Recovery Now”
+     - Calls a POST endpoint (e.g. `/api/admin/campaigns/port-recovery/run-now`).
+   - Button or form: “Schedule Port Recovery”
+     - Allows selecting a date/time (default to next 11:00am local).
+     - Calls POST `/api/admin/campaigns/port-recovery/schedule` with the chosen datetime.
+     - Backend:
+       - Creates a `scheduled_campaign_runs` row with status='pending'.
+
+3. Ensure the UI:
+   - Properly handles loading and error states.
+   - Reflects quiet-hours behavior (e.g. show a warning if a scheduled time falls in 8pm–8am and explain that messages will not send during quiet hours).
+   - Uses existing styling and component patterns; do NOT introduce a brand-new design system.
+
+========================
+SAFETY & TESTING
+========================
+
+1. Do NOT:
+   - Rename or move existing files unless absolutely necessary.
+   - Change function signatures that are widely used without updating all call sites.
+   - Delete existing logic; instead, augment or wrap it.
+
+2. Add or update tests where the project already uses a test framework:
+   - At minimum, add unit tests for:
+     - STOP/START handler parsing.
+     - quiet hours helper (for times inside and outside 8pm–8am).
+   - Add defensive comments around the scheduler code explaining how to disable it if needed.
+
+3. After implementation:
+   - Confirm there are no TypeScript errors (if TS is used).
+   - Confirm `npm run build` succeeds.
+   - Confirm the dev server compiles and runs.
+
+4. Provide a short summary in a new or existing markdown file (e.g. `docs/campaigns.md`):
+   - How STOP/START works now.
+   - How quiet hours are enforced for Clean Machine.
+   - How scheduled runs work.
+   - Which API endpoints and admin UI components were added.
+
+========================
+FINAL NOTE
+========================
+
+Your changes MUST:
+- Keep all existing functionality working.
+- Be compatible with the current deployment model (autoscale, Node 20, Postgres 16).
+- Give me a working, verifiable way to:
+  - Create a scheduled Port Recovery blast for 11:00am (America/Chicago).
+  - See it as `pending` before 11:00.
+  - See it flip to `completed` after the scheduler runs, with message stats recorded.
+- Respect Oklahoma’s 8pm–8am quiet hours for all campaign sends for the Clean Machine tenant.
+
+
+
+
+
+
+
+
+
+
+
+
+
+PHASE 2 DROP-IN A -CAMPAIGN MANAGER-
+
+You are working on the same ServicePro v3 / Clean Machine codebase as in previous phases.
+
+ASSUMPTIONS:
+- Phase 1 campaign system is already implemented:
+  - STOP/START handling and opt-out flags (sms_opt_in, sms_opt_out_at, phone_status).
+  - Quiet hours for Clean Machine (8pm–8am America/Chicago).
+  - scheduled_campaign_runs table and in-process scheduler.
+  - Port Recovery campaign integrated with this system.
+- We must NOT refactor existing code or break working behavior. Only additive, surgical changes.
+
+GOAL OF THIS PHASE (2A):
+Implement **SMS analytics & error code charts** for campaigns. I want to see:
+- Per-campaign stats (sent, delivered, failed, skipped, STOP/unsubscribes).
+- Error breakdown by Twilio error code (21610, 30003, 30005, etc.).
+- Basic charts in the admin UI (line chart over time, bar chart by error code).
+
+========================
+BACKEND – DATA MODEL
+========================
+
+1. Reuse or introduce an SMS message log table (if not already present).
+   - First, search the repo for any existing message log tables:
+     - Look for Twilio Message SIDs, sms logs, or similar.
+   - If a suitable table exists (e.g. sms_messages, message_logs):
+     - Extend it minimally for analytics.
+   - If nothing usable exists, create a new table with a migration, e.g. `sms_message_logs`:
+     - id
+     - tenant_id
+     - customer_id (nullable but preferred)
+     - campaign_run_id (nullable, link to scheduled_campaign_runs or other campaign entity)
+     - direction ('outbound' | 'inbound')
+     - twilio_sid (nullable, for outbound only)
+     - to_number
+     - from_number
+     - body (short text)
+     - status (Twilio-style: queued, sent, delivered, undelivered, failed, etc.)
+     - error_code (text or int, nullable)
+     - error_message (text, nullable)
+     - created_at, updated_at
+
+2. Ensure outbound campaign sends (Port Recovery and similar):
+   - Log a row into sms_message_logs (or the extended table) for each message attempt:
+     - At least: tenant_id, customer_id (if known), campaign_run_id (if applicable), direction='outbound', to_number, from_number, body, initial status='queued' or 'sending'.
+   - On Twilio status callbacks:
+     - Update matching sms_message_logs row:
+       - status
+       - error_code (e.g. '21610', '30003', etc.)
+       - error_message (if present).
+   - Make sure this logic is minimal and does not change existing Twilio integration, only augments it.
+
+========================
+BACKEND – ANALYTICS ENDPOINTS
+========================
+
+Add new admin endpoints (secured as other admin routes are). Follow existing patterns for admin APIs.
+
+1. Summary by campaign run:
+   - GET `/api/admin/analytics/sms/campaign-run/:runId`
+   - Returns JSON like:
+     - run: basic info (id, campaign_type, tenant_id, scheduled_for, executed_at, status)
+     - totals:
+       - total_outbound
+       - delivered
+       - undelivered
+       - failed
+       - skipped_unsubscribed (if tracked)
+       - skipped_invalid (if tracked)
+     - error_breakdown: array of { error_code, count }
+     - status_breakdown: array of { status, count }
+
+2. Summary over time (for a tenant):
+   - GET `/api/admin/analytics/sms/summary?tenantId=...&from=ISO&to=ISO`
+   - Returns:
+     - daily_stats: list of days with counts:
+       - date
+       - total_outbound
+       - delivered
+       - undelivered
+       - failed
+       - stops_detected (number of inbound STOP messages that day, if you can compute from logs)
+     - error_breakdown: overall error counts for the period.
+   - Use existing date/time utilities and tenant-aware DB helpers.
+
+3. Keep all queries efficient and guarded:
+   - Use indexes on (tenant_id, created_at) and maybe (campaign_run_id) if the table is large.
+   - Only return data for the current tenant in a multi-tenant-safe way.
+
+========================
+FRONTEND – ADMIN ANALYTICS UI
+========================
+
+Locate the existing admin Campaigns page added in Phase 1 (or whichever page shows campaign runs). Extend it minimally.
+
+1. Campaign Run Details:
+   - On the campaign management page, add the ability to click into a specific run (e.g. by clicking its row).
+   - New route/page, e.g.:
+     - `/admin/campaigns/run/:runId`
+   - This page should:
+     - Fetch `/api/admin/analytics/sms/campaign-run/:runId`.
+     - Display:
+       - Basic run metadata (type, scheduled_for, executed_at, status, notes).
+       - Numeric summary:
+         - total_outbound, delivered, failed, undelivered, etc.
+       - Error breakdown table:
+         - Columns: Error Code, Count, Short Meaning (e.g. "21610 – Unsubscribed").
+       - A simple bar chart:
+         - x-axis: error_code
+         - y-axis: count.
+       - A simple status pie or bar chart:
+         - e.g. delivered vs failed vs undelivered vs skipped.
+
+   - Use whatever chart library or component pattern already exists in the repo. If none:
+     - Add a lightweight chart library that fits the current stack and is easy to use.
+     - Or build minimal charts using an existing UI toolkit (e.g. simple SVG-based components).
+
+2. Time-range Summary for Tenant:
+   - Add a “Analytics” or “Overview” tab on the campaign page (or similar).
+   - Allow selecting a date range (e.g. last 7 days, last 30 days, custom).
+   - Call `/api/admin/analytics/sms/summary`.
+   - Show:
+     - A simple line chart over time:
+       - x-axis: date
+       - y-axis: total_outbound (and optionally delivered as second series).
+     - A mini error breakdown chart for that range:
+       - Bar chart or table.
+
+3. Styling and UX:
+   - Follow existing design system and components.
+   - No radical redesign, no layout overhaul.
+   - Keep everything consistent with current admin patterns (cards, tables, etc.).
+
+========================
+VALIDATION & SAFETY
+========================
+
+1. Ensure that:
+   - `npm run build` succeeds.
+   - `npm run dev` runs without TypeScript or runtime errors in the new analytics flows.
+2. If tests exist, add at least a couple of basic tests:
+   - Verifying that analytics queries return the expected structure.
+   - Verifying that error_breakdown math is correct given sample data.
+3. Document in a short file, e.g. `docs/sms-analytics.md`:
+   - Where analytics API endpoints are.
+   - What fields are in sms_message_logs.
+   - How charts are wired in the UI.
+
+Remember: Do not refactor or break existing functionality. This phase is purely additive: log data, aggregate it, and visualize it.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PHASE 2 DROP-IN B- CAMPAIGN MANAGER-
+You are working on the same ServicePro v3 / Clean Machine codebase as in previous phases.
+
+ASSUMPTIONS:
+- Phase 1 campaign system and Phase 2A analytics are already in place.
+- Clean Machine currently has hardcoded quiet hours: 8pm–8am America/Chicago for campaigns.
+- Multi-tenant architecture is already established (tenant_id in DB, wrapTenantDb, etc.).
+- We still want minimal, additive changes with no refactors.
+
+GOAL OF THIS PHASE (2B):
+1. Move quiet-hours behavior into a per-tenant configuration instead of hardcoded.
+2. Introduce “high-value” / segmentation logic for selecting subsets of customers for campaigns (e.g. VIPs, lapsed, new).
+
+========================
+BACKEND – TENANT SETTINGS
+========================
+
+1. Locate existing tenant or settings tables.
+   - Look for a `tenants` table and any `tenant_settings` or similar.
+2. If a dedicated settings table exists:
+   - Extend it minimally to store:
+     - quiet_hours_start (time, e.g. '20:00')
+     - quiet_hours_end (time, e.g. '08:00')
+     - timezone (string, e.g. 'America/Chicago')
+     - marketing_enabled (boolean, default true)
+3. If none exists:
+   - Create a new `tenant_settings` table with migration:
+     - id
+     - tenant_id (unique)
+     - quiet_hours_start (string or time)
+     - quiet_hours_end (string or time)
+     - timezone (string)
+     - marketing_enabled (boolean, default true)
+     - created_at, updated_at
+
+4. Seed / default behavior:
+   - For the Clean Machine tenant:
+     - quiet_hours_start = '20:00'
+     - quiet_hours_end = '08:00'
+     - timezone = 'America/Chicago'
+     - marketing_enabled = true
+   - For other tenants:
+     - Provide sensible defaults (optional) or leave fields null and treat null as "no quiet hour restrictions" for now.
+   - Do not break existing behavior; if settings are missing, fallback to the original Clean Machine hardcoded behavior for that tenant.
+
+========================
+BACKEND – QUIET HOURS UTILITY UPDATE
+========================
+
+1. Update the quiet hours helper previously created (e.g. server/utils/quietHours.ts):
+   - Change from a hard-coded Clean Machine implementation to:
+     - Read tenant_settings (or equivalent) for the given tenant_id.
+     - Convert the current time to the tenant’s timezone (use existing timezone lib or a minimal utility).
+     - Calculate whether the local time is within quiet_hours_start–quiet_hours_end range.
+   - Correctly handle ranges that cross midnight (e.g. 20:00–08:00).
+   - If settings are missing:
+     - Fallback to previous behavior for Clean Machine.
+     - For other tenants, default to "no quiet hours" unless you decide otherwise (documented clearly in code comments).
+
+2. Ensure all campaign sending logic now calls the updated per-tenant-aware helper. No change to the public behavior for Clean Machine, just more flexible under the hood.
+
+========================
+BACKEND – CUSTOMER VALUE & SEGMENTS
+========================
+
+We want to be able to define segments like:
+- “High-value” customers (e.g. total_spent above a threshold, or multiple bookings).
+- “Lapsed” customers (haven’t booked in X days).
+- “New” customers (first booking within last 30 days).
+
+1. Data model:
+   - Locate existing tables with booking/job history and payments for customers.
+   - If the system already tracks total_spent or number_of_bookings on customers:
+     - Reuse those fields.
+   - If not:
+     - Add fields to customers or a companion table, such as:
+       - total_spent (numeric, default 0)
+       - total_bookings (integer, default 0)
+       - last_booking_at (timestamp, nullable)
+     - Add a backfill or update path later (for now, simple aggregation queries are acceptable).
+
+2. Segmentation logic:
+   - Add a service module, e.g. `server/services/segmentService.ts`, with functions:
+     - getHighValueCustomers(tenantId, options) – e.g. total_spent >= threshold, or total_bookings >= threshold.
+     - getLapsedCustomers(tenantId, options) – e.g. last_booking_at < now - 90 days and sms_opt_in = true.
+     - getNewCustomers(tenantId, options) – e.g. first booking or last_booking_at within last 30 days.
+   - Make thresholds configurable via:
+     - either constants for now (documented),
+     - or tenant_settings fields like:
+       - high_value_min_total_spent
+       - lapsed_days_threshold
+       - new_customer_days_window
+
+3. Campaign targeting:
+   - Extend existing campaign creation or scheduling APIs so that:
+     - When scheduling or running a campaign, you can specify:
+       - targetType: 'all' | 'segment'
+       - segmentKey: 'high_value' | 'lapsed' | 'new' (when targetType='segment')
+   - The sending logic should:
+     - If targetType='all', behave as before.
+     - If targetType='segment', use segmentService to fetch the appropriate subset of customers before the usual opt-out and phone_status filters.
+
+========================
+FRONTEND – ADMIN CONTROLS
+========================
+
+1. On the campaign creation / scheduling UI:
+   - Add a “Target audience” section with:
+     - Radio buttons or select:
+       - “All eligible customers”
+       - “Segment”
+     - If “Segment” selected:
+       - Dropdown with segment options:
+         - High-value customers
+         - Lapsed customers
+         - New customers
+   - Wire this into the backend payload to set targetType + segmentKey.
+
+2. On a campaign run details view:
+   - Display which segment (if any) was used.
+   - Optionally show simple counts like:
+     - “Segment size before filtering: X”
+     - “Segment size after opt-out/invalid filtering: Y”.
+
+3. Optional but helpful:
+   - A “Preview segment” button next to segment selection:
+     - Calls an endpoint like:
+       - GET `/api/admin/segments/preview?segmentKey=high_value&tenantId=...`
+     - Returns sample customers (names, last booking, etc.).
+     - Show them in a table so the user sees who would be targeted.
+
+========================
+VALIDATION & SAFETY
+========================
+
+1. Keep all changes additive:
+   - Quiet hours now read from settings; do not remove the old default logic until you’re sure everything works.
+2. Ensure:
+   - `npm run build` passes.
+   - `npm run dev` runs cleanly.
+3. Add a short doc, e.g. `docs/tenant-settings-and-segments.md` explaining:
+   - Per-tenant quiet hours fields.
+   - Segment definitions (high_value, lapsed, new).
+   - How they are used in campaigns.
+
+Remember: This phase does NOT change how Clean Machine behaves by default; it just moves logic into configurable structures and adds targeting options.
+
+
+
+
+
+
+
+
+
+
+PHASE 2 DROP-IN C- CAMPAIGN MANAGER-
+
+You are working on the same ServicePro v3 / Clean Machine codebase as in previous phases.
+
+ASSUMPTIONS:
+- Multi-tenant system already exists, with a concept of industry or tenant type (if not explicit, we can infer or store it now).
+- Campaign system (Port Recovery, scheduled runs, analytics, segments) is implemented from previous phases.
+- No refactors, only additive changes.
+
+GOAL OF THIS PHASE (2C):
+Implement **reusable SMS campaign templates** per industry so that:
+- Auto detail, lawn care, home cleaning, etc. can each have their own recommended messages.
+- Admin can create a campaign “from template” and then customize the text and schedule.
+
+========================
+BACKEND – TEMPLATE MODEL
+========================
+
+1. Check if there is already a concept of templates or “industry packs”.
+   - If industry packs exist (e.g. for websites or other content), integrate with that structure where it makes sense.
+2. If no suitable table exists, create a new table with migration, e.g. `sms_campaign_templates`:
+   - id
+   - tenant_id (nullable): if null, template is global/default; if set, template is tenant-specific override.
+   - industry (string, nullable): e.g. 'auto_detailing', 'lawn_care', 'home_cleaning', etc.
+   - name (string): human-readable name, e.g. "Port Recovery – First Touch"
+   - description (text): explanation of use.
+   - purpose (string): e.g. 'port_recovery', 'reengagement', 'review_request', 'upsell_protection'
+   - body (text): SMS body with optional placeholder tokens, e.g.:
+     - "Hi {{customer_first_name}}, it’s {{business_name}}. We’d love to see you again..."
+   - is_default (boolean, default false) – for use when picking a default per industry/purpose.
+   - created_at, updated_at
+
+3. Seed some base templates for:
+   - Auto detailing (Clean Machine core use case).
+   - Potential future verticals:
+     - Lawn care
+     - House cleaning
+     - Photography
+   - Focus on a few template types:
+     - Port recovery / reactivation
+     - Maintenance reminder
+     - Review request
+     - Upsell / add-on promotion
+
+4. Make sure you use placeholder tokens that align with existing templating mechanisms in the project (if any). If none exists:
+   - Choose a simple pattern like `{{variable_name}}`.
+   - Document that these will be replaced server-side using safe, minimal logic (no eval).
+
+========================
+BACKEND – TEMPLATE API
+========================
+
+1. Admin endpoints (tenant-scoped):
+
+   - GET `/api/admin/sms-templates?tenantId=...&industry=...&purpose=...`
+     - Returns list of templates matching filters, including global industry defaults and any tenant-specific overrides.
+
+   - GET `/api/admin/sms-templates/:id`
+     - Returns full template details.
+
+   - POST `/api/admin/sms-templates`
+     - Allows creating a new template (either global or tenant-specific).
+     - Validates placeholders (e.g. no invalid tokens).
+
+   - PATCH `/api/admin/sms-templates/:id`
+     - Allows editing name, description, body, default flag, etc.
+
+   - DELETE `/api/admin/sms-templates/:id`
+     - Soft-delete or mark as inactive (preferred) to avoid breaking historical references.
+
+2. Campaign creation from template:
+
+   - When creating a new campaign run (e.g. Port Recovery or a generic "SMS campaign"):
+     - Allow specifying `templateId`.
+     - The backend:
+       - Loads the template body.
+       - Resolves placeholders at send time, using data like:
+         - customer_first_name
+         - business_name / tenant display name
+         - maybe next_appointment_date or last_service_type if available.
+   - Preserve the resolved body per message instance in sms_message_logs (or similar) so that historical records are accurate.
+
+========================
+FRONTEND – TEMPLATE UI
+========================
+
+1. Templates Management UI:
+   - Add a new admin area/tab:
+     - e.g. `/admin/sms-templates`
+   - Features:
+     - List templates with:
+       - name, industry, purpose, is_default, last updated.
+     - Filters:
+       - Industry filter (dropdown).
+       - Purpose filter (dropdown).
+     - Actions:
+       - Create new template:
+         - Form with fields: name, purpose, industry, description, body.
+         - Helper text near the body field listing allowed placeholders.
+       - Edit template:
+         - Same form pre-filled.
+       - Mark as default for industry/purpose (if relevant).
+       - Delete/deactivate (with confirmation).
+
+2. Campaign creation UI integration:
+   - When creating or scheduling a campaign:
+     - Add a “Template” dropdown or “Choose template” button.
+     - This should:
+       - Fetch templates for the tenant (and/or industry).
+       - Allow selecting one.
+       - When selected:
+         - Prefill the SMS body text field in the campaign form with the template body.
+         - Allow the user to tweak the text before saving/scheduling.
+   - Show template name or label on the campaign details view (e.g. “Based on template: Port Recovery – First Touch”).
+
+3. UX Notes:
+   - Keep UI consistent with existing admin patterns.
+   - Clearly label this as “SMS Templates” for clarity.
+   - Provide a short inline help about placeholders:
+     - Example:
+       - "You can use: {{customer_first_name}}, {{business_name}}"
+
+========================
+VALIDATION & SAFETY
+========================
+
+1. Ensure:
+   - `npm run build` passes.
+   - `npm run dev` works normally.
+2. Avoid breaking existing behavior:
+   - If no template is chosen, campaigns should behave as they did before Phase 2C.
+   - Template system is optional, not required.
+3. Document in `docs/sms-templates.md`:
+   - Template table fields.
+   - Allowed placeholders and their meanings.
+   - How to create/edit templates and use them in campaigns.
+
+This phase is purely additive and should make it easier to spin up high-quality campaigns for multiple industries without rewriting SMS copy each time.
+
+
+

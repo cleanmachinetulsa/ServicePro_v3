@@ -1,0 +1,249 @@
+ DROP-IN 3- family code invites   ✅ PROJECT: ServicePro_v3 – Friends & Family Invite Codes (Tenant Onboarding Discounts)
+
+You are modifying the ServicePro_v3 monorepo. Implement a **Friends & Family Invite Code** system that lets the platform owner generate tokenized invite links that:
+
+- Let new tenants go through the **normal onboarding wizard**
+- Automatically apply a **discount mode** (e.g. free / discounted plan)
+- Skip or adapt the billing step as appropriate
+- Work nicely with the existing multi-tenant + Stripe billing stack
+- Are safe, auditable, and owner-only to create/manage
+
+Think in terms of a small, well-scoped feature: owner can generate codes from the admin side; recipients click a link and get the standard “new tenant” onboarding, but pre-configured as a complimentary or discounted account.
+
+--- 
+
+## HIGH-LEVEL REQUIREMENTS
+
+1. **Invite Codes Concept**
+   - Implement a system for **tenant-level invite codes** that the platform owner can use for:
+     - Friends & family complimentary accounts
+     - (Future) Discounted accounts or special access
+   - Each code will be used in URLs like:
+     - `https://app.servicepro.app/onboarding/start?invite=ABC123`
+   - When the invite is valid, the onboarding wizard:
+     - Pre-selects a plan tier (e.g. `pro` or `elite`)
+     - Applies a “complimentary / discounted” flag to billing
+     - Skips or modifies the payment/Stripe step appropriately
+     - Shows a small “Friends & Family” ribbon so users know it’s special
+
+2. **Security & Ownership**
+   - Only the **root owner / platform admin** should be able to create & manage invite codes.
+   - Codes should be **hard to guess** (random slug, 10–16 chars).
+   - Codes can have:
+     - `max_redemptions`
+     - `expires_at`
+     - `is_active` flag
+   - Redemptions must be tracked (how many tenants created from a code, who, when).
+
+3. **Scope**
+   - Start with **one main use case**: “Friends & Family complimentary access” that:
+     - Assigns a tenant to a chosen plan tier (e.g. `pro` or `elite`)
+     - Marks billing as **complimentary / not charged** by default
+   - Make the design flexible enough to add more types later (e.g. `discount_percent`, `months_free`), but you do NOT need full discount logic now.
+
+---
+
+## PART A – DATABASE & DOMAIN MODEL
+
+1. **New Table: tenant_invite_codes**
+
+   In the shared schema (Drizzle), add a table similar to:
+
+   - `id` (serial PK)
+   - `code` (varchar, unique) – the human-friendly invite code
+   - `label` (varchar) – short label like “Jody friend – Pro”
+   - `description` (text, nullable)
+   - `invite_type` (enum) – start with:
+     - `'friends_family'`
+     - (future) `'discount'`
+   - `plan_tier` (enum/string) – intended plan for tenants using this code
+   - `max_redemptions` (integer, nullable; null = unlimited)
+   - `used_count` (integer, default 0)
+   - `expires_at` (timestamp, nullable)
+   - `is_active` (boolean, default true)
+   - `created_by_user_id` (FK to users table, nullable – typically the owner)
+   - `created_at` (timestamp, default now)
+   - `last_used_at` (timestamp, nullable)
+   - Optional JSON field `metadata` for future fields (e.g. months_free, discount_percent).
+
+   Add appropriate indexes:
+   - Unique on `code`
+   - Index on `(invite_type, is_active)`.
+
+2. **Tenant Billing Flag**
+
+   In the existing billing/tenant schema, add a **simple, non-disruptive flag** to mark complimentary tenants, e.g.:
+
+   - Either a new column on tenants: `billing_complimentary` (boolean, default false)
+   - OR a field on the subscription table (`billing_subscriptions` or equivalent) like `is_complimentary` boolean.
+
+   Pick the location that best fits the current billing v2 implementation (SP-19 / SP-20). The goal:
+
+   - If `is_complimentary` is true, we still allow the tenant to run, but:
+     - They are treated as Pro/Elite for feature gating
+     - Stripe payment collection can be skipped in onboarding
+
+   Ensure this flag is read-only for tenants; only owner/admin can set it indirectly via invite codes or admin tools.
+
+---
+
+## PART B – BACKEND: INVITE CODE API
+
+Create an **admin API** for managing codes and a **public API** for validating them during onboarding.
+
+1. **Admin Routes (Authenticated, Owner Only)**
+
+   Implement routes under something like `/api/admin/invite-codes`:
+
+   - `GET /api/admin/invite-codes`
+     - List codes with pagination.
+     - Include: code, label, invite_type, plan_tier, max_redemptions, used_count, expires_at, is_active, created_at, last_used_at.
+
+   - `POST /api/admin/invite-codes`
+     - Body: `label`, `invite_type` (default `friends_family`), `plan_tier`, `max_redemptions`, `expires_at` (optional), `description` (optional).
+     - Server generates a random `code` (e.g. 10 char slug).
+     - Persists the code and returns full record plus the full invite URL.
+     - Restricted: only root/platform owner role.
+
+   - `PATCH /api/admin/invite-codes/:id`
+     - Allow toggling `is_active`, updating `label`, `description`, `max_redemptions`, `expires_at`.
+     - Do not allow editing `code` itself.
+
+2. **Public Validation Route**
+
+   Implement a route used by the onboarding flow to validate an invite:
+
+   - `GET /api/public/invite-codes/validate?code=ABC123`
+
+   Behavior:
+
+   - If invalid (not found / inactive / expired / max_redemptions reached):
+     - Return `{ success: false, reason: 'expired' | 'not_found' | 'max_redemptions_reached' }`.
+   - If valid:
+     - Return `{ success: true, invite: { code, inviteType, planTier, label, description } }`.
+
+3. **Redemption Logic**
+
+   During **tenant creation** (in the existing onboarding/tenant signup route), add optional support for an invite code:
+
+   - Accept `inviteCode` in the payload (or derived from query string).
+   - Validate it against `tenant_invite_codes`.
+   - If valid:
+     - Attach the invite code to the new tenant (e.g. `tenants.invite_code_used` column or via a join table).
+     - Increment `used_count` and update `last_used_at`.
+     - Apply the `plan_tier` from the invite to the created tenant.
+     - Set `billing_complimentary = true` (or `is_complimentary` on the subscription record) **for invite_type = 'friends_family'`.
+   - If invalid:
+     - Fail with a clear 400 error, or ignore and treat as normal signup (you decide, but log it).
+
+   Ensure this is done **transactionally** so we don’t increment `used_count` if tenant creation fails.
+
+---
+
+## PART C – ONBOARDING WIZARD INTEGRATION
+
+Locate the existing **tenant onboarding / setup wizard** (ServicePro multi-tenant onboarding). Update it to support invite codes end-to-end.
+
+1. **Read `invite` Query Param**
+
+   - On the onboarding start page (front-end route like `/onboarding/start` or similar), read `invite` from the query string.
+   - If present:
+     - Call `GET /api/public/invite-codes/validate?code=...`.
+     - If valid:
+       - Store `inviteCode` and `inviteMeta` in a React context or wizard state.
+       - Show a small banner such as:
+         - “🎉 Friends & Family Invite: {label} – You’re getting complimentary access on the {planTierLabel} plan.”
+     - If invalid:
+       - Show a small warning (“This invite link is no longer valid”) and proceed without invite.
+
+2. **Wizard Plan / Billing Step Adjustments**
+
+   In the step where the user picks a plan and/or enters payment:
+
+   - If an invite is attached and `inviteType === 'friends_family'`:
+     - Pre-select the plan tier from the invite.
+     - Disable plan switching or clearly indicate the plan is “Complimentary – Friends & Family”.
+     - For v1: **skip Stripe payment collection** and mark the tenant as complimentary via the backend as described above.
+       - If you already have a way to “skip/complete billing step for free plans”, reuse that pattern.
+   - If no invite, behave exactly as today.
+
+   Make sure feature gating for `plan_tier` + `is_complimentary` works naturally with the existing navigation & feature gating system (SP-7B, SP-21, etc.).
+
+3. **Submitting Tenant Creation**
+
+   - Include `inviteCode` in the payload to the backend create-tenant / onboarding completion route.
+   - The backend does the validation + redemption and sets plan tier + complimentary flag as described in Part B.
+
+---
+
+## PART D – ADMIN UI FOR CODE GENERATION
+
+Add a simple, clean UI for the platform owner:
+
+1. **Location**
+
+   - Add a page under a logical admin route such as:
+     - `/admin/friends-family-codes`
+     - or a new section in the existing Billing / Settings admin area.
+   - Use existing layout components (AppShell, cards, tables) for consistency.
+
+2. **Features**
+
+   - **Code List Table**:
+     - Columns: `code`, `label`, `invite_type`, `plan_tier`, `used_count / max_redemptions`, `expires_at`, `is_active`, `created_at`.
+   - **Create Code Form**:
+     - Fields:
+       - Label (required)
+       - Invite Type (for now default/locked to `Friends & Family`)
+       - Plan tier (dropdown of available tiers)
+       - Max redemptions (number, optional)
+       - Expiry date (optional)
+       - Description (optional)
+     - Button: “Generate Invite Link”
+   - After creation:
+     - Show the **full invite URL** (base URL + onboarding path + `?invite=CODE`) with a “Copy link” button so I can paste it into SMS, email, etc.
+   - Ability to toggle `is_active` and see basic audit info.
+
+   Make sure this page is **owner-only**. Non-owner tenants should not see it.
+
+---
+
+## PART E – QUALITY, TESTING, AND DOCUMENTATION
+
+1. **Tests / Smoke Checks**
+   - Create a test invite code for `plan_tier = 'pro'`, `max_redemptions = 5`, `invite_type = 'friends_family'`.
+   - Run through onboarding via `/onboarding/start?invite=...`:
+     - Verify the badge/banner appears.
+     - Verify the plan step shows it as complimentary.
+     - Verify the Stripe payment step is skipped or clearly marked as “complimentary”.
+     - Verify a new tenant record is created with:
+       - `plan_tier = 'pro'`
+       - `billing_complimentary = true` (or `is_complimentary` set)
+       - `invite_code_used` attached
+     - Verify `used_count` increments and `last_used_at` updates.
+   - Confirm that trying to use an **expired** or **maxed-out** invite returns the expected error and does not create a tenant.
+
+2. **Docs**
+
+   - Update `docs/MASTER_PLAN_v3.7_SERVICEPRO.md` (or whatever master doc you’re using) with a short section:
+     - “Friends & Family Invite Codes”
+     - Where the admin UI lives
+     - How links are constructed
+     - Current limitations (only complimentary, no Stripe coupons yet)
+   - Add inline comments in key files describing how invite codes plug into onboarding.
+
+3. **Non-Disruptive Guarantee**
+
+   - IMPORTANT: Do **not** change behavior for normal signups with no invite code.
+   - Existing billing, paywalls, and plan selection should behave exactly as they do now unless an invite code is explicitly provided.
+
+---
+
+When you’re done, summarize:
+
+- New DB tables/columns
+- New API endpoints
+- New admin UI route
+- How to generate a friends & family link and what happens when someone uses it.
+
+Then stop.

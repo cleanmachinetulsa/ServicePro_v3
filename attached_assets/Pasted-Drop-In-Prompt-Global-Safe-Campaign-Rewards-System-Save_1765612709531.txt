@@ -1,0 +1,239 @@
+Drop-In Prompt: Global “Safe Campaign Rewards” System
+💾 Save this for later. When you’re ready, paste it into the full Replit agent (not Fast).
+
+You are editing the ServicePro v3 / Clean Machine repo.
+
+Context (current state):
+- There is a loyalty / points system that stores transactions with fields including:
+  - customerId
+  - points (positive or negative)
+  - source / sourceId (already used for Campaign 36 / port-recovery-2025-12-11)
+  - metadata / description / reason (varies by use)
+- For the “port-recovery-2025-12-11” campaign (Campaign 36), we recently implemented:
+  - awardCampaignPointsOnce using (source, sourceId) to avoid duplicate 500-point awards per customer per campaign.
+  - A normalization endpoint that:
+    - Looks up all related transactions for that campaign.
+    - Detects customers who got >500 total points from those campaign IDs.
+    - Applies negative adjustments to bring them back down to 500.
+- Quiet hours, campaign sending, and overall campaign analytics are already working and should NOT be disturbed.
+
+BUSINESS GOAL:
+Turn the “safe rewards” behavior we built for port-recovery into a reusable, global system that applies to ALL future campaigns and reward flows.
+
+We want:
+
+1) A generic “safe reward” helper that:
+   - Is campaign-agnostic and reusable.
+   - Ensures: “one reward per (customer, reward_source, reward_sourceId) pair unless explicitly allowed otherwise.”
+   - Uses our existing loyalty transaction structure (source/sourceId) instead of hard-coded campaign names.
+
+2) A generic normalization framework that:
+   - Can be used for ANY reward_source + reward_sourceId pair (or a set of them).
+   - Allows an admin to:
+     - Preview which customers are over-awarded for a given reward source.
+     - Run a one-click normalization to bring them back to configurable caps.
+
+3) Port recovery should be refactored to use the new generic system, but **no behavior change** for Campaign 36 itself (it should still act exactly as now, just via the generic helpers).
+
+4) This must be designed so it’s easy to plug in future campaigns and future industries (e.g., house cleaning, lawn care, photography) with similar safety.
+
+DO NOT:
+- Change DB schema or add new tables.
+- Change quiet-hours logic.
+- Change SMS content or campaign audience building.
+- Break existing loyalty functionality that’s not tied to campaigns.
+- Over-refactor unrelated services.
+
+==================================================
+A) DISCOVER & CENTRALIZE LOYALTY CORE
+==================================================
+
+1. Find the existing loyalty / points service file(s). Likely names:
+   - server/services/loyaltyService.ts
+   - server/services/rewardsService.ts
+   - server/services/customerRewardsService.ts
+   - or similar.
+
+   Identify:
+   - The core function used to create a loyalty transaction (e.g. awardPoints, addPointsTransaction).
+   - The type / interface for a transaction (e.g. LoyaltyTransaction).
+
+2. Confirm how source/sourceId are being used there:
+   - For Campaign 36 (port-recovery-2025-12-11), we recently wired the idempotent logic around source/sourceId. Reuse that model.
+
+3. If there are multiple wrappers, pick a single “core” function as the foundation for all new behavior.
+
+==================================================
+B) DESIGN A GENERIC SAFE REWARD HELPER
+==================================================
+
+Create a new module OR expand the main loyalty service with a clearly separated section, e.g.:
+
+- File: server/services/loyaltySafeRewardsService.ts
+  OR
+- A distinct “Safe Rewards” section in the existing loyalty service with clear comments.
+
+Add a generic helper with a design like:
+
+```ts
+export interface SafeRewardOptions {
+  /** Human-readable label, like "port_recovery", "referral_bonus", etc. */
+  label: string;
+  /** The logical “source” of the reward, e.g. "campaign", "referral", "manual_adjustment". */
+  source: string;
+  /** A stable identifier for this specific instance, e.g. campaignId, referralId, promoId. */
+  sourceId: string;
+  /** Optional: cap per customer for this source+sourceId combination. Default: 500 for campaigns unless specified. */
+  maxPointsPerCustomer?: number | null;
+  /** Extra metadata / notes to store with the transaction. */
+  metadata?: Record<string, any>;
+}
+
+export async function awardSafeRewardOnce(
+  tenantDb: TenantDbType,
+  customerId: string,
+  points: number,
+  options: SafeRewardOptions
+): Promise<LoyaltyTransaction | null> {
+  // Implementation described below
+}
+Behavior:
+1. It should use the loyalty transactions table/model and existing helper(s) to:
+    * Check for existing reward transactions for this customer with the same source and sourceId.
+        * Use existing columns for source and sourceId if present. 
+        * If source/sourceId are implemented differently, follow the code currently used for Campaign 36. 
+2. If no existing transaction is found for that (customerId, source, sourceId) pair:
+    * Create a new transaction using the core award function. 
+    * Include:
+        * source and sourceId. 
+        * metadata including:
+            * label 
+            * maxPointsPerCustomer (if present) 
+            * any other campaign details (e.g. slug, name). 
+3. If there IS an existing transaction:
+    * Determine whether the customer has already hit the cap (if maxPointsPerCustomer is provided):
+        * Sum all transactions for that customer with same source/sourceId. 
+        * If sum >= maxPointsPerCustomer (or simply sum >= points if the rule is “only once”):
+            * Log and return null, no new transaction. 
+        * If sum < maxPointsPerCustomer and points would push them beyond:
+            * Either:
+                * clamp to remaining amount, or 
+                * skip entirely (follow pattern that’s best for this system; for now, assume “one-time reward” and skip if any transaction exists). 
+    * Add a log like:    console.log('[SAFE REWARD] Skipping extra reward', {
+    *   customerId,
+    *   source: options.source,
+    *   sourceId: options.sourceId,
+    *   label: options.label,
+    * });
+    *    
+4. Ensure error handling is consistent with existing loyalty service:
+    * If the DB check fails, log a clear error but rethrow or handle the same way current code does. 
+================================================== C) GENERIC NORMALIZATION API FOR ANY REWARD SOURCE
+We already have a port-recovery specific normalization endpoint. We want a generic pattern.
+1. Create a new admin route (or extend the existing admin loyalty routes file):
+    * Base path: /api/admin/loyalty/normalize-rewards 
+    * Methods:
+        * POST /api/admin/loyalty/normalize-rewards/preview 
+        * POST /api/admin/loyalty/normalize-rewards/run 
+2. Both routes must:
+    * Require owner/root level auth (same as the existing port-recovery normalization route). 
+    * Be tenant-aware (use the Clean Machine tenant DB in the same way as other admin tools). 
+3. Request body for these endpoints should accept something like:    interface NormalizeRewardsPayload {
+4.   source: string;        // e.g. "campaign"
+5.   sourceIds: string[];   // one campaignId or multiple, e.g. ["36"] or ["27","36"]
+6.   maxPointsPerCustomer: number; // e.g. 500
+7.   label?: string;        // optional label or name for logs/UX
+8. }
+9.    
+10. Implementation for preview:
+    * Query all loyalty transactions where:
+        * transaction.source == source 
+        * transaction.sourceId is in sourceIds[] 
+    * Group by customerId. 
+    * Sum points per customer. 
+    * For each customer, compute:
+        * totalPoints 
+        * excess = max(0, totalPoints - maxPointsPerCustomer) 
+    * Return a JSON response with:
+        * success: true 
+        * summary:
+            * scannedTransactions 
+            * affectedCustomers (those with excess > 0) 
+            * totalExcessPoints 
+        * details:
+            * an array of objects: { customerId, totalPoints, excess } 
+11. This MUST NOT modify the database. 
+12. Implementation for run:
+    * Do the same grouping logic as preview. 
+    * For each customer with excess > 0:
+        * Create a negative adjustment transaction using the core award function:
+            * points = -excess 
+            * source = payload.source (e.g. "campaign_adjustment") 
+            * sourceId = something clearly tied to the parent source, e.g. ${campaignId}_normalize or re-use the same source/sourceId but with an extra metadata flag. 
+            * metadata.reason = "normalize_rewards" 
+            * metadata.sourceIds = payload.sourceIds 
+    * Return:
+        * success: true 
+        * correctedCustomers: count 
+        * corrections: [{ customerId, correctedBy: -excess }, ...] 
+13. Ensure idempotency:
+    * Running run multiple times should not apply corrections again once customers are at or below the cap. 
+    * This will naturally be true if each run recomputes totalPoints and only applies corrections where total > maxPointsPerCustomer. 
+================================================== D) WIRE PORT-RECOVERY TO USE THE GENERIC SYSTEM
+Now replace the port-recovery-specific logic with the generic one, WITHOUT changing behavior:
+1. In the port recovery service (e.g. server/services/portRecoveryService.ts):
+    * Anywhere we currently call a port-recovery-specific “award once” helper or direct awardPoints for Campaign 36, switch it to:    await awardSafeRewardOnce(tenantDb, customerId, 500, {
+    *   label: 'port_recovery_2025_12_11',
+    *   source: 'campaign',
+    *   sourceId: String(campaignIdOrSlug), // whatever ID we use in DB for this campaign
+    *   maxPointsPerCustomer: 500,
+    *   metadata: {
+    *     campaignName: 'port-recovery-2025-12-11',
+    *     campaignId: campaignIdOrSlug,
+    *   },
+    * });
+    *    
+    * Use the actual campaign ID/slug that’s currently used for Campaign 36. 
+    * Remove any old campaign-specific helper that does essentially the same thing, to avoid duplication, but keep behavior consistent. 
+2. Update the existing port-recovery normalization route to become a thin wrapper around the generic /normalize-rewards logic:
+    * For example, keep a convenience endpoint:
+        * POST /api/admin/loyalty/normalize-port-recovery-2025-12-11 
+    * that internally calls the generic function with:    {
+    *   source: 'campaign',
+    *   sourceIds: [ '36' ], // or [ '27', '36' ] depending on how campaigns are identified
+    *   maxPointsPerCustomer: 500,
+    *   label: 'port_recovery_2025_12_11'
+    * }
+    *    
+    * This preserves the existing admin UX while centralizing the core logic. 
+================================================== E) FUTURE-PROOFING HOOKS (WITHOUT OVERBUILDING)
+Without adding new UI yet, add clear comments and types to make it easy to plug in future campaigns:
+1. In the loyalty service / safe rewards module, document:
+    * How to call awardSafeRewardOnce from any feature. 
+    * Examples:
+        * Campaign sending 
+        * Referral bonuses 
+        * Maintenance-plan rewards 
+2. In the normalize routes, add a note indicating how to add new admin niceties later:
+    * E.g., “Future enhancement: add an admin UI form that allows selecting source = 'campaign', picking a campaign from a dropdown, and entering maxPointsPerCustomer, then calls this endpoint.” 
+Do NOT implement the UI now; just leave hooks/comments.
+================================================== F) VALIDATION & TESTING
+1. Run npm run build and ensure TypeScript passes. 
+2. Start dev server and:
+    * Manually trigger a small “fake” campaign or direct calls in code to:
+        * awardSafeRewardOnce twice for the same (customerId, source, sourceId) and confirm only one transaction appears. 
+    * Use the new /normalize-rewards/preview endpoint in dev with a known campaignId:
+        * Confirm it reports correct totalPoints and excess. 
+    * Use /normalize-rewards/run on the same campaign:
+        * Confirm corrections appear and totalPoints after corrections are at the cap, not above. 
+3. Confirm that:
+    * Existing Campaign 36 behavior is unchanged from the caller’s perspective:
+        * Customers still receive exactly 500 points once. 
+        * No double-awards for repeated sends. 
+    * No other loyalty flows are broken. 
+Stop after:
+* Implementing awardSafeRewardOnce. 
+* Implementing generic normalize-rewards preview + run. 
+* Refactoring port-recovery to use these generic pieces with no behavior change. 
+* Leaving clear comments/hooks for future campaigns. 
+Do not introduce unrelated refactors or schema changes in this prompt.

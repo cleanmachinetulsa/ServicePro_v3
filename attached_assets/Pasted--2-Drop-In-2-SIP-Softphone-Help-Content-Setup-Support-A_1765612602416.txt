@@ -1,0 +1,245 @@
+## 2️⃣ Drop-In #2 — SIP/Softphone Help Content + Setup/Support Assistant Integration
+
+This one focuses on **education + support behavior**, including using the new test-call + support_issues pipeline when things break.
+
+Title suggestion: `SP-TELEPHONY-ASSISTANT-HELPER`
+
+```text
+📦 DROP-IN PROMPT FOR REPLIT ARCHITECT
+SP-TELEPHONY-ASSISTANT-HELPER — PHONE/SIP GUIDES + SUPPORT ASSIST INTEGRATION
+
+You are modifying the ServicePro_v3 repo.
+
+GOAL
+Make phone & SIP setup feel “handheld” and non-technical by:
+
+1. Adding **friendly, step-by-step help content** for:
+   - Basic “Forward calls to my personal phone” setup
+   - Optional “SIP softphone (Groundwire, etc.)” setup
+2. Wiring this content into:
+   - The **Setup Wizard**
+   - The **Support/Setup Assistant** (AI helper) and/or help sidebar
+3. Ensuring that when telephony tests fail:
+   - The system automatically logs a **support_issues** row (SP-SUPPORT-A)
+   - The assistant explains what just happened and reassures the user
+   - When an admin resolves it, the user is **automatically notified by email**
+
+ASSUMPTIONS
+- SP-SUPPORT-A (Support Issues pipeline) already exists:
+  - `support_issues` table
+  - `/api/support/issues` + `/resolve` routes
+  - Support admin UI to view/resolve issues
+  - Email sending utilities already wired (SendGrid, etc.)
+
+PART A — PHONE/SIP HELP CONTENT
+
+1) Create a structured help content module for telephony:
+
+- New file (example):
+  - `client/src/content/help/telephonyHelp.ts`
+
+- Export a structure like:
+
+  ```ts
+  export const telephonyHelp = {
+    basicForwarding: {
+      id: 'telephony-basic-forwarding',
+      title: 'Forward business calls to your personal phone',
+      steps: [
+        'Enter the cell number where you want to receive business calls.',
+        'Save your settings.',
+        'Tap “Run Test Call” to verify everything is working.',
+        'Unknown calls to this number will usually be your ServicePro business calls.'
+      ],
+      tips: [
+        'You can still see caller ID for the actual customer.',
+        'If you get a lot of spam, you can enable the “whisper” option so you know it’s a business call.'
+      ]
+    },
+    whisperMode: {
+      id: 'telephony-whisper-mode',
+      title: 'Whisper: Know it is a business call before “Hello”',
+      steps: [
+        'Switch your call delivery mode to “Forward with whisper”.',
+        'Save your settings.',
+        'Run a test call. You’ll hear “ServicePro call for {businessName}” before the caller connects.',
+      ],
+      notes: [
+        'The whisper only plays for you, not the customer.'
+      ]
+    },
+    sipSoftphone: {
+      id: 'telephony-sip-softphone',
+      title: 'Use a SIP softphone app (Groundwire, etc.)',
+      audience: 'advanced',
+      steps: [
+        'Download a SIP app such as Groundwire on your phone.',
+        'In ServicePro, go to Phone & Call Routing → choose “Use SIP softphone (advanced)”.',
+        'Enter the SIP address or credentials provided by your SIP provider or by your Twilio configuration.',
+        'Save your settings and run a test call.',
+      ],
+      warnings: [
+        'SIP is optional. Most users can stay on simple call forwarding.',
+        'If the test fails, our support assistant will help you debug the issue.'
+      ]
+    }
+  };
+Integrate this content into:
+
+The Phone Setup Wizard page:
+
+Add a right-hand “Help” panel or collapsible section that shows:
+
+Contextual chunk from telephonyHelp.basicForwarding when in forwarding mode
+
+Contextual chunk from telephonyHelp.sipSoftphone when in SIP mode
+
+Any existing general Help/Support center:
+
+Add a “Phone & Call Setup” category
+
+Render content from telephonyHelp in a simple, readable format.
+
+PART B — SETUP/SUPPORT ASSISTANT BEHAVIOR FOR TELEPHONY
+
+Assume there is an existing Setup / Support Assistant (AI helper) which has:
+
+A backend “behavior/instructions” config (e.g., agent_behavior_rules, or a config file)
+
+The ability to call internal APIs (/api/support/issues, /api/settings/*, etc.)
+
+Update the assistant’s behavior so that for telephony issues it:
+
+Detects phone-setup-related topics:
+
+“my calls aren’t ringing”
+
+“forwarding isn’t working”
+
+“SIP app not working”
+
+“test call failed”
+
+“phone integration issue”
+
+When a tenant mentions or the system detects a failed test call:
+
+The assistant should:
+
+Fetch the last telephony test status:
+
+Call GET /api/settings/telephony and read:
+
+last_phone_test_status
+
+last_phone_test_error
+
+last_phone_test_at
+
+If status = 'fail':
+
+Explain the failure in friendly language:
+
+“Your last test call didn’t complete. The system saw this error from Twilio: …”
+
+Confirm that a support issue was automatically created (see Part C).
+
+Ask any clarifying questions that would help support (e.g., which phone, carrier, SIP app, etc.)
+
+For setup guidance requests (no test run yet):
+
+Offer a simple decision tree:
+
+“Do you want the easy setup (forward calls to your normal phone) or an advanced SIP app?”
+
+If easy → walk through telephonyHelp.basicForwarding
+
+If advanced → walk through telephonyHelp.sipSoftphone
+
+Update the assistant configuration (wherever behavior rules are stored) to include:
+
+A “Telephony Setup & Troubleshooting” section that:
+
+Tells the agent which internal APIs to use
+
+Specifies tone (calm, reassuring, non-technical)
+
+Instructs it to NEVER ask the user to go into Twilio console alone; instead, gather info + log support issues for admin follow-up.
+
+PART C — SUPPORT_ISSUES + EMAIL NOTIFICATIONS
+
+We already have the SP-SUPPORT-A system; now we need to:
+
+Tie telephony test failures into support_issues (if not already):
+
+This should be mostly implemented in the SP-TELEPHONY-SETUP-WIZARD drop-in, but ensure:
+
+POST /api/settings/telephony/test-call:
+
+On failure:
+
+Creates support_issues row with key fields:
+
+issue_type = 'telephony-setup-test-failed'
+
+summary = short human description
+
+details = Twilio error, mode, phone/SIP, etc.
+
+status = 'open'
+
+Returns the newly created issue ID to the frontend / assistant.
+
+When a support admin resolves the issue in the Support Issues admin UI:
+
+Extend the resolve path (or hook) to:
+
+Look up the tenant owner’s primary contact email.
+
+Send an email that:
+
+Explains:
+
+What was fixed (short plain language summary)
+
+If any action is needed on their side
+
+Example subject:
+
+“Your phone setup issue has been fixed”
+
+Example summary:
+
+“We fixed a problem where Twilio couldn’t reach your forwarding number because it was missing the +1 country code. Your next test call should work normally.”
+
+Also add a small note into the app:
+
+On the Phone Setup page, show:
+
+“A support agent recently fixed a telephony issue for you on {date}. If problems continue, run another test call.”
+
+Assistant Copy Update
+
+Update the assistant’s behavior so that after a support issue is created (especially for telephony):
+
+It sends a message like:
+
+“I’ve just logged this as a support issue and attached the full error code and configuration details. A support admin will review it and you’ll get an email as soon as we’ve fixed it or need anything from you.”
+
+This copy should be added to the agent’s behavior/instructions configuration so that all telephony-related failures follow this pattern.
+
+PART D — TESTING
+
+Add tests to verify:
+
+Telephony help content renders in the Help/Support UI.
+
+The assistant (or at least the backend test harness) can:
+
+Fetch /api/settings/telephony
+
+Create a support issue when telephony test fails
+
+Resolution of a telephony support issue sends an email and marks the issue as resolved.
+
+Please implement this with clean, well-documented code and minimal disruption to existing support and agent behavior systems.

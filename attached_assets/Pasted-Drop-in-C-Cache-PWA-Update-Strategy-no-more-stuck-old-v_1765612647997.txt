@@ -1,0 +1,119 @@
+Drop-in C – Cache + PWA Update Strategy (no more “stuck old version”)
+
+Last piece: making sure **return visitors and your PWA icon** actually get the newest build without manual cache clearing.
+
+We’ll:
+
+- Make HTML **not aggressively cached**
+- Keep static assets fingerprinted (Vite already does this)
+- Add a small **version check + reload banner** in the app
+- Update the **service worker** behavior (if you’re using one)
+
+Here’s a focused drop-in:
+
+```text
+PROJECT: ServicePro_v3 – App Cache & PWA Update Strategy
+
+Goals
+=====
+
+1) Ensure returning users (including me) see the **latest version** of the web app without manually clearing cache.
+2) Ensure the **PWA icon on phones** also gets the latest bundle after each deploy.
+3) Keep static assets cached efficiently for performance, but never show stale app shell forever.
+
+We’ll:
+- Adjust HTML caching headers.
+- Add a client-side app version check.
+- If there is a service worker, make it auto-update and show a “new version available” banner.
+
+---
+
+Step 1 – HTML cache headers
+===========================
+
+1. Find where the main HTML (index.html / app shell) is served in the backend (Express / Vite dev / production handler).
+
+2. Ensure that for the **HTML response** ONLY (not static assets) we send:
+
+   - `Cache-Control: no-cache` or `Cache-Control: max-age=0, must-revalidate`
+   - This forces the browser to revalidate index.html on each load, while still allowing static JS/CSS chunks to be cached by fingerprint.
+
+3. Confirm that static assets (JS/CSS chunk files) still have hashed filenames (Vite default) and can keep long-lived cache headers (e.g. `Cache-Control: public, max-age=31536000, immutable`).
+
+---
+
+Step 2 – App version constant
+=============================
+
+1. In a small shared client file, e.g. `client/src/config/appVersion.ts`, export a string constant:
+
+   ```ts
+   export const APP_VERSION = '2025-12-09-01'; // increment on each significant deploy
+Make sure this value is embedded into the built JS bundle (normal import).
+
+In the root React App component (e.g. client/src/App.tsx or a top-level provider), implement:
+
+On mount:
+
+ts
+Copy code
+useEffect(() => {
+  const stored = localStorage.getItem('app_version');
+  if (!stored) {
+    localStorage.setItem('app_version', APP_VERSION);
+    return;
+  }
+  if (stored !== APP_VERSION) {
+    // trigger a “New version available” UI
+  }
+}, []);
+Add a small “New version available – Click to refresh” toast/banner component that:
+
+Calls window.location.reload(true) or a plain window.location.reload() when clicked.
+
+Step 3 – Service worker update handling (if present)
+If the project uses a service worker (e.g. Vite PWA plugin):
+
+Locate the registration (e.g. client/src/serviceWorkerRegistration.ts or similar).
+
+Ensure the SW:
+
+Calls skipWaiting() when a new version is installed.
+
+Triggers a callback to the app that a new version is ready.
+
+Example pattern:
+
+ts
+Copy code
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  // optional: reload or show banner
+});
+Hook this into the same “New version available” banner from Step 2:
+
+If the SW reports a new version, show the banner automatically.
+
+For PWA:
+
+Ensure manifest.json includes your correct icons.
+
+When you deploy a new version, the SW + appVersion check will cause the PWA to reload to the new bundle the next time it’s opened.
+
+Step 4 – PWA / home screen specific sanity check
+Install the PWA on a test device (home screen icon).
+
+Deploy a version with a different APP_VERSION.
+
+Open the PWA:
+
+It should hit the network for index.html due to no-cache.
+
+The new JS bundle should load.
+
+The app version check should detect the change and show the “New version available” banner if needed.
+
+Once confirmed, document in the master plan:
+
+“APP_VERSION must be incremented on every significant deploy to force clients to see the latest UI.”
+
+Then stop.
