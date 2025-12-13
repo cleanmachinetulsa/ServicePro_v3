@@ -421,6 +421,14 @@ export const navigationItems: NavigationItem[] = [
     simpleDefault: true,
   },
   {
+    id: 'sms-campaign-analytics',
+    label: 'SMS Campaign Analytics',
+    icon: BarChart3,
+    path: '/admin/sms-analytics',
+    visibility: 'advancedOnly',
+    complexity: 'advanced',
+  },
+  {
     id: 'call-metrics',
     label: 'Call Metrics',
     icon: BarChart3,
