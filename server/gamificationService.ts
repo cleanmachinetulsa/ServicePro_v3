@@ -187,6 +187,12 @@ export async function awardPoints(
         .returning();
       
       customerPoints = newPoints;
+      
+      // Guard: Ensure insert succeeded
+      if (!customerPoints) {
+        console.log(`[LOYALTY] awardPoints insert failed - no row returned customerId=${customerId}`);
+        return { success: false, currentPoints: 0 };
+      }
     }
     
     // Update points

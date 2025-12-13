@@ -1,0 +1,121 @@
+2025-12-12 18:55:47.95
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1447 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:48.02
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1409 for target phone +18338643856
+2025-12-12 18:55:48.27
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+18338643856 phone=+18338643856 customerId=1409 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:48.27
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1409 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:48.33
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1289 for target phone +12144572595
+2025-12-12 18:55:48.58
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+12144572595 phone=+12144572595 customerId=1289 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:48.58
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1289 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:48.64
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1564 for target phone +19186949930
+2025-12-12 18:55:48.89
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+19186949930 phone=+19186949930 customerId=1564 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:48.89
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1564 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:48.95
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1551 for target phone +19186458152
+2025-12-12 18:55:49.21
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+19186458152 phone=+19186458152 customerId=1551 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:49.21
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1551 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:49.27
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1463 for target phone +19183617277
+2025-12-12 18:55:49.53
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+19183617277 phone=+19183617277 customerId=1463 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:49.53
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1463 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:49.59
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1540 for target phone +19186381077
+2025-12-12 18:55:49.84
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+19186381077 phone=+19186381077 customerId=1540 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:49.84
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1540 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:49.90
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1399 for target phone +18142050260
+2025-12-12 18:55:50.15
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1399 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:50.15
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+18142050260 phone=+18142050260 customerId=1399 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+
+2025-12-12 18:55:50.21
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1355 for target phone +14807715988
+2025-12-12 18:55:50.46
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1355 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:50.46
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+14807715988 phone=+14807715988 customerId=1355 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:50.52
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1553 for target phone +19186710398
+2025-12-12 18:55:50.77
+5ffe1914
+User
+[LOYALTY] awardPoints exception customerId=1553 err=Cannot read properties of undefined (reading 'points')
+2025-12-12 18:55:50.77
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+19186710398 phone=+19186710398 customerId=1553 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
+2025-12-12 18:55:50.84
+5ffe1914
+User
+[PORT RECOVERY] Found customer 1331 for target phone +14058220642
+2025-12-12 18:55:51.09
+5ffe1914
+User
+[PORT RECOVERY] recipient phone_raw=+14058220642 phone=+14058220642 customerId=1331 sms_attempted=false sms_ok=false sms_skip_reason=opted_out email_attempted=false email_ok=false email_skip_reason=no_email_address points_attempted=true points_ok=false points_skip_reason=award_failed
