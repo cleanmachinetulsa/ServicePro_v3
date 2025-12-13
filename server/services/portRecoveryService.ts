@@ -1010,7 +1010,7 @@ export async function runPortRecoveryBatch(
           // Only block if explicitly opted out (smsConsent = false)
           if (customerRecord?.smsConsent === false) {
             hasConsentToSms = false;
-            smsSkipReason = 'opted_out';
+            smsSkipReason = 'opted_out_explicit';
           }
         } catch (err) {
           // Continue if we can't check consent
