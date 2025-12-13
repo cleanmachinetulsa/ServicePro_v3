@@ -1,0 +1,149 @@
+PHASE 2 DROP-IN A -CAMPAIGN MANAGER-
+
+You are working on the same ServicePro v3 / Clean Machine codebase as in previous phases.
+
+ASSUMPTIONS:
+- Phase 1 campaign system is already implemented:
+  - STOP/START handling and opt-out flags (sms_opt_in, sms_opt_out_at, phone_status).
+  - Quiet hours for Clean Machine (8pm–8am America/Chicago).
+  - scheduled_campaign_runs table and in-process scheduler.
+  - Port Recovery campaign integrated with this system.
+- We must NOT refactor existing code or break working behavior. Only additive, surgical changes.
+
+GOAL OF THIS PHASE (2A):
+Implement **SMS analytics & error code charts** for campaigns. I want to see:
+- Per-campaign stats (sent, delivered, failed, skipped, STOP/unsubscribes).
+- Error breakdown by Twilio error code (21610, 30003, 30005, etc.).
+- Basic charts in the admin UI (line chart over time, bar chart by error code).
+
+========================
+BACKEND – DATA MODEL
+========================
+
+1. Reuse or introduce an SMS message log table (if not already present).
+   - First, search the repo for any existing message log tables:
+     - Look for Twilio Message SIDs, sms logs, or similar.
+   - If a suitable table exists (e.g. sms_messages, message_logs):
+     - Extend it minimally for analytics.
+   - If nothing usable exists, create a new table with a migration, e.g. `sms_message_logs`:
+     - id
+     - tenant_id
+     - customer_id (nullable but preferred)
+     - campaign_run_id (nullable, link to scheduled_campaign_runs or other campaign entity)
+     - direction ('outbound' | 'inbound')
+     - twilio_sid (nullable, for outbound only)
+     - to_number
+     - from_number
+     - body (short text)
+     - status (Twilio-style: queued, sent, delivered, undelivered, failed, etc.)
+     - error_code (text or int, nullable)
+     - error_message (text, nullable)
+     - created_at, updated_at
+
+2. Ensure outbound campaign sends (Port Recovery and similar):
+   - Log a row into sms_message_logs (or the extended table) for each message attempt:
+     - At least: tenant_id, customer_id (if known), campaign_run_id (if applicable), direction='outbound', to_number, from_number, body, initial status='queued' or 'sending'.
+   - On Twilio status callbacks:
+     - Update matching sms_message_logs row:
+       - status
+       - error_code (e.g. '21610', '30003', etc.)
+       - error_message (if present).
+   - Make sure this logic is minimal and does not change existing Twilio integration, only augments it.
+
+========================
+BACKEND – ANALYTICS ENDPOINTS
+========================
+
+Add new admin endpoints (secured as other admin routes are). Follow existing patterns for admin APIs.
+
+1. Summary by campaign run:
+   - GET `/api/admin/analytics/sms/campaign-run/:runId`
+   - Returns JSON like:
+     - run: basic info (id, campaign_type, tenant_id, scheduled_for, executed_at, status)
+     - totals:
+       - total_outbound
+       - delivered
+       - undelivered
+       - failed
+       - skipped_unsubscribed (if tracked)
+       - skipped_invalid (if tracked)
+     - error_breakdown: array of { error_code, count }
+     - status_breakdown: array of { status, count }
+
+2. Summary over time (for a tenant):
+   - GET `/api/admin/analytics/sms/summary?tenantId=...&from=ISO&to=ISO`
+   - Returns:
+     - daily_stats: list of days with counts:
+       - date
+       - total_outbound
+       - delivered
+       - undelivered
+       - failed
+       - stops_detected (number of inbound STOP messages that day, if you can compute from logs)
+     - error_breakdown: overall error counts for the period.
+   - Use existing date/time utilities and tenant-aware DB helpers.
+
+3. Keep all queries efficient and guarded:
+   - Use indexes on (tenant_id, created_at) and maybe (campaign_run_id) if the table is large.
+   - Only return data for the current tenant in a multi-tenant-safe way.
+
+========================
+FRONTEND – ADMIN ANALYTICS UI
+========================
+
+Locate the existing admin Campaigns page added in Phase 1 (or whichever page shows campaign runs). Extend it minimally.
+
+1. Campaign Run Details:
+   - On the campaign management page, add the ability to click into a specific run (e.g. by clicking its row).
+   - New route/page, e.g.:
+     - `/admin/campaigns/run/:runId`
+   - This page should:
+     - Fetch `/api/admin/analytics/sms/campaign-run/:runId`.
+     - Display:
+       - Basic run metadata (type, scheduled_for, executed_at, status, notes).
+       - Numeric summary:
+         - total_outbound, delivered, failed, undelivered, etc.
+       - Error breakdown table:
+         - Columns: Error Code, Count, Short Meaning (e.g. "21610 – Unsubscribed").
+       - A simple bar chart:
+         - x-axis: error_code
+         - y-axis: count.
+       - A simple status pie or bar chart:
+         - e.g. delivered vs failed vs undelivered vs skipped.
+
+   - Use whatever chart library or component pattern already exists in the repo. If none:
+     - Add a lightweight chart library that fits the current stack and is easy to use.
+     - Or build minimal charts using an existing UI toolkit (e.g. simple SVG-based components).
+
+2. Time-range Summary for Tenant:
+   - Add a “Analytics” or “Overview” tab on the campaign page (or similar).
+   - Allow selecting a date range (e.g. last 7 days, last 30 days, custom).
+   - Call `/api/admin/analytics/sms/summary`.
+   - Show:
+     - A simple line chart over time:
+       - x-axis: date
+       - y-axis: total_outbound (and optionally delivered as second series).
+     - A mini error breakdown chart for that range:
+       - Bar chart or table.
+
+3. Styling and UX:
+   - Follow existing design system and components.
+   - No radical redesign, no layout overhaul.
+   - Keep everything consistent with current admin patterns (cards, tables, etc.).
+
+========================
+VALIDATION & SAFETY
+========================
+
+1. Ensure that:
+   - `npm run build` succeeds.
+   - `npm run dev` runs without TypeScript or runtime errors in the new analytics flows.
+2. If tests exist, add at least a couple of basic tests:
+   - Verifying that analytics queries return the expected structure.
+   - Verifying that error_breakdown math is correct given sample data.
+3. Document in a short file, e.g. `docs/sms-analytics.md`:
+   - Where analytics API endpoints are.
+   - What fields are in sms_message_logs.
+   - How charts are wired in the UI.
+
+Remember: Do not refactor or break existing functionality. This phase is purely additive: log data, aggregate it, and visualize it.
