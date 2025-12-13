@@ -5169,20 +5169,15 @@ export type InsertSmsBookingRecord = z.infer<typeof insertSmsBookingRecordSchema
 
 export const portRecoverySmsRemoteSends = pgTable("port_recovery_sms_sends", {
   id: serial("id").primaryKey(),
-  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  tenantId: text("tenant_id").notNull(),
   campaignKey: text("campaign_key").notNull(),
-  toPhone: varchar("to_phone", { length: 20 }).notNull(),
-  messageSid: text("message_sid"),
-  status: varchar("status", { length: 20 }).notNull().default("reserved"), // 'reserved' | 'sent' | 'failed'
-  lastError: text("last_error"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  sentAt: timestamp("sent_at"),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  phone: text("phone").notNull(),
+  twilioSid: text("twilio_sid"),
+  status: text("status").notNull().default("sent"),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
 }, (table) => ({
-  uniqueKey: uniqueIndex("port_recovery_sms_sends_unique_key").on(table.tenantId, table.campaignKey, table.toPhone),
-  tenantIdx: index("port_recovery_sms_sends_tenant_idx").on(table.tenantId),
-  campaignIdx: index("port_recovery_sms_sends_campaign_idx").on(table.campaignKey),
-  statusIdx: index("port_recovery_sms_sends_status_idx").on(table.status),
+  uniqueKey: uniqueIndex("port_recovery_sms_sends_unique").on(table.tenantId, table.campaignKey, table.phone),
+  tenantIdx: index("port_recovery_sms_sends_lookup").on(table.tenantId, table.campaignKey, table.phone, table.sentAt),
 }));
 
 export const insertPortRecoverySmsRemoteSendSchema = createInsertSchema(portRecoverySmsRemoteSends).omit({
