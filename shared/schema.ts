@@ -1475,12 +1475,16 @@ export const smsCampaignRecipients = pgTable("sms_campaign_recipients", {
   twilioSid: text("twilio_sid"), // Twilio message SID
   deliveryStatusId: integer("delivery_status_id").references(() => smsDeliveryStatus.id), // Link to tracking
   timezone: text("timezone").default("America/Chicago"), // Customer timezone for quiet hours
+  errorCode: varchar("error_code", { length: 10 }), // Twilio error code (e.g., '21610', '30003')
+  skipReason: varchar("skip_reason", { length: 30 }), // Why message was skipped (unsubscribed, invalid, etc.)
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   campaignStatusIdx: index("sms_campaign_recipients_status_idx").on(table.campaignId, table.status),
   phoneIdx: index("sms_campaign_recipients_phone_idx").on(table.phoneNumber),
   twilioSidIdx: index("sms_campaign_recipients_twilio_sid_idx").on(table.twilioSid),
+  tenantCreatedIdx: index("sms_campaign_recipients_tenant_created_idx").on(table.tenantId, table.createdAt),
+  errorCodeIdx: index("sms_campaign_recipients_error_code_idx").on(table.errorCode),
 }));
 
 // Daily Send Counters - Track email/SMS sends per day for rate limiting
