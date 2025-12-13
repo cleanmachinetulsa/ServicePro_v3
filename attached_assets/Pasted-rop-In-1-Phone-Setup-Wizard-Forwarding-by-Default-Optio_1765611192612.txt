@@ -1,0 +1,197 @@
+rop-In #1 — Phone Setup Wizard (Forwarding by Default + Optional SIP + Test Call)
+Use this as-is in Replit Architect. Title suggestion: SP-TELEPHONY-SETUP-WIZARD
+
+📦 DROP-IN PROMPT FOR REPLIT ARCHITECT
+SP-TELEPHONY-SETUP-WIZARD — PHONE DELIVERY MODES + TEST CALL
+
+You are modifying the ServicePro_v3 repo.
+
+GOAL
+Implement a tenant-aware Phone Setup Wizard that:
+- Uses **“Forward to my personal phone” as the default call delivery mode**
+- Allows an **optional SIP softphone setup (Groundwire or other)** for advanced users
+- Optionally supports a **“whisper”** announcement on incoming calls
+- Includes a **“Test My Phone Setup” button** that:
+  - Triggers an automated Twilio test call
+  - Shows **pass/fail** in the UI with a human-readable reason
+  - On failure, logs a structured support issue using the existing support_issues pipeline (SP-SUPPORT-A) so the setup/support agent can help debug
+
+CRITICAL CONSTRAINTS
+- Do NOT break existing IVR, AI, or voicemail flows.
+- When the caller chooses “talk to someone” in the current IVR, we ONLY change the **downstream dial behavior**, not the IVR itself.
+- Keep it **multi-tenant safe**:
+  - All settings are scoped by tenant
+  - Clean Machine = root tenant, but the feature must work for non-root tenants too.
+
+HIGH-LEVEL DESIGN
+
+1) DATA MODEL: Tenant Telephony Settings
+
+Create a tenant-scoped settings layer for call delivery:
+
+- Add a new table or extend an existing tenant settings table (whichever is already in use for telephony):
+
+  - Table name (if new): `tenant_telephony_settings`
+    - `tenant_id` (FK → tenants.id, PK or UNIQUE)
+    - `call_delivery_mode` TEXT NOT NULL DEFAULT 'forward'  
+      - Allowed values:
+        - 'forward'          → Forward to personal phone (DEFAULT)
+        - 'forward_with_whisper' → Forward with a whisper announcement
+        - 'sip_softphone'    → Dial SIP endpoint instead of PSTN
+    - `forward_phone_number` TEXT NULL
+      - E.164 string, validated on save
+    - `sip_address` TEXT NULL
+      - e.g. `sip:1234@sip.provider.com` or Twilio SIP URI
+    - `sip_label` TEXT NULL
+      - Display label: e.g. “Groundwire on Jody’s iPhone”
+    - `last_phone_test_status` TEXT NULL
+      - 'pass' | 'fail' | null
+    - `last_phone_test_error` TEXT NULL
+      - Human-readable error summary
+    - `last_phone_test_at` TIMESTAMP NULL
+
+If there is an existing telephony settings table you prefer, extend that instead and keep the above fields logically the same.
+
+2) API: Settings + Test Call
+
+Create or extend routes under something like:
+
+- `server/routes.settings.telephony.ts`
+
+Endpoints:
+
+1. `GET /api/settings/telephony`
+   - Auth: tenant + authenticated user
+   - Returns current telephony settings for the tenant:
+     - callDeliveryMode
+     - forwardPhoneNumber
+     - sipAddress
+     - sipLabel
+     - lastPhoneTestStatus
+     - lastPhoneTestError
+     - lastPhoneTestAt
+
+2. `PUT /api/settings/telephony`
+   - Auth: same as above
+   - Validations:
+     - If `call_delivery_mode` = 'forward' or 'forward_with_whisper':
+       - `forward_phone_number` is required and must be valid E.164
+     - If `call_delivery_mode` = 'sip_softphone':
+       - `sip_address` is required and must look like a SIP URI
+   - Persist to `tenant_telephony_settings` (upsert by tenant_id).
+
+3. `POST /api/settings/telephony/test-call`
+   - Auth: tenant + authenticated user (owner/admin only)
+   - Behavior:
+     - Inspect tenant’s current telephony settings
+     - Use Twilio to place a **test outbound call** to:
+       - If mode = forward / forward_with_whisper → `forward_phone_number`
+       - If mode = sip_softphone → `sip_address`
+     - Play a short TTS:  
+       “This is a ServicePro test call for {businessName}. Your phone integration is working.”
+     - If Twilio responds successfully → mark test as PASS
+     - If Twilio returns error (bad number, invalid SIP, etc.) → mark as FAIL
+   - Persist:
+     - `last_phone_test_status`, `last_phone_test_error`, `last_phone_test_at`
+   - On FAIL:
+     - Create a record in `support_issues`:
+       - `tenant_id`
+       - `issue_type` = 'telephony-setup-test-failed'
+       - `severity` = 'medium'
+       - `source` = 'telephony-setup-wizard'
+       - `context` JSON containing:
+         - call_delivery_mode
+         - forward_phone_number or sip_address
+         - Twilio error code/message
+     - Return that context to the frontend so the setup/support assistant can explain what happened.
+
+3) TWILIO CALL FLOW INTEGRATION
+
+Existing behavior (KEEP):
+
+- Caller hits IVR
+- Caller presses “talk to someone”
+- System currently dials a configured number or SIP endpoint (hardcoded or legacy settings)
+
+New behavior:
+
+- Replace the hardcoded dial target with logic that reads `tenant_telephony_settings`:
+
+  Pseudocode:
+
+  ```ts
+  const settings = await getTelephonySettingsForTenant(tenantId);
+
+  switch (settings.callDeliveryMode) {
+    case 'forward':
+      // Standard <Dial><Number>
+      dialForwardNumber(settings.forward_phone_number);
+      break;
+    case 'forward_with_whisper':
+      // Use Twilio “whisper” or a short TTS before connecting
+      dialForwardNumberWithWhisper(settings.forward_phone_number, businessName);
+      break;
+    case 'sip_softphone':
+      // <Dial><Sip>
+      dialSipEndpoint(settings.sip_address);
+      break;
+    default:
+      // Safe fallback: behave as simple forward or fail gracefully
+  }
+* Implement helper functions in a Twilio voice service file (where you already build TwiML):
+    * dialForwardNumber(phone, options?) 
+    * dialForwardNumberWithWhisper(phone, businessName) 
+    * dialSipEndpoint(sipAddress) 
+Do NOT remove existing IVR logic; only swap out the final Dial target.
+4. FRONTEND: Phone Setup Wizard Step 
+Create/extend a step in the Setup Wizard and in Settings:
+* New page (if not present): client/src/pages/settings/TelephonySetupPage.tsx 
+* Also expose it in:
+    * Setup Wizard (for new tenants) – something like “Step: Phone & Call Handling” 
+    * Settings → “Phone & Call Routing” 
+UI Requirements:
+* Section 1: Call Delivery Mode (radio buttons or segmented control)
+    * “Forward to my personal phone (recommended)” 
+    * “Forward with a short ‘business call’ whisper” 
+    * “Use SIP softphone (advanced)” 
+* Section 2: Forwarding Settings
+    * Shown when mode = forward or forward_with_whisper 
+    * Input: “Personal phone number” 
+    * Helper text: “We’ll forward business calls here. Unknown numbers will be business calls coming from your ServicePro line.” 
+* Section 3: SIP Softphone Settings (Advanced)
+    * Shown when mode = sip_softphone 
+    * Inputs:
+        * SIP address (e.g. sip:1234@sip.provider.com) 
+        * Label (e.g. “Groundwire on Owner’s iPhone”) 
+    * Helper text summarizing:
+        * “Download Groundwire (or another SIP app)” 
+        * “Use the SIP credentials we provide in the separate SIP Setup step” (this will hook into the second drop-in) 
+* Section 4: Test My Phone Setup
+    * Button: “Run Test Call” 
+    * On click:
+        * Calls POST /api/settings/telephony/test-call 
+        * Shows spinner / “Running test…” 
+    * After response:
+        * On success:
+            * Show green badge: “✅ Test call succeeded” 
+            * Show timestamp 
+        * On failure:
+            * Show red badge: “❌ Test call failed” 
+            * Show a 1–2 sentence error summary from last_phone_test_error 
+            * Inform the user: “We’ve logged this issue for support and will help you fix it.” 
+            * (This ties into support_issues + setup assistant) 
+* Hook into Setup Completion:
+    * If this step is part of the onboarding wizard, mark it as “Completed” when:
+        * call_delivery_mode is set 
+        * And either:
+            * Forward phone is valid (for forward modes), or 
+            * SIP address is valid (for sip_softphone) 
+        * Test call is recommended but not strictly required to mark it complete. 
+5. TESTING 
+Add or update tests (Playwright / integration) to verify:
+* Admin can open Phone Setup page 
+* Can switch between delivery modes 
+* Validation triggers on missing forward number or SIP address 
+* Test call endpoint is invoked and the result renders 
+* On simulated failure, a support_issues record is created and error is visible in UI 
+Please implement all of the above with clean TypeScript, proper tenant isolation, and minimal disruption to existing Twilio flows.

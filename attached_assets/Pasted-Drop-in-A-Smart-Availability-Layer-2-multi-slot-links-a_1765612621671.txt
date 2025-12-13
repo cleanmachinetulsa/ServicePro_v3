@@ -1,0 +1,122 @@
+Drop-in A – Smart Availability Layer 2 (multi-slot links + analytics)
+Use this after the first Smart Availability Deep Link drop-in is implemented.
+
+PROJECT: ServicePro_v3 – Smart Availability Deep Links L2 (Multi-slot + Analytics)
+
+Prerequisite
+===========
+
+Assume the L1 “Smart Availability Deep Links” is already implemented:
+
+- Booking wizard can accept preselected slot via query params (slotStart, durationMinutes, source, etc.)
+- There is a helper for building booking links for a single slot
+- AI agent already includes a single “see it on the calendar” booking URL in availability answers
+
+Goal of L2
+==========
+
+Add one more layer of polish:
+
+1. When the AI agent suggests **multiple slots**, it should distinguish between:
+   - A **“Book this slot”** link for each specific time
+   - A single **“View all openings on the calendar”** link
+
+2. Add basic analytics so we can see:
+   - How many bookings are initiated from `source=chat` (agent)
+   - How many from `source=site` (direct site)
+   - Store these in a small analytics table for future dashboards.
+
+Keep changes **incremental** and do not break existing flows.
+
+---
+
+Step 1 – Enhance slot model to support both “book” and “view all” links
+=======================================================================
+
+1. Find where suggested slots are modeled (probably in `server/conversationalScheduling.ts` or `server/schedulingTools.ts`).
+
+2. Extend the slot model to include:
+
+   ```ts
+   interface SuggestedSlot {
+     start: Date;
+     end: Date;
+     humanLabel: string;
+     bookUrl: string;       // deep link to book THIS slot
+   }
+
+   interface SuggestedSlotSet {
+     slots: SuggestedSlot[];
+     viewAllUrl?: string;   // deep link to open the calendar to the “week” of the first slot
+     source?: 'chat' | 'site';
+   }
+3. For the viewAllUrl:
+    * Use the same base as the booking link, but:
+        * Do NOT preselect a specific time. 
+        * Instead, pass something like focusDate=YYYY-MM-DD and source=chat. 
+    * The booking page / visual scheduler can use focusDate just to jump the calendar to the right day. 
+4. Ensure backwards compatibility:
+    * If only one slot exists, you can still keep the previous behavior (bookUrl + generic link). 
+    * For now, it’s fine if both bookUrl and viewAllUrl are present – the agent prompt will decide how to use them. 
+
+Step 2 – Update booking page to handle focusDate
+In the public booking page:
+1. Read an optional focusDate query param (YYYY-MM-DD). 
+2. If present:
+    * Have the calendar initialize with that date in view (month/week/day, whichever mode you use). 
+    * Do not treat it as a selected slot – it’s just for scrolling/focus. 
+3. Make sure this is compatible with existing slotStart logic:
+    * If slotStart exists → preselected slot logic takes precedence. 
+    * If only focusDate exists → just move the calendar’s starting position. 
+
+Step 3 – Analytics table and logging
+Add a simple analytics table for booking initiations.
+1. In shared/schema.ts (or equivalent), create a new table, e.g.:    export const booking_initiation_events = pgTable('booking_initiation_events', {
+2.   id: serial('id').primaryKey(),
+3.   tenantId: varchar('tenant_id', { length: 50 }).notNull(),
+4.   source: varchar('source', { length: 20 }).notNull(), // 'chat' | 'site' | 'other'
+5.   context: jsonb('context').notNull().default('{}' as any),
+6.   createdAt: timestamp('created_at').defaultNow().notNull(),
+7. });
+8.    
+9. Run the migration / SQL to create the table. 
+10. Logging logic:
+    * Create a small service in server/services/bookingAnalyticsService.ts with:    export async function logBookingInitiation(params: {
+    *   tenantId: string;
+    *   source: 'chat' | 'site' | 'other';
+    *   context?: Record<string, any>;
+    * }) {
+    *   // insert into booking_initiation_events
+    * }
+    *    
+    * Call this function in two places: a) When generating booking URLs for chat (source='chat'):
+        * context might include:
+            * slotStart 
+            * durationMinutes 
+            * channel: 'sms' | 'webchat' 
+            * conversationId (if available) 
+    * b) When a booking page loads with source=chat or source=site:
+        * On page mount in the public booking component, if a source query param is present:
+            * Fire a small POST to /api/booking/analytics/initiation with tenantId + source + context. 
+11. Add a small Express route file server/routes.bookingAnalytics.ts to accept the POST and call logBookingInitiation. 
+
+Step 4 – Update the AI agent response builder (multi-slot copy)
+In whatever module builds the human-readable SMS / chat message:
+1. When there are multiple slots, shape the reply like: Example for SMS:
+    * Show 2–3 options: “Here are some openings: • Tue at 9:00 AM – book: {slot1.bookUrl} • Wed at 2:00 PM – book: {slot2.bookUrl} Or tap here to see all openings on the calendar: {viewAllUrl}”  
+2. For webchat, you may render buttons if supported; otherwise plain text is fine. Do not break SMS. 
+3. For a single slot:
+    * Keep the existing behavior, but you may add: “Or see this on the calendar: {viewAllUrl}”  
+
+Step 5 – Tests
+1. Add or update tests so that:
+    * Asking “what’s your next availability?”:
+        * Returns at least two human-readable options. 
+        * Each option includes a book: URL. 
+        * The message also includes a viewAll URL. 
+2. Visiting a viewAllUrl:
+    * Loads the booking page 
+    * Shows calendar focused on focusDate 
+    * Does not pre-select a time. 
+3. Verify that visiting booking pages with source=chat and source=site leads to booking_initiation_events rows being created with the correct source. 
+Update docs briefly (“Smart Availability Deep Links L2”) and then stop.

@@ -1,0 +1,315 @@
+Drop-in B – Gift Cards v1 (Square integration + dashboard + checkout hook)
+
+We’ll treat this as **SP-GIFTCARD-1**.  
+Important: I **do not** need your Square credentials. We’ll assume you’ll add:
+
+- `SQUARE_ACCESS_TOKEN`
+- `SQUARE_LOCATION_ID`
+- optionally `SQUARE_ENVIRONMENT` (`sandbox`|`production`)
+
+as Replit secrets.
+
+This v1 will:
+
+- Use your **existing Square gift card purchase links** for selling  
+- Sync gift card **status/balances** into ServicePro DB  
+- Show a **Clean Machine dashboard panel** to view gift cards  
+- Add an **“Apply Gift Card”** field in checkout so you can accept them on bookings
+
+Here’s the drop-in:
+
+```text
+PROJECT: ServicePro_v3 – SP-GIFTCARD-1 (Square Gift Card Integration v1)
+
+High-level goals
+================
+
+1) For Clean Machine (root tenant) first, then future tenants:
+
+- Use existing **Square gift card purchase** links (no PCI inside our app).
+- Sync gift card data (id, last 4 digits, balance, status) into ServicePro’s DB.
+- Show a **Gift Cards dashboard panel** so I can see:
+  - Total cards sold
+  - Total outstanding balance
+  - Per-card status & remaining value
+
+2) Allow customers to **apply a Square gift card** during booking checkout:
+
+- Add an “I have a gift card” field.
+- Validate the card via Square API.
+- Show remaining balance and how it reduces the amount owed.
+- Record that the booking used a specific gift card (for reporting and future reference).
+
+3) Make the integration **pluggable**:
+
+- First provider: `square`
+- Data model should allow us to add other providers (e.g. Stripe, Shopify) later.
+
+---
+
+Step 0 – Square configuration
+=============================
+
+Assume the following env vars:
+
+- `SQUARE_ACCESS_TOKEN`
+- `SQUARE_LOCATION_ID`
+- `SQUARE_ENVIRONMENT` (default: `production` or `sandbox`)
+
+Create a small config helper in `server/integrations/squareConfig.ts` that:
+
+- Reads these env vars
+- Exposes a `getSquareClient()` or config object to use in the service layer
+
+---
+
+Step 1 – Database schema for gift cards
+=======================================
+
+In `shared/schema.ts`:
+
+1. Add a `gift_cards` table:
+
+   ```ts
+   export const gift_cards = pgTable('gift_cards', {
+     id: serial('id').primaryKey(),
+     tenantId: varchar('tenant_id', { length: 50 }).notNull(),
+     provider: varchar('provider', { length: 50 }).notNull().default('square'),
+     providerCardId: varchar('provider_card_id', { length: 255 }).notNull(),
+     referenceCode: varchar('reference_code', { length: 255 }).notNull(), // last 4 or gift code
+     purchaserName: varchar('purchaser_name', { length: 255 }),
+     recipientName: varchar('recipient_name', { length: 255 }),
+     recipientEmail: varchar('recipient_email', { length: 255 }),
+     initialAmountCents: integer('initial_amount_cents').notNull(),
+     currentBalanceCents: integer('current_balance_cents').notNull(),
+     currency: varchar('currency', { length: 10 }).notNull().default('USD'),
+     status: varchar('status', { length: 50 }).notNull().default('ACTIVE'), // ACTIVE, REDEEMED, VOID, EXPIRED
+     externalUrl: varchar('external_url', { length: 500 }), // link to Square receipt or purchase
+     metadata: jsonb('metadata').notNull().default('{}' as any),
+     createdAt: timestamp('created_at').defaultNow().notNull(),
+     updatedAt: timestamp('updated_at').defaultNow().notNull(),
+   }, (table) => ({
+     tenantProviderCardUnique: uniqueIndex('gift_cards_tenant_provider_card_unique')
+       .on(table.tenantId, table.provider, table.providerCardId),
+   }));
+Add a simple gift_card_redemptions table:
+
+ts
+Copy code
+export const gift_card_redemptions = pgTable('gift_card_redemptions', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull(),
+  giftCardId: integer('gift_card_id').notNull().references(() => gift_cards.id),
+  bookingId: integer('booking_id'),  // if you have bookings table
+  amountCents: integer('amount_cents').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  metadata: jsonb('metadata').notNull().default('{}' as any),
+}));
+Run the DDL / migration.
+
+Step 2 – Square gift card service
+Create server/services/giftCardSquareService.ts with:
+
+listGiftCardsFromSquare(tenantId: string):
+
+Uses Square’s Gift Card APIs (or Catalog/Gift Card Activity APIs, depending on API version).
+
+Retrieves all cards for the configured location.
+
+Normalizes them into an internal structure:
+
+ts
+Copy code
+interface SquareGiftCardSummary {
+  providerCardId: string;
+  referenceCode: string; // last 4, or masked number
+  balanceCents: number;
+  initialAmountCents?: number;
+  currency: string;
+  status: 'ACTIVE' | 'REDEEMED' | 'VOID' | 'EXPIRED';
+  metadata?: Record<string, any>;
+}
+syncGiftCardsForTenant(tenantId: string):
+
+Calls listGiftCardsFromSquare.
+
+Upserts into gift_cards table using tenantId + providerCardId as unique key.
+
+Updates currentBalanceCents, status, etc.
+
+Returns summary (created count, updated count).
+
+validateGiftCardCode(tenantId: string, referenceCode: string):
+
+Attempts to find a gift card by referenceCode in our gift_cards table.
+
+If not found or stale, optionally re-sync from Square first.
+
+Returns either:
+
+null (not found or invalid)
+
+or an object with:
+
+giftCardId, currentBalanceCents, status, currency
+
+applyGiftCardToAmount(...):
+
+Pure utility to compute:
+
+ts
+Copy code
+{
+  appliedCents: number;
+  remainingCents: number;
+  newBookingAmountCents: number;
+}
+Step 3 – Backend routes and admin sync button
+Create server/routes.giftCards.ts with:
+
+POST /api/admin/gift-cards/sync:
+
+Restricted to owner or admin.
+
+Calls syncGiftCardsForTenant(tenantId).
+
+Returns { success, created, updated }.
+
+GET /api/admin/gift-cards:
+
+Returns paginated list of gift_cards for the tenant (default tenantId='root' for Clean Machine when logged in there).
+
+Include aggregate summary (totalInitialCents, totalBalanceCents, countActive, countRedeemed, etc.).
+
+Register this route in server/index.ts.
+
+Step 4 – Admin UI: Gift Cards panel for Clean Machine
+In the client:
+
+Add a new admin/settings page for gift cards, e.g.:
+
+client/src/pages/settings/GiftCardsAdminPage.tsx
+
+Use existing UI components (Cards, Table, Badges, etc.) to show:
+
+A summary row:
+
+Total cards
+
+Total outstanding balance
+
+Total redeemed amount
+
+A table:
+
+Reference / last 4
+
+Purchaser / Recipient
+
+Initial amount
+
+Current balance
+
+Status
+
+Created date
+
+A “Sync from Square” button (calls POST /api/admin/gift-cards/sync and then refreshes list).
+
+Wire into navigation:
+
+For now, make this visible in the root tenant owner settings hub only.
+
+Example path: /settings/gift-cards or /admin/gift-cards.
+
+Step 5 – Checkout: apply gift card at booking
+On the public booking / checkout step:
+
+Add an “I have a gift card” section:
+
+Input for Gift Card Code (e.g. last 4 digits or short code).
+
+“Apply Gift Card” button.
+
+When clicked:
+
+POST to a new route, e.g. POST /api/public/gift-cards/apply with:
+
+tenantId (resolved from domain / subdomain)
+
+giftCardCode
+
+currentAmountCents (what the booking currently costs)
+
+Implement POST /api/public/gift-cards/apply:
+
+Use validateGiftCardCode and applyGiftCardToAmount.
+
+Return:
+
+valid: boolean
+
+appliedCents
+
+remainingCents
+
+newAmountCents
+
+giftCardId (for later recording)
+
+On the client:
+
+If valid:
+
+Show a banner:
+
+“Gift card applied: -$XX.XX. Remaining balance: $YY.YY”
+
+Adjust the payable amount accordingly.
+
+Store giftCardId & appliedCents in booking state so when the booking is confirmed we can record a redemption.
+
+At booking confirmation:
+
+If a gift card was applied, create a row in gift_card_redemptions and update gift_cards.currentBalanceCents accordingly after the booking is actually saved.
+
+For Clean Machine (root tenant):
+
+Use existing service pricing / checkout as-is; just overlay this gift card logic.
+
+Add a small note in the Clean Machine flavored copy, e.g. “You can redeem Clean Machine gift cards at checkout.”
+
+Step 6 – Tests & Safety
+Add basic tests (unit or integration) for:
+
+syncGiftCardsForTenant
+
+validateGiftCardCode
+
+applyGiftCardToAmount
+
+Smoke test for:
+
+Visiting /settings/gift-cards as root owner:
+
+Sync button works.
+
+Table populates.
+
+Public booking:
+
+Gift card field appears.
+
+Invalid codes show “not found / invalid”.
+
+Valid codes update the amount correctly and persist to DB on booking confirmation.
+
+Document “SP-GIFTCARD-1” in the master plan doc with:
+
+How to set Square env vars.
+
+Where to find the Gift Cards dashboard.
+
+How booking checkout uses them.
+
+Then stop.

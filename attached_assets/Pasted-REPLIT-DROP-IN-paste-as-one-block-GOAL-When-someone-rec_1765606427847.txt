@@ -1,0 +1,303 @@
+REPLIT DROP-IN (paste as one block)
+
+GOAL: When someone receives a rewards/booking link via SMS, the link preview shows TENANT branding (Clean Machine name/logo) instead of platform branding. Must work with multi-tenant security and not break existing flows.
+
+INSTRUCTIONS FOR REPLIT AGENT:
+
+Search the repo for:
+
+how “rewardsLink” is generated (campaign template rendering, port recovery service, rewards link builder)
+
+any existing tokenized link endpoints (e.g. /rewards/welcome, /rewards/*token*, /book/*token*, /r/*, /l/*, etc.)
+
+any existing “public site” or “public endpoint” tenant resolver (subdomain → tenant id, token → tenant id)
+
+Implement tenant-branded OpenGraph (OG) preview via a new shortlink endpoint that:
+
+Returns text/html with OG tags (og:title, og:description, og:image, og:url) using tenant brand fields
+
+Includes a fast redirect (meta refresh + JS) to the final destination after the preview loads
+
+Update all outbound SMS campaign rendering for rewards/booking links to use ONE single link (the new shortlink), not multiple links.
+
+A) Add DB table (SAFE, no destructive drizzle prompts)
+
+Create a script and run it once to create a table for shortlinks.
+
+Create file: scripts/create-share-links-table.ts
+
+import 'dotenv/config';
+import { neon } from "@neondatabase/serverless";
+
+async function main() {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL missing");
+
+  const sql = neon(url);
+
+  console.log("🛠 Creating share_links (safe, IF NOT EXISTS) ...");
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS share_links (
+      id SERIAL PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      token TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      destination_url TEXT NOT NULL,
+      meta_title TEXT,
+      meta_description TEXT,
+      meta_image_url TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ
+    );
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS share_links_token_unique
+    ON share_links (token);
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS share_links_tenant_idx
+    ON share_links (tenant_id);
+  `;
+
+  console.log("🎉 share_links ready");
+}
+
+main().catch((e) => {
+  console.error("❌ create-share-links-table failed:", e);
+  process.exit(1);
+});
+
+
+Add npm script (package.json → scripts):
+
+"create:sharelinks": "tsx scripts/create-share-links-table.ts"
+
+B) Create ShareLink service (token generation + insert)
+
+Create file: server/services/shareLinkService.ts
+
+import crypto from "crypto";
+import type { TenantDb } from "../tenantDb";
+import { sql } from "drizzle-orm";
+
+export type ShareLinkKind = "rewards_welcome" | "booking" | "generic";
+
+function makeToken(len = 10) {
+  // URL-safe base64-ish
+  return crypto.randomBytes(Math.ceil(len)).toString("base64url").slice(0, len);
+}
+
+export async function createShareLink(
+  tenantDb: TenantDb,
+  tenantId: string,
+  input: {
+    kind: ShareLinkKind;
+    destinationUrl: string;
+    metaTitle?: string;
+    metaDescription?: string;
+    metaImageUrl?: string;
+    expiresAt?: Date | null;
+  }
+): Promise<{ token: string; shortUrlPath: string }> {
+  // retry a couple times on rare token collision
+  for (let i = 0; i < 4; i++) {
+    const token = makeToken(12);
+
+    try {
+      await tenantDb.execute(sql`
+        INSERT INTO share_links (
+          tenant_id, token, kind, destination_url, meta_title, meta_description, meta_image_url, expires_at
+        ) VALUES (
+          ${tenantId}, ${token}, ${input.kind}, ${input.destinationUrl},
+          ${input.metaTitle ?? null}, ${input.metaDescription ?? null}, ${input.metaImageUrl ?? null},
+          ${input.expiresAt ?? null}
+        )
+      `);
+
+      return { token, shortUrlPath: `/l/${token}` };
+    } catch (e: any) {
+      // unique collision → retry
+      const msg = String(e?.message || "");
+      if (msg.includes("share_links_token_unique") || msg.includes("duplicate key")) continue;
+      throw e;
+    }
+  }
+
+  throw new Error("Failed to create share link token after retries");
+}
+
+export async function getShareLinkByToken(
+  tenantDb: TenantDb,
+  token: string
+) {
+  const r = await tenantDb.execute(sql`
+    SELECT * FROM share_links WHERE token = ${token} LIMIT 1
+  `);
+  return (r.rows?.[0] as any) || null;
+}
+
+C) Add public shortlink route that renders OG HTML + redirects
+
+Create file: server/routes/publicShortLink.ts
+
+import { Router, Request, Response } from "express";
+import { getShareLinkByToken } from "../services/shareLinkService";
+
+const router = Router();
+
+// Minimal HTML with OG tags for link previews + redirect.
+function renderOgRedirectHtml(opts: {
+  title: string;
+  description: string;
+  imageUrl?: string | null;
+  url: string;
+  destinationUrl: string;
+}) {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(opts.title)}</title>
+
+<meta property="og:title" content="${esc(opts.title)}">
+<meta property="og:description" content="${esc(opts.description)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${esc(opts.url)}">
+${opts.imageUrl ? `<meta property="og:image" content="${esc(opts.imageUrl)}">` : ""}
+
+<meta name="twitter:card" content="summary_large_image">
+${opts.imageUrl ? `<meta name="twitter:image" content="${esc(opts.imageUrl)}">` : ""}
+
+<meta http-equiv="refresh" content="0;url=${esc(opts.destinationUrl)}">
+</head>
+<body>
+<script>location.replace(${JSON.stringify(opts.destinationUrl)});</script>
+</body>
+</html>`;
+}
+
+router.get("/l/:token", async (req: Request, res: Response) => {
+  try {
+    const tenantDb = (req as any).tenantDb; // this should already be tenant-scoped by middleware
+    const token = String(req.params.token || "").trim();
+    if (!token) return res.status(404).send("Not found");
+
+    const row = await getShareLinkByToken(tenantDb, token);
+    if (!row) return res.status(404).send("Not found");
+
+    // Optional expiry
+    if (row.expires_at) {
+      const exp = new Date(row.expires_at).getTime();
+      if (Number.isFinite(exp) && Date.now() > exp) return res.status(410).send("Expired");
+    }
+
+    const destinationUrl = row.destination_url as string;
+
+    // Build the public URL the preview bot is visiting
+    const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https";
+    const host = req.get("host");
+    const publicUrl = `${proto}://${host}/l/${encodeURIComponent(token)}`;
+
+    const title = row.meta_title || "Link";
+    const description = row.meta_description || "Tap to open.";
+    const imageUrl = row.meta_image_url || null;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    // Avoid caching if you change metadata often
+    res.setHeader("Cache-Control", "no-store");
+
+    return res.status(200).send(
+      renderOgRedirectHtml({
+        title,
+        description,
+        imageUrl,
+        url: publicUrl,
+        destinationUrl
+      })
+    );
+  } catch (e) {
+    console.error("[SHORTLINK] error", e);
+    return res.status(500).send("Error");
+  }
+});
+
+export const publicShortLinkRouter = router;
+
+D) Wire the route safely (respecting tenant resolution)
+
+Modify: server/index.ts (or wherever routes are registered)
+
+Register this route after your tenant resolver middleware has attached (req as any).tenantDb for the incoming request.
+
+If you have a special “public” resolver, use that same pattern.
+Add:
+
+import { publicShortLinkRouter } from "./routes/publicShortLink";
+// ...
+app.use(publicShortLinkRouter);
+
+
+IMPORTANT: If /l/:token needs to work without any tenant in the URL, then your middleware must resolve tenant by token.
+If you don’t already have “token → tenant” resolution globally, do this:
+
+In publicShortLink.ts, before using tenantDb, do a GLOBAL lookup:
+
+query a global DB connection to find share_links.tenant_id by token
+
+then call your existing wrapTenantDb(tenantId) to get tenantDb
+Implement whichever “global DB” helper your project already uses for subdomain resolution.
+
+E) Update Port Recovery + Campaign template rendering to use ONE link
+
+Wherever you currently set {{rewardsLink}} (and/or {{bookingLink}}), change it to:
+
+Create a share link token for the actual destination (existing rewards portal URL)
+
+Put ONLY the shortlink in the SMS: /l/<token>
+
+Example integration points to edit (search and update):
+
+server/services/portRecoveryService.ts (build message vars)
+
+server/routes/campaignSendTest.ts (test sends must use the same renderer as production)
+
+any renderSmsCampaignTemplate() or equivalent
+
+Pseudo-code pattern:
+
+const destinationUrl = `${PUBLIC_BASE_URL}/rewards/welcome/${welcomeToken}`; // existing destination you already use
+const { shortUrlPath } = await createShareLink(tenantDb, tenantId, {
+  kind: "rewards_welcome",
+  destinationUrl,
+  metaTitle: `${tenant.businessName} Rewards`,
+  metaDescription: `You’ve got reward points waiting — tap to view and book.`,
+  metaImageUrl: tenant.logoUrl || null, // whatever your tenant branding field is
+  expiresAt: null
+});
+const shortUrl = `${PUBLIC_BASE_URL}${shortUrlPath}`;
+vars.rewardsLink = shortUrl;
+
+F) Acceptance tests
+
+Run:
+
+npm run create:sharelinks
+
+Send a Port Recovery “Test SMS” to yourself.
+
+On iPhone/Android:
+
+The link preview should show Clean Machine Rewards (tenant name), not ServicePro.
+
+Only one link appears in the SMS.
+
+Clicking opens the normal destination page.
+
+Deliverables: Working shortlink endpoint + tenant OG previews + campaigns/port recovery use it.
