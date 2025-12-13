@@ -1,0 +1,95 @@
+1️⃣ CREATE TABLE (SAFE, IDPOTENT)
+
+Create this file once (or run via migration / SQL runner):
+
+// server/db/ensurePortRecoverySmsSends.ts
+import { sql } from 'drizzle-orm';
+
+export async function ensurePortRecoverySmsSends(db: any) {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS port_recovery_sms_sends (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL,
+      campaign_key TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      message_sid TEXT,
+      status TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, campaign_key, phone)
+    );
+  `);
+}
+
+2️⃣ IMPORT + CALL TABLE ENSURE (ON STARTUP)
+
+Add once near server bootstrap (where other ensures run):
+
+// server/index.ts (or equivalent startup file)
+import { ensurePortRecoverySmsSends } from './db/ensurePortRecoverySmsSends';
+
+// after DB init
+await ensurePortRecoverySmsSends(db);
+
+3️⃣ HARD SKIP IF ALREADY SENT (BEFORE SMS SEND)
+
+Replace / add inside portRecoveryService.ts
+(inside the per-recipient loop, BEFORE calling Twilio):
+
+// server/services/portRecoveryService.ts
+
+const campaignKey = campaign.campaignKey || campaign.key || 'port-recovery';
+
+// HARD DEDUP CHECK — SUCCESS ONLY
+const alreadySent = await db.execute(sql`
+  SELECT 1 FROM port_recovery_sms_sends
+  WHERE tenant_id = ${tenantId}
+    AND campaign_key = ${campaignKey}
+    AND phone = ${phone}
+    AND status = 'sent'
+  LIMIT 1
+`);
+
+if (alreadySent.rowCount > 0) {
+  log.info('[PORT RECOVERY] skip_already_sent', { phone, campaignKey });
+  continue;
+}
+
+4️⃣ RECORD SUCCESS ONLY (AFTER TWILIO SEND OK)
+
+Immediately after Twilio returns a SID:
+
+// AFTER successful Twilio send
+await db.execute(sql`
+  INSERT INTO port_recovery_sms_sends
+    (tenant_id, campaign_key, phone, message_sid, status)
+  VALUES
+    (${tenantId}, ${campaignKey}, ${phone}, ${twilioSid}, 'sent')
+  ON CONFLICT (tenant_id, campaign_key, phone)
+  DO NOTHING
+`);
+
+5️⃣ GUARD: NEVER WRITE FAILED ATTEMPTS
+
+Delete / comment out any inserts that write rows for:
+
+attempted
+
+failed
+
+skipped
+
+Only status = 'sent' is allowed in this table.
+
+✅ RESULT
+
+SMS can only send once per phone per campaign
+
+Retries are safe
+
+Re-runs are safe
+
+No double texts
+
+No customer annoyance
+
+If you want, next step can be one-click “dry run” mode (counts only).
