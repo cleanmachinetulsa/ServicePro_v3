@@ -391,12 +391,14 @@ export async function buildTargetListForPortRecovery(
 
 /**
  * Create a new port recovery campaign with targets
+ * @param previousCampaign - Optional: copy settings (SMS text, etc.) from this campaign
  */
 export async function createPortRecoveryCampaign(
   tenantDb: TenantDb,
   tenantId: string,
   createdByUserId: number,
-  campaignName: string = '2024-number-port-recovery'
+  campaignName: string = '2024-number-port-recovery',
+  previousCampaign?: PortRecoveryCampaign | null
 ): Promise<{
   campaign: PortRecoveryCampaign;
   targetCount: number;
@@ -404,7 +406,20 @@ export async function createPortRecoveryCampaign(
   // Build target list
   const { targets, stats } = await buildTargetListForPortRecovery(tenantDb, tenantId);
   
-  // Create campaign with all default templates
+  // Use settings from previous campaign if available, otherwise use defaults
+  // This preserves user's custom SMS text across runs!
+  const smsTemplate = previousCampaign?.smsTemplate || DEFAULT_SMS_TEMPLATE;
+  const emailSubject = previousCampaign?.emailSubject || DEFAULT_EMAIL_SUBJECT;
+  const emailHtmlTemplate = previousCampaign?.emailHtmlTemplate || DEFAULT_EMAIL_HTML_TEMPLATE;
+  const ctaUrl = previousCampaign?.ctaUrl || DEFAULT_CTA_URL;
+  const pointsPerCustomer = previousCampaign?.pointsPerCustomer ?? 500;
+  const smsEnabled = previousCampaign?.smsEnabled ?? true;
+  const emailEnabled = previousCampaign?.emailEnabled ?? true;
+  
+  console.log(`[PORT RECOVERY] Creating new campaign, copying settings from previous: ${previousCampaign?.id || 'none'}`);
+  console.log(`[PORT RECOVERY] smsTemplate: "${smsTemplate.substring(0, 60)}..."`);
+  
+  // Create campaign with settings (from previous or defaults)
   const [campaign] = await tenantDb
     .insert(portRecoveryCampaigns)
     .values({
@@ -413,13 +428,13 @@ export async function createPortRecoveryCampaign(
       createdByUserId,
       status: 'draft',
       totalTargets: stats.totalUnique,
-      pointsPerCustomer: 500,
-      smsEnabled: true,
-      emailEnabled: true,
-      smsTemplate: DEFAULT_SMS_TEMPLATE,
-      emailSubject: DEFAULT_EMAIL_SUBJECT,
-      emailHtmlTemplate: DEFAULT_EMAIL_HTML_TEMPLATE,
-      ctaUrl: DEFAULT_CTA_URL,
+      pointsPerCustomer,
+      smsEnabled,
+      emailEnabled,
+      smsTemplate,
+      emailSubject,
+      emailHtmlTemplate,
+      ctaUrl,
     })
     .returning();
   
@@ -1596,6 +1611,8 @@ function mapStatus(status: string): 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILE
 
 /**
  * Get or create the current campaign configuration for a tenant
+ * IMPORTANT: When creating a new draft, copy settings from the most recent campaign
+ * so user's custom SMS text is preserved across runs
  */
 export async function getOrCreateCampaignConfig(
   tenantDb: TenantDb,
@@ -1609,7 +1626,17 @@ export async function getOrCreateCampaignConfig(
     return draftCampaign;
   }
   
-  const { campaign } = await createPortRecoveryCampaign(tenantDb, tenantId, userId);
+  // No draft found - create new one, but COPY settings from most recent campaign
+  // This preserves user's custom SMS text across runs
+  const mostRecentCampaign = campaigns[0]; // Already sorted by createdAt DESC
+  
+  const { campaign } = await createPortRecoveryCampaign(
+    tenantDb, 
+    tenantId, 
+    userId,
+    undefined, // use default name
+    mostRecentCampaign // pass previous campaign to copy settings from
+  );
   return campaign;
 }
 
