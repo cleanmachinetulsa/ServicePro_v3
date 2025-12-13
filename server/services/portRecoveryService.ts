@@ -788,24 +788,15 @@ async function sendPortRecoverySms(
       messageBody += `\n\nView your rewards: ${rewardsLink}`;
     }
     
-    // Prefer MessagingServiceSid if configured
-    const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
-    
-    if (messagingServiceSid) {
-      const message = await twilioClient.messages.create({
-        messagingServiceSid,
-        to: target.phone,
-        body: messageBody,
-      });
-      return { success: true, twilioSid: message.sid };
-    } else {
-      const message = await twilioClient.messages.create({
-        to: target.phone,
-        from: fromNumber,
-        body: messageBody,
-      });
-      return { success: true, twilioSid: message.sid };
-    }
+    // ALWAYS use explicit fromNumber (MAIN_PHONE_NUMBER) for port recovery campaigns
+    // This ensures messages come from the expected business line, not a random number
+    // from the Messaging Service pool (which caused 918-918-3265 issue)
+    const message = await twilioClient.messages.create({
+      to: target.phone,
+      from: fromNumber,
+      body: messageBody,
+    });
+    return { success: true, twilioSid: message.sid };
   } catch (error: any) {
     console.error(`[PORT RECOVERY] SMS failed for ${target.phone}:`, error.message);
     return { success: false, error: error.message };
