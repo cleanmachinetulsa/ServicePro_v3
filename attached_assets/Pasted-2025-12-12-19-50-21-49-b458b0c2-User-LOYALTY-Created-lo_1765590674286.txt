@@ -1,0 +1,113 @@
+2025-12-12 19:50:21.49
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 787 }
+2025-12-12 19:50:21.69
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19188924969 phone=+19188924969 customerId=787 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:21.88
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 807 }
+2025-12-12 19:50:22.08
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19188550626 phone=+19188550626 customerId=807 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:22.33
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 808 }
+2025-12-12 19:50:22.53
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19182042789 phone=+19182042789 customerId=808 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:22.71
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 815 }
+2025-12-12 19:50:22.91
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19188141474 phone=+19188141474 customerId=815 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:23.09
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 806 }
+2025-12-12 19:50:23.29
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19186252654 phone=+19186252654 customerId=806 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:23.47
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 814 }
+2025-12-12 19:50:23.67
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19189465013 phone=+19189465013 customerId=814 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:23.86
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 831 }
+2025-12-12 19:50:24.05
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+17025759182 phone=+17025759182 customerId=831 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:24.23
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 846 }
+2025-12-12 19:50:24.43
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+14053651437 phone=+14053651437 customerId=846 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:24.61
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 849 }
+2025-12-12 19:50:24.81
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19189953612 phone=+19189953612 customerId=849 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:24.99
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 830 }
+2025-12-12 19:50:25.19
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19182325456 phone=+19182325456 customerId=830 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:25.37
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 833 }
+2025-12-12 19:50:25.57
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19183442510 phone=+19183442510 customerId=833 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:25.75
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 840 }
+2025-12-12 19:50:25.95
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19188592468 phone=+19188592468 customerId=840 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:26.13
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 845 }
+
+2025-12-12 19:50:26.33
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+13867932021 phone=+13867932021 customerId=845 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
+2025-12-12 19:50:26.51
+b458b0c2
+User
+[LOYALTY] Created loyalty points record for customer { customerId: 890 }
+2025-12-12 19:50:26.71
+b458b0c2
+User
+[PORT RECOVERY] recipient phone_raw=+19182896213 phone=+19182896213 customerId=890 sms_attempted=false sms_ok=false sms_skip_reason=opted_out_explicit email_attempted=true email_ok=true email_skip_reason= points_attempted=true points_ok=true points_skip_reason=
