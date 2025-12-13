@@ -90,9 +90,10 @@ function isProvisioningError(error: any): boolean {
  * 
  * @param toPhone - Recipient phone number (E.164 format)
  * @param message - SMS message body
- * @param fromPhone - Primary phone number to send from
+ * @param fromPhone - Primary phone number to send from (used as fallback if messaging service fails)
  * @param phoneLineId - Optional: Phone line ID for tracking
  * @param statusCallback - Optional: Webhook URL for delivery status
+ * @param messagingServiceSid - Optional: Twilio Messaging Service SID (preferred over fromPhone)
  * @returns Success status and message SID
  */
 export async function sendSMSWithFailover(
@@ -101,8 +102,9 @@ export async function sendSMSWithFailover(
   message: string,
   fromPhone: string,
   phoneLineId?: number,
-  statusCallback?: string
-): Promise<{ success: boolean; messageSid?: string; error?: any; usedBackup: boolean }> {
+  statusCallback?: string,
+  messagingServiceSid?: string | null
+): Promise<{ success: boolean; messageSid?: string; error?: any; usedBackup: boolean; fromNumber?: string }> {
   
   if (!twilio) {
     return { 
@@ -113,14 +115,26 @@ export async function sendSMSWithFailover(
   }
 
   try {
-    // ATTEMPT 1: Try sending with primary phone line
-    console.log(`[SMS FAILOVER] Attempting send from primary line: ${fromPhone}`);
+    // ATTEMPT 1: Try sending with messaging service or primary phone line
+    const usingMessagingService = !!messagingServiceSid;
+    
+    if (usingMessagingService) {
+      console.log(`[SMS FAILOVER] Attempting send via Messaging Service: ${messagingServiceSid}`);
+    } else {
+      console.log(`[SMS FAILOVER] Attempting send from primary line: ${fromPhone}`);
+    }
     
     const smsParams: any = {
       body: message,
-      from: fromPhone,
       to: toPhone,
     };
+    
+    // Prefer Messaging Service SID if provided (better A2P compliance)
+    if (messagingServiceSid) {
+      smsParams.messagingServiceSid = messagingServiceSid;
+    } else {
+      smsParams.from = fromPhone;
+    }
 
     if (statusCallback) {
       smsParams.statusCallback = statusCallback;
@@ -128,11 +142,13 @@ export async function sendSMSWithFailover(
 
     try {
       const response = await twilio.messages.create(smsParams);
-      console.log(`[SMS FAILOVER] ✅ SUCCESS via primary line ${fromPhone} - SID: ${response.sid}`);
+      const sendMethod = usingMessagingService ? `Messaging Service ${messagingServiceSid}` : `primary line ${fromPhone}`;
+      console.log(`[SMS FAILOVER] ✅ SUCCESS via ${sendMethod} - SID: ${response.sid}`);
       return { 
         success: true, 
         messageSid: response.sid,
-        usedBackup: false
+        usedBackup: false,
+        fromNumber: response.from || fromPhone
       };
     } catch (primaryError: any) {
       // Check if this is Error 30024 (provisioning issue)
@@ -175,14 +191,16 @@ export async function sendSMSWithFailover(
           return { 
             success: true, 
             messageSid: backupResponse.sid,
-            usedBackup: true
+            usedBackup: true,
+            fromNumber: backupLine.number
           };
         } catch (backupError: any) {
           console.error('[SMS FAILOVER] ❌ Backup line also failed:', backupError);
           return { 
             success: false, 
             error: backupError,
-            usedBackup: true
+            usedBackup: true,
+            fromNumber: backupLine.number
           };
         }
       } else {

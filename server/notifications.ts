@@ -209,24 +209,26 @@ export async function sendSMS(
     // Import failover service
     const { sendSMSWithFailover } = await import('./smsFailoverService');
     
-    // Determine which number to use for sending
+    // Determine which number to use for sending (fallback if messaging service fails)
     let actualFromNumber = fromPhoneNumber;
     
-    // If using Messaging Service, we need a fallback number for the failover logic
+    // If using Messaging Service, we still need a fallback number for error scenarios
     if (smsParams.messagingServiceSid && !smsParams.from) {
-      actualFromNumber = twilioPhoneNumber || '';
+      actualFromNumber = fromPhoneNumber || twilioPhoneNumber || '';
     } else if (smsParams.from) {
       actualFromNumber = smsParams.from;
     }
     
     // Send SMS with automatic failover (retry with backup line if Error 30024)
+    // Pass messaging service SID if configured for better A2P deliverability
     const failoverResult = await sendSMSWithFailover(
       tenantDb,
       formattedPhone,
       message,
       actualFromNumber,
       phoneLineId,
-      statusCallbackUrl
+      statusCallbackUrl,
+      messagingServiceSidToUse // Pass the messaging service SID
     );
     
     if (!failoverResult.success) {
@@ -237,8 +239,9 @@ export async function sendSMS(
     const messageSid = failoverResult.messageSid!;
     console.log(`SMS sent to ${phoneNumber}, SID: ${messageSid}${failoverResult.usedBackup ? ' (via BACKUP line)' : ''}`);
     
-    // Determine actual sender (might be backup line if failover occurred)
-    const actualSender = failoverResult.usedBackup ? '+19188565711' : actualFromNumber;
+    // Determine actual sender - prefer Twilio's response.from, then fallback logic
+    // If messaging service was used, Twilio will return the actual FROM number in response
+    const actualSender = failoverResult.fromNumber || (failoverResult.usedBackup ? '+19188565711' : actualFromNumber);
 
     // Log to delivery tracking database
     try {
