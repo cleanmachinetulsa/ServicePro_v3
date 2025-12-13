@@ -899,6 +899,9 @@ export async function runPortRecoveryBatch(
     throw new Error('Campaign not found');
   }
   
+  // Generate campaignKey for dedup tracking (not stored in DB, derived from ID)
+  const campaignKey = `port-recovery-campaign-${campaignId}`;
+  
   // Mark as running if not already
   if (campaign.status === 'draft') {
     await tenantDb
@@ -1038,7 +1041,7 @@ export async function runPortRecoveryBatch(
         const dedupCheck = await checkAndClaimSmsSend(
           tenantDb,
           tenantId,
-          campaign.campaignKey,
+          campaignKey,
           normalizedPhone
         );
         
@@ -1075,7 +1078,7 @@ export async function runPortRecoveryBatch(
               await updateSmsSendStatus(
                 tenantDb,
                 tenantId,
-                campaign.campaignKey,
+                campaignKey,
                 normalizedPhone,
                 smsResult.twilioSid
               );

@@ -1,0 +1,67 @@
+YOU ARE WORKING IN ServicePro v3 (servicepro-v3-base). Goal: Port Recovery SMS blast must send reliably NOW, never resend successful sends, and never skip people unless explicitly opted out. Make changes safely (no destructive db push).
+
+TASKS (MUST DO ALL):
+
+A) Fix Port Recovery SMS opt-out gating (critical)
+- Find server/services/portRecoveryService.ts (or wherever runPortRecoveryBatch / shouldSendSms / consent gating lives).
+- Currently logs show sms_attempted=false and sms_skip_reason=opted_out for many records even when consent isn't explicitly false.
+- Change gating rules to:
+  1) Only treat as opted_out if customer.smsConsent === false OR customer.optedOut === true OR customer.smsOptOut === true (explicit signals only).
+  2) If consent is undefined/null and no explicit opt-out flags exist, ALLOW SMS.
+  3) If no customer record exists (customerId=none), ALLOW SMS (you cannot infer opt-out).
+  4) When skipping, set sms_skip_reason to one of:
+     - opted_out_explicit
+     - sms_disabled_campaign
+     - invalid_phone_format
+     - twilio_not_configured
+     - to_equals_from
+     - already_sent_ok
+- Ensure recipient summary log includes sms_skip_reason when sms_attempted=false.
+
+B) Implement “DO NOT RESEND if already successfully sent” using DB-backed dedup
+- Create a DB table port_recovery_sms_sends in PUBLIC schema (safe IF NOT EXISTS). It must store:
+  - id (serial pk)
+  - tenant_id text not null
+  - campaign_key text not null
+  - phone text not null
+  - sms_sid text null
+  - sms_ok boolean not null default false
+  - attempted_at timestamptz not null default now()
+  - last_error text null
+- Add UNIQUE index on (tenant_id, campaign_key, phone).
+- Implement helper functions in portRecoveryService:
+  1) hasSentOk(tenantId, campaignKey, phone) -> boolean
+     - returns true if row exists with sms_ok=true
+  2) recordSmsAttempt(tenantId, campaignKey, phone, {sms_ok, sms_sid, last_error}) using UPSERT
+- BEFORE sending any SMS, check hasSentOk; if true, skip with sms_skip_reason=already_sent_ok and sms_attempted=false.
+- AFTER sending attempt, recordSmsAttempt accordingly.
+
+C) Add safe one-time DB creation script (no drizzle push)
+- Create scripts/create-port-recovery-sms-sends.ts using @neondatabase/serverless (same pattern you used for sms_inbound_dedup).
+- It must run CREATE TABLE IF NOT EXISTS + indexes safely.
+- Add package.json script:
+  "create:portrecovery:sends": "tsx scripts/create-port-recovery-sms-sends.ts"
+- Print success message:
+  "✅ port_recovery_sms_sends ready"
+
+D) Make batch resilient (fail-open) but truthful
+- Even if DB record insert fails, it must NOT stop batch. Log:
+  [PORT RECOVERY] record_send_status_failed phone=... err=...
+- BUT still proceed to next recipient.
+
+E) Quick verification hooks
+- Ensure logs show for each recipient EXACTLY ONE summary line:
+  [PORT RECOVERY] recipient phone_raw=... phone=... customerId=... sms_attempted=... sms_ok=... sms_skip_reason=... sms_sid=... points_attempted=... points_ok=... points_skip_reason=...
+- Ensure to_equals_from is explicitly detected BEFORE calling Twilio (if from === to after normalization) and skipped with that reason.
+
+After edits:
+1) Run TypeScript compile.
+2) Do NOT run drizzle push.
+3) Confirm where the Port Recovery UI triggers batch still points to the same service functions.
+
+DELIVERABLE:
+- All code changes
+- New script + package.json script
+- Brief “How to run”:
+  npm run create:portrecovery:sends
+  then run Port Recovery “Test SMS” to a real number that is NOT the Twilio from-number.
