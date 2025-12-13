@@ -176,13 +176,35 @@ router.post('/admin/run', async (req, res) => {
     const isProduction = process.env.NODE_ENV === 'production';
     const forceDevSend = process.env.FORCE_DEV_SMS_SEND === 'true';
     
-    // Create the campaign
-    const campaignResult = await createPortRecoveryCampaign(
-      tenantDb,
-      tenantId,
-      userId || 1,
-      `port-recovery-${new Date().toISOString().split('T')[0]}`
-    );
+    // USE the existing draft campaign (with user's saved settings) instead of creating new one
+    const existingDraft = campaigns.find(c => c.status === 'draft');
+    
+    let campaignToRun: any;
+    let targetCount: number;
+    
+    if (existingDraft) {
+      // Use existing draft - this preserves the user's edited SMS text!
+      console.log(`[PORT RECOVERY] Using existing draft campaign ${existingDraft.id} with user's saved settings`);
+      campaignToRun = existingDraft;
+      targetCount = existingDraft.totalTargets || 0;
+      
+      // If no targets, rebuild them
+      if (targetCount === 0) {
+        const { targets, stats } = await previewTargetList(tenantDb, tenantId);
+        targetCount = stats.totalUnique;
+      }
+    } else {
+      // No draft exists - create new campaign (should rarely happen)
+      console.log('[PORT RECOVERY] No draft found, creating new campaign');
+      const campaignResult = await createPortRecoveryCampaign(
+        tenantDb,
+        tenantId,
+        userId || 1,
+        `port-recovery-${new Date().toISOString().split('T')[0]}`
+      );
+      campaignToRun = campaignResult.campaign;
+      targetCount = campaignResult.targetCount;
+    }
     
     // In development, log warning but still create the campaign
     if (!isProduction && !forceDevSend) {
@@ -192,9 +214,9 @@ router.post('/admin/run', async (req, res) => {
     res.json({
       success: true,
       ok: true,
-      runId: campaignResult.campaign.id.toString(),
-      totalQueued: campaignResult.targetCount,
-      campaign: campaignResult.campaign,
+      runId: campaignToRun.id.toString(),
+      totalQueued: targetCount,
+      campaign: campaignToRun,
     });
   } catch (error: any) {
     console.error('[PORT RECOVERY] Error in admin run:', error);
