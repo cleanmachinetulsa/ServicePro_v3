@@ -21,11 +21,13 @@ export function checkConsentKeyword(messageContent: string): ConsentCheckResult 
   const normalizedMessage = messageContent.trim().toUpperCase();
   
   // Check for STOP keywords
+  // CRITICAL: Return NULL autoResponse - Twilio handles STOP responses automatically
+  // We must NOT send any reply when customer sends STOP
   if (STOP_KEYWORDS.includes(normalizedMessage)) {
     return {
       isConsentKeyword: true,
       keyword: 'STOP',
-      autoResponse: "You're unsubscribed from Clean Machine Auto Detail texts. You won't receive more messages. Reply START to rejoin."
+      autoResponse: null // DO NOT SEND ANY REPLY - Twilio handles STOP automatically
     };
   }
   
@@ -87,6 +89,82 @@ export async function isOptedOut(tenantDb: TenantDb, conversationId: number): Pr
 }
 
 /**
+ * Updates the customers.sms_consent field based on conversation phone number
+ * CRITICAL: This is the primary flag that blocks ALL SMS pathways including campaigns
+ * Uses UPSERT to ensure a customer record exists even if this is a new number
+ */
+async function updateCustomerSmsConsent(
+  tenantDb: TenantDb,
+  conversationId: number,
+  consent: boolean
+): Promise<void> {
+  try {
+    // Get conversation phone number
+    const [conversation] = await tenantDb
+      .select({ phoneNumber: conversations.phoneNumber, customerPhone: conversations.customerPhone })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .limit(1);
+    
+    const phone = conversation?.phoneNumber || conversation?.customerPhone;
+    if (!phone) {
+      console.log(`[SMS CONSENT] No phone found for conversation ${conversationId}`);
+      return;
+    }
+    
+    // Import customers schema
+    const { customers } = await import('@shared/schema');
+    
+    // First try to update existing customer
+    const updateResult = await tenantDb.update(customers)
+      .set({ 
+        smsConsent: consent,
+        smsConsentTimestamp: new Date()
+      })
+      .where(eq(customers.phone, phone))
+      .returning({ id: customers.id });
+    
+    if (updateResult.length > 0) {
+      console.log(`[SMS CONSENT] ✅ Updated customer ${updateResult[0].id} sms_consent=${consent} (phone=${phone})`);
+    } else {
+      // CRITICAL: Customer doesn't exist - CREATE one with sms_consent set
+      // This ensures STOP from unknown numbers still blocks future SMS
+      try {
+        const [newCustomer] = await tenantDb.insert(customers)
+          .values({
+            phone: phone,
+            name: 'Unknown (opted out)', // Placeholder name
+            smsConsent: consent,
+            smsConsentTimestamp: new Date(),
+          })
+          .returning({ id: customers.id });
+        
+        console.log(`[SMS CONSENT] ✅ Created customer ${newCustomer.id} with sms_consent=${consent} (phone=${phone})`);
+      } catch (insertError: any) {
+        // Handle race condition - if insert fails due to duplicate, retry update
+        if (insertError?.code === '23505') {
+          const retryResult = await tenantDb.update(customers)
+            .set({ 
+              smsConsent: consent,
+              smsConsentTimestamp: new Date()
+            })
+            .where(eq(customers.phone, phone))
+            .returning({ id: customers.id });
+          
+          if (retryResult.length > 0) {
+            console.log(`[SMS CONSENT] ✅ Updated customer ${retryResult[0].id} sms_consent=${consent} after race (phone=${phone})`);
+          }
+        } else {
+          throw insertError;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[SMS CONSENT] Error updating customer sms_consent:', error);
+  }
+}
+
+/**
  * Processes SMS consent keywords and updates database + returns auto-response
  */
 export async function processConsentKeyword(
@@ -102,11 +180,18 @@ export async function processConsentKeyword(
       await updateConsentStatus(tenantDb, conversationId, true);
       console.log(`📵 Conversation ${conversationId} opted out via STOP keyword`);
       
+      // CRITICAL: Also update customers.sms_consent = false to block ALL future SMS
+      // This ensures Port Recovery campaigns and all other SMS pathways respect the opt-out
+      await updateCustomerSmsConsent(tenantDb, conversationId, false);
+      
       // PHASE 4D: Also handle reminder opt-outs
       await handleReminderOptOut(tenantDb, conversationId);
     } else if (result.keyword === 'START') {
       await updateConsentStatus(tenantDb, conversationId, false);
       console.log(`✅ Conversation ${conversationId} opted back in via START keyword`);
+      
+      // Also update customers.sms_consent = true to re-enable SMS
+      await updateCustomerSmsConsent(tenantDb, conversationId, true);
       
       // PHASE 4D: Remove reminder opt-out if exists
       await handleReminderOptIn(tenantDb, conversationId);

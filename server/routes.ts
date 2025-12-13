@@ -2123,20 +2123,28 @@ export async function registerRoutes(app: Express) {
       // Handle SMS consent keywords (STOP/START/HELP) - SMS only
       if (!isWebClient && platform === 'sms') {
         const { processConsentKeyword } = await import('./smsConsentService');
-        const consentResult = await processConsentKeyword(conversation.id, message);
+        const consentResult = await processConsentKeyword(req.tenantDb!, conversation.id, message);
         
-        if (consentResult.isConsentKeyword && consentResult.autoResponse) {
+        if (consentResult.isConsentKeyword) {
           console.log(`[SMS CONSENT] Detected ${consentResult.keyword} keyword for conversation ${conversation.id}`);
           
           // Save the consent keyword message from customer
           await addMessage(req.tenantDb!, conversation.id, message, 'customer', platform, null, phoneLineId);
           
-          // Save the auto-response message
-          await addMessage(req.tenantDb!, conversation.id, consentResult.autoResponse, 'agent', platform, null, phoneLineId);
+          // CRITICAL: For STOP, send NO reply - Twilio handles STOP responses automatically
+          // Sending any reply to STOP violates TCPA/CTIA compliance
+          if (consentResult.keyword === 'STOP') {
+            console.log(`[SMS CONSENT] 📵 STOP received - NO reply sent (Twilio handles it)`);
+            res.set('Content-Type', 'text/xml');
+            return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`);
+          }
           
-          // Send the auto-response via TwiML
-          res.set('Content-Type', 'text/xml');
-          return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(consentResult.autoResponse)}</Message></Response>`);
+          // For START/HELP, send the auto-response
+          if (consentResult.autoResponse) {
+            await addMessage(req.tenantDb!, conversation.id, consentResult.autoResponse, 'agent', platform, null, phoneLineId);
+            res.set('Content-Type', 'text/xml');
+            return res.send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(consentResult.autoResponse)}</Message></Response>`);
+          }
         }
       }
 
