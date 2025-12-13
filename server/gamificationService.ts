@@ -202,6 +202,12 @@ export async function awardPoints(
       .where(eq(loyaltyPoints.id, customerPoints.id))
       .returning();
     
+    // Guard: Ensure update succeeded
+    if (!updatedPoints) {
+      console.log(`[LOYALTY] awardPoints update failed customerId=${customerId} amount=${amount}`);
+      return { success: false, currentPoints: newPointsTotal };
+    }
+    
     // Record the transaction
     await tenantDb.insert(pointsTransactions).values({
       loyaltyPointsId: customerPoints.id,
