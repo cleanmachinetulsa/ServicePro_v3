@@ -683,24 +683,7 @@ async function checkAndClaimSmsSend(
   phone: string
 ): Promise<{ shouldSkip: boolean; skipReason?: string }> {
   try {
-    // Try to claim the recipient with atomic insert
-    const [claimed] = await tenantDb
-      .insert(portRecoverySmsRemoteSends)
-      .values({
-        tenantId,
-        campaignKey,
-        toPhone: phone,
-        status: 'reserved',
-      })
-      .onConflictDoNothing()
-      .returning();
-    
-    if (claimed) {
-      // Successfully claimed - safe to send
-      return { shouldSkip: false };
-    }
-    
-    // Already exists - check status
+    // Check if already sent
     const [existing] = await tenantDb
       .select()
       .from(portRecoverySmsRemoteSends)
@@ -708,17 +691,17 @@ async function checkAndClaimSmsSend(
         and(
           eq(portRecoverySmsRemoteSends.tenantId, tenantId),
           eq(portRecoverySmsRemoteSends.campaignKey, campaignKey),
-          eq(portRecoverySmsRemoteSends.toPhone, phone)
+          eq(portRecoverySmsRemoteSends.phone, phone)
         )
       )
       .limit(1);
     
-    if (existing && (existing.status === 'sent' || existing.messageSid)) {
+    if (existing && existing.twilioSid) {
       // Already successfully sent - skip
       return { shouldSkip: true, skipReason: 'already_sent_success' };
     }
     
-    // Status is 'failed' or 'reserved' - allow retry
+    // Not sent yet - allow attempt
     return { shouldSkip: false };
   } catch (error) {
     console.warn(`[PORT RECOVERY] Dedup check failed for ${phone}:`, error);
@@ -735,27 +718,23 @@ async function updateSmsSendStatus(
   tenantId: string,
   campaignKey: string,
   phone: string,
-  success: boolean,
-  messageSid?: string,
-  error?: string
+  messageSid?: string
 ): Promise<void> {
   try {
-    await tenantDb
-      .update(portRecoverySmsRemoteSends)
-      .set({
-        status: success ? 'sent' : 'failed',
-        messageSid: success ? messageSid : undefined,
-        sentAt: success ? new Date() : undefined,
-        lastError: error,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(portRecoverySmsRemoteSends.tenantId, tenantId),
-          eq(portRecoverySmsRemoteSends.campaignKey, campaignKey),
-          eq(portRecoverySmsRemoteSends.toPhone, phone)
-        )
-      );
+    // Only record successful sends
+    if (messageSid) {
+      await tenantDb
+        .insert(portRecoverySmsRemoteSends)
+        .values({
+          tenantId,
+          campaignKey,
+          phone,
+          twilioSid: messageSid,
+          status: 'sent',
+          sentAt: new Date(),
+        })
+        .onConflictDoNothing();
+    }
   } catch (error) {
     console.warn(`[PORT RECOVERY] Failed to update send status for ${phone}:`, error);
   }
@@ -1076,16 +1055,16 @@ export async function runPortRecoveryBatch(
               personalizedRewardsLink
             );
             
-            // Update dedup log with result
-            await updateSmsSendStatus(
-              tenantDb,
-              tenantId,
-              campaign.campaignKey,
-              normalizedPhone,
-              smsResult.success,
-              smsResult.twilioSid,
-              smsResult.error
-            );
+            // Update dedup log with result (only if successful)
+            if (smsResult.success && smsResult.twilioSid) {
+              await updateSmsSendStatus(
+                tenantDb,
+                tenantId,
+                campaign.campaignKey,
+                normalizedPhone,
+                smsResult.twilioSid
+              );
+            }
             
             if (smsResult.success) {
               updates.smsStatus = 'sent';
@@ -1111,16 +1090,7 @@ export async function runPortRecoveryBatch(
             errors++;
             smsOk = false;
             
-            // Update dedup log with error
-            await updateSmsSendStatus(
-              tenantDb,
-              tenantId,
-              campaign.campaignKey,
-              normalizedPhone,
-              false,
-              undefined,
-              err.message
-            );
+            // Error during SMS send - don't log as a send
             
             console.log(`[PORT RECOVERY] sms_exception phone=${normalizedPhone} err=${err.message}`);
           }
