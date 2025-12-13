@@ -613,16 +613,16 @@ router.post('/campaigns/:id/send-all', async (req, res) => {
 /**
  * Send test SMS to owner or custom phone
  * POST /api/port-recovery/campaigns/:id/test-sms
- * Body (optional): { phone: "+1234567890", testMessage: "custom message" }
+ * Body (optional): { phone: "+1234567890" }
  */
 router.post('/campaigns/:id/test-sms', async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
     const campaignId = parseInt(req.params.id);
-    const { phone, testMessage } = req.body;
+    const { phone } = req.body;
     
-    const result = await sendTestSms(tenantDb, campaignId, phone, testMessage);
+    const result = await sendTestSms(tenantDb, campaignId, phone);
     
     res.json(result);
   } catch (error: any) {
