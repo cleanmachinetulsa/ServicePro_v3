@@ -119,6 +119,7 @@ export default function AdminPortRecovery() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'sms' | 'email'>('sms');
   const [testPhoneInput, setTestPhoneInput] = useState('');
+  const [testMessageInput, setTestMessageInput] = useState('');
   
   const [smsTemplate, setSmsTemplate] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
@@ -261,7 +262,10 @@ export default function AdminPortRecovery() {
 
   const sendTestPhoneMutation = useMutation({
     mutationFn: async (phone: string) => {
-      return await apiRequest('POST', `/api/port-recovery/campaigns/${activeCampaign?.id}/test-sms`, { phone });
+      return await apiRequest('POST', `/api/port-recovery/campaigns/${activeCampaign?.id}/test-sms`, { 
+        phone,
+        testMessage: testMessageInput || undefined
+      });
     },
     onSuccess: () => {
       toast({
@@ -269,6 +273,7 @@ export default function AdminPortRecovery() {
         description: `Test message sent to ${testPhoneInput}`,
       });
       setTestPhoneInput('');
+      setTestMessageInput('');
     },
     onError: (error: any) => {
       toast({
@@ -560,6 +565,17 @@ export default function AdminPortRecovery() {
                       )}
                     </Button>
                   </div>
+
+                  {/* Test Message (Optional) */}
+                  <Textarea
+                    placeholder="(Optional) Custom test message. Leave empty to use campaign template."
+                    value={testMessageInput}
+                    onChange={(e) => setTestMessageInput(e.target.value)}
+                    rows={3}
+                    className="bg-slate-900/50 border-slate-700/50 text-white text-sm placeholder:text-gray-500 resize-none"
+                    disabled={sendTestPhoneMutation.isPending}
+                    data-testid="input-test-message"
+                  />
 
                   {/* Custom Phone Test */}
                   <div className="flex gap-2">

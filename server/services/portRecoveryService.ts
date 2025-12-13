@@ -1281,13 +1281,15 @@ export async function runPortRecoveryBatch(
  * Send a test SMS to the owner's phone
  * SP-REWARDS-CAMPAIGN-TOKENS: Now generates personalized token URL for test sends
  * FIXED: Now also awards points to the owner's customer record so the landing page works
+ * FIXED: Now accepts testMessage parameter to send custom test messages
  */
 export async function sendTestSms(
   tenantDb: TenantDb,
   campaignId: number,
-  phoneOverride?: string
+  phoneOverride?: string,
+  testMessage?: string
 ): Promise<{ success: boolean; error?: string; pointsAwarded?: number }> {
-  console.log(`[PORT RECOVERY] sendTestSms() CALLED for campaign ${campaignId}, phone override: ${phoneOverride ? 'YES' : 'NO'}`);
+  console.log(`[PORT RECOVERY] sendTestSms() CALLED for campaign ${campaignId}, phone override: ${phoneOverride ? 'YES' : 'NO'}, custom message: ${testMessage ? 'YES' : 'NO'}`);
   
   const campaign = await getCampaign(tenantDb, campaignId);
   if (!campaign) {
@@ -1311,8 +1313,8 @@ export async function sendTestSms(
   
   try {
     const ctaUrl = campaign.ctaUrl || DEFAULT_CTA_URL;
-    const smsTemplate = campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
-    console.log(`[PORT RECOVERY] sendTestSms: Using template: "${smsTemplate.substring(0, 50)}..."`);
+    const smsTemplate = testMessage || campaign.smsTemplate || DEFAULT_SMS_TEMPLATE;
+    console.log(`[PORT RECOVERY] sendTestSms: Using ${testMessage ? 'CUSTOM' : 'campaign'} template: "${smsTemplate.substring(0, 50)}..."`);
     const tenantId = campaign.tenantId;
     
     // Find or create customer for owner's phone so points can be awarded
