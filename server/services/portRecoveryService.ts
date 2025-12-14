@@ -1363,13 +1363,25 @@ export async function sendTestSms(
       messageBody += `\n\nView your rewards: ${personalizedRewardsLink}`;
     }
     
-    await twilioClient.messages.create({
+    // Use NEW sendPortRecoverySmsStrict for testing - ensures single FROM number and dedup
+    const campaignKey = `port-recovery-campaign-${campaignId}`;
+    const testResult = await sendPortRecoverySmsStrict({
+      tenantId: tenantId,
       to: ownerPhone,
-      from: fromNumber,
       body: `[TEST] ${messageBody}`,
+      campaignKey: campaignKey,
+      campaignId: campaignId,
+      customerId: customerId || undefined,
+      tenantDb: tenantDb,
+      fromNumber: fromNumber,
     });
     
-    console.log(`[PORT RECOVERY] Test SMS sent to ${ownerPhone} with personalized rewards link, points awarded: ${pointsAwarded}`);
+    if (!testResult.ok) {
+      console.error(`[PORT RECOVERY] Test SMS via new sender failed: ${testResult.errorMessage}`);
+      return { success: false, error: testResult.errorMessage, pointsAwarded };
+    }
+    
+    console.log(`[PORT RECOVERY] Test SMS sent via NEW SENDER to ${ownerPhone} messageSid=${testResult.messageSid} from=${testResult.fromUsed} points=${pointsAwarded}`);
     return { success: true, pointsAwarded };
   } catch (error: any) {
     console.error('[PORT RECOVERY] Test SMS failed:', error.message);
