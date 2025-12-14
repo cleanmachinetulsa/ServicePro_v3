@@ -1001,4 +1001,73 @@ router.get('/quiet-hours-status', async (req, res) => {
   }
 });
 
+/**
+ * DEBUG: Sender audit - verify only one FROM number is used
+ * GET /api/port-recovery/debug/sender-audit?campaignId=...
+ * 
+ * Protected by DEBUG_SMS_TOKEN for safety
+ */
+router.get('/debug/sender-audit', async (req, res) => {
+  try {
+    // Require debug token for safety
+    const debugToken = process.env.DEBUG_SMS_TOKEN;
+    const providedToken = req.query.token || req.headers['x-debug-token'];
+    
+    if (!debugToken || providedToken !== debugToken) {
+      return res.status(403).json({
+        success: false,
+        error: 'Invalid or missing debug token',
+      });
+    }
+    
+    const campaignId = parseInt(req.query.campaignId as string);
+    if (!campaignId || isNaN(campaignId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'campaignId is required',
+      });
+    }
+    
+    const tenantId = (req.session as any)?.tenantId || 'root';
+    const tenantDb = wrapTenantDb(db, tenantId);
+    
+    // Import the table
+    const { portRecoverySmsRemoteSends } = await import('@shared/schema');
+    
+    // Get counts grouped by from_number to verify single sender
+    const senderCounts = await tenantDb
+      .select({
+        fromNumber: portRecoverySmsRemoteSends.fromNumber,
+        status: portRecoverySmsRemoteSends.status,
+        count: sql<number>`count(*)`,
+      })
+      .from(portRecoverySmsRemoteSends)
+      .where(eq(portRecoverySmsRemoteSends.campaignKey, `port-recovery-campaign-${campaignId}`))
+      .groupBy(portRecoverySmsRemoteSends.fromNumber, portRecoverySmsRemoteSends.status);
+    
+    // Check if only one sender was used
+    const uniqueSenders = new Set(senderCounts.map(r => r.fromNumber).filter(Boolean));
+    const isCompliant = uniqueSenders.size <= 1;
+    
+    res.json({
+      success: true,
+      campaignId,
+      campaignKey: `port-recovery-campaign-${campaignId}`,
+      isCompliant,
+      uniqueSendersCount: uniqueSenders.size,
+      uniqueSenders: Array.from(uniqueSenders),
+      senderBreakdown: senderCounts,
+      message: isCompliant 
+        ? 'COMPLIANT: All messages sent from a single number'
+        : `NON-COMPLIANT: Messages sent from ${uniqueSenders.size} different numbers`,
+    });
+  } catch (error: any) {
+    console.error('[PORT RECOVERY DEBUG] Sender audit error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;

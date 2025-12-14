@@ -109,14 +109,14 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       void recordProcessedInboundSms(messageSid, From, To, 'root');
     }
     
-    console.log("[TWILIO TEST SMS INBOUND] Parsed fields:", {
+    console.log("[TWILIO SMS INBOUND] Parsed fields:", {
       From: (req.body as any)?.From,
       To: (req.body as any)?.To,
       Body: (req.body as any)?.Body,
     });
     
     if (!Body || !From) {
-      console.warn('[TWILIO TEST SMS INBOUND] Missing Body or From');
+      console.warn('[TWILIO SMS INBOUND] Missing Body or From');
       twimlResponse.message("Sorry, I couldn't process your message. Please try again.");
       res.type('text/xml').send(twimlResponse.toString());
       return;
@@ -124,6 +124,22 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     const tenantId = 'root';
     const tenantDb = wrapTenantDb(db, tenantId);
+    
+    // CRITICAL: Check STOP/START keywords BEFORE any conversation creation or AI routing
+    // This is required for TCPA/CTIA compliance
+    const { handleSmsConsentKeywords } = await import('../services/smsConsentKeywords');
+    const consentResult = await handleSmsConsentKeywords({
+      tenantId,
+      fromPhone: From,
+      body: Body,
+      tenantDb,
+    });
+    
+    if (consentResult.handled) {
+      console.log(`[TWILIO SMS INBOUND] Consent keyword handled: ${consentResult.keyword} action=${consentResult.action}`);
+      res.type('text/xml').send(consentResult.twiml);
+      return;
+    }
     
     // CM-Billing-Prep: Record inbound SMS usage
     try {
@@ -140,36 +156,8 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     const conversation = await getOrCreateTestConversation(tenantDb, From);
     
-    // CRITICAL: Check for STOP/START/HELP keywords FIRST before any other processing
-    const { processConsentKeyword } = await import('../smsConsentService');
-    const consentResult = await processConsentKeyword(tenantDb, conversation.id, Body);
-    
-    if (consentResult.isConsentKeyword) {
-      console.log(`[TWILIO TEST SMS] Consent keyword detected: ${consentResult.keyword}`);
-      
-      // Save the customer's message
-      await addMessage(tenantDb, conversation.id, Body, 'customer');
-      
-      // CRITICAL: For STOP, send NO reply - Twilio handles STOP responses automatically
-      if (consentResult.keyword === 'STOP') {
-        console.log(`[TWILIO TEST SMS] 📵 STOP received from ${From} - NO reply sent (Twilio handles it)`);
-        res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
-        return;
-      }
-      
-      // For START/HELP, send the auto-response
-      if (consentResult.autoResponse) {
-        await addMessage(tenantDb, conversation.id, consentResult.autoResponse, 'ai');
-        twimlResponse.message(consentResult.autoResponse);
-        res.type('text/xml').send(twimlResponse.toString());
-        return;
-      }
-    }
-    
-    // Only add message if not already added by consent handling
-    if (!consentResult.isConsentKeyword) {
-      await addMessage(tenantDb, conversation.id, Body, 'customer');
-    }
+    // Add customer message
+    await addMessage(tenantDb, conversation.id, Body, 'customer');
     
     // SP-22: Detect customer language from message
     let customerLanguage: SupportedLanguage = conversation.customerLanguage || 'en';

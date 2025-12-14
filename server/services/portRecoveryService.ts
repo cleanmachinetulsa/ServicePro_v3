@@ -32,6 +32,10 @@ import { awardPoints, awardCampaignPointsOnce } from '../gamificationService';
 import { generateRewardsToken } from '../routes.loyalty';
 import { tenantDomains } from '@shared/schema';
 import { formatInTimeZone } from 'date-fns-tz';
+import { 
+  sendPortRecoverySms as sendPortRecoverySmsStrict,
+  computeCampaignKey,
+} from './portRecoverySmsSender';
 
 // Oklahoma quiet hours: 8pm-8am CST - no campaign messages during this time
 const OKLAHOMA_TIMEZONE = 'America/Chicago';
@@ -1037,81 +1041,65 @@ export async function runPortRecoveryBatch(
       
       // If no skip reason set yet, we can attempt SMS
       if (!smsSkipReason && hasConsentToSms) {
-        // Check deduplication guard - skip if already successfully sent
-        const dedupCheck = await checkAndClaimSmsSend(
-          tenantDb,
-          tenantId,
-          campaignKey,
-          normalizedPhone
-        );
-        
-        if (dedupCheck.shouldSkip) {
-          // Already sent successfully - skip this recipient
-          updates.smsStatus = 'skipped';
-          updates.smsErrorMessage = dedupCheck.skipReason;
-          smsSkipReason = dedupCheck.skipReason;
-          // Don't count as attempt
-        } else {
-          // Safe to attempt send
-          smsAttempted = true;
-          try {
-            const personalizedRewardsLink = generatePersonalizedRewardsLink(
-              tenantBaseUrl,
-              normalizedPhone,
-              tenantId,
-              30
-            );
-            
-            // Create target with normalized phone for sending
-            const targetForSending = { ...target, phone: normalizedPhone };
-            const smsResult = await sendPortRecoverySms(
-              targetForSending,
-              smsTemplate,
-              fromNumber,
-              ctaUrl,
-              campaign.pointsPerCustomer,
-              personalizedRewardsLink
-            );
-            
-            // Update dedup log with result (only if successful)
-            if (smsResult.success && smsResult.twilioSid) {
-              await updateSmsSendStatus(
-                tenantDb,
-                tenantId,
-                campaignKey,
-                normalizedPhone,
-                smsResult.twilioSid
-              );
-            }
-            
-            if (smsResult.success) {
-              updates.smsStatus = 'sent';
-              updates.twilioSid = smsResult.twilioSid;
-              smsSent++;
-              sentViaSms = true;
-              smsOk = true;
-            } else {
-              updates.smsStatus = 'failed';
-              updates.smsErrorMessage = smsResult.error;
-              smsFailed++;
-              errors++;
-              smsOk = false;
-              // Extract Twilio error code if available
-              const errorMsg = smsResult.error || 'unknown';
-              console.log(`[PORT RECOVERY] sms_failed phone=${normalizedPhone} msg=${errorMsg}`);
-            }
-          } catch (err: any) {
-            // Catch any unexpected errors during SMS send
+        // Use the new idempotent sender with atomic claim-lock
+        smsAttempted = true;
+        try {
+          const personalizedRewardsLink = generatePersonalizedRewardsLink(
+            tenantBaseUrl,
+            normalizedPhone,
+            tenantId,
+            30
+          );
+          
+          // Build message body using template interpolation
+          const targetForInterpolation = { ...target, phone: normalizedPhone };
+          let messageBody = interpolateTemplate(smsTemplate, targetForInterpolation, ctaUrl, campaign.pointsPerCustomer, personalizedRewardsLink);
+          
+          if (personalizedRewardsLink && !templateHasRewardsLink(smsTemplate)) {
+            messageBody += `\n\nView your rewards: ${personalizedRewardsLink}`;
+          }
+          
+          // Use the new strict sender with atomic claim-lock and idempotency
+          const smsResult = await sendPortRecoverySmsStrict({
+            tenantId,
+            to: normalizedPhone,
+            body: messageBody,
+            campaignKey,
+            campaignId,
+            customerId: target.customerId,
+            tenantDb,
+            fromNumber,
+          });
+          
+          if (smsResult.ok) {
+            updates.smsStatus = 'sent';
+            updates.twilioSid = smsResult.messageSid;
+            smsSent++;
+            sentViaSms = true;
+            smsOk = true;
+          } else if (smsResult.skipped) {
+            // Already sent or attempted - not an error
+            updates.smsStatus = 'skipped';
+            updates.smsErrorMessage = smsResult.skipReason || 'already_sent';
+            smsSkipReason = smsResult.skipReason || 'already_sent';
+            // Don't count as attempt since it was skipped
+            smsAttempted = false;
+          } else {
             updates.smsStatus = 'failed';
-            updates.smsErrorMessage = err.message;
+            updates.smsErrorMessage = smsResult.errorMessage;
             smsFailed++;
             errors++;
             smsOk = false;
-            
-            // Error during SMS send - don't log as a send
-            
-            console.log(`[PORT RECOVERY] sms_exception phone=${normalizedPhone} err=${err.message}`);
+            console.log(`[PORT RECOVERY] sms_failed phone=${normalizedPhone} from=${smsResult.fromUsed} errorCode=${smsResult.errorCode} msg=${smsResult.errorMessage}`);
           }
+        } catch (err: any) {
+          // Catch any unexpected errors during SMS send
+          updates.smsStatus = 'failed';
+          updates.smsErrorMessage = err.message;
+          smsFailed++;
+          errors++;
+          smsOk = false;
+          console.log(`[PORT RECOVERY] sms_exception phone=${normalizedPhone} err=${err.message}`);
         }
       } else {
         // Skip reason was already set above
