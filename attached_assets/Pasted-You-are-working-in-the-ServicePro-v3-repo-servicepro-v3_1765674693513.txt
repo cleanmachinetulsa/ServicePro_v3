@@ -1,0 +1,99 @@
+You are working in the ServicePro v3 repo (servicepro-v3-base). This is a production-stability hotfix. DO NOT refactor broadly. Make targeted, durable fixes with minimal blast radius. Follow existing tenant isolation patterns (global DB lookup only when needed, then wrapTenantDb / tenantDb for tenant-scoped writes). Make sure nothing bypasses security layers.
+
+GOALS (must all pass):
+1) Port Recovery blasts MUST send from ONE specific sender per tenant (no surprise numbers). Absolutely no “failover” to other From numbers for compliance-related errors.
+2) Port Recovery MUST be idempotent: once a recipient is successfully sent for a given campaignKey, they must not be sent again. If we rerun batch, it should skip cleanly.
+3) STOP must be intercepted BEFORE AI routing. For STOP/STOPALL/UNSUBSCRIBE/CANCEL/END/QUIT: set sms_consent=false and send NO reply (return empty TwiML). For START/UNSTOP: set sms_consent=true and (optionally) send a single confirmation.
+
+ROOT CAUSES TO FIX (confirmed by logs):
+- updateSmsSendStatus is failing because port_recovery_sms_sends.campaign_key is NULL (NOT NULL constraint) and rows are not persisted, causing duplicates. Error shows failing row contains (tenant=root, campaign_key=null, to_phone=..., status=sent, messageSid=...). Fix this immediately by ensuring campaign_key is always non-null and by adding a safe DB default/backfill path.
+- Inbound route logs show “[TWILIO TEST] Inbound SMS handler READY at /api/twilio/sms/inbound” and production inbound is hitting /api/twilio/sms/inbound. Rename log tags for clarity and ensure STOP guard is applied to ALL inbound handlers including /api/twilio/sms/inbound.
+
+PHASE A — STRICT SINGLE “FROM” NUMBER ENFORCEMENT (NO MULTI-SENDER SURPRISES)
+A1) Locate the centralized SMS send path used by Port Recovery (likely server/services/portRecoveryService.ts) and any shared SMS sender (messagingServiceSid / smsFailoverService / messaging service pool).
+A2) Implement a single function for port recovery sending:
+   - file: server/services/portRecoverySmsSender.ts (new)
+   - export async function sendPortRecoverySms({ tenantId, to, body, campaignKey, campaignId, customerId }): { ok, messageSid?, fromUsed?, errorCode?, errorMessage? }
+   - It MUST resolve the sender deterministically:
+       Prefer tenant’s configured PRIMARY SMS number (the exact E.164 you want all customers to see).
+       DO NOT use a Messaging Service SID for port recovery unless it is guaranteed to have only ONE sender number (we cannot assume that).
+       DO NOT rotate senders.
+   - Add a config flag (env) STRICT_SINGLE_SENDER_FOR_CAMPAIGNS default true in prod; when true, always send with `from: primarySmsNumber`.
+   - Add structured log: [PORT RECOVERY SMS SEND] tenantId=... campaignKey=... to=... from=... ok=... messageSid=... errorCode=...
+
+A3) Update Port Recovery service to call sendPortRecoverySms() and to record `fromUsed` in DB/send status so we can audit which From number was used.
+
+A4) COMPLIANCE GUARD:
+   - If Twilio returns error code 21610 (recipient opted out), do NOT retry, do NOT switch From number.
+   - Immediately mark customer sms_consent=false (upsert customer if needed) and record skip_reason=recipient_opted_out.
+   - Ensure the batch loop continues (fail-open).
+
+PHASE B — FIX DEDUP + SEND STATUS PERSISTENCE (campaign_key NULL bug)
+B1) Locate port_recovery_sms_sends table definition (migration or runtime CREATE TABLE). Ensure it includes:
+   - tenant_id (text)
+   - campaign_key (text NOT NULL)
+   - to_phone (text NOT NULL)
+   - status (text) attempted|sent|failed
+   - message_sid (text nullable)
+   - from_number (text nullable)
+   - error_code (text/int nullable)
+   - error_message (text nullable)
+   - created_at (timestamp)
+   - updated_at (timestamp)
+   - UNIQUE(tenant_id, campaign_key, to_phone)
+
+B2) Fix NULL campaign_key permanently:
+   - Ensure campaignKey is ALWAYS computed and passed (never undefined/null).
+   - For port recovery, compute campaignKey = `port-recovery-campaign-${campaignId}` if the campaign record lacks a key.
+   - Add a SAFE SQL migration / startup ensure that sets a DEFAULT for campaign_key (e.g. 'port-recovery-unknown') only if needed AND backfills any existing nulls (if the column exists and somehow contains nulls).
+   - Important: do this in a safe, non-destructive way (ALTER TABLE ... SET DEFAULT, UPDATE ... WHERE campaign_key IS NULL).
+
+B3) Make sends idempotent with an ATOMIC “claim lock”:
+   - BEFORE sending, attempt:
+     INSERT INTO port_recovery_sms_sends(tenant_id, campaign_key, to_phone, status, created_at, updated_at)
+     VALUES (...)
+     ON CONFLICT (tenant_id, campaign_key, to_phone) DO NOTHING
+     RETURNING id;
+   - If no row returned => already attempted/sent, skip with sms_skip_reason=already_sent_or_attempted.
+   - AFTER send success => UPDATE row status='sent', message_sid, from_number, updated_at.
+   - AFTER send failure => UPDATE row status='failed', error_code, error_message, updated_at.
+
+B4) Ensure the existing “send next 50” / batch endpoint uses this idempotency. A rerun should not re-send.
+
+PHASE C — STOP/START GLOBAL KEYWORD HANDLER (must run BEFORE AI)
+C1) Create shared helper:
+   - file: server/services/smsConsentKeywords.ts (new)
+   - export async function handleSmsConsentKeywords({ tenantId, fromPhone, body, tenantDb }): returns { handled: boolean, twiml: string|null, action: 'stop'|'start'|null }
+   - STOP keywords: STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT
+       -> set customers.sms_consent=false (create customer if missing, match by normalized phone)
+       -> return handled=true with EMPTY TwiML (no reply)
+   - START keywords: START, UNSTOP
+       -> set customers.sms_consent=true
+       -> return handled=true with TwiML that sends a short confirmation (optional but ok)
+C2) Apply this at the TOP of EVERY inbound SMS route:
+   - find all Express handlers that accept Twilio inbound SMS (including POST /api/twilio/sms/inbound).
+   - Call handleSmsConsentKeywords() before any conversation creation, AI routing, or auto-replies.
+   - If handled, immediately return TwiML response and exit.
+
+C3) Rename misleading logs:
+   - Change “[TWILIO TEST SMS INBOUND]” style logs for /api/twilio/sms/inbound to “[TWILIO SMS INBOUND]” unless it is truly a test-only route. Production is clearly using this route per logs.
+
+
+
+PHASE E — SAFETY / ACCEPTANCE TESTS
+E1) Add one debug endpoint for YOU ONLY (auth + DEBUG_SMS_TOKEN):
+   - GET /api/debug/port-recovery/sender-audit?campaignId=...
+   - Returns counts grouped by from_number from port_recovery_sms_sends to prove only one sender used.
+E2) Add a small script or unit test that calls the claim-lock insert twice and ensures second attempt skips.
+
+DELIVERABLES:
+- New/updated files implementing the above
+- Any required SQL migration (safe, non-destructive)
+- Update Port Recovery to use the new deterministic sender + idempotent send tracking
+- Update inbound SMS handlers to apply STOP/START guard before AI
+
+IMPORTANT:
+- Do NOT change Twilio console settings in this task.
+- Do NOT break tenant isolation.
+- Keep changes surgical.
+- When done, output: (1) files changed, (2) exact endpoints to test, (3) one-liner “how to verify only one From number is used”.
