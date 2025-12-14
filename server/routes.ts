@@ -2276,7 +2276,6 @@ export async function registerRoutes(app: Express) {
 
           // Send notification to business owner
           await notifyHandoffRequest(
-            req.tenantDb!,
             conversation.id,
             conversation.customerName,
             conversation.customerPhone || phone,
@@ -2905,7 +2904,7 @@ Follow up with this lead to set up their 14-day trial!
 
       const { sendSMS } = await import('./notifications');
       // Use Main Line (ID 1) for business messages
-      const smsResult = await sendSMS(req.tenantDb!, customerPhone, message, undefined, undefined, 1);
+      const smsResult = await sendSMS(customerPhone, message, undefined, undefined, 1);
 
       if (smsResult.success) {
         res.json({
@@ -3692,7 +3691,7 @@ Follow up with this lead to set up their 14-day trial!
       if (technician?.phone) {
         const { sendSMS } = await import('./notifications');
         const message = `New shift assigned: ${template.name} on ${format(new Date(parsed.data.shiftDate), 'MMM dd, yyyy')} (${template.startTime} - ${template.endTime})`;
-        await sendSMS(req.tenantDb!, technician.phone, message);
+        await sendSMS(technician.phone, message);
       }
 
       return res.json({ success: true, shift: newShift });
@@ -4260,7 +4259,7 @@ Follow up with this lead to set up their 14-day trial!
       // Send immediately (don't wait for cron)
       const { sendSMS } = await import('./notifications');
       if (customer.phone && customer.smsConsent) {
-        await sendSMS(req.tenantDb!, customer.phone, message);
+        await sendSMS(customer.phone, message);
         
         // Mark job as sent
         const { markReminderSent } = await import('./reminderService');
