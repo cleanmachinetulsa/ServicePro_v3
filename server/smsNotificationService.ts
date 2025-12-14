@@ -34,7 +34,6 @@ export function getNotificationConfig(): HandoffNotificationConfig {
 }
 
 export async function notifyHandoffRequest(
-  tenantDb: any,
   conversationId: number,
   customerName: string | null,
   customerPhone: string,
@@ -61,7 +60,7 @@ Reason: ${reason}${messagePreview}
 
 View conversation: ${messagesLink}`;
 
-    await sendSMS(tenantDb, config.businessPhone, notificationMessage);
+    await sendSMS(config.businessPhone, notificationMessage);
     console.log(`[SMS NOTIFY] Handoff notification sent for conversation ${conversationId}`);
   } catch (error) {
     console.error('[SMS NOTIFY] Failed to send handoff notification:', error);
@@ -69,7 +68,6 @@ View conversation: ${messagesLink}`;
 }
 
 export async function notifyReturnToAI(
-  tenantDb: any,
   conversationId: number,
   customerName: string | null,
   customerPhone: string,
@@ -88,7 +86,7 @@ export async function notifyReturnToAI(
 
 ${agent} completed the handoff. AI is now handling this customer.`;
 
-    await sendSMS(tenantDb, config.businessPhone, notificationMessage);
+    await sendSMS(config.businessPhone, notificationMessage);
     console.log(`[SMS NOTIFY] Return-to-AI notification sent for conversation ${conversationId}`);
   } catch (error) {
     console.error('[SMS NOTIFY] Failed to send return-to-AI notification:', error);
@@ -96,7 +94,6 @@ ${agent} completed the handoff. AI is now handling this customer.`;
 }
 
 export async function notifyTimeout(
-  tenantDb: any,
   conversationId: number,
   customerName: string | null,
   customerPhone: string
@@ -113,7 +110,7 @@ export async function notifyTimeout(
 
 No customer response for 12 hours. Conversation is back in AI mode.`;
 
-    await sendSMS(tenantDb, config.businessPhone, notificationMessage);
+    await sendSMS(config.businessPhone, notificationMessage);
     console.log(`[SMS NOTIFY] Timeout notification sent for conversation ${conversationId}`);
   } catch (error) {
     console.error('[SMS NOTIFY] Failed to send timeout notification:', error);
