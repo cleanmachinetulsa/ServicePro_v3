@@ -79,12 +79,13 @@ async function checkTimeouts() {
           if (conversation.platform === 'sms' && customerNotification && conversation.customerPhone) {
             const timeoutMessage = `Hi${conversation.customerName ? ' ' + conversation.customerName : ''}! I noticed we haven't heard back in a while. I'm back to help if you need anything! Or just text back if you'd like to continue.`;
             
-            await sendSMS(conversation.customerPhone, timeoutMessage);
+            await sendSMS(tenantDb, conversation.customerPhone, timeoutMessage);
             console.log(`[TIMEOUT MONITOR] Sent timeout message to customer ${conversation.customerPhone}`);
           }
 
           // Notify business owner
           await notifyTimeout(
+            tenantDb,
             conversation.id,
             conversation.customerName,
             conversation.customerPhone || 'Unknown'
