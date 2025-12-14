@@ -451,18 +451,29 @@ async function sendSingleCampaignSMS(tenantDb: TenantDb, campaign: any, recipien
       return;
     }
     
-    // Personalize message (replace {name} with customer name if available)
+    // Personalize message (replace {{name}}, {name}, or similar with customer name)
     let personalizedMessage = campaign.message;
+    let customerName = 'there'; // Default fallback if no name found
+    
     if (recipient.customer_id) {
       const customer = await tenantDb.execute(sql`
         SELECT name FROM customers WHERE id = ${recipient.customer_id}
       `);
       
       if (customer.rows.length > 0) {
-        const customerName = (customer.rows[0] as any).name;
-        personalizedMessage = personalizedMessage.replace(/\{name\}/gi, customerName);
+        const fetchedName = (customer.rows[0] as any).name;
+        if (fetchedName && fetchedName.trim()) {
+          customerName = fetchedName.trim();
+        }
       }
     }
+    
+    // Replace all name variable formats consistently: {name}, {{name}}, {{customerName}}, etc.
+    personalizedMessage = personalizedMessage
+      .replace(/\{\{customerName\}\}/gi, customerName)
+      .replace(/\{\{name\}\}/gi, customerName)
+      .replace(/\{name\}/gi, customerName)
+      .replace(/\{\{firstName\}\}/gi, customerName.split(' ')[0]); // Use first name for firstName variant
     
     // Add opt-out message
     const finalMessage = `${personalizedMessage}\n\nReply STOP to unsubscribe`;
@@ -474,6 +485,7 @@ async function sendSingleCampaignSMS(tenantDb: TenantDb, campaign: any, recipien
       const { sendSMS } = await import('./notifications');
       
       const result = await sendSMS(
+        tenantDb, // ✅ FIXED: tenantDb in correct position (first argument)
         recipient.phone_number,
         finalMessage,
         undefined, // conversationId
