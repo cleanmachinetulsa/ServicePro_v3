@@ -761,11 +761,12 @@ export function registerConversationRoutes(app: Express) {
       // Send notification to customer if requested and on SMS
       if (notifyCustomer !== false && conversation.platform === 'sms' && customerNotification && conversation.customerPhone) {
         // Use the conversation's phoneLineId if available, otherwise default to Main Line
-        await sendSMS(conversation.customerPhone, customerNotification, conversationId, undefined, conversation.phoneLineId || 1);
+        await sendSMS(req.tenantDb!, conversation.customerPhone, customerNotification, conversationId, undefined, conversation.phoneLineId || 1);
       }
 
       // Notify business owner
       await notifyReturnToAI(
+        req.tenantDb!,
         conversationId,
         conversation.customerName,
         conversation.customerPhone || 'Unknown',
