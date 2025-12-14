@@ -5174,20 +5174,22 @@ export type InsertSmsBookingRecord = z.infer<typeof insertSmsBookingRecordSchema
 export const portRecoverySmsRemoteSends = pgTable("port_recovery_sms_sends", {
   id: serial("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
-  campaignKey: text("campaign_key").notNull(),
+  campaignKey: text("campaign_key").notNull().default("port-recovery-unknown"),
   phone: text("phone").notNull(),
   twilioSid: text("twilio_sid"),
-  status: text("status").notNull().default("sent"),
+  status: text("status").notNull().default("attempted"),
+  fromNumber: text("from_number"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueKey: uniqueIndex("port_recovery_sms_sends_unique").on(table.tenantId, table.campaignKey, table.phone),
   tenantIdx: index("port_recovery_sms_sends_lookup").on(table.tenantId, table.campaignKey, table.phone, table.sentAt),
+  fromNumberIdx: index("port_recovery_sms_sends_from_idx").on(table.fromNumber),
 }));
 
 export const insertPortRecoverySmsRemoteSendSchema = createInsertSchema(portRecoverySmsRemoteSends).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
 });
 
 export type PortRecoverySmsRemoteSend = typeof portRecoverySmsRemoteSends.$inferSelect;
