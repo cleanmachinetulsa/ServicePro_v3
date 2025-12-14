@@ -1,0 +1,1428 @@
+{
+  "+19188565304": [
+    {
+      "sid": "SM3272cf65a27ba4c2b470d6397f5d8a57",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "[Admin] System issue detected: database: Database error: socket hang up",
+      "date": "2025-12-09T15:41:37.000Z"
+    },
+    {
+      "sid": "SM24d3d2a1384e765d1959379cbc348e68",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Thanks for your patience. A team member will follow up with you shortly to help from here.",
+      "date": "2025-12-09T15:41:51.000Z"
+    },
+    {
+      "sid": "SMce6dec94de7db5e4cf061f7e4d7675b6",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Sounds good!  \n\nWhat's your vehicle (year/make/model), and are you mainly wanting inside, outside, or full in/out? I'll suggest the best package and price range.",
+      "date": "2025-12-09T15:42:01.000Z"
+    },
+    {
+      "sid": "SM05b9a3d968fdb8c9941e9f02f95a3549",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Got it 👍  \n\nWhat’s your vehicle (year/make/model), and are you wanting:\n- Interior only  \n- Exterior only  \n- Full in & out?  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:42:08.000Z"
+    },
+    {
+      "sid": "SMa107506ff10a1cc2316660bfa24722fe",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nWhat’s your vehicle (year/make/model), and are you wanting:\n- Interior only  \n- Exterior only  \n- Full in & out?  \n\nI’ll recommend the best package and price.",
+      "date": "2025-12-09T15:42:18.000Z"
+    },
+    {
+      "sid": "SMf644b696d58aa468d3443d65a42ee739",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nWhat’s your vehicle (year/make/model), and are you wanting:\n- Interior only  \n- Exterior only  \n- Full in & out?  \n\nI’ll recommend the best package and price.",
+      "date": "2025-12-09T15:42:30.000Z"
+    },
+    {
+      "sid": "SM099e24676a7ca09611a0bdf565b709bc",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect.  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price range.",
+      "date": "2025-12-09T15:42:37.000Z"
+    },
+    {
+      "sid": "SMa9171153d30a932f0f7325ad674f6144",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect.  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price.",
+      "date": "2025-12-09T15:42:47.000Z"
+    },
+    {
+      "sid": "SM3c91468f777a95674ac5fdbb52e281d0",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect.  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price.",
+      "date": "2025-12-09T15:42:55.000Z"
+    },
+    {
+      "sid": "SMd4a8fc91abe77b24a7458a4293e337d8",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect.\n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price.",
+      "date": "2025-12-09T15:43:04.000Z"
+    },
+    {
+      "sid": "SM46cd24e3b0bbdee3f4ba70a9b5dbbb65",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:11.000Z"
+    },
+    {
+      "sid": "SMefcd45cdf66f1ddf4a59f9679e3a7faf",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:19.000Z"
+    },
+    {
+      "sid": "SM8633c6cf5cff5e47636627aae3ded5e7",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:28.000Z"
+    },
+    {
+      "sid": "SMb8991e42d6df2abd53327a778d021517",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:36.000Z"
+    },
+    {
+      "sid": "SM792b6860afe1db0e1b4c268b4fc2e6ff",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:44.000Z"
+    },
+    {
+      "sid": "SMd71e0d1152cf7e423fe5fe199cfe8d73",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:54.000Z"
+    },
+    {
+      "sid": "SM42f05d0e1b052b07bfe42855b03bff9d",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Hey there, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed a message from you — I'm really sorry about that. To make it right, I've added 500 reward points to your account good toward protectants or future details. You can check your rewards or book here: https://cleanmachinetulsa.com/book P.S. We now offer digital gift cards – perfect last-minute gifts. Reply STOP to unsubscribe.\n\nView your rewards: https://cleanmachinetulsa.com/rewards/welcome?token=KzE5MTg4NTY1NzExOnJvb3Q6MTc2ODAwNDQ0OTg4OTo2ZjgxNjA4Y2Q2NGUzYWIxYjM0OTE0NDdlNTMyNjMwMGZmYzViNzYyMzJlYzM0ODY3MTgyMDk2YTZlNjMyY2Ew",
+      "date": "2025-12-11T00:20:55.000Z"
+    },
+    {
+      "sid": "SMb308c6b6009a44cac31891ff7e90815c",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Nice, 500 points is a solid chunk to use 👌  \n\nWhat service are you thinking about, and what’s the vehicle (year/make/model)? I’ll tell you the best way to apply those points.",
+      "date": "2025-12-11T00:21:12.000Z"
+    },
+    {
+      "sid": "SMe779b8933a6026b82399bf72353b8a8d",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it, 500 points is a great start 🙌  \n\nWhat service are you thinking about (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the vehicle year/make/model? I’ll break down how much you’d save.",
+      "date": "2025-12-11T00:21:29.000Z"
+    },
+    {
+      "sid": "SM43e43f9720d7aefe26b0826e9997d6f9",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it, those 500 points will definitely help out 👌  \n\nWhat are you thinking about using them on:\n- Full Detail  \n- Interior Detail  \n- Premium Wash  \n- Ceramic Coating  \nor something else?\n\nAnd what’s the vehicle year/make/model? I’ll ballpark your price and how much the 500 points will save you.",
+      "date": "2025-12-11T00:21:38.000Z"
+    },
+    {
+      "sid": "SMff93e84d5a7aed80deb253a2bcf8fab1",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it 😄 those 500 points are a nice boost.\n\nTo get you an accurate ballpark and how much the points will shave off, text me:\n1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  \n2) Vehicle year/make/model",
+      "date": "2025-12-11T00:21:49.000Z"
+    },
+    {
+      "sid": "SM90cd23250bcc732bf7c245273efb49c0",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it 😄 those 500 pts are a nice start.\n\nText me:\n1) What you want done (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)  \n2) Vehicle year/make/model  \n\nI’ll ballpark your total and how much the points will shave off.",
+      "date": "2025-12-11T00:22:06.000Z"
+    },
+    {
+      "sid": "SMfa1f2e3404133926fc4480cffcb16b2b",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it 😄 those points help for sure.\n\nText me:\n1) The service you’re leaning toward (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)\n2) Your vehicle year/make/model\n\nThen I’ll ballpark your total and show what 500 pts would save you.",
+      "date": "2025-12-11T00:22:17.000Z"
+    },
+    {
+      "sid": "SM40a93fa0d2e3929aecb8df9bfdd2de4b",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it 😄  \n\nShoot me:\n1) The service you’re leaning toward (e.g. Full Detail, Interior Detail, Premium Wash, etc.)  \n2) Your vehicle year/make/model  \n\nThen I’ll give you a price range and how much 500 points will take off the total.",
+      "date": "2025-12-11T00:22:29.000Z"
+    },
+    {
+      "sid": "SMa040c7bccd624897698d1e80be70f877",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it 😄  \n\nShoot me:\n1) The service you’re leaning toward  \n2) Year/make/model  \n\nI’ll give you a rough total and how much 500 points would save you.",
+      "date": "2025-12-11T00:22:39.000Z"
+    },
+    {
+      "sid": "SM6aa83067bde46e3012fefd23e42028f5",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Love it 😄 that’s a solid credit.\n\nWhat are you leaning toward:\n- Interior Detail  \n- Full Detail  \n- Something else?\n\nAnd what’s your year/make/model? I’ll break down your price after the 500 pts.",
+      "date": "2025-12-11T00:22:51.000Z"
+    },
+    {
+      "sid": "SM0dcd9c98659c5f7dfc5bc2659e1451b7",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Nice, those points will come in handy for sure 😄  \n\nWhat are you leaning toward:\n- Interior Detail  \n- Full Detail  \n- Or something specific (shampoo, pet hair, etc.)?  \n\nAnd what’s your vehicle year/make/model? I’ll ballpark your total with the 500 pts applied.",
+      "date": "2025-12-11T00:23:01.000Z"
+    },
+    {
+      "sid": "SM395c0660f0a92a123d50e052168f93f0",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Nice, those points do come in handy 😄  \n\nShoot me:\n1) What you’re leaning toward (Interior Detail, Full Detail, or other)?\n2) Year/make/model of the vehicle  \n\nI’ll ballpark the price for you.",
+      "date": "2025-12-11T00:23:11.000Z"
+    },
+    {
+      "sid": "SM6ca19cb25dae2cbe220528ea86fba7bf",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Nice, thanks for sticking with me 😄  \n\nLet’s start fresh so I can actually help you book or price something out:\n\n1) Which service are you thinking? (Interior Detail, Full Detail, Premium Wash, etc.)  \n2) What’s the year/make/model of your vehicle?  \n\nOnce I have that, I’ll give you a solid price range and we can look at openings if you’d like.",
+      "date": "2025-12-11T00:23:22.000Z"
+    },
+    {
+      "sid": "SMd7adb493acd4ff46ab156a5f8bf8ce6e",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect, that’s exactly what I’d ask. 😊  \n\nWhenever you’re ready, just send:\n1) The service you want  \n2) Your year/make/model  \n\nThen I’ll give you a price range and check openings.",
+      "date": "2025-12-11T00:23:31.000Z"
+    },
+    {
+      "sid": "SMdf01811f8e452f2a03b5a32dfa5d1c31",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect!  \n\nWhenever you're ready, just text me:\n1) The service you want (ex: Full Detail, Interior Detail, Premium Wash)  \n2) Your year/make/model  \n\nThen I'll give you a price range and check available times.",
+      "date": "2025-12-11T00:23:40.000Z"
+    },
+    {
+      "sid": "SM5cf75278062e65616efb7a55680e227b",
+      "customer": "+19188565304",
+      "direction": "inbound",
+      "from": "+19188565304",
+      "to": "+19188565711",
+      "body": "Perfect!  \n\nWhenever you're ready, just send:\n1) The service you want (Full Detail, Interior Detail, etc.)  \n2) Your year/make/model  \n\nI'll shoot back a price range and some open spots.",
+      "date": "2025-12-11T00:23:49.000Z"
+    }
+  ],
+  "+19182820103": [
+    {
+      "sid": "SMc972b7264431c4257ee62db1a60b4a48",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Can I schedule a service appointment",
+      "date": "2025-12-11T03:50:21.000Z"
+    },
+    {
+      "sid": "SM6bed18b0fb1a32b1dc510a2fd1dd6960",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-11T17:59:23.000Z"
+    },
+    {
+      "sid": "SMc6d256d08dbddc188b2666a96761cd7f",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "I need the deep interior cleaning. How much and what's your availability?",
+      "date": "2025-12-11T18:20:38.000Z"
+    },
+    {
+      "sid": "SMf01ec8ed406718d00bc95426861a24aa",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Friday at 9",
+      "date": "2025-12-11T18:23:43.000Z"
+    },
+    {
+      "sid": "SM5c192a559f0809cb5aad89a9e4f5aa93",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Saturday at 9**",
+      "date": "2025-12-11T18:23:51.000Z"
+    },
+    {
+      "sid": "SM2e305ab88ac3c401241233e5dec0da3f",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Jody 2010",
+      "date": "2025-12-11T18:24:05.000Z"
+    },
+    {
+      "sid": "SM15bf66b8eab286c8e3fa2327249fc305",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Just interior",
+      "date": "2025-12-11T18:24:25.000Z"
+    },
+    {
+      "sid": "SM7124a28f18975249170e3bab63de77ec",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "I just need to get scheduled why so many questions",
+      "date": "2025-12-11T18:24:50.000Z"
+    },
+    {
+      "sid": "SMca46f35e459e6593387d352a97a130b9",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "Hey can book an interior detail?",
+      "date": "2025-12-12T05:04:22.000Z"
+    },
+    {
+      "sid": "SM77aee8a384476e6336a96910f456f367",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "3318 s 73rd w ave",
+      "date": "2025-12-12T05:04:47.000Z"
+    },
+    {
+      "sid": "SM2ce0216b6681fe786fce874d5e392f80",
+      "customer": "+19182820103",
+      "direction": "inbound",
+      "from": "+19182820103",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T05:04:59.000Z"
+    }
+  ],
+  "+17206194327": [
+    {
+      "sid": "SMbcb51068c65c9bf2e3afafc1b254dea0",
+      "customer": "+17206194327",
+      "direction": "inbound",
+      "from": "+17206194327",
+      "to": "+19188565304",
+      "body": "Hi, this is Sam from ZING Website Design. We build stunning websites with 50 local landing pages + weekly blogs  for just $59/month,  all designed for you. It's everything you need to get found online. Can I  send you an example? Reply STOP to opt-out",
+      "date": "2025-12-12T21:15:03.000Z"
+    }
+  ],
+  "+17373661084": [
+    {
+      "sid": "SM4967bcf86022bb20fca838d746f997b0",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "are you availale for a detail this week? what is you rnext availablity?",
+      "date": "2025-12-09T20:37:39.000Z"
+    },
+    {
+      "sid": "SM82bed88a7a57e2d9b3ead7721c6846dd",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "I'd like to schedule an appointment",
+      "date": "2025-12-11T03:51:37.000Z"
+    },
+    {
+      "sid": "SMfef54215560d0a51f279c785dd8b4490",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9 am Friday\n2018 Ford Transit van\n4644 s troost ave",
+      "date": "2025-12-11T03:52:39.000Z"
+    },
+    {
+      "sid": "SM5133033a494dd00a79355d141111da6f",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Yes that's right",
+      "date": "2025-12-11T03:53:03.000Z"
+    },
+    {
+      "sid": "SMb68ad2ba1f9d5a938a2f080ca0f832ba",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule an appointment?",
+      "date": "2025-12-11T05:00:35.000Z"
+    },
+    {
+      "sid": "SMdeccaef7e285871fc02150bb237fa3db",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-11T05:01:12.000Z"
+    },
+    {
+      "sid": "SMcfb7915230db149245a3c7c00a048e8b",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Ford Transit",
+      "date": "2025-12-11T05:01:21.000Z"
+    },
+    {
+      "sid": "SM03079ac4eb2c020db25da9286cc92795",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am Friday",
+      "date": "2025-12-11T05:01:33.000Z"
+    },
+    {
+      "sid": "SM0f0f9f7767059584efe5434a27d531c7",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "4644 s troost ave",
+      "date": "2025-12-11T05:01:40.000Z"
+    },
+    {
+      "sid": "SM9acaa5303eb2061acbfadbb17d392969",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-11T05:02:07.000Z"
+    },
+    {
+      "sid": "SM74bada73e0317b0f51eb01296da21907",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule an appointment?",
+      "date": "2025-12-11T21:31:57.000Z"
+    },
+    {
+      "sid": "SM20b5763c8955d7d6ee959ffa180585c6",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule an appointment?",
+      "date": "2025-12-11T21:39:30.000Z"
+    },
+    {
+      "sid": "SM3eb2725d68c5cdf9fc2ca8f97d4e3c6f",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "What's your service area",
+      "date": "2025-12-11T21:40:02.000Z"
+    },
+    {
+      "sid": "SM9bfb66162fff818951c765cddf4194db",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can you check my address?",
+      "date": "2025-12-11T21:40:27.000Z"
+    },
+    {
+      "sid": "SM518b02793a763dec75a0d1d2436b8e85",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule a detail appointment",
+      "date": "2025-12-11T23:58:41.000Z"
+    },
+    {
+      "sid": "SM31eeb232e6d3c43cb1fa9ea37f001807",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "2010 versa Nissan interior",
+      "date": "2025-12-11T23:59:17.000Z"
+    },
+    {
+      "sid": "SMb26de79beee931948668a7917c04aee4",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "What's your availability? I'm In Tulsa",
+      "date": "2025-12-12T00:00:50.000Z"
+    },
+    {
+      "sid": "SM300d4078125f020d5f69b840c66f36e3",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-12T00:01:40.000Z"
+    },
+    {
+      "sid": "SM43f11a12274c76ec2b199474d607e386",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Saturday 9am",
+      "date": "2025-12-12T00:03:49.000Z"
+    },
+    {
+      "sid": "SMc9685b3830880361a9f277651db11215",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "4644 s troost ave",
+      "date": "2025-12-12T00:04:18.000Z"
+    },
+    {
+      "sid": "SM642aef9701f86abd46ca149921b29d0e",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule a service",
+      "date": "2025-12-12T01:01:16.000Z"
+    },
+    {
+      "sid": "SMce967e881abbdf13d0891724ad4d8071",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "What do you offer",
+      "date": "2025-12-12T01:01:29.000Z"
+    },
+    {
+      "sid": "SM7f3986ff48d0a8b96ae969cb7c5a8f4a",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "(That's hard to read, the formatting is all bad) Well how much are the services??",
+      "date": "2025-12-12T01:02:43.000Z"
+    },
+    {
+      "sid": "SM8f178a5d53e6b6454225ccd830b0ad9b",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "What's your availability",
+      "date": "2025-12-12T01:03:03.000Z"
+    },
+    {
+      "sid": "SM08d726c9ca4dfbcde3b15fc13aa8943a",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-12T01:03:21.000Z"
+    },
+    {
+      "sid": "SM470834482c2534d0818a97c171d42b55",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T01:03:32.000Z"
+    },
+    {
+      "sid": "SMe1e0b492016bba967c5beb68c2f29713",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule a detail appointment",
+      "date": "2025-12-12T01:29:19.000Z"
+    },
+    {
+      "sid": "SMb3e29d38aad88187713e480417fcb7d2",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior. I want pricing and availability",
+      "date": "2025-12-12T01:29:44.000Z"
+    },
+    {
+      "sid": "SMa5b002bedefaec6d51a031a6d5cd0b54",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Saturday 9am",
+      "date": "2025-12-12T01:30:44.000Z"
+    },
+    {
+      "sid": "SMfcd45dfa736bba1c82e2d702725d4763",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "I already said interior. Check my address to see if I'm in your service area",
+      "date": "2025-12-12T01:31:10.000Z"
+    },
+    {
+      "sid": "SM6924bb743325260b515fb7880110ff3e",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "4644 a troost ave",
+      "date": "2025-12-12T01:31:47.000Z"
+    },
+    {
+      "sid": "SMd5f418a386839a5be2d202484609c54d",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "What's your availability for an interior detail service",
+      "date": "2025-12-12T01:56:38.000Z"
+    },
+    {
+      "sid": "SM20dc15f721a4c7e92f3e7fb03da7566a",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Saturday 9am",
+      "date": "2025-12-12T01:57:01.000Z"
+    },
+    {
+      "sid": "SM691daa9b4b19040af140d58f46b11c58",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I schedule an interior detail for Saturday at 9am",
+      "date": "2025-12-12T01:57:44.000Z"
+    },
+    {
+      "sid": "SM2c3e8a59298cbdd0cbd772fa3aae7543",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "4644 s troost ave",
+      "date": "2025-12-12T01:58:01.000Z"
+    },
+    {
+      "sid": "SM7bda29b3da9c4e405b4b0a5de9f0cbe9",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-12T01:58:16.000Z"
+    },
+    {
+      "sid": "SM2c56f264a84a33cc9c732dad23277c92",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T01:58:41.000Z"
+    },
+    {
+      "sid": "SMb2ddd97fa2de5f6f10b4a838d9688230",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Yes",
+      "date": "2025-12-12T01:58:56.000Z"
+    },
+    {
+      "sid": "SM3204862d5bc7297f6cf9b297fc4adafd",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-12T02:51:13.000Z"
+    },
+    {
+      "sid": "SMb8420f89c3b9fb0a15f3d9a7e97a609d",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T02:51:36.000Z"
+    },
+    {
+      "sid": "SM1942dfaf46d2bbd5a7c39d4dbc7aac71",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "3318 s 73rd w ave",
+      "date": "2025-12-12T03:18:59.000Z"
+    },
+    {
+      "sid": "SM47115ce468bbefdb7dea279581e88ee9",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "3318 s 73rd w ave",
+      "date": "2025-12-12T03:23:48.000Z"
+    },
+    {
+      "sid": "SMe492097dee70e59e942c582b7fa65445",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior",
+      "date": "2025-12-12T03:24:11.000Z"
+    },
+    {
+      "sid": "SMf2d7f3a41e713489d28421af8caf03a6",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T03:24:19.000Z"
+    },
+    {
+      "sid": "SM12701159e444545779a7ba5b562f3d3f",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Hey I want to book",
+      "date": "2025-12-12T04:09:45.000Z"
+    },
+    {
+      "sid": "SM901eb47ae947b65d91050aa49a71886f",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Interior detail",
+      "date": "2025-12-12T04:10:04.000Z"
+    },
+    {
+      "sid": "SM0bf417785cc8dd4aecff40c6211c7168",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T04:10:16.000Z"
+    },
+    {
+      "sid": "SM28b8291897fe2a2d28d2c014a1810ed6",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "3318 s 73rd w ave",
+      "date": "2025-12-12T04:10:33.000Z"
+    },
+    {
+      "sid": "SM20394af6d5f2acc3f0c6bbe34acbcbbf",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Hey I want to book interior detail",
+      "date": "2025-12-12T04:21:57.000Z"
+    },
+    {
+      "sid": "SMf13ee66f4018684ef22e07a099b7503a",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Hey I want to book an interior detail",
+      "date": "2025-12-12T04:38:38.000Z"
+    },
+    {
+      "sid": "SM9bcf41a9a7121855d5541e38518e15e7",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Yes",
+      "date": "2025-12-12T04:40:24.000Z"
+    },
+    {
+      "sid": "SM2b0a60d49f7eecc1a0943706759a1c45",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Yes",
+      "date": "2025-12-12T04:40:39.000Z"
+    },
+    {
+      "sid": "SMbbda953e40128a58851148da26064a6d",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "3318 s 73rd w ave",
+      "date": "2025-12-12T04:41:17.000Z"
+    },
+    {
+      "sid": "SMfb98eef89be11a0d3e9aebb27e7b0e35",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T04:42:02.000Z"
+    },
+    {
+      "sid": "SM3380da53fc14effa5da915694284d544",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I book an appointment for interior detail?",
+      "date": "2025-12-12T06:43:11.000Z"
+    },
+    {
+      "sid": "SMc2c3bd7320010d9f9b1f43c9fee61940",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "9am",
+      "date": "2025-12-12T06:43:39.000Z"
+    },
+    {
+      "sid": "SM34f3378147c61e301cddd459b6066f32",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Can I book an interior detail?",
+      "date": "2025-12-12T18:45:28.000Z"
+    },
+    {
+      "sid": "SM12326717603e25445cfde6481b499d3f",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "I have power. 3318 s 73rd w ave",
+      "date": "2025-12-12T18:46:34.000Z"
+    },
+    {
+      "sid": "SM6789c7dad4ff04123eb12a32b225ba12",
+      "customer": "+17373661084",
+      "direction": "inbound",
+      "from": "+17373661084",
+      "to": "+19188565304",
+      "body": "Yes",
+      "date": "2025-12-12T18:46:53.000Z"
+    }
+  ],
+  "+19184976112": [
+    {
+      "sid": "SM9e685a1e9e123311009345603a59a6b5",
+      "customer": "+19184976112",
+      "direction": "inbound",
+      "from": "+19184976112",
+      "to": "+19188565711",
+      "body": "Hi there, I am looking into a detail on a 2019 Infiniti QX80. I would want the interior and exterior done and was hoping you could provide me with an idea of what that would run. Thank you, look forward to hearing back from you!",
+      "date": "2025-12-11T16:55:40.000Z"
+    },
+    {
+      "sid": "SM5e09e804cfdeb887fad69d7ca7aa0a03",
+      "customer": "+19184976112",
+      "direction": "inbound",
+      "from": "+19184976112",
+      "to": "+19188565711",
+      "body": "I think we are going to go a different route this time. Thank you!",
+      "date": "2025-12-12T18:45:42.000Z"
+    }
+  ],
+  "+19189464977": [
+    {
+      "sid": "SM78819ae0457e473976ea0df83e1d80ef",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "This is what is still showing.",
+      "date": "2025-12-11T00:03:00.000Z"
+    },
+    {
+      "sid": "SM131ebd975867edb6a68bb0a854e09a2c",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "So you don't have a personal number right now.",
+      "date": "2025-12-11T00:03:58.000Z"
+    },
+    {
+      "sid": "SM48de09918f5170a103943bdecb2dc44a",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Detail",
+      "date": "2025-12-11T00:04:32.000Z"
+    },
+    {
+      "sid": "SM912dcf97368a0ff57afc56e954b0b27a",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "2025 Mazda cx90",
+      "date": "2025-12-11T00:04:48.000Z"
+    },
+    {
+      "sid": "SMe6d41179c3b814048aeaabf359d0b2e2",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Interior and ceramic coating",
+      "date": "2025-12-11T00:05:10.000Z"
+    },
+    {
+      "sid": "SM74de9b297c38aac40730c7edaf6f2b4d",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "2025 Mazda cx90",
+      "date": "2025-12-11T00:05:50.000Z"
+    },
+    {
+      "sid": "SMf8d8ff26d213e78f8b6ae419294ae961",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Address 6836 west 34th Pl\nTulsa ok 74107",
+      "date": "2025-12-11T00:06:10.000Z"
+    },
+    {
+      "sid": "SM7f257a936c98e1dee8425f2a3266447b",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Full detail and ceramic",
+      "date": "2025-12-11T00:06:57.000Z"
+    },
+    {
+      "sid": "SM8f7910087c106b246e1ef91664654814",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Ceramic.",
+      "date": "2025-12-11T00:07:40.000Z"
+    },
+    {
+      "sid": "SMa1f6c12936e2f7468952bd0e67af8874",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "1 year",
+      "date": "2025-12-11T00:07:57.000Z"
+    },
+    {
+      "sid": "SMe33cb74d8a87da22250f2b3efd3aa6d4",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Yes",
+      "date": "2025-12-11T00:08:10.000Z"
+    },
+    {
+      "sid": "SM1609054496bc1840c1dfba33b944c1f8",
+      "customer": "+19189464977",
+      "direction": "inbound",
+      "from": "+19189464977",
+      "to": "+19188565304",
+      "body": "Hi",
+      "date": "2025-12-12T06:39:46.000Z"
+    }
+  ],
+  "+19182891500": [
+    {
+      "sid": "SM9385ef03cc15473a20c9f4239247350b",
+      "customer": "+19182891500",
+      "direction": "inbound",
+      "from": "+19182891500",
+      "to": "+19188565304",
+      "body": "7700 s Lewis ave",
+      "date": "2025-12-10T16:04:27.000Z"
+    }
+  ],
+  "+19186251491": [
+    {
+      "sid": "MM99ce1afe551ca544d431bbb831433f51",
+      "customer": "+19186251491",
+      "direction": "inbound",
+      "from": "+19186251491",
+      "to": "+19188565304",
+      "body": "Liked “Hey Unknown, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed you — I'm really sorry about that. To make it right, I've added 500 reward points to your account. Check your rewards or book here: https://cleanmachinetulsa.com/book Reply STOP to unsubscribe.\n\nView your rewards: https://cleanmachinetulsa.com/rewards/welcome?token=KzE5MTg2MjUxNDkxOnJvb3Q6MTc2ODAwNDc5MjE5ODowZDg2NzM5YTQ3MDUyNmUxZjE0MGNmZjNkYjY0NWI2NTNlNzQ2MDk0MGRmYmQ4Mjk1Yjc1YTQyNjI5YTJmNDFh”",
+      "date": "2025-12-11T00:44:25.000Z"
+    },
+    {
+      "sid": "SM289fa579386e05fe51ccfb846494e4f2",
+      "customer": "+19186251491",
+      "direction": "inbound",
+      "from": "+19186251491",
+      "to": "+19188565304",
+      "body": "OK, I'll be ready to do this, but not immediately soon",
+      "date": "2025-12-11T01:48:56.000Z"
+    }
+  ],
+  "+19188565711": [
+    {
+      "sid": "SMa0c0ea586f8091fba3dd754ec463599b",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "I understand you need additional help. I'm connecting you with a team member who will assist you shortly.",
+      "date": "2025-12-09T15:41:43.000Z"
+    },
+    {
+      "sid": "SM6c8aaa286887fadf6c9151b24542e1f9",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "No problem at all. If you'd like pricing now, here's a quick list of our services:\n\n- Premium Wash: $75+\n- Full Detail: $225-300  \n- Interior Detail: $150-250  \n- Maintenance Detail: $125-175  \n- Shampoo Seats/Carpets: $80-150  \n- Engine Bay: $35  \n- Headlight Restoration: $25  \n- Trim Restoration: $40  \n- Light Polish: $75  \n- Paint Enhancement / Light Polish: $150-350  \n- 1-Year / 12-Month Ceramic Coating: $300  \n- 3-Year Ceramic Coating: $750  \n- Glass/Windshield Protector: $30  \n- Leather or Fabric Protector: $50  \n- Ozone Odor Removal: $50  \n- Motorcycle Detail: $150-175  \n\nTell me your vehicle and what you're looking for (inside, outside, or full), and I can recommend the best option.",
+      "date": "2025-12-09T15:41:55.000Z"
+    },
+    {
+      "sid": "SM3543f558158c855e9e0771b66978a06b",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Perfect 👍  \n\nWhat’s your vehicle (year/make/model), and are you wanting:\n- Interior only  \n- Exterior only  \n- Full in & out?  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:42:04.000Z"
+    },
+    {
+      "sid": "SMb9a4c539a2b9c2661720f8dcbdd8f19e",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\nWhat's your vehicle (year/make/model), and do you want:\n- Interior only  \n- Exterior only  \n- Full in & out?  \n\nI'll recommend a package and price range.",
+      "date": "2025-12-09T15:42:14.000Z"
+    },
+    {
+      "sid": "SM624ce7f2c62101b16b0cd5e9bae3d15f",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Gotcha 👍  \n\nWhat’s your vehicle (year/make/model), and are you wanting:\n- Interior only  \n- Exterior only  \n- Full in & out?  \n\nI’ll recommend the best package and price.",
+      "date": "2025-12-09T15:42:25.000Z"
+    },
+    {
+      "sid": "SM5f109955f561cdc61125741bd051848e",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice!  \n\nGo ahead and tell me:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll suggest the best package and price range.",
+      "date": "2025-12-09T15:42:34.000Z"
+    },
+    {
+      "sid": "SMf7920f22ea05560304c7d565f2f36702",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good.  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price.",
+      "date": "2025-12-09T15:42:42.000Z"
+    },
+    {
+      "sid": "SMe2935a1b6f298f95701dbe5630d961ae",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price.",
+      "date": "2025-12-09T15:42:50.000Z"
+    },
+    {
+      "sid": "SM9ed225a9d61582219a71d309c02beb7b",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\nPlease send:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI'll match you with the best package and price.",
+      "date": "2025-12-09T15:42:59.000Z"
+    },
+    {
+      "sid": "SM7a6c148b091e0e0600ffafb9e971e09d",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:08.000Z"
+    },
+    {
+      "sid": "SMfb3d0f9380c89a5be364d3722d288e04",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:14.000Z"
+    },
+    {
+      "sid": "SM4477cf0f7ca4865c7a9356f3815c0740",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:24.000Z"
+    },
+    {
+      "sid": "SM179770d8a82bf8904f59f5daf516298a",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:32.000Z"
+    },
+    {
+      "sid": "SM931903d83bdb61926c06c73809d90897",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds great 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:39.000Z"
+    },
+    {
+      "sid": "SM72da17f02dddbb7b085524b0d5ad38d4",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:49.000Z"
+    },
+    {
+      "sid": "SM6146e9186fd0271f0bee3da22a152b69",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good 👍  \n\nReply with:\n1) Year/make/model  \n2) Interior, exterior, or full in & out  \n\nI’ll match you with the best package and price.",
+      "date": "2025-12-09T15:43:55.000Z"
+    },
+    {
+      "sid": "SM2deae3926182b24092b84974ecefa87a",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Hey Jody! Thanks for the update 👍  \n\nIf you’re wanting to use those 500 points, tell me:\n1) What service you’re thinking about  \n2) Vehicle (year/make/model)  \n\nI’ll help you pick the best option and apply them.",
+      "date": "2025-12-11T00:21:08.000Z"
+    },
+    {
+      "sid": "SM5ebd46085c45311cf0daaeed0b8e4412",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, that’s awesome you’ve got 500 points to use 🙌  \n\nWhat service are you leaning toward (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the vehicle year/make/model? I’ll show you how far those points will go.",
+      "date": "2025-12-11T00:21:24.000Z"
+    },
+    {
+      "sid": "SM9a8b089f238c81e5917441a3c23fc385",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, 500 points is a solid start 🙌  \n\nWe can put those toward any service. What are you leaning toward:\n- Full Detail\n- Interior Detail\n- Premium Wash\n- Ceramic Coating\nor something else?\n\nAnd what’s the vehicle year/make/model? I’ll tell you your price range and how much the 500 points will knock off.",
+      "date": "2025-12-11T00:21:32.000Z"
+    },
+    {
+      "sid": "SM8766ce4af82c0f6b9ba69791998218ae",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, those points do come in handy 😄  \n\nTo help you use them best, tell me:\n1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  \n2) Vehicle year/make/model  \n\nThen I’ll ballpark your price and how much the 500 pts will knock off.",
+      "date": "2025-12-11T00:21:44.000Z"
+    },
+    {
+      "sid": "SMa2e358581382ecd94e700193296f723a",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, those points do come in handy 😄  \n\nText me:\n1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  \n2) Vehicle year/make/model  \n\nI’ll ballpark the price and how much your 500 pts knock off.",
+      "date": "2025-12-11T00:21:53.000Z"
+    },
+    {
+      "sid": "SMc6b3012355d5f07f3be8974d38a4dd7c",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, glad you got the points text 😄  \n\nShoot me:\n1) The service you’re thinking (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)  \n2) Your vehicle year/make/model  \n\nI’ll ballpark your total and how much the 500 pts will knock off.",
+      "date": "2025-12-11T00:22:12.000Z"
+    },
+    {
+      "sid": "SMa69f3f1336ceacb36a853c92c2d3bd52",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, glad that helped 😄  \n\nShoot me:\n1) The service you’re leaning toward  \n2) Your vehicle year/make/model  \n\nI’ll give you a price range and how much 500 pts knocks off.",
+      "date": "2025-12-11T00:22:23.000Z"
+    },
+    {
+      "sid": "SM5a7437020551771afe5e69689acdecb1",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, love that! 😄  \n\nGo ahead and tell me:\n1) Which service you’re thinking (Full Detail, Interior Detail, Premium Wash, etc.)\n2) Your vehicle year/make/model  \n\nI’ll ballpark the total and show what 500 points would knock off.",
+      "date": "2025-12-11T00:22:34.000Z"
+    },
+    {
+      "sid": "SM518f72f70600e03006a90fbaaa6b61df",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice! 😄  \n\nTo use that 500-point credit, here’s a quick idea of savings:\n- On a $150 Interior Detail: 500 pts = about $25 off  \n- On a $250 Full Detail: 500 pts = about $40–50 off  \n\nShoot me:\n1) The service you’re leaning toward (Interior, Full Detail, etc.)  \n2) Year/make/model  \n\nI’ll give you a more exact price range and your discount.",
+      "date": "2025-12-11T00:22:45.000Z"
+    },
+    {
+      "sid": "SM68da098d13b3cf68f425940c262e8c9a",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Nice, that 500 pts will definitely help 😄  \n\nWhat are you thinking:\n- Interior Detail (deep inside clean)  \n- Full Detail (inside + outside)  \n- Or just a specific thing (shampoo, pet hair, etc.)?  \n\nAnd what’s your vehicle year/make/model? I’ll ballpark your total after your points.",
+      "date": "2025-12-11T00:22:56.000Z"
+    },
+    {
+      "sid": "SM31c8d0239837e29980ab3411354f1217",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Love it 😄 those 500 pts will definitely help.\n\nTo ballpark it for you, I just need:\n1) What service you’re leaning toward (Interior Detail, Full Detail, or something specific)?\n2) Your vehicle year/make/model?",
+      "date": "2025-12-11T00:23:07.000Z"
+    },
+    {
+      "sid": "SM0f35d9807855ec5188d18c8f82667888",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Love it 😄 those “points” are basically your savings on future details.\n\nQuick stuff I need from you:\n1) Which service are you thinking? (Interior Detail, Full Detail, or something else?)\n2) Year/make/model of your vehicle?\n\nI’ll give you a price range and we can go from there.",
+      "date": "2025-12-11T00:23:16.000Z"
+    },
+    {
+      "sid": "SM766aaf391e6292fb73e469d597115c0e",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\n1) Which service are you thinking? (Interior Detail, Full Detail, Premium Wash, etc.)  \n2) What's the year/make/model of your vehicle?  \n\nThen I'll give you a solid price range and we can look at openings.",
+      "date": "2025-12-11T00:23:27.000Z"
+    },
+    {
+      "sid": "SMb9f2c437a9b31fc033ea0d624017be6f",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\nWhenever you're ready, just send:\n1) The service you want (ex: Full Detail, Interior Detail, etc.)\n2) Your year/make/model  \n\nThen I'll give you a price range and check openings.",
+      "date": "2025-12-11T00:23:35.000Z"
+    },
+    {
+      "sid": "SMe5c23068722da251a7d264c8ef6aaef3",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\nWhenever you're ready, just send:\n1) The service you want (Full Detail, Interior Detail, etc.)\n2) Your year/make/model  \n\nI'll give you a price range and some open time slots.",
+      "date": "2025-12-11T00:23:45.000Z"
+    },
+    {
+      "sid": "SMcb92210603148a49918f18ee331b7ba2",
+      "customer": "+19188565711",
+      "direction": "inbound",
+      "from": "+19188565711",
+      "to": "+19188565304",
+      "body": "Sounds good!  \n\nWhenever you're ready, just text me:\n1) The service you want (Full Detail, Interior Detail, etc.)  \n2) Your year/make/model  \n\nI'll send a price range and available times.",
+      "date": "2025-12-11T00:23:52.000Z"
+    }
+  ],
+  "+19183447282": [
+    {
+      "sid": "SM34167aa16cc328b5db3ff0541d41b2f3",
+      "customer": "+19183447282",
+      "direction": "inbound",
+      "from": "+19183447282",
+      "to": "+19188565304",
+      "body": "Got it! My daughter's car is a  2014 Toyota Prius.  What will you charge to detail it?",
+      "date": "2025-12-10T00:11:46.000Z"
+    },
+    {
+      "sid": "SM4225e1d5aa1891b1acae3256337a4c4c",
+      "customer": "+19183447282",
+      "direction": "inbound",
+      "from": "+19183447282",
+      "to": "+19188565304",
+      "body": "I would say average.",
+      "date": "2025-12-10T00:13:39.000Z"
+    },
+    {
+      "sid": "SMaed3bc5ea6391b18f4fb2d2c81d5c108",
+      "customer": "+19183447282",
+      "direction": "inbound",
+      "from": "+19183447282",
+      "to": "+19188565304",
+      "body": "I'll have to check with her, but probably the week between Christmas and New Years Day.",
+      "date": "2025-12-10T00:15:18.000Z"
+    }
+  ],
+  "+18559261156": [
+    {
+      "sid": "SM370a0375fbc0d250056777d60d40401b",
+      "customer": "+18559261156",
+      "direction": "inbound",
+      "from": "+18559261156",
+      "to": "+19189183265",
+      "body": "**your verification code**",
+      "date": "2025-12-10T12:56:11.000Z"
+    }
+  ]
+}

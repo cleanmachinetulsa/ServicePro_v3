@@ -1,0 +1,1524 @@
+
+Customer: +19188565304
+--------------------------------
+[12/9/2025, 3:41:37 PM] YOU: I understand you need additional help. I'm connecting you with a team member who will assist you shortly.
+[12/9/2025, 3:41:37 PM] THEM: [Admin] System issue detected: database: Database error: socket hang up
+[12/9/2025, 3:41:51 PM] YOU: No problem at all. If you'd like pricing now, here's a quick list of our services:
+
+- Premium Wash: $75+
+- Full Detail: $225-300  
+- Interior Detail: $150-250  
+- Maintenance Detail: $125-175  
+- Shampoo Seats/Carpets: $80-150  
+- Engine Bay: $35  
+- Headlight Restoration: $25  
+- Trim Restoration: $40  
+- Light Polish: $75  
+- Paint Enhancement / Light Polish: $150-350  
+- 1-Year / 12-Month Ceramic Coating: $300  
+- 3-Year Ceramic Coating: $750  
+- Glass/Windshield Protector: $30  
+- Leather or Fabric Protector: $50  
+- Ozone Odor Removal: $50  
+- Motorcycle Detail: $150-175  
+
+Tell me your vehicle and what you're looking for (inside, outside, or full), and I can recommend the best option.
+[12/9/2025, 3:41:51 PM] THEM: Thanks for your patience. A team member will follow up with you shortly to help from here.
+[12/9/2025, 3:42:01 PM] YOU: Perfect 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:42:01 PM] THEM: Sounds good!  
+
+What's your vehicle (year/make/model), and are you mainly wanting inside, outside, or full in/out? I'll suggest the best package and price range.
+[12/9/2025, 3:42:08 PM] YOU: Sounds good!  
+
+What's your vehicle (year/make/model), and do you want:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I'll recommend a package and price range.
+[12/9/2025, 3:42:08 PM] THEM: Got it 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:42:18 PM] YOU: Gotcha 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll recommend the best package and price.
+[12/9/2025, 3:42:18 PM] THEM: Perfect 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll recommend the best package and price.
+[12/9/2025, 3:42:30 PM] YOU: Nice!  
+
+Go ahead and tell me:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll suggest the best package and price range.
+[12/9/2025, 3:42:30 PM] THEM: Perfect 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll recommend the best package and price.
+[12/9/2025, 3:42:37 PM] THEM: Perfect.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price range.
+[12/9/2025, 3:42:38 PM] YOU: Sounds good.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:47 PM] YOU: Sounds good!  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:47 PM] THEM: Perfect.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:55 PM] YOU: Sounds good!  
+
+Please send:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:55 PM] THEM: Perfect.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:43:04 PM] YOU: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:04 PM] THEM: Perfect.
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:43:11 PM] YOU: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:11 PM] THEM: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:19 PM] YOU: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:19 PM] THEM: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:28 PM] YOU: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:28 PM] THEM: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:36 PM] YOU: Sounds great 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:36 PM] THEM: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:44 PM] YOU: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:44 PM] THEM: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:54 PM] YOU: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:54 PM] THEM: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/11/2025, 12:20:55 AM] THEM: Hey there, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed a message from you — I'm really sorry about that. To make it right, I've added 500 reward points to your account good toward protectants or future details. You can check your rewards or book here: https://cleanmachinetulsa.com/book P.S. We now offer digital gift cards – perfect last-minute gifts. Reply STOP to unsubscribe.
+
+View your rewards: https://cleanmachinetulsa.com/rewards/welcome?token=KzE5MTg4NTY1NzExOnJvb3Q6MTc2ODAwNDQ0OTg4OTo2ZjgxNjA4Y2Q2NGUzYWIxYjM0OTE0NDdlNTMyNjMwMGZmYzViNzYyMzJlYzM0ODY3MTgyMDk2YTZlNjMyY2Ew
+[12/11/2025, 12:21:03 AM] YOU: Hey Jody! Thanks for the update 👍  
+
+If you’re wanting to use those 500 points, tell me:
+1) What service you’re thinking about  
+2) Vehicle (year/make/model)  
+
+I’ll help you pick the best option and apply them.
+[12/11/2025, 12:21:12 AM] THEM: Nice, 500 points is a solid chunk to use 👌  
+
+What service are you thinking about, and what’s the vehicle (year/make/model)? I’ll tell you the best way to apply those points.
+[12/11/2025, 12:21:20 AM] YOU: Nice, that’s awesome you’ve got 500 points to use 🙌  
+
+What service are you leaning toward (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the vehicle year/make/model? I’ll show you how far those points will go.
+[12/11/2025, 12:21:29 AM] YOU: Nice, 500 points is a solid start 🙌  
+
+We can put those toward any service. What are you leaning toward:
+- Full Detail
+- Interior Detail
+- Premium Wash
+- Ceramic Coating
+or something else?
+
+And what’s the vehicle year/make/model? I’ll tell you your price range and how much the 500 points will knock off.
+[12/11/2025, 12:21:29 AM] THEM: Love it, 500 points is a great start 🙌  
+
+What service are you thinking about (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the vehicle year/make/model? I’ll break down how much you’d save.
+[12/11/2025, 12:21:38 AM] YOU: Nice, those points do come in handy 😄  
+
+To help you use them best, tell me:
+1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  
+2) Vehicle year/make/model  
+
+Then I’ll ballpark your price and how much the 500 pts will knock off.
+[12/11/2025, 12:21:38 AM] THEM: Love it, those 500 points will definitely help out 👌  
+
+What are you thinking about using them on:
+- Full Detail  
+- Interior Detail  
+- Premium Wash  
+- Ceramic Coating  
+or something else?
+
+And what’s the vehicle year/make/model? I’ll ballpark your price and how much the 500 points will save you.
+[12/11/2025, 12:21:49 AM] YOU: Nice, those points do come in handy 😄  
+
+Text me:
+1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  
+2) Vehicle year/make/model  
+
+I’ll ballpark the price and how much your 500 pts knock off.
+[12/11/2025, 12:21:49 AM] THEM: Love it 😄 those 500 points are a nice boost.
+
+To get you an accurate ballpark and how much the points will shave off, text me:
+1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  
+2) Vehicle year/make/model
+[12/11/2025, 12:22:06 AM] YOU: Nice, glad you got the points text 😄  
+
+Shoot me:
+1) The service you’re thinking (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)  
+2) Your vehicle year/make/model  
+
+I’ll ballpark your total and how much the 500 pts will knock off.
+[12/11/2025, 12:22:06 AM] THEM: Love it 😄 those 500 pts are a nice start.
+
+Text me:
+1) What you want done (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)  
+2) Vehicle year/make/model  
+
+I’ll ballpark your total and how much the points will shave off.
+[12/11/2025, 12:22:17 AM] YOU: Nice, glad that helped 😄  
+
+Shoot me:
+1) The service you’re leaning toward  
+2) Your vehicle year/make/model  
+
+I’ll give you a price range and how much 500 pts knocks off.
+[12/11/2025, 12:22:17 AM] THEM: Love it 😄 those points help for sure.
+
+Text me:
+1) The service you’re leaning toward (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)
+2) Your vehicle year/make/model
+
+Then I’ll ballpark your total and show what 500 pts would save you.
+[12/11/2025, 12:22:29 AM] THEM: Love it 😄  
+
+Shoot me:
+1) The service you’re leaning toward (e.g. Full Detail, Interior Detail, Premium Wash, etc.)  
+2) Your vehicle year/make/model  
+
+Then I’ll give you a price range and how much 500 points will take off the total.
+[12/11/2025, 12:22:30 AM] YOU: Nice, love that! 😄  
+
+Go ahead and tell me:
+1) Which service you’re thinking (Full Detail, Interior Detail, Premium Wash, etc.)
+2) Your vehicle year/make/model  
+
+I’ll ballpark the total and show what 500 points would knock off.
+[12/11/2025, 12:22:39 AM] YOU: Nice! 😄  
+
+To use that 500-point credit, here’s a quick idea of savings:
+- On a $150 Interior Detail: 500 pts = about $25 off  
+- On a $250 Full Detail: 500 pts = about $40–50 off  
+
+Shoot me:
+1) The service you’re leaning toward (Interior, Full Detail, etc.)  
+2) Year/make/model  
+
+I’ll give you a more exact price range and your discount.
+[12/11/2025, 12:22:39 AM] THEM: Love it 😄  
+
+Shoot me:
+1) The service you’re leaning toward  
+2) Year/make/model  
+
+I’ll give you a rough total and how much 500 points would save you.
+[12/11/2025, 12:22:51 AM] YOU: Nice, that 500 pts will definitely help 😄  
+
+What are you thinking:
+- Interior Detail (deep inside clean)  
+- Full Detail (inside + outside)  
+- Or just a specific thing (shampoo, pet hair, etc.)?  
+
+And what’s your vehicle year/make/model? I’ll ballpark your total after your points.
+[12/11/2025, 12:22:51 AM] THEM: Love it 😄 that’s a solid credit.
+
+What are you leaning toward:
+- Interior Detail  
+- Full Detail  
+- Something else?
+
+And what’s your year/make/model? I’ll break down your price after the 500 pts.
+[12/11/2025, 12:23:01 AM] YOU: Love it 😄 those 500 pts will definitely help.
+
+To ballpark it for you, I just need:
+1) What service you’re leaning toward (Interior Detail, Full Detail, or something specific)?
+2) Your vehicle year/make/model?
+[12/11/2025, 12:23:01 AM] THEM: Nice, those points will come in handy for sure 😄  
+
+What are you leaning toward:
+- Interior Detail  
+- Full Detail  
+- Or something specific (shampoo, pet hair, etc.)?  
+
+And what’s your vehicle year/make/model? I’ll ballpark your total with the 500 pts applied.
+[12/11/2025, 12:23:11 AM] YOU: Love it 😄 those “points” are basically your savings on future details.
+
+Quick stuff I need from you:
+1) Which service are you thinking? (Interior Detail, Full Detail, or something else?)
+2) Year/make/model of your vehicle?
+
+I’ll give you a price range and we can go from there.
+[12/11/2025, 12:23:11 AM] THEM: Nice, those points do come in handy 😄  
+
+Shoot me:
+1) What you’re leaning toward (Interior Detail, Full Detail, or other)?
+2) Year/make/model of the vehicle  
+
+I’ll ballpark the price for you.
+[12/11/2025, 12:23:22 AM] YOU: Sounds good!  
+
+1) Which service are you thinking? (Interior Detail, Full Detail, Premium Wash, etc.)  
+2) What's the year/make/model of your vehicle?  
+
+Then I'll give you a solid price range and we can look at openings.
+[12/11/2025, 12:23:22 AM] THEM: Nice, thanks for sticking with me 😄  
+
+Let’s start fresh so I can actually help you book or price something out:
+
+1) Which service are you thinking? (Interior Detail, Full Detail, Premium Wash, etc.)  
+2) What’s the year/make/model of your vehicle?  
+
+Once I have that, I’ll give you a solid price range and we can look at openings if you’d like.
+[12/11/2025, 12:23:31 AM] YOU: Sounds good!  
+
+Whenever you're ready, just send:
+1) The service you want (ex: Full Detail, Interior Detail, etc.)
+2) Your year/make/model  
+
+Then I'll give you a price range and check openings.
+[12/11/2025, 12:23:31 AM] THEM: Perfect, that’s exactly what I’d ask. 😊  
+
+Whenever you’re ready, just send:
+1) The service you want  
+2) Your year/make/model  
+
+Then I’ll give you a price range and check openings.
+[12/11/2025, 12:23:40 AM] THEM: Perfect!  
+
+Whenever you're ready, just text me:
+1) The service you want (ex: Full Detail, Interior Detail, Premium Wash)  
+2) Your year/make/model  
+
+Then I'll give you a price range and check available times.
+[12/11/2025, 12:23:41 AM] YOU: Sounds good!  
+
+Whenever you're ready, just send:
+1) The service you want (Full Detail, Interior Detail, etc.)
+2) Your year/make/model  
+
+I'll give you a price range and some open time slots.
+[12/11/2025, 12:23:49 AM] YOU: Sounds good!  
+
+Whenever you're ready, just text me:
+1) The service you want (Full Detail, Interior Detail, etc.)  
+2) Your year/make/model  
+
+I'll send a price range and available times.
+[12/11/2025, 12:23:49 AM] THEM: Perfect!  
+
+Whenever you're ready, just send:
+1) The service you want (Full Detail, Interior Detail, etc.)  
+2) Your year/make/model  
+
+I'll shoot back a price range and some open spots.
+
+Customer: +19182820103
+--------------------------------
+[12/9/2025, 5:25:56 PM] YOU: 🎙️ New voicemail from undefined. Recording: https://api.twilio.com/2010-04-01/Accounts/AC4002a2c9479bb0d1468d9353d53fe3fe/Recordings/RE46193021125ec07a4d2279295c91d2c6
+[12/9/2025, 7:03:28 PM] YOU: 🎙️ New voicemail from undefined. Recording: https://api.twilio.com/2010-04-01/Accounts/AC4002a2c9479bb0d1468d9353d53fe3fe/Recordings/RE26c4a2c9c5b7eb55aa577d5b46ae601c
+[12/10/2025, 4:03:11 PM] YOU: 🎙️ New voicemail from undefined. Recording: https://api.twilio.com/2010-04-01/Accounts/AC4002a2c9479bb0d1468d9353d53fe3fe/Recordings/RE77eb644e2dc040bbb37e157b76d824c3
+[12/10/2025, 9:13:45 PM] YOU: [PORT TEST 725827bc481335363dbb33446b9a727f] Automated SMS delivery test from +19188565304 - port monitoring active.
+[12/10/2025, 10:00:31 PM] YOU: Hi test jodyyy, this is Clean Machine Auto Detail reminding you of your Full Detail appointment tomorrow at Thursday, Dec 11, 2025 at 9:00 PM at 4644 S troost AVE.
+
+We're ready to make your vehicle shine!
+
+Questions? Reply or call (918) 856-5711.
+
+Directions: https://cleanmachine.app/directions?address=4644%20S%20troost%20AVE
+[12/10/2025, 10:00:32 PM] YOU: Hi test jodyyy, this is Clean Machine Auto Detail reminding you of your Interior Detail appointment tomorrow at Thursday, Dec 11, 2025 at 9:00 PM at 2710 s hudson pl tulsa 74114.
+
+We're ready to make your vehicle shine!
+
+Questions? Reply or call (918) 856-5711.
+
+Directions: https://cleanmachine.app/directions?address=2710%20s%20hudson%20pl%20tulsa%2074114
+[12/10/2025, 11:25:46 PM] YOU: [PORT TEST 5e9cb0aa9d682ee052ed2a1468c5f06e] Automated SMS delivery test from +19188565304 - port monitoring active.
+[12/11/2025, 3:50:21 AM] YOU: Yes, we can get that going 👍  
+
+For your Nissan Versa, are you wanting:
+- Interior Detail (deep interior clean)  
+or  
+- Full Detail (inside + outside)?
+[12/11/2025, 3:50:21 AM] THEM: Can I schedule a service appointment
+[12/11/2025, 4:09:57 AM] YOU: ⏰ Conversation with Unknown auto-returned to AI
+
+No customer response for 12 hours. Conversation is back in AI mode.
+[12/11/2025, 4:10:00 AM] YOU: ⏰ Conversation with Unknown auto-returned to AI
+
+No customer response for 12 hours. Conversation is back in AI mode.
+[12/11/2025, 5:59:23 PM] YOU: Gotcha, an interior detail on your Nissan Versa 👍  
+
+Yes, we’re mobile and do come to Tulsa. I can double-check your area, but 74114 is normally within range.  
+
+A couple quick things so I can get you set up:  
+1) What’s your name?  
+2) Is the interior just dirty/dusty, or are there heavy stains, pet hair, or smoke?
+[12/11/2025, 5:59:23 PM] THEM: Interior
+[12/11/2025, 6:20:38 PM] YOU: Perfect, thanks for the details!  
+
+Our Deep Interior Detail runs $150-$250 depending on how dirty it is and the size/condition of the vehicle.  
+
+I've got these times open for an Interior Detail:  
+- Friday at 1:00 PM  
+- Friday at 2:00 PM  
+- Friday at 3:00 PM  
+- Saturday at 9:00 AM  
+- Saturday at 10:00 AM  
+
+Which of those works best for you?
+[12/11/2025, 6:20:38 PM] THEM: I need the deep interior cleaning. How much and what's your availability?
+[12/11/2025, 6:23:43 PM] YOU: Nice, thanks! You’re in our service area 👍  
+
+For an Interior Detail on your Nissan Versa this Friday, I’ve got:  
+- 1:00 PM  
+- 2:00 PM  
+- 3:00 PM  
+
+Which time works best for you?
+[12/11/2025, 6:23:43 PM] THEM: Friday at 9
+[12/11/2025, 6:23:51 PM] YOU: Nice, we can do Saturday at 9:00 AM 👍  
+
+Couple quick things so I can set this up as a draft:  
+1) What’s your name?  
+2) What year is your Nissan Versa?
+[12/11/2025, 6:23:51 PM] THEM: Saturday at 9**
+[12/11/2025, 6:24:05 PM] YOU: Gotcha Jody! 👍
+
+Yes, you’re in our service area there in midtown.
+
+For your 2010 Nissan Versa interior, our **Interior Detail** runs **$150–250** depending on condition (stains, pet hair, etc.).
+
+A couple quick questions so I can narrow it down and look at times for you:
+- Any heavy stains, pet hair, or smoke/odor inside?
+- Are you wanting just interior, or interior plus a quick exterior wash too?
+[12/11/2025, 6:24:05 PM] THEM: Jody 2010
+[12/11/2025, 6:24:25 PM] YOU: Gotcha, interior only on the Versa 👍  
+
+You *are* in our service area at 2710 S Hudson Pl, so we can come to you.  
+
+Our **Interior Detail** runs **$150–250** depending on condition (trash, stains, pet hair, etc.).  
+
+Can you tell me:
+- Year of your Nissan Versa  
+- How dirty 1–10 (10 = really bad: stains/crumbs/spills)?
+[12/11/2025, 6:24:25 PM] THEM: Just interior
+[12/11/2025, 6:24:50 PM] YOU: Totally get it, sorry for the runaround there. You're good on the address at 2710 S Hudson Pl, so we're set on that.  
+
+For your Nissan Versa, are you wanting:  
+- Interior Detail ($150-250) or  
+- Full Detail (inside + outside, $225-300)?  
+
+Once you pick one, I'll grab real openings and get a draft appointment set up for you.
+[12/11/2025, 6:24:50 PM] THEM: I just need to get scheduled why so many questions
+[12/12/2025, 5:04:22 AM] YOU: No worries, let's get your Interior Detail set up. It's important to mention that we'll need access to a standard power outlet within 100ft of your vehicle. 
+
+Now, can I get the address where the service will take place?
+[12/12/2025, 5:04:22 AM] THEM: Hey can book an interior detail?
+[12/12/2025, 5:04:47 AM] YOU: I've got these times open for an Interior Detail:  
+- Saturday, December 13 at 9:00 AM  
+- Saturday, December 13 at 10:00 AM  
+- Saturday, December 13 at 11:00 AM  
+- Saturday, December 13 at 12:00 PM  
+- Saturday, December 13 at 1:00 PM  
+
+Which one works for you?
+[12/12/2025, 5:04:47 AM] THEM: 3318 s 73rd w ave
+[12/12/2025, 5:04:59 AM] YOU: You're all set! Interior Detail on Saturday, December 13 at 9:00 AM at 2710 s Hudson pl. Reply CHANGE to reschedule.
+[12/12/2025, 5:04:59 AM] THEM: 9am
+[12/12/2025, 5:04:59 AM] YOU: NEW BOOKING: Interior Detail on Saturday, December 13 at 9:00 AM. Customer: +19182820103. Address: 2710 s Hudson pl
+[12/12/2025, 7:26:26 AM] YOU: ⏰ Conversation with +19184976112 auto-returned to AI
+
+No customer response for 12 hours. Conversation is back in AI mode.
+[12/12/2025, 6:46:53 PM] YOU: 📱 BOOKING: Interior Detail
+Dec 12, 06:46 PM at 3318 s 73rd w ave
+Customer: +17373661084 • Vehicle: book an
+
+Customer: +17206194327
+--------------------------------
+[12/12/2025, 9:15:03 PM] YOU: I appreciate you reaching out, Sam! However, Clean Machine focuses exclusively on auto detailing services. If you need assistance with your vehicle or detailing services, feel free to ask. Have a great day!
+[12/12/2025, 9:15:03 PM] THEM: Hi, this is Sam from ZING Website Design. We build stunning websites with 50 local landing pages + weekly blogs  for just $59/month,  all designed for you. It's everything you need to get found online. Can I  send you an example? Reply STOP to opt-out
+
+Customer: +17373661084
+--------------------------------
+[12/9/2025, 8:37:39 PM] YOU: Yes, I can help with that.  
+
+I don't see live openings to show here, but we can still get a draft spot held for you.
+
+To check this week, I just need:
+1) Vehicle year/make/model  
+2) What service you want (e.g. Full Detail, Interior Detail)  
+3) Your address (for mobile service)  
+
+You mentioned 9 AM earlier-what day this week works best for that 9 AM window?
+[12/9/2025, 8:37:39 PM] THEM: are you availale for a detail this week? what is you rnext availablity?
+[12/11/2025, 3:51:37 AM] YOU: Nice, we’ve got some openings 👍  
+
+For a Full Detail I can put in a draft for:
+- Friday at 9:00 AM  
+- 10:00 AM  
+- 11:00 AM  
+- 12:00 PM  
+- 1:00 PM  
+
+What time works best for you? And what are you driving (year/make/model) and the address for the mobile service?
+[12/11/2025, 3:51:37 AM] THEM: I'd like to schedule an appointment
+[12/11/2025, 3:52:39 AM] YOU: Nice, thanks for all the info!
+
+I do have a 9:00 AM slot open this Friday for a Full Detail on your 2018 Ford Transit.
+
+Can you just confirm the address as:
+"4644 S Troost Ave, Tulsa" (or correct it if needed)?
+
+Once you confirm that, I'll get this Friday 9 AM Full Detail on your Transit prepared as a draft for our team to review, and you'll get a final confirmation after they look it over.
+[12/11/2025, 3:52:39 AM] THEM: 9 am Friday
+2018 Ford Transit van
+4644 s troost ave
+[12/11/2025, 3:53:03 AM] YOU: Hey Jody! Yep, we've got some openings for a full detail this week.  
+
+I can do Friday at:
+- 9:00 AM  
+- 10:00 AM  
+- 11:00 AM  
+- 12:00 PM  
+- 1:00 PM  
+
+Which time works best for you?
+[12/11/2025, 3:53:03 AM] THEM: Yes that's right
+[12/11/2025, 5:00:35 AM] YOU: Hey! Yep, we can definitely look at getting you in this week 🙌  
+
+What kind of detail are you wanting (Full Detail, Interior Detail, Premium Wash, etc.) and what do you drive (year/make/model)? After that I’ll check exact times for you.
+[12/11/2025, 5:00:35 AM] THEM: Can I schedule an appointment?
+[12/11/2025, 5:01:12 AM] YOU: Nice, we can do an Interior Detail this week 👍  
+
+I’ve got Friday open at:
+- 9:00 AM  
+- 10:00 AM  
+- 11:00 AM  
+- 12:00 PM  
+- 1:00 PM  
+
+Which time works best for you?
+[12/11/2025, 5:01:12 AM] THEM: Interior
+[12/11/2025, 5:01:21 AM] YOU: Hey Jody! Yep, I’ve got some openings for a full detail on your Ford Transit this week 👍  
+
+I can do Friday at:
+- 9:00 AM  
+- 10:00 AM  
+- 11:00 AM  
+- 12:00 PM  
+- 1:00 PM  
+
+Which time works best for you, and what’s the address where the van will be?
+[12/11/2025, 5:01:21 AM] THEM: Ford Transit
+[12/11/2025, 5:01:33 AM] YOU: Nice, thanks for the details!  
+
+I can definitely check for a 9am Friday spot-what service are you wanting? (Full Detail, Interior Detail, Premium Wash, etc.) And what vehicle is it for?
+[12/11/2025, 5:01:33 AM] THEM: 9am Friday
+[12/11/2025, 5:01:40 AM] THEM: 4644 s troost ave
+[12/11/2025, 5:01:41 AM] YOU: Hey! Yep, we can probably get you in this week 👍  
+
+What kind of detail are you wanting (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the year/make/model of your car?
+[12/11/2025, 5:02:07 AM] THEM: Interior
+[12/11/2025, 5:02:08 AM] YOU: Nice, we’ve got some openings 👌  
+
+For an Interior Detail, I can do this Friday at:
+- 9:00 AM  
+- 10:00 AM  
+- 11:00 AM  
+- 12:00 PM  
+- 1:00 PM  
+
+What time works best for you?
+[12/11/2025, 9:31:57 PM] YOU: Hey! Yep, we can probably get you in this week 👍  
+
+What are you looking for—Full Detail, Interior Detail, or something else? And what do you drive (year/make/model)?
+[12/11/2025, 9:31:57 PM] THEM: Can I schedule an appointment?
+[12/11/2025, 9:39:30 PM] YOU: Hey! Yep, we can probably get you in 😊  
+
+What are you looking for this week:
+- Interior Detail  
+- Exterior / Premium Wash  
+- Full Detail (inside + outside)  
+
+And what do you drive (year/make/model)?
+[12/11/2025, 9:39:30 PM] THEM: Can I schedule an appointment?
+[12/11/2025, 9:40:02 PM] YOU: Hey Jody! Yep, we should be able to get you in this week 👍  
+
+We’re a mobile service based in Tulsa and usually cover about a 25–30 minute drive radius around Tulsa (home or work is fine).  
+
+What city are you in, and what do you drive (year/make/model)?
+[12/11/2025, 9:40:02 PM] THEM: What's your service area
+[12/11/2025, 9:40:27 PM] YOU: Hey Jody! Yep, I can check it for you 👍  
+
+What’s the full address you’d want us to come to? (Street, city, state)
+[12/11/2025, 9:40:27 PM] THEM: Can you check my address?
+[12/11/2025, 11:58:41 PM] YOU: Hey Jody, yes you can! 👌  
+
+What’s your vehicle (year/make/model) and are you wanting an Interior Detail, Full Detail (inside + outside), or just an exterior wash/detail?
+[12/11/2025, 11:58:41 PM] THEM: Can I schedule a detail appointment
+[12/11/2025, 11:59:17 PM] THEM: 2010 versa Nissan interior
+[12/11/2025, 11:59:18 PM] YOU: Hey Jody! Yes, there's availability this week for an interior on your 2010 Nissan Versa.  
+
+For scheduling, I'll need just a bit more:
+1) What day works best for you this week?
+2) What city are you in, and will this be at home or work?
+
+Also, for any interior detail, access to a regular power outlet within 100 ft of the car is required (no water needed for interior-only).
+[12/12/2025, 12:00:50 AM] THEM: What's your availability? I'm In Tulsa
+[12/12/2025, 12:00:51 AM] YOU: Hey Jody! Yep, we serve Tulsa 👍  
+
+What kind of detail are you wanting this week—Full Detail, Interior Detail, or just an exterior/Premium Wash? Once you pick, actual open times can be checked for you.
+[12/12/2025, 12:01:40 AM] YOU: Nice, we can do an Interior Detail this week 👍  
+
+Quick heads-up: we’ll need access to a power outlet within 100 ft of the vehicle. No water needed for interior-only.  
+
+For Interior Detail, I’ve got these times open:  
+- Saturday at 9:00 AM  
+- Saturday at 10:00 AM  
+- Saturday at 11:00 AM  
+- Saturday at 12:00 PM  
+- Saturday at 1:00 PM  
+
+Which time works best for you, and what’s the address where the vehicle will be?
+[12/12/2025, 12:01:40 AM] THEM: Interior
+[12/12/2025, 12:03:49 AM] YOU: Hey Jody! Yep, we should have some openings, but it depends on what you'd like done.
+
+What are you looking for this Saturday at 9am-Full Detail, Interior Detail, or Premium Wash?
+[12/12/2025, 12:03:49 AM] THEM: Saturday 9am
+[12/12/2025, 12:04:18 AM] THEM: 4644 s troost ave
+[12/12/2025, 1:01:16 AM] YOU: I'd be happy to help with that, Jody. What type of detailing service are you interested in?
+[12/12/2025, 1:01:16 AM] THEM: Can I schedule a service
+[12/12/2025, 1:01:29 AM] THEM: What do you offer
+[12/12/2025, 1:01:30 AM] YOU: We offer a range of auto detailing services, including:
+
+- Full Detail: Comprehensive interior and exterior cleaning
+- Interior Detail: Deep cleaning of seats, carpets, and surfaces
+- Ceramic Coating: Paint protection for lasting shine
+- Paint Enhancement: Light polish to remove swirls and enhance gloss
+- Maintenance Detail Program: Regular upkeep for already clean vehicles
+
+What type of service are you interested in?
+[12/12/2025, 1:02:43 AM] YOU: Here's a quick rundown of our main services and prices:
+
+- Full Detail: $225-300
+- Interior Detail: $150-250
+- Premium Wash: $75+
+- Ceramic Coating - 1 Year: $300
+- Ceramic Coating - 3 Year: $750
+
+If you need specifics on other services, let me know!
+[12/12/2025, 1:02:43 AM] THEM: (That's hard to read, the formatting is all bad) Well how much are the services??
+[12/12/2025, 1:03:03 AM] YOU: Hey Jody! Could you let me know which service you're interested in? Then, I can check the availability for this week.
+[12/12/2025, 1:03:03 AM] THEM: What's your availability
+[12/12/2025, 1:03:21 AM] YOU: I've got some openings for an Interior Detail this Saturday, December 13th:
+
+- 9:00 AM
+- 10:00 AM
+- 11:00 AM
+
+Which time works best for you?
+[12/12/2025, 1:03:21 AM] THEM: Interior
+[12/12/2025, 1:03:32 AM] YOU: Could you let me know which service you're interested in? Then I can check availability for you!
+[12/12/2025, 1:03:32 AM] THEM: 9am
+[12/12/2025, 1:29:19 AM] YOU: Sure thing! What type of detailing service are you interested in? Once I know, I can check our schedule and find a time that works for you.
+[12/12/2025, 1:29:19 AM] THEM: Can I schedule a detail appointment
+[12/12/2025, 1:29:44 AM] YOU: I've got some options for an Interior Detail this Saturday, December 13th at 9 AM, 10 AM, or 11 AM. Prices range from $150 to $250, depending on your vehicle's condition. Which time works for you?
+[12/12/2025, 1:29:44 AM] THEM: Interior. I want pricing and availability
+[12/12/2025, 1:30:44 AM] YOU: Hey Jody! Let me check the availability for you real quick. What type of detailing service are you interested in for your vehicle?
+[12/12/2025, 1:30:44 AM] THEM: Saturday 9am
+[12/12/2025, 1:31:10 AM] THEM: I already said interior. Check my address to see if I'm in your service area
+[12/12/2025, 1:31:47 AM] YOU: Awesome! Your address at 4644 S Troost Ave is within our service area. What service are you interested in?
+[12/12/2025, 1:31:47 AM] THEM: 4644 a troost ave
+[12/12/2025, 1:56:38 AM] THEM: What's your availability for an interior detail service
+[12/12/2025, 1:56:39 AM] YOU: I've got Saturday, December 13th available at 9:00 AM, 10:00 AM, or 11:00 AM for an Interior Detail. Which time works best for you?
+[12/12/2025, 1:57:01 AM] YOU: I apologize, but I didn't generate a proper response. Please try again.
+[12/12/2025, 1:57:01 AM] THEM: Saturday 9am
+[12/12/2025, 1:57:44 AM] YOU: Great news, Jody! We have an opening for an Interior Detail this Saturday at 9:00 AM. Could you please confirm your address so we can proceed with the booking?
+[12/12/2025, 1:57:44 AM] THEM: Can I schedule an interior detail for Saturday at 9am
+[12/12/2025, 1:58:01 AM] YOU: Great news, Jody! Your address at 4644 S Troost Ave is within our service area. What type of detailing service are you interested in for your vehicle?
+[12/12/2025, 1:58:01 AM] THEM: 4644 s troost ave
+[12/12/2025, 1:58:16 AM] THEM: Interior
+[12/12/2025, 1:58:17 AM] YOU: I've got Saturday, December 13th with slots at 9:00 AM, 10:00 AM, and 11:00 AM available. Which works best for you?
+[12/12/2025, 1:58:41 AM] YOU: I've got Saturday, December 13th at 9:00 AM open for a Full Detail. Does that work for you?
+[12/12/2025, 1:58:41 AM] THEM: 9am
+[12/12/2025, 1:58:56 AM] YOU: I have some openings on Saturday, December 13th. You can book at 9am, 10am, 11am, 12pm, or 1pm. Which time works best for you?
+[12/12/2025, 1:58:56 AM] THEM: Yes
+[12/12/2025, 2:51:13 AM] YOU: I've got some openings this Saturday, December 13th at 9am, 10am, and 11am for an Interior Detail. Which time works best for you?
+[12/12/2025, 2:51:13 AM] THEM: Interior
+[12/12/2025, 2:51:36 AM] YOU: Perfect - I've got you down for Saturday, December 13th at 9am. What's the address where we'll be working?
+[12/12/2025, 2:51:36 AM] THEM: 9am
+[12/12/2025, 3:18:59 AM] YOU: Hey Jody! Your address at 3318 S 73rd W Ave is good to go. What service would you like for your vehicle this week?
+[12/12/2025, 3:18:59 AM] THEM: 3318 s 73rd w ave
+[12/12/2025, 3:23:48 AM] YOU: Perfect! What type of service are you looking to book for your vehicle?
+[12/12/2025, 3:23:48 AM] THEM: 3318 s 73rd w ave
+[12/12/2025, 3:24:11 AM] YOU: I've got an Interior Detail slot available on Saturday, December 13th with times at 9:00 AM, 10:00 AM, and 11:00 AM. Which time works best for you?
+[12/12/2025, 3:24:11 AM] THEM: Interior
+[12/12/2025, 3:24:19 AM] YOU: Perfect - I've got you down for 9:00 AM. What's the address where we'll be working?
+[12/12/2025, 3:24:19 AM] THEM: 9am
+[12/12/2025, 4:09:45 AM] YOU: Great, Jody! What kind of detailing service are you interested in for your vehicle?
+[12/12/2025, 4:09:45 AM] THEM: Hey I want to book
+[12/12/2025, 4:10:04 AM] YOU: I've got some availability for an Interior Detail on Saturday, December 13th at the following times:
+
+- 9:00 AM
+- 10:00 AM
+- 11:00 AM
+- 12:00 PM
+- 1:00 PM
+
+Which time works best for you?
+[12/12/2025, 4:10:04 AM] THEM: Interior detail
+[12/12/2025, 4:10:16 AM] THEM: 9am
+[12/12/2025, 4:10:17 AM] YOU: Perfect - I've got you down for 9:00 AM. What's the address where we'll be working?
+[12/12/2025, 4:10:33 AM] YOU: Great! What detailing service are you interested in? Once I know, I can check availability for this week for you.
+[12/12/2025, 4:10:33 AM] THEM: 3318 s 73rd w ave
+[12/12/2025, 4:21:57 AM] THEM: Hey I want to book interior detail
+[12/12/2025, 4:38:38 AM] YOU: Got it! Please confirm if the service location is at 3318 S 73rd W Ave. This service requires access to a power outlet within 100ft of the vehicle. Once confirmed, I'll finalize the details for your appointment.
+[12/12/2025, 4:38:38 AM] THEM: Hey I want to book an interior detail
+[12/12/2025, 4:40:24 AM] YOU: Oops! It looks like I need to gather your address again. Can you please confirm it's 3318 S 73rd W Ave, and we'll continue from there? Thanks!
+[12/12/2025, 4:40:24 AM] THEM: Yes
+[12/12/2025, 4:40:39 AM] YOU: It seems there was an issue confirming the address. Could you please provide the address again for validation? Thanks!
+[12/12/2025, 4:40:39 AM] THEM: Yes
+[12/12/2025, 4:41:17 AM] YOU: Your address is confirmed and within our service area! I've got these slots available for an Interior Detail on Saturday, December 13th:
+
+- 9:00 AM
+- 10:00 AM
+- 11:00 AM
+- 12:00 PM
+- 1:00 PM
+
+Since you mentioned 9:00 AM, I'll prepare this time for our team to review. You'll receive a final confirmation once it's officially booked. Anything else I can assist with in the meantime?
+[12/12/2025, 4:41:17 AM] THEM: 3318 s 73rd w ave
+[12/12/2025, 4:42:02 AM] THEM: 9am
+[12/12/2025, 4:42:03 AM] YOU: Great! I have you scheduled for 9:00 AM at 2018 Ford Transit van
+4644 s troost ave. We'll send a confirmation shortly!
+[12/12/2025, 6:43:11 AM] YOU: Your address at 3318 S 73rd W Ave is within our service area, and I've got times available for an Interior Detail on Saturday, December 13th:
+
+- 9:00 AM
+- 10:00 AM
+- 11:00 AM
+- 12:00 PM
+- 1:00 PM
+
+Would you like to lock in the 9:00 AM slot, or does another time work better for you?
+[12/12/2025, 6:43:11 AM] THEM: Can I book an appointment for interior detail?
+[12/12/2025, 6:43:39 AM] YOU: Perfect - I've got you down for 9:00 AM. What's the address where we'll be working?
+[12/12/2025, 6:43:39 AM] THEM: 9am
+[12/12/2025, 6:45:28 PM] YOU: Sure thing! Just to confirm, we'll need access to a power outlet. Can you provide your address so we can proceed with booking?
+[12/12/2025, 6:45:28 PM] THEM: Can I book an interior detail?
+[12/12/2025, 6:46:34 PM] YOU: Your address is good to go! We have an opening for an Interior Detail on Saturday, December 13th at 9:00 AM. Does that time still work for you?
+[12/12/2025, 6:46:34 PM] THEM: I have power. 3318 s 73rd w ave
+[12/12/2025, 6:46:53 PM] YOU: You're all set! Interior Detail on Saturday, December 13th at 9:00 AM at 3318 s 73rd w ave. Reply CHANGE to reschedule.
+[12/12/2025, 6:46:53 PM] THEM: Yes
+
+Customer: +19184976112
+--------------------------------
+[12/11/2025, 4:55:40 PM] YOU: Hey! Thanks for reaching out 🙂
+
+For a 2019 Infiniti QX80 (big SUV), a full interior + exterior detail typically lands here:
+
+- **Full Detail (inside & out):** **$225–300**  
+  - Exterior wash, wheels, door jambs, basic bug/tar removal, etc.  
+  - Interior vacuum, wipe-down, panels, cupholders, interior windows, basic stain work.
+
+If the interior is **heavier than average** (kids, spills, lots of sand/crumbs, pet hair, etc.), it usually pushes toward the higher end of that range.
+
+If you tell me:
+- How dirty the interior is (light / average / heavy)
+- Any pet hair or major stains?
+
+…I can give you a tighter estimate. And if you’d like, we can also price some popular add‑ons like **shampooing seats/carpets** or **odor removal**.
+[12/11/2025, 4:55:40 PM] THEM: Hi there, I am looking into a detail on a 2019 Infiniti QX80. I would want the interior and exterior done and was hoping you could provide me with an idea of what that would run. Thank you, look forward to hearing back from you!
+[12/11/2025, 6:56:31 PM] YOU: I still have pretty open availability this week including tomorrow and Sunday, let me know if I can help out! Thanks again!
+[12/12/2025, 7:26:25 AM] YOU: Hi! I noticed we haven't heard back in a while. I'm back to help if you need anything! Or just text back if you'd like to continue.
+[12/12/2025, 6:45:42 PM] THEM: I think we are going to go a different route this time. Thank you!
+[12/12/2025, 6:45:43 PM] YOU: No worries at all! If you ever change your mind or have any questions, feel free to reach out. Have a great day! 😊
+
+Customer: +19189464977
+--------------------------------
+[12/10/2025, 11:58:39 PM] YOU: Sorry, I couldn't process your message. Please try again.
+[12/11/2025, 12:03:00 AM] THEM: This is what is still showing.
+[12/11/2025, 12:03:01 AM] YOU: Hey! Just so you know, this number goes to Clean Machine Auto Detail 😊 I’m here to help with detailing, ceramic coating, or booking an appointment.
+
+What vehicle do you have, and what kind of service are you looking for?
+[12/11/2025, 12:03:58 AM] YOU: Hey! Just so you know, you’ve reached Clean Machine Auto Detail’s text line, not your friend’s personal number.
+
+I’m here for anything car‑cleaning related though 😊  
+Do you need help booking a detail or getting a quote for your vehicle?
+[12/11/2025, 12:03:58 AM] THEM: So you don't have a personal number right now.
+[12/11/2025, 12:04:32 AM] THEM: Detail
+[12/11/2025, 12:04:33 AM] YOU: Hey! I’m here 😊  
+Just to be sure I’m on the same page—are you wanting to schedule a detail?
+
+If so, can you tell me:
+1) What kind of detail you’re thinking (Full Detail, Interior Detail, Premium Wash, etc.)  
+2) Year/make/model of the vehicle  
+3) Your address (we’re mobile)
+[12/11/2025, 12:04:48 AM] YOU: Hey! I’m glad your heart check is looking good 🙌
+
+Sounds like you might be wanting something done on that 2025 Mazda CX-90—are you thinking interior detail, full detail, or maybe ceramic coating for protection?
+[12/11/2025, 12:04:48 AM] THEM: 2025 Mazda cx90
+[12/11/2025, 12:05:10 AM] YOU: Hey! I’m doing alright, thanks for asking 😊
+
+Interior and ceramic coating sounds perfect.  
+What kind of vehicle is it (year/make/model), and where will we be doing the work (address)? Then I’ll check openings for you.
+[12/11/2025, 12:05:10 AM] THEM: Interior and ceramic coating
+[12/11/2025, 12:05:50 AM] THEM: 2025 Mazda cx90
+[12/11/2025, 12:05:51 AM] YOU: Hey! I’m glad your heart’s getting checked out and the PT is moving along. 💪
+
+I saw you mention the 2025 Mazda CX-90 — are you wanting to get it detailed or coated?  
+If so, what are you thinking: full detail, interior, or ceramic coating for protection?
+[12/11/2025, 12:06:10 AM] THEM: Address 6836 west 34th Pl
+Tulsa ok 74107
+[12/11/2025, 12:06:11 AM] YOU: Hey! Thanks for sending the address 😊  
+
+Just so I’m on the same page—were you wanting to set up a detail at 6836 W 34th Pl? If so, what kind of service are you thinking? (Full detail, interior, ceramic, etc.)
+[12/11/2025, 12:06:57 AM] YOU: Hey! I’m glad your heart’s getting checked out and the wrist PT is moving along ❤️
+
+We can definitely do a Full Detail and Ceramic for you.  
+
+What are you wanting coating-wise:
+- 1-year ceramic ($300)  
+- or 3-year ceramic ($750)?  
+
+And what are we working on (year/make/model) and where should we come (address)?
+[12/11/2025, 12:06:57 AM] THEM: Full detail and ceramic
+[12/11/2025, 12:07:40 AM] YOU: Gotcha, ceramic sounds good.  
+
+Is this for a 1-year coating ($300) or 3-year coating ($750)? And what's the vehicle (year/make/model) and address we'd be coming to?
+[12/11/2025, 12:07:40 AM] THEM: Ceramic.
+[12/11/2025, 12:07:57 AM] THEM: 1 year
+[12/11/2025, 12:07:58 AM] YOU: Hey! I’m here to help with your car detailing stuff, not personal calls or medical/relationship things.
+
+You mentioned “1 year” — were you asking about the 1‑year ceramic coating for your vehicle?
+[12/11/2025, 12:08:10 AM] YOU: Hey! I'm actually just the texting assistant for Clean Machine Auto Detail, so I don't see the personal stuff you're texting about, just what comes through here.  
+
+I'm here to help with detailing, scheduling, or questions about your vehicle. Do you need to get a detail or ceramic coating set up for your car?
+[12/11/2025, 12:08:10 AM] THEM: Yes
+[12/12/2025, 12:00:01 AM] YOU: Hi Mom, this is Clean Machine Auto Detail. Just a reminder that you have a Full Detail appointment in 3 days on Monday, Dec 15, 2025 at 6:00 PM at 6836 w 34th Pl Tulsa ok 74107.
+
+Looking forward to servicing your vehicle!
+
+To reschedule or cancel, reply to this message or call (918) 856-5711.
+[12/12/2025, 6:00:31 AM] YOU: Hi Mom, this is Clean Machine Auto Detail. Just a reminder that you have a Full Detail appointment in 3 days on Monday, Dec 15, 2025 at 6:00 PM at 6836 w 34th Pl Tulsa ok 74107.
+
+Looking forward to servicing your vehicle!
+
+To reschedule or cancel, reply to this message or call (918) 856-5711.
+[12/12/2025, 6:39:46 AM] YOU: Hey there! 🙂 Ready to set up that Full Detail and 1-Year Ceramic Coating for your 2025 Mazda CX-90 at 6836 W 34th Pl, Tulsa? Before booking, I just need to confirm that we'll need access to a power outlet and water spigot. Let me know if that's all good, and I can check available times for you!
+[12/12/2025, 6:39:46 AM] THEM: Hi
+
+Customer: +19182891500
+--------------------------------
+[12/10/2025, 4:03:57 PM] YOU: Hi undefined! Welcome back! I have your 891500. Okay. Thank you so much bye. on file. I'd be happy to help you schedule another detail. What's your address for the service?
+[12/10/2025, 4:04:27 PM] YOU: Hey Ashley, thanks for reaching out! 😊
+
+I can definitely look at next week for you.  
+What would you like done this time—Full Detail, Interior Detail, or something else? And what kind of vehicle is it?
+[12/10/2025, 4:04:27 PM] THEM: 7700 s Lewis ave
+[12/11/2025, 4:09:57 AM] YOU: Hi Unknown! I noticed we haven't heard back in a while. I'm back to help if you need anything! Or just text back if you'd like to continue.
+
+Customer: +19183445215
+--------------------------------
+[12/11/2025, 2:03:31 AM] YOU: No problem, I’ll stop here. If you ever want to check prices or openings for an interior detail on your crew cab, just shoot me a message anytime.
+
+Customer: +12258032353
+--------------------------------
+[12/11/2025, 1:52:30 AM] YOU: Got it, I’ll stop messaging you now. If you ever need detailing in the future, you can reach us anytime.
+
+Customer: +19186197011
+--------------------------------
+[12/11/2025, 1:51:44 AM] YOU: You got it, I’ll stop texting here. If you ever need detailing in the future, you can reach us anytime or book online: https://book.servicepro.com/root
+
+Customer: +19186251491
+--------------------------------
+[12/11/2025, 12:44:25 AM] THEM: Liked “Hey Unknown, it's Jody with Clean Machine Auto Detail. We had a phone system change and may have missed you — I'm really sorry about that. To make it right, I've added 500 reward points to your account. Check your rewards or book here: https://cleanmachinetulsa.com/book Reply STOP to unsubscribe.
+
+View your rewards: https://cleanmachinetulsa.com/rewards/welcome?token=KzE5MTg2MjUxNDkxOnJvb3Q6MTc2ODAwNDc5MjE5ODowZDg2NzM5YTQ3MDUyNmUxZjE0MGNmZjNkYjY0NWI2NTNlNzQ2MDk0MGRmYmQ4Mjk1Yjc1YTQyNjI5YTJmNDFh”
+[12/11/2025, 12:45:28 AM] YOU: Hey there! Yep, we're fully mobile - we come to your house and do it right in the driveway in Midtown Tulsa, no problem.
+
+For your 2-seater convertible interior, the $105 you mentioned sounds like you're thinking:
+
+- Interior Detail base price: $130  
+- Minus $25 = $105
+
+At that $105 level, you'd get:
+- Full vacuum (seats, floors, mats, trunk area if accessible)
+- Wipe-down of all interior surfaces
+- Interior windows cleaned
+- Light stain/spot cleaning (since you said it's not bad inside)
+
+A couple things so I can try to get you in:
+
+1) What's your name?  
+2) What's the year/make/model of the convertible?
+
+You said you're at 1565 Swan Dr in Midtown and free today - I'll check what we have this afternoon as soon as you send your name and car info.
+[12/11/2025, 1:48:56 AM] YOU: Yep, we’re mobile and can come to your house in Midtown and work in the driveway 👍
+
+For your 2‑seater convertible, interior only at $105 would include:
+- Thorough vacuum (seats, floors, mats, trunk area if needed)  
+- Wipe down & cleaning of interior surfaces  
+- Windows inside  
+- Light detailing on vents/cupholders, etc.
+
+Since you’re not ready to lock in a time yet, no worries at all. When you’re ready, just text:
+1) Your full name  
+2) Year/make/model of the car  
+3) A day/time that works for you  
+
+And I’ll grab live openings and get a draft appointment set up for you.
+[12/11/2025, 1:48:56 AM] THEM: OK, I'll be ready to do this, but not immediately soon
+
+Customer: +19186457024
+--------------------------------
+[12/11/2025, 12:55:38 AM] YOU: Got it, I’ll stop messaging.  
+You can always reach us or book anytime here if you need us in the future: https://book.servicepro.com/root
+
+Customer: +15129250365
+--------------------------------
+[12/11/2025, 12:52:18 AM] YOU: You got it, Madison — I’ll stop texting here.  
+
+If you ever want another detail down the road, you can always reach us or book online at https://book.servicepro.com/root.
+
+Customer: +19185574648
+--------------------------------
+[12/11/2025, 12:45:11 AM] YOU: Got it, Ashley — I’ll stop messaging here.  
+
+If this was by mistake and you ever need a detail again, you can always reach us anytime at https://book.servicepro.com/root.
+
+Customer: +19185272900
+--------------------------------
+[12/11/2025, 12:42:06 AM] YOU: Got it, I’ll stop texting you.  
+
+If this was by mistake and you ever need your new ride detailed, you can always reach us at https://book.servicepro.com/root.
+
+Customer: +19185103198
+--------------------------------
+[12/11/2025, 12:40:03 AM] YOU: Got it, I’ll stop here.  
+
+If you ever want to pick this back up and schedule that Malibu interior detail in Catoosa, just say the word and we’ll get some times pulled for you.
+
+Customer: +19187597082
+--------------------------------
+[12/11/2025, 12:37:21 AM] YOU: Gotcha, I’ll pause here.  
+
+If you need help with detailing, pricing, or booking later, just message me anytime.
+
+Customer: +18052564273
+--------------------------------
+[12/11/2025, 12:32:16 AM] YOU: Got it, I’ll stop messaging.  
+
+If you ever need detailing or have questions later, you can reach us here or book anytime: https://book.servicepro.com/root
+
+Customer: +19182827808
+--------------------------------
+[12/11/2025, 12:27:46 AM] YOU: Got it, Tony — I’ve stopped these messages.  
+
+If you ever want to schedule that $75 Premium Wash down the road, you can always reach us through the website or booking link: https://book.servicepro.com/root
+
+Customer: +19188565711
+--------------------------------
+[12/9/2025, 3:41:23 PM] YOU: [Admin] System issue detected: database: Database error: socket hang up
+[12/9/2025, 3:41:43 PM] YOU: Thanks for your patience. A team member will follow up with you shortly to help from here.
+[12/9/2025, 3:41:43 PM] THEM: I understand you need additional help. I'm connecting you with a team member who will assist you shortly.
+[12/9/2025, 3:41:55 PM] THEM: No problem at all. If you'd like pricing now, here's a quick list of our services:
+
+- Premium Wash: $75+
+- Full Detail: $225-300  
+- Interior Detail: $150-250  
+- Maintenance Detail: $125-175  
+- Shampoo Seats/Carpets: $80-150  
+- Engine Bay: $35  
+- Headlight Restoration: $25  
+- Trim Restoration: $40  
+- Light Polish: $75  
+- Paint Enhancement / Light Polish: $150-350  
+- 1-Year / 12-Month Ceramic Coating: $300  
+- 3-Year Ceramic Coating: $750  
+- Glass/Windshield Protector: $30  
+- Leather or Fabric Protector: $50  
+- Ozone Odor Removal: $50  
+- Motorcycle Detail: $150-175  
+
+Tell me your vehicle and what you're looking for (inside, outside, or full), and I can recommend the best option.
+[12/9/2025, 3:41:57 PM] YOU: Sounds good!  
+
+What's your vehicle (year/make/model), and are you mainly wanting inside, outside, or full in/out? I'll suggest the best package and price range.
+[12/9/2025, 3:42:04 PM] YOU: Got it 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:42:04 PM] THEM: Perfect 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:42:14 PM] YOU: Perfect 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll recommend the best package and price.
+[12/9/2025, 3:42:14 PM] THEM: Sounds good!  
+
+What's your vehicle (year/make/model), and do you want:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I'll recommend a package and price range.
+[12/9/2025, 3:42:25 PM] YOU: Perfect 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll recommend the best package and price.
+[12/9/2025, 3:42:25 PM] THEM: Gotcha 👍  
+
+What’s your vehicle (year/make/model), and are you wanting:
+- Interior only  
+- Exterior only  
+- Full in & out?  
+
+I’ll recommend the best package and price.
+[12/9/2025, 3:42:34 PM] YOU: Perfect.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price range.
+[12/9/2025, 3:42:34 PM] THEM: Nice!  
+
+Go ahead and tell me:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll suggest the best package and price range.
+[12/9/2025, 3:42:42 PM] YOU: Perfect.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:42 PM] THEM: Sounds good.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:50 PM] YOU: Perfect.  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:50 PM] THEM: Sounds good!  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:59 PM] YOU: Perfect.
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:42:59 PM] THEM: Sounds good!  
+
+Please send:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I'll match you with the best package and price.
+[12/9/2025, 3:43:08 PM] YOU: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:08 PM] THEM: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:14 PM] THEM: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:15 PM] YOU: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:24 PM] YOU: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:24 PM] THEM: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:32 PM] YOU: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:32 PM] THEM: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:39 PM] THEM: Sounds great 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:40 PM] YOU: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:49 PM] YOU: Perfect 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:49 PM] THEM: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/9/2025, 3:43:55 PM] THEM: Sounds good 👍  
+
+Reply with:
+1) Year/make/model  
+2) Interior, exterior, or full in & out  
+
+I’ll match you with the best package and price.
+[12/11/2025, 12:21:08 AM] YOU: Nice, 500 points is a solid chunk to use 👌  
+
+What service are you thinking about, and what’s the vehicle (year/make/model)? I’ll tell you the best way to apply those points.
+[12/11/2025, 12:21:08 AM] THEM: Hey Jody! Thanks for the update 👍  
+
+If you’re wanting to use those 500 points, tell me:
+1) What service you’re thinking about  
+2) Vehicle (year/make/model)  
+
+I’ll help you pick the best option and apply them.
+[12/11/2025, 12:21:24 AM] YOU: Love it, 500 points is a great start 🙌  
+
+What service are you thinking about (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the vehicle year/make/model? I’ll break down how much you’d save.
+[12/11/2025, 12:21:24 AM] THEM: Nice, that’s awesome you’ve got 500 points to use 🙌  
+
+What service are you leaning toward (Full Detail, Interior Detail, Premium Wash, etc.), and what’s the vehicle year/make/model? I’ll show you how far those points will go.
+[12/11/2025, 12:21:32 AM] YOU: Love it, those 500 points will definitely help out 👌  
+
+What are you thinking about using them on:
+- Full Detail  
+- Interior Detail  
+- Premium Wash  
+- Ceramic Coating  
+or something else?
+
+And what’s the vehicle year/make/model? I’ll ballpark your price and how much the 500 points will save you.
+[12/11/2025, 12:21:32 AM] THEM: Nice, 500 points is a solid start 🙌  
+
+We can put those toward any service. What are you leaning toward:
+- Full Detail
+- Interior Detail
+- Premium Wash
+- Ceramic Coating
+or something else?
+
+And what’s the vehicle year/make/model? I’ll tell you your price range and how much the 500 points will knock off.
+[12/11/2025, 12:21:44 AM] YOU: Love it 😄 those 500 points are a nice boost.
+
+To get you an accurate ballpark and how much the points will shave off, text me:
+1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  
+2) Vehicle year/make/model
+[12/11/2025, 12:21:44 AM] THEM: Nice, those points do come in handy 😄  
+
+To help you use them best, tell me:
+1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  
+2) Vehicle year/make/model  
+
+Then I’ll ballpark your price and how much the 500 pts will knock off.
+[12/11/2025, 12:21:53 AM] THEM: Nice, those points do come in handy 😄  
+
+Text me:
+1) What you want done (Full Detail, Interior, Wash, Ceramic, etc.)  
+2) Vehicle year/make/model  
+
+I’ll ballpark the price and how much your 500 pts knock off.
+[12/11/2025, 12:21:54 AM] YOU: Love it 😄 those 500 pts are a nice start.
+
+Text me:
+1) What you want done (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)  
+2) Vehicle year/make/model  
+
+I’ll ballpark your total and how much the points will shave off.
+[12/11/2025, 12:22:12 AM] YOU: Love it 😄 those points help for sure.
+
+Text me:
+1) The service you’re leaning toward (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)
+2) Your vehicle year/make/model
+
+Then I’ll ballpark your total and show what 500 pts would save you.
+[12/11/2025, 12:22:12 AM] THEM: Nice, glad you got the points text 😄  
+
+Shoot me:
+1) The service you’re thinking (Full Detail, Interior Detail, Premium Wash, Ceramic, etc.)  
+2) Your vehicle year/make/model  
+
+I’ll ballpark your total and how much the 500 pts will knock off.
+[12/11/2025, 12:22:23 AM] YOU: Love it 😄  
+
+Shoot me:
+1) The service you’re leaning toward (e.g. Full Detail, Interior Detail, Premium Wash, etc.)  
+2) Your vehicle year/make/model  
+
+Then I’ll give you a price range and how much 500 points will take off the total.
+[12/11/2025, 12:22:23 AM] THEM: Nice, glad that helped 😄  
+
+Shoot me:
+1) The service you’re leaning toward  
+2) Your vehicle year/make/model  
+
+I’ll give you a price range and how much 500 pts knocks off.
+[12/11/2025, 12:22:34 AM] THEM: Nice, love that! 😄  
+
+Go ahead and tell me:
+1) Which service you’re thinking (Full Detail, Interior Detail, Premium Wash, etc.)
+2) Your vehicle year/make/model  
+
+I’ll ballpark the total and show what 500 points would knock off.
+[12/11/2025, 12:22:35 AM] YOU: Love it 😄  
+
+Shoot me:
+1) The service you’re leaning toward  
+2) Year/make/model  
+
+I’ll give you a rough total and how much 500 points would save you.
+[12/11/2025, 12:22:45 AM] THEM: Nice! 😄  
+
+To use that 500-point credit, here’s a quick idea of savings:
+- On a $150 Interior Detail: 500 pts = about $25 off  
+- On a $250 Full Detail: 500 pts = about $40–50 off  
+
+Shoot me:
+1) The service you’re leaning toward (Interior, Full Detail, etc.)  
+2) Year/make/model  
+
+I’ll give you a more exact price range and your discount.
+[12/11/2025, 12:22:47 AM] YOU: Love it 😄 that’s a solid credit.
+
+What are you leaning toward:
+- Interior Detail  
+- Full Detail  
+- Something else?
+
+And what’s your year/make/model? I’ll break down your price after the 500 pts.
+[12/11/2025, 12:22:56 AM] YOU: Nice, those points will come in handy for sure 😄  
+
+What are you leaning toward:
+- Interior Detail  
+- Full Detail  
+- Or something specific (shampoo, pet hair, etc.)?  
+
+And what’s your vehicle year/make/model? I’ll ballpark your total with the 500 pts applied.
+[12/11/2025, 12:22:56 AM] THEM: Nice, that 500 pts will definitely help 😄  
+
+What are you thinking:
+- Interior Detail (deep inside clean)  
+- Full Detail (inside + outside)  
+- Or just a specific thing (shampoo, pet hair, etc.)?  
+
+And what’s your vehicle year/make/model? I’ll ballpark your total after your points.
+[12/11/2025, 12:23:07 AM] YOU: Nice, those points do come in handy 😄  
+
+Shoot me:
+1) What you’re leaning toward (Interior Detail, Full Detail, or other)?
+2) Year/make/model of the vehicle  
+
+I’ll ballpark the price for you.
+[12/11/2025, 12:23:07 AM] THEM: Love it 😄 those 500 pts will definitely help.
+
+To ballpark it for you, I just need:
+1) What service you’re leaning toward (Interior Detail, Full Detail, or something specific)?
+2) Your vehicle year/make/model?
+[12/11/2025, 12:23:16 AM] THEM: Love it 😄 those “points” are basically your savings on future details.
+
+Quick stuff I need from you:
+1) Which service are you thinking? (Interior Detail, Full Detail, or something else?)
+2) Year/make/model of your vehicle?
+
+I’ll give you a price range and we can go from there.
+[12/11/2025, 12:23:17 AM] YOU: Nice, thanks for sticking with me 😄  
+
+Let’s start fresh so I can actually help you book or price something out:
+
+1) Which service are you thinking? (Interior Detail, Full Detail, Premium Wash, etc.)  
+2) What’s the year/make/model of your vehicle?  
+
+Once I have that, I’ll give you a solid price range and we can look at openings if you’d like.
+[12/11/2025, 12:23:27 AM] YOU: Perfect, that’s exactly what I’d ask. 😊  
+
+Whenever you’re ready, just send:
+1) The service you want  
+2) Your year/make/model  
+
+Then I’ll give you a price range and check openings.
+[12/11/2025, 12:23:27 AM] THEM: Sounds good!  
+
+1) Which service are you thinking? (Interior Detail, Full Detail, Premium Wash, etc.)  
+2) What's the year/make/model of your vehicle?  
+
+Then I'll give you a solid price range and we can look at openings.
+[12/11/2025, 12:23:35 AM] YOU: Perfect!  
+
+Whenever you're ready, just text me:
+1) The service you want (ex: Full Detail, Interior Detail, Premium Wash)  
+2) Your year/make/model  
+
+Then I'll give you a price range and check available times.
+[12/11/2025, 12:23:35 AM] THEM: Sounds good!  
+
+Whenever you're ready, just send:
+1) The service you want (ex: Full Detail, Interior Detail, etc.)
+2) Your year/make/model  
+
+Then I'll give you a price range and check openings.
+[12/11/2025, 12:23:45 AM] YOU: Perfect!  
+
+Whenever you're ready, just send:
+1) The service you want (Full Detail, Interior Detail, etc.)  
+2) Your year/make/model  
+
+I'll shoot back a price range and some open spots.
+[12/11/2025, 12:23:45 AM] THEM: Sounds good!  
+
+Whenever you're ready, just send:
+1) The service you want (Full Detail, Interior Detail, etc.)
+2) Your year/make/model  
+
+I'll give you a price range and some open time slots.
+[12/11/2025, 12:23:52 AM] THEM: Sounds good!  
+
+Whenever you're ready, just text me:
+1) The service you want (Full Detail, Interior Detail, etc.)  
+2) Your year/make/model  
+
+I'll send a price range and available times.
+
+Customer: +19183447282
+--------------------------------
+[12/9/2025, 8:36:34 PM] YOU: Hey Doug I wasn't sure if my new phone system is working correctly so I messaged you through my personal phone just to be sure. Thanks!
+[12/10/2025, 12:11:46 AM] THEM: Got it! My daughter's car is a  2014 Toyota Prius.  What will you charge to detail it?
+[12/10/2025, 12:11:47 AM] YOU: Nice gift idea for her Prius!
+
+For a 2014 Toyota Prius, pricing would be:
+- Full Detail: $225-300 (inside & out, best for a full refresh)
+- Interior Detail only: $150-250
+- Premium Wash only: $75+
+
+Range depends on condition (pet hair, heavy stains, etc.).  
+Is her interior pretty average, or is it heavily soiled?
+[12/10/2025, 12:13:39 AM] YOU: Perfect, thanks for confirming.
+
+For an average-condition 2014 Prius, you're likely in the lower end of the ranges:
+
+- Full Detail (inside & out): about $225-250  
+- Interior Detail only: about $150-175  
+
+Since this is a Christmas gift, do you want:
+1) Full Detail (inside & out), or  
+2) Interior only?
+
+Also, are you wanting this done before Christmas, or right after the holiday?
+[12/10/2025, 12:13:39 AM] THEM: I would say average.
+[12/10/2025, 12:15:18 AM] YOU: Sounds good, that week usually works well.
+
+Once you check with her, I'll just need:
+1) Your name  
+2) Her preferred day/time that week  
+3) Service choice: Full Detail or Interior only  
+4) Service address  
+
+Then I can draft the appointment and send it for review.
+[12/10/2025, 12:15:18 AM] THEM: I'll have to check with her, but probably the week between Christmas and New Years Day.
+
+Customer: +18559261156
+--------------------------------
+[12/10/2025, 12:56:11 PM] THEM: **your verification code**
