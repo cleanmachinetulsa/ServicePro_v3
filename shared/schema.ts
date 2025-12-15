@@ -5325,6 +5325,22 @@ export const portalSettings = pgTable("portal_settings", {
   portalTitle: varchar("portal_title", { length: 100 }),
   portalWelcomeMessage: text("portal_welcome_message"),
   
+  // Landing configuration
+  landingPath: varchar("landing_path", { length: 100 }).default("/portal"),
+  showRewards: boolean("show_rewards").default(true).notNull(),
+  showBooking: boolean("show_booking").default(true).notNull(),
+  showServices: boolean("show_services").default(true).notNull(),
+  showContact: boolean("show_contact").default(true).notNull(),
+  
+  // Quiet Hours configuration (for notifications)
+  quietHoursEnabled: boolean("quiet_hours_enabled").default(false).notNull(),
+  quietHoursStart: varchar("quiet_hours_start", { length: 5 }).default("21:00"),
+  quietHoursEnd: varchar("quiet_hours_end", { length: 5 }).default("07:00"),
+  
+  // Digest Mode configuration (batch notifications)
+  digestEnabled: boolean("digest_enabled").default(false).notNull(),
+  digestFrequency: varchar("digest_frequency", { length: 20 }).default("daily"),
+  
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
