@@ -50,10 +50,11 @@ export const ALL_BOOKING_STATUSES = Object.keys(BOOKING_STATUS_META) as BookingS
  * Derives the booking status from a booking record
  * Priority logic:
  * 1. If appointmentId && calendarEventId → CONFIRMED
- * 2. Else if needsHumanAttention=true → NEEDS_HUMAN
- * 3. Else if stage === "awaiting_confirm" || stage === "booked" → AWAITING_CONFIRM
- * 4. Else if status === "closed" && !bookingId → ABANDONED
- * 5. Else → PENDING
+ * 2. Else if isStale=true (in booking flow with no activity for 15+ min) → NEEDS_HUMAN
+ * 3. Else if needsHumanAttention=true → NEEDS_HUMAN
+ * 4. Else if stage === "awaiting_confirm" || stage === "booked" → AWAITING_CONFIRM
+ * 5. Else if status === "closed" && !bookingId → ABANDONED
+ * 6. Else → PENDING
  */
 export function deriveBookingStatus(record: {
   bookingId: number | null;
@@ -63,23 +64,29 @@ export function deriveBookingStatus(record: {
   lastErrorCode?: string | null;
   stage?: string | null;
   status?: string | null;
+  isStale?: boolean;
 }): BookingStatus {
   // Priority 1: CONFIRMED - both booking and calendar event linked
   if (record.bookingId && record.calendarEventId) {
     return "CONFIRMED";
   }
 
-  // Priority 2: NEEDS_HUMAN - if marked as needing attention or has errors
+  // Priority 2: NEEDS_HUMAN - stale conversations need attention
+  if (record.isStale) {
+    return "NEEDS_HUMAN";
+  }
+
+  // Priority 3: NEEDS_HUMAN - if marked as needing attention or has errors
   if (record.needsHumanAttention || record.needsHuman || record.lastErrorCode) {
     return "NEEDS_HUMAN";
   }
 
-  // Priority 3: AWAITING_CONFIRM - in confirmation stage
+  // Priority 4: AWAITING_CONFIRM - in confirmation stage
   if (record.stage === "awaiting_confirm" || record.stage === "booked") {
     return "AWAITING_CONFIRM";
   }
 
-  // Priority 4: ABANDONED - closed without booking
+  // Priority 5: ABANDONED - closed without booking
   if (record.status === "closed" && !record.bookingId) {
     return "ABANDONED";
   }
