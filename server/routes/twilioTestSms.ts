@@ -115,6 +115,15 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       Body: (req.body as any)?.Body,
     });
     
+    // P0-HOTFIX: Ignore iMessage reaction messages (Loved, Liked, Emphasized, etc.)
+    // These are not real customer messages and should not trigger AI or booking flows
+    const iMessageReactionPattern = /^(Loved|Liked|Emphasized|Laughed at|Disliked|Questioned)\s+".*"/i;
+    if (Body && iMessageReactionPattern.test(Body.trim())) {
+      console.log(`[SMS_REACTION_IGNORED] phone=${From} sid=${MessageSid} body="${Body.substring(0, 50)}"`);
+      res.status(204).send();
+      return;
+    }
+    
     if (!Body || !From) {
       console.warn('[TWILIO SMS INBOUND] Missing Body or From');
       twimlResponse.message("Sorry, I couldn't process your message. Please try again.");
