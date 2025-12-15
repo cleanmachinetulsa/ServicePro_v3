@@ -83,9 +83,9 @@ export default function BookingsInbox() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState({
-    bookingStatus: "",
-    stage: "",
-    needsHuman: "",
+    bookingStatus: "all",
+    stage: "all",
+    needsHuman: "all",
     phone: "",
     bookingId: "",
     dateFrom: "",
@@ -100,9 +100,9 @@ export default function BookingsInbox() {
     queryKey: ["/api/admin/bookings/inbox", filters],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filters.bookingStatus) params.set("bookingStatus", filters.bookingStatus);
-      if (filters.stage) params.set("stage", filters.stage);
-      if (filters.needsHuman) params.set("needsHuman", filters.needsHuman);
+      if (filters.bookingStatus && filters.bookingStatus !== "all") params.set("bookingStatus", filters.bookingStatus);
+      if (filters.stage && filters.stage !== "all") params.set("stage", filters.stage);
+      if (filters.needsHuman && filters.needsHuman !== "all") params.set("needsHuman", filters.needsHuman);
       if (filters.phone) params.set("phone", filters.phone);
       if (filters.bookingId) params.set("bookingId", filters.bookingId);
       if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
@@ -201,9 +201,9 @@ export default function BookingsInbox() {
 
   const clearFilters = () => {
     setFilters({
-      bookingStatus: "",
-      stage: "",
-      needsHuman: "",
+      bookingStatus: "all",
+      stage: "all",
+      needsHuman: "all",
       phone: "",
       bookingId: "",
       dateFrom: "",
@@ -213,7 +213,7 @@ export default function BookingsInbox() {
     });
   };
 
-  const hasActiveFilters = filters.bookingStatus || filters.stage || filters.needsHuman || filters.phone || filters.bookingId || filters.dateFrom || filters.dateTo;
+  const hasActiveFilters = (filters.bookingStatus && filters.bookingStatus !== "all") || (filters.stage && filters.stage !== "all") || (filters.needsHuman && filters.needsHuman !== "all") || filters.phone || filters.bookingId || filters.dateFrom || filters.dateTo;
 
   const rows = inboxData?.rows || [];
   const totalCount = inboxData?.totalCount || 0;
@@ -258,7 +258,7 @@ export default function BookingsInbox() {
                       <SelectValue placeholder="Booking Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Statuses</SelectItem>
+                      <SelectItem value="all">All Statuses</SelectItem>
                       {ALL_BOOKING_STATUSES.map((status) => (
                         <SelectItem key={status} value={status}>
                           {BOOKING_STATUS_META[status].label}
@@ -273,7 +273,7 @@ export default function BookingsInbox() {
                       <SelectValue placeholder="Stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Stages</SelectItem>
+                      <SelectItem value="all">All Stages</SelectItem>
                       <SelectItem value="selecting_service">Selecting Service</SelectItem>
                       <SelectItem value="confirming_address">Confirming Address</SelectItem>
                       <SelectItem value="choosing_slot">Choosing Slot</SelectItem>
@@ -291,7 +291,7 @@ export default function BookingsInbox() {
                       <SelectValue placeholder="Needs Human" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All</SelectItem>
+                      <SelectItem value="all">All</SelectItem>
                       <SelectItem value="true">Needs Human</SelectItem>
                       <SelectItem value="false">AI Handled</SelectItem>
                     </SelectContent>
