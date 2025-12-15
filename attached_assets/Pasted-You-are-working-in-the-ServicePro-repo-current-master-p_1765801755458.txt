@@ -1,0 +1,80 @@
+You are working in the ServicePro repo (current master plan ~v4.4.3). Implement a customer-facing Portal entry point + operator Portal settings WITHOUT touching Twilio, voice, SMS sending, or telephony routes. This is a UI + routing + settings feature only. Keep it tenant-safe (no cross-tenant data leakage). Do not override existing onboarding/wizard flows; only add new routes/components and link them in existing UI.
+
+GOALS
+1) Add a customer-facing route: /portal (tenant-branded customer portal)
+2) Add operator/admin routes:
+   - /admin/portal-settings  (configure portal behavior)
+3) Add entry points in UI:
+   - Rewards/Loyalty page: "Open Customer Portal" + "Copy Portal Link"
+   - Main nav (operator side): "Customer Portal" + "Portal Settings"
+4) Portal Settings must be per-tenant, stored in tenant DB (NOT global), and must not default to Clean Machine data for other tenants.
+5) Install prompt rules are CUSTOMER-facing behavior but configured by operator. Do NOT prompt the operator to install; only customers viewing /portal should see install prompt.
+6) Add an optional "Quiet Hours" + "Digest Mode" section to Portal Settings, but do not implement push notifications unless an existing push system already exists. If push exists, wire the settings to it; if not, store the settings and show “Not yet enabled” badge.
+
+IMPLEMENTATION DETAILS
+
+A) Data model (tenant-scoped)
+- Create a new table (Drizzle) in tenant schema: portal_settings
+  Columns:
+   - id (pk, default 1 or serial)
+   - tenant_id (if your tenant DB already implies tenant, omit; otherwise include)
+   - landing_path (text, default '/portal' or '/portal/rewards')
+   - show_rewards (bool default true)
+   - show_booking (bool default true)
+   - show_services (bool default true)
+   - show_contact (bool default true)
+   - install_prompt_mode (enum/text: 'never'|'after_2_visits'|'after_booking'|'after_30_seconds', default 'after_2_visits')
+   - install_prompt_cooldown_days (int default 30)
+   - quiet_hours_enabled (bool default false)
+   - quiet_hours_start (text 'HH:MM', default '21:00')
+   - quiet_hours_end (text 'HH:MM', default '07:00')
+   - digest_enabled (bool default false)
+   - digest_frequency (text 'hourly'|'daily', default 'daily')
+   - updated_at, created_at
+
+- Add a small service: server/services/portalSettingsService.ts
+  - getPortalSettings(tenantDb): returns existing row or inserts defaults (idempotent)
+  - updatePortalSettings(tenantDb, patch): updates row
+
+B) Backend routes
+- Public route: GET /api/public/portal/settings
+  - Uses tenant resolution the same way your other public routes do (subdomain/header/tenant token). 
+  - Returns ONLY the current tenant’s portal_settings + tenant branding needed for portal display (name, logo, colors).
+- Admin route: GET/PUT /api/admin/portal/settings
+  - Auth required + tenant-scoped.
+  - GET returns settings; PUT patches settings.
+
+C) Frontend
+- Create customer portal page component(s):
+  - client/src/pages/Portal.tsx (route /portal)
+  - Simple v2 UI: hero header with tenant branding, tabs/tiles for Rewards / Book / Services / Contact based on settings.
+  - Include “Install App” CTA behavior ONLY if install_prompt_mode != 'never' and meets rule (track visits in localStorage by tenantId).
+  - IMPORTANT: The portal is customer-facing; do not show operator admin components here.
+
+- Create operator settings page:
+  - client/src/pages/admin/PortalSettings.tsx (route /admin/portal-settings)
+  - Clean form with toggles + select dropdowns.
+  - Save button calls PUT /api/admin/portal/settings.
+  - Display a “Portal Link” box with copy button (uses current tenant base url + '/portal').
+
+D) UI entry points
+- Rewards page:
+  - Add two buttons: “Open Customer Portal” (opens /portal in new tab) and “Copy Portal Link”.
+  - Do NOT break existing rewards logic.
+- Main nav/sidebar:
+  - Add “Customer Portal” (opens /portal) and “Portal Settings” (/admin/portal-settings).
+  - Only show Portal Settings to operator/admin roles (mirror your existing patterns).
+
+E) Safety
+- Do not touch SMS/voice routes.
+- Do not use global/root tenant data for non-root tenants.
+- Add minimal tests if you already have a test framework: ensure /api/admin/portal/settings returns defaults and PUT persists.
+
+DELIVERABLES
+- List files changed/added
+- Exact routes added
+- Quick manual test steps:
+  1) open /admin/portal-settings, toggle show_rewards off, save
+  2) open /portal and verify Rewards tile hidden
+  3) verify copy portal link works
+Stop after summarizing.
