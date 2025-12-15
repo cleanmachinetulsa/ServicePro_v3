@@ -112,6 +112,7 @@ const SystemBillingAdmin = lazy(() => import("./pages/SystemBillingAdmin"));
 const SystemUsageAdmin = lazy(() => import("./pages/SystemUsageAdmin"));
 const AdminSystemUsagePage = lazy(() => import("./pages/admin/AdminSystemUsagePage"));
 const TenantDebugPage = lazy(() => import("./pages/admin/TenantDebugPage"));
+const PwaNotificationsPage = lazy(() => import("./pages/admin/PwaNotificationsPage"));
 const AdminBillingOverview = lazy(() => import("./pages/AdminBillingOverview"));
 const HomepageEditor = lazy(() => import("./pages/HomepageEditor"));
 const ThemeGallery = lazy(() => import("./pages/ThemeGallery"));
@@ -554,6 +555,12 @@ function Router() {
       <Route path="/admin/customer-suggestions">
         <AuthGuard>
           <LazyDashboard><AdminCustomerSuggestions /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      {/* PWA Notification Settings V2 */}
+      <Route path="/admin/pwa-notifications">
+        <AuthGuard>
+          <LazyDashboard><PwaNotificationsPage /></LazyDashboard>
         </AuthGuard>
       </Route>
       {/* Phase 5.2: Industry Pack Editor + Clone-a-Tenant Factory */}
