@@ -325,6 +325,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               body: escalationMsg,
             });
             console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=no_booking_found`);
+            console.log(`[BOOKING_CREATE_FAILED] correlationId=${correlationId} reason=confirm_no_booking_found`);
           }
         } catch (escErr) {
           console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
@@ -626,7 +627,11 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             // P0-HOTFIX: Send honest message - never claim "all set" when booking failed
             deterministicReply = `I'm still finalizing this on my end—someone will confirm shortly. We have your info for ${slotSelection.chosenSlotLabel}.`;
           } else {
+            // ==================== GUARDRAIL: Email ONLY after booking + calendar success ====================
             // Step 3: Only if eventId exists, mark booking complete and record upsells
+            // PROOF LOG: [GCAL_INSERT_SUCCESS] eventId=...
+            console.log(`[GCAL_INSERT_SUCCESS] correlationId=${correlationId} eventId=${bookingEventId}`);
+            
             await updateSmsBookingState(tenantDb, conversation.id, {
               stage: 'booked',
             });
@@ -660,11 +665,13 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                 needsConfirmation,
               });
               recordPersisted = true;
-              console.log(`[BOOKING RECORD] persisted=true eventId=${bookingEventId} daysUntil=${daysUntil} confirmRequired=${needsConfirmation}`);
+              // PROOF LOG: [BOOKING_CREATE_SUCCESS] bookingId=... (using eventId as booking identifier)
+              console.log(`[BOOKING_CREATE_SUCCESS] correlationId=${correlationId} bookingId=${bookingEventId} persisted=true daysUntil=${daysUntil} confirmRequired=${needsConfirmation}`);
             } catch (recordErr) {
               console.error('[BOOKING RECORD] persisted=false error:', recordErr);
               // Still allow booking to proceed, record persistence is non-critical
               recordPersisted = false;
+              console.log(`[BOOKING_CREATE_SUCCESS] correlationId=${correlationId} bookingId=${bookingEventId} persisted=false (non-critical, booking still valid)`);
             }
             
             // Step 5: Prepare confirmation SMS and check if customer has email for optional email confirmation
@@ -676,24 +683,28 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               deterministicReply = `You're all set! ${smsBookingState.service} on ${slotSelection.chosenSlotLabel} at ${smsBookingState.address}. Reply CHANGE to reschedule.`;
             }
             
+            // ==================== GUARDRAIL: Email collection ONLY AFTER both booking + calendar succeed ====================
             // Add email confirmation prompt if no email on record
+            // This block is ONLY reached if: (1) bookingSuccess=true AND (2) bookingEventId is not empty
             if (!hasCustomerEmail) {
               const emailPrompt = truncateSmsResponse(`\nWant an email confirmation too? Reply with your email, or reply SKIP.`);
               deterministicReply += ` ${emailPrompt}`;
-              // Mark email stage as asking
+              // Mark email stage as asking - PROOF LOG: [EMAIL_COLLECT_PROMPT_SENT]
               await updateSmsBookingState(tenantDb, conversation.id, { emailStage: 'asking' });
+              console.log(`[EMAIL_COLLECT_PROMPT_SENT] correlationId=${correlationId} phone=${From} eventId=${bookingEventId} hasEmail=false`);
             } else {
-              // Already have email - send email now
+              // Already have email - send email now (booking already succeeded)
               try {
                 const { sendBookingConfirmationEmail } = await import('../emailService');
                 const subject = `Booking Confirmation - ${smsBookingState.service || 'Auto Detail'}`;
                 const emailBody = `Hi! Your booking is confirmed:\n\nService: ${smsBookingState.service}\nTime: ${slotSelection.chosenSlotLabel}\nAddress: ${smsBookingState.address}\n\nThank you!`;
                 await sendBookingConfirmationEmail(conversation.email, subject, emailBody);
-                console.log(`[EMAIL] confirmation_sent=true email=${conversation.email} phone=${From}`);
+                console.log(`[EMAIL] confirmation_sent=true email=${conversation.email} phone=${From} eventId=${bookingEventId}`);
               } catch (emailErr) {
                 console.error(`[EMAIL] confirmation_failed:`, emailErr);
               }
             }
+            // ==================== END GUARDRAIL ====================
             
             // Step 6: Send owner notification (ONLY if eventId exists)
             try {
