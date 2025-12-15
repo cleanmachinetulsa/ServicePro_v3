@@ -257,22 +257,58 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     const confirmMatch = /^confirm\b/i.test(Body.trim());
     const rescheduleMatch = /^(reschedule|change)\b/i.test(Body.trim());
     
+    // P0-HOTFIX: Correlation ID for booking confirmation tracking
+    const correlationId = `${From}|${MessageSid}|conv${conversation.id}`;
+    
     if (confirmMatch) {
+      console.log(`[BOOKING_CONFIRM_RECEIVED] correlationId=${correlationId} body="${Body.trim()}"`);
+      
       const { findUpcomingUnconfirmedBooking, confirmBooking } = await import('../services/smsBookingRecordService');
       const upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
       
       if (upcomingBooking) {
-        await confirmBooking(tenantId, upcomingBooking.id);
-        const { formatInTimeZone } = await import('date-fns-tz');
-        const bookingDay = formatInTimeZone(new Date(upcomingBooking.startTime), 'America/Chicago', 'EEEE MMM d');
-        const bookingTime = formatInTimeZone(new Date(upcomingBooking.startTime), 'America/Chicago', 'h:mm a');
-        const confirmReply = truncateSmsResponse(`Confirmed! See you ${bookingDay} at ${bookingTime}. Reply CHANGE if you need to reschedule.`);
-        await addMessage(tenantDb, conversation.id, confirmReply, 'ai');
-        twimlResponse.message(confirmReply);
-        console.log(`[CONFIRM] phone=${From} eventId=${upcomingBooking.eventId} confirmedAt=${new Date().toISOString()}`);
-        res.type('text/xml').send(twimlResponse.toString());
-        return;
+        try {
+          await confirmBooking(tenantId, upcomingBooking.id);
+          const { formatInTimeZone } = await import('date-fns-tz');
+          const bookingDay = formatInTimeZone(new Date(upcomingBooking.startTime), 'America/Chicago', 'EEEE MMM d');
+          const bookingTime = formatInTimeZone(new Date(upcomingBooking.startTime), 'America/Chicago', 'h:mm a');
+          const confirmReply = truncateSmsResponse(`Confirmed! See you ${bookingDay} at ${bookingTime}. Reply CHANGE if you need to reschedule.`);
+          await addMessage(tenantDb, conversation.id, confirmReply, 'ai');
+          twimlResponse.message(confirmReply);
+          console.log(`[BOOKING_CONFIRM_SUCCESS] correlationId=${correlationId} bookingId=${upcomingBooking.id} calendarEventId=${upcomingBooking.eventId}`);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        } catch (confirmErr: any) {
+          console.error(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=${confirmErr?.message} stack=${confirmErr?.stack}`);
+          
+          // P0-HOTFIX: Escalate to owner on confirm failure
+          try {
+            const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+            if (ownerPhone) {
+              const twilioClient = (await import('twilio')).default(
+                process.env.TWILIO_ACCOUNT_SID,
+                process.env.TWILIO_AUTH_TOKEN
+              );
+              const escalationMsg = `🚨 CONFIRM FAILED:\nCustomer: ${From}\nBooking ID: ${upcomingBooking.id}\nEventId: ${upcomingBooking.eventId}\nError: ${confirmErr?.message || 'Unknown'}`;
+              await twilioClient.messages.create({
+                to: ownerPhone,
+                from: To,
+                body: escalationMsg,
+              });
+              console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=confirm_failed`);
+            }
+          } catch (escErr) {
+            console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
+          }
+          
+          const errorReply = truncateSmsResponse("I'm having trouble confirming right now—someone will follow up shortly to confirm your appointment.");
+          await addMessage(tenantDb, conversation.id, errorReply, 'ai');
+          twimlResponse.message(errorReply);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
       } else {
+        console.log(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=no_upcoming_booking_found`);
         const noBookingReply = truncateSmsResponse("I couldn't find an upcoming booking that needs confirmation. Would you like to schedule a new appointment?");
         await addMessage(tenantDb, conversation.id, noBookingReply, 'ai');
         twimlResponse.message(noBookingReply);
@@ -476,6 +512,16 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           }
         }
         
+        // P0-HOTFIX: State snapshot logging before booking attempt (detect service=unset issues)
+        console.log(`[BOOKING_CREATE_START] correlationId=${correlationId} state_snapshot=${JSON.stringify({
+          service: smsBookingState.service || 'UNSET',
+          address: smsBookingState.address ? 'SET' : 'UNSET',
+          chosenSlot: slotSelection.chosenSlotLabel,
+          chosenSlotIso: slotSelection.chosenSlotIso,
+          stage: smsBookingState.stage,
+          vehicle: smsBookingState.vehicle || 'none',
+        })}`);
+        
         try {
           // Step 1: Attempt calendar booking
           const bookingReq = {
@@ -516,8 +562,40 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           
           // Step 2: Check eventId exists before proceeding
           if (!bookingSuccess || !bookingEventId) {
-            console.log(`[BOOKING RESULT] success=false reason=missing_eventid eventId=null`);
-            deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
+            console.log(`[BOOKING RESULT] success=false reason=missing_eventid eventId=null error="${bookingError || 'unknown'}"`);
+            
+            // P0-HOTFIX: MANDATORY OWNER ESCALATION ON BOOKING FAILURE
+            try {
+              const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+              if (ownerPhone) {
+                const twilioClient = (await import('twilio')).default(
+                  process.env.TWILIO_ACCOUNT_SID,
+                  process.env.TWILIO_AUTH_TOKEN
+                );
+                const escalationMsg = `🚨 BOOKING FAILED - NEEDS HUMAN:\nCustomer: ${From}\nService: ${smsBookingState.service || 'Unknown'}\nTime: ${slotSelection.chosenSlotLabel}\nAddress: ${smsBookingState.address || 'Not provided'}\nError: ${bookingError || 'Calendar insert failed'}`;
+                await twilioClient.messages.create({
+                  to: ownerPhone,
+                  from: To,
+                  body: escalationMsg,
+                });
+                console.log(`[ESCALATION_SENT] phone=${From} reason=booking_failed owner=${ownerPhone.slice(-4).padStart(10, '*')}`);
+              } else {
+                console.error(`[ESCALATION_FAILED] reason=no_owner_phone_configured phone=${From}`);
+              }
+            } catch (escalationErr) {
+              console.error(`[ESCALATION_FAILED] phone=${From} error:`, escalationErr);
+            }
+            
+            // Mark conversation as needing human follow-up
+            try {
+              await tenantDb.update(conversations).set({ needsHumanAttention: true }).where(eq(conversations.id, conversation.id));
+              console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true`);
+            } catch (handoffErr) {
+              console.error(`[BOOKING HANDOFF] failed to set needsHumanAttention:`, handoffErr);
+            }
+            
+            // P0-HOTFIX: Send honest message - never claim "all set" when booking failed
+            deterministicReply = `I'm still finalizing this on my end—someone will confirm shortly. We have your info for ${slotSelection.chosenSlotLabel}.`;
           } else {
             // Step 3: Only if eventId exists, mark booking complete and record upsells
             await updateSmsBookingState(tenantDb, conversation.id, {
@@ -626,10 +704,42 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             // Final result log
             console.log(`[BOOKING RESULT] success=true eventId=${bookingEventId} persisted=${recordPersisted} notifiedOwner=${ownerNotified} confirmRequired=${needsConfirmation}`);
           }
-        } catch (bookingErr) {
+        } catch (bookingErr: any) {
           console.error('[BOOKING ERROR] exception:', bookingErr);
-          console.log(`[BOOKING RESULT] success=false reason=exception eventId=null`);
-          deterministicReply = `I couldn't lock in that time automatically. Want me to try the next available slot?`;
+          console.log(`[BOOKING RESULT] success=false reason=exception eventId=null error="${bookingErr?.message || 'unknown'}"`);
+          
+          // P0-HOTFIX: MANDATORY OWNER ESCALATION ON BOOKING EXCEPTION
+          try {
+            const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+            if (ownerPhone) {
+              const twilioClient = (await import('twilio')).default(
+                process.env.TWILIO_ACCOUNT_SID,
+                process.env.TWILIO_AUTH_TOKEN
+              );
+              const escalationMsg = `🚨 BOOKING EXCEPTION - NEEDS HUMAN:\nCustomer: ${From}\nService: ${smsBookingState.service || 'Unknown'}\nTime: ${slotSelection.chosenSlotLabel}\nAddress: ${smsBookingState.address || 'Not provided'}\nError: ${bookingErr?.message || 'Unknown exception'}`;
+              await twilioClient.messages.create({
+                to: ownerPhone,
+                from: To,
+                body: escalationMsg,
+              });
+              console.log(`[ESCALATION_SENT] phone=${From} reason=booking_exception owner=${ownerPhone.slice(-4).padStart(10, '*')}`);
+            } else {
+              console.error(`[ESCALATION_FAILED] reason=no_owner_phone_configured phone=${From}`);
+            }
+          } catch (escalationErr) {
+            console.error(`[ESCALATION_FAILED] phone=${From} error:`, escalationErr);
+          }
+          
+          // Mark conversation as needing human follow-up
+          try {
+            await tenantDb.update(conversations).set({ needsHumanAttention: true }).where(eq(conversations.id, conversation.id));
+            console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true`);
+          } catch (handoffErr) {
+            console.error(`[BOOKING HANDOFF] failed to set needsHumanAttention:`, handoffErr);
+          }
+          
+          // P0-HOTFIX: Send honest message - never claim "all set" when booking failed
+          deterministicReply = `I'm still finalizing this on my end—someone will confirm shortly. We have your info for ${slotSelection.chosenSlotLabel}.`;
         }
         
         // Final: Truncate and send customer reply
