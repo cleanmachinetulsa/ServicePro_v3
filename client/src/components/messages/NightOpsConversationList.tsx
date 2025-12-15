@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { 
   Search, 
   MessageCircle, 
@@ -70,6 +72,8 @@ interface NightOpsConversationListProps {
   filter: string;
   onFilterChange: (filter: string) => void;
   phoneLines?: PhoneLine[];
+  includeWebchatInAll?: boolean;
+  onIncludeWebchatToggle?: (value: boolean) => void;
 }
 
 export function NightOpsConversationList({
@@ -81,7 +85,9 @@ export function NightOpsConversationList({
   onSearchChange,
   filter,
   onFilterChange,
-  phoneLines = []
+  phoneLines = [],
+  includeWebchatInAll = false,
+  onIncludeWebchatToggle
 }: NightOpsConversationListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -197,24 +203,38 @@ export function NightOpsConversationList({
           </div>
         </div>
 
-        <div className="px-3 py-2 flex gap-1 overflow-x-auto border-b border-slate-700/40 scrollbar-hide">
-          {filterOptions.map((f) => (
-            <Button
-              key={f.value}
-              size="sm"
-              variant="ghost"
-              onClick={() => onFilterChange(f.value)}
-              className={cn(
-                "text-xs h-7 px-2.5 rounded-full transition-all whitespace-nowrap",
-                filter === f.value
-                  ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-              )}
-              data-testid={`filter-${f.value}`}
-            >
-              {f.label}
-            </Button>
-          ))}
+        <div className="px-3 py-2 flex gap-1 items-center overflow-x-auto border-b border-slate-700/40 scrollbar-hide">
+          <div className="flex gap-1 overflow-x-auto flex-1 scrollbar-hide">
+            {filterOptions.map((f) => (
+              <Button
+                key={f.value}
+                size="sm"
+                variant="ghost"
+                onClick={() => onFilterChange(f.value)}
+                className={cn(
+                  "text-xs h-7 px-2.5 rounded-full transition-all whitespace-nowrap",
+                  filter === f.value
+                    ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                )}
+                data-testid={`filter-${f.value}`}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+          {filter === 'all' && (
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-700/40 ml-auto whitespace-nowrap">
+              <Label htmlFor="include-webchat" className="text-xs text-slate-400 cursor-pointer">Include Web</Label>
+              <Switch 
+                id="include-webchat"
+                checked={includeWebchatInAll}
+                onCheckedChange={onIncludeWebchatToggle}
+                className="h-5 w-9"
+                data-testid="toggle-include-webchat"
+              />
+            </div>
+          )}
         </div>
 
         <div 
