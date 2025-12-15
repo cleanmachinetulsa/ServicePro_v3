@@ -63,6 +63,7 @@ import usageMeteringRouter from "./routes/usageMeteringRoutes";
 import parserRoutes from "./routes/parserRoutes";
 import billingHealthRouter from "./routes/billingHealthRoutes";
 import supportIssuesRouter from "./routes.supportIssues";
+import portalAdminRouter from "./routes.portalAdmin";
 import { registerSmsSanityRoutes } from "./routes/debugSmsSanity";
 import { registerSmsAnalyticsRoutes } from "./routes.smsAnalytics";
 import path from "path";
@@ -387,6 +388,8 @@ app.use('/api/public', publicPricingRouter);
 app.use('/api/admin', publicSiteAdminRouter);
 // Register public site theme routes (SP-24 - Themes + Template Library)
 app.use('/api/admin', publicSiteThemeRouter);
+// Register Portal PWA v2 admin routes
+app.use('/api/admin/portal', portalAdminRouter);
 // Register billing routes (Phase 7C - Stripe Billing & Subscriptions, requires tenant auth)
 app.use(billingRouter);
 app.use(billingHealthRouter);
