@@ -13,7 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Search, Phone, AlertTriangle, CheckCircle, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw, MessageSquare, Calendar, User, Plus, CalendarDays, X } from "lucide-react";
+import { Search, Phone, AlertTriangle, CheckCircle, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw, MessageSquare, Calendar, User, Plus, CalendarDays, X, Flame } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BOOKING_STATUS_META, ALL_BOOKING_STATUSES, deriveBookingStatus, type BookingStatus } from "@shared/bookingStatus";
 
 interface BookingInboxRow {
@@ -223,6 +224,11 @@ export default function BookingsInbox() {
   const selectedBookingStatus = selectedRow ? deriveBookingStatus(selectedRow) : null;
   const showCreateBookingButton = selectedBookingStatus && selectedBookingStatus !== "CONFIRMED";
 
+  const escalationFailedCount = rows.filter(r => {
+    const reason = r.needsHumanReason?.toLowerCase() || "";
+    return reason.includes("escalation sms failed");
+  }).length;
+
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-background p-4 sm:p-6">
@@ -237,6 +243,16 @@ export default function BookingsInbox() {
               Refresh
             </Button>
           </div>
+
+          {escalationFailedCount > 0 && (
+            <Alert variant="destructive" data-testid="alert-escalation-failed">
+              <Flame className="h-4 w-4" />
+              <AlertTitle>Escalation Failed</AlertTitle>
+              <AlertDescription>
+                {escalationFailedCount} conversation{escalationFailedCount > 1 ? "s" : ""} failed to notify the business owner. These customers may be waiting for help.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <Card>
             <CardHeader className="pb-3">
