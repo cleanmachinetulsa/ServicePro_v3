@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Phone, AlertTriangle, CheckCircle, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw, MessageSquare, Calendar, User } from "lucide-react";
+import { Search, Phone, AlertTriangle, CheckCircle, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw, MessageSquare, Calendar, User, Plus } from "lucide-react";
 
 interface BookingInboxRow {
   conversationId: number;
@@ -114,6 +115,21 @@ export default function BookingsInbox() {
     } catch (error) {
       toast({ title: "Failed to copy debug bundle", variant: "destructive" });
     }
+  };
+
+  const getManualBookingUrl = () => {
+    if (!conversationDetail) return "/schedule";
+    
+    const params = new URLSearchParams();
+    const customerName = conversationDetail.conversation?.customerName;
+    const customerPhone = conversationDetail.conversation?.customerPhone;
+    const service = conversationDetail.smsBookingState?.service;
+    
+    if (customerName) params.set("name", customerName);
+    if (customerPhone) params.set("phone", customerPhone);
+    if (service) params.set("service", service);
+    
+    return `/schedule?${params.toString()}`;
   };
 
   const formatTime = (iso: string | null) => {
@@ -336,7 +352,13 @@ export default function BookingsInbox() {
             </div>
           ) : conversationDetail ? (
             <div className="space-y-6 mt-6">
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <Link href={getManualBookingUrl()}>
+                  <Button variant="default" size="sm" data-testid="button-create-booking-manually">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Booking Manually
+                  </Button>
+                </Link>
                 <Button variant="outline" size="sm" onClick={handleCopyDebugBundle} data-testid="button-copy-debug">
                   <Copy className="h-4 w-4 mr-2" />
                   Copy Debug Bundle
