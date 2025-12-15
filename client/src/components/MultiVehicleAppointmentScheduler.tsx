@@ -101,6 +101,8 @@ interface AppointmentDetails {
   notes: string;
   time: string;
   formattedTime: string;
+  appointmentId?: number;
+  calendarEventId?: string;
 }
 
 interface MultiVehicleAppointmentSchedulerProps {
@@ -112,6 +114,10 @@ interface MultiVehicleAppointmentSchedulerProps {
   initialRewardId?: number;
   initialRewardName?: string;
   initialRewardPoints?: number;
+  // Bookings Inbox manual booking flow
+  initialAddress?: string;
+  initialVehicle?: string;
+  initialDatetime?: string;
   onClose?: () => void;
   onSuccess?: (appointment: AppointmentDetails) => void;
 }
@@ -126,9 +132,12 @@ export default function MultiVehicleAppointmentScheduler({
   initialRewardId,
   initialRewardName,
   initialRewardPoints,
+  initialAddress,
+  initialVehicle,
+  initialDatetime,
 }: MultiVehicleAppointmentSchedulerProps = {}) {
   const [step, setStep] = useState<"address" | "mapConfirmation" | "accessVerification" | "service" | "addons" | "vehicle" | "date" | "time" | "details">("address");
-  const [customerAddress, setCustomerAddress] = useState<string>("");
+  const [customerAddress, setCustomerAddress] = useState<string>(initialAddress || "");
   const [isExtendedAreaRequest, setIsExtendedAreaRequest] = useState<boolean>(false);
   const [addressLatitude, setAddressLatitude] = useState<number | undefined>();
   const [addressLongitude, setAddressLongitude] = useState<number | undefined>();
@@ -291,6 +300,61 @@ export default function MultiVehicleAppointmentScheduler({
     }
   }, [initialService, services, initialName, initialPhone]);
 
+  // Pre-fill vehicle info from URL parameter (e.g., "2020 Honda Accord Black")
+  useEffect(() => {
+    if (initialVehicle && initialVehicle.trim()) {
+      // Parse vehicle string - expects format like "2020 Honda Accord Black" or "Honda Accord"
+      const parts = initialVehicle.trim().split(/\s+/);
+      let year = "";
+      let make = "";
+      let model = "";
+      let color = "";
+      
+      // Check if first part is a year (4 digits starting with 19 or 20)
+      if (parts.length > 0 && /^(19|20)\d{2}$/.test(parts[0])) {
+        year = parts[0];
+        parts.shift();
+      }
+      
+      // Check if last part is a color (common colors)
+      const commonColors = ['black', 'white', 'silver', 'gray', 'grey', 'red', 'blue', 'green', 'brown', 'gold', 'beige', 'tan', 'orange', 'yellow', 'purple', 'maroon'];
+      if (parts.length > 0 && commonColors.includes(parts[parts.length - 1].toLowerCase())) {
+        color = parts.pop() || "";
+      }
+      
+      // Remaining: first is make, rest is model
+      if (parts.length > 0) {
+        make = parts[0];
+        model = parts.slice(1).join(' ');
+      }
+      
+      setVehicles([{
+        make,
+        model,
+        year,
+        color,
+        conditions: []
+      }]);
+    }
+  }, [initialVehicle]);
+
+  // Pre-fill date/time from URL parameter (expects ISO format)
+  useEffect(() => {
+    if (initialDatetime && initialDatetime.trim()) {
+      try {
+        // Try parsing as ISO date string
+        const parsedDate = parseISO(initialDatetime);
+        if (!isNaN(parsedDate.getTime())) {
+          setSelectedDate(parsedDate);
+          // Format time as HH:mm for the time picker
+          const timeStr = format(parsedDate, 'HH:mm');
+          setSelectedTime(initialDatetime); // Keep ISO for slot matching
+        }
+      } catch (e) {
+        console.warn('Could not parse initialDatetime:', initialDatetime);
+      }
+    }
+  }, [initialDatetime]);
 
   // Fetch and prepare add-on services when a main service is selected
   const fetchAddOnServices = async (serviceName: string) => {
@@ -1038,8 +1102,15 @@ export default function MultiVehicleAppointmentScheduler({
           description: "Your appointment has been scheduled!",
         });
 
-        // Format the time for display
-        const formattedTime = format(parseISO(selectedTime), "EEEE, MMMM d, yyyy 'at' h:mm a");
+        // Format the time for display (defensive guard for parseISO)
+        let formattedTime = selectedTime;
+        try {
+          if (selectedTime) {
+            formattedTime = format(parseISO(selectedTime), "EEEE, MMMM d, yyyy 'at' h:mm a");
+          }
+        } catch (error) {
+          console.error("Error formatting time:", error);
+        }
 
         onSuccess?.({
           name,
@@ -1052,6 +1123,8 @@ export default function MultiVehicleAppointmentScheduler({
           notes,
           time: selectedTime,
           formattedTime,
+          appointmentId: data.appointmentId,
+          calendarEventId: data.eventLink,
         });
       } else {
         throw new Error(data.message || "Failed to book appointment");
@@ -1324,6 +1397,7 @@ export default function MultiVehicleAppointmentScheduler({
             <ServiceAreaCheck
               onNext={handleAddressNext}
               onBack={onClose || (() => {})}
+              initialAddress={initialAddress}
             />
           </motion.div>
         )}

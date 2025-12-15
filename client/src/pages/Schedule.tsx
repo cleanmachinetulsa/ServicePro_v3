@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from "framer-motion";
 import MultiVehicleAppointmentScheduler from "@/components/MultiVehicleAppointmentScheduler";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { Gift, Sparkles } from "lucide-react";
 import { Seo } from '@/components/Seo';
+import { apiRequest } from "@/lib/queryClient";
 
 /**
  * Loyalty Redemption Journey v2
@@ -24,6 +25,11 @@ export default function SchedulePage() {
     rewardId?: number;
     rewardName?: string;
     rewardPoints?: number;
+    // Bookings Inbox manual booking flow
+    conversationId?: number;
+    address?: string;
+    vehicle?: string;
+    datetime?: string;
   }>({});
 
   useEffect(() => {
@@ -38,8 +44,14 @@ export default function SchedulePage() {
     const rewardId = params.get('rewardId');
     const rewardName = params.get('rewardName');
     const rewardPoints = params.get('rewardPoints');
+    
+    // Bookings Inbox manual booking flow
+    const conversationId = params.get('conversationId');
+    const address = params.get('address');
+    const vehicle = params.get('vehicle');
+    const datetime = params.get('datetime');
 
-    if (name || phone || service || referralCode || rewardId) {
+    if (name || phone || service || referralCode || rewardId || conversationId) {
       setPrefilledData({
         name: name || undefined,
         phone: phone || undefined,
@@ -48,19 +60,47 @@ export default function SchedulePage() {
         rewardId: rewardId ? Number(rewardId) : undefined,
         rewardName: rewardName || undefined,
         rewardPoints: rewardPoints ? Number(rewardPoints) : undefined,
+        conversationId: conversationId ? Number(conversationId) : undefined,
+        address: address || undefined,
+        vehicle: vehicle || undefined,
+        datetime: datetime || undefined,
       });
     }
   }, []);
 
-  const handleAppointmentSuccess = (appointmentDetails: any) => {
-    toast({
-      title: "Appointment Scheduled",
-      description: `Your ${appointmentDetails.service} appointment has been confirmed for ${appointmentDetails.formattedTime}.`,
-    });
+  const handleAppointmentSuccess = async (appointmentDetails: any) => {
+    // If this booking came from the Bookings Inbox, link it to the conversation
+    if (prefilledData.conversationId && appointmentDetails.appointmentId) {
+      try {
+        await apiRequest("POST", `/api/admin/bookings/inbox/${prefilledData.conversationId}/link-booking`, {
+          bookingId: appointmentDetails.appointmentId,
+          calendarEventId: appointmentDetails.calendarEventId || null,
+        });
+        toast({
+          title: "Booking created and linked to conversation.",
+          description: `Your ${appointmentDetails.service} appointment has been confirmed for ${appointmentDetails.formattedTime}.`,
+        });
+      } catch (error) {
+        console.error("Failed to link booking to conversation:", error);
+        toast({
+          title: "Appointment Scheduled",
+          description: `Your ${appointmentDetails.service} appointment has been confirmed for ${appointmentDetails.formattedTime}. Note: Failed to link to conversation.`,
+        });
+      }
+    } else {
+      toast({
+        title: "Appointment Scheduled",
+        description: `Your ${appointmentDetails.service} appointment has been confirmed for ${appointmentDetails.formattedTime}.`,
+      });
+    }
 
-    // Redirect to success page or home
+    // Redirect to bookings inbox if we came from there, otherwise home
     setTimeout(() => {
-      setLocation("/");
+      if (prefilledData.conversationId) {
+        setLocation("/admin/bookings-inbox");
+      } else {
+        setLocation("/");
+      }
     }, 3000);
   };
 
@@ -159,6 +199,9 @@ export default function SchedulePage() {
                 initialRewardId={prefilledData.rewardId}
                 initialRewardName={prefilledData.rewardName}
                 initialRewardPoints={prefilledData.rewardPoints}
+                initialAddress={prefilledData.address}
+                initialVehicle={prefilledData.vehicle}
+                initialDatetime={prefilledData.datetime}
                 onClose={() => setLocation("/")}
                 onSuccess={handleAppointmentSuccess}
               />
