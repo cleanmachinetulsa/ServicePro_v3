@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Search, Phone, AlertTriangle, CheckCircle, Clock, Copy, ChevronLeft, ChevronRight, RefreshCw, MessageSquare, Calendar, User, Plus, CalendarDays, X } from "lucide-react";
+import { BOOKING_STATUS_META, ALL_BOOKING_STATUSES, deriveBookingStatus, type BookingStatus } from "@shared/bookingStatus";
 
 interface BookingInboxRow {
   conversationId: number;
@@ -76,29 +77,6 @@ const STAGE_COLORS: Record<string, string> = {
   completed: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
 };
 
-const BOOKING_STATUS_LABELS: Record<string, string> = {
-  CONFIRMED: "Confirmed",
-  PENDING: "Pending",
-  AWAITING_CONFIRM: "Awaiting Confirm",
-  NEEDS_HUMAN: "Needs Human",
-  ABANDONED: "Abandoned",
-};
-
-const BOOKING_STATUS_COLORS: Record<string, string> = {
-  CONFIRMED: "bg-green-500 text-white",
-  PENDING: "bg-yellow-500 text-white",
-  AWAITING_CONFIRM: "bg-amber-500 text-white",
-  NEEDS_HUMAN: "bg-red-500 text-white",
-  ABANDONED: "bg-gray-400 text-white",
-};
-
-function deriveBookingStatus(row: BookingInboxRow): string {
-  if (row.bookingId && row.calendarEventId) return "CONFIRMED";
-  if (row.needsHuman || row.lastErrorCode) return "NEEDS_HUMAN";
-  if (row.stage === "awaiting_confirm" || row.stage === "booked") return "AWAITING_CONFIRM";
-  if (row.status === "closed" && !row.bookingId) return "ABANDONED";
-  return "PENDING";
-}
 
 export default function BookingsInbox() {
   const { toast } = useToast();
@@ -280,11 +258,11 @@ export default function BookingsInbox() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">All Statuses</SelectItem>
-                      <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                      <SelectItem value="PENDING">Pending</SelectItem>
-                      <SelectItem value="AWAITING_CONFIRM">Awaiting Confirm</SelectItem>
-                      <SelectItem value="NEEDS_HUMAN">Needs Human</SelectItem>
-                      <SelectItem value="ABANDONED">Abandoned</SelectItem>
+                      {ALL_BOOKING_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {BOOKING_STATUS_META[status].label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -395,8 +373,8 @@ export default function BookingsInbox() {
                             data-testid={`row-conversation-${row.conversationId}`}
                           >
                             <td className="p-3">
-                              <Badge className={BOOKING_STATUS_COLORS[bookingStatus] || "bg-gray-100 text-gray-800"}>
-                                {BOOKING_STATUS_LABELS[bookingStatus] || bookingStatus}
+                              <Badge className={BOOKING_STATUS_META[bookingStatus].colorClass}>
+                                {BOOKING_STATUS_META[bookingStatus].label}
                               </Badge>
                             </td>
                             <td className="p-3">
