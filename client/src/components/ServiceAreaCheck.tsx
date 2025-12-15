@@ -19,10 +19,11 @@ import {
 interface ServiceAreaCheckProps {
   onNext: (address: string, isExtendedArea?: boolean, lat?: number, lng?: number) => void;
   onBack: () => void;
+  initialAddress?: string;
 }
 
-export default function ServiceAreaCheck({ onNext, onBack }: ServiceAreaCheckProps) {
-  const [address, setAddress] = useState<string>("");
+export default function ServiceAreaCheck({ onNext, onBack, initialAddress }: ServiceAreaCheckProps) {
+  const [address, setAddress] = useState<string>(initialAddress || "");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showOutOfAreaDialog, setShowOutOfAreaDialog] = useState<boolean>(false);
   const [formattedAddress, setFormattedAddress] = useState<string>("");

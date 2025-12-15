@@ -192,6 +192,8 @@ export default function BookingsInbox() {
     const service = conversationDetail.smsBookingState?.service;
     const address = conversationDetail.smsBookingState?.address || conversationDetail.customer?.address;
     const vehicle = conversationDetail.smsBookingState?.vehicle || conversationDetail.customer?.vehicleInfo;
+    // Prefer ISO datetime for accurate parsing; fallback to human-readable label
+    const chosenSlotIso = conversationDetail.smsBookingState?.chosenSlotIso;
     const chosenSlotLabel = conversationDetail.smsBookingState?.chosenSlotLabel;
     
     if (customerName) params.set("name", customerName);
@@ -199,7 +201,11 @@ export default function BookingsInbox() {
     if (service) params.set("service", service);
     if (address) params.set("address", address);
     if (vehicle) params.set("vehicle", vehicle);
-    if (chosenSlotLabel) params.set("datetime", chosenSlotLabel);
+    if (chosenSlotIso) {
+      params.set("datetime", chosenSlotIso);
+    } else if (chosenSlotLabel) {
+      params.set("datetime", chosenSlotLabel);
+    }
     params.set("conversationId", String(selectedConversationId));
     
     return `/schedule?${params.toString()}`;
