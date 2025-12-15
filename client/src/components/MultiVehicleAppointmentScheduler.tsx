@@ -346,9 +346,8 @@ export default function MultiVehicleAppointmentScheduler({
         const parsedDate = parseISO(initialDatetime);
         if (!isNaN(parsedDate.getTime())) {
           setSelectedDate(parsedDate);
-          // Format time as HH:mm for the time picker
-          const timeStr = format(parsedDate, 'HH:mm');
-          setSelectedTime(initialDatetime); // Keep ISO for slot matching
+          // selectedTime expects the full ISO string for slot matching and display formatting
+          setSelectedTime(initialDatetime);
         }
       } catch (e) {
         console.warn('Could not parse initialDatetime:', initialDatetime);
