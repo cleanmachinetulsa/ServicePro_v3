@@ -37,7 +37,9 @@ import {
   Clock,
   AlertCircle,
   PartyPopper,
-  Calendar
+  Calendar,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -296,6 +298,32 @@ const CustomerRewardsPortal = () => {
       />
       
       <div className="max-w-md mx-auto px-4 py-6 sm:py-10">
+        <div className="flex justify-end gap-2 mb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const portalUrl = `${window.location.origin}/portal/home`;
+              navigator.clipboard.writeText(portalUrl);
+              toast({ title: "Link copied!", description: "Customer portal link copied to clipboard." });
+            }}
+            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            data-testid="button-copy-portal-link"
+          >
+            <Copy className="w-4 h-4 mr-2" />
+            Copy Portal Link
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open('/portal/home', '_blank')}
+            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+            data-testid="button-open-portal"
+          >
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Open Portal
+          </Button>
+        </div>
         <AnimatePresence mode="wait">
           {!hasSearched ? (
             <motion.div

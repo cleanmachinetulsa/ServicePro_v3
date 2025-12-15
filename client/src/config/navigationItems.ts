@@ -46,6 +46,8 @@ import {
   FileArchive,
   LayoutGrid,
   Package,
+  Smartphone,
+  ExternalLink,
 } from 'lucide-react';
 import { LucideIcon } from 'lucide-react';
 
@@ -371,6 +373,21 @@ export const navigationItems: NavigationItem[] = [
     icon: Palette,
     path: '/admin/public-site-theme',
     complexity: 'advanced',
+  },
+  {
+    id: 'portal-settings',
+    label: 'Portal Settings',
+    icon: Smartphone,
+    path: '/admin/portal-settings',
+    complexity: 'advanced',
+  },
+  {
+    id: 'customer-portal',
+    label: 'Open Customer Portal',
+    icon: ExternalLink,
+    path: '/portal/home',
+    complexity: 'simple',
+    simpleDefault: true,
   },
   {
     id: 'gallery-management',

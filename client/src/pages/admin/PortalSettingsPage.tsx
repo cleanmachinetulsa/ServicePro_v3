@@ -15,7 +15,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { 
   Smartphone, Settings, Calendar, MessageSquare, Trophy, User, Home, 
   Palette, Bell, Plus, Pencil, Trash2, Loader2, ArrowUpDown, Save,
-  Download, ExternalLink, Phone, Mail, FileText, LayoutGrid
+  Download, ExternalLink, Phone, Mail, FileText, LayoutGrid, Clock, Moon
 } from 'lucide-react';
 import type { PortalSettings, PortalAction } from '@shared/schema';
 
@@ -101,6 +101,11 @@ export default function PortalSettingsPage() {
     installPromptButtonText: 'Install App',
     portalTitle: '',
     portalWelcomeMessage: '',
+    quietHoursEnabled: false,
+    quietHoursStart: '21:00',
+    quietHoursEnd: '07:00',
+    digestEnabled: false,
+    digestFrequency: 'daily',
   });
 
   const { data: settingsData, isLoading: settingsLoading } = useQuery<SettingsResponse>({
@@ -135,6 +140,11 @@ export default function PortalSettingsPage() {
         installPromptButtonText: s.installPromptButtonText ?? 'Install App',
         portalTitle: s.portalTitle ?? '',
         portalWelcomeMessage: s.portalWelcomeMessage ?? '',
+        quietHoursEnabled: s.quietHoursEnabled ?? false,
+        quietHoursStart: s.quietHoursStart ?? '21:00',
+        quietHoursEnd: s.quietHoursEnd ?? '07:00',
+        digestEnabled: s.digestEnabled ?? false,
+        digestFrequency: s.digestFrequency ?? 'daily',
       });
     }
   }, [settingsData]);
@@ -236,10 +246,11 @@ export default function PortalSettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4" data-testid="tabs-portal-settings">
+        <TabsList className="grid w-full grid-cols-5" data-testid="tabs-portal-settings">
           <TabsTrigger value="general" data-testid="tab-general">General</TabsTrigger>
           <TabsTrigger value="modules" data-testid="tab-modules">Modules</TabsTrigger>
           <TabsTrigger value="install" data-testid="tab-install">Install Prompt</TabsTrigger>
+          <TabsTrigger value="notifications" data-testid="tab-notifications">Notifications</TabsTrigger>
           <TabsTrigger value="actions" data-testid="tab-actions">Actions</TabsTrigger>
         </TabsList>
 
@@ -507,6 +518,110 @@ export default function PortalSettingsPage() {
                   disabled={!formData.installPromptEnabled}
                   data-testid="input-button-text"
                 />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="notifications" className="space-y-6">
+          <Card data-testid="card-quiet-hours">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Moon className="h-5 w-5" /> Quiet Hours
+              </CardTitle>
+              <CardDescription>Suppress notifications during specified hours</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Enable Quiet Hours</Label>
+                  <p className="text-sm text-muted-foreground">Hold notifications during night hours</p>
+                </div>
+                <Switch
+                  checked={formData.quietHoursEnabled}
+                  onCheckedChange={(checked) => updateField('quietHoursEnabled', checked)}
+                  data-testid="switch-quiet-hours-enabled"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="quietHoursStart">Start Time</Label>
+                  <Input
+                    id="quietHoursStart"
+                    type="time"
+                    value={formData.quietHoursStart}
+                    onChange={(e) => updateField('quietHoursStart', e.target.value)}
+                    disabled={!formData.quietHoursEnabled}
+                    data-testid="input-quiet-hours-start"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="quietHoursEnd">End Time</Label>
+                  <Input
+                    id="quietHoursEnd"
+                    type="time"
+                    value={formData.quietHoursEnd}
+                    onChange={(e) => updateField('quietHoursEnd', e.target.value)}
+                    disabled={!formData.quietHoursEnabled}
+                    data-testid="input-quiet-hours-end"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-digest-mode">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" /> Digest Mode
+              </CardTitle>
+              <CardDescription>Bundle notifications into periodic summaries</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Enable Digest Mode</Label>
+                  <p className="text-sm text-muted-foreground">Send grouped notifications instead of individual alerts</p>
+                </div>
+                <Switch
+                  checked={formData.digestEnabled}
+                  onCheckedChange={(checked) => updateField('digestEnabled', checked)}
+                  data-testid="switch-digest-enabled"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Digest Frequency</Label>
+                <Select
+                  value={formData.digestFrequency}
+                  onValueChange={(value) => updateField('digestFrequency', value)}
+                  disabled={!formData.digestEnabled}
+                >
+                  <SelectTrigger data-testid="select-digest-frequency">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-push-notifications">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Bell className="h-5 w-5" /> Push Notifications
+              </CardTitle>
+              <CardDescription>Real-time alerts to customer devices</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-6 text-muted-foreground">
+                <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="font-medium">Push notifications not yet enabled</p>
+                <p className="text-sm mt-1">This feature is coming soon. Quiet hours and digest settings will apply once enabled.</p>
               </div>
             </CardContent>
           </Card>
