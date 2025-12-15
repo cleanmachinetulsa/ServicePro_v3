@@ -5254,3 +5254,183 @@ export const insertPortRecoverySmsRemoteSendSchema = createInsertSchema(portReco
 
 export type PortRecoverySmsRemoteSend = typeof portRecoverySmsRemoteSends.$inferSelect;
 export type InsertPortRecoverySmsRemoteSend = z.infer<typeof insertPortRecoverySmsRemoteSendSchema>;
+
+// ============================================================
+// PORTAL PWA V2: Customer Portal Settings & Actions
+// ============================================================
+
+// Portal action types for no-code action library
+export const portalActionTypeEnum = pgEnum("portal_action_type", [
+  "navigate",       // Navigate to internal portal route
+  "open_form",      // Open a form modal
+  "trigger_workflow", // Trigger a backend workflow
+  "send_template",  // Send a templated message
+  "external_link",  // Open external URL
+  "call_phone",     // Initiate phone call
+  "send_sms",       // Pre-compose SMS
+  "send_email",     // Pre-compose email
+]);
+
+// Portal install prompt trigger types
+export const portalInstallTriggerEnum = pgEnum("portal_install_trigger", [
+  "booking_confirmed",  // After booking confirmation (default)
+  "first_login",        // After first successful login
+  "loyalty_earned",     // After earning loyalty points
+  "page_visit",         // After visiting N pages
+  "manual_only",        // Only via settings/banner click
+]);
+
+// Portal module types
+export const portalModuleEnum = pgEnum("portal_module", [
+  "home",
+  "book",
+  "appointments",
+  "messages",
+  "loyalty",
+  "profile",
+  "settings",
+]);
+
+// Portal Settings - Tenant-scoped configuration for customer portal
+export const portalSettings = pgTable("portal_settings", {
+  tenantId: varchar("tenant_id", { length: 50 }).primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
+  
+  // Portal enablement
+  portalEnabled: boolean("portal_enabled").default(true).notNull(),
+  
+  // PWA configuration
+  pwaStartUrl: varchar("pwa_start_url", { length: 255 }).default("/portal"),
+  pwaDisplayName: varchar("pwa_display_name", { length: 100 }),
+  pwaShortName: varchar("pwa_short_name", { length: 50 }),
+  pwaThemeColor: varchar("pwa_theme_color", { length: 20 }).default("#3b82f6"),
+  pwaBackgroundColor: varchar("pwa_background_color", { length: 20 }).default("#ffffff"),
+  
+  // Module enablement (defaults all true except loyalty which depends on feature flag)
+  moduleHomeEnabled: boolean("module_home_enabled").default(true).notNull(),
+  moduleBookEnabled: boolean("module_book_enabled").default(true).notNull(),
+  moduleAppointmentsEnabled: boolean("module_appointments_enabled").default(true).notNull(),
+  moduleMessagesEnabled: boolean("module_messages_enabled").default(true).notNull(),
+  moduleLoyaltyEnabled: boolean("module_loyalty_enabled").default(true).notNull(), // Gated by loyalty feature flag
+  moduleProfileEnabled: boolean("module_profile_enabled").default(true).notNull(),
+  
+  // Install prompt configuration
+  installPromptEnabled: boolean("install_prompt_enabled").default(true).notNull(),
+  installPromptTrigger: portalInstallTriggerEnum("install_prompt_trigger").default("booking_confirmed"),
+  installPromptCooldownDays: integer("install_prompt_cooldown_days").default(21).notNull(),
+  installPromptPageVisitThreshold: integer("install_prompt_page_visit_threshold").default(3),
+  installPromptBannerText: text("install_prompt_banner_text").default("Install our app for quick access to your appointments and rewards"),
+  installPromptButtonText: varchar("install_prompt_button_text", { length: 50 }).default("Install App"),
+  
+  // Branding overrides
+  portalTitle: varchar("portal_title", { length: 100 }),
+  portalWelcomeMessage: text("portal_welcome_message"),
+  
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPortalSettingsSchema = createInsertSchema(portalSettings).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type PortalSettings = typeof portalSettings.$inferSelect;
+export type InsertPortalSettings = z.infer<typeof insertPortalSettingsSchema>;
+
+// Portal Actions - In-app action library (no-code actions)
+export const portalActions = pgTable("portal_actions", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  
+  // Action identity
+  actionKey: varchar("action_key", { length: 100 }).notNull(), // Unique key within tenant
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }), // Lucide icon name or emoji
+  category: varchar("category", { length: 50 }).default("general"), // For grouping
+  
+  // Action type and configuration
+  actionType: portalActionTypeEnum("action_type").notNull(),
+  actionConfig: jsonb("action_config").notNull().default({}).$type<{
+    // navigate: { route: string }
+    // open_form: { formId: string, prefill?: Record<string, string> }
+    // trigger_workflow: { workflowId: string, params?: Record<string, any> }
+    // send_template: { templateId: string, channel: 'sms' | 'email' }
+    // external_link: { url: string, openInNewTab?: boolean }
+    // call_phone: { phoneNumber?: string, useBusinessPhone?: boolean }
+    // send_sms: { to?: string, body?: string, useBusinessPhone?: boolean }
+    // send_email: { to?: string, subject?: string, body?: string }
+    route?: string;
+    formId?: string;
+    prefill?: Record<string, string>;
+    workflowId?: string;
+    params?: Record<string, any>;
+    templateId?: string;
+    channel?: string;
+    url?: string;
+    openInNewTab?: boolean;
+    phoneNumber?: string;
+    useBusinessPhone?: boolean;
+    to?: string;
+    body?: string;
+    subject?: string;
+  }>(),
+  
+  // Visibility and ordering
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  showOnHome: boolean("show_on_home").default(false).notNull(), // Show on portal home quick actions
+  showInNav: boolean("show_in_nav").default(false).notNull(), // Show in navigation
+  
+  // Industry pack source (null = custom action)
+  industryPackId: varchar("industry_pack_id", { length: 100 }),
+  isFromIndustryPack: boolean("is_from_industry_pack").default(false).notNull(),
+  
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantIdx: index("portal_actions_tenant_idx").on(table.tenantId),
+  tenantKeyIdx: uniqueIndex("portal_actions_tenant_key_idx").on(table.tenantId, table.actionKey),
+  enabledIdx: index("portal_actions_enabled_idx").on(table.tenantId, table.isEnabled),
+}));
+
+export const insertPortalActionSchema = createInsertSchema(portalActions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type PortalAction = typeof portalActions.$inferSelect;
+export type InsertPortalAction = z.infer<typeof insertPortalActionSchema>;
+
+// Portal Install Prompt Log - Track install prompt interactions for cooldown
+export const portalInstallPromptLog = pgTable("portal_install_prompt_log", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull(),
+  customerId: integer("customer_id"),
+  deviceFingerprint: varchar("device_fingerprint", { length: 100 }), // Browser fingerprint for anonymous users
+  
+  // Event tracking
+  event: varchar("event", { length: 50 }).notNull(), // 'shown', 'dismissed', 'accepted', 'installed'
+  trigger: portalInstallTriggerEnum("trigger"),
+  
+  // Metadata
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").default({}),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tenantCustomerIdx: index("portal_install_log_tenant_customer_idx").on(table.tenantId, table.customerId),
+  deviceIdx: index("portal_install_log_device_idx").on(table.tenantId, table.deviceFingerprint),
+  eventIdx: index("portal_install_log_event_idx").on(table.event),
+}));
+
+export const insertPortalInstallPromptLogSchema = createInsertSchema(portalInstallPromptLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PortalInstallPromptLog = typeof portalInstallPromptLog.$inferSelect;
+export type InsertPortalInstallPromptLog = z.infer<typeof insertPortalInstallPromptLogSchema>;
