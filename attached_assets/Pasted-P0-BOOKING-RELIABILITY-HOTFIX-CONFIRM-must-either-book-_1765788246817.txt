@@ -1,0 +1,89 @@
+P0 BOOKING RELIABILITY HOTFIX — CONFIRM must either book OR alert owner immediately
+
+We have a real failure case: customer replied “CONFIRM”, system replied “Sorry I’m having trouble… a human will take a look”, but I received no escalation/notification, and later the bot said “Your appointment is all set” even though there was no calendar event. This is unacceptable.
+
+Goals (must be true)
+
+On CONFIRM, either:
+
+booking + Google Calendar event is created successfully, OR
+
+the system triggers an owner escalation immediately (SMS to BUSINESS_OWNER_PERSONAL_PHONE and/or VIP_PHONE_NUMBER) and marks the conversation as needing human follow-up.
+
+The bot must never send “appointment is all set” unless we have proof:
+
+booking record exists in DB with status=confirmed, AND
+
+calendar event created (eventId stored) OR calendar insert succeeded.
+
+Any failure must be fail-open for notification:
+
+if escalation sending fails, it must log loudly and still mark DB flags so it shows in dashboard.
+
+Implementation requirements
+
+A) Instrument the CONFIRM handler
+Add logs with a single correlation id (phone + messageSid + convId):
+
+[BOOKING_CONFIRM_RECEIVED]
+
+[BOOKING_CREATE_START] payload summary
+
+[BOOKING_CREATE_SUCCESS] bookingId=… calendarEventId=…
+
+[BOOKING_CREATE_FAILED] err=… stack=…
+
+B) Owner escalation on failure (mandatory)
+When booking fails:
+
+Create/Update a DB flag (e.g. conversations.needs_human=true or a new “handoff” record)
+
+Send an SMS to BUSINESS_OWNER_PERSONAL_PHONE (and optionally VIP line) with:
+
+customer phone
+
+requested date/time
+
+service
+
+address
+
+reason/error summary
+
+Also log [ESCALATION_SENT] or [ESCALATION_FAILED]
+
+C) Prevent false “all set”
+Find where message “Your appointment is all set…” is generated.
+Wrap it in a guard:
+
+Only send if booking.status === confirmed AND (calendarEventId exists OR calendarInsertOk true)
+
+Otherwise send a truthful message:
+
+“I’m still finalizing this on my end—someone will confirm shortly.”
+
+D) State integrity
+Investigate why logs show service=unset around the flow.
+Ensure selected service/date/time/address are persisted and not lost between steps.
+Add a log snapshot before booking to print current state fields.
+
+E) Ignore iMessage reaction messages
+Add inbound filter to ignore texts like:
+
+Loved “…”, Liked “…”, etc.
+Regex: /^(Loved|Liked|Emphasized|Laughed at|Disliked|Questioned)\s+“.*”/i
+Log [SMS_REACTION_IGNORED] and return 204 with no AI and no reply.
+
+Output required (no “done” without proof)
+
+Exact files changed + routes touched
+
+A test run transcript showing:
+
+CONFIRM leads to booking success AND calendar event id stored, OR
+
+CONFIRM fails and I receive an owner SMS escalation immediately
+
+A screenshot/log lines proving the “all set” message cannot be sent without proof
+
+Keep changes minimal and production-safe. Do not refactor unrelated systems.
