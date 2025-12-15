@@ -40,6 +40,7 @@ interface BookingInboxRow {
   platform: string;
   address: string | null;
   vehicle: string | null;
+  isStale?: boolean;
 }
 
 interface ConversationDetail {
@@ -386,13 +387,28 @@ export default function BookingsInbox() {
                             <td className="p-3">{row.customerName || "Unknown"}</td>
                             <td className="p-3">{row.service || "—"}</td>
                             <td className="p-3">
-                              {row.stage ? (
-                                <Badge variant="outline" className={`text-xs ${STAGE_COLORS[row.stage] || ""}`}>
-                                  {STAGE_LABELS[row.stage] || row.stage}
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
+                              <div className="flex items-center gap-1">
+                                {row.stage ? (
+                                  <Badge variant="outline" className={`text-xs ${STAGE_COLORS[row.stage] || ""}`}>
+                                    {STAGE_LABELS[row.stage] || row.stage}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                                {row.isStale && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="text-xs bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">
+                                        <Clock className="h-3 w-3 mr-1" />
+                                        Stale
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>No activity for 15+ minutes while in booking flow</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3 text-sm text-muted-foreground">
                               {formatTime(row.lastMessageTime)}

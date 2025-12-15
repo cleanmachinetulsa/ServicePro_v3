@@ -57,7 +57,21 @@ interface BookingInboxRow {
   platform: string;
   address: string | null;
   vehicle: string | null;
+  isStale: boolean;
 }
+
+const BOOKING_FLOW_STAGES = [
+  'selecting_service',
+  'confirming_address', 
+  'ask_address',
+  'choosing_slot',
+  'awaiting_confirm',
+  'creating_booking',
+  'calendar_insert',
+  'offering_upsells',
+];
+
+const STALE_THRESHOLD_MINUTES = 15;
 
 router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manager'), async (req: Request, res: Response) => {
   try {
@@ -165,9 +179,16 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
     
     const totalCount = countResult[0]?.count || 0;
     
+    const now = Date.now();
     const inboxRows: BookingInboxRow[] = rows.map(row => {
       const behaviorSettings = row.behaviorSettings as any;
       const smsBookingState = behaviorSettings?.smsBookingState || {};
+      
+      const stage = smsBookingState.stage || null;
+      const lastMsgTime = row.lastMessageTime;
+      const minutesSinceLastMessage = lastMsgTime ? (now - new Date(lastMsgTime).getTime()) / (1000 * 60) : 0;
+      const isInBookingFlow = stage && BOOKING_FLOW_STAGES.includes(stage);
+      const isStale = isInBookingFlow && minutesSinceLastMessage >= STALE_THRESHOLD_MINUTES;
       
       return {
         conversationId: row.id,
@@ -176,7 +197,7 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
         customerId: row.customerId,
         service: smsBookingState.service || null,
         requestedDateTime: smsBookingState.chosenSlotIso || smsBookingState.chosenSlotLabel || null,
-        stage: smsBookingState.stage || null,
+        stage,
         stageReason: smsBookingState.lastResetReason || null,
         status: row.status,
         lastInboundAt: null,
@@ -192,6 +213,7 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
         platform: row.platform,
         address: smsBookingState.address || null,
         vehicle: smsBookingState.vehicle || null,
+        isStale,
       };
     });
     
