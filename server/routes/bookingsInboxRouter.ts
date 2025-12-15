@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../authMiddleware';
 import { requireRole } from '../rbacMiddleware';
 import { conversations, messages, customers } from '@shared/schema';
-import { eq, desc, and, ilike, gte, lte, sql } from 'drizzle-orm';
+import { eq, desc, and, ilike, gte, lte, sql, isNotNull } from 'drizzle-orm';
 
 const router = Router();
 
@@ -23,12 +23,13 @@ function getTenantId(req: Request): string {
 }
 
 interface BookingInboxFilters {
-  status?: string;
+  bookingStatus?: string;
   stage?: string;
   needsHuman?: boolean;
   dateFrom?: string;
   dateTo?: string;
   phone?: string;
+  bookingId?: string;
   page?: number;
   limit?: number;
 }
@@ -54,6 +55,8 @@ interface BookingInboxRow {
   calendarEventId: string | null;
   lastMessageTime: string | null;
   platform: string;
+  address: string | null;
+  vehicle: string | null;
 }
 
 router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manager'), async (req: Request, res: Response) => {
@@ -62,12 +65,13 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
     const tenantId = getTenantId(req);
     
     const filters: BookingInboxFilters = {
-      status: req.query.status as string,
+      bookingStatus: req.query.bookingStatus as string,
       stage: req.query.stage as string,
       needsHuman: req.query.needsHuman === 'true' ? true : req.query.needsHuman === 'false' ? false : undefined,
       dateFrom: req.query.dateFrom as string,
       dateTo: req.query.dateTo as string,
       phone: req.query.phone as string,
+      bookingId: req.query.bookingId as string,
       page: parseInt(req.query.page as string) || 1,
       limit: Math.min(parseInt(req.query.limit as string) || 50, 100),
     };
@@ -79,10 +83,6 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
       eq(conversations.platform, 'sms'),
     ];
     
-    if (filters.status) {
-      conditions.push(eq(conversations.status, filters.status));
-    }
-    
     if (filters.needsHuman !== undefined) {
       conditions.push(eq(conversations.needsHumanAttention, filters.needsHuman));
     }
@@ -92,15 +92,46 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
     }
     
     if (filters.dateTo) {
-      conditions.push(lte(conversations.lastMessageTime, new Date(filters.dateTo)));
+      const endDate = new Date(filters.dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(conversations.lastMessageTime, endDate));
     }
     
     if (filters.phone) {
       conditions.push(ilike(conversations.customerPhone, `%${filters.phone}%`));
     }
     
+    if (filters.bookingId) {
+      const bookingIdNum = parseInt(filters.bookingId);
+      if (!isNaN(bookingIdNum)) {
+        conditions.push(eq(conversations.appointmentId, bookingIdNum));
+      }
+    }
+    
     if (filters.stage) {
       conditions.push(sql`${conversations.behaviorSettings}->>'smsBookingState' IS NOT NULL AND ${conversations.behaviorSettings}->'smsBookingState'->>'stage' = ${filters.stage}`);
+    }
+    
+    if (filters.bookingStatus) {
+      switch (filters.bookingStatus) {
+        case 'CONFIRMED':
+          conditions.push(isNotNull(conversations.appointmentId));
+          break;
+        case 'NEEDS_HUMAN':
+          conditions.push(eq(conversations.needsHumanAttention, true));
+          break;
+        case 'PENDING':
+          conditions.push(eq(conversations.status, 'active'));
+          conditions.push(eq(conversations.needsHumanAttention, false));
+          break;
+        case 'ABANDONED':
+          conditions.push(eq(conversations.status, 'closed'));
+          conditions.push(sql`${conversations.appointmentId} IS NULL`);
+          break;
+        case 'AWAITING_CONFIRM':
+          conditions.push(sql`${conversations.behaviorSettings}->'smsBookingState'->>'stage' IN ('awaiting_confirm', 'booked')`);
+          break;
+      }
     }
     
     const rows = await tenantDb
@@ -156,9 +187,11 @@ router.get('/api/admin/bookings/inbox', requireAuth, requireRole('owner', 'manag
         lastErrorMessage: row.lastBookingErrorMessage || null,
         lastErrorAt: row.lastBookingErrorAt?.toISOString() || null,
         bookingId: row.appointmentId,
-        calendarEventId: null,
+        calendarEventId: smsBookingState.calendarEventId || null,
         lastMessageTime: row.lastMessageTime?.toISOString() || null,
         platform: row.platform,
+        address: smsBookingState.address || null,
+        vehicle: smsBookingState.vehicle || null,
       };
     });
     
@@ -256,14 +289,104 @@ router.get('/api/admin/bookings/inbox/:conversationId/messages', requireAuth, re
     const behaviorSettings = conversation[0].behaviorSettings as any;
     const smsBookingState = behaviorSettings?.smsBookingState || {};
     
+    let customer = null;
+    if (conversation[0].customerId) {
+      const customerResult = await tenantDb
+        .select()
+        .from(customers)
+        .where(eq(customers.id, conversation[0].customerId))
+        .limit(1);
+      customer = customerResult[0] ? {
+        id: customerResult[0].id,
+        name: customerResult[0].name,
+        phone: customerResult[0].phone,
+        email: customerResult[0].email,
+        address: customerResult[0].address,
+        vehicleInfo: customerResult[0].vehicleInfo,
+      } : null;
+    }
+    
     res.json({
       conversation: conversation[0],
       messages: messageList.reverse(),
       smsBookingState,
+      customer,
     });
   } catch (error) {
     console.error('[BOOKINGS_INBOX_DETAIL] Error:', error);
     res.status(500).json({ error: 'Failed to fetch conversation details' });
+  }
+});
+
+router.post('/api/admin/bookings/inbox/:conversationId/link-booking', requireAuth, requireRole('owner', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const tenantDb = req.tenantDb!;
+    const tenantId = getTenantId(req);
+    const conversationId = parseInt(req.params.conversationId);
+    const { bookingId, calendarEventId } = req.body;
+    
+    if (isNaN(conversationId)) {
+      res.status(400).json({ error: 'Invalid conversation ID' });
+      return;
+    }
+    
+    if (!bookingId) {
+      res.status(400).json({ error: 'bookingId is required' });
+      return;
+    }
+    
+    const conversation = await tenantDb
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.id, conversationId),
+        eq(conversations.tenantId, tenantId)
+      ))
+      .limit(1);
+    
+    if (!conversation.length) {
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
+    }
+    
+    const existingBehavior = conversation[0].behaviorSettings as any || {};
+    const existingSmsState = existingBehavior?.smsBookingState || {};
+    
+    const updatedSmsState = {
+      ...existingSmsState,
+      stage: 'completed',
+      calendarEventId: calendarEventId || existingSmsState.calendarEventId,
+      manuallyCompleted: true,
+      manuallyCompletedAt: new Date().toISOString(),
+    };
+    
+    await tenantDb
+      .update(conversations)
+      .set({
+        appointmentId: bookingId,
+        needsHumanAttention: false,
+        needsHumanReason: null,
+        lastBookingErrorCode: null,
+        lastBookingErrorMessage: null,
+        behaviorSettings: {
+          ...existingBehavior,
+          smsBookingState: updatedSmsState,
+        },
+      })
+      .where(eq(conversations.id, conversationId));
+    
+    console.log(`[BOOKINGS_INBOX] Linked booking ${bookingId} to conversation ${conversationId}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Booking linked to conversation',
+      conversationId,
+      bookingId,
+      calendarEventId,
+    });
+  } catch (error) {
+    console.error('[BOOKINGS_INBOX_LINK] Error:', error);
+    res.status(500).json({ error: 'Failed to link booking to conversation' });
   }
 });
 
@@ -365,8 +488,12 @@ router.get('/api/admin/bookings/inbox/stages', requireAuth, requireRole('owner',
       { value: 'selecting_service', label: 'Selecting Service' },
       { value: 'confirming_address', label: 'Confirming Address' },
       { value: 'choosing_slot', label: 'Choosing Slot' },
+      { value: 'awaiting_confirm', label: 'Awaiting Confirm' },
+      { value: 'creating_booking', label: 'Creating Booking' },
       { value: 'offering_upsells', label: 'Offering Upsells' },
+      { value: 'email_collection', label: 'Email Collection' },
       { value: 'booked', label: 'Booked' },
+      { value: 'completed', label: 'Completed' },
     ],
   });
 });
