@@ -94,6 +94,7 @@ const AdminIvrConfig = lazy(() => import("./pages/AdminIvrConfig"));
 const AdminConciergeSetup = lazy(() => import("./pages/AdminConciergeSetup"));
 const AdminIndustryPacks = lazy(() => import("./pages/AdminIndustryPacks"));
 const AdminImportHistory = lazy(() => import("./pages/AdminImportHistory"));
+const BookingsInbox = lazy(() => import("./pages/BookingsInbox"));
 const CustomerSheetsImportPage = lazy(() => import("./pages/admin/CustomerSheetsImportPage"));
 const AdminMigrationWizard = lazy(() => import("./pages/AdminMigrationWizard"));
 const AdminParserHistory = lazy(() => import("./pages/admin/ParserHistory"));
@@ -565,6 +566,11 @@ function Router() {
       <Route path="/admin/import-history">
         <AuthGuard>
           <LazyDashboard><AdminImportHistory /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/bookings-inbox">
+        <AuthGuard>
+          <LazyDashboard><BookingsInbox /></LazyDashboard>
         </AuthGuard>
       </Route>
       {/* SP-GSHEETS-CUSTOMER-RESYNC: Customer Import from Google Sheets */}

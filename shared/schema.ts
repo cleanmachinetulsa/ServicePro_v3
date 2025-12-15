@@ -863,6 +863,12 @@ export const conversations = pgTable("conversations", {
   
   // SP-22: Customer language tracking for AI multilingual responses
   customerLanguage: varchar("customer_language", { length: 10 }), // Detected/stated customer language (en, es, etc.)
+  
+  // Booking Inbox tracking - for debugging and monitoring SMS booking attempts
+  needsHumanReason: text("needs_human_reason"), // Why human attention is needed (booking failure, escalation, etc.)
+  lastBookingErrorCode: varchar("last_booking_error_code", { length: 20 }), // Error code from booking attempt
+  lastBookingErrorMessage: text("last_booking_error_message"), // Error message from booking attempt
+  lastBookingErrorAt: timestamp("last_booking_error_at"), // When the error occurred
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),

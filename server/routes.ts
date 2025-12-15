@@ -31,6 +31,7 @@ import { registerBillingOverviewRoutes } from './routes.settings.billingOverview
 import { registerAdminConciergeSetupRoutes } from './routes.adminConciergeSetup';
 import { registerAdminIvrRoutes } from './routes.adminIvr';
 import adminTenantReadinessRouter from './routes/adminTenantReadinessRouter';
+import bookingsInboxRouter from './routes/bookingsInboxRouter';
 import adminImpersonationRoutes from './routes.adminImpersonation';
 import adminBackfillRoutes from './routes.adminBackfill';
 import { registerUpsellRoutes } from './routes.upsell';
@@ -3058,6 +3059,7 @@ Follow up with this lead to set up their 14-day trial!
   registerAdminConciergeSetupRoutes(app);
   registerAdminIvrRoutes(app);
   app.use(adminTenantReadinessRouter);
+  app.use(bookingsInboxRouter);
   app.use('/api/admin/impersonate', adminImpersonationRoutes);
   app.use('/api/admin/backfill', adminBackfillRoutes);
   
