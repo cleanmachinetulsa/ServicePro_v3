@@ -235,15 +235,40 @@ function isValidE164(phone: string): boolean {
 }
 
 /**
+ * INTERNAL/SELF SMS BLOCKED NUMBERS
+ * These numbers MUST NEVER be used as Port Recovery recipients
+ * - +19188565304 (twilioMain - main customer-facing line)
+ * - +19188565711 (phoneAdmin - admin notifications line)
+ * - +19189183265 (twilioTest - dev/test only, never customer-facing)
+ * - +19182820103 (ownerUrgent - owner's personal phone for alerts)
+ */
+const SELF_SMS_BLOCKED = new Set([
+  '+19188565304', // twilioMain
+  '+19188565711', // phoneAdmin
+  '+19189183265', // twilioTest
+  '+19182820103', // ownerUrgent
+]);
+
+/**
  * Check if phone should be skipped due to invalid patterns
- * Skips test numbers (555), invalid placeholders (XXXX), etc.
+ * Skips test numbers (555), invalid placeholders (XXXX), internal numbers, etc.
  */
 function shouldSkipPhone(phone: string | null): boolean {
   if (!phone) return false;
+  
+  // Normalize to E.164 for comparison
+  const normalized = normalizePhoneE164(phone);
+  if (!normalized) return true; // Invalid format is skip
+  
+  // Skip internal/self SMS blocked numbers (prevent loop)
+  if (SELF_SMS_BLOCKED.has(normalized)) return true;
+  
   // Skip test 555 pattern: /^\+?1?555/
   if (/^\+?1?555/.test(phone)) return true;
+  
   // Skip placeholder patterns
   if (/XXXX|xxx/i.test(phone)) return true;
+  
   return false;
 }
 
@@ -936,6 +961,24 @@ export async function runPortRecoveryBatch(
       isComplete: true,
     };
   }
+  
+  // DETERMINISTIC LOGGING: Show first 10 recipients + total count before blast
+  console.log(`[PORT RECOVERY BATCH] Campaign ${campaignId}: Processing ${targets.length} pending targets (limit=${limit})`);
+  const firstTenPhones = targets.slice(0, 10).map((t, idx) => {
+    const phone = t.phone || 'NO_PHONE';
+    const email = t.email ? `(${t.email.substring(0, 20)}...)` : '';
+    return `#${idx + 1} ${phone} ${email}`.trim();
+  });
+  console.log(`[PORT RECOVERY BATCH] First 10 recipients:\n${firstTenPhones.join('\n')}`);
+  console.log(`[PORT RECOVERY BATCH] AUDIT: Will attempt to send SMS to ${targets.length} unique recipients`);
+  
+  // Verify no internal numbers are in recipient list (safety check)
+  const internalNumbersFound = targets.filter(t => t.phone && SELF_SMS_BLOCKED.has(normalizePhoneE164(t.phone) || ''));
+  if (internalNumbersFound.length > 0) {
+    console.error(`[PORT RECOVERY BATCH] ⚠️ CRITICAL: Found ${internalNumbersFound.length} internal numbers in recipient list! This should NEVER happen. Aborting blast.`);
+    throw new Error(`SAFETY VIOLATION: Internal numbers found in recipient list (${internalNumbersFound.length}). Blast aborted.`);
+  }
+  console.log(`[PORT RECOVERY BATCH] ✅ AUDIT PASS: No internal numbers in recipient list`);
   
   let smsSent = 0;
   let smsFailed = 0;

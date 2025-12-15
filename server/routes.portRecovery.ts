@@ -1070,4 +1070,109 @@ router.get('/debug/sender-audit', async (req, res) => {
   }
 });
 
+/**
+ * Get campaign report in JSON or CSV format
+ * GET /api/port-recovery/campaigns/:id/report?format=json|csv
+ * 
+ * Returns all sent and failed records for the campaign
+ */
+router.get('/campaigns/:id/report', async (req, res) => {
+  try {
+    const tenantId = (req.session as any)?.tenantId || 'root';
+    const tenantDb = wrapTenantDb(db, tenantId);
+    const campaignId = parseInt(req.params.id);
+    const format = (req.query.format as string) || 'json';
+    
+    if (!campaignId || isNaN(campaignId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Campaign ID is required',
+      });
+    }
+    
+    // Import the table
+    const { portRecoverySmsRemoteSends } = await import('@shared/schema');
+    
+    // Get all sends for this campaign
+    const sends = await tenantDb
+      .select({
+        id: portRecoverySmsRemoteSends.id,
+        phone: portRecoverySmsRemoteSends.toPhone,
+        fromNumber: portRecoverySmsRemoteSends.fromNumber,
+        messageSid: portRecoverySmsRemoteSends.twilioMessageSid,
+        status: portRecoverySmsRemoteSends.status,
+        errorCode: portRecoverySmsRemoteSends.errorCode,
+        errorMessage: portRecoverySmsRemoteSends.errorMessage,
+        sentAt: portRecoverySmsRemoteSends.sentAt,
+        createdAt: portRecoverySmsRemoteSends.createdAt,
+      })
+      .from(portRecoverySmsRemoteSends)
+      .where(eq(portRecoverySmsRemoteSends.campaignKey, `port-recovery-campaign-${campaignId}`))
+      .orderBy(portRecoverySmsRemoteSends.sentAt);
+    
+    // Separate sent and failed
+    const sent = sends.filter(s => s.status === 'sent' || s.status === 'delivered');
+    const failed = sends.filter(s => s.status === 'failed' || s.status === 'error');
+    
+    if (format === 'csv') {
+      // Generate CSV
+      const headers = ['Phone', 'From', 'Status', 'Message SID', 'Error Code', 'Error Message', 'Sent At'];
+      const rows = sends.map(s => [
+        s.phone || '',
+        s.fromNumber || '',
+        s.status || '',
+        s.messageSid || '',
+        s.errorCode || '',
+        s.errorMessage || '',
+        s.sentAt ? new Date(s.sentAt).toISOString() : '',
+      ]);
+      
+      const csv = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
+      ].join('\n');
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="port-recovery-campaign-${campaignId}-report.csv"`);
+      res.send(csv);
+    } else {
+      // JSON response
+      const summary = {
+        campaignId,
+        totalSent: sent.length,
+        totalFailed: failed.length,
+        totalRecords: sends.length,
+        successRate: sends.length > 0 ? ((sent.length / sends.length) * 100).toFixed(2) + '%' : '0%',
+      };
+      
+      res.json({
+        success: true,
+        campaign: {
+          id: campaignId,
+          ...summary,
+        },
+        sent: sent.map(s => ({
+          phone: s.phone,
+          fromNumber: s.fromNumber,
+          messageSid: s.messageSid,
+          sentAt: s.sentAt,
+        })),
+        failed: failed.map(f => ({
+          phone: f.phone,
+          fromNumber: f.fromNumber,
+          errorCode: f.errorCode,
+          errorMessage: f.errorMessage,
+          sentAt: f.sentAt,
+        })),
+      });
+    }
+  } catch (error: any) {
+    console.error('[PORT RECOVERY] Error generating report:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;

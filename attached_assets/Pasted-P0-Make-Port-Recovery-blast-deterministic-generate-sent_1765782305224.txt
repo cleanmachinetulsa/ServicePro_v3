@@ -1,0 +1,55 @@
+P0: Make Port Recovery blast deterministic + generate sent/unsent report (no guessing)
+
+We have proof that sendPortRecoverySmsStrict can send with from=+19188565304 and records from_number and twilio_sid. Now I need you to ensure the Next 50 and All blast buttons use the exact same strict sender path every time, and I need a report of who was actually sent vs not sent.
+
+Part A — Deterministic sender (must)
+
+Find the code path invoked by Next 50 and All for Port Recovery. Identify the function(s)/route(s) and file(s).
+
+Ensure both Next 50 and All call ONLY sendPortRecoverySmsStrict (or equivalent strict sender function) and that it ALWAYS uses MAIN_PHONE_NUMBER=+19188565304 as the sender.
+
+Ensure NO code path for Port Recovery uses TWILIO_MESSAGING_SERVICE_SID or messagingServiceSid for sending. If present, remove/disable it for Port Recovery sends.
+
+Add explicit logging for every attempted recipient:
+
+[PORT RECOVERY ATTEMPT] to=… from=… action=send|skip|fail reason=…
+
+When sent, include messageSid.
+
+Part B — Idempotency + truth table (must)
+
+Ensure there is a DB row per recipient attempt (or a dedupe/guard table) so we can query truth. If table already exists, use it. If missing, create it safely with IF NOT EXISTS and indexes.
+
+Implement “claim before send” (atomic insert). If already claimed as sent_ok, skip.
+
+Store fields: tenant_id, campaign_key, to_phone, from_number, status, twilio_sid, skip_reason, error_code, error_message, created_at.
+
+Part C — Generate an operator report (tonight’s priority)
+
+Create a script or admin endpoint that produces a CSV + JSON report:
+
+port_recovery_report_sent.csv (to_phone, from_number, twilio_sid, sent_at)
+
+port_recovery_report_unsent.csv (to_phone, skip_reason OR error)
+
+port_recovery_report_summary.json (counts by status + by skip_reason + by from_number)
+
+Part D — 5711 policy (do NOT break voice)
+
+Do NOT remove 5711 from the system. Just ensure Port Recovery SMS never sends from 5711. Voice/IVR can remain as-is.
+
+Output required
+
+List exact files changed
+
+Show the exact function/route Next 50 and All call now
+
+Provide how to run the report and where the CSV files are written
+
+Provide a 2-step test:
+
+run Next 50 dry-run/report (no sending) to show who would be messaged
+
+send Next 1 or Next 2 (if possible) and show logs + DB rows + Twilio SID
+
+Do not claim “done” without showing the report outputs and the logs/DB evidence for the blast path, not just the single test.
