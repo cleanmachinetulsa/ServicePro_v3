@@ -1681,6 +1681,54 @@ export const criticalMonitoringSettings = pgTable("critical_monitoring_settings"
   updatedBy: integer("updated_by").references(() => users.id),
 });
 
+// PWA Notification Settings - tenant-scoped push notification preferences (V2)
+export const pwaNotificationSettings = pgTable("pwa_notification_settings", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().unique(),
+  // Notification type toggles
+  notifyBookingFailed: boolean("notify_booking_failed").default(true),
+  notifyNeedsHuman: boolean("notify_needs_human").default(true),
+  notifyNewLead: boolean("notify_new_lead").default(true),
+  notifyBookingConfirmed: boolean("notify_booking_confirmed").default(false),
+  notifyAfterHoursReply: boolean("notify_after_hours_reply").default(true),
+  notifyDailyDigest: boolean("notify_daily_digest").default(false),
+  // Quiet hours (tenant timezone)
+  quietHoursEnabled: boolean("quiet_hours_enabled").default(false),
+  quietHoursStart: text("quiet_hours_start").default("22:00"),
+  quietHoursEnd: text("quiet_hours_end").default("07:00"),
+  quietHoursOverrideNeedsHuman: boolean("quiet_hours_override_needs_human").default(true),
+  // Digest mode
+  digestMode: text("digest_mode").default("off"), // off, hourly, fixed_times
+  digestIntervalHours: integer("digest_interval_hours").default(4),
+  digestFixedTimes: text("digest_fixed_times").array().default([]),
+  // Channel preferences
+  channelSms: boolean("channel_sms").default(true),
+  channelEmail: boolean("channel_email").default(false),
+  channelPush: boolean("channel_push").default(true),
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  tenantIdIdx: index("pwa_notification_settings_tenant_id_idx").on(table.tenantId),
+}));
+
+// Notification Event Logs - track all notification delivery attempts
+export const notificationEventLogs = pgTable("notification_event_logs", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  type: text("type").notNull(), // booking_failed, needs_human, new_lead, booking_confirmed, after_hours_reply, daily_digest
+  target: text("target"), // phone, email, or userId
+  channel: text("channel").notNull(), // sms, email, push
+  status: text("status").notNull(), // sent, failed, queued, suppressed
+  error: text("error"),
+  metadata: jsonb("metadata"), // Additional context like message preview, notification payload
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  tenantIdIdx: index("notification_event_logs_tenant_id_idx").on(table.tenantId),
+  typeIdx: index("notification_event_logs_type_idx").on(table.type),
+  createdAtIdx: index("notification_event_logs_created_at_idx").on(table.createdAt),
+}));
+
 // Gallery photos for the public gallery page - uploaded by admin
 export const galleryPhotos = pgTable("gallery_photos", {
   id: serial("id").primaryKey(),
@@ -3235,6 +3283,12 @@ export type InsertNotificationPreferences = z.infer<typeof insertNotificationPre
 export const insertCriticalMonitoringSettingsSchema = createInsertSchema(criticalMonitoringSettings).omit({ id: true, updatedAt: true });
 export type CriticalMonitoringSettings = typeof criticalMonitoringSettings.$inferSelect;
 export type InsertCriticalMonitoringSettings = z.infer<typeof insertCriticalMonitoringSettingsSchema>;
+export const insertPwaNotificationSettingsSchema = createInsertSchema(pwaNotificationSettings).omit({ id: true, createdAt: true, updatedAt: true });
+export type PwaNotificationSettings = typeof pwaNotificationSettings.$inferSelect;
+export type InsertPwaNotificationSettings = z.infer<typeof insertPwaNotificationSettingsSchema>;
+export const insertNotificationEventLogSchema = createInsertSchema(notificationEventLogs).omit({ id: true, createdAt: true });
+export type NotificationEventLog = typeof notificationEventLogs.$inferSelect;
+export type InsertNotificationEventLog = z.infer<typeof insertNotificationEventLogSchema>;
 export type GalleryPhoto = typeof galleryPhotos.$inferSelect;
 export type InsertGalleryPhoto = z.infer<typeof insertGalleryPhotoSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;

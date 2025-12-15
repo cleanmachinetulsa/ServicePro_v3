@@ -21,6 +21,7 @@ import { registerContactsRoutes } from "./routes.contacts";
 import stripeWebhooksRouter from "./routes.stripeWebhooks";
 import billingRouter from "./routes.billing";
 import pushNotificationsRouter from "./routes.pushNotifications";
+import pwaNotificationAdminRouter from "./routes.pwaNotificationAdmin";
 import { registerCallRoutes } from "./routes.calls";
 import { registerBackupBookingRoutes } from "./routes.backupBookings";
 import { registerBannerRoutes } from "./routes.banners";
@@ -363,6 +364,8 @@ app.use(adminEmployeesRouter);
 app.use(jobApplicationsRouter);
 // Register push notification routes
 app.use('/api/push', pushNotificationsRouter);
+// Register PWA notification admin routes (V2 - settings, logs, digest)
+app.use('/api/admin/pwa-notifications', pwaNotificationAdminRouter);
 // Register payer approval routes (public, no auth)
 app.use(payerApprovalRouter);
 // Register backup booking routes (exempt from maintenance middleware)
