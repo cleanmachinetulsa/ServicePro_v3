@@ -282,6 +282,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           console.error(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=${confirmErr?.message} stack=${confirmErr?.stack}`);
           
           // P0-HOTFIX: Escalate to owner on confirm failure
+          let escalationFailed = false;
           try {
             const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
             if (ownerPhone) {
@@ -299,6 +300,20 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             }
           } catch (escErr) {
             console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
+            escalationFailed = true;
+          }
+          
+          // Mark conversation as needing human follow-up (whether escalation succeeded or not)
+          try {
+            await tenantDb.update(conversations).set({ 
+              needsHumanAttention: true,
+              needsHumanReason: escalationFailed 
+                ? 'Confirm failed + escalation SMS failed' 
+                : 'Confirm failed - owner notified'
+            }).where(eq(conversations.id, conversation.id));
+            console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true reason=confirm_failed escalation_failed=${escalationFailed}`);
+          } catch (handoffErr) {
+            console.error(`[BOOKING HANDOFF] failed to set needsHumanAttention:`, handoffErr);
           }
           
           const errorReply = truncateSmsResponse("I'm having trouble confirming right now—someone will follow up shortly to confirm your appointment.");
@@ -311,6 +326,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         console.log(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=no_upcoming_booking_found`);
         
         // P0-HOTFIX: Escalate to owner when no booking found (customer may have had one we lost track of)
+        let noBookingEscalationFailed = false;
         try {
           const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
           if (ownerPhone) {
@@ -326,15 +342,23 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             });
             console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=no_booking_found`);
             console.log(`[BOOKING_CREATE_FAILED] correlationId=${correlationId} reason=confirm_no_booking_found`);
+          } else {
+            noBookingEscalationFailed = true;
           }
         } catch (escErr) {
           console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
+          noBookingEscalationFailed = true;
         }
         
         // Mark conversation for human attention
         try {
-          await tenantDb.update(conversations).set({ needsHumanAttention: true }).where(eq(conversations.id, conversation.id));
-          console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true reason=no_booking_found`);
+          await tenantDb.update(conversations).set({ 
+            needsHumanAttention: true,
+            needsHumanReason: noBookingEscalationFailed 
+              ? 'No booking found + escalation SMS failed' 
+              : 'No booking found - owner notified'
+          }).where(eq(conversations.id, conversation.id));
+          console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true reason=no_booking_found escalation_failed=${noBookingEscalationFailed}`);
         } catch (handoffErr) {
           console.error(`[BOOKING HANDOFF] failed:`, handoffErr);
         }
@@ -595,6 +619,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
             console.log(`[BOOKING RESULT] success=false reason=missing_eventid eventId=null error="${bookingError || 'unknown'}"`);
             
             // P0-HOTFIX: MANDATORY OWNER ESCALATION ON BOOKING FAILURE
+            let bookingFailedEscalationFailed = false;
             try {
               const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
               if (ownerPhone) {
@@ -611,15 +636,22 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
                 console.log(`[ESCALATION_SENT] phone=${From} reason=booking_failed owner=${ownerPhone.slice(-4).padStart(10, '*')}`);
               } else {
                 console.error(`[ESCALATION_FAILED] reason=no_owner_phone_configured phone=${From}`);
+                bookingFailedEscalationFailed = true;
               }
             } catch (escalationErr) {
               console.error(`[ESCALATION_FAILED] phone=${From} error:`, escalationErr);
+              bookingFailedEscalationFailed = true;
             }
             
             // Mark conversation as needing human follow-up
             try {
-              await tenantDb.update(conversations).set({ needsHumanAttention: true }).where(eq(conversations.id, conversation.id));
-              console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true`);
+              await tenantDb.update(conversations).set({ 
+                needsHumanAttention: true,
+                needsHumanReason: bookingFailedEscalationFailed 
+                  ? 'Booking failed + escalation SMS failed' 
+                  : 'Booking failed - owner notified'
+              }).where(eq(conversations.id, conversation.id));
+              console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true escalation_failed=${bookingFailedEscalationFailed}`);
             } catch (handoffErr) {
               console.error(`[BOOKING HANDOFF] failed to set needsHumanAttention:`, handoffErr);
             }
@@ -749,6 +781,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           console.log(`[BOOKING RESULT] success=false reason=exception eventId=null error="${bookingErr?.message || 'unknown'}"`);
           
           // P0-HOTFIX: MANDATORY OWNER ESCALATION ON BOOKING EXCEPTION
+          let bookingExceptionEscalationFailed = false;
           try {
             const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
             if (ownerPhone) {
@@ -765,15 +798,22 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               console.log(`[ESCALATION_SENT] phone=${From} reason=booking_exception owner=${ownerPhone.slice(-4).padStart(10, '*')}`);
             } else {
               console.error(`[ESCALATION_FAILED] reason=no_owner_phone_configured phone=${From}`);
+              bookingExceptionEscalationFailed = true;
             }
           } catch (escalationErr) {
             console.error(`[ESCALATION_FAILED] phone=${From} error:`, escalationErr);
+            bookingExceptionEscalationFailed = true;
           }
           
           // Mark conversation as needing human follow-up
           try {
-            await tenantDb.update(conversations).set({ needsHumanAttention: true }).where(eq(conversations.id, conversation.id));
-            console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true`);
+            await tenantDb.update(conversations).set({ 
+              needsHumanAttention: true,
+              needsHumanReason: bookingExceptionEscalationFailed 
+                ? 'Booking exception + escalation SMS failed' 
+                : 'Booking exception - owner notified'
+            }).where(eq(conversations.id, conversation.id));
+            console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true escalation_failed=${bookingExceptionEscalationFailed}`);
           } catch (handoffErr) {
             console.error(`[BOOKING HANDOFF] failed to set needsHumanAttention:`, handoffErr);
           }
