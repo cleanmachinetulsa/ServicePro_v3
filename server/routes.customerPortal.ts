@@ -12,8 +12,8 @@ import path from 'path';
 import fs from 'fs';
 import { customerPortalAuthMiddleware } from './customerPortalAuthMiddleware';
 import { tenantMiddleware } from './tenantMiddleware';
-import { appointments, loyaltyTransactions, customers } from '@shared/schema';
-import { eq, and, desc, gte } from 'drizzle-orm';
+import { appointments, loyaltyTransactions, customers, portalSettings, portalInstallPromptLog } from '@shared/schema';
+import { eq, and, desc, gte, or, sql } from 'drizzle-orm';
 import type { TenantDb } from './tenantDb';
 
 const router = Router();
@@ -391,6 +391,160 @@ router.put('/profile', async (req, res) => {
     });
   } catch (error) {
     console.error('[CustomerPortal] Update profile error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+/**
+ * GET /api/portal/install-prompt-status
+ * 
+ * Check if install prompt should be shown based on settings and cooldown
+ */
+router.get('/install-prompt-status', async (req, res) => {
+  try {
+    const customer = req.customer;
+    const tenantId = req.tenantId || 'root';
+    const tenantDb = req.tenantDb as TenantDb;
+    const deviceFingerprint = req.query.deviceFingerprint as string | undefined;
+
+    // Get portal settings
+    const [settings] = await tenantDb
+      .select()
+      .from(portalSettings)
+      .where(eq(portalSettings.tenantId, tenantId))
+      .limit(1);
+
+    // Default values if no settings exist
+    const installPromptEnabled = settings?.installPromptEnabled ?? true;
+    const installPromptTrigger = settings?.installPromptTrigger ?? 'booking_confirmed';
+    const cooldownDays = settings?.installPromptCooldownDays ?? 21;
+    const bannerText = settings?.installPromptBannerText || 'Install our app for quick access to your appointments and rewards';
+    const buttonText = settings?.installPromptButtonText || 'Install App';
+
+    if (!installPromptEnabled) {
+      return res.json({
+        success: true,
+        shouldShow: false,
+        reason: 'disabled',
+      });
+    }
+
+    // Check cooldown based on customer or device fingerprint
+    const cooldownDate = new Date();
+    cooldownDate.setDate(cooldownDate.getDate() - cooldownDays);
+
+    let recentEvents: any[] = [];
+    if (customer) {
+      // Check by customer ID
+      recentEvents = await tenantDb
+        .select()
+        .from(portalInstallPromptLog)
+        .where(and(
+          eq(portalInstallPromptLog.tenantId, tenantId),
+          eq(portalInstallPromptLog.customerId, customer.id),
+          or(
+            eq(portalInstallPromptLog.event, 'dismissed'),
+            eq(portalInstallPromptLog.event, 'accepted'),
+            eq(portalInstallPromptLog.event, 'installed')
+          ),
+          gte(portalInstallPromptLog.createdAt, cooldownDate)
+        ))
+        .limit(1);
+    } else if (deviceFingerprint) {
+      // Check by device fingerprint for anonymous users
+      recentEvents = await tenantDb
+        .select()
+        .from(portalInstallPromptLog)
+        .where(and(
+          eq(portalInstallPromptLog.tenantId, tenantId),
+          eq(portalInstallPromptLog.deviceFingerprint, deviceFingerprint),
+          or(
+            eq(portalInstallPromptLog.event, 'dismissed'),
+            eq(portalInstallPromptLog.event, 'accepted'),
+            eq(portalInstallPromptLog.event, 'installed')
+          ),
+          gte(portalInstallPromptLog.createdAt, cooldownDate)
+        ))
+        .limit(1);
+    }
+
+    // If there's a recent dismissal/acceptance/install within cooldown, don't show
+    if (recentEvents.length > 0) {
+      return res.json({
+        success: true,
+        shouldShow: false,
+        reason: 'cooldown',
+        cooldownEnds: new Date(recentEvents[0].createdAt.getTime() + (cooldownDays * 24 * 60 * 60 * 1000)),
+      });
+    }
+
+    return res.json({
+      success: true,
+      shouldShow: true,
+      trigger: installPromptTrigger,
+      bannerText,
+      buttonText,
+      cooldownDays,
+    });
+  } catch (error) {
+    console.error('[CustomerPortal] Install prompt status error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+    });
+  }
+});
+
+const installPromptLogSchema = z.object({
+  event: z.enum(['shown', 'dismissed', 'accepted', 'installed']),
+  trigger: z.enum(['booking_confirmed', 'first_login', 'loyalty_earned', 'page_visit', 'manual_only']).optional().nullable(),
+  deviceFingerprint: z.string().max(100).optional().nullable(),
+  metadata: z.record(z.unknown()).optional().default({}),
+});
+
+/**
+ * POST /api/portal/install-prompt-log
+ * 
+ * Log an install prompt event
+ */
+router.post('/install-prompt-log', async (req, res) => {
+  try {
+    const customer = req.customer;
+    const tenantId = req.tenantId || 'root';
+    const tenantDb = req.tenantDb as TenantDb;
+
+    const parseResult = installPromptLogSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request body',
+        details: parseResult.error.format(),
+      });
+    }
+
+    const { event, trigger, deviceFingerprint, metadata } = parseResult.data;
+
+    await tenantDb.insert(portalInstallPromptLog).values({
+      tenantId,
+      customerId: customer?.id || null,
+      deviceFingerprint: deviceFingerprint || null,
+      event,
+      trigger: trigger || null,
+      userAgent: req.headers['user-agent'] || null,
+      metadata: metadata || {},
+    });
+
+    console.log(`[CustomerPortal] Install prompt log: ${event} for tenant ${tenantId}`);
+
+    return res.json({
+      success: true,
+      logged: true,
+    });
+  } catch (error) {
+    console.error('[CustomerPortal] Install prompt log error:', error);
     return res.status(500).json({
       success: false,
       error: 'Internal server error',
