@@ -309,7 +309,36 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         }
       } else {
         console.log(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=no_upcoming_booking_found`);
-        const noBookingReply = truncateSmsResponse("I couldn't find an upcoming booking that needs confirmation. Would you like to schedule a new appointment?");
+        
+        // P0-HOTFIX: Escalate to owner when no booking found (customer may have had one we lost track of)
+        try {
+          const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+          if (ownerPhone) {
+            const twilioClient = (await import('twilio')).default(
+              process.env.TWILIO_ACCOUNT_SID,
+              process.env.TWILIO_AUTH_TOKEN
+            );
+            const escalationMsg = `🚨 CONFIRM - NO BOOKING FOUND:\nCustomer: ${From}\nThey replied CONFIRM but we have no record of their booking. Please follow up.`;
+            await twilioClient.messages.create({
+              to: ownerPhone,
+              from: To,
+              body: escalationMsg,
+            });
+            console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=no_booking_found`);
+          }
+        } catch (escErr) {
+          console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
+        }
+        
+        // Mark conversation for human attention
+        try {
+          await tenantDb.update(conversations).set({ needsHumanAttention: true }).where(eq(conversations.id, conversation.id));
+          console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true reason=no_booking_found`);
+        } catch (handoffErr) {
+          console.error(`[BOOKING HANDOFF] failed:`, handoffErr);
+        }
+        
+        const noBookingReply = truncateSmsResponse("I couldn't find your booking right now—someone will follow up shortly to help confirm.");
         await addMessage(tenantDb, conversation.id, noBookingReply, 'ai');
         twimlResponse.message(noBookingReply);
         res.type('text/xml').send(twimlResponse.toString());
