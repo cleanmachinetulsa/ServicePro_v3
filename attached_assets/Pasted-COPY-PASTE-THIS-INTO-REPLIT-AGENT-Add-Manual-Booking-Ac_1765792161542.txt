@@ -1,0 +1,192 @@
+COPY / PASTE THIS INTO REPLIT AGENT
+
+Add Manual Booking Action to Bookings Inbox
+
+Goal: Allow me to recover incomplete or failed SMS bookings instantly without retyping customer info.
+
+Requirements:
+
+In /admin/bookings-inbox, add a primary action button labeled “Create Booking Manually” on:
+
+rows with status ≠ CONFIRMED
+
+rows where needsHuman=true
+
+The button must deep-link into the existing manual booking creation flow (do not create a new one).
+
+Auto-discover the correct route/component for manual booking creation.
+
+Prefill the manual booking form with data from the conversation/booking_attempt:
+
+phone
+
+customer name (if known)
+
+selected service
+
+requested date/time
+
+address
+
+vehicle (if present)
+
+If some fields are missing, leave them editable but prefilled where possible.
+
+After manual save:
+
+update the booking_attempt status to CONFIRMED
+
+clear needsHuman
+
+store bookingId + calendarEventId
+
+Show a success toast: “Booking created and linked to conversation.”
+
+Output required:
+
+file paths changed
+
+the discovered manual booking route
+
+one screenshot or log showing prefill working
+
+Do not refactor unrelated code.
+
+This gives you one-click recovery for exactly the situation with your mom.
+
+2️⃣ Exact booking statuses + colors (clear, readable, SaaS-standard)
+
+Use both a status and a stage. Status is what matters at a glance.
+
+Primary Status (big badge)
+Status	Meaning	Color
+CONFIRMED	Booking + calendar created	🟢 Green
+PENDING	Actively chatting, info incomplete	🟡 Yellow
+AWAITING_CONFIRM	Summary sent, waiting for CONFIRM	🟡 Amber
+NEEDS_HUMAN	Failed or escalated	🔴 Red
+ABANDONED	No response after X time	⚪ Gray
+
+👉 Only CONFIRMED is allowed to send “You’re all set”.
+
+Stage (secondary / smaller text)
+
+Examples:
+
+selecting_service
+
+choosing_slot
+
+ask_address
+
+awaiting_confirm
+
+creating_booking
+
+calendar_insert
+
+email_collection
+
+completed
+
+Stage answers: where did it stall?
+
+Needs-Human Reason (tooltip / column)
+
+Examples:
+
+BOOKING_CREATE_FAILED
+
+CALENDAR_INSERT_FAILED
+
+INVALID_STATE (service unset)
+
+NO_AVAILABLE_SLOTS
+
+OWNER_ESCALATED
+
+This is gold when you paste logs back to me later.
+
+3️⃣ Inbox filters you should have (final checklist)
+
+Make sure these filters exist (or add them):
+
+Status (multi-select)
+
+Needs Human (true / false)
+
+Stage
+
+Date range
+
+Search by phone
+
+Search by bookingId / messageSid
+
+If all of these exist → you’re already ahead of most SaaS products.
+
+4️⃣ Anything else before “fully live”?
+
+Yes — four final production checks, no refactors needed.
+
+✅ 1. Owner escalation delivery check (10 seconds)
+
+Send a fake CONFIRM that you force to fail (e.g. break calendar auth temporarily).
+Confirm:
+
+You receive SMS instantly
+
+Inbox row turns red (NEEDS_HUMAN)
+
+Reason is visible
+
+If that works → you’re safe.
+
+✅ 2. “No lies” check
+
+Search codebase for:
+
+“You’re all set”
+
+“appointment is all set”
+
+“team member will confirm”
+
+Ensure every instance is behind:
+
+booking.status === CONFIRMED
+&& calendarEventId exists
+
+
+If yes → no more trust-breaking messages.
+
+✅ 3. Reaction filter sanity
+
+Send from iPhone:
+
+❤️ “Loved ‘Hi’”
+Confirm:
+
+No reply
+
+Logged as [SMS_REACTION_IGNORED]
+
+✅ 4. Dashboard visibility
+
+Open /admin/bookings-inbox and confirm:
+
+You can see today’s real customers
+
+Red rows jump out immediately
+
+One click lets you fix them
+
+If that’s true → you’re operational.
+
+5️⃣ Deployment answer (important)
+
+When the agent asks “Should I deploy?”
+You should say:
+
+Yes — deploy to production. No config changes.
+
+You already tested live behavior. This is not experimental code anymore.
