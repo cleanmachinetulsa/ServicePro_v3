@@ -59,6 +59,7 @@ function MessagesPageContent() {
   const [showProfilePanel, setShowProfilePanel] = useState(true);
   const [showComposeDialog, setShowComposeDialog] = useState(false);
   const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
+  const [includeWebchatInAll, setIncludeWebchatInAll] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -114,7 +115,10 @@ function MessagesPageContent() {
   const filteredConversations = conversations.filter((conv) => {
     let categoryMatch = false;
     switch (filter) {
-      case 'all': categoryMatch = true; break;
+      case 'all': 
+        // Exclude webchat by default in "All" tab unless toggle is enabled
+        categoryMatch = includeWebchatInAll ? true : conv.platform !== 'web';
+        break;
       case 'sms': categoryMatch = conv.platform === 'sms'; break;
       case 'web': categoryMatch = conv.platform === 'web'; break;
       case 'facebook': categoryMatch = conv.platform === 'facebook'; break;
@@ -208,6 +212,8 @@ function MessagesPageContent() {
       filter={filter}
       onFilterChange={setFilter}
       phoneLines={phoneLines}
+      includeWebchatInAll={includeWebchatInAll}
+      onIncludeWebchatToggle={setIncludeWebchatInAll}
     />
   );
 
