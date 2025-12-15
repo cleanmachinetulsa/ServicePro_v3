@@ -161,6 +161,7 @@ const CustomerLogin = lazy(() => import("./pages/CustomerLogin"));
 const CustomerPortalDashboard = lazy(() => import("./pages/CustomerPortalDashboard"));
 const CustomerSettings = lazy(() => import("./pages/CustomerSettings"));
 const PortalWelcome = lazy(() => import("./pages/PortalWelcome"));
+const Portal = lazy(() => import("./pages/Portal"));
 
 // Recurring services
 const CustomerRecurringServicesPage = lazy(() => import("./pages/customer-recurring-services"));
@@ -827,6 +828,9 @@ function Router() {
       {/* Phase 15 & 16.5: Customer Portal Routes */}
       <Route path="/portal/welcome">
         <LazyPage><PortalWelcome /></LazyPage>
+      </Route>
+      <Route path="/portal/home">
+        <LazyPage><Portal /></LazyPage>
       </Route>
       <Route path="/portal/login">
         <LazyPage><CustomerLogin /></LazyPage>

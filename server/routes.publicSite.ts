@@ -7,7 +7,8 @@
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
-import { tenants, tenantConfig, services, faqEntries } from '@shared/schema';
+import { tenants, tenantConfig, services, faqEntries, portalSettings, portalActions } from '@shared/schema';
+import { getPortalSettingsWithBranding } from './services/portalSettingsService';
 import { eq, and } from 'drizzle-orm';
 import { getIndustryPack } from '@shared/industryPacks';
 import rateLimit from 'express-rate-limit';
@@ -231,6 +232,146 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
     return res.status(500).json({
       success: false,
       message: 'Failed to load site',
+    });
+  }
+});
+
+/**
+ * GET /api/public/portal/:subdomain/settings
+ * 
+ * Returns public portal settings for a given tenant
+ * - Portal configuration (modules, branding, tile visibility)
+ * - Tenant branding (business name, logo, colors)
+ * - Portal actions (tiles for home screen)
+ * 
+ * SECURITY NOTE: This endpoint is PUBLIC and does not require authentication.
+ * - Rate limited to 100 requests per 15 minutes per IP
+ * - Cached for 5 minutes
+ * - Suspended/cancelled tenants return 404
+ */
+router.get('/portal/:subdomain/settings', publicSiteLimiter, async (req: Request, res: Response) => {
+  try {
+    const { subdomain } = req.params;
+
+    // Find tenant by subdomain
+    const tenantRecords = await db
+      .select({
+        tenantId: tenants.id,
+        subdomain: tenants.subdomain,
+        status: tenants.status,
+        planTier: tenants.planTier,
+      })
+      .from(tenants)
+      .where(eq(tenants.subdomain, subdomain))
+      .limit(1);
+
+    if (!tenantRecords || tenantRecords.length === 0) {
+      console.log(`[PUBLIC PORTAL] portal_not_found: subdomain=${subdomain}`);
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.status(404).json({
+        success: false,
+        error: 'portal_not_found',
+        message: 'Portal not found',
+      });
+    }
+
+    const tenant = tenantRecords[0];
+
+    // Block suspended or cancelled tenants
+    if (tenant.status === 'suspended' || tenant.status === 'cancelled') {
+      console.log(`[PUBLIC PORTAL] portal_not_found (${tenant.status}): subdomain=${subdomain}`);
+      res.set('Cache-Control', 'public, max-age=300');
+      return res.status(404).json({
+        success: false,
+        error: 'portal_not_found',
+        message: 'Portal not available',
+      });
+    }
+
+    // Use wrapTenantDb for proper tenant isolation
+    const tenantDb = wrapTenantDb(db, tenant.tenantId);
+
+    // Get portal settings with branding
+    const settings = await getPortalSettingsWithBranding(tenantDb, tenant.tenantId);
+
+    // Get portal actions (tiles for home screen)
+    const actions = await tenantDb
+      .select()
+      .from(portalActions)
+      .where(and(
+        eq(portalActions.tenantId, tenant.tenantId),
+        eq(portalActions.isEnabled, true)
+      ))
+      .orderBy(portalActions.sortOrder);
+
+    // Set cache headers (cache for 5 minutes)
+    res.set('Cache-Control', 'public, max-age=300');
+
+    console.log(`[PUBLIC PORTAL] portal settings ok: subdomain=${subdomain} tenantId=${tenant.tenantId}`);
+
+    return res.json({
+      success: true,
+      data: {
+        portalEnabled: settings.portalEnabled,
+        branding: {
+          businessName: settings.businessName,
+          logoUrl: settings.logoUrl,
+          primaryColor: settings.primaryColor,
+          accentColor: settings.accentColor,
+          themeColor: settings.pwaThemeColor,
+          backgroundColor: settings.pwaBackgroundColor,
+        },
+        pwa: {
+          displayName: settings.pwaDisplayName || settings.businessName,
+          shortName: settings.pwaShortName || settings.businessName?.substring(0, 12),
+          startUrl: settings.pwaStartUrl || '/portal',
+        },
+        modules: {
+          home: settings.moduleHomeEnabled,
+          book: settings.moduleBookEnabled,
+          appointments: settings.moduleAppointmentsEnabled,
+          messages: settings.moduleMessagesEnabled,
+          loyalty: settings.moduleLoyaltyEnabled,
+          profile: settings.moduleProfileEnabled,
+        },
+        tiles: {
+          showRewards: settings.showRewards,
+          showBooking: settings.showBooking,
+          showServices: settings.showServices,
+          showContact: settings.showContact,
+        },
+        content: {
+          title: settings.portalTitle,
+          welcomeMessage: settings.portalWelcomeMessage,
+          landingPath: settings.landingPath,
+        },
+        installPrompt: {
+          enabled: settings.installPromptEnabled,
+          trigger: settings.installPromptTrigger,
+          cooldownDays: settings.installPromptCooldownDays,
+          pageVisitThreshold: settings.installPromptPageVisitThreshold,
+          bannerText: settings.installPromptBannerText,
+          buttonText: settings.installPromptButtonText,
+        },
+        actions: actions.map(a => ({
+          key: a.actionKey,
+          displayName: a.displayName,
+          description: a.description,
+          icon: a.icon,
+          category: a.category,
+          actionType: a.actionType,
+          actionConfig: a.actionConfig,
+          showOnHome: a.showOnHome,
+          showInNav: a.showInNav,
+        })),
+      },
+    });
+
+  } catch (error) {
+    console.error('[PUBLIC PORTAL] Error fetching portal settings:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to load portal settings',
     });
   }
 });
