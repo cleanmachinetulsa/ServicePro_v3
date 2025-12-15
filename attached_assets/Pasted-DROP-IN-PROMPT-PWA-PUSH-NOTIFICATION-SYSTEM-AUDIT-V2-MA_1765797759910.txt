@@ -1,0 +1,151 @@
+DROP-IN PROMPT
+
+PWA + PUSH NOTIFICATION SYSTEM AUDIT + V2 MANAGEMENT CENTER (Tenant-configurable)
+
+I need a complete analysis of the current PWA + push notification implementation in this repo, and then implement a V2 “PWA & Notifications” management system inside the app.
+
+Part 1 — Repo Audit (must be specific)
+
+Identify all PWA-related files and behavior:
+
+manifest (where is it served from? static vs dynamic)
+
+service worker (registration, scope, caching strategy, push handlers)
+
+any existing push subscription endpoints/tables
+
+any existing “install prompt” logic
+
+any home-screen quick actions defined in the manifest (shortcuts)
+
+Explain (in a short, concrete report) what the current system does today:
+
+Can it send push notifications? If so, from where and how?
+
+Are pushes tenant-aware?
+
+Where are notification types defined?
+
+What settings exist today (env vars, DB settings, UI)?
+
+Any limitations on iOS Safari vs Android Chrome
+
+Provide file paths and key functions involved.
+
+Part 2 — Implement “PWA & Notifications” Admin Page (V2 foundation)
+
+Implement /admin/pwa-notifications with:
+
+Push status: enabled/disabled, last push sent, last error
+
+Buttons: “Request push permission”, “Subscribe”, “Unsubscribe”, “Send test push”
+
+Toggle library of notification types:
+
+booking_failed / needs_human (default ON, cannot be fully disabled unless explicitly allowed)
+
+new_lead
+
+booking_confirmed
+
+after_hours_reply
+
+daily_digest
+
+Quiet hours settings (America/Chicago):
+
+start/end time
+
+“Override for NEEDS_HUMAN” (default ON)
+
+Digest mode settings:
+
+Off / Every X hours / Fixed times (e.g. 9:00, 15:00)
+
+Delivery channel toggles: SMS / Email / Push (if available)
+
+Part 3 — Backend + Data Model (V2-ready, not throwaway)
+
+Create a tenant-scoped settings model/table if not already present (safe migrations).
+
+Create notification event log table:
+
+tenantId, type, target, channel, status, error, createdAt
+
+Create endpoints:
+
+GET/PUT /api/admin/pwa-notifications/settings
+
+POST /api/admin/pwa-notifications/test (send test notification)
+
+GET /api/admin/pwa-notifications/logs
+
+Ensure existing escalation system (booking failure) reads quiet hours + digest rules:
+
+immediate escalation still happens for NEEDS_HUMAN unless override is disabled
+
+digest mode queues summary messages and sends on schedule
+
+Part 4 — Quick Actions (realistic, platform-correct)
+
+Audit existing manifest shortcuts.
+
+If manifest is static: implement a safe approach for tenant-selectable shortcuts:
+
+either a dynamic manifest endpoint per tenant OR a controlled static set of shortcuts
+
+Add UI to choose top 4 shortcuts from a library:
+
+New Booking (/schedule)
+
+Bookings Inbox (/admin/bookings-inbox)
+
+Today’s Schedule (/schedule?view=today)
+
+Messages (/messages)
+
+Port Recovery Campaigns (/admin/port-recovery)
+
+Document platform constraints clearly (iOS vs Android).
+
+Output required
+
+A short AUDIT report (what exists today)
+
+List of files changed
+
+How to test push end-to-end
+
+What features are real vs platform-limited
+
+Constraints:
+
+Do not “fake” push. If not wired, implement it properly or clearly state what is missing.
+
+Keep implementation production-safe and tenant-aware.
+
+No huge refactors. Build V2-grade foundation with minimal UI surface first.
+
+Yes: quiet hours + digest mode can be configured with that drop-in
+
+The prompt above explicitly includes:
+
+quiet hours start/end
+
+digest schedules
+
+channels (SMS/email/push)
+
+“override for NEEDS_HUMAN” so you never miss urgent stuff
+
+That’s the correct premium behavior.
+
+One important note (so you don’t get burned)
+
+When the agent finishes, don’t accept “done” unless it answers these two questions clearly:
+
+Do we currently have real push notifications end-to-end (VAPID keys, subscription storage, service worker push handler, server send)?
+
+What exact file serves the manifest and service worker, and is it tenant-aware?
+
+If it can’t point to code paths, it’s hand-waving.
