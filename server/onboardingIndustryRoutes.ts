@@ -16,6 +16,7 @@ import { tenantConfig, tenants, users, phoneHistoryImports } from "@shared/schem
 import { eq, and } from "drizzle-orm";
 import { bootstrapIndustryAiAndMessaging } from "./industryAiBootstrapService";
 import { getBootstrapDataForIndustry, hasBootstrapData } from "./industryBootstrapData";
+import { inviteCodeService } from "./services/inviteCodeService";
 import bcrypt from "bcrypt";
 import { nanoid } from "nanoid";
 
@@ -52,7 +53,7 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
     "/api/onboarding/complete",
     async (req: Request, res: Response): Promise<void> => {
       try {
-        const { username, password, email, industryId, industryName, featureFlags, rawSelection } = req.body;
+        const { username, password, email, industryId, industryName, featureFlags, rawSelection, inviteCode } = req.body;
 
         // Validate required fields
         if (!username || !password) {
@@ -89,6 +90,23 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
           return;
         }
 
+        // Validate invite code if provided
+        let inviteCodeData: { planTier: string; code: string } | null = null;
+        if (inviteCode) {
+          const validation = await inviteCodeService.validateCode(inviteCode);
+          if (!validation.success) {
+            res.status(400).json({
+              success: false,
+              message: validation.reason === 'not_found' ? 'Invalid invite code' :
+                       validation.reason === 'inactive' ? 'This invite code is no longer active' :
+                       validation.reason === 'expired' ? 'This invite code has expired' :
+                       'This invite code has reached its maximum number of uses',
+            });
+            return;
+          }
+          inviteCodeData = { planTier: validation.invite.planTier, code: validation.invite.code };
+        }
+
         // Check if username already exists in ANY tenant (global check)
         const existingUser = await db
           .select()
@@ -122,15 +140,18 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
         let newUser;
         try {
           await db.transaction(async (tx) => {
-            // 1. Create tenant
-            await tx.insert(tenants).values({
+            // 1. Create tenant (with invite code data if provided)
+            const tenantData: any = {
               id: tenantId,
               name: `${username}'s Business`,
               subdomain: null,
               isRoot: false,
-              planTier: "starter",
-              status: "trialing",
-            });
+              planTier: inviteCodeData ? inviteCodeData.planTier : "starter",
+              status: inviteCodeData ? "active" : "trialing",
+              billingComplimentary: inviteCodeData ? true : false,
+              inviteCodeUsed: inviteCodeData ? inviteCodeData.code : null,
+            };
+            await tx.insert(tenants).values(tenantData);
 
             // 2. Create tenant config with industry selection
             await tx.insert(tenantConfig).values({
@@ -138,7 +159,7 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
               businessName: `${username}'s Business`,
               logoUrl: null,
               primaryColor: "#3b82f6",
-              tier: "starter",
+              tier: inviteCodeData ? inviteCodeData.planTier : "starter",
               industry: industryId,
               industryConfig: industryConfigData,
             });
@@ -155,7 +176,17 @@ export default function registerOnboardingIndustryRoutes(app: Express) {
             newUser = user;
           });
 
-          console.log(`[ONBOARDING] Created tenant ${tenantId} with user ${username} and industry ${industryId}`);
+          // Increment invite code usage count (outside transaction for atomicity)
+          if (inviteCodeData) {
+            try {
+              await inviteCodeService.incrementUsage(inviteCodeData.code);
+              console.log(`[ONBOARDING] Incremented usage for invite code ${inviteCodeData.code}`);
+            } catch (codeErr) {
+              console.error(`[ONBOARDING] Failed to increment invite code usage:`, codeErr);
+            }
+          }
+
+          console.log(`[ONBOARDING] Created tenant ${tenantId} with user ${username} and industry ${industryId}${inviteCodeData ? ` (using invite code ${inviteCodeData.code})` : ''}`);
 
           // Bootstrap AI behavior rules, SMS templates, and FAQ entries if available
           let bootstrapResult = null;

@@ -37,6 +37,7 @@ import welcomeBackCampaignRouter from "./routes.welcomeBackCampaign";
 import portRecoveryRouter from "./routes.portRecovery";
 import { registerReferralInvoiceRoutes } from "./routes.referralInvoice";
 import registerOnboardingIndustryRoutes from "./onboardingIndustryRoutes";
+import registerAdminInviteCodeRoutes from "./routes.adminInviteCodes";
 import { registerSuggestionRoutes } from "./routes.suggestions";
 import { registerSupportRoutes } from "./routes.support";
 import { registerIndustryPackRoutes } from "./routes.industryPacks";
@@ -414,6 +415,8 @@ app.use('/api/email', emailTestRouter);
 registerReferralInvoiceRoutes(app);
 // Register industry onboarding routes (Phase 8B)
 registerOnboardingIndustryRoutes(app);
+// Register Friends & Family invite codes admin routes
+registerAdminInviteCodeRoutes(app);
 // Register suggestion system routes (platform + customer suggestions)
 registerSuggestionRoutes(app);
 // Register support system routes (tickets, KB, AI context)

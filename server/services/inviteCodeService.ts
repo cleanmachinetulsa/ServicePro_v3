@@ -1,7 +1,6 @@
 import { db } from '../db';
-import { tenantInviteCodes, tenants } from '@shared/schema';
-import { eq, and, sql, lt, or, isNull, desc } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
+import { tenantInviteCodes } from '@shared/schema';
+import { eq, sql, desc } from 'drizzle-orm';
 import type { TenantInviteCode, InsertTenantInviteCode } from '@shared/schema';
 
 function generateInviteCode(): string {
@@ -108,55 +107,19 @@ export const inviteCodeService = {
     };
   },
 
-  async redeemCode(code: string, tenantId: string): Promise<{ success: boolean; error?: string; planTier?: string }> {
-    const validation = await this.validateCode(code);
-    
-    if (!validation.success) {
-      return { 
-        success: false, 
-        error: validation.reason === 'not_found' ? 'Invite code not found' :
-               validation.reason === 'inactive' ? 'Invite code is no longer active' :
-               validation.reason === 'expired' ? 'Invite code has expired' :
-               'Invite code has reached maximum redemptions'
-      };
-    }
-    
+  async incrementUsage(code: string): Promise<boolean> {
     try {
-      await db.transaction(async (tx) => {
-        await tx
-          .update(tenantInviteCodes)
-          .set({
-            usedCount: sql`${tenantInviteCodes.usedCount} + 1`,
-            lastUsedAt: new Date(),
-          })
-          .where(and(
-            eq(tenantInviteCodes.code, code.toUpperCase()),
-            eq(tenantInviteCodes.isActive, true),
-            or(
-              isNull(tenantInviteCodes.expiresAt),
-              lt(sql`NOW()`, tenantInviteCodes.expiresAt)
-            ),
-            or(
-              isNull(tenantInviteCodes.maxRedemptions),
-              lt(tenantInviteCodes.usedCount, tenantInviteCodes.maxRedemptions)
-            )
-          ));
-        
-        await tx
-          .update(tenants)
-          .set({
-            planTier: validation.invite.planTier as any,
-            billingComplimentary: true,
-            inviteCodeUsed: code.toUpperCase(),
-            status: 'active',
-          })
-          .where(eq(tenants.id, tenantId));
-      });
-      
-      return { success: true, planTier: validation.invite.planTier };
+      await db
+        .update(tenantInviteCodes)
+        .set({
+          usedCount: sql`${tenantInviteCodes.usedCount} + 1`,
+          lastUsedAt: new Date(),
+        })
+        .where(eq(tenantInviteCodes.code, code.toUpperCase()));
+      return true;
     } catch (error: any) {
-      console.error('[INVITE CODE] Redemption error:', error);
-      return { success: false, error: error.message };
+      console.error('[INVITE CODE] Increment usage error:', error);
+      return false;
     }
   },
 };
