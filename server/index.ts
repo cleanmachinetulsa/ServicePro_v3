@@ -513,6 +513,10 @@ async function startDeferredInitialization() {
     const tenantDbForStartup = wrapTenantDb(db, 'root');
     await initializeReferralConfig(tenantDbForStartup);
     
+    // Seed portal settings for all tenants (idempotent - only creates if missing)
+    const { seedPortalSettings } = await import('./seed/seedPortalSettings');
+    await seedPortalSettings(tenantDbForStartup, 'root');
+    
     // Migrate SMS fallback settings - auto-disable if enabled without phone (safety migration)
     try {
       const [settings] = await db.select().from(businessSettings).limit(1);
