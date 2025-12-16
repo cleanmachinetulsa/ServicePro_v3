@@ -230,14 +230,14 @@ export const platformSettings = pgTable("platform_settings", {
 });
 
 // Friends & Family Invite Codes (Global/Platform-level table)
-export const inviteTypeEnum = pgEnum('invite_type', ['friends_family']);
+export const inviteTypeEnum = pgEnum('invite_type', ['one_time', 'multi_use', 'unlimited']);
 
 export const tenantInviteCodes = pgTable("tenant_invite_codes", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 20 }).notNull().unique(), // 10-16 char random code
   label: varchar("label", { length: 255 }).notNull(), // Required label for internal reference
   description: text("description"), // Optional description
-  inviteType: inviteTypeEnum("invite_type").default("friends_family").notNull(),
+  inviteType: inviteTypeEnum("invite_type").default("multi_use").notNull(),
   planTier: varchar("plan_tier", { length: 20 }).notNull(), // The plan tier granted (starter/pro/elite)
   maxRedemptions: integer("max_redemptions"), // Null = unlimited
   usedCount: integer("used_count").default(0).notNull(),

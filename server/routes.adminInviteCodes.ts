@@ -6,6 +6,7 @@ import { z } from "zod";
 const createInviteCodeSchema = z.object({
   label: z.string().min(1, "Label is required"),
   description: z.string().optional(),
+  inviteType: z.enum(["one_time", "multi_use", "unlimited"]),
   planTier: z.enum(["starter", "pro", "elite"]),
   maxRedemptions: z.number().int().positive().optional().nullable(),
   expiresAt: z.string().datetime().optional().nullable(),
@@ -75,13 +76,30 @@ export default function registerAdminInviteCodeRoutes(app: Express) {
           return;
         }
 
-        const { label, description, planTier, maxRedemptions, expiresAt, isActive } = parsed.data;
+        const { label, description, inviteType, planTier, maxRedemptions, expiresAt, isActive } = parsed.data;
+        
+        // Enforce maxRedemptions based on inviteType
+        let effectiveMaxRedemptions: number | null = null;
+        if (inviteType === 'one_time') {
+          effectiveMaxRedemptions = 1;
+        } else if (inviteType === 'multi_use') {
+          if (!maxRedemptions || maxRedemptions < 1) {
+            res.status(400).json({ 
+              success: false, 
+              error: "Multi-use codes require maxRedemptions to be set" 
+            });
+            return;
+          }
+          effectiveMaxRedemptions = maxRedemptions;
+        }
+        // unlimited: effectiveMaxRedemptions stays null
         
         const code = await inviteCodeService.createCode({
           label,
           description: description || null,
+          inviteType,
           planTier,
-          maxRedemptions: maxRedemptions ?? null,
+          maxRedemptions: effectiveMaxRedemptions,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
           isActive,
           createdByUserId: (req as any).session?.userId || null,
@@ -106,6 +124,13 @@ export default function registerAdminInviteCodeRoutes(app: Express) {
           return;
         }
 
+        // Fetch existing code to enforce inviteType constraints
+        const existingCode = await inviteCodeService.getCodeById(id);
+        if (!existingCode) {
+          res.status(404).json({ success: false, error: "Invite code not found" });
+          return;
+        }
+
         const parsed = updateInviteCodeSchema.safeParse(req.body);
         if (!parsed.success) {
           res.status(400).json({ 
@@ -119,9 +144,32 @@ export default function registerAdminInviteCodeRoutes(app: Express) {
         const updates: any = {};
         if (parsed.data.label !== undefined) updates.label = parsed.data.label;
         if (parsed.data.description !== undefined) updates.description = parsed.data.description;
-        if (parsed.data.maxRedemptions !== undefined) updates.maxRedemptions = parsed.data.maxRedemptions;
         if (parsed.data.expiresAt !== undefined) updates.expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
         if (parsed.data.isActive !== undefined) updates.isActive = parsed.data.isActive;
+
+        // Enforce maxRedemptions based on stored inviteType
+        if (parsed.data.maxRedemptions !== undefined) {
+          const storedType = existingCode.inviteType;
+          if (storedType === 'one_time') {
+            // one_time codes must keep maxRedemptions=1
+            res.status(400).json({ 
+              success: false, 
+              error: "Cannot change max redemptions for one-time codes" 
+            });
+            return;
+          } else if (storedType === 'multi_use') {
+            // multi_use codes must have a positive limit
+            if (!parsed.data.maxRedemptions || parsed.data.maxRedemptions < 1) {
+              res.status(400).json({ 
+                success: false, 
+                error: "Multi-use codes require a positive max redemptions value" 
+              });
+              return;
+            }
+            updates.maxRedemptions = parsed.data.maxRedemptions;
+          }
+          // unlimited codes: ignore maxRedemptions updates (they stay null)
+        }
 
         const updatedCode = await inviteCodeService.updateCode(id, updates);
         if (!updatedCode) {

@@ -51,7 +51,7 @@ export const inviteCodeService = {
         code,
         label: data.label,
         description: data.description || null,
-        inviteType: data.inviteType || 'friends_family',
+        inviteType: data.inviteType || 'multi_use',
         planTier: data.planTier,
         maxRedemptions: data.maxRedemptions || null,
         expiresAt: data.expiresAt || null,
