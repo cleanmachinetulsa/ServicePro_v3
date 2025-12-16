@@ -1,0 +1,93 @@
+DROP-IN: Friends & Family Invite Codes (v3.7+ multi-tenant safe)
+
+You are modifying the ServicePro_v3 monorepo. Implement Friends & Family Invite Codes that let the platform owner generate invite links like:
+/onboarding/start?invite=ABC123
+
+CRITICAL RULES
+- Invite codes are GLOBAL (platform-owned) data: store + validate them ONLY in the GLOBAL DB.
+- Redemption happens during tenant creation (when a tenant is created) and must be transactional.
+- Do not change behavior for normal signups (no invite).
+- Do not leak root tenant data to other tenants.
+- Use existing auth/role checks: ONLY root/platform owner can manage codes.
+- Fit into the existing onboarding wizard + billing system; do not break current onboarding routes.
+
+PART A — DATABASE (GLOBAL)
+1) Add table tenant_invite_codes (GLOBAL schema / shared schema used for platform tables):
+- id (pk)
+- code (unique, 10–16 char random)
+- label (required)
+- description (nullable)
+- invite_type enum: 'friends_family' (future types ok but not required)
+- plan_tier (string/enum consistent with your current tiers)
+- max_redemptions (nullable)
+- used_count (default 0)
+- expires_at (nullable)
+- is_active (default true)
+- created_by_user_id (nullable fk if you have it)
+- created_at (default now)
+- last_used_at (nullable)
+- metadata json (nullable)
+
+2) Add a place to record complimentary status in the SAME place you already store plan/billing state.
+- If you already have “plan tier / subscription / entitlement” tables, add a boolean like is_complimentary there.
+- If you have only tenants.plan_tier, then add tenants.billing_complimentary boolean default false.
+Pick the least disruptive location consistent with current billing v2.
+
+PART B — BACKEND API
+Owner-only admin routes:
+- GET /api/admin/invite-codes  (list codes)
+- POST /api/admin/invite-codes (create code; server generates code)
+- PATCH /api/admin/invite-codes/:id (toggle is_active, edit label/desc/max/expires)
+
+Public validation route (NO auth):
+- GET /api/public/invite-codes/validate?code=ABC123
+Return:
+  { success:false, reason:'not_found'|'inactive'|'expired'|'max_redemptions_reached' }
+or
+  { success:true, invite:{ code, inviteType, planTier, label, description } }
+
+PART C — REDEMPTION + ONBOARDING INTEGRATION
+1) Frontend onboarding start page:
+- Read query param invite
+- Call public validate endpoint
+- If valid:
+  - store inviteCode + inviteMeta in wizard state
+  - show a small banner/ribbon: “Friends & Family: complimentary {planTier}”
+  - preselect plan tier and prevent changing tier (or allow, but clearly show it’s complimentary)
+- If invalid: show warning but continue normal onboarding.
+
+2) Tenant creation / onboarding completion:
+- Identify the existing backend endpoint that creates the tenant.
+- Accept inviteCode in payload (or from query state).
+- In ONE transaction:
+  - validate invite code row (active, not expired, redemptions remaining)
+  - create tenant (normal flow)
+  - set tenant plan tier from invite (plan_tier)
+  - mark billing as complimentary (is_complimentary / billing_complimentary)
+  - attach invite code used (store invite_code_used on tenant OR create tenant_invite_redemptions table; pick simplest)
+  - increment used_count + set last_used_at
+- If tenant creation fails, do NOT increment used_count.
+
+3) Billing behavior:
+- If complimentary flag is true:
+  - onboarding billing step must be skipped or replaced with “Complimentary account – no payment required”
+  - feature gating must treat the tenant as the chosen paid tier.
+
+PART D — ADMIN UI (OWNER ONLY)
+Create page at /admin/friends-family-codes (or consistent admin route conventions):
+- table of codes (code, label, plan, used/max, expires, active, created)
+- create form (label, plan tier, max redemptions, expires, description)
+- after create: show full invite URL with Copy button
+- toggle active
+
+PART E — TESTS / SMOKE
+- Add at least:
+  - validate endpoint: valid + expired + maxed out cases
+  - redemption is transactional (used_count not incremented if tenant creation throws)
+  - normal signup unaffected
+
+IMPLEMENTATION NOTES (IMPORTANT)
+- Invite code objects and admin UI must use GLOBAL DB access patterns.
+- Tenant seeding (industry pack defaults) stays exactly as today; do NOT modify pack logic except ensuring complimentary tenants still get the normal pack flow.
+- Find and reuse existing “is owner / platform admin” checks and existing UI components.
+- Finish by printing: files changed, endpoints, and quick manual test steps.

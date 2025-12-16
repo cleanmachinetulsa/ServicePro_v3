@@ -229,6 +229,40 @@ export const platformSettings = pgTable("platform_settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Friends & Family Invite Codes (Global/Platform-level table)
+export const inviteTypeEnum = pgEnum('invite_type', ['friends_family']);
+
+export const tenantInviteCodes = pgTable("tenant_invite_codes", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(), // 10-16 char random code
+  label: varchar("label", { length: 255 }).notNull(), // Required label for internal reference
+  description: text("description"), // Optional description
+  inviteType: inviteTypeEnum("invite_type").default("friends_family").notNull(),
+  planTier: varchar("plan_tier", { length: 20 }).notNull(), // The plan tier granted (starter/pro/elite)
+  maxRedemptions: integer("max_redemptions"), // Null = unlimited
+  usedCount: integer("used_count").default(0).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }), // Null = never expires
+  isActive: boolean("is_active").default(true).notNull(),
+  createdByUserId: integer("created_by_user_id"), // The owner/admin who created this code
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(), // Flexible additional data
+}, (table) => ({
+  codeIdx: uniqueIndex("tenant_invite_codes_code_idx").on(table.code),
+  isActiveIdx: index("tenant_invite_codes_is_active_idx").on(table.isActive),
+}));
+
+export const insertTenantInviteCodeSchema = createInsertSchema(tenantInviteCodes).omit({
+  id: true,
+  code: true, // Server generates the code
+  usedCount: true,
+  createdAt: true,
+  lastUsedAt: true,
+});
+
+export type TenantInviteCode = typeof tenantInviteCodes.$inferSelect;
+export type InsertTenantInviteCode = z.infer<typeof insertTenantInviteCodeSchema>;
+
 // Tenant tier enum for subscription levels
 // Phase 7 + Phase 23: Free tier added for free tier users with watermarked sites
 export const tenantTierEnum = pgEnum('tenant_tier', ['free', 'starter', 'pro', 'elite', 'internal']);
@@ -256,6 +290,9 @@ export const tenants = pgTable("tenants", {
   // SP-27: Enhanced dunning tracking
   failedPaymentAttempts: integer("failed_payment_attempts").default(0).notNull(), // Number of failed payment attempts
   delinquentSince: timestamp("delinquent_since", { withTimezone: true }), // When first payment failed
+  // Friends & Family Invite Codes
+  billingComplimentary: boolean("billing_complimentary").default(false).notNull(), // True if account is complimentary (no payment required)
+  inviteCodeUsed: varchar("invite_code_used", { length: 20 }), // The invite code used during signup (if any)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
