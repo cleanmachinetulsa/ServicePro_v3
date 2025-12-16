@@ -89,6 +89,7 @@ const AdminApplications = lazy(() => import("./pages/AdminApplications"));
 const AdminTenants = lazy(() => import("./pages/AdminTenants"));
 const AdminTenantDetail = lazy(() => import("./pages/AdminTenantDetail"));
 const AdminPromos = lazy(() => import("./pages/AdminPromos"));
+const AdminFriendsFamilyCodes = lazy(() => import("./pages/AdminFriendsFamilyCodes"));
 const AdminPhoneConfig = lazy(() => import("./pages/AdminPhoneConfig"));
 const AdminIvrConfig = lazy(() => import("./pages/AdminIvrConfig"));
 const AdminConciergeSetup = lazy(() => import("./pages/AdminConciergeSetup"));
@@ -527,6 +528,11 @@ function Router() {
       <Route path="/admin/promos">
         <AuthGuard>
           <LazyDashboard><AdminPromos /></LazyDashboard>
+        </AuthGuard>
+      </Route>
+      <Route path="/admin/friends-family-codes">
+        <AuthGuard>
+          <LazyDashboard><AdminFriendsFamilyCodes /></LazyDashboard>
         </AuthGuard>
       </Route>
       <Route path="/admin/phone-config">
