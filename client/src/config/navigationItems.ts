@@ -617,6 +617,14 @@ export const navigationItems: NavigationItem[] = [
     badge: 'Owner',
     visibility: 'advancedOnly',
   },
+  {
+    id: 'friends-family-codes',
+    label: 'Friends & Family Codes',
+    icon: Gift,
+    path: '/admin/friends-family-codes',
+    badge: 'Owner',
+    visibility: 'advancedOnly',
+  },
 
   // WORKFORCE MANAGEMENT
   {
