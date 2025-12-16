@@ -34,6 +34,7 @@ interface InviteCode {
 interface CreateInviteCodeForm {
   label: string;
   description: string;
+  inviteType: 'one_time' | 'multi_use' | 'unlimited';
   planTier: string;
   maxRedemptions: number | null;
   expiresAt: string;
@@ -43,8 +44,9 @@ interface CreateInviteCodeForm {
 const defaultForm: CreateInviteCodeForm = {
   label: '',
   description: '',
+  inviteType: 'multi_use',
   planTier: 'starter',
-  maxRedemptions: null,
+  maxRedemptions: 5,
   expiresAt: '',
   isActive: true,
 };
@@ -113,6 +115,7 @@ export default function AdminFriendsFamilyCodes() {
     setForm({
       label: code.label,
       description: code.description || '',
+      inviteType: (code.inviteType as 'one_time' | 'multi_use' | 'unlimited') || 'multi_use',
       planTier: code.planTier,
       maxRedemptions: code.maxRedemptions,
       expiresAt: code.expiresAt ? format(parseISO(code.expiresAt), "yyyy-MM-dd'T'HH:mm") : '',
@@ -152,6 +155,16 @@ export default function AdminFriendsFamilyCodes() {
       elite: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
     };
     return <Badge className={colors[tier] || ''} data-testid={`badge-plan-${tier}`}>{tier.charAt(0).toUpperCase() + tier.slice(1)}</Badge>;
+  };
+
+  const getTypeBadge = (type: string) => {
+    const configs: Record<string, { label: string; className: string }> = {
+      one_time: { label: 'One-Time', className: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
+      multi_use: { label: 'Multi-Use', className: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+      unlimited: { label: 'Unlimited', className: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200' },
+    };
+    const config = configs[type] || { label: type, className: '' };
+    return <Badge className={config.className} data-testid={`badge-type-${type}`}>{config.label}</Badge>;
   };
 
   return (
@@ -210,6 +223,34 @@ export default function AdminFriendsFamilyCodes() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="inviteType">Code Type *</Label>
+                    <Select
+                      value={form.inviteType}
+                      onValueChange={(value: 'one_time' | 'multi_use' | 'unlimited') => {
+                        const updates: Partial<CreateInviteCodeForm> = { inviteType: value };
+                        if (value === 'one_time') updates.maxRedemptions = 1;
+                        else if (value === 'unlimited') updates.maxRedemptions = null;
+                        else if (value === 'multi_use' && !form.maxRedemptions) updates.maxRedemptions = 5;
+                        setForm({ ...form, ...updates });
+                      }}
+                      disabled={isEditing}
+                    >
+                      <SelectTrigger id="inviteType" data-testid="select-invite-type">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="one_time">One-Time (single use)</SelectItem>
+                        <SelectItem value="multi_use">Multi-Use (limited uses)</SelectItem>
+                        <SelectItem value="unlimited">Unlimited</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {form.inviteType === 'one_time' && 'Code can only be used once'}
+                      {form.inviteType === 'multi_use' && 'Code can be used a limited number of times'}
+                      {form.inviteType === 'unlimited' && 'Code can be used unlimited times'}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="planTier">Plan Tier *</Label>
                     <Select
                       value={form.planTier}
@@ -225,19 +266,21 @@ export default function AdminFriendsFamilyCodes() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="maxRedemptions">Max Redemptions</Label>
-                    <Input
-                      id="maxRedemptions"
-                      data-testid="input-max-redemptions"
-                      type="number"
-                      min="1"
-                      placeholder="Unlimited if empty"
-                      value={form.maxRedemptions ?? ''}
-                      onChange={(e) => setForm({ ...form, maxRedemptions: e.target.value ? parseInt(e.target.value) : null })}
-                    />
-                    <p className="text-xs text-muted-foreground">Leave empty for unlimited uses</p>
-                  </div>
+                  {form.inviteType === 'multi_use' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="maxRedemptions">Max Redemptions *</Label>
+                      <Input
+                        id="maxRedemptions"
+                        data-testid="input-max-redemptions"
+                        type="number"
+                        min="1"
+                        placeholder="Number of uses allowed"
+                        value={form.maxRedemptions ?? ''}
+                        onChange={(e) => setForm({ ...form, maxRedemptions: e.target.value ? parseInt(e.target.value) : null })}
+                        required
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="expiresAt">Expiration Date</Label>
                     <Input
@@ -306,6 +349,7 @@ export default function AdminFriendsFamilyCodes() {
                     <TableRow>
                       <TableHead>Code</TableHead>
                       <TableHead>Label</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead>Usage</TableHead>
                       <TableHead>Expires</TableHead>
@@ -338,6 +382,7 @@ export default function AdminFriendsFamilyCodes() {
                             )}
                           </div>
                         </TableCell>
+                        <TableCell>{getTypeBadge(code.inviteType)}</TableCell>
                         <TableCell>{getPlanBadge(code.planTier)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1" data-testid={`text-usage-${code.id}`}>
