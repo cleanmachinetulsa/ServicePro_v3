@@ -1,0 +1,45 @@
+We have a production bug: /admin/portal-settings fails with
+[PORTAL ADMIN] Error fetching settings: column "landing_path" does not exist
+from server/routes.portalAdmin.ts:36.
+
+Fix this properly with a safe DB migration and keep it non-destructive.
+Do NOT touch Twilio/SMS/IVR/telephony logic.
+
+REQUIREMENTS
+1) Locate the portal settings table name used by the portal admin routes (likely portal_settings).
+2) Find every column referenced by:
+   - server/routes.portalAdmin.ts
+   - client PortalSettingsPage/Admin settings fetch+save payload
+3) Add a migration (Drizzle or SQL, whichever matches this repo) that runs on startup/migrate step and:
+   - adds any missing columns using ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+   - sets sensible defaults so reads don’t fail
+4) After migration, ensure GET /api/admin/portal/settings returns 200 and seeds a default row if none exists.
+5) Log a single line when migration runs, e.g. [PORTAL MIGRATION] ensured portal_settings columns.
+
+IMPLEMENTATION NOTES
+- The error specifically mentions landing_path, so add it first:
+  landing_path TEXT DEFAULT '/portal'
+- Also add other likely missing columns used by the UI tabs (modules/install prompt/notifications/actions), e.g.
+  portal_enabled BOOLEAN DEFAULT true
+  show_rewards BOOLEAN DEFAULT true
+  show_booking BOOLEAN DEFAULT true
+  show_services BOOLEAN DEFAULT true
+  show_contact BOOLEAN DEFAULT true
+  install_prompt_mode TEXT DEFAULT 'after_2_visits'
+  install_prompt_cooldown_days INT DEFAULT 30
+  quiet_hours_enabled BOOLEAN DEFAULT false
+  quiet_hours_start TEXT DEFAULT '21:00'
+  quiet_hours_end TEXT DEFAULT '07:00'
+  digest_enabled BOOLEAN DEFAULT false
+  digest_frequency TEXT DEFAULT 'daily'
+  (and any “actions” related columns the page expects)
+- If the repo uses per-tenant DB schemas, make sure this migration runs against the tenant DB (the same DB used by routes.portalAdmin.ts).
+- Do NOT drop tables. Do NOT rename columns. Only ADD COLUMN IF NOT EXISTS.
+
+DELIVERABLES
+- Show files changed
+- Confirm the migration is applied in the dev environment
+- Provide quick test steps:
+  - Open /admin/portal-settings
+  - Click Save -> should succeed (no red toast)
+  - Refresh -> values persist
