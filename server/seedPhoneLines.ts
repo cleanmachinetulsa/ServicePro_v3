@@ -6,9 +6,12 @@ import { wrapTenantDb } from './tenantDb';
 /**
  * Seeds the database with Clean Machine's phone lines and default business hours
  * Configuration is driven by environment variables for flexibility:
- * - BUSINESS_PHONE_NUMBER: Main Twilio line (default: +19188565711)
- * - VIP_PHONE_NUMBER: VIP/Emergency line (default: +19182820103)
+ * - MAIN_PHONE_NUMBER: Main Twilio line for customer-facing SMS (default: +19188565304)
+ * - VIP_PHONE_NUMBER: VIP/Admin line for internal alerts only (default: +19188565711)
  * - BUSINESS_OWNER_PHONE: Forwarding destination
+ * 
+ * SECURITY NOTE: Main line MUST be the customer-facing number (+19188565304).
+ * The VIP line (+19188565711) is for ADMIN ONLY, never customer SMS.
  */
 export async function seedPhoneLines() {
   const tenantDb = wrapTenantDb(db, 'root');
@@ -23,9 +26,10 @@ export async function seedPhoneLines() {
       return;
     }
 
-    // Get phone numbers from environment (with fallback defaults)
-    const mainLineNumber = process.env.BUSINESS_PHONE_NUMBER || '+19188565711';
-    const vipLineNumber = process.env.VIP_PHONE_NUMBER || '+19182820103';
+    // SECURITY FIX: Main line defaults to MAIN_PHONE_NUMBER (5304), NOT 5711
+    // 5711 is for admin-only alerts, not customer-facing SMS
+    const mainLineNumber = process.env.MAIN_PHONE_NUMBER || '+19188565304';
+    const vipLineNumber = process.env.VIP_PHONE_NUMBER || '+19188565711';
     const forwardingNumber = process.env.BUSINESS_OWNER_PERSONAL_PHONE || null;
 
     // Create Main Line - Primary Twilio business number

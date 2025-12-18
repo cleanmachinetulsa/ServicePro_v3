@@ -24,14 +24,20 @@
  */
 
 // Known Clean Machine defaults (root tenant) - ensures flows work even without env vars
-const DEFAULT_TWILIO_TEST = '+19189183265';
-const DEFAULT_TWILIO_MAIN = '+19188565304'; // Main customer-facing line
-const DEFAULT_PHONE_ADMIN = '+19188565711';  // VIP/Admin notifications
+// SECURITY: twilioTest MUST be empty string in production to prevent accidental test sends
+// twilioTest is for LOCAL DEVELOPMENT ONLY - never use for customer-facing messages
+const DEFAULT_TWILIO_TEST = ''; // EMPTY - no default test number, must be explicitly set via env var
+const DEFAULT_TWILIO_MAIN = '+19188565304'; // Main customer-facing line - ONLY number for outbound SMS
+// SECURITY: phoneAdmin is for ADMIN-ONLY notifications, NEVER for customer-facing SMS
+const DEFAULT_PHONE_ADMIN = '+19188565711';  // VIP/Admin notifications ONLY
 const DEFAULT_OWNER_URGENT = '+19182820103'; // Owner's personal phone for urgent alerts
 
 // Environment variable mappings with safe defaults for root tenant
+// SECURITY: PHONE_TWILIO_TEST defaults to empty string - test routes require explicit env var
 export const PHONE_TWILIO_TEST = process.env.TWILIO_TEST_SMS_NUMBER || DEFAULT_TWILIO_TEST;
+// SECURITY: PHONE_TWILIO_MAIN is the ONLY number that should send customer-facing SMS
 export const PHONE_TWILIO_MAIN = process.env.MAIN_PHONE_NUMBER || DEFAULT_TWILIO_MAIN;
+// SECURITY: PHONE_ADMIN is for admin-only alerts, NOT customer-facing
 export const PHONE_ADMIN = process.env.VIP_PHONE_NUMBER || DEFAULT_PHONE_ADMIN;
 export const PHONE_OWNER_URGENT = process.env.BUSINESS_OWNER_PERSONAL_PHONE || DEFAULT_OWNER_URGENT;
 

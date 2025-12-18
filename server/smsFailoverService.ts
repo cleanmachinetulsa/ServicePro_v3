@@ -2,18 +2,25 @@
  * SMS FAILOVER SERVICE
  * 
  * Emergency fix for Twilio Error 30024 (Numeric Sender ID Not Provisioned)
- * Automatically retries failed SMS with backup phone line
+ * 
+ * SECURITY UPDATE: Customer-facing SMS must ONLY use MAIN_PHONE_NUMBER.
+ * Failover for customer-facing SMS will:
+ * 1. First try messaging service (if configured)
+ * 2. FAIL CLOSED rather than use admin line for customer SMS
+ * 
+ * Admin-only notifications may still use phoneAdmin as backup.
  * 
  * Uses phoneConfig for number references:
- * - twilioMain (+19188565304) = Main customer-facing line
- * - phoneAdmin (+19188565711) = Admin/backup line for failover
+ * - twilioMain (+19188565304) = ONLY number for customer-facing SMS
+ * - phoneAdmin (+19188565711) = Admin notifications ONLY, not customer SMS
  */
 
 import type { TenantDb } from './db';
 import { phoneLines } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import * as Twilio from 'twilio';
-import { phoneConfig } from './config/phoneConfig';
+import { phoneConfig, PHONE_TWILIO_MAIN } from './config/phoneConfig';
+import { enforceCustomerSmsSender } from './services/smsSendGuard';
 
 const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
@@ -86,7 +93,8 @@ function isProvisioningError(error: any): boolean {
 /**
  * Send SMS with automatic failover
  * 
- * If primary phone line fails with Error 30024, automatically retry with backup line
+ * SECURITY: Customer-facing SMS only sends from MAIN_PHONE_NUMBER.
+ * Failover will NOT use admin line for customer SMS - fails closed instead.
  * 
  * @param toPhone - Recipient phone number (E.164 format)
  * @param message - SMS message body
@@ -94,6 +102,8 @@ function isProvisioningError(error: any): boolean {
  * @param phoneLineId - Optional: Phone line ID for tracking
  * @param statusCallback - Optional: Webhook URL for delivery status
  * @param messagingServiceSid - Optional: Twilio Messaging Service SID (preferred over fromPhone)
+ * @param purpose - Purpose of the SMS (for guard validation), defaults to 'customer_sms'
+ * @param allowAdmin - Allow admin line for this send (for admin-only notifications)
  * @returns Success status and message SID
  */
 export async function sendSMSWithFailover(
@@ -103,7 +113,9 @@ export async function sendSMSWithFailover(
   fromPhone: string,
   phoneLineId?: number,
   statusCallback?: string,
-  messagingServiceSid?: string | null
+  messagingServiceSid?: string | null,
+  purpose: string = 'customer_sms',
+  allowAdmin: boolean = false
 ): Promise<{ success: boolean; messageSid?: string; error?: any; usedBackup: boolean; fromNumber?: string }> {
   
   if (!twilio) {
@@ -115,13 +127,26 @@ export async function sendSMSWithFailover(
   }
 
   try {
+    // SECURITY: Validate sender before any send attempt
+    const guardResult = enforceCustomerSmsSender({
+      from: messagingServiceSid ? null : fromPhone, // If using messaging service, from is null
+      messagingServiceSid,
+      purpose,
+      tenantId: tenantDb.tenantId || 'root',
+      to: toPhone,
+      allowAdmin,
+    });
+    
+    // Use the validated FROM number (or empty if using messaging service)
+    const validatedFrom = guardResult.usedMessagingService ? fromPhone : guardResult.from;
+    
     // ATTEMPT 1: Try sending with messaging service or primary phone line
     const usingMessagingService = !!messagingServiceSid;
     
     if (usingMessagingService) {
       console.log(`[SMS FAILOVER] Attempting send via Messaging Service: ${messagingServiceSid}`);
     } else {
-      console.log(`[SMS FAILOVER] Attempting send from primary line: ${fromPhone}`);
+      console.log(`[SMS FAILOVER] Attempting send from validated line: ${validatedFrom}`);
     }
     
     const smsParams: any = {
@@ -133,7 +158,7 @@ export async function sendSMSWithFailover(
     if (messagingServiceSid) {
       smsParams.messagingServiceSid = messagingServiceSid;
     } else {
-      smsParams.from = fromPhone;
+      smsParams.from = validatedFrom;
     }
 
     if (statusCallback) {
@@ -142,21 +167,63 @@ export async function sendSMSWithFailover(
 
     try {
       const response = await twilio.messages.create(smsParams);
-      const sendMethod = usingMessagingService ? `Messaging Service ${messagingServiceSid}` : `primary line ${fromPhone}`;
+      const sendMethod = usingMessagingService ? `Messaging Service ${messagingServiceSid}` : `primary line ${validatedFrom}`;
       console.log(`[SMS FAILOVER] ✅ SUCCESS via ${sendMethod} - SID: ${response.sid}`);
       return { 
         success: true, 
         messageSid: response.sid,
         usedBackup: false,
-        fromNumber: response.from || fromPhone
+        fromNumber: response.from || validatedFrom
       };
     } catch (primaryError: any) {
       // Check if this is Error 30024 (provisioning issue)
       if (isProvisioningError(primaryError)) {
-        console.warn(`[SMS FAILOVER] ⚠️ Error 30024 detected on ${fromPhone} - Number not fully provisioned`);
-        console.log(`[SMS FAILOVER] Initiating automatic failover to backup line...`);
+        console.warn(`[SMS FAILOVER] ⚠️ Error 30024 detected on ${validatedFrom} - Number not fully provisioned`);
         
-        // ATTEMPT 2: Retry with backup phone line
+        // SECURITY FIX: For customer-facing SMS, DO NOT use admin line as backup
+        // Instead, try messaging service if available, or fail closed
+        if (!allowAdmin) {
+          console.log(`[SMS FAILOVER] 🔒 Customer-facing SMS - will NOT use admin line as backup`);
+          
+          // If we weren't already using messaging service, try it now
+          if (!usingMessagingService && process.env.TWILIO_MESSAGING_SERVICE_SID) {
+            console.log(`[SMS FAILOVER] Attempting failover via Messaging Service...`);
+            try {
+              const msgSvcParams: any = {
+                body: message,
+                to: toPhone,
+                messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID,
+              };
+              if (statusCallback) {
+                msgSvcParams.statusCallback = statusCallback;
+              }
+              
+              const msgSvcResponse = await twilio.messages.create(msgSvcParams);
+              console.log(`[SMS FAILOVER] ✅ SUCCESS via Messaging Service failover - SID: ${msgSvcResponse.sid}`);
+              return {
+                success: true,
+                messageSid: msgSvcResponse.sid,
+                usedBackup: true,
+                fromNumber: msgSvcResponse.from || PHONE_TWILIO_MAIN
+              };
+            } catch (msgSvcError: any) {
+              console.error('[SMS FAILOVER] ❌ Messaging service failover also failed:', msgSvcError);
+            }
+          }
+          
+          // FAIL CLOSED: Do not use admin line for customer SMS
+          console.error('[SMS FAILOVER] ❌ FAIL CLOSED - Customer SMS cannot use admin line as backup');
+          return { 
+            success: false, 
+            error: 'Primary line failed and customer SMS cannot use admin backup. Error 30024 - number not fully provisioned.',
+            usedBackup: false
+          };
+        }
+        
+        // Admin-only notifications CAN use backup admin line
+        console.log(`[SMS FAILOVER] Admin notification - attempting backup line...`);
+        
+        // ATTEMPT 2: Retry with backup phone line (admin-only)
         const backupLine = await getBackupPhoneLine(tenantDb);
         
         if (!backupLine) {
@@ -168,7 +235,7 @@ export async function sendSMSWithFailover(
           };
         }
 
-        console.log(`[SMS FAILOVER] Retrying with ${backupLine.label} (${backupLine.number})`);
+        console.log(`[SMS FAILOVER] Retrying admin notification with ${backupLine.label} (${backupLine.number})`);
         
         const backupParams: any = {
           body: message,
@@ -183,10 +250,10 @@ export async function sendSMSWithFailover(
         try {
           const backupResponse = await twilio.messages.create(backupParams);
           console.log(`[SMS FAILOVER] ✅ SUCCESS via backup line ${backupLine.number} - SID: ${backupResponse.sid}`);
-          console.log(`[SMS FAILOVER] 🔄 FAILOVER SUCCESSFUL - Message delivered via ${backupLine.label}`);
+          console.log(`[SMS FAILOVER] 🔄 FAILOVER SUCCESSFUL (admin) - Message delivered via ${backupLine.label}`);
           
           // Send alert to business owner about repeated failovers
-          await notifyOwnerOfFailover(fromPhone, backupLine.number);
+          await notifyOwnerOfFailover(validatedFrom, backupLine.number);
           
           return { 
             success: true, 
@@ -213,7 +280,17 @@ export async function sendSMSWithFailover(
         };
       }
     }
-  } catch (error) {
+  } catch (error: any) {
+    // Check if this is a guard block
+    if (error.message?.includes('[SMS BLOCK]')) {
+      console.error('[SMS FAILOVER] 🚫 BLOCKED by SMS Guard:', error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        usedBackup: false
+      };
+    }
+    
     console.error('[SMS FAILOVER] Unexpected error:', error);
     return { 
       success: false, 

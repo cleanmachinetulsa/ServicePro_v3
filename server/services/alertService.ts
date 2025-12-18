@@ -21,6 +21,9 @@ const client = twilio(
  * Send an admin notification SMS
  * Used for: new voicemails, escalations, quote approvals, etc.
  * 
+ * SECURITY: Uses twilioMain (MAIN_PHONE_NUMBER) as sender.
+ * This is an admin-only notification (TO admin), but still uses main number for FROM.
+ * 
  * @param message - The message body
  * @returns true if sent successfully
  */
@@ -30,9 +33,10 @@ export async function sendAdminNotification(message: string): Promise<boolean> {
     return false;
   }
 
-  const fromNumber = phoneConfig.twilioMain || phoneConfig.twilioTest;
+  // SECURITY: Use MAIN phone number for all sends, even admin notifications
+  const fromNumber = phoneConfig.twilioMain;
   if (!fromNumber) {
-    console.error('[ALERT] No from number available (twilioMain or twilioTest)');
+    console.error('[ALERT] MAIN_PHONE_NUMBER not configured - cannot send admin notification');
     return false;
   }
 
@@ -55,6 +59,8 @@ export async function sendAdminNotification(message: string): Promise<boolean> {
  * Used for: critical failures, Twilio down, database issues, etc.
  * Sent to the owner's personal AT&T line to ensure delivery even if Twilio is degraded.
  * 
+ * SECURITY: Uses twilioMain (MAIN_PHONE_NUMBER) as sender.
+ * 
  * @param message - The urgent message
  * @returns true if sent successfully
  */
@@ -64,9 +70,10 @@ export async function sendUrgentAlert(message: string): Promise<boolean> {
     return false;
   }
 
-  const fromNumber = phoneConfig.twilioMain || phoneConfig.twilioTest;
+  // SECURITY: Use MAIN phone number for all sends, even urgent alerts
+  const fromNumber = phoneConfig.twilioMain;
   if (!fromNumber) {
-    console.error('[URGENT ALERT] No from number available (twilioMain or twilioTest)');
+    console.error('[URGENT ALERT] MAIN_PHONE_NUMBER not configured - cannot send urgent alert');
     return false;
   }
 

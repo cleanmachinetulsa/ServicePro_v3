@@ -731,10 +731,12 @@ async function sendBookingInfoSms(toNumber: string, ivrConfig: { businessName: s
     }
     
     const message = `Thanks for calling ${ivrConfig.businessName}! Here's our info & booking link: ${ivrConfig.bookingUrl}`;
-    const fromNumber = process.env.MAIN_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    // SECURITY FIX: Only use MAIN_PHONE_NUMBER for customer-facing SMS
+    // DO NOT fall back to TWILIO_TEST_SMS_NUMBER - that's for testing only
+    const fromNumber = process.env.MAIN_PHONE_NUMBER;
     
     if (!fromNumber) {
-      console.warn('[IVR SMS] No from number configured, skipping SMS');
+      console.warn('[IVR SMS] MAIN_PHONE_NUMBER not configured, cannot send customer SMS');
       return;
     }
     
@@ -770,10 +772,12 @@ async function sendConfigDrivenSms(toNumber: string, smsText: string, tenantId: 
       .where(eq(tenantPhoneConfig.tenantId, tenantId))
       .limit(1);
     
-    const fromNumber = phoneConfig?.phoneNumber || process.env.MAIN_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    // SECURITY FIX: Only use tenant's configured phone or MAIN_PHONE_NUMBER for customer SMS
+    // DO NOT fall back to TWILIO_TEST_SMS_NUMBER - that's for testing only
+    const fromNumber = phoneConfig?.phoneNumber || process.env.MAIN_PHONE_NUMBER;
     
     if (!fromNumber) {
-      console.warn('[IVR SMS] No from number configured, skipping SMS');
+      console.warn('[IVR SMS] No customer phone number configured (tenant or MAIN), cannot send SMS');
       return;
     }
     
@@ -813,8 +817,10 @@ async function notifyVoicemail(
     const twilioClient = await getTwilioClient();
     
     // Use BUSINESS_OWNER_PERSONAL_PHONE env var or fall back to tenant config
+    // NOTE: This is an admin notification (to owner), but still use MAIN for consistency
     const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
-    const fromNumber = process.env.MAIN_PHONE_NUMBER || TWILIO_TEST_SMS_NUMBER;
+    // SECURITY FIX: Use MAIN_PHONE_NUMBER only - no test number fallback
+    const fromNumber = process.env.MAIN_PHONE_NUMBER;
     
     if (twilioClient && ownerPhone && fromNumber) {
       const message = `🎙️ New voicemail from ${callerNumber}. Recording: ${recordingUrl}`;

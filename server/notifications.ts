@@ -219,8 +219,27 @@ export async function sendSMS(
       actualFromNumber = smsParams.from;
     }
     
+    // SECURITY: Validate sender BEFORE attempting to send
+    // This is the customer-facing SMS path - must use MAIN_PHONE_NUMBER only
+    const { enforceCustomerSmsSender } = await import('./services/smsSendGuard');
+    
+    try {
+      enforceCustomerSmsSender({
+        from: messagingServiceSidToUse ? null : actualFromNumber,
+        messagingServiceSid: messagingServiceSidToUse,
+        purpose: 'customer_sms',
+        tenantId: tenantId,
+        to: formattedPhone,
+        allowAdmin: false, // Customer SMS never uses admin line
+      });
+    } catch (guardError: any) {
+      console.error('[SMS] BLOCKED by guard:', guardError.message);
+      return { success: false, error: guardError.message };
+    }
+    
     // Send SMS with automatic failover (retry with backup line if Error 30024)
     // Pass messaging service SID if configured for better A2P deliverability
+    // Pass explicit purpose='customer_sms' and allowAdmin=false for security
     const failoverResult = await sendSMSWithFailover(
       tenantDb,
       formattedPhone,
@@ -228,7 +247,9 @@ export async function sendSMS(
       actualFromNumber,
       phoneLineId,
       statusCallbackUrl,
-      messagingServiceSidToUse // Pass the messaging service SID
+      messagingServiceSidToUse, // Pass the messaging service SID
+      'customer_sms', // Explicit purpose
+      false // allowAdmin=false for customer SMS
     );
     
     if (!failoverResult.success) {
@@ -239,9 +260,10 @@ export async function sendSMS(
     const messageSid = failoverResult.messageSid!;
     console.log(`SMS sent to ${phoneNumber}, SID: ${messageSid}${failoverResult.usedBackup ? ' (via BACKUP line)' : ''}`);
     
-    // Determine actual sender - prefer Twilio's response.from, then fallback logic
+    // Determine actual sender - SECURITY FIX: Never hardcode 5711
     // If messaging service was used, Twilio will return the actual FROM number in response
-    const actualSender = failoverResult.fromNumber || (failoverResult.usedBackup ? '+19188565711' : actualFromNumber);
+    // If backup was used, smsFailoverService returns the actual backup number used (which may be main line)
+    const actualSender = failoverResult.fromNumber || actualFromNumber;
 
     // Log to delivery tracking database
     try {

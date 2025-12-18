@@ -3541,10 +3541,77 @@ Follow up with this lead to set up their 14-day trial!
   // Debug outbound SMS route (MUST be before inbound route for proper matching)
   app.use('/api/twilio/sms', twilioDebugSmsRouter);
   
-  // Register TEST Twilio SMS and Voice routes (for TWILIO_TEST_SMS_NUMBER only)
-  app.use('/api/twilio/sms', twilioTestSmsRouter);
-  app.use('/api/twilio/voice', twilioTestVoiceRouter);
-  console.log('[TWILIO TEST] Routes registered: /api/twilio/sms/inbound, /api/twilio/voice/inbound, /api/twilio/sms/debug-send, /api/debug/env/twilio');
+  // SECURITY: Gate test routes behind TWILIO_TEST_ROUTES_ENABLED env var
+  // These routes should ONLY be enabled in development/testing, NOT production
+  if (process.env.TWILIO_TEST_ROUTES_ENABLED === '1') {
+    // Register TEST Twilio SMS and Voice routes (for TWILIO_TEST_SMS_NUMBER only)
+    app.use('/api/twilio/sms', twilioTestSmsRouter);
+    app.use('/api/twilio/voice', twilioTestVoiceRouter);
+    console.log('[TWILIO TEST] ⚠️ TEST routes ENABLED - /api/twilio/sms/inbound, /api/twilio/voice/inbound, /api/twilio/sms/debug-send, /api/debug/env/twilio');
+  } else {
+    console.log('[TWILIO TEST] Test routes DISABLED (set TWILIO_TEST_ROUTES_ENABLED=1 to enable)');
+  }
+  
+  // SMS Send Guard debug endpoints
+  app.get('/api/debug/outbound-sms-sender', async (req: Request, res: Response) => {
+    try {
+      const { getSmsSenderConfig } = await import('./services/smsSendGuard');
+      const config = getSmsSenderConfig();
+      
+      res.json({
+        success: true,
+        config: {
+          mainNumberMasked: config.mainNumberMasked,
+          testNumberPresent: config.testNumberPresent,
+          phoneAdminMasked: config.phoneAdminMasked,
+          messagingServiceSidPresent: config.messagingServiceSidPresent,
+          testRoutesEnabled: process.env.TWILIO_TEST_ROUTES_ENABLED === '1',
+          blockedCustomerNumbers: config.blockedNumbers.map(n => `***${n.slice(-4)}`),
+        },
+        security: 'Customer SMS only sends from MAIN_PHONE_NUMBER',
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+  
+  app.post('/api/debug/sms-send-dryrun', async (req: Request, res: Response) => {
+    try {
+      const { validateSmsSender } = await import('./services/smsSendGuard');
+      const { to, from, purpose, tenantId, useMessagingService, allowAdmin, allowTest } = req.body;
+      
+      if (!to || !purpose) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Required fields: to, purpose. Optional: from, tenantId, useMessagingService, allowAdmin, allowTest' 
+        });
+      }
+      
+      const result = validateSmsSender({
+        from: from || null,
+        messagingServiceSid: useMessagingService ? 'MG_test_messaging_service' : null,
+        purpose,
+        tenantId: tenantId || 'root',
+        to,
+        allowAdmin: allowAdmin === true,
+        allowTest: allowTest === true,
+      });
+      
+      res.json({
+        success: true,
+        dryRun: true,
+        decision: {
+          allowed: result.allowed,
+          fromUsed: result.from ? `***${result.from.slice(-4)}` : '(messaging service)',
+          reason: result.reason,
+          usedMessagingService: result.usedMessagingService,
+          error: result.error || null,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
   
   // Register Twilio media proxy (for voicemail recordings without exposing credentials)
   app.use('/api/twilio', twilioMediaRouter);
