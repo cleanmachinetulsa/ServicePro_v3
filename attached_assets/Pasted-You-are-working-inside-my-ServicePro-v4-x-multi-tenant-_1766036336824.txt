@@ -1,0 +1,119 @@
+You are working inside my ServicePro v4.x multi-tenant repo. This is a HIGH-URGENCY production fix.
+
+GOAL:
+1) Customer-facing outbound SMS must ONLY ever send from MAIN_PHONE_NUMBER (currently +19188565304 / “5304”) OR via a Twilio Messaging Service that contains ONLY that same number.
+2) NEVER send customer-facing SMS from +19188565711 (5711) or +19189183265 (83265). Those may exist for voice/admin/test, but NOT customer outbound.
+3) Remove any hardcoded fallback defaults that “resurrect” removed numbers (e.g. DEFAULT_TWILIO_TEST = '+19189183265').
+4) Add one single choke point for SMS sending with a hard guard + logging so this cannot regress.
+5) Provide a final “Proof of Work” report showing exactly what changed and why it is safe.
+
+CONSTRAINTS:
+- Do NOT break voice/IVR functionality. 5711 can still be used for voice routing/admin alerts if needed, but it must not be used as FROM for customer outbound SMS.
+- Multi-tenant safety: no root tenant data leakage; config must be tenant-scoped where applicable.
+- Keep changes minimal but robust. Prefer defensive code + explicit error messages.
+
+WHAT YOU MUST DO (in this order):
+
+A) INVENTORY & TRACE (no changes yet)
+1) Run ripgrep searches and paste results into a new markdown file docs/OUTBOUND_SEND_PATHS_REPORT.md:
+   - rg -n "twilio\\.messages\\.create\\(" server
+   - rg -n "messagingServiceSid|TWILIO_MESSAGING_SERVICE_SID|MAIN_PHONE_NUMBER|BUSINESS_PHONE_NUMBER|VIP_PHONE_NUMBER|TWILIO_TEST_SMS_NUMBER|DEFAULT_TWILIO_TEST|DEFAULT_PHONE_ADMIN|\\+19188565711|\\+19189183265|\\+19188565304" server shared
+   - rg -n "sendSms|smsFailover|notifications\\.ts|smsCampaignService|routes\\.smsFallback|portMonitoring|portRecoveryService|alertService" server
+
+B) REMOVE DANGEROUS FALLBACKS + NORMALIZE CONFIG
+1) Edit server/config/phoneConfig.ts:
+   - Remove hardcoded default for twilio test number: DEFAULT_TWILIO_TEST must not contain a real phone number. Set it to empty string ''.
+   - PHONE_TWILIO_TEST must resolve to '' when env var absent.
+   - Ensure phoneAdmin default is allowed to exist for ADMIN ONLY (not customer outbound); keep DEFAULT_PHONE_ADMIN if needed.
+   - Add clear inline comments: twilioTest is dev-only; phoneAdmin is admin-only.
+2) Edit server/seedPhoneLines.ts:
+   - It currently says “BUSINESS_PHONE_NUMBER default +19188565711”. That is wrong for SMS defaulting.
+   - Change default mainLineNumber to MAIN_PHONE_NUMBER if set; otherwise default to +19188565304.
+   - Ensure 5711 is not seeded as the “main business line” for SMS.
+3) Edit shared/schema.ts if necessary to ensure MAIN_PHONE_NUMBER is treated as the canonical customer line, but DO NOT hardcode specific numbers in schema comments or logic.
+
+C) CREATE A SINGLE SMS SEND CHOKE POINT (HARD GUARD)
+1) Create new file: server/services/smsSendGuard.ts
+   - Export function enforceCustomerSmsSender({from, messagingServiceSid, purpose, tenantId, to}).
+   - The function must:
+     a) Determine canonical main number: MAIN_PHONE_NUMBER (env) required in production; fallback allowed ONLY in dev to +19188565304.
+     b) For any purpose classified as customer-facing (booking confirmations, conversational replies, campaigns, reminders, portal notifications, etc.), enforce:
+        - if using direct from: from MUST equal MAIN_PHONE_NUMBER
+        - if using messagingServiceSid: allow ONLY if from is not set AND log that messaging service is used. (We can’t inspect pool here, but we’ll enforce code paths to prefer direct from=MAIN for now.)
+     c) If from is 5711 or 83265 or any other number != MAIN, THROW with a clear error:
+        “[SMS BLOCK] Illegal FROM=... purpose=... tenant=... to=... main=...”
+     d) Provide allowlist bypass ONLY for admin-only purposes (internal alerts to owner) and for true test routes. This must be explicit: allowAdmin=true, allowTest=true.
+   - Add structured console logs for allow/deny decisions.
+
+2) Update server/smsFailoverService.ts:
+   - Before any twilio.messages.create call, call enforceCustomerSmsSender(...) with purpose label.
+   - Ensure the “backupResponse” path NEVER chooses 5711 for customer-facing sends. If the code currently sets backupParams.from to phoneAdmin, change logic:
+     - For customer-facing sends: do NOT use backup from-number, instead fail closed (or optionally retry via messagingServiceSid only if it routes to MAIN).
+     - For admin-only alerts: backup may use phoneAdmin.
+   - Add log lines that explicitly state which path was used.
+
+3) Update server/notifications.ts:
+   - It currently sets `actualSender = ... (usedBackup ? '+19188565711' : ...)` which is unacceptable.
+   - Remove that hardcoded 5711. Replace with a value returned from smsFailoverService that is always compliant.
+   - Ensure notifications.ts cannot “invent” a sender number that bypasses the guard.
+
+4) Update server/routes.smsFallback.ts:
+   - Ensure it uses MAIN_PHONE_NUMBER only for any customer-facing fallback sends.
+   - If this route is intended to use phoneAdmin, rename it or lock it to admin-only.
+
+5) Update server/smsCampaignService.ts:
+   - Ensure campaign sends either:
+     - use messagingServiceSid AND we assert the messaging service contains only MAIN (document this), OR
+     - explicitly set from=MAIN and do not allow other senders.
+   - Route all sends through the same choke point or shared helper, not direct twilio.messages.create scattered across code.
+
+6) Update server/services/portRecoveryService.ts, server/portMonitoring.ts, server/services/alertService.ts:
+   - Replace any hardcoded number arrays that include 5711/83265 for customer-facing paths.
+   - portMonitoring may test ported number—keep it but ensure it is ONLY executed when explicitly enabled by env var PORT_MONITORING_ENABLED=1 and NEVER used for customer sends.
+
+D) TURN OFF TEST ROUTES BY DEFAULT
+1) Find where test routes are registered (server/routes.ts mentions TWILIO_TEST_SMS_NUMBER).
+2) Add env gate: TWILIO_TEST_ROUTES_ENABLED === '1' to register them.
+3) Ensure production defaults to disabled.
+
+E) ADD FAST DEBUGGING TOOLS (NO DEVTOOLS REQUIRED)
+1) Add endpoint: GET /api/debug/outbound-sms-sender
+   - Returns JSON with:
+     - mainNumber (masked: last 4)
+     - testNumberPresent (boolean)
+     - phoneAdmin (masked)
+     - messagingServiceSidPresent (boolean)
+     - testRoutesEnabled (boolean)
+2) Add endpoint: POST /api/debug/sms-send-dryrun
+   - Body: { to, from?, purpose, tenantId?, useMessagingService?: boolean, allowAdmin?: boolean }
+   - It does NOT actually send SMS. It only runs the guard + returns decision result, including error if blocked.
+
+F) TESTS (NO LIES)
+1) Add/extend tests to assert:
+   - Customer-facing purposes block FROM=5711 and FROM=83265.
+   - Customer-facing allows FROM=MAIN.
+   - Admin-only purposes may allow phoneAdmin if allowAdmin=true.
+2) Update any failing tests that assumed 5711 normalization as default sender.
+
+G) PROOF REPORT (MANDATORY)
+At the end, write/overwrite docs/SMS_SENDER_LOCKDOWN_PROOF.md with:
+1) What was wrong (bullets referencing the exact files):
+   - DEFAULT_TWILIO_TEST fallback
+   - notifications.ts hardcoded 5711
+   - seedPhoneLines defaulting main to 5711
+   - scattered twilio.messages.create paths
+2) What you changed (file list)
+3) Commands + outputs:
+   - rg -n "\\+19189183265|DEFAULT_TWILIO_TEST" server shared  (must show no real-number fallback remains)
+   - rg -n "\\+19188565711" server shared (should only appear in admin/test contexts, not customer send paths)
+   - rg -n "twilio\\.messages\\.create\\(" server (should show they all pass through guard or are admin/test-only)
+4) How to verify live:
+   - curl GET /api/debug/outbound-sms-sender
+   - curl POST /api/debug/sms-send-dryrun examples (one allowed, one blocked)
+5) Any remaining risks you could not eliminate and why.
+
+IMPORTANT:
+- Do all edits directly in the repo (do not suggest edits; implement them).
+- Keep everything compiling.
+- Do not remove 5711 voice usage; only stop it from being used for customer SMS.
+- Finish by running the test suite (or at least the relevant tests) and showing results in the report.
