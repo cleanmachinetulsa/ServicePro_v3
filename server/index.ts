@@ -487,6 +487,10 @@ async function startDeferredInitialization() {
     const { initializePushNotificationsTable } = await import('./initPushNotifications');
     await initializePushNotificationsTable();
     
+    // Initialize SMS booking records table (fail-open for booking confirmations)
+    const { initializeSmsBookingRecordsTable } = await import('./initSmsBookingRecords');
+    await initializeSmsBookingRecordsTable();
+    
     // Seed phone lines and business hours (idempotent - only runs once)
     const { seedPhoneLines } = await import('./seedPhoneLines');
     await seedPhoneLines();

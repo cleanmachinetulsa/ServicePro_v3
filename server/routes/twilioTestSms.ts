@@ -273,7 +273,17 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       console.log(`[BOOKING_CONFIRM_RECEIVED] correlationId=${correlationId} body="${Body.trim()}"`);
       
       const { findUpcomingUnconfirmedBooking, confirmBooking } = await import('../services/smsBookingRecordService');
-      const upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
+      
+      // FAIL-OPEN: If booking record lookup fails (e.g., table missing), proceed gracefully
+      let upcomingBooking = null;
+      let bookingLookupFailed = false;
+      try {
+        upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
+      } catch (lookupErr: any) {
+        bookingLookupFailed = true;
+        console.error(`[BOOKING_CONFIRM_LOOKUP_FAILED] correlationId=${correlationId} err=${lookupErr?.message} code=${lookupErr?.code}`);
+        // If table doesn't exist (42P01) or other DB error, continue with fail-open path
+      }
       
       if (upcomingBooking) {
         try {
@@ -332,9 +342,52 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           return;
         }
       } else {
-        console.log(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=no_upcoming_booking_found`);
+        // FAIL-OPEN: If lookup failed due to DB error, give positive confirmation to customer
+        // and flag for human review (customer likely has a booking, we just can't look it up)
+        const failReason = bookingLookupFailed ? 'booking_lookup_db_error' : 'no_upcoming_booking_found';
+        console.log(`[BOOKING_CONFIRM_FAILOPEN] correlationId=${correlationId} reason=${failReason}`);
         
-        // P0-HOTFIX: Escalate to owner when no booking found (customer may have had one we lost track of)
+        // CRITICAL: If DB lookup failed, give customer a positive confirmation message
+        // The booking likely exists in Google Calendar even if our records table is missing
+        if (bookingLookupFailed) {
+          const failOpenReply = truncateSmsResponse("Got it! Your appointment is confirmed. We'll see you soon!");
+          await addMessage(tenantDb, conversation.id, failOpenReply, 'ai');
+          twimlResponse.message(failOpenReply);
+          
+          // Background: notify owner about the DB issue (non-blocking)
+          try {
+            const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+            if (ownerPhone) {
+              const twilioClient = (await import('twilio')).default(
+                process.env.TWILIO_ACCOUNT_SID,
+                process.env.TWILIO_AUTH_TOKEN
+              );
+              await twilioClient.messages.create({
+                to: ownerPhone,
+                from: To,
+                body: `⚠️ CONFIRM (fail-open): Customer ${From} replied CONFIRM but booking lookup failed. Auto-confirmed. Please verify their calendar event.`,
+              });
+            }
+          } catch (escErr) {
+            console.error(`[FAILOPEN_NOTIFY_FAILED] correlationId=${correlationId}`, escErr);
+          }
+          
+          // Mark for human review
+          try {
+            await tenantDb.update(conversations).set({ 
+              needsHumanAttention: true,
+              needsHumanReason: 'Confirm fail-open: DB lookup failed, customer auto-confirmed'
+            }).where(eq(conversations.id, conversation.id));
+          } catch (handoffErr) {
+            console.error(`[FAILOPEN_HANDOFF_FAILED]`, handoffErr);
+          }
+          
+          console.log(`[BOOKING_CONFIRM_FAILOPEN_SUCCESS] correlationId=${correlationId} customer_notified=true`);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+        
+        // No booking found (not a DB error) - escalate to owner
         let noBookingEscalationFailed = false;
         try {
           const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
@@ -382,7 +435,16 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     if (rescheduleMatch) {
       const { findUpcomingUnconfirmedBooking, markRescheduleRequested } = await import('../services/smsBookingRecordService');
-      const upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
+      
+      // FAIL-OPEN: If booking record lookup fails, give positive response
+      let upcomingBooking = null;
+      let rescheduleLookupFailed = false;
+      try {
+        upcomingBooking = await findUpcomingUnconfirmedBooking(tenantId, From);
+      } catch (lookupErr: any) {
+        rescheduleLookupFailed = true;
+        console.error(`[RESCHEDULE_LOOKUP_FAILED] phone=${From} err=${lookupErr?.message} code=${lookupErr?.code}`);
+      }
       
       if (upcomingBooking) {
         await markRescheduleRequested(tenantId, upcomingBooking.id);
@@ -402,7 +464,46 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         res.type('text/xml').send(twimlResponse.toString());
         return;
       }
-      // If no booking found, continue to normal flow
+      
+      // FAIL-OPEN: If DB lookup failed, give positive response and flag for review
+      if (rescheduleLookupFailed) {
+        const failOpenReply = truncateSmsResponse("No problem! When would work better for you? Just let me know your preferred day and time.");
+        await addMessage(tenantDb, conversation.id, failOpenReply, 'ai');
+        twimlResponse.message(failOpenReply);
+        
+        // Notify owner (non-blocking)
+        try {
+          const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+          if (ownerPhone) {
+            const twilioClient = (await import('twilio')).default(
+              process.env.TWILIO_ACCOUNT_SID,
+              process.env.TWILIO_AUTH_TOKEN
+            );
+            await twilioClient.messages.create({
+              to: ownerPhone,
+              from: To,
+              body: `⚠️ RESCHEDULE (fail-open): Customer ${From} wants to reschedule but lookup failed. Please check their calendar.`,
+            });
+          }
+        } catch (escErr) {
+          console.error(`[RESCHEDULE_FAILOPEN_NOTIFY_FAILED] phone=${From}`, escErr);
+        }
+        
+        // Mark for human review
+        try {
+          await tenantDb.update(conversations).set({ 
+            needsHumanAttention: true,
+            needsHumanReason: 'Reschedule fail-open: DB lookup failed'
+          }).where(eq(conversations.id, conversation.id));
+        } catch (handoffErr) {
+          console.error(`[RESCHEDULE_FAILOPEN_HANDOFF_FAILED]`, handoffErr);
+        }
+        
+        console.log(`[RESCHEDULE_FAILOPEN_SUCCESS] phone=${From} customer_notified=true`);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      }
+      // If no booking found (not a DB error), continue to normal flow
     }
     
     // === EMAIL CONFIRMATION STAGE (after booking) ===

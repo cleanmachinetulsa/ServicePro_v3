@@ -120,5 +120,75 @@ export function registerDebugTenantRoutes(app: Express) {
     }
   });
 
-  console.log('[DEBUG TENANT] Routes registered: GET /api/debug/tenant/snapshot');
+  // Debug endpoint to check required table existence
+  app.get('/api/debug/db-required-tables', async (req: Request, res: Response) => {
+    try {
+      const tenant = req.tenant;
+      const tenantDb = req.tenantDb;
+      
+      // Require authentication like the snapshot route
+      if (!tenant || !tenantDb) {
+        return res.status(401).json({
+          success: false,
+          error: 'Not authenticated or no tenant context',
+          debug: {
+            hasTenant: !!tenant,
+            hasTenantDb: !!tenantDb,
+            sessionUserId: req.session?.userId,
+            sessionTenantId: req.session?.tenantId
+          }
+        });
+      }
+      
+      console.log('[DEBUG DB] Required tables check for tenant:', tenant.id);
+      
+      // List of required tables for core functionality
+      const requiredTables = [
+        'conversations',
+        'messages', 
+        'customers',
+        'appointments',
+        'sms_booking_records',
+        'sms_templates',
+        'phone_lines',
+        'tenant_phone_configs',
+        'sms_inbound_dedup'
+      ];
+      
+      const checkTable = async (tableName: string) => {
+        try {
+          const { db } = await import('./db');
+          const result = await db.execute(
+            sql`SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = ${tableName})`
+          );
+          return result.rows?.[0]?.exists ?? false;
+        } catch {
+          return false;
+        }
+      };
+      
+      const tableStatus: Record<string, boolean> = {};
+      for (const table of requiredTables) {
+        tableStatus[table] = await checkTable(table);
+      }
+      
+      const allPresent = Object.values(tableStatus).every(v => v === true);
+      
+      res.json({
+        success: true,
+        tenantId: tenant.id,
+        allRequiredTablesPresent: allPresent,
+        tables: tableStatus,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[DEBUG DB] Required tables check error:', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  console.log('[DEBUG TENANT] Routes registered: GET /api/debug/tenant/snapshot, GET /api/debug/db-required-tables');
 }
