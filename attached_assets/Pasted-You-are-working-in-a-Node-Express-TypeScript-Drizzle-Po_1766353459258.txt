@@ -1,0 +1,44 @@
+You are working in a Node/Express/TypeScript + Drizzle + Postgres (Neon) app.
+
+BUG: Booking confirmation fails on inbound “Confirm”. Logs show:
+Postgres error 42P01: relation "sms_booking_records" does not exist
+Stack includes findUpcomingUnconfirmedBooking() and handleServiceProInboundSms().
+
+GOAL:
+1) Restore booking confirmation by creating the missing table sms_booking_records safely (IF NOT EXISTS) with sensible columns + indexes.
+2) Make confirmation flow FAIL-OPEN if booking-record persistence fails, so customer still gets booked even if stats/record tables are missing.
+3) Fix Messages page not showing inbound/outbound by ensuring inbound SMS and outbound replies are persisted to the same tables the Messages UI queries.
+4) Add a lightweight debug endpoint that lists required table existence so we can confirm schema in production without guessing.
+
+REQUIREMENTS:
+- Do NOT use destructive drizzle push prompts. Prefer a safe SQL migration or server-side “ensure tables exist” init that only creates missing tables.
+- Search codebase for sms_booking_records usage and mirror the columns it expects (don’t invent incompatible shapes).
+- Add indexes needed for lookups (by tenant_id, conversation_id, customer_phone, status, created_at).
+- Ensure multi-tenant correctness: include tenant_id on records and queries.
+- Ensure inbound pipeline stores messages to the same persistence layer the Messages UI uses (search the UI route it calls and match).
+- Keep changes minimal and production-safe.
+
+STEPS:
+A) Ripgrep/search for "sms_booking_records" and "findUpcomingUnconfirmedBooking" and determine required schema fields.
+B) Implement a safe schema creation path:
+   Option 1 (preferred): create a SQL file in server/db/migrations/manual/ (or similar existing migrations folder) and ensure it runs at boot in production OR provide a node script invoked at deploy that executes CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS.
+   Option 2: if there is already a “ensureTables” or “bootstrap” pattern (like we did for sms_inbound_dedup), follow that style.
+C) Patch findUpcomingUnconfirmedBooking / confirmation handling:
+   - If the query throws missing-relation, catch it, log a clear error tag, and proceed with confirmation using bookingDraft/session state.
+   - Ensure the user gets booking confirmation response, not the generic error.
+D) Messages page fix:
+   - Identify what API endpoint the Messages page uses (e.g. /api/messages, /api/conversations, etc).
+   - Trace inbound SMS handler and outbound reply sender; ensure both write to the conversation/messages tables.
+   - If inbound writes are inside the code path that’s crashing, move persistence earlier and wrap it in try/catch so it never blocks response.
+E) Add debug endpoint GET /api/debug/db-required-tables (auth gated like DEBUG_SMS_TOKEN pattern if exists) that returns a JSON of required tables and whether they exist. Include sms_booking_records and whichever tables the Messages UI needs.
+F) Provide a short “How to verify” checklist at the end:
+   - hit debug endpoint, confirm table exists
+   - send “Confirm” again and ensure booking succeeds
+   - verify Messages UI shows the thread and newest inbound/outbound
+   - verify notification pipeline triggers (if any)
+
+OUTPUT:
+- Make all necessary code edits.
+- Tell me exactly what files were changed.
+- Include the SQL used to create sms_booking_records (and any other missing tables discovered).
+- Include verification steps and where logs should appear.
