@@ -85,6 +85,9 @@ async function getConversationHistory(tenantDb: any, conversationId: number) {
 }
 
 async function addMessage(tenantDb: any, conversationId: number, content: string, sender: string) {
+  const now = new Date();
+  
+  // Insert the message
   await tenantDb
     .insert(messagesTable)
     .values({
@@ -93,8 +96,14 @@ async function addMessage(tenantDb: any, conversationId: number, content: string
       sender,
       fromCustomer: sender === 'customer',
       platform: 'sms',
-      timestamp: new Date(),
+      timestamp: now,
     });
+  
+  // Update conversation's last_message_time so it appears in the messages list
+  await tenantDb
+    .update(conversations)
+    .set({ lastMessageTime: now })
+    .where(eq(conversations.id, conversationId));
 }
 
 async function handleServiceProInboundSms(req: Request, res: Response, dedupeMessageSid?: string) {
