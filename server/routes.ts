@@ -374,6 +374,7 @@ export async function registerRoutes(app: Express) {
       '/api/webhooks',          // Twilio/Stripe webhooks (verified via signatures)
       '/api/voice',             // Twilio voice webhooks
       '/api/twilio',            // Twilio status callbacks
+      '/api/sms',               // Twilio SMS webhooks (alias route)
       '/api/quote-approval',    // Public quote approval pages
       '/api/payer-approval',    // Public payer approval pages  
       '/api/sms-consent',       // Public SMS consent page
@@ -3541,15 +3542,23 @@ Follow up with this lead to set up their 14-day trial!
   // Debug outbound SMS route (MUST be before inbound route for proper matching)
   app.use('/api/twilio/sms', twilioDebugSmsRouter);
   
-  // SECURITY: Gate test routes behind TWILIO_TEST_ROUTES_ENABLED env var
-  // These routes should ONLY be enabled in development/testing, NOT production
+  // PRODUCTION: Always register inbound SMS handler (CRITICAL for Twilio webhooks)
+  // This is the main production SMS handler - must be registered unconditionally
+  // SECURITY: Apply verifyTwilioSignature to both routes to prevent spoofed requests
+  // Mount at primary path: /api/twilio/sms → handles /api/twilio/sms/inbound
+  app.use('/api/twilio/sms', verifyTwilioSignature, twilioTestSmsRouter);
+  // Mount at alias path: /api/sms → handles /api/sms/inbound
+  app.use('/api/sms', verifyTwilioSignature, twilioTestSmsRouter);
+  console.log('[TWILIO SMS] Production inbound routes registered: /api/twilio/sms/inbound, /api/sms/inbound (both signature-verified)');
+  
+  // SECURITY: Gate additional test routes behind TWILIO_TEST_ROUTES_ENABLED env var
+  // Voice test routes should ONLY be enabled in development/testing, NOT production
   if (process.env.TWILIO_TEST_ROUTES_ENABLED === '1') {
-    // Register TEST Twilio SMS and Voice routes (for TWILIO_TEST_SMS_NUMBER only)
-    app.use('/api/twilio/sms', twilioTestSmsRouter);
+    // Register TEST Twilio Voice routes (for TWILIO_TEST_SMS_NUMBER only)
     app.use('/api/twilio/voice', twilioTestVoiceRouter);
-    console.log('[TWILIO TEST] ⚠️ TEST routes ENABLED - /api/twilio/sms/inbound, /api/twilio/voice/inbound, /api/twilio/sms/debug-send, /api/debug/env/twilio');
+    console.log('[TWILIO TEST] ⚠️ TEST voice routes ENABLED - /api/twilio/voice/inbound, /api/debug/env/twilio');
   } else {
-    console.log('[TWILIO TEST] Test routes DISABLED (set TWILIO_TEST_ROUTES_ENABLED=1 to enable)');
+    console.log('[TWILIO TEST] Test voice routes DISABLED (set TWILIO_TEST_ROUTES_ENABLED=1 to enable)');
   }
   
   // SMS Send Guard debug endpoints

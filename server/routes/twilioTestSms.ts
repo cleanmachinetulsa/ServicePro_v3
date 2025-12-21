@@ -1036,6 +1036,10 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
   const from = req.body.From;
   const to = req.body.To;
   const body = req.body.Body?.substring(0, 80) || '(empty)';
+  const tenantId = (req as any).tenant?.id || 'root';
+  
+  // CRITICAL: Inbound hit log for debugging route mismatches
+  console.log(`[TWILIO INBOUND HIT] path=/api/twilio/sms/inbound tenant=${tenantId} from=${from} to=${to}`);
   
   // Diagnostic log at start
   console.log(`[SMS INBOUND] sid=${messageSid} from=${from} to=${to} body=${body}`);
