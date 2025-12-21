@@ -1,0 +1,93 @@
+GOAL: Customer-facing SMS must ONLY ever send from +19188565304 (MAIN). Admin/VIP line +19188565711 must remain active for VOICE/IVR/voicemail but must NEVER be used for customer-facing SMS. Admin notifications to the owner personal phone (+19182820103) must still work.
+
+CONTEXT: We already have server/services/smsSendGuard.ts enforcing sender rules, but Twilio logs still show messages going out from numbers other than 5304. This can happen if any customer SMS path uses a Twilio Messaging Service SID (sender pool) because Twilio may choose a different number even if our code doesn’t explicitly set from.
+
+TASKS (do ALL, no questions unless blocked)
+
+Inventory ALL outbound SMS send paths
+
+Search the entire repo for: twilio.messages.create, client.messages.create, messagingServiceSid, TWILIO_MESSAGING_SERVICE_SID, any SMS helper services, and any “campaign/blast” code paths.
+
+Produce a list grouped by file:line of every place that can initiate an outbound SMS, and whether it sets from, sets messagingServiceSid, or neither.
+
+Lock customer-facing SMS to deterministic sender
+
+For every customer-facing purpose (booking confirmations, conversational replies, reminders, campaigns, etc):
+
+Force from = MAIN_PHONE_NUMBER (+19188565304)
+
+Force messagingServiceSid = null (or do not set it)
+
+Ensure smsSendGuard.enforceCustomerSmsSender() is called BEFORE the send and is passed:
+
+purpose (correctly classified)
+
+allowAdmin=false
+
+the final from and to
+
+Update smsSendGuard.ts so that:
+
+If purpose is customer-facing and messagingServiceSid is present, it BLOCKS (throws) unless explicitly overridden by a very explicit flag like allowMessagingServiceForCustomer=true (default false).
+
+Preserve admin notifications
+
+Identify admin notification flows (alerts, critical errors, etc.) and ensure they:
+
+Are labeled with an admin-only purpose (admin_alert, system_alert, etc.)
+
+Pass allowAdmin=true
+
+Use from = PHONE_ADMIN (+19188565711) if configured, otherwise fall back to MAIN
+
+Send to the owner personal phone +19182820103 (ensure this is sourced from config/env and not hardcoded in random places).
+
+Detect & prevent agent self-chat loops / duplicate sends
+
+Find any paths where inbound webhooks can trigger outbound replies that re-trigger inbound handling (loop), especially around “test routes” and “conversation” routes.
+
+Ensure dedup is enforced at the boundary (message SID + direction) and show where it is persisted.
+
+Add an “SMS DEBUG PACK” with one command
+
+Add a CLI script (or npm run script) that prints a single structured report:
+
+Current MAIN/ADMIN/TEST numbers
+
+Whether Messaging Service SID is configured
+
+For each outbound pathway: whether it can use messagingServiceSid, what purpose it uses, whether guard is invoked
+
+A “dry run” for:
+
+customer_sms from MAIN (should ALLOW)
+
+customer_sms from ADMIN (should BLOCK)
+
+customer_sms with messagingServiceSid set (should BLOCK)
+
+admin_alert with allowAdmin=true (should ALLOW)
+
+Proof at the end (required)
+
+Output a markdown file SMS_SENDER_LOCKDOWN_PROOF.md showing:
+
+The full outbound send-path inventory (file:line)
+
+Before/after behavior explanation
+
+The exact guard decisions for the 4 dry-run cases above
+
+The exact ripgrep commands used and their results summary
+
+CONSTRAINTS
+
+Do NOT remove +19188565711 from the system entirely; it is needed for voice/IVR/voicemail.
+
+Customer-facing SMS must NEVER come from 5711.
+
+Prefer fail-closed over fail-open for customer messaging.
+
+Make changes minimal but correct; ensure build/tests pass.
+
+After implementation, run tests and include results in the proof markdown.

@@ -1,0 +1,84 @@
+CRITICAL: DO NOT “FIX” ANYTHING YET.
+Your job is to find the TRUE root cause(s) of why the SMS AI agent responds with a generic fallback like “encountered an issue, please call us” and why escalation-to-human is not happening (no owner alerts, no transfer behavior). This is losing real customers.
+
+RULES:
+1) First pass is READ-ONLY. You may run ripgrep, inspect files, add temporary local debug prints ONLY if you clearly label them and keep them minimal, but do not change behavior until the Root Cause Report is produced.
+2) Do not break the website. Any changes must be isolated to server-side SMS/agent pipeline and only behind a DEBUG flag if possible.
+3) At the end, produce TWO artifacts:
+   A) ROOT_CAUSE_REPORT.md (what’s happening, why, where)
+   B) PATCH_PLAN.md (minimal fix plan + which files + why)
+
+PHASE 1 — Locate the fallback message and its trigger
+- Find the exact string customers are receiving (e.g. “encountered an issue”, “please call us”, etc).
+- Report every file and function that can return/send that message.
+Commands to run:
+  rg -n "encountered an issue|please call us|call us|error.*call" server client shared
+  rg -n "fallback|fail.*open|fail.*closed|try\\s*\\{|catch\\s*\\(" server
+
+PHASE 2 — Map the SMS pipeline end-to-end (single message trace)
+Build a diagram of the SMS pipeline, with real file/function names and the exact route entrypoints.
+- Identify ALL inbound SMS routes (Twilio webhooks, test routes, any alternate routes).
+- Identify where tenantId is resolved.
+- Identify where conversation state is stored/retrieved.
+- Identify where the AI prompt is built.
+- Identify where tool calls are parsed/executed.
+- Identify where escalation-to-human is decided.
+- Identify where owner notification is sent (SMS to owner phone, email, etc).
+Commands to run:
+  rg -n "Twilio|/sms|routes\\.sms|inbound|MessagingResponse|twiml|webhook" server
+  rg -n "tenantId|resolveTenant|wrapTenantDb|subdomain|phone.*config" server shared
+  rg -n "smsAgent|AI agent|generateAIResponse|promptBuilder|toolCall|function_call|tools" server
+  rg -n "escalat|human|handoff|transfer|owner|admin_alert|VIP" server shared
+
+PHASE 3 — Reproduce and capture a SINGLE failing trace (add correlation id)
+Add a correlation id (cid) for each inbound SMS request and log ONE structured line at each stage:
+- inbound received (From/To, messageSid)
+- tenant resolved (tenantId)
+- conversation loaded (conversationId / thread / customerId)
+- AI start (model, prompt size)
+- AI output summary (NOT full prompt; just tool call names + text length)
+- tool execution attempts (tool name, success/fail, error)
+- final decision (reply text vs escalate)
+- outbound send (from/to, messagingServiceSid vs from)
+- any owner alert send attempt
+
+Implement this logging behind a flag:
+  DEBUG_SMS_TRACE=1
+so normal prod logs don’t explode.
+Add helper: logSmsTrace(cid, stage, payload).
+
+PHASE 4 — Identify why escalation isn’t happening
+Specifically answer:
+- Where is escalation supposed to be triggered? (keywords “human”, “call”, tool failure, booking failure, etc.)
+- What code path should notify the owner? Why is it not firing?
+- Is it gated by “purpose”, “allowAdmin”, quiet hours, consent, tenant settings, or missing owner phone?
+- Is it failing because it’s trying to send from a blocked number or with a messagingServiceSid?
+
+PHASE 5 — Root cause report (MANDATORY before fixes)
+Write ROOT_CAUSE_REPORT.md with:
+- The EXACT fallback string and where it is sent from
+- The exact exception(s) or condition(s) that cause it
+- At least 2 plausible causes if multiple paths exist
+- For each cause: what evidence from logs/code proves it
+- The exact file:line and function names
+
+PHASE 6 — Minimal fix (only after report)
+Implement the smallest changes that:
+1) On ANY agent/tool error OR repeated-loop detection, do NOT just tell customer “call us”.
+   Instead:
+   - Send an OWNER ALERT immediately with the conversation context (last customer message, cid, reason)
+   - Switch conversation to “human takeover mode” (so AI stops replying)
+   - Send customer a clear message: “Got it — I’m looping you to a human now. You’ll hear back shortly. If urgent call ###.”
+2) Ensure owner alerts always send even when customer-SMS sender lockdown is enforced.
+   - Owner alerts should be admin_alert purpose and allowAdmin=true.
+3) Add “loop detection”:
+   - If the bot asks the same question twice within N turns OR tool calls fail twice in a row, trigger escalation.
+
+Finally:
+- Add a script npm run sms:trace-demo that simulates a failing path (without actually texting customers) and prints the stages.
+- Update PATCH_PLAN.md with what changed and how to test.
+
+DELIVERABLES:
+- ROOT_CAUSE_REPORT.md
+- PATCH_PLAN.md
+- A list of exact manual tests to run (3-5 max) including one that forces a tool failure and proves owner alert triggers.
