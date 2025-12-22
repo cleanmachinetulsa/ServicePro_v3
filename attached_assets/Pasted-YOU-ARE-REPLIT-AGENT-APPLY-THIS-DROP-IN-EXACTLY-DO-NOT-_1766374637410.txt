@@ -1,0 +1,194 @@
+YOU ARE REPLIT AGENT. APPLY THIS DROP-IN EXACTLY. DO NOT ADD EXTRA FEATURES. DO NOT RENAME ROUTES. KEEP MULTI-TENANT SAFE.
+GOAL: Stop junk bookings + eliminate “ll take” vehicle + make inbound SMS resolve tenant via existing tenantCommRouter (still returns root for Clean Machine).
+
+1) EDIT: server/services/bookingDraftService.ts
+- Add an exported helper: isValidVehicleString(vehicle: string): boolean
+- Add an exported helper: extractVehicleFromText(text: string): string | undefined
+- Update extractSmsBookingStateFromHistory() vehicle extraction so it:
+  a) scans NEWEST messages first (reverse loop)
+  b) only sets vehicle if extractVehicleFromText() returns a valid value
+  c) never overwrites an already-valid vehicle with a low-confidence value
+  d) rejects conversational junk like "ill take", "I'll take", "ok", "sounds good", "confirm", etc.
+
+IMPLEMENTATION DETAILS (copy exactly):
+
+A) Add near the top (after TIME_PATTERNS is fine):
+
+export function isValidVehicleString(vehicle: string): boolean {
+  const v = (vehicle || '').trim();
+  if (!v) return false;
+  if (v.length < 2) return false;
+
+  const lower = v.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Junk phrases we NEVER want as vehicle
+  const junk = new Set([
+    'ill', "i'll", 'i ll', 'take', 'ill take', 'i ll take',
+    'ok', 'okay', 'k', 'sounds', 'sounds good', 'good', 'yes', 'yep', 'yeah', 'confirm',
+    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+    'morning', 'afternoon', 'evening', 'today', 'tomorrow'
+  ]);
+  if (junk.has(lower)) return false;
+
+  // Strong signals: contains a 4-digit year OR contains digits in model (F150, CX-5, 328i)
+  if (/\b(19|20)\d{2}\b/.test(lower)) return true;
+  if (/[0-9]/.test(lower)) return true;
+
+  // Otherwise require a known make word present
+  const MAKES = [
+    'ford','chevy','chevrolet','gmc','toyota','honda','nissan','bmw','mercedes','mercedes-benz',
+    'vw','volkswagen','audi','hyundai','kia','subaru','mazda','jeep','ram','dodge','lexus',
+    'acura','infiniti','volvo','tesla','porsche','cadillac','lincoln','buick','chrysler'
+  ];
+  return MAKES.some(m => new RegExp(`\\b${m}\\b`, 'i').test(lower));
+}
+
+export function extractVehicleFromText(text: string): string | undefined {
+  const raw = (text || '').trim();
+  if (!raw) return undefined;
+
+  // Normalize apostrophes etc
+  const t = raw.replace(/[’‘]/g, "'").trim();
+
+  // Common patterns:
+  // 1) Year Make Model (e.g., "2018 Ford F-150")
+  const yearMakeModel = t.match(/\b((19|20)\d{2})\s+([A-Za-z]{2,})\s+([A-Za-z0-9-]{2,})\b/);
+  if (yearMakeModel) {
+    const v = `${yearMakeModel[1]} ${yearMakeModel[3]} ${yearMakeModel[4]}`;
+    if (isValidVehicleString(v)) return v;
+  }
+
+  // 2) Make + Model that includes digits (e.g., "Ford F150", "CX-5", "328i")
+  const makeModelDigits = t.match(/\b([A-Za-z]{2,})\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/);
+  if (makeModelDigits) {
+    const v = `${makeModelDigits[1]} ${makeModelDigits[2]}`;
+    if (isValidVehicleString(v)) return v;
+  }
+
+  // 3) Standalone model w/ digits (e.g., "F150", "F-150", "CX-5")
+  const soloDigits = t.match(/\b([A-Za-z]{1,3}-?\d{2,4}[A-Za-z]?)\b/);
+  if (soloDigits) {
+    const v = soloDigits[1];
+    if (isValidVehicleString(v)) return v;
+  }
+
+  // 4) Make only is not enough; skip to avoid junk
+  return undefined;
+}
+
+B) Update extractSmsBookingStateFromHistory() vehicle block.
+Find the current code block:
+
+// Extract vehicle information
+if (!state.vehicle) {
+  const vehicleMatch = message.toLowerCase().match(/...\b/);
+  if (vehicleMatch) {
+    state.vehicle = ...
+  }
+}
+
+REPLACE with:
+
+// Extract vehicle information (NEWEST-first, validated)
+if (!state.vehicle || !isValidVehicleString(state.vehicle)) {
+  const candidate = extractVehicleFromText(message);
+  if (candidate && isValidVehicleString(candidate)) {
+    // Only set if we don't have a valid vehicle yet
+    state.vehicle = candidate;
+  }
+}
+
+C) Change the history loop to scan NEWEST messages first.
+Find:
+for (const msg of historyMessages) { ... }
+Replace with:
+for (let i = historyMessages.length - 1; i >= 0; i--) {
+  const msg = historyMessages[i];
+  ...
+}
+
+2) EDIT: server/routes/twilioTestSms.ts
+GOALS:
+- Resolve tenant via resolveTenantFromInbound(req, db) from server/services/tenantCommRouter.ts (already exists)
+- Add vehicle guard before booking: if service+address+slot present but vehicle invalid -> DO NOT BOOK
+- Instead: mark needs human attention, notify owner, and ask customer for year/make/model
+- Do NOT claim booking is confirmed unless calendar eventId exists (no-lies)
+
+A) Add import:
+import { resolveTenantFromInbound } from '../services/tenantCommRouter';
+
+B) In POST /inbound handler, replace:
+const tenantId = 'root';
+with:
+const resolution = await resolveTenantFromInbound(req, db);
+const tenantId = resolution.tenantId || 'root';
+console.log('[TWILIO INBOUND] tenant_resolution', { tenantId, reason: resolution.reason, to: resolution.normalizedTo });
+
+C) Ensure tenantDb uses that tenantId:
+const tenantDb = wrapTenantDb(tenantId);
+
+D) Add missing schema imports if not present (safe):
+From @shared/schema import customers (because file uses it in email logic). If already imported, do nothing.
+
+E) Add vehicle guard right before the booking attempt block that currently starts with:
+if (smsBookingState.service && smsBookingState.address && slotSelection) {
+  console.log('[BOOKING ATTEMPT]', ...)
+
+Replace that IF with this:
+
+import { isValidVehicleString } from '../services/bookingDraftService';
+
+const hasBasics = !!(smsBookingState.service && smsBookingState.address && slotSelection);
+if (hasBasics) {
+  const vehicleOk = isValidVehicleString(smsBookingState.vehicle || '');
+
+  if (!vehicleOk) {
+    // Clear bogus vehicle so it doesn't persist
+    await updateSmsBookingState(tenantDb, conversationId, { vehicle: undefined, stage: 'needs_human_vehicle' });
+
+    // Notify owner immediately (fail-open)
+    const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+    if (ownerPhone) {
+      try {
+        await twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
+          .messages.create({
+            to: ownerPhone,
+            from: process.env.MAIN_PHONE_NUMBER!,
+            body:
+`⚠️ NEEDS HUMAN (missing/invalid vehicle)
+From: ${From}
+Requested: ${smsBookingState.service}
+When: ${slotSelection.chosenSlotLabel}
+Where: ${smsBookingState.address}
+Customer text: "${Body}"`,
+          });
+        console.log('[ESCALATION_SENT] reason=invalid_vehicle');
+      } catch (e) {
+        console.warn('[ESCALATION_FAILOPEN] reason=invalid_vehicle');
+      }
+    }
+
+    const twiml = new MessagingResponse();
+    twiml.message("Almost there — what’s the YEAR, MAKE, and MODEL of the vehicle? (Example: 2018 Ford F-150). We’ll confirm as soon as we have that.");
+    res.type('text/xml').send(twiml.toString());
+    return;
+  }
+
+  // Vehicle is OK → proceed to existing booking code path
+  ... (keep the existing booking attempt block unchanged below this point)
+}
+
+IMPORTANT: Do not create any calendar event if vehicle is invalid. Do not send “you’re all set” in this branch.
+
+3) VERIFICATION (agent must do these after edits)
+- Typecheck/build must pass.
+- Add log proof by sending two SMS:
+  Test A: "I'll take Monday at 9" (should NOT set vehicle; should ask for year/make/model and send escalation)
+  Test B: "Book me F150 interior detail Monday 9am at 3318 S 73rd W Ave" (should book and show eventId)
+
+4) DO NOT:
+- Add new DB tables
+- Change Twilio signature middleware
+- Rename routes
+- Seed templates
+- Modify unrelated modules

@@ -21,8 +21,10 @@ import {
   detectEmailAddress,
   detectSkipEmail,
   isValidVehicleString,
+  extractVehicleFromText,
   type SmsBookingState
 } from '../services/bookingDraftService';
+import { resolveTenantFromInbound } from '../services/tenantCommRouter';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
 import { handleBook } from '../calendarApi';
 import { truncateSmsResponse } from '../utils/smsLength';
@@ -141,7 +143,9 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       return;
     }
     
-    const tenantId = 'root';
+    const resolution = await resolveTenantFromInbound(req, db);
+    const tenantId = resolution.tenantId || 'root';
+    console.log('[TWILIO INBOUND] tenant_resolution', { tenantId, reason: resolution.reason, to: resolution.normalizedTo });
     const tenantDb = wrapTenantDb(db, tenantId);
     
     // CRITICAL: Check STOP/START keywords BEFORE any conversation creation or AI routing
@@ -628,26 +632,44 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       
       // VEHICLE GUARD: Validate vehicle before auto-booking
       // If we have all booking info EXCEPT a valid vehicle, ask for it explicitly
-      if (smsBookingState.service && smsBookingState.address && slotSelection) {
-        const hasValidVehicle = smsBookingState.vehicle && isValidVehicleString(smsBookingState.vehicle);
-        
-        if (!hasValidVehicle) {
-          // Clear any bogus vehicle and ask explicitly
-          if (smsBookingState.vehicle) {
-            console.log(`[VEHICLE GUARD] blocking_booking invalid_vehicle="${smsBookingState.vehicle}" from=${From}`);
-            await updateSmsBookingState(tenantDb, conversation.id, { vehicle: undefined });
-          } else {
-            console.log(`[VEHICLE GUARD] blocking_booking missing_vehicle from=${From}`);
+      const hasBasics = !!(smsBookingState.service && smsBookingState.address && slotSelection);
+      if (hasBasics) {
+        const vehicleOk = isValidVehicleString(smsBookingState.vehicle || '');
+
+        if (!vehicleOk) {
+          // Clear bogus vehicle and set stage so it doesn't persist
+          console.log(`[VEHICLE GUARD] blocking_booking invalid_vehicle="${smsBookingState.vehicle || 'missing'}" from=${From}`);
+          await updateSmsBookingState(tenantDb, conversation.id, { vehicle: undefined, stage: 'needs_human_vehicle' });
+
+          // Notify owner immediately (fail-open)
+          const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+          if (ownerPhone) {
+            try {
+              await twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
+                .messages.create({
+                  to: ownerPhone,
+                  from: process.env.MAIN_PHONE_NUMBER!,
+                  body:
+`⚠️ NEEDS HUMAN (missing/invalid vehicle)
+From: ${From}
+Requested: ${smsBookingState.service}
+When: ${slotSelection.chosenSlotLabel}
+Where: ${smsBookingState.address}
+Customer text: "${Body}"`,
+                });
+              console.log('[ESCALATION_SENT] reason=invalid_vehicle');
+            } catch (e) {
+              console.warn('[ESCALATION_FAILOPEN] reason=invalid_vehicle', e);
+            }
           }
-          
-          const vehiclePrompt = truncateSmsResponse("Almost there! What's the year, make, and model of the vehicle? (e.g., 2019 Ford F-150)");
-          await addMessage(tenantDb, conversation.id, vehiclePrompt, 'ai');
-          twimlResponse.message(vehiclePrompt);
+
+          twimlResponse.message("Almost there — what's the YEAR, MAKE, and MODEL of the vehicle? (Example: 2018 Ford F-150). We'll confirm as soon as we have that.");
+          await addMessage(tenantDb, conversation.id, "Almost there — what's the YEAR, MAKE, and MODEL of the vehicle? (Example: 2018 Ford F-150). We'll confirm as soon as we have that.", 'ai');
           console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service} stage=vehicle_guard action=ask_vehicle`);
           res.type('text/xml').send(twimlResponse.toString());
           return;
         }
-        
+
         console.log(`[VEHICLE GUARD] passed vehicle="${smsBookingState.vehicle}" valid=true`);
       }
       

@@ -13,101 +13,74 @@ import { geocodeAddress } from './geocodeService';
 import { evaluateServiceArea } from './serviceAreaEvaluator';
 
 /**
- * Stop words that should NEVER be part of a vehicle string
- * These common phrases are often misinterpreted by the regex
- */
-const VEHICLE_STOP_WORDS = new Set([
-  'ill', "i'll", 'im', "i'm", 'ok', 'okay', 'yes', 'yeah', 'sure', 'take',
-  'works', 'can', 'will', 'would', 'could', 'at', 'on', 'for', 'the',
-  'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-  'saturday', 'sunday', 'first', 'second', 'third', 'that', 'this',
-  'sounds', 'good', 'great', 'perfect', 'll', 've', 're', 'my', 'a', 'an'
-]);
-
-/**
- * Known vehicle makes for validation (common makes)
- */
-const KNOWN_MAKES = new Set([
-  'ford', 'chevy', 'chevrolet', 'toyota', 'honda', 'nissan', 'dodge', 'ram',
-  'jeep', 'gmc', 'bmw', 'mercedes', 'audi', 'volkswagen', 'vw', 'lexus',
-  'infiniti', 'acura', 'mazda', 'hyundai', 'kia', 'subaru', 'volvo', 'porsche',
-  'cadillac', 'buick', 'lincoln', 'chrysler', 'tesla', 'rivian', 'lucid',
-  'mitsubishi', 'jaguar', 'land', 'range', 'rover', 'mini', 'fiat', 'alfa',
-  'mg', 'gm'  // 2-letter makes
-]);
-
-/**
  * Check if a vehicle string is valid for booking
- * Requirements:
- *  - Must contain a 4-digit year (19xx or 20xx), OR
- *  - Must contain a model token with digit/hyphen (F150, F-150, 330i), OR
- *  - Must contain a known make
- * AND must NOT contain stop words
+ * Rejects conversational junk like "ill take", "ok", "sounds good"
+ * Requires year OR digits in model OR known make
  */
 export function isValidVehicleString(vehicle: string): boolean {
-  if (!vehicle || vehicle.trim().length < 4) {
-    return false;
-  }
-  
-  const tokens = vehicle.toLowerCase().split(/\s+/);
-  
-  // Check for stop words - ANY stop word invalidates the whole string
-  for (const token of tokens) {
-    if (VEHICLE_STOP_WORDS.has(token)) {
-      console.log(`[VEHICLE GUARD] rejected="${vehicle}" reason=stop_word_found token="${token}"`);
-      return false;
-    }
-  }
-  
-  // Check for valid year (19xx or 20xx)
-  const hasYear = /\b(19\d{2}|20\d{2})\b/.test(vehicle);
-  
-  // Check for model with digit/hyphen (F150, F-150, 330i, X5, etc.)
-  const hasModelWithDigit = /\b[A-Za-z]*\d+[A-Za-z0-9]*\b/.test(vehicle) || 
-                            /\b[A-Za-z]+-\d+\b/.test(vehicle);
-  
-  // Check for known make
-  const hasKnownMake = tokens.some(t => KNOWN_MAKES.has(t));
-  
-  // Must have at least one valid identifier
-  const isValid = hasYear || hasModelWithDigit || hasKnownMake;
-  
-  if (!isValid) {
-    console.log(`[VEHICLE GUARD] rejected="${vehicle}" reason=no_valid_identifier hasYear=${hasYear} hasModel=${hasModelWithDigit} hasKnown=${hasKnownMake}`);
-  }
-  
-  return isValid;
+  const v = (vehicle || '').trim();
+  if (!v) return false;
+  if (v.length < 2) return false;
+
+  const lower = v.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Junk phrases we NEVER want as vehicle
+  const junk = new Set([
+    'ill', "i'll", 'i ll', 'take', 'ill take', 'i ll take',
+    'ok', 'okay', 'k', 'sounds', 'sounds good', 'good', 'yes', 'yep', 'yeah', 'confirm',
+    'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+    'morning', 'afternoon', 'evening', 'today', 'tomorrow'
+  ]);
+  if (junk.has(lower)) return false;
+
+  // Strong signals: contains a 4-digit year OR contains digits in model (F150, CX-5, 328i)
+  if (/\b(19|20)\d{2}\b/.test(lower)) return true;
+  if (/[0-9]/.test(lower)) return true;
+
+  // Otherwise require a known make word present
+  const MAKES = [
+    'ford','chevy','chevrolet','gmc','toyota','honda','nissan','bmw','mercedes','mercedes-benz',
+    'vw','volkswagen','audi','hyundai','kia','subaru','mazda','jeep','ram','dodge','lexus',
+    'acura','infiniti','volvo','tesla','porsche','cadillac','lincoln','buick','chrysler'
+  ];
+  return MAKES.some(m => new RegExp(`\\b${m}\\b`, 'i').test(lower));
 }
 
 /**
- * Extract a vehicle candidate from text
- * Returns null if no match or if candidate is clearly invalid
+ * Extract a vehicle from text using strict patterns
+ * Returns undefined if no valid match found
  */
-export function extractVehicleCandidate(text: string): string | null {
-  if (!text || text.trim().length < 5) {
-    return null;
+export function extractVehicleFromText(text: string): string | undefined {
+  const raw = (text || '').trim();
+  if (!raw) return undefined;
+
+  // Normalize apostrophes (smart quotes to straight)
+  const t = raw.replace(/[\u2018\u2019]/g, "'").trim();
+
+  // Common patterns:
+  // 1) Year Make Model (e.g., "2018 Ford F-150")
+  const yearMakeModel = t.match(/\b((19|20)\d{2})\s+([A-Za-z]{2,})\s+([A-Za-z0-9-]{2,})\b/);
+  if (yearMakeModel) {
+    const v = `${yearMakeModel[1]} ${yearMakeModel[3]} ${yearMakeModel[4]}`;
+    if (isValidVehicleString(v)) return v;
   }
-  
-  // Pattern: [year] make model [year] with flexibility
-  // Allow 2+ letter makes to support VW, MG, GM, etc.
-  const VEHICLE_PATTERN = /\b(20\d{2}|19\d{2})?\s*([A-Za-z]{2,})\s+([A-Za-z0-9][A-Za-z0-9-]{1,})\s*(20\d{2}|19\d{2})?\b/i;
-  
-  const match = text.match(VEHICLE_PATTERN);
-  if (!match) {
-    return null;
+
+  // 2) Make + Model that includes digits (e.g., "Ford F150", "CX-5", "328i")
+  const makeModelDigits = t.match(/\b([A-Za-z]{2,})\s+([A-Za-z0-9-]*\d[A-Za-z0-9-]*)\b/);
+  if (makeModelDigits) {
+    const v = `${makeModelDigits[1]} ${makeModelDigits[2]}`;
+    if (isValidVehicleString(v)) return v;
   }
-  
-  const year = match[1] || match[4] || '';
-  const make = match[2];
-  const model = match[3];
-  
-  // Quick pre-filter: reject if make is a stop word
-  if (VEHICLE_STOP_WORDS.has(make.toLowerCase())) {
-    return null;
+
+  // 3) Standalone model w/ digits (e.g., "F150", "F-150", "CX-5")
+  const soloDigits = t.match(/\b([A-Za-z]{1,3}-?\d{2,4}[A-Za-z]?)\b/);
+  if (soloDigits) {
+    const v = soloDigits[1];
+    if (isValidVehicleString(v)) return v;
   }
-  
-  const candidate = `${year} ${make} ${model}`.trim();
-  return candidate;
+
+  // 4) Make only is not enough; skip to avoid junk
+  return undefined;
 }
 
 /**
@@ -318,11 +291,12 @@ export function extractSmsBookingStateFromHistory(historyMessages: HistoryMessag
   // But iterate OLDEST to NEWEST for slots (we want latest offered slots)
   const reversedForVehicle = [...historyMessages].reverse();
   
-  // First pass: Extract vehicle from newest messages (reverse order)
+  // First pass: Extract vehicle from newest messages (reverse order, validated)
   for (const msg of reversedForVehicle) {
-    if (msg.sender === 'customer' && !state.vehicle) {
-      const candidate = extractVehicleCandidate(msg.content || '');
+    if (msg.sender === 'customer' && (!state.vehicle || !isValidVehicleString(state.vehicle))) {
+      const candidate = extractVehicleFromText(msg.content || '');
       if (candidate && isValidVehicleString(candidate)) {
+        // Only set if we don't have a valid vehicle yet
         state.vehicle = candidate;
         console.log(`[VEHICLE EXTRACT] valid="${candidate}" from="${msg.content?.substring(0, 50)}..."`);
         break;
