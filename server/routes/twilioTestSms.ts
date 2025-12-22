@@ -20,6 +20,7 @@ import {
   detectUpsellResponse,
   detectEmailAddress,
   detectSkipEmail,
+  isValidVehicleString,
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
@@ -625,7 +626,32 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         }
       }
       
-      // Have all required fields OR just answered upsells - CREATE REAL BOOKING
+      // VEHICLE GUARD: Validate vehicle before auto-booking
+      // If we have all booking info EXCEPT a valid vehicle, ask for it explicitly
+      if (smsBookingState.service && smsBookingState.address && slotSelection) {
+        const hasValidVehicle = smsBookingState.vehicle && isValidVehicleString(smsBookingState.vehicle);
+        
+        if (!hasValidVehicle) {
+          // Clear any bogus vehicle and ask explicitly
+          if (smsBookingState.vehicle) {
+            console.log(`[VEHICLE GUARD] blocking_booking invalid_vehicle="${smsBookingState.vehicle}" from=${From}`);
+            await updateSmsBookingState(tenantDb, conversation.id, { vehicle: undefined });
+          } else {
+            console.log(`[VEHICLE GUARD] blocking_booking missing_vehicle from=${From}`);
+          }
+          
+          const vehiclePrompt = truncateSmsResponse("Almost there! What's the year, make, and model of the vehicle? (e.g., 2019 Ford F-150)");
+          await addMessage(tenantDb, conversation.id, vehiclePrompt, 'ai');
+          twimlResponse.message(vehiclePrompt);
+          console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service} stage=vehicle_guard action=ask_vehicle`);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+        
+        console.log(`[VEHICLE GUARD] passed vehicle="${smsBookingState.vehicle}" valid=true`);
+      }
+      
+      // Have all required fields (including valid vehicle) - CREATE REAL BOOKING
       if (smsBookingState.service && smsBookingState.address && slotSelection) {
         console.log('[BOOKING ATTEMPT]', {
           service: smsBookingState.service,

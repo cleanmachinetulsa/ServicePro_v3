@@ -1,0 +1,60 @@
+PASTE THIS WHOLE PROMPT INTO REPLIT AGENT (ServicePro_v3)
+
+Goal:
+Fix the SMS auto-booking bug where vehicle becomes "ll take", add a hard guard so we cannot book without a valid vehicle, and make tenant resolution explicit in the Twilio inbound handler.
+
+Constraints:
+- Do NOT change Twilio webhook URLs.
+- Keep behavior the same unless it prevents bad bookings.
+- Add clear logs for tenant resolution + booking guard decisions.
+- Do not remove existing features; only tighten.
+
+Tasks:
+
+1) Update tenant resolution in inbound SMS handler
+File: server/routes/twilioTestSms.ts
+- Import resolveTenantFromInbound from: server/services/tenantCommRouter
+- In the main inbound SMS POST handler (the one that logs "[TWILIO SMS INBOUND HIT]"):
+  - Call: const resolvedTenant = await resolveTenantFromInbound(req, db);
+  - Set tenantId = resolvedTenant.id
+  - Build tenantDb using wrapTenantDb(db, tenantId)
+  - Log one line like:
+    [TENANT RESOLVE] tenantId=<id> subdomain=<subdomain> To=<to> MessagingServiceSid=<sid>
+- Ensure the rest of the handler uses this tenantId/tenantDb (remove/avoid any hardcoded 'root' assumptions).
+
+2) Fix vehicle extraction so it cannot match phrases like "I'll take"
+File: server/services/bookingDraftService.ts
+- Change extractSmsBookingStateFromHistory() so it iterates history from newest -> oldest (reverse order),
+  so the most recent valid vehicle wins.
+- Replace the overly-permissive VEHICLE_PATTERN approach with a safer rule:
+  A "valid vehicle" must include EITHER:
+   - a 4-digit year (19xx/20xx), OR
+   - a model token containing a digit/hyphen (e.g., F150, F-150, 330i),
+  AND must not be triggered by common stop-words like: "ill", "i'll", "im", "i’m", "ok", "okay", "yes", "sure", "take", "works", "can", "will", "at", "on", "for", "tomorrow", "monday".
+- Implement helper(s) inside bookingDraftService.ts:
+  - function isValidVehicleString(v: string): boolean
+  - function extractVehicleCandidate(text: string): string | null
+- Use these helpers inside extractSmsBookingStateFromHistory():
+  - Only set state.vehicle if candidate passes isValidVehicleString()
+  - If state.vehicle is already set but is NOT valid, allow it to be overwritten by a valid candidate.
+
+3) Add a booking guard so auto-book cannot proceed with an invalid vehicle
+File: server/routes/twilioTestSms.ts
+- Find the auto-booking branch that runs when slotSelection is present and it proceeds to book.
+- Before booking:
+  - If smsBookingState.vehicle is missing OR fails isValidVehicleString(), do NOT book.
+  - Clear the bad vehicle from state if needed.
+  - Reply asking ONLY for: year/make/model (example: "What year/make/model is the vehicle? (e.g., 2019 Ford F-150)")
+  - Persist the updated state so the next message can continue normally.
+
+4) Safety checks
+- Run TypeScript check / tests if available.
+- Make sure no new lint/type errors.
+- Add/adjust logs so we can confirm:
+  - Tenant resolution is working
+  - Vehicle guard prevented booking
+  - Booking only happens when vehicle is valid
+
+Deliverable:
+- Commit-ready code changes in the files above.
+- Provide a short summary of what changed and where.
