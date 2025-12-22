@@ -1,0 +1,221 @@
+GOAL
+Make the SMS agent feel like a real human for returning customers by hydrating conversation state from the tenant DB (customers + last appointments) at the start of inbound SMS handling. This avoids loading full SMS history and survives restarts.
+
+REQUIREMENTS
+- Tenant safe: use tenantDb only (already resolved tenantId from inbound "To").
+- Never overwrite fresh info: only fill missing/empty placeholders.
+- Build a short "customer brief" and store it in conversationState so smsAgentPromptBuilder can include it.
+- Add DEBUG logging behind DEBUG_SMS_TRACE=1.
+- Do NOT change existing booking logic besides prefilling state and booking draft from customer profile.
+
+IMPLEMENTATION
+
+1) EDIT: server/conversationState.ts
+- Extend SchedulingInfo with optional fields:
+  - customerProfileSummary?: string
+  - preferredAddress?: string
+  - preferredVehicles?: Array<{ year?: string; make?: string; model?: string; color?: string }>
+
+Find the SchedulingInfo type and add those optional properties.
+
+2) CREATE NEW FILE: server/services/smsCustomerMemoryHydrator.ts
+Add:
+
+```ts
+import { eq, desc } from "drizzle-orm";
+import { customers, appointments, services } from "../../shared/schema";
+import { conversationState } from "../conversationState";
+
+function normalizePhone(p: string) {
+  return (p || "").trim();
+}
+
+function safeStr(s: any) {
+  return typeof s === "string" ? s.trim() : "";
+}
+
+function isPlaceholderName(name: string) {
+  const n = (name || "").trim().toLowerCase();
+  return !n || n === "sms customer" || n === "customer" || n === "unknown";
+}
+
+function parseVehicleFreeform(text: string): { year?: string; make?: string; model?: string } | null {
+  const t = (text || "").trim();
+  if (!t) return null;
+
+  // Examples: "2018 Ford F-150", "Ford F150", "VW Atlas"
+  const yearMakeModel = t.match(/\b(19|20)\d{2}\b\s+([A-Za-z]{2,})\s+([A-Za-z0-9\-]+)/);
+  if (yearMakeModel) return { year: yearMakeModel[0].match(/\b(19|20)\d{2}\b/)?.[0], make: yearMakeModel[2], model: yearMakeModel[3] };
+
+  const makeModel = t.match(/\b([A-Za-z]{2,})\s+([A-Za-z0-9\-]{2,})\b/);
+  if (makeModel) return { make: makeModel[1], model: makeModel[2] };
+
+  // If it only contains a model with digits (F150, CX-5)
+  const modelDigits = t.match(/\b([A-Za-z]{1,}\d{1,}[A-Za-z0-9\-]*)\b/);
+  if (modelDigits) return { model: modelDigits[1] };
+
+  return null;
+}
+
+function formatLocalDate(d: Date) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric", year: "numeric" }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+export async function hydrateSmsConversationStateFromDb(opts: {
+  tenantDb: any;
+  tenantId: string;
+  fromPhone: string;
+}) {
+  const fromPhone = normalizePhone(opts.fromPhone);
+  const debug = process.env.DEBUG_SMS_TRACE === "1";
+
+  // Current in-memory state
+  const current = conversationState.getState(fromPhone);
+
+  // Load customer record
+  const customer = await opts.tenantDb
+    .select()
+    .from(customers)
+    .where(eq(customers.phone, fromPhone))
+    .limit(1)
+    .then((r: any[]) => r?.[0]);
+
+  if (!customer) {
+    if (debug) console.log("[SMS MEMORY] no customer found", { tenantId: opts.tenantId, fromPhone });
+    return { hydrated: false };
+  }
+
+  // Load last 2 appointments + service names
+  const appts = await opts.tenantDb
+    .select({
+      id: appointments.id,
+      scheduledTime: appointments.scheduledTime,
+      address: appointments.address,
+      serviceId: appointments.serviceId,
+    })
+    .from(appointments)
+    .where(eq(appointments.customerId, customer.id))
+    .orderBy(desc(appointments.scheduledTime))
+    .limit(2);
+
+  let lastServiceName = "";
+  let lastServiceDate = "";
+  let lastAddress = "";
+
+  if (appts?.[0]) {
+    lastAddress = safeStr(appts[0].address);
+    lastServiceDate = appts[0].scheduledTime ? formatLocalDate(new Date(appts[0].scheduledTime)) : "";
+    const svc = await opts.tenantDb
+      .select({ name: services.name })
+      .from(services)
+      .where(eq(services.id, appts[0].serviceId))
+      .limit(1)
+      .then((r: any[]) => r?.[0]);
+    lastServiceName = safeStr(svc?.name);
+  }
+
+  const dbName = safeStr(customer.name);
+  const dbEmail = safeStr(customer.email);
+  const dbAddress = safeStr(customer.address) || lastAddress;
+  const dbVehicleInfo = safeStr(customer.vehicleInfo);
+
+  const parsedVehicle = parseVehicleFreeform(dbVehicleInfo);
+  const vehicleArr = parsedVehicle ? [{ ...parsedVehicle }] : [];
+
+  // Build a short brief for the prompt
+  const briefParts: string[] = [];
+  if (dbName) briefParts.push(`Name: ${dbName}`);
+  if (dbAddress) briefParts.push(`Address on file: ${dbAddress}`);
+  if (dbVehicleInfo) briefParts.push(`Vehicle on file: ${dbVehicleInfo}`);
+  if (lastServiceName || lastServiceDate) briefParts.push(`Last service: ${[lastServiceName, lastServiceDate].filter(Boolean).join(" on ")}`);
+  const customerNotes = safeStr(customer.customerNotes);
+  const businessNotes = safeStr(customer.businessNotes);
+  if (customerNotes) briefParts.push(`Customer notes: ${customerNotes}`);
+  if (businessNotes) briefParts.push(`Business notes: ${businessNotes}`);
+
+  const customerProfileSummary = briefParts.join(" | ");
+
+  // Only fill missing fields (never stomp what the current conversation collected)
+  const next: any = { ...current };
+
+  if (isPlaceholderName(next.customerName) && dbName) next.customerName = dbName;
+  if (!safeStr(next.customerEmail) && dbEmail) next.customerEmail = dbEmail;
+
+  // These are used as soft “defaults” for the agent
+  if (!safeStr(next.preferredAddress) && dbAddress) next.preferredAddress = dbAddress;
+  if ((!next.preferredVehicles || next.preferredVehicles.length === 0) && vehicleArr.length) next.preferredVehicles = vehicleArr;
+
+  // Human-feel brief
+  if (!safeStr(next.customerProfileSummary) && customerProfileSummary) next.customerProfileSummary = customerProfileSummary;
+
+  // Mark returning customer if we have history
+  next.isExistingCustomer = true;
+
+  conversationState.updateState(fromPhone, next);
+
+  if (debug) console.log("[SMS MEMORY] hydrated", {
+    tenantId: opts.tenantId,
+    fromPhone,
+    hasName: !!dbName,
+    hasAddress: !!dbAddress,
+    hasVehicle: !!dbVehicleInfo,
+    lastServiceName,
+    lastServiceDate,
+  });
+
+  return { hydrated: true, customerId: customer.id };
+}
+EDIT: server/ai/smsAgentPromptBuilder.ts
+
+Update the ConversationStateInfo interface to include:
+
+customerProfileSummary?: string
+
+preferredAddress?: string
+
+preferredVehicles?: Array<{ year?: string; make?: string; model?: string; color?: string }>
+
+In buildKnownContextFromState(), add:
+
+If customerProfileSummary exists, include it as a single bullet like:
+"- Returning-customer brief: <summary>"
+
+Do NOT dump huge history; one line only.
+
+EDIT: server/routes/twilioTestSms.ts
+
+Import the hydrator:
+import { hydrateSmsConversationStateFromDb } from "../services/smsCustomerMemoryHydrator";
+import { conversationState } from "../conversationState";
+
+After tenant resolution + tenantDb is available, and BEFORE generating AI response / booking draft extraction, call:
+await hydrateSmsConversationStateFromDb({ tenantDb, tenantId, fromPhone: From });
+
+Then, when you build/merge smsBookingState, prefill from conversationState if the draft is missing:
+const st = conversationState.getState(From);
+if (!smsBookingState.address && st?.preferredAddress) smsBookingState.address = st.preferredAddress;
+// If vehicle missing, try preferredVehicles
+if (!smsBookingState.vehicle && st?.preferredVehicles?.length) {
+const v = st.preferredVehicles[0];
+const vStr = [v.year, v.make, v.model].filter(Boolean).join(" ");
+if (vStr) smsBookingState.vehicle = vStr;
+}
+
+This should reduce how often it asks repeat customers for address/vehicle.
+
+VERIFICATION STEPS (write them into the agent completion summary)
+
+Set DEBUG_SMS_TRACE=1 and send SMS from a real returning customer phone.
+
+Confirm logs show: [SMS MEMORY] hydrated tenantId=... hasName/hasAddress/hasVehicle true.
+
+Confirm bot greets/acts like it remembers (name + address/vehicle on file) and does NOT ask basics again unless missing.
+
+Confirm new customers still work normally (no customer record => hydrated=false).
+
+Do not add new migrations. Use existing customers + appointments schema only.
+Do not break multi-tenant isolation.

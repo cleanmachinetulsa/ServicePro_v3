@@ -55,6 +55,10 @@ interface ConversationStateInfo {
   inServiceArea?: boolean;
   // Voicemail context
   lastVoicemailSummary?: string;
+  // Customer memory (hydrated from DB for returning customers)
+  customerProfileSummary?: string;
+  preferredAddress?: string;
+  preferredVehicles?: Array<{ year?: string; make?: string; model?: string; color?: string }>;
 }
 
 interface SmsPromptParams {
@@ -275,6 +279,10 @@ function buildKnownContext(state: ConversationStateInfo | undefined): string {
   if (state.lastVoicemailSummary) {
     const summaryTrimmed = state.lastVoicemailSummary.trim().slice(0, 240);
     knownFields.push(`- Recent voicemail from this customer: ${summaryTrimmed}`);
+  }
+  
+  if (state.customerProfileSummary) {
+    knownFields.push(`- Returning-customer brief: ${state.customerProfileSummary}`);
   }
 
   if (knownFields.length === 0) {

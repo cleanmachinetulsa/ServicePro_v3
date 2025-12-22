@@ -29,6 +29,11 @@ interface SchedulingInfo {
     condition?: string[];
   }>;
   
+  // Customer memory (hydrated from DB for returning customers)
+  customerProfileSummary?: string;
+  preferredAddress?: string;
+  preferredVehicles?: Array<{ year?: string; make?: string; model?: string; color?: string }>;
+  
   // Damage Assessment
   damageAssessmentRequested?: boolean;
   damageDescription?: string;

@@ -25,6 +25,8 @@ import {
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { resolveTenantFromInbound } from '../services/tenantCommRouter';
+import { hydrateSmsConversationStateFromDb } from '../services/smsCustomerMemoryHydrator';
+import { conversationState } from '../conversationState';
 import { buildSmsLlmContext } from '../services/smsConversationContextService';
 import { handleBook } from '../calendarApi';
 import { truncateSmsResponse } from '../utils/smsLength';
@@ -179,6 +181,9 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     const conversation = await getOrCreateTestConversation(tenantDb, From);
     
+    // Hydrate customer memory from DB for returning customers (before AI response)
+    await hydrateSmsConversationStateFromDb({ tenantDb, tenantId, fromPhone: From });
+    
     // Add customer message
     await addMessage(tenantDb, conversation.id, Body, 'customer');
     
@@ -198,6 +203,25 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
     // 1. Load persisted SMS booking state from database
     let persistedState = await getSmsBookingState(tenantDb, conversation.id);
+    
+    // Prefill booking state from customer memory if missing
+    const st = conversationState.getState(From);
+    // Check canonical address first (hydrated by hydrator), then preferredAddress
+    const hydratedAddress = st?.address || st?.preferredAddress;
+    if (!persistedState.address && hydratedAddress) {
+      persistedState.address = hydratedAddress;
+      console.log(`[SMS MEMORY] prefilled address from customer profile: ${hydratedAddress}`);
+    }
+    // Check canonical vehicles first (hydrated by hydrator), then preferredVehicles
+    const hydratedVehicles = (st?.vehicles?.length ? st.vehicles : st?.preferredVehicles) || [];
+    if (!persistedState.vehicle && hydratedVehicles.length) {
+      const v = hydratedVehicles[0];
+      const vStr = [v.year, v.make, v.model].filter(Boolean).join(" ");
+      if (vStr) {
+        persistedState.vehicle = vStr;
+        console.log(`[SMS MEMORY] prefilled vehicle from customer profile: ${vStr}`);
+      }
+    }
     
     // Parse availability horizon expansion from customer message
     const parsedHorizonDays = parseAvailabilityHorizonDays(Body);
