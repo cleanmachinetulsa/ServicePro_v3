@@ -507,10 +507,11 @@ async function startDeferredInitialization() {
     const { seedIvrMenus } = await import('./seed/seedIvrMenus');
     await seedIvrMenus(db);
     
-    // Initialize SMS templates (idempotent - safe to run multiple times)
-    // This is the slowest task - processes 15+ tenants
-    const { initializeSmsTemplates } = await import('./initSmsTemplates');
-    await initializeSmsTemplates();
+    // Seed SMS templates for all tenants (OPTIONAL boot task, controlled by env var)
+    // Default: OFF in production to avoid long startup times
+    // Set SMS_TEMPLATE_SEED_ALL_TENANTS=1 to enable during admin operations
+    const { seedSmsTemplatesAllTenants } = await import('./initSmsTemplates');
+    await seedSmsTemplatesAllTenants();
     
     // Initialize referral program configuration (singleton - only runs once)
     const { initializeReferralConfig } = await import('./referralConfigService');

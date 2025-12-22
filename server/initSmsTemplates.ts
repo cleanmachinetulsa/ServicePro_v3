@@ -163,78 +163,106 @@ const DEFAULT_TEMPLATES = [
 ];
 
 /**
- * Initialize SMS templates (idempotent - safe to run multiple times)
- * Uses upsert pattern: updates if exists, inserts if new
- * Runs for ALL tenants in the system
+ * Ensure SMS templates for a single tenant (idempotent, safe for inbound request handling)
+ * Only fills missing templates - does NOT overwrite admin-customized templates
+ * @param tenantId The tenant ID to ensure templates for
+ * @returns { created, updated } count of templates processed
  */
-export async function initializeSmsTemplates() {
+export async function ensureSmsTemplatesForTenant(tenantId: string) {
   try {
-    console.log('[SMS TEMPLATES INIT] Starting template initialization...');
+    const tenantDb = wrapTenantDb(db, tenantId);
+    let created = 0;
+    let updated = 0;
+
+    for (const template of DEFAULT_TEMPLATES) {
+      // Check if template already exists
+      const [existing] = await tenantDb
+        .select()
+        .from(smsTemplates)
+        .where(
+          and(
+            eq(smsTemplates.templateKey, template.templateKey),
+            eq(smsTemplates.language, "en")
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        // Only update if template hasn't been customized by admin (version = 1 and no updatedBy)
+        if (existing.version === 1 && !existing.updatedBy) {
+          await tenantDb
+            .update(smsTemplates)
+            .set({
+              body: template.body,
+              variables: template.variables,
+              defaultPayload: template.defaultPayload,
+              updatedAt: new Date(),
+            })
+            .where(eq(smsTemplates.id, existing.id));
+          updated++;
+        }
+      } else {
+        // Insert new template
+        await tenantDb.insert(smsTemplates).values({
+          ...template,
+          channel: "sms",
+          language: "en",
+          version: 1,
+        });
+        created++;
+      }
+    }
+
+    console.log(`[SMS TEMPLATES] ensure tenant=${tenantId} created=${created} updated=${updated}`);
+    return { created, updated };
+  } catch (error) {
+    console.error(`[SMS TEMPLATES] Error ensuring templates for tenant ${tenantId}:`, error);
+    return { created: 0, updated: 0 };
+  }
+}
+
+/**
+ * Seed SMS templates for ALL tenants (BOOT TASK ONLY)
+ * Controlled by SMS_TEMPLATE_SEED_ALL_TENANTS env var (default: OFF)
+ * Never called from inbound request handlers
+ */
+export async function seedSmsTemplatesAllTenants() {
+  // Feature flag: only run if explicitly enabled
+  if (process.env.SMS_TEMPLATE_SEED_ALL_TENANTS !== '1') {
+    console.log('[TEMPLATE SEEDER] Skipped (set SMS_TEMPLATE_SEED_ALL_TENANTS=1 to enable)');
+    return { success: true, skipped: true };
+  }
+
+  try {
+    console.log('[TEMPLATE SEEDER] Starting all-tenants seed task...');
 
     // Get all tenants
     const allTenants = await db.select().from(tenants);
-    console.log(`[SMS TEMPLATES INIT] Found ${allTenants.length} tenant(s) to initialize`);
+    console.log(`[TEMPLATE SEEDER] Processing count=${allTenants.length} tenants`);
 
     let totalCreated = 0;
     let totalUpdated = 0;
 
-    // Initialize templates for each tenant
+    // Seed templates for each tenant
     for (const tenant of allTenants) {
-      const tenantDb = wrapTenantDb(db, tenant.id);
-      console.log(`[SMS TEMPLATES INIT] Initializing templates for tenant: ${tenant.name} (${tenant.id})`);
-
-      let created = 0;
-      let updated = 0;
-
-      for (const template of DEFAULT_TEMPLATES) {
-        // Check if template already exists
-        const [existing] = await tenantDb
-          .select()
-          .from(smsTemplates)
-          .where(
-            and(
-              eq(smsTemplates.templateKey, template.templateKey),
-              eq(smsTemplates.language, "en")
-            )
-          )
-          .limit(1);
-
-        if (existing) {
-          // Update existing template (preserves custom edits to name/description/enabled status)
-          // Only updates body/variables if they haven't been customized
-          if (existing.version === 1) {
-            await tenantDb
-              .update(smsTemplates)
-              .set({
-                body: template.body,
-                variables: template.variables,
-                defaultPayload: template.defaultPayload,
-                updatedAt: new Date(),
-              })
-              .where(eq(smsTemplates.id, existing.id));
-            updated++;
-          }
-        } else {
-          // Insert new template
-          await tenantDb.insert(smsTemplates).values({
-            ...template,
-            channel: "sms",
-            language: "en",
-            version: 1,
-          });
-          created++;
-        }
-      }
-
-      console.log(`[SMS TEMPLATES INIT] Tenant ${tenant.id}: ${created} created, ${updated} updated`);
+      const { created, updated } = await ensureSmsTemplatesForTenant(tenant.id);
       totalCreated += created;
       totalUpdated += updated;
     }
 
-    console.log(`[SMS TEMPLATES INIT] Initialization complete across all tenants: ${totalCreated} created, ${totalUpdated} updated`);
+    console.log(`[TEMPLATE SEEDER] Completed: created=${totalCreated} updated=${totalUpdated} across all tenants`);
     return { success: true, created: totalCreated, updated: totalUpdated };
   } catch (error) {
-    console.error('[SMS TEMPLATES INIT] Error initializing templates:', error);
+    console.error('[TEMPLATE SEEDER] Error seeding templates:', error);
     return { success: false, error };
   }
+}
+
+/**
+ * DEPRECATED: Use seedSmsTemplatesAllTenants() instead
+ * Kept for backward compatibility - will be removed in future version
+ */
+export async function initializeSmsTemplates() {
+  console.warn('[SMS TEMPLATES INIT] ⚠️ initializeSmsTemplates() is deprecated - use seedSmsTemplatesAllTenants() instead');
+  return seedSmsTemplatesAllTenants();
 }
