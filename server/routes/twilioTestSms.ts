@@ -146,7 +146,27 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     }
     
     const resolution = await resolveTenantFromInbound(req, db);
-    const tenantId = resolution.tenantId || 'root';
+    
+    // R1-STRICT: If tenant cannot be resolved, do not proceed - escalate and reply professionally
+    if (!resolution.tenantId) {
+      console.error(`[TENANT UNROUTABLE] from=${From} to=${To} reason=${resolution.reason || 'no_matching_config'}`);
+      
+      const { escalateSmsToHuman } = await import('../services/escalationService');
+      await escalateSmsToHuman({
+        tenantId: null,
+        reason: 'tenant_unroutable',
+        fromPhone: From,
+        toPhone: To,
+        messageSid: MessageSid,
+        additionalInfo: `To=${To}, Body="${Body?.substring(0, 50)}..."`,
+      });
+      
+      twimlResponse.message("We couldn't route your message right now. A human will follow up shortly.");
+      res.type('text/xml').send(twimlResponse.toString());
+      return;
+    }
+    
+    const tenantId = resolution.tenantId;
     console.log('[TWILIO INBOUND] tenant_resolution', { tenantId, reason: resolution.reason, to: resolution.normalizedTo });
     const tenantDb = wrapTenantDb(db, tenantId);
     
@@ -315,6 +335,27 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       }
       
       if (upcomingBooking) {
+        // R1-STRICT: Require verified calendar eventId before confirming
+        const { isBookingConfirmed } = await import('../services/escalationService');
+        if (!isBookingConfirmed(upcomingBooking)) {
+          console.warn(`[BOOKING_CONFIRM_NO_EVENTID] correlationId=${correlationId} bookingId=${upcomingBooking.id} eventId=${upcomingBooking.eventId || 'null'}`);
+          const { escalateSmsToHuman } = await import('../services/escalationService');
+          await escalateSmsToHuman({
+            tenantId,
+            reason: 'confirm_failed',
+            fromPhone: From,
+            toPhone: To,
+            conversationId: conversation.id,
+            additionalInfo: `BookingID=${upcomingBooking.id} has no calendar eventId - cannot verify`,
+          });
+          
+          const noEventIdReply = truncateSmsResponse("I couldn't verify your calendar appointment. A human will follow up shortly to confirm.");
+          await addMessage(tenantDb, conversation.id, noEventIdReply, 'ai');
+          twimlResponse.message(noEventIdReply);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+        
         try {
           await confirmBooking(tenantId, upcomingBooking.id);
           const { formatInTimeZone } = await import('date-fns-tz');
@@ -329,40 +370,17 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         } catch (confirmErr: any) {
           console.error(`[BOOKING_CONFIRM_FAILED] correlationId=${correlationId} err=${confirmErr?.message} stack=${confirmErr?.stack}`);
           
-          // P0-HOTFIX: Escalate to owner on confirm failure
-          let escalationFailed = false;
-          try {
-            const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
-            if (ownerPhone) {
-              const twilioClient = (await import('twilio')).default(
-                process.env.TWILIO_ACCOUNT_SID,
-                process.env.TWILIO_AUTH_TOKEN
-              );
-              const escalationMsg = `🚨 CONFIRM FAILED:\nCustomer: ${From}\nBooking ID: ${upcomingBooking.id}\nEventId: ${upcomingBooking.eventId}\nError: ${confirmErr?.message || 'Unknown'}`;
-              await twilioClient.messages.create({
-                to: ownerPhone,
-                from: To,
-                body: escalationMsg,
-              });
-              console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=confirm_failed`);
-            }
-          } catch (escErr) {
-            console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
-            escalationFailed = true;
-          }
-          
-          // Mark conversation as needing human follow-up (whether escalation succeeded or not)
-          try {
-            await tenantDb.update(conversations).set({ 
-              needsHumanAttention: true,
-              needsHumanReason: escalationFailed 
-                ? 'Confirm failed + escalation SMS failed' 
-                : 'Confirm failed - owner notified'
-            }).where(eq(conversations.id, conversation.id));
-            console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true reason=confirm_failed escalation_failed=${escalationFailed}`);
-          } catch (handoffErr) {
-            console.error(`[BOOKING HANDOFF] failed to set needsHumanAttention:`, handoffErr);
-          }
+          // R1-STRICT: Use centralized escalation service
+          const { escalateSmsToHuman } = await import('../services/escalationService');
+          await escalateSmsToHuman({
+            tenantId,
+            reason: 'confirm_failed',
+            fromPhone: From,
+            toPhone: To,
+            conversationId: conversation.id,
+            additionalInfo: `BookingID=${upcomingBooking.id} EventId=${upcomingBooking.eventId} Error=${confirmErr?.message || 'Unknown'}`,
+          });
+          console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=confirm_failed`);
           
           const errorReply = truncateSmsResponse("I'm having trouble confirming right now—someone will follow up shortly to confirm your appointment.");
           await addMessage(tenantDb, conversation.id, errorReply, 'ai');
@@ -371,88 +389,43 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           return;
         }
       } else {
-        // FAIL-OPEN: If lookup failed due to DB error, give positive confirmation to customer
-        // and flag for human review (customer likely has a booking, we just can't look it up)
+        // R1-STRICT: FAIL-CLOSED - Do NOT confirm unless we have a verified booking with eventId
         const failReason = bookingLookupFailed ? 'booking_lookup_db_error' : 'no_upcoming_booking_found';
-        console.log(`[BOOKING_CONFIRM_FAILOPEN] correlationId=${correlationId} reason=${failReason}`);
+        console.log(`[BOOKING_CONFIRM_FAILCLOSED] correlationId=${correlationId} reason=${failReason}`);
         
-        // CRITICAL: If DB lookup failed, give customer a positive confirmation message
-        // The booking likely exists in Google Calendar even if our records table is missing
+        // R1-STRICT: If DB lookup failed, do NOT give confirmation language - escalate instead
         if (bookingLookupFailed) {
-          const failOpenReply = truncateSmsResponse("Got it! Your appointment is confirmed. We'll see you soon!");
-          await addMessage(tenantDb, conversation.id, failOpenReply, 'ai');
-          twimlResponse.message(failOpenReply);
+          const { escalateSmsToHuman } = await import('../services/escalationService');
+          await escalateSmsToHuman({
+            tenantId,
+            reason: 'calendar_sync_failed',
+            fromPhone: From,
+            toPhone: To,
+            conversationId: conversation.id,
+            additionalInfo: `DB lookup failed when customer replied CONFIRM`,
+          });
           
-          // Background: notify owner about the DB issue (non-blocking)
-          try {
-            const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
-            if (ownerPhone) {
-              const twilioClient = (await import('twilio')).default(
-                process.env.TWILIO_ACCOUNT_SID,
-                process.env.TWILIO_AUTH_TOKEN
-              );
-              await twilioClient.messages.create({
-                to: ownerPhone,
-                from: To,
-                body: `⚠️ CONFIRM (fail-open): Customer ${From} replied CONFIRM but booking lookup failed. Auto-confirmed. Please verify their calendar event.`,
-              });
-            }
-          } catch (escErr) {
-            console.error(`[FAILOPEN_NOTIFY_FAILED] correlationId=${correlationId}`, escErr);
-          }
+          const failClosedReply = truncateSmsResponse("I ran into an issue confirming your appointment. A human will follow up ASAP to verify.");
+          await addMessage(tenantDb, conversation.id, failClosedReply, 'ai');
+          twimlResponse.message(failClosedReply);
           
-          // Mark for human review
-          try {
-            await tenantDb.update(conversations).set({ 
-              needsHumanAttention: true,
-              needsHumanReason: 'Confirm fail-open: DB lookup failed, customer auto-confirmed'
-            }).where(eq(conversations.id, conversation.id));
-          } catch (handoffErr) {
-            console.error(`[FAILOPEN_HANDOFF_FAILED]`, handoffErr);
-          }
-          
-          console.log(`[BOOKING_CONFIRM_FAILOPEN_SUCCESS] correlationId=${correlationId} customer_notified=true`);
+          console.log(`[BOOKING_CONFIRM_FAILCLOSED_ESCALATED] correlationId=${correlationId} customer_notified=true`);
           res.type('text/xml').send(twimlResponse.toString());
           return;
         }
         
-        // No booking found (not a DB error) - escalate to owner
-        let noBookingEscalationFailed = false;
-        try {
-          const ownerPhone = process.env.BUSINESS_OWNER_PERSONAL_PHONE;
-          if (ownerPhone) {
-            const twilioClient = (await import('twilio')).default(
-              process.env.TWILIO_ACCOUNT_SID,
-              process.env.TWILIO_AUTH_TOKEN
-            );
-            const escalationMsg = `🚨 CONFIRM - NO BOOKING FOUND:\nCustomer: ${From}\nThey replied CONFIRM but we have no record of their booking. Please follow up.`;
-            await twilioClient.messages.create({
-              to: ownerPhone,
-              from: To,
-              body: escalationMsg,
-            });
-            console.log(`[ESCALATION_SENT] correlationId=${correlationId} reason=no_booking_found`);
-            console.log(`[BOOKING_CREATE_FAILED] correlationId=${correlationId} reason=confirm_no_booking_found`);
-          } else {
-            noBookingEscalationFailed = true;
-          }
-        } catch (escErr) {
-          console.error(`[ESCALATION_FAILED] correlationId=${correlationId}`, escErr);
-          noBookingEscalationFailed = true;
-        }
+        // No booking found (not a DB error) - use escalation service
+        const { escalateSmsToHuman } = await import('../services/escalationService');
+        await escalateSmsToHuman({
+          tenantId,
+          reason: 'no_booking_found',
+          fromPhone: From,
+          toPhone: To,
+          conversationId: conversation.id,
+          additionalInfo: `Customer replied CONFIRM but no booking record found`,
+        });
         
-        // Mark conversation for human attention
-        try {
-          await tenantDb.update(conversations).set({ 
-            needsHumanAttention: true,
-            needsHumanReason: noBookingEscalationFailed 
-              ? 'No booking found + escalation SMS failed' 
-              : 'No booking found - owner notified'
-          }).where(eq(conversations.id, conversation.id));
-          console.log(`[BOOKING HANDOFF] conversation=${conversation.id} needsHumanAttention=true reason=no_booking_found escalation_failed=${noBookingEscalationFailed}`);
-        } catch (handoffErr) {
-          console.error(`[BOOKING HANDOFF] failed:`, handoffErr);
-        }
+        console.log(`[BOOKING_CREATE_FAILED] correlationId=${correlationId} reason=confirm_no_booking_found`);
         
         const noBookingReply = truncateSmsResponse("I couldn't find your booking right now—someone will follow up shortly to help confirm.");
         await addMessage(tenantDb, conversation.id, noBookingReply, 'ai');

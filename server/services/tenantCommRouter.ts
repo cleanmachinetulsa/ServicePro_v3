@@ -30,10 +30,12 @@ import type { DB } from '../db';
 import { Request } from 'express';
 
 export interface TenantResolution {
-  tenantId: string;
+  tenantId: string | null;
   phoneConfig: any | null;
   ivrMode: 'simple' | 'ivr' | 'ai-voice';
-  resolvedBy: 'messagingServiceSid' | 'phoneNumber' | 'fallback';
+  resolvedBy: 'messagingServiceSid' | 'phoneNumber' | 'unresolved';
+  normalizedTo: string | null;
+  reason?: string;
 }
 
 /**
@@ -60,9 +62,6 @@ export async function resolveTenantFromInbound(
   const normalizedTo = normalizePhoneNumber(To);
 
   // Strategy 1: Try MessagingServiceSid match (most specific for SMS)
-  // This allows multiple phone numbers to route to the same tenant via Messaging Service
-  // NOTE: MessagingServiceSid should be unique per tenant in practice, but we order
-  // by id desc to ensure deterministic results if duplicates exist
   if (MessagingServiceSid) {
     const configs = await db
       .select()
@@ -73,21 +72,19 @@ export async function resolveTenantFromInbound(
 
     const config = configs[0];
     if (config) {
-      console.log(`[TENANT ROUTER] Resolved tenant '${config.tenantId}' via MessagingServiceSid: ${MessagingServiceSid}`);
+      console.log(`[TENANT RESOLVE] to=${normalizedTo} sid=${MessagingServiceSid} tenantId=${config.tenantId} via=messagingServiceSid`);
       return {
         tenantId: config.tenantId,
         phoneConfig: config,
         ivrMode: (config.ivrMode as 'simple' | 'ivr' | 'ai-voice') || 'simple',
         resolvedBy: 'messagingServiceSid',
+        normalizedTo,
       };
     }
   }
 
   // Strategy 2: Try To number match via tenantPhoneConfig (standard lookup)
-  // This is the primary lookup for voice calls and SMS without Messaging Service
-  // Phone numbers should be unique per the schema, but we order for consistency
   if (normalizedTo) {
-    console.log(`[TENANT ROUTER] Looking up phoneNumber: ${normalizedTo} (original: ${To})`);
     const configs = await db
       .select()
       .from(tenantPhoneConfig)
@@ -97,45 +94,26 @@ export async function resolveTenantFromInbound(
 
     const config = configs[0];
     if (config) {
-      console.log(`[TENANT ROUTER] Resolved tenant '${config.tenantId}' via phoneNumber: ${normalizedTo}, ivrMode: ${config.ivrMode}`);
+      console.log(`[TENANT RESOLVE] to=${normalizedTo} sid=${MessagingServiceSid || 'none'} tenantId=${config.tenantId} via=phoneNumber`);
       return {
         tenantId: config.tenantId,
         phoneConfig: config,
         ivrMode: (config.ivrMode as 'simple' | 'ivr' | 'ai-voice') || 'simple',
         resolvedBy: 'phoneNumber',
+        normalizedTo,
       };
     }
   }
 
-  // Strategy 3: Fallback to root tenant with phone config lookup
-  // Look up root tenant's phone config for IVR settings
-  console.warn(`[TENANT ROUTER] No tenant config found for To=${normalizedTo} (original: ${To}), MessagingServiceSid=${MessagingServiceSid}, trying root fallback`);
-  
-  // Try to get root tenant's default phone config
-  const rootConfigs = await db
-    .select()
-    .from(tenantPhoneConfig)
-    .where(eq(tenantPhoneConfig.tenantId, 'root'))
-    .orderBy(desc(tenantPhoneConfig.id))
-    .limit(1);
-  
-  const rootConfig = rootConfigs[0];
-  if (rootConfig) {
-    console.log(`[TENANT ROUTER] Using root tenant fallback with ivrMode: ${rootConfig.ivrMode}`);
-    return {
-      tenantId: 'root',
-      phoneConfig: rootConfig,
-      ivrMode: (rootConfig.ivrMode as 'simple' | 'ivr' | 'ai-voice') || 'simple',
-      resolvedBy: 'fallback',
-    };
-  }
-  
-  console.warn(`[TENANT ROUTER] No root tenant config found, using defaults`);
+  // R1-STRICT: NO fallback to 'root' - return null tenant for caller to handle
+  console.warn(`[TENANT RESOLVE] to=${normalizedTo} sid=${MessagingServiceSid || 'none'} tenantId=null via=unresolved reason=no_matching_config`);
   return {
-    tenantId: 'root',
+    tenantId: null,
     phoneConfig: null,
     ivrMode: 'simple',
-    resolvedBy: 'fallback',
+    resolvedBy: 'unresolved',
+    normalizedTo,
+    reason: 'no_matching_config',
   };
 }
 
