@@ -1,0 +1,141 @@
+DROP-IN: Add end-to-end SMS booking trace + “no lies” booking guard + owner escalation
+
+You are working in ServicePro_v3-base (multi-tenant). Implement deterministic tracing for the SMS booking workflow so we can diagnose why customers can’t schedule end-to-end. Do NOT refactor large areas. Make minimal, safe, surgical changes.
+
+GOALS
+1) Every inbound SMS creates/uses a correlationId (cid) that is logged and propagated through:
+   - inbound webhook handler
+   - SMS agent orchestration (tool calling)
+   - bookingDraftService (or equivalent)
+   - calendar integration
+   - outbound SMS reply
+2) Add stage/state fields for the SMS conversation/booking attempt so we can see where it failed.
+3) Enforce “no lies rule”: the bot may only claim booking is confirmed if BOTH:
+   - booking record exists (db id)
+   - Google Calendar eventId exists (or whichever calendar source you use)
+4) If customer reaches CONFIRM and booking/calendar fails: immediately notify the owner/admin via SMS (escalation) and mark conversation “Needs Human” with reason.
+5) Add a deterministic debug endpoint to retrieve the trace by cid or phone number.
+
+CONSTRAINTS
+- Must remain strict multi-tenant safe; all reads/writes scoped by tenant_id.
+- Safe DB changes only (CREATE TABLE IF NOT EXISTS, ADD COLUMN IF NOT EXISTS, CREATE INDEX IF NOT EXISTS).
+- Add LOG_LEVEL + feature flag to control verbosity (do not spam prod logs by default).
+- No destructive migrations.
+- Add a small test (or at least a script) to verify “no lies” rule.
+
+STEP 1 — FIND ENTRYPOINTS
+Search codebase for:
+- Twilio inbound: "/twilio", "/sms", "MessagingResponse", "webhook", "twilio.webhook"
+- SMS agent runner: "smsAgent", "runAgent", "toolCalls", "responses.create", "function_call"
+- Booking: "bookingDraft", "confirmBooking", "createBooking", "recordAppointmentCreated"
+- Calendar: "google calendar", "eventId", "calendar.events.insert"
+
+STEP 2 — DB: add trace + stage fields (safe)
+A) If you already have a conversations table, add columns:
+- correlation_id TEXT
+- stage TEXT (e.g., 'INBOUND', 'AGENT', 'TOOL', 'CONFIRM', 'BOOKED', 'NEEDS_HUMAN', 'FAILED')
+- stage_reason TEXT
+- last_error TEXT
+- last_tool TEXT
+- last_tool_ok BOOLEAN
+- updated_at TIMESTAMPTZ default now()
+
+Use ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
+
+B) Add a new table if none exists to store traces:
+CREATE TABLE IF NOT EXISTS sms_flow_traces (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  correlation_id TEXT NOT NULL,
+  from_e164 TEXT NOT NULL,
+  to_e164 TEXT,
+  direction TEXT NOT NULL, -- inbound|outbound|internal
+  stage TEXT NOT NULL,
+  stage_reason TEXT,
+  payload_json JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+Create indexes:
+- (tenant_id, correlation_id)
+- (tenant_id, from_e164, created_at desc)
+
+STEP 3 — CID GENERATION + PROPAGATION
+In the Twilio inbound handler:
+- Generate cid = existing conversation.correlation_id OR new random (crypto.randomUUID() or nanoid)
+- Persist cid to conversation record
+- Pass cid through all downstream calls (agent runner, tool runner, booking service)
+- Log with prefix [CID:<cid>] on every step (but gated by LOG_LEVEL / FEATURE_TRACE_SMS)
+
+STEP 4 — TRACE WRITES
+Create a helper: server/utils/traceSmsFlow.ts with:
+traceSmsFlow({ tenantId, cid, from, to, direction, stage, reason, payload })
+- Writes to sms_flow_traces table
+- Also updates conversation stage + stage_reason + last_error/tool fields if conversation exists
+
+Call traceSmsFlow at:
+- inbound receive
+- before agent run
+- after agent result
+- before each tool call
+- after tool success/failure
+- before booking confirm
+- after booking + calendar success
+- on any exception
+
+STEP 5 — “NO LIES” CONFIRMATION GUARD
+Locate the place the bot sends “you’re booked / all set”.
+Wrap it:
+- Only send success message if bookingId exists AND calendarEventId exists.
+- Otherwise:
+  - mark conversation stage='NEEDS_HUMAN'
+  - stage_reason='booking_failed_after_confirm' (or calendar_failed_after_confirm)
+  - send customer a neutral message: “I hit a snag confirming this. A human will text you shortly.”
+  - trigger owner escalation immediately (below)
+
+STEP 6 — OWNER ESCALATION
+Find how you text the owner/admin already (notifications.ts, admin phone setting, tenant phone config).
+Implement:
+notifyOwnerBookingFailure({ tenantId, cid, customerPhone, customerName?, requestedSlot?, reason })
+- Send SMS to owner/admin phone for that tenant
+- Include cid + link to admin booking inbox filtered by cid/phone if possible
+
+Ensure internal-number contamination safety:
+- Add blocklist env var INTERNAL_BLOCKLIST_E164="...,..."
+- Never send to any number in blocklist
+- If To equals From or To is internal, trace stage='SKIP' reason='internal_blocklist' and do not send.
+
+STEP 7 — DEBUG ENDPOINTS (tenant-scoped, admin-only)
+Add routes:
+GET /api/debug/sms-flow?cid=... OR ?phone=...
+- Requires platform owner or tenant admin
+- Returns last N trace rows + conversation stage fields
+GET /api/debug/sms-flow/:cid
+Same.
+
+Also add minimal redaction (strip message bodies if necessary) but keep tool names, stages, errors.
+
+STEP 8 — LOGGING CONTROLS
+Add env:
+- LOG_LEVEL=error|warn|info|debug
+- FEATURE_TRACE_SMS=true|false
+Make trace writes always happen (DB), but console logs only when FEATURE_TRACE_SMS && LOG_LEVEL>=info.
+
+STEP 9 — TEST
+Add a small unit/integration test (whichever framework exists) that simulates:
+- customer reaches confirm
+- booking service returns bookingId but calendarEventId missing
+Expect:
+- customer success message NOT sent
+- conversation stage becomes NEEDS_HUMAN
+- owner escalation called
+- trace rows include failure stage
+
+DELIVERABLES
+- All code changes with exact file paths.
+- All DB migration additions in your existing migration system (or a safe SQL migration file).
+- Brief “How to verify” steps:
+  1) Send SMS “book me tomorrow morning”
+  2) Observe cid in logs or debug endpoint
+  3) Confirm trace shows exact failing stage
+
+DO NOT change any other business logic besides what’s required for tracing + no-lies + escalation.
