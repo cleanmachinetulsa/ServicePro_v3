@@ -1,0 +1,97 @@
+REPLIT AGENT DROP-IN — R1-STRICT (Lock SMS booking reliability without rebuilding what already exists)
+
+Context:
+Replit analysis shows:
+- Inbound SMS uses handleServiceProInboundSms in server/routes/twilioTestSms.ts
+- Tenant resolution uses resolveTenantFromInbound(req, db) in server/services/tenantCommRouter.ts
+- Inbound dedup uses recordProcessedInboundSms in server/services/smsInboundDedup.ts (table sms_inbound_dedup)
+- Behavior rules already exist: getTenantBehaviorRules in server/ai/smsAgentPromptBuilder.ts
+- BUT: tenant resolver has a “|| 'root'” fallback, and smsBookingRecordService.ts includes “fail-open confirmation logic”
+- Twilio outbound sends are scattered in ~15 files
+
+Goal:
+Harden R1 by eliminating wrong-tenant fallback, enforcing strict “no-lies” booking confirmation (fail-closed), and making escalation tenant-aware + reliable — WITHOUT replacing existing behavior-profile system.
+
+ABSOLUTE RULES
+- Do NOT create a parallel behavior system. Use existing getTenantBehaviorRules / DB settings.
+- Remove “tenant fallback to root” behavior except for explicit platform-owner debug endpoints.
+- No-lies must be strict: customer cannot receive a “confirmed/booked” message unless:
+  (1) booking record exists AND (2) booking.calendarEventId (or eventId) exists.
+- If booking/calendar fails after customer confirm: mark Needs Human and escalate immediately.
+- Safe DB changes only (ADD COLUMN IF NOT EXISTS / CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS).
+
+STEP 1 — REMOVE ROOT FALLBACK IN TENANT RESOLUTION
+Open: server/services/tenantCommRouter.ts
+Find resolveTenantFromInbound (or resolveTenantFromInbound(req, db)).
+If it returns tenantId || 'root' OR assigns 'root' on failure:
+- Change it to return null (or throw a typed error) when it cannot resolve.
+- It must return { tenantId: string | null, resolvedVia: string } (or similar).
+- Add a single high-signal log:
+  [TENANT RESOLVE] to=... sid=... tenantId=... via=...
+
+Then update server/routes/twilioTestSms.ts handleServiceProInboundSms:
+- If tenantId is null:
+  - Do NOT proceed with AI/booking.
+  - Call escalation with reason="tenant_unroutable" and include To/From + MessagingServiceSid.
+  - Reply to customer (professional): “We couldn’t route your message right now. A human will follow up shortly.”
+  - Return 200 to Twilio.
+
+STEP 2 — REMOVE “FAIL-OPEN CONFIRMATION” (ENFORCE FAIL-CLOSED)
+Open: server/services/smsBookingRecordService.ts
+Search for any logic described as “fail-open” or any code that marks confirmed / sends confirmation when calendar step failed/timed out.
+Implement strict gating:
+- bookingConfirmed = bookingRow exists AND (bookingRow.calendarEventId OR bookingRow.eventId) exists.
+- If calendar creation fails or times out:
+  - mark booking/conversation as needsHumanAttention with reason="calendar_sync_failed"
+  - DO NOT send confirmation language (“you’re all set”, “booked”, etc.)
+  - instead send: “I ran into an issue confirming your appointment. A human will follow up ASAP.”
+
+Open: server/routes/twilioTestSms.ts
+Find where confirmation SMS is sent.
+Ensure it checks the above “bookingConfirmed” predicate from the booking record service, not an optimistic flag.
+
+Add/adjust tests:
+- If calendar eventId missing, confirmation message must not include booked/confirmed language.
+- If calendar eventId exists, confirmation message is sent.
+
+STEP 3 — ESCALATION MUST BE TENANT-AWARE AND RELIABLE
+Replit report says escalation is inline twilioClient.messages.create to process.env.BUSINESS_OWNER_PERSONAL_PHONE.
+Fix this:
+- Create or update: server/services/escalationService.ts
+  - getTenantOwnerPhone(tenantId): prefer tenant settings; fallback to BUSINESS_OWNER_PERSONAL_PHONE ONLY for root tenant and only if tenant owner phone missing.
+  - escalateSmsToHuman({tenantId, reason, context, fromPhone, toPhone, conversationId}):
+      - Persist needsHumanAttention=true + needsHumanReason + timestamp (choose the correct table used for conversation/booking draft state).
+      - Send urgent SMS to owner phone with a short payload + link (if you have an admin URL pattern).
+      - Never throw if Twilio send fails.
+
+Wire escalation calls from:
+- tenant_unroutable
+- calendar_sync_failed
+- booking_failed
+- loop_detected (if loop logic exists)
+
+STEP 4 — MINIMUM OUTBOUND SEND HARDENING (WITHOUT FULL R4 SWEEP)
+We will not refactor all 15 files yet (R4 does that).
+But we WILL add a guardrail that prevents wrong-FROM or to=from errors in the key paths:
+- In twilioTestSms.ts and escalationService.ts outbound sends:
+  - normalize E.164
+  - if to == from: do not send; log skip_reason="to_equals_from"
+  - ensure FROM is the tenant’s inbound To number when replying to a customer (thread continuity)
+  - log: [SMS OUT] tenantId=... from=... to=... ok=... skip_reason=...
+
+Optionally add a tiny helper used only by these paths:
+- server/services/smsSendSafe.ts: sendSmsSafe({tenantId, from, to, body, purpose})
+Use it only in twilioTestSms.ts and escalationService.ts for now.
+
+STEP 5 — QUICK COMPATIBILITY CHECK (PRINT THIS IN OUTPUT)
+After patch, print a checklist:
+- Confirm resolveTenantFromInbound returns null on failure (no root fallback)
+- Confirm smsBookingRecordService does NOT confirm without calendar eventId
+- Confirm escalation uses tenant owner phone if configured
+- Confirm outbound sends skip to_equals_from
+
+DELIVERABLES
+- Compiles
+- Tests updated and passing
+- No destructive DB prompts
+- Clear logs for tenant resolve + booking confirm + escalation
