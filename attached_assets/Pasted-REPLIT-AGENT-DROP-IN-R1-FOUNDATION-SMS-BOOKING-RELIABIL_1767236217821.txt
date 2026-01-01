@@ -1,0 +1,208 @@
+REPLIT AGENT DROP-IN — R1 (FOUNDATION: SMS BOOKING RELIABILITY + TENANT SAFETY)
+
+You are working in ServicePro_v3 (Node/TS + Express + React + Drizzle + Postgres + Twilio + Google Calendar).
+
+PRIMARY PRODUCT PROMISE (DO NOT VIOLATE)
+Deliver a turnkey “one-click” operating system for service businesses: the owner focuses on the work while ServicePro handles customer conversations, scheduling, confirmations, and retention—at premium concierge quality.
+
+R1 GOAL
+Restore industry-standard SMS scheduling reliability by fixing tenant resolution, ensuring dashboard-selected agent behavior is applied end-to-end, enforcing “no lies” booking confirmation, adding loop detection with escalation, and guaranteeing urgent owner alerts on failures.
+
+ABSOLUTE REQUIREMENTS
+- Remove any hardcoded tenantId='root' in inbound SMS paths (especially in twilioTestSms handlers).
+- Tenant must be resolved deterministically from inbound metadata:
+  - Prefer req.body.To (E.164) + MessagingServiceSid when available.
+  - If multiple numbers per tenant exist, resolution must map To->tenant consistently.
+- Agent tone/emoji/verbosity MUST be driven by tenant-configured behavior settings from the dashboard (or a DB-backed profile), NOT hardcoded.
+- Non-configurable invariants MUST ALWAYS apply:
+  - NO LIES: never claim booking success unless booking record exists AND calendar eventId exists.
+  - STOP/START compliance, opt-out enforcement, quiet hours (for outbound proactive messaging).
+- Add loop detection: if the AI repeats essentially the same question 2+ times, escalate and mark Needs Human.
+- If booking fails after customer CONFIRM, escalate immediately:
+  - urgent SMS to your personal cell (tenant-owner phone) AND mark needsHumanAttention with reason.
+  - (Push wiring is R2; do not implement push here unless it’s required for escalation fallback.)
+- Safe DB changes only: CREATE TABLE IF NOT EXISTS, ALTER TABLE ADD COLUMN IF NOT EXISTS, CREATE INDEX IF NOT EXISTS. No destructive drizzle-kit prompts.
+
+FILES/AREAS TO TOUCH (EXPECTED TO EXIST)
+- server/routes/twilioTestSms.ts (or equivalent Twilio inbound SMS route)
+- server/ai/smsAgentPromptBuilder.ts (prompt builder)
+- server/services/* (new tenant resolver + escalation + loop detection helpers)
+- DB scripts under scripts/db/*
+- Tests under server/**/__tests__ or similar
+
+---------------------------------------
+STEP 1) ADD TENANT RESOLUTION SERVICE (NO MORE HARDCODED ROOT)
+Create: server/services/tenantResolutionService.ts
+
+Export:
+- normalizeE164(phone: string): string | null
+- resolveTenantFromInboundSms({ toPhone, messagingServiceSid }: { toPhone: string; messagingServiceSid?: string|null }): Promise<{ tenantId: string|null; resolvedVia: string }>
+Implementation rules:
+1) Normalize toPhone to E.164.
+2) Resolve tenant by toPhone using existing phone-line tables/config (search repo for tables like:
+   - phone_lines, tenant_phone_numbers, twilio_numbers, messaging_services, tenant_comms, etc.)
+3) If MessagingServiceSid exists and the repo stores it per tenant, use it as a secondary resolver.
+4) If resolution fails, return tenantId=null (do NOT silently use root).
+5) Log one high-signal line:
+   [SMS INBOUND] to=... sid=... tenantId=... via=...
+
+Then modify the inbound SMS handler in server/routes/twilioTestSms.ts:
+- Locate any code like: const tenantId = 'root' or defaulting to root.
+- Replace with resolveTenantFromInboundSms({toPhone:req.body.To, messagingServiceSid:req.body.MessagingServiceSid})
+- If tenantId is null:
+  - respond to customer with a short professional message:
+    “We couldn’t route your message right now. A human will follow up shortly.”
+  - call escalation (see Step 4) using a platform-owner fallback phone env var (only for the “unroutable” edge case).
+  - return 200 so Twilio doesn’t retry forever.
+
+---------------------------------------
+STEP 2) DASHBOARD-DRIVEN “BEHAVIOR PROFILES” (NOT HARDCODED)
+We must ensure the agent behavior settings you already have in the dashboard actually affect the prompt in ALL paths.
+
+A) First, search repo for existing behavior config:
+- Look for tables/models/routes using keywords:
+  agent_behavior, sms_behavior, tone, verbosity, allow_emojis, persona, brand_voice, ai_settings
+- If an existing table and admin UI exists, USE IT (do not create a parallel system).
+
+B) If behavior config exists:
+- Implement a function in server/services/tenantBehaviorService.ts:
+  getTenantBehaviorProfile(tenantId): returns a normalized object:
+  {
+    tone: "professional"|"friendly"|"casual"|"premium_concierge",
+    allowEmojis: boolean,
+    maxSmsChars: number,
+    upsellAggressiveness: "low"|"med"|"high",
+    closingStyle: "concise"|"warm"|"premium",
+    forbiddenPhrases: string[],
+  }
+- It must read the currently selected behavior profile from DB (whatever the dashboard sets).
+
+C) If behavior config does NOT exist or is incomplete:
+- Add a minimal tenant-scoped table to back it, so the dashboard can wire to it now (even if UI improvements come later):
+  Table: tenant_behavior_profiles
+  Columns:
+   - id (pk)
+   - tenant_id (text/uuid)
+   - name (text)
+   - tone (text)
+   - allow_emojis (bool default false)
+   - max_sms_chars (int default 320)
+   - upsell_aggressiveness (text default 'low')
+   - closing_style (text default 'concise')
+   - forbidden_phrases (jsonb default '[]')
+   - is_selected (bool default false)
+   - created_at, updated_at
+  Constraint: only one selected profile per tenant (enforce in code + optional partial unique index if supported)
+- Seed defaults per tenant:
+   - “Professional Default” selected; allow_emojis=false
+
+Create safe DB patch script:
+- scripts/db/patch_r1_behavior_profiles.ts
+  - CREATE TABLE IF NOT EXISTS tenant_behavior_profiles (...)
+  - CREATE INDEX IF NOT EXISTS idx_behavior_profiles_tenant ON tenant_behavior_profiles(tenant_id)
+  - Ensure a selected default exists for each tenant (insert if missing; set selected if none)
+
+Add npm script:
+- "db:patch:r1": "tsx scripts/db/patch_r1_behavior_profiles.ts"
+
+---------------------------------------
+STEP 3) PROMPT BUILDER MUST APPLY BEHAVIOR PROFILE EVERY TIME
+Modify: server/ai/smsAgentPromptBuilder.ts
+
+At prompt construction time:
+- Load behavior profile via getTenantBehaviorProfile(tenantId)
+- Inject profile into prompt as STRICT STYLE RULES:
+  - “Tone: <tone>”
+  - “allowEmojis: <true/false> (If false, DO NOT include emojis.)”
+  - “Max message length: <maxSmsChars> (Keep within.)”
+  - “Closing style: <closingStyle>”
+  - “Forbidden phrases: ... (Do not use.)”
+
+IMPORTANT:
+- Do NOT hardcode “no emojis” globally.
+- Enforce only non-configurable invariants globally:
+  - NO LIES booking
+  - STOP/START compliance
+  - No sensitive info request
+  - Respect opt-out/quiet hours for proactive sends
+
+Also ensure any fallback SMS strings in server/routes/twilioTestSms.ts do NOT use emojis and are professional by default.
+(Those fallbacks are not “agent tone,” they’re system messages.)
+
+---------------------------------------
+STEP 4) ESCALATION SERVICE (TENANT-AWARE OWNER ALERT)
+Create: server/services/escalationService.ts
+
+Exports:
+- getTenantOwnerAlertPhone(tenantId): looks up tenant owner personal cell from tenant settings if available; else fallback env for ROOT only.
+- escalateSmsToHuman({tenantId, fromPhone, toPhone, conversationId, reason, context, tenantDb}):
+    - Persist needsHumanAttention=true + needsHumanReason=reason + needsHumanAt=now on conversation/booking draft record (tenant-scoped)
+    - Send urgent SMS to owner phone:
+        “URGENT: Booking needs help (reason=...). Customer=... Last=... Link=...”
+    - If SMS send fails, DO NOT throw; still persist needsHumanAttention.
+
+IMPORTANT:
+- This escalation must be called on:
+  - booking_failed (after confirm)
+  - tool_error in booking path
+  - loop_detected
+  - tenant_unroutable
+
+---------------------------------------
+STEP 5) LOOP DETECTION (STOP “SAME QUESTION” STALLS)
+Add conversation fields (tenant-scoped). Find the table that stores SMS conversation state (search: conversations, sms_conversations, booking_drafts, sms_threads).
+Add columns safely:
+- last_ai_question TEXT NULL
+- question_repeat_count INT NOT NULL DEFAULT 0
+
+Create: scripts/db/patch_r1_loop_detection.ts
+- ALTER TABLE ... ADD COLUMN IF NOT EXISTS last_ai_question ...
+- ALTER TABLE ... ADD COLUMN IF NOT EXISTS question_repeat_count ...
+- CREATE INDEX IF NOT EXISTS idx_conv_needs_human on conversations(needs_human_attention) if that column exists; if not, add needs_human_attention + needs_human_reason too.
+
+Implement in code:
+- Before sending AI reply, extract “primary question” line (first sentence or first 80 chars normalized).
+- If equals last_ai_question -> increment repeat count; else reset to 0 and store new.
+- If repeat_count >= 2:
+   - do NOT send repeated question
+   - escalateSmsToHuman(reason="loop_detected", context=...)
+   - send customer: “I’m going to get a human to help—someone will reach out shortly.”
+
+---------------------------------------
+STEP 6) “NO LIES” BOOKING ENFORCEMENT (INDUSTRY STANDARD)
+Find where the system sends “You’re booked / all set” SMS.
+Enforce:
+- Only send confirmation if:
+  - booking record exists AND booking.calendarEventId (or eventId) exists.
+- If booking DB write succeeded but calendar failed:
+  - mark booking/conversation needsHumanAttention
+  - escalateSmsToHuman(reason="booking_failed", context=calendar_error)
+  - send customer a truthful message: “I ran into an issue confirming your appointment. A human will follow up ASAP.”
+
+Add/extend tests:
+- tenant resolution unit test (To -> tenant)
+- behavior profile applied in prompt builder (profile->prompt contains allowEmojis flag)
+- loop detection triggers escalation
+- no-lies prevents “confirmed” message without eventId
+
+---------------------------------------
+STEP 7) VERIFICATION CHECKLIST (YOU MUST PRINT THIS IN REPLIT OUTPUT)
+After implementing, print a short checklist in console logs or replit.md:
+1) Run db patches:
+   - npm run db:patch:r1 (behavior profiles)
+   - tsx scripts/db/patch_r1_loop_detection.ts (or add script)
+2) SMS test:
+   - Text the Clean Machine Twilio number.
+   - Confirm logs show: [SMS INBOUND] tenantId=<clean_machine_tenant> via=<toPhone|sid>
+3) Behavior test:
+   - Toggle behavior profile in dashboard (or DB) and confirm prompt changes (allowEmojis true/false).
+4) Booking test:
+   - Complete booking and verify calendar eventId exists before confirmation message.
+5) Failure test:
+   - Simulate calendar failure and ensure escalation SMS to owner is sent + needsHumanAttention set.
+
+DELIVERABLES
+- Compile passes
+- Safe DB patch scripts committed
+- No destructive schema prompts
+- Tests added/updated
