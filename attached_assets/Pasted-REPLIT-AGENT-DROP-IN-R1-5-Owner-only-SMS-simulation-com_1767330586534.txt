@@ -1,0 +1,78 @@
+REPLIT AGENT DROP-IN — R1.5 (Owner-only SMS simulation commands for safe prod testing)
+
+Goal:
+Add 2 owner-only SMS commands so we can simulate:
+- calendar failure
+- tenant unroutable
+…without changing Twilio URLs, breaking credentials, or affecting real customers.
+
+Rules:
+- Commands only activate if inbound From matches the tenant owner phone (or an env allowlist).
+- Commands affect only the current conversation/customer phone (store flags on conversation state).
+- Never expose these commands to normal customers.
+- Safe DB changes only.
+
+Step 1) Add allowlist resolver
+Create or extend: server/services/smsTestAllowlist.ts
+Export:
+- isSmsTestNumber(fromE164, tenantOwnerE164): boolean
+Logic:
+- true if fromE164 == tenantOwnerE164
+- OR if env SMS_TEST_ALLOWLIST contains fromE164 (comma-separated)
+
+Step 2) Store per-conversation debug flags
+Find the conversation/booking-draft persistence used by twilioTestSms.ts.
+Add safe columns if needed:
+- debug_simulate_calendar_fail boolean default false
+- debug_simulate_unroutable boolean default false
+(If you already store metadata JSON, use that instead to avoid schema changes.)
+
+Add DB patch script:
+- scripts/db/patch_r1_5_sms_sim_flags.ts
+- and npm script "db:patch:r1_5": "tsx scripts/db/patch_r1_5_sms_sim_flags.ts"
+
+Step 3) Add SMS commands (handled early)
+In server/routes/twilioTestSms.ts inside handleServiceProInboundSms, after tenant resolve (or immediately after parsing body):
+- Normalize From and get tenant owner phone using escalationService tenant-aware lookup.
+- If isSmsTestNumber(From, ownerPhone) is true, then parse these commands (case-insensitive):
+
+Commands (only from owner):
+1) "#TEST CALFAIL ON"  -> set debug_simulate_calendar_fail=true for this conversation; reply:
+   "OK. Calendar failure simulation ENABLED for this thread."
+2) "#TEST CALFAIL OFF" -> set false; reply:
+   "OK. Calendar failure simulation DISABLED."
+3) "#TEST UNROUTABLE ON" -> set debug_simulate_unroutable=true; reply:
+   "OK. Unroutable simulation ENABLED for this thread."
+4) "#TEST UNROUTABLE OFF" -> set false; reply:
+   "OK. Unroutable simulation DISABLED."
+
+Important:
+- If a command is detected, do NOT continue into normal AI/booking logic for that message.
+
+Step 4) Implement unroutable simulation
+In handleServiceProInboundSms, after loading conversation flags:
+- If debug_simulate_unroutable is true:
+   - force tenantId to null and run your existing “tenant unroutable” early-exit behavior:
+     escalate + professional routing failure message
+   - Ensure it does NOT attempt AI.
+
+Step 5) Implement calendar failure simulation
+Where booking/calendar creation is invoked (bookingDraftService / smsBookingRecordService / calendarApi handleBook):
+- If debug_simulate_calendar_fail is true for that conversation:
+   - throw a controlled error (e.g., new Error("SIMULATED_CALENDAR_FAIL"))
+   - confirm the fail-closed path triggers:
+     - customer truthful message
+     - needsHumanAttention set
+     - escalation SMS to owner
+
+Step 6) Verification instructions (print in replit.md)
+- Text "#TEST CALFAIL ON" from your phone → get OK response
+- Attempt a booking → ensure it fails closed + escalates
+- Text "#TEST CALFAIL OFF"
+- Text "#TEST UNROUTABLE ON" → next inbound triggers unroutable behavior + escalates
+- Turn it off afterward
+
+Deliverables:
+- Minimal file changes
+- Safe DB patch
+- No impact on non-owner customers

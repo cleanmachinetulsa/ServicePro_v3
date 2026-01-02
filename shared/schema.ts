@@ -23,6 +23,8 @@ export const users = pgTable("users", {
   preferredLanguage: varchar("preferred_language", { length: 10 }).default("en"), // SP-8: User's preferred UI language (en, es)
   uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).default("simple"), // SP-14: User's UI experience mode ('simple' or 'advanced')
   simpleModeConfig: jsonb("simple_mode_config"), // SP-21: Custom navigation items for Simple mode { visibleNavItems: string[] }
+  debugSimulateCalendarFail: boolean("debug_simulate_calendar_fail").default(false),
+  debugSimulateUnroutable: boolean("debug_simulate_unroutable").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   createdBy: integer("created_by"),
 }, (table) => ({

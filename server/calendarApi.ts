@@ -574,6 +574,28 @@ export async function handleBook(req: any, res: any) {
       const CALENDAR_ID = "cleanmachinetulsa@gmail.com";
 
       // Create the event directly with service metadata for limit tracking
+      const calendar = await getFreshCalendarClient();
+      if (!calendar) {
+        throw new Error("Failed to get Google Calendar client");
+      }
+
+      // R1.5 Simulation: Calendar failure
+      try {
+        const { db: dbInstance } = await import('./db');
+        const { conversations } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        const conv = await dbInstance.query.conversations.findFirst({
+          where: eq(conversations.customerPhone, phone)
+        });
+        if (conv?.debugSimulateCalendarFail) {
+          console.log(`[SMS_SIM_CALFAIL] Simulating calendar failure for conversation ${conv.id}`);
+          throw new Error("SIMULATED_CALENDAR_FAIL");
+        }
+      } catch (simErr) {
+        if (simErr instanceof Error && simErr.message === "SIMULATED_CALENDAR_FAIL") throw simErr;
+        console.error("[SMS_SIM] Error checking simulation flags:", simErr);
+      }
+
       const event = {
         summary: `${service} - ${name}`,
         description:

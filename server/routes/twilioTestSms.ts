@@ -111,6 +111,9 @@ async function addMessage(tenantDb: any, conversationId: number, content: string
     .where(eq(conversations.id, conversationId));
 }
 
+import { isSmsTestNumber } from '../services/smsTestAllowlist';
+import { getTenantOwnerPhone } from '../services/escalationService';
+
 async function handleServiceProInboundSms(req: Request, res: Response, dedupeMessageSid?: string) {
   const twimlResponse = new MessagingResponse();
   
@@ -124,9 +127,9 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     }
     
     console.log("[TWILIO SMS INBOUND] Parsed fields:", {
-      From: (req.body as any)?.From,
-      To: (req.body as any)?.To,
-      Body: (req.body as any)?.Body,
+      From,
+      To,
+      Body,
     });
     
     // P0-HOTFIX: Ignore iMessage reaction messages (Loved, Liked, Emphasized, etc.)
@@ -145,10 +148,53 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       return;
     }
     
-    const resolution = await resolveTenantFromInbound(req, db);
+    let resolution = await resolveTenantFromInbound(req, db);
+    let tenantId = resolution.tenantId;
+
+    // --- OWNER-ONLY SIMULATION COMMANDS ---
+    const ownerPhone = await getTenantOwnerPhone(tenantId || 'root');
+    if (isSmsTestNumber(From, ownerPhone)) {
+      const trimmedBody = Body?.trim().toUpperCase();
+      if (trimmedBody?.startsWith('#TEST ')) {
+        console.log(`[SMS_SIM_COMMAND] Received from owner: ${trimmedBody}`);
+        const tenantDb = await wrapTenantDb(db, tenantId || 'root');
+        const conversation = await getOrCreateTestConversation(tenantDb, From);
+        
+        let responseText = "";
+        if (trimmedBody === "#TEST CALFAIL ON") {
+          await tenantDb.update(conversations).set({ debugSimulateCalendarFail: true }).where(eq(conversations.id, conversation.id));
+          responseText = "OK. Calendar failure simulation ENABLED for this thread.";
+        } else if (trimmedBody === "#TEST CALFAIL OFF") {
+          await tenantDb.update(conversations).set({ debugSimulateCalendarFail: false }).where(eq(conversations.id, conversation.id));
+          responseText = "OK. Calendar failure simulation DISABLED.";
+        } else if (trimmedBody === "#TEST UNROUTABLE ON") {
+          await tenantDb.update(conversations).set({ debugSimulateUnroutable: true }).where(eq(conversations.id, conversation.id));
+          responseText = "OK. Unroutable simulation ENABLED for this thread.";
+        } else if (trimmedBody === "#TEST UNROUTABLE OFF") {
+          await tenantDb.update(conversations).set({ debugSimulateUnroutable: false }).where(eq(conversations.id, conversation.id));
+          responseText = "OK. Unroutable simulation DISABLED.";
+        }
+
+        if (responseText) {
+          await addMessage(tenantDb, conversation.id, responseText, 'ai');
+          twimlResponse.message(responseText);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+      }
+    }
+
+    const tenantDbForFlags = await wrapTenantDb(db, tenantId || 'root');
+    const conversationForFlags = await getOrCreateTestConversation(tenantDbForFlags, From);
+
+    // Load simulation flags
+    if (conversationForFlags.debugSimulateUnroutable) {
+      console.log(`[SMS_SIM_UNROUTABLE] Forcing unroutable for conversation ${conversationForFlags.id}`);
+      tenantId = null;
+    }
     
     // R1-STRICT: If tenant cannot be resolved, do not proceed - escalate and reply professionally
-    if (!resolution.tenantId) {
+    if (!tenantId) {
       console.error(`[TENANT UNROUTABLE] from=${From} to=${To} reason=${resolution.reason || 'no_matching_config'}`);
       
       const { escalateSmsToHuman } = await import('../services/escalationService');
