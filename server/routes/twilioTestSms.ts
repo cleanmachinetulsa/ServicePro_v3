@@ -212,7 +212,6 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       return;
     }
     
-    const tenantId = resolution.tenantId;
     console.log('[TWILIO INBOUND] tenant_resolution', { tenantId, reason: resolution.reason, to: resolution.normalizedTo });
     const tenantDb = wrapTenantDb(db, tenantId);
     

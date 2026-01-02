@@ -23,8 +23,6 @@ export const users = pgTable("users", {
   preferredLanguage: varchar("preferred_language", { length: 10 }).default("en"), // SP-8: User's preferred UI language (en, es)
   uiExperienceMode: varchar("ui_experience_mode", { length: 20 }).default("simple"), // SP-14: User's UI experience mode ('simple' or 'advanced')
   simpleModeConfig: jsonb("simple_mode_config"), // SP-21: Custom navigation items for Simple mode { visibleNavItems: string[] }
-  debugSimulateCalendarFail: boolean("debug_simulate_calendar_fail").default(false),
-  debugSimulateUnroutable: boolean("debug_simulate_unroutable").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   createdBy: integer("created_by"),
 }, (table) => ({
@@ -908,6 +906,10 @@ export const conversations = pgTable("conversations", {
   lastBookingErrorCode: varchar("last_booking_error_code", { length: 20 }), // Error code from booking attempt
   lastBookingErrorMessage: text("last_booking_error_message"), // Error message from booking attempt
   lastBookingErrorAt: timestamp("last_booking_error_at"), // When the error occurred
+  
+  // R1.5: Owner-only simulation flags for testing fail-closed logic
+  debugSimulateCalendarFail: boolean("debug_simulate_calendar_fail").default(false),
+  debugSimulateUnroutable: boolean("debug_simulate_unroutable").default(false),
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),
