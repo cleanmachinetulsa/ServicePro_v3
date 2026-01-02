@@ -148,6 +148,7 @@ async function processWebhookEvent(req: Request, event: any) {
       break;
     
     case 'delivered':
+      if (typeof event.timestamp !== 'number') break;
       await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
@@ -158,6 +159,7 @@ async function processWebhookEvent(req: Request, event: any) {
       break;
     
     case 'open':
+      if (typeof event.timestamp !== 'number') break;
       await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
@@ -167,6 +169,7 @@ async function processWebhookEvent(req: Request, event: any) {
       break;
     
     case 'click':
+      if (typeof event.timestamp !== 'number') break;
       await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
@@ -177,6 +180,7 @@ async function processWebhookEvent(req: Request, event: any) {
     
     case 'bounce':
     case 'dropped':
+      if (typeof event.timestamp !== 'number') break;
       // SendGrid uses status codes: 5xx = hard bounce (permanent), 4xx = soft bounce (temporary)
       const statusCode = event.status || event.smtp_response || '';
       const bounceReason = event.reason || event.type || 'unknown';
@@ -209,6 +213,7 @@ async function processWebhookEvent(req: Request, event: any) {
       break;
     
     case 'spamreport':
+      if (typeof event.timestamp !== 'number') break;
       await req.tenantDb!
         .update(campaignRecipients)
         .set({ 
