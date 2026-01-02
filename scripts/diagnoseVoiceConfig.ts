@@ -55,7 +55,8 @@ async function main() {
   const diagnostics = await getVoiceDiagnostics(tenantId, tenantSlug || undefined);
 
   if (jsonOutput) {
-    console.log(JSON.stringify(diagnostics, null, 2));
+    // Removed: JSON output disabled to prevent sensitive data leakage (auth tokens, phone numbers)
+    console.log('JSON output is disabled for security reasons. Use standard output format.');
   } else {
     console.log('\n=== Voice Configuration Diagnostics ===\n');
     console.log(`Tenant ID: ${diagnostics.tenantId}`);
