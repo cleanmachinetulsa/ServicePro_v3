@@ -1100,16 +1100,26 @@ Customer text: "${Body}"`,
       ? '\n[SYSTEM: Customer prefers Spanish. Respond in Spanish.]' 
       : '';
     
-    const aiReply = await generateAIResponse(
-      Body + languageContext,
-      From,
-      'sms',
-      undefined,
-      conversationHistory,
-      false,
-      tenantId,
-      conversation.controlMode || 'auto'
-    );
+    // R1.6b Guard: Prevent premature time promises
+    const timeRegex = /\b(at|for|around|@)?\s*(\d{1,2})(:(\d{2}))?\s*(am|pm)?\b/i;
+    const hasTimeRequest = timeRegex.test(Body);
+    const hasSlots = smsBookingState.lastOfferedSlots && smsBookingState.lastOfferedSlots.length > 0;
+    
+    let aiReply: string;
+    if (hasTimeRequest && !hasSlots && !smsBookingState.address) {
+      aiReply = "I can check that for you! What is the address where you'd like the service performed?";
+    } else {
+      aiReply = await generateAIResponse(
+        Body + languageContext,
+        From,
+        'sms',
+        undefined,
+        conversationHistory,
+        false,
+        tenantId,
+        conversation.controlMode || 'auto'
+      );
+    }
     
     // === Persist offered slots if AI just sent availability + COMPACT SUMMARIZATION ===
     let finalReply = aiReply;
@@ -1155,15 +1165,22 @@ Customer text: "${Body}"`,
     }
     
     // Apply SMS length control to ensure response fits in safe segment count
-    const truncatedReply = truncateSmsResponse(finalReply || "Thanks for your message!");
+    // R1.6b: Sanitize before sending
+    const { sanitizeSmsText } = await import('../utils/smsTextSanitizer');
+    const sanitizedReply = sanitizeSmsText(finalReply || "Thanks for your message!");
+    const truncatedReply = truncateSmsResponse(sanitizedReply);
+    
+    if (sanitizedReply !== finalReply) {
+      console.log(`[SMS SANITIZE] changed=true length_before=${(finalReply || "").length} length_after=${sanitizedReply.length}`);
+    }
     
     await addMessage(tenantDb, conversation.id, truncatedReply, 'ai');
     
     twimlResponse.message(truncatedReply);
     
     // Trace for debugging
-    const hasSlots = smsBookingState.lastOfferedSlots && smsBookingState.lastOfferedSlots.length > 0;
-    const action = hasSlots ? 'offer_slots' : (smsBookingState.address ? 'offer_slots' : (smsBookingState.service ? 'ask_address' : 'ask_service'));
+    const hasSlotsAfter = smsBookingState.lastOfferedSlots && smsBookingState.lastOfferedSlots.length > 0;
+    const action = hasSlotsAfter ? 'offer_slots' : (smsBookingState.address ? 'offer_slots' : (smsBookingState.service ? 'ask_address' : 'ask_service'));
     console.log(`[SMS TRACE] sid=${MessageSid} from=${From} service=${smsBookingState.service || 'unset'} stage=${smsBookingState.stage || 'selecting_service'} session_msgs=${conversationHistory.length} action=${action}`);
     
     console.log('[TWILIO TEST SMS INBOUND] AI reply sent:', truncatedReply.substring(0, 100));

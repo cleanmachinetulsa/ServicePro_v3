@@ -9,6 +9,7 @@
  */
 
 import twilio from 'twilio';
+import { sanitizeSmsText } from '../utils/smsTextSanitizer';
 
 export interface SmsSendParams {
   tenantId: string;
@@ -57,6 +58,7 @@ function normalizeE164(phone: string | null | undefined): string | null {
  * - Normalizes E.164
  * - Skips if to == from
  * - Logs all sends with purpose
+ * - R1.6b: Sanitizes SMS text (removes markdown/emojis)
  * - Never throws
  */
 export async function sendSmsSafe(params: SmsSendParams): Promise<SmsSendResult> {
@@ -84,6 +86,12 @@ export async function sendSmsSafe(params: SmsSendParams): Promise<SmsSendResult>
     console.warn(`[SMS OUT] tenantId=${tenantId} purpose=${purpose} skip_reason=empty_body`);
     return { success: false, skipReason: 'empty_body' };
   }
+
+  // R1.6b: Sanitize body
+  const sanitizedBody = sanitizeSmsText(body);
+  if (sanitizedBody !== body) {
+    console.log(`[SMS SANITIZE] changed=true tenantId=${tenantId} purpose=${purpose} length_before=${body.length} length_after=${sanitizedBody.length}`);
+  }
   
   try {
     const twilioClient = twilio(
@@ -94,7 +102,7 @@ export async function sendSmsSafe(params: SmsSendParams): Promise<SmsSendResult>
     const message = await twilioClient.messages.create({
       to: normalizedTo,
       from: normalizedFrom,
-      body: body.slice(0, 1600),
+      body: sanitizedBody.slice(0, 1600),
     });
     
     console.log(`[SMS OUT] tenantId=${tenantId} from=${normalizedFrom} to=${normalizedTo} purpose=${purpose} ok=true sid=${message.sid}`);
