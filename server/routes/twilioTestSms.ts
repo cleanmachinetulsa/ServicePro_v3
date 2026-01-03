@@ -22,6 +22,10 @@ import {
   detectSkipEmail,
   isValidVehicleString,
   extractVehicleFromText,
+  armBookingOffer,
+  hasLiveBookingOffer,
+  normalizeDraftOnLoad,
+  isSlotInFuture,
   type SmsBookingState
 } from '../services/bookingDraftService';
 import { resolveTenantFromInbound } from '../services/tenantCommRouter';
@@ -246,6 +250,27 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     const conversation = await getOrCreateTestConversation(tenantDb, From);
     
+    // R1.6: Check if automation is paused (escalated or needsHumanAttention)
+    const now = new Date();
+    const automationPaused = conversation.automationPausedUntil && new Date(conversation.automationPausedUntil) > now;
+    const needsHuman = conversation.needsHumanAttention === true;
+    
+    if (needsHuman || automationPaused) {
+      console.log(`[AUTOMATION_PAUSED] conversationId=${conversation.id} needsHuman=${needsHuman} pausedUntil=${conversation.automationPausedUntil || 'N/A'}`);
+      
+      // Record message but don't process with AI
+      await addMessage(tenantDb, conversation.id, Body, 'customer');
+      
+      // Get business phone for human follow-up message
+      const businessPhone = process.env.MAIN_PHONE_NUMBER || 'our team';
+      const pausedReply = truncateSmsResponse(`Thanks — a human will follow up shortly. If urgent, please call ${businessPhone}.`);
+      
+      await addMessage(tenantDb, conversation.id, pausedReply, 'ai');
+      twimlResponse.message(pausedReply);
+      res.type('text/xml').send(twimlResponse.toString());
+      return;
+    }
+    
     // Hydrate customer memory from DB for returning customers (before AI response)
     await hydrateSmsConversationStateFromDb({ tenantDb, tenantId, fromPhone: From });
     
@@ -268,6 +293,11 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // === BOOKING DRAFT STATE - Prevent "looping/forgetting" ===
     // 1. Load persisted SMS booking state from database
     let persistedState = await getSmsBookingState(tenantDb, conversation.id);
+    
+    // R1.6: Normalize draft on load - clear expired offers and stale data
+    await normalizeDraftOnLoad(tenantDb, conversation.id, persistedState);
+    // Reload state after normalization
+    persistedState = await getSmsBookingState(tenantDb, conversation.id);
     
     // Prefill booking state from customer memory if missing
     const st = conversationState.getState(From);
@@ -616,6 +646,31 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     if (slotSelection) {
       console.log('[SMS DRAFT] Slot selection detected:', slotSelection.chosenSlotLabel);
+      
+      // R1.6: Validate that there is a live (non-expired) offer before accepting YES
+      const offerStatus = await hasLiveBookingOffer(tenantDb, conversation.id);
+      if (!offerStatus.isLive) {
+        console.log(`[STALE_YES] conversationId=${conversation.id} reason=no_live_offer expiresAt=${offerStatus.expiresAt?.toISOString() || 'never_armed'}`);
+        
+        // Re-offer slots instead of accepting stale YES
+        const staleReply = truncateSmsResponse("It looks like that availability may have changed. What day/time works best for you? I'll check for open slots.");
+        await addMessage(tenantDb, conversation.id, staleReply, 'ai');
+        twimlResponse.message(staleReply);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      }
+      
+      // R1.6: Validate that the chosen slot is in the future (with 15 min buffer)
+      if (slotSelection.chosenSlotIso && !isSlotInFuture(slotSelection.chosenSlotIso, 15)) {
+        console.log(`[PAST_SLOT] conversationId=${conversation.id} slotIso=${slotSelection.chosenSlotIso} now=${new Date().toISOString()}`);
+        
+        // Reject past slot and ask for a new time
+        const pastSlotReply = truncateSmsResponse("That time has already passed. What day/time works best for you? I'll find available slots.");
+        await addMessage(tenantDb, conversation.id, pastSlotReply, 'ai');
+        twimlResponse.message(pastSlotReply);
+        res.type('text/xml').send(twimlResponse.toString());
+        return;
+      }
       
       // Persist the chosen slot
       await updateSmsBookingState(tenantDb, conversation.id, {
@@ -1078,6 +1133,9 @@ Customer text: "${Body}"`,
             hasPreview: includePreview,
           },
         });
+        
+        // R1.6: Arm the offer with TTL (30 minutes)
+        await armBookingOffer(tenantDb, conversation.id, offeredSlots, 30);
         
         // === COMPACT SLOT SUMMARIZATION: Replace verbose slot list with concise format ===
         try {

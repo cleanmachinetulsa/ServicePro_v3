@@ -1,0 +1,82 @@
+REPLIT AGENT — APPLY R1.6b “SMS OUTPUT HYGIENE + NO-PREMATURE-TIME PROMISES + REMOVE DRAFT SMS”
+
+We have a confirmed production issue: the SMS agent sent emojis + markdown and also “promised” a time (11 AM) before availability was actually checked, then later offered times. It also sent a “draft” appointment message that is not professional SMS and does not reliably book.
+
+Implement the following:
+
+1) Add a central sanitizer for ALL outbound SMS text
+Create file: server/utils/smsTextSanitizer.ts
+Export:
+- stripMarkdown(text)
+- stripEmojis(text)
+- sanitizeSmsText(text)
+
+Requirements:
+- Remove markdown tokens: ** __ ` ``` ### headings, etc.
+- Remove emojis and emoji joiners:
+  - remove \uFE0F and \u200D
+  - remove Unicode Extended_Pictographic via /\p{Extended_Pictographic}/gu (fallback to a conservative regex if needed)
+- Collapse excessive whitespace and trim.
+- Ensure the output remains plain text suitable for one SMS.
+
+2) Enforce sanitizer on every outbound send
+File: server/services/smsSendSafe.ts (or wherever outbound SMS sending is centralized)
+- Before sending, run: text = sanitizeSmsText(text)
+- Log if sanitizer changed content: [SMS SANITIZE] changed=true length_before/after
+This must apply to:
+- booking confirmations
+- draft/pending messages
+- campaign texts
+- escalation copies if any
+
+3) Update SMS agent prompt rules so it stops generating rich text
+File: server/ai/smsAgentPromptBuilder.ts
+Add a hard rule near the top:
+- “Plain SMS only. No emojis. No markdown. No bullet symbols other than simple hyphen lines. No bold markers (**).”
+Also add:
+- “Do NOT promise a specific time is available until the system returns the available slot list.”
+- “Never say ‘Here’s a draft’ to customers.”
+
+4) Remove / replace the “draft appointment” customer message
+Search codebase for the exact phrase:
+- "Here's a draft of your appointment"
+- "draft of your appointment"
+Replace it with deterministic, plain SMS behavior:
+
+If customer selected a slot from the offered list:
+- attempt booking immediately (calendar + booking record)
+- if success AND eventId exists: send single confirmation (no draft)
+- if not: send “I’m still finalizing this—someone will confirm shortly.” and escalate
+
+If the system still uses a “draft stage” for any reason:
+- the ONLY acceptable draft message must end with: “Reply CONFIRM to book, or CHANGE to pick another time.”
+But preferred behavior is immediate booking when the user selects a provided slot.
+
+5) Prevent the “we can do 11” premature promise
+Find the part of the flow where the agent replies before availability check.
+If the user asks “can we schedule for 11?” and we haven’t run the availability function yet:
+- Respond: “I can check that—what’s the address?” (and service if missing)
+- Do not claim the time is open.
+
+This can be done either:
+A) in the AI prompt (preferred, already added), AND
+B) add a small guard in the handler:
+   If message contains a specific time request AND we have not generated slots yet, force the deterministic “I can check that—what’s the address?” response.
+
+6) Verify
+After changes:
+- Re-run the exact Mandy scenario:
+  - ask for 11
+  - confirm service
+  - provide address
+Expected:
+  - bot does NOT promise 11 until after offering slots
+  - no emojis
+  - no markdown
+  - no “draft” message
+  - booking either confirms only with eventId, or goes pending + escalates
+
+Return a summary:
+- files changed
+- where sanitizer is applied
+- confirmation that outbound SMS can no longer contain emojis/markdown even if AI generates them

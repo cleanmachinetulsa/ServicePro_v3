@@ -910,6 +910,12 @@ export const conversations = pgTable("conversations", {
   // R1.5: Owner-only simulation flags for testing fail-closed logic
   debugSimulateCalendarFail: boolean("debug_simulate_calendar_fail").default(false),
   debugSimulateUnroutable: boolean("debug_simulate_unroutable").default(false),
+  
+  // R1.6: Booking offer arming and automation pause controls
+  bookingOfferArmedAt: timestamp("booking_offer_armed_at", { withTimezone: true }), // When slot offer was armed
+  bookingOfferExpiresAt: timestamp("booking_offer_expires_at", { withTimezone: true }), // When offer expires (TTL)
+  bookingOfferPayloadHash: text("booking_offer_payload_hash"), // Hash of offered slots for verification
+  automationPausedUntil: timestamp("automation_paused_until", { withTimezone: true }), // Pause automation until this time
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),

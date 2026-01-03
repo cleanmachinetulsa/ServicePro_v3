@@ -385,7 +385,7 @@ router.get('/customer/:phone', async (req, res) => {
  * POST /api/appointments/create-manual
  * Requires authentication
  */
-router.post('/create-manual', async (req, res) => {
+router.post('/appointments/create-manual', async (req, res) => {
   try {
     // Validate and parse request body with safe parsing
     const schema = z.object({

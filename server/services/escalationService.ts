@@ -89,24 +89,32 @@ function normalizeE164(phone: string | null | undefined): string | null {
   return null;
 }
 
+// R1.6: Default automation pause duration (6 hours)
+const AUTOMATION_PAUSE_HOURS = 6;
+
 /**
- * Mark conversation as needing human attention
+ * Mark conversation as needing human attention and pause automation
+ * R1.6: Also sets automation_paused_until to prevent AI from responding
  */
 async function markConversationNeedsHuman(
   tenantId: string,
   conversationId: number,
-  reason: string
+  reason: string,
+  pauseHours: number = AUTOMATION_PAUSE_HOURS
 ): Promise<boolean> {
   try {
     const tenantDb = wrapTenantDb(db, tenantId);
+    const pauseUntil = new Date(Date.now() + pauseHours * 60 * 60 * 1000);
+    
     await tenantDb
       .update(conversations)
       .set({
         needsHumanAttention: true,
         needsHumanReason: reason,
+        automationPausedUntil: pauseUntil,
       })
       .where(eq(conversations.id, conversationId));
-    console.log(`[ESCALATION] Marked conversation=${conversationId} needsHumanAttention=true reason=${reason}`);
+    console.log(`[ESCALATION] Marked conversation=${conversationId} needsHumanAttention=true automationPausedUntil=${pauseUntil.toISOString()} reason=${reason}`);
     return true;
   } catch (err) {
     console.error(`[ESCALATION] Failed to mark conversation ${conversationId}:`, err);
@@ -200,4 +208,29 @@ export async function escalateSmsToHuman(context: EscalationContext): Promise<{
 export function isBookingConfirmed(bookingRecord: { eventId?: string | null; calendarEventId?: string | null } | null): boolean {
   if (!bookingRecord) return false;
   return !!(bookingRecord.eventId || bookingRecord.calendarEventId);
+}
+
+/**
+ * R1.6: Clear automation pause and human attention flags when issue is resolved
+ * Call this when a human agent resolves the escalation
+ */
+export async function clearEscalation(
+  tenantId: string,
+  conversationId: number
+): Promise<boolean> {
+  try {
+    const tenantDb = wrapTenantDb(db, tenantId);
+    await tenantDb
+      .update(conversations)
+      .set({
+        needsHumanAttention: false,
+        automationPausedUntil: null,
+      })
+      .where(eq(conversations.id, conversationId));
+    console.log(`[ESCALATION] Cleared conversation=${conversationId} needsHumanAttention=false automationPausedUntil=null`);
+    return true;
+  } catch (err) {
+    console.error(`[ESCALATION] Failed to clear conversation ${conversationId}:`, err);
+    return false;
+  }
 }

@@ -405,6 +405,163 @@ export async function updateSmsBookingState(
 }
 
 /**
+ * R1.6: Create a deterministic hash of offered slots for verification
+ */
+function hashOfferPayload(slots: Array<{ label: string; iso?: string }>): string {
+  const slotStr = slots.map(s => `${s.label}|${s.iso || ''}`).join('||');
+  let hash = 0;
+  for (let i = 0; i < slotStr.length; i++) {
+    const char = slotStr.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `offer-${Math.abs(hash).toString(36)}`;
+}
+
+/**
+ * R1.6: Arm a booking offer with TTL
+ * Call this when sending slot options to customer
+ */
+export async function armBookingOffer(
+  tenantDb: any,
+  conversationId: number,
+  offeredSlots: Array<{ label: string; iso?: string }>,
+  ttlMinutes: number = 30
+): Promise<{ offerHash: string; expiresAt: Date }> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlMinutes * 60 * 1000);
+  const offerHash = hashOfferPayload(offeredSlots);
+  
+  await tenantDb
+    .update(conversations)
+    .set({
+      bookingOfferArmedAt: now,
+      bookingOfferExpiresAt: expiresAt,
+      bookingOfferPayloadHash: offerHash,
+    })
+    .where(eq(conversations.id, conversationId));
+  
+  console.log(`[OFFER ARM] conversationId=${conversationId} hash=${offerHash} expires=${expiresAt.toISOString()} ttl=${ttlMinutes}min`);
+  return { offerHash, expiresAt };
+}
+
+/**
+ * R1.6: Check if there is a live (non-expired) offer for this conversation
+ */
+export async function hasLiveBookingOffer(
+  tenantDb: any,
+  conversationId: number
+): Promise<{ isLive: boolean; expiresAt?: Date; payloadHash?: string }> {
+  const [conv] = await tenantDb
+    .select({
+      bookingOfferArmedAt: conversations.bookingOfferArmedAt,
+      bookingOfferExpiresAt: conversations.bookingOfferExpiresAt,
+      bookingOfferPayloadHash: conversations.bookingOfferPayloadHash,
+    })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  
+  if (!conv || !conv.bookingOfferArmedAt || !conv.bookingOfferExpiresAt) {
+    return { isLive: false };
+  }
+  
+  const now = new Date();
+  const expiresAt = new Date(conv.bookingOfferExpiresAt);
+  const isLive = expiresAt > now;
+  
+  return {
+    isLive,
+    expiresAt,
+    payloadHash: conv.bookingOfferPayloadHash || undefined,
+  };
+}
+
+/**
+ * R1.6: Clear expired offer fields and normalize draft state on load
+ * Call this after loading conversation to clean up stale data
+ */
+export async function normalizeDraftOnLoad(
+  tenantDb: any,
+  conversationId: number,
+  smsBookingState: SmsBookingState
+): Promise<{ normalized: boolean; changes: string[] }> {
+  const now = new Date();
+  const changes: string[] = [];
+  
+  const [conv] = await tenantDb
+    .select({
+      bookingOfferArmedAt: conversations.bookingOfferArmedAt,
+      bookingOfferExpiresAt: conversations.bookingOfferExpiresAt,
+      bookingOfferPayloadHash: conversations.bookingOfferPayloadHash,
+    })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  
+  const updates: Record<string, any> = {};
+  let statePatches: Partial<SmsBookingState> = {};
+  
+  // Check if offer is expired
+  if (conv?.bookingOfferExpiresAt) {
+    const expiresAt = new Date(conv.bookingOfferExpiresAt);
+    if (expiresAt < now || !conv.bookingOfferArmedAt) {
+      updates.bookingOfferArmedAt = null;
+      updates.bookingOfferExpiresAt = null;
+      updates.bookingOfferPayloadHash = null;
+      changes.push('cleared_expired_offer');
+    }
+  }
+  
+  // Check if chosen slot is in the past
+  if (smsBookingState.chosenSlotIso) {
+    const chosenTime = new Date(smsBookingState.chosenSlotIso);
+    if (chosenTime < now) {
+      statePatches.chosenSlotLabel = undefined;
+      statePatches.chosenSlotIso = undefined;
+      changes.push('cleared_past_slot');
+    }
+  }
+  
+  // Check if stage is awaiting_time_confirm but no live offer
+  if (smsBookingState.stage === 'awaiting_time_confirm') {
+    const offerStatus = await hasLiveBookingOffer(tenantDb, conversationId);
+    if (!offerStatus.isLive) {
+      statePatches.stage = 'needs_time';
+      changes.push('reverted_stage_no_offer');
+    }
+  }
+  
+  // Apply updates if any
+  if (Object.keys(updates).length > 0) {
+    await tenantDb
+      .update(conversations)
+      .set(updates)
+      .where(eq(conversations.id, conversationId));
+  }
+  
+  if (Object.keys(statePatches).length > 0) {
+    await updateSmsBookingState(tenantDb, conversationId, statePatches);
+  }
+  
+  if (changes.length > 0) {
+    console.log(`[DRAFT NORMALIZE] conversationId=${conversationId} changes=${changes.join(',')}`);
+  }
+  
+  return { normalized: changes.length > 0, changes };
+}
+
+/**
+ * R1.6: Check if a slot is still in the future (with buffer)
+ */
+export function isSlotInFuture(slotIso: string | undefined, bufferMinutes: number = 15): boolean {
+  if (!slotIso) return false;
+  const slotTime = new Date(slotIso);
+  const threshold = new Date(Date.now() + bufferMinutes * 60 * 1000);
+  return slotTime >= threshold;
+}
+
+/**
  * Get a summary of the SMS booking state for logging
  */
 export function getSmsBookingStateSummary(state: SmsBookingState): string {

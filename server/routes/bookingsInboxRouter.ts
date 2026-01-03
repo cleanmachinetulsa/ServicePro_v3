@@ -382,12 +382,14 @@ router.post('/api/admin/bookings/inbox/:conversationId/link-booking', requireAut
       manuallyCompletedAt: new Date().toISOString(),
     };
     
+    // R1.6: Clear automation pause when resolving escalation
     await tenantDb
       .update(conversations)
       .set({
         appointmentId: bookingId,
         needsHumanAttention: false,
         needsHumanReason: null,
+        automationPausedUntil: null,
         lastBookingErrorCode: null,
         lastBookingErrorMessage: null,
         behaviorSettings: {
@@ -409,6 +411,54 @@ router.post('/api/admin/bookings/inbox/:conversationId/link-booking', requireAut
   } catch (error) {
     console.error('[BOOKINGS_INBOX_LINK] Error:', error);
     res.status(500).json({ error: 'Failed to link booking to conversation' });
+  }
+});
+
+// R1.6: Clear escalation flag without linking a booking (for resolved issues that don't need booking)
+router.post('/api/admin/bookings/inbox/:conversationId/clear-escalation', requireAuth, requireRole('owner', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const tenantDb = req.tenantDb!;
+    const tenantId = getTenantId(req);
+    const conversationId = parseInt(req.params.conversationId);
+    
+    if (isNaN(conversationId)) {
+      res.status(400).json({ error: 'Invalid conversation ID' });
+      return;
+    }
+    
+    const conversation = await tenantDb
+      .select()
+      .from(conversations)
+      .where(and(
+        eq(conversations.id, conversationId),
+        eq(conversations.tenantId, tenantId)
+      ))
+      .limit(1);
+    
+    if (!conversation.length) {
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
+    }
+    
+    await tenantDb
+      .update(conversations)
+      .set({
+        needsHumanAttention: false,
+        needsHumanReason: null,
+        automationPausedUntil: null,
+      })
+      .where(eq(conversations.id, conversationId));
+    
+    console.log(`[BOOKINGS_INBOX] Cleared escalation for conversation ${conversationId}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Escalation cleared, automation resumed',
+      conversationId,
+    });
+  } catch (error) {
+    console.error('[BOOKINGS_INBOX_CLEAR_ESCALATION] Error:', error);
+    res.status(500).json({ error: 'Failed to clear escalation' });
   }
 });
 

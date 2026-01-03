@@ -1,9 +1,16 @@
-import { eq, desc } from "drizzle-orm";
-import { customers, appointments, services } from "@shared/schema";
+import { eq, desc, and } from "drizzle-orm";
+import { customers, appointments, services, tenantConfig } from "@shared/schema";
 import { conversationState } from "../conversationState";
 
 function normalizePhone(p: string) {
-  return (p || "").trim();
+  const phone = (p || "").trim();
+  // Ensure E.164 format for comparison
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (phone.startsWith('+')) return phone;
+  return phone;
 }
 
 function safeStr(s: any) {
@@ -91,11 +98,46 @@ export async function hydrateSmsConversationStateFromDb(opts: {
 
   const dbName = safeStr(customer.name);
   const dbEmail = safeStr(customer.email);
-  const dbAddress = safeStr(customer.address) || lastAddress;
+  const rawDbAddress = safeStr(customer.address) || lastAddress;
   const dbVehicleInfo = safeStr(customer.vehicleInfo);
 
   const parsedVehicle = parseVehicleFreeform(dbVehicleInfo);
   const vehicleArr = parsedVehicle ? [{ ...parsedVehicle }] : [];
+  
+  // R1.6: Validate address is within service area before auto-filling
+  // Load tenant config for service area validation
+  let addressNeedsConfirm = false;
+  let dbAddress = rawDbAddress;
+  
+  if (rawDbAddress) {
+    try {
+      const [config] = await opts.tenantDb
+        .select({ primaryCity: tenantConfig.primaryCity })
+        .from(tenantConfig)
+        .where(eq(tenantConfig.tenantId, opts.tenantId))
+        .limit(1);
+      
+      const primaryCity = safeStr(config?.primaryCity).toLowerCase();
+      const addressLower = rawDbAddress.toLowerCase();
+      
+      // Basic service area check: if we have a primary city and address doesn't match, flag for confirmation
+      if (primaryCity && !addressLower.includes(primaryCity)) {
+        // Also check for state mismatch (e.g., Minneapolis vs Texas)
+        const commonOutOfArea = ['minneapolis', 'california', 'florida', 'new york', 'chicago'];
+        const isLikelyOutOfArea = commonOutOfArea.some(loc => 
+          addressLower.includes(loc) && !primaryCity.includes(loc)
+        );
+        
+        if (isLikelyOutOfArea) {
+          addressNeedsConfirm = true;
+          console.log(`[SMS MEMORY] address_needs_confirm=true address="${rawDbAddress.substring(0, 30)}..." primaryCity=${primaryCity}`);
+        }
+      }
+    } catch (e) {
+      // Service area check failed - continue with address, don't block
+      console.warn("[SMS MEMORY] service area check failed:", e);
+    }
+  }
 
   const briefParts: string[] = [];
   if (dbName) briefParts.push(`Name: ${dbName}`);
@@ -119,7 +161,14 @@ export async function hydrateSmsConversationStateFromDb(opts: {
   if ((!next.preferredVehicles || next.preferredVehicles.length === 0) && vehicleArr.length) next.preferredVehicles = vehicleArr;
 
   // Also backfill canonical fields (address, vehicles) so downstream logic sees the data
-  if (!safeStr(next.address) && dbAddress) next.address = dbAddress;
+  // R1.6: Only auto-fill address if it passed service area validation
+  if (!safeStr(next.address) && dbAddress && !addressNeedsConfirm) {
+    next.address = dbAddress;
+  }
+  if (addressNeedsConfirm) {
+    next.addressNeedsConfirm = true;
+    next.addressOnFileUnverified = dbAddress;
+  }
   if ((!next.vehicles || next.vehicles.length === 0) && vehicleArr.length) next.vehicles = vehicleArr;
 
   if (!safeStr(next.customerProfileSummary) && customerProfileSummary) next.customerProfileSummary = customerProfileSummary;
