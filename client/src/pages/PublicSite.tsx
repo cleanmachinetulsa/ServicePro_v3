@@ -58,12 +58,11 @@ interface PublicSiteData {
   services: Array<{
     id: number;
     name: string;
-    description?: string | null;
-    category?: string | null;
-    startingPrice?: number | null;
-    durationMinutes?: number | null;
-    isAddon?: boolean | null;
-    highlight?: boolean | null;
+    overview?: string | null;
+    priceRange?: string | null;
+    duration?: string | null;
+    detailedDescription?: string | null;
+    imageUrl?: string | null;
   }>;
   faqs: Array<{
     question: string;
@@ -352,7 +351,9 @@ export default function PublicSite() {
               variants={staggerContainer}
               className={servicesGridClass}
             >
-              {services.slice(0, 6).map((service, index) => (
+              {services.map((service) => {
+                const displayDesc = service.overview || service.detailedDescription || null;
+                return (
                 <motion.div key={service.id} variants={fadeIn} data-testid={`service-card-${service.id}`}>
                   <Card className="h-full backdrop-blur-sm bg-white/70 border-white/40 hover:shadow-xl hover:scale-[1.02] transition-all duration-300">
                     <CardHeader>
@@ -363,41 +364,33 @@ export default function PublicSite() {
                         >
                           <CheckCircle2 className="w-6 h-6" style={{ color: primaryColor }} />
                         </div>
-                        {service.highlight && (
-                          <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
-                            <Star className="w-3 h-3 fill-current" />
-                            Popular
-                          </div>
-                        )}
                       </div>
                       <CardTitle className="text-xl" data-testid={`service-name-${service.id}`}>{service.name}</CardTitle>
-                      {service.category && (
-                        <CardDescription className="text-sm">{service.category}</CardDescription>
-                      )}
                     </CardHeader>
                     <CardContent>
-                      {service.description && (
+                      {displayDesc && (
                         <p className="text-slate-600 text-sm mb-4 line-clamp-3" data-testid={`service-description-${service.id}`}>
-                          {service.description}
+                          {displayDesc}
                         </p>
                       )}
                       <div className="flex items-center justify-between text-sm">
-                        {service.startingPrice && (
+                        {service.priceRange && (
                           <span className="font-semibold text-slate-900" data-testid={`service-price-${service.id}`}>
-                            From ${(service.startingPrice / 100).toFixed(0)}
+                            {service.priceRange}
                           </span>
                         )}
-                        {service.durationMinutes && (
+                        {service.duration && (
                           <span className="flex items-center gap-1 text-slate-600">
                             <Clock className="w-4 h-4" />
-                            ~{Math.round(service.durationMinutes / 60)}h
+                            {service.duration}
                           </span>
                         )}
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
-              ))}
+                );
+              })}
             </motion.div>
           </div>
         </section>
