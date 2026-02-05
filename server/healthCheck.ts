@@ -429,6 +429,41 @@ export async function getHealthStatus(): Promise<HealthCheckResponse> {
 }
 
 /**
+ * Get the base URL for Twilio webhooks - mirrors logic from voiceConfigService.ts
+ * This uses the same resolution logic as the actual voice/SMS services
+ */
+function getWebhookBaseUrl(): { url: string; source: string; isProduction: boolean; warning?: string } {
+  if (process.env.PUBLIC_URL) {
+    return {
+      url: process.env.PUBLIC_URL,
+      source: 'PUBLIC_URL env var',
+      isProduction: true,
+    };
+  }
+  
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    const devUrl = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+    const isDevDomain = process.env.REPLIT_DEV_DOMAIN.includes('.spock.') || 
+                         process.env.REPLIT_DEV_DOMAIN.includes('.kirk.');
+    return {
+      url: devUrl,
+      source: 'REPLIT_DEV_DOMAIN env var',
+      isProduction: !isDevDomain,
+      warning: isDevDomain 
+        ? 'WARNING: This is a development domain that changes frequently. For production, set PUBLIC_URL to your stable domain (e.g., https://cleanmachinetulsa.com)' 
+        : undefined,
+    };
+  }
+  
+  return {
+    url: 'https://cleanmachine.app',
+    source: 'fallback default',
+    isProduction: true,
+    warning: 'Using fallback domain - set PUBLIC_URL env var to your production domain',
+  };
+}
+
+/**
  * Register health check routes
  */
 export function registerHealthRoutes(app: Express) {
@@ -450,6 +485,80 @@ export function registerHealthRoutes(app: Express) {
         timestamp: new Date().toISOString(),
         error: 'Health check failed',
         services: {}
+      });
+    }
+  });
+  
+  app.get('/api/health/twilio-webhooks', async (req: Request, res: Response) => {
+    try {
+      const baseUrlInfo = getWebhookBaseUrl();
+      const baseUrl = baseUrlInfo.url;
+      
+      const webhookConfig = {
+        timestamp: new Date().toISOString(),
+        current_base_url: baseUrl,
+        url_source: baseUrlInfo.source,
+        is_production: baseUrlInfo.isProduction,
+        warning: baseUrlInfo.warning || null,
+        
+        current_webhook_urls: {
+          voice: {
+            description: 'Current Voice webhook URL (based on app configuration)',
+            url: `${baseUrl}/twilio/voice/incoming`,
+            method: 'POST',
+          },
+          sms: {
+            description: 'Current SMS webhook URL (based on app configuration)',
+            url: `${baseUrl}/api/twilio/sms/inbound`,
+            method: 'POST',
+          },
+        },
+        
+        recommended_production_urls: {
+          note: 'For production, configure Twilio with your stable custom domain or published .replit.app URL',
+          custom_domain_example: {
+            voice: 'https://cleanmachinetulsa.com/twilio/voice/incoming',
+            sms: 'https://cleanmachinetulsa.com/api/twilio/sms/inbound',
+          },
+          replit_app_example: {
+            voice: 'https://servicepro-v-3-base-cleanmachinetul.replit.app/twilio/voice/incoming',
+            sms: 'https://servicepro-v-3-base-cleanmachinetul.replit.app/api/twilio/sms/inbound',
+          },
+        },
+        
+        current_environment: {
+          PUBLIC_URL: process.env.PUBLIC_URL || '(not set - recommended for production)',
+          REPLIT_DEV_DOMAIN: process.env.REPLIT_DEV_DOMAIN || '(not set)',
+          TWILIO_ACCOUNT_SID_PRESENT: !!process.env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN_PRESENT: !!process.env.TWILIO_AUTH_TOKEN,
+          TWILIO_TEST_SMS_NUMBER_PRESENT: !!process.env.TWILIO_TEST_SMS_NUMBER,
+          MAIN_PHONE_NUMBER: process.env.MAIN_PHONE_NUMBER ? `***${process.env.MAIN_PHONE_NUMBER.slice(-4)}` : '(not set)',
+        },
+        
+        troubleshooting: {
+          common_issues: [
+            'Twilio Console webhooks pointing to development domain instead of production domain',
+            'Development domain (*.spock.replit.dev or *.kirk.replit.dev) changes frequently',
+            'Set PUBLIC_URL env var to your stable production domain for reliable webhook routing',
+          ],
+          fix_steps: [
+            '1. Set PUBLIC_URL environment variable to your production domain (e.g., https://cleanmachinetulsa.com)',
+            '2. Login to Twilio Console (console.twilio.com)',
+            '3. Go to Phone Numbers > Manage > Active Numbers',
+            '4. Click on your phone number',
+            '5. Under Voice & Fax, set "A CALL COMES IN" webhook to the voice URL',
+            '6. Under Messaging, set "A MESSAGE COMES IN" webhook to the SMS URL',
+            '7. Save changes and verify calls/SMS are received',
+          ],
+        },
+      };
+      
+      res.json(webhookConfig);
+    } catch (error: any) {
+      console.error('[HEALTH CHECK] Error getting webhook config:', error);
+      res.status(500).json({
+        error: 'Failed to get webhook configuration',
+        message: error.message,
       });
     }
   });
