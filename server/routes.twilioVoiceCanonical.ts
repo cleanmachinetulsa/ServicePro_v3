@@ -454,6 +454,19 @@ export function registerCanonicalVoiceRoutes(app: Express) {
       } catch (error: any) {
         console.error('[CANONICAL VOICE] CRITICAL ERROR:', error?.message || error);
         console.error('[CANONICAL VOICE] Stack:', error?.stack);
+
+        // Fail-safe alert to owner
+        try {
+          const { sendCriticalAlert } = await import('./services/alertService');
+          const tenantId = req.tenant?.id || 'root';
+          const fromNumber = req.body.From || 'unknown';
+          const toNumber = req.body.To || 'unknown';
+          const alertMsg = `CRITICAL VOICE INBOUND: tenant=${tenantId} from=${fromNumber} to=${toNumber} err=${error?.message || 'unknown'}`;
+          await sendCriticalAlert(alertMsg);
+        } catch (alertErr) {
+          console.warn('[ESCALATION] Failed to send critical alert for voice failure:', alertErr);
+        }
+
         const VoiceResp = new VoiceResponse();
         VoiceResp.say({ voice: 'alice' }, 'We are experiencing technical difficulties. Please try again later.');
         res.type('text/xml');

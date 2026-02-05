@@ -1197,6 +1197,17 @@ Customer text: "${Body}"`,
     };
     console.error('[TWILIO TEST SMS INBOUND ERROR] Critical failure in SMS handler:', JSON.stringify(errorDetails));
     console.error('[TWILIO TEST SMS INBOUND ERROR] Full error:', err);
+
+    // Fail-safe alert to owner
+    try {
+      const { sendCriticalAlert } = await import('../services/alertService');
+      const tenantId = (req as any).tenant?.id || 'root';
+      const { From, To, Body } = req.body || {};
+      const alertMsg = `CRITICAL SMS INBOUND: tenant=${tenantId} from=${From || 'unknown'} to=${To || 'unknown'} err=${err?.message || 'unknown'} body="${Body?.substring(0, 120) || ''}"`;
+      await sendCriticalAlert(alertMsg);
+    } catch (alertErr) {
+      console.warn('[ESCALATION] Failed to send critical alert for SMS failure:', alertErr);
+    }
     
     const errorResponse = new MessagingResponse();
     errorResponse.message("Sorry, I'm having trouble right now. A human will take a look and get back to you.");
