@@ -48,7 +48,5 @@ export default function RootDomainHandler() {
     return <HomePage />;
   }
 
-  // Changed to serve PublicSite for the root tenant instead of the generic landing page
-  // The root tenant's subdomain is 'cleanmachine' but they want to use 'root' as the identifier
-  return <PublicSite forcedSubdomain="cleanmachine" />;
+  return <LandingPage />;
 }

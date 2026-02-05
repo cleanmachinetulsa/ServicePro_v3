@@ -258,8 +258,6 @@ function Router() {
         </AuthGuard>
       </Route>
 
-      {/* CM-4: Public Site Settings for generated website customization */}
-      <Route path="/" component={RootDomainHandler} />
       <Route path="/home">
         <LazyPage><HomePage /></LazyPage>
       </Route>
@@ -858,7 +856,10 @@ function Router() {
         <LazyPage><HomePage /></LazyPage>
       </Route>
 
-      <Route path="/" component={RootDomainHandler} />
+      {/* CM-DNS-2: Root route with domain-based routing */}
+      <Route path="/">
+        <RootDomainHandler />
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
