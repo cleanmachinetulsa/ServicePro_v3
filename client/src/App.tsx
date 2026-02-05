@@ -252,12 +252,9 @@ function Router() {
         </AuthGuard>
       </Route>
 
-      <Route path="/export-download">
-        <LazyPage><DownloadExportPage /></LazyPage>
-      </Route>
-      <Route path="/maintenance">
-        <LazyPage><Maintenance /></LazyPage>
-      </Route>
+      {/* CM-4: Public Site Settings for generated website customization */}
+      <Route path="/" component={HomePage} />
+      <Route path="/home" component={HomePage} />
 
       <Route path="/showcase">
         <LazyPage><ShowcasePage /></LazyPage>
