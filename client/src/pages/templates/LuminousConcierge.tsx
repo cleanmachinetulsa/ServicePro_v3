@@ -17,9 +17,10 @@ interface Service {
 
 interface LuminousConciergeProps {
   content?: HomepageContent;
+  services?: Service[];
 }
 
-export default function LuminousConcierge({ content: propsContent }: LuminousConciergeProps = {}) {
+export default function LuminousConcierge({ content: propsContent, services: propsServices }: LuminousConciergeProps = {}) {
   const { data: contentData } = useQuery<{ success: boolean; content: HomepageContent }>({
     queryKey: ['/api/homepage-content'],
     enabled: !propsContent,
@@ -27,10 +28,11 @@ export default function LuminousConcierge({ content: propsContent }: LuminousCon
 
   const { data: servicesData } = useQuery<{ success: boolean; services: Service[] }>({
     queryKey: ['/api/services'],
+    enabled: !propsServices,
   });
 
   const content = propsContent || contentData?.content;
-  const services = servicesData?.services || [];
+  const services = propsServices ?? servicesData?.services ?? [];
 
   const { scrollYProgress } = useScroll();
   const y = useTransform(scrollYProgress, [0, 1], [0, 200]);

@@ -12,7 +12,14 @@ import NightDriveNeon from "@/pages/templates/NightDriveNeon";
 import ExecutiveMinimal from "@/pages/templates/ExecutiveMinimal";
 import QuantumConcierge from "@/pages/templates/QuantumConcierge";
 
-const TEMPLATE_COMPONENTS: Record<string, React.ComponentType> = {
+interface ServiceItem {
+  id: number;
+  name: string;
+  priceRange: string;
+  overview: string;
+}
+
+const TEMPLATE_COMPONENTS: Record<string, React.ComponentType<any>> = {
   current: CurrentTemplate,
   luminous_concierge: LuminousConcierge,
   dynamic_spotlight: DynamicSpotlight,
@@ -21,6 +28,8 @@ const TEMPLATE_COMPONENTS: Record<string, React.ComponentType> = {
   executive_minimal: ExecutiveMinimal,
   quantum_concierge: QuantumConcierge,
 };
+
+const TEMPLATES_NEEDING_SERVICES = new Set(['luminous_concierge']);
 
 function PremiumLoadingSkeleton() {
   return (
@@ -92,14 +101,27 @@ function PremiumLoadingSkeleton() {
 }
 
 export default function HomePage() {
-  const { data, isLoading } = useQuery<{ success: boolean; content: HomepageContent }>({
+  const { data, isLoading: isContentLoading } = useQuery<{ success: boolean; content: HomepageContent }>({
     queryKey: ['/api/homepage-content'],
-    staleTime: 60000, // Cache for 1 minute to prevent flashing on navigation
-    refetchOnWindowFocus: false, // Don't refetch when user returns to tab
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: servicesData, isLoading: isServicesLoading } = useQuery<{ success: boolean; services: ServiceItem[] }>({
+    queryKey: ['/api/services'],
+    staleTime: 60000,
+    refetchOnWindowFocus: false,
   });
 
   const templateId = data?.content?.templateId || 'current';
   const TemplateComponent = TEMPLATE_COMPONENTS[templateId] || CurrentTemplate;
+  const needsServices = TEMPLATES_NEEDING_SERVICES.has(templateId);
+  const isLoading = isContentLoading || (needsServices && isServicesLoading);
+
+  const templateProps: Record<string, any> = { content: data?.content };
+  if (needsServices) {
+    templateProps.services = servicesData?.services;
+  }
 
   return (
     <AnimatePresence mode="wait">
@@ -112,7 +134,7 @@ export default function HomePage() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <TemplateComponent content={data?.content} />
+          <TemplateComponent {...templateProps} />
         </motion.div>
       )}
     </AnimatePresence>
