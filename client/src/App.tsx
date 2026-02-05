@@ -1,7 +1,7 @@
 // src/App.tsx
 
 import React, { lazy, Suspense } from "react";
-import { Switch, Route, useLocation, useRoute } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -208,12 +208,6 @@ function LazyDashboard({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PublicSiteWrapper() {
-  const [match, params] = useRoute('/site/:subdomain');
-  const subdomain = params?.subdomain || 'cleanmachine';
-  return <PublicSite forcedSubdomain={subdomain} />;
-}
-
 function Router() {
   return (
     <Switch>
@@ -258,11 +252,11 @@ function Router() {
         </AuthGuard>
       </Route>
 
-      <Route path="/">
-        <PublicSiteWrapper />
+      <Route path="/export-download">
+        <LazyPage><DownloadExportPage /></LazyPage>
       </Route>
-      <Route path="/home">
-        <LazyPage><HomePage /></LazyPage>
+      <Route path="/maintenance">
+        <LazyPage><Maintenance /></LazyPage>
       </Route>
 
       <Route path="/showcase">
@@ -854,15 +848,13 @@ function Router() {
         <LazyDashboard><CustomerPortalDashboard /></LazyDashboard>
       </Route>
 
-      {/* Customer-facing homepage for Clean Machine (tenant booking site) - Deprecated in favor of root route */}
+      {/* Customer-facing homepage for Clean Machine (tenant booking site) */}
       <Route path="/home">
         <LazyPage><HomePage /></LazyPage>
       </Route>
-
+      
       {/* CM-DNS-2: Root route with domain-based routing */}
-      <Route path="/">
-        <RootDomainHandler />
-      </Route>
+      <Route path="/" component={RootDomainHandler} />
       <Route component={NotFound} />
     </Switch>
   );

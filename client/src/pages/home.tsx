@@ -101,9 +101,6 @@ export default function HomePage() {
   const templateId = data?.content?.templateId || 'current';
   const TemplateComponent = TEMPLATE_COMPONENTS[templateId] || CurrentTemplate;
 
-  // Debug log to confirm what content is being loaded
-  console.log('[HOMEPAGE] Loaded content:', data?.content);
-
   return (
     <AnimatePresence mode="wait">
       {isLoading ? (
