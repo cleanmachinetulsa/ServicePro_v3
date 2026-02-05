@@ -1187,8 +1187,17 @@ Customer text: "${Body}"`,
     console.log("[TWILIO TEST SMS INBOUND] Responding with TwiML:", twimlResponse.toString());
     
     res.type('text/xml').send(twimlResponse.toString());
-  } catch (err) {
-    console.error('[TWILIO TEST SMS INBOUND ERROR]', err);
+  } catch (err: any) {
+    // Enhanced error logging for production debugging
+    const errorDetails = {
+      name: err?.name || 'UnknownError',
+      message: err?.message || 'No message',
+      code: err?.code || 'no_code',
+      stack: err?.stack?.split('\n').slice(0, 5).join(' -> ') || 'no_stack',
+    };
+    console.error('[TWILIO TEST SMS INBOUND ERROR] Critical failure in SMS handler:', JSON.stringify(errorDetails));
+    console.error('[TWILIO TEST SMS INBOUND ERROR] Full error:', err);
+    
     const errorResponse = new MessagingResponse();
     errorResponse.message("Sorry, I'm having trouble right now. A human will take a look and get back to you.");
     res.type('text/xml').send(errorResponse.toString());
