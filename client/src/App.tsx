@@ -856,9 +856,14 @@ function Router() {
       </Route>
 
       {/* Customer-facing homepage for Clean Machine (tenant booking site) - Deprecated in favor of root route */}
-      
+      <Route path="/home">
+        <LazyPage><HomePage /></LazyPage>
+      </Route>
+
       {/* CM-DNS-2: Root route with domain-based routing */}
-      <Route path="/" component={RootDomainHandler} />
+      <Route path="/">
+        <PublicSiteWrapper />
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );

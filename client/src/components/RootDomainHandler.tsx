@@ -1,6 +1,7 @@
 import { CLEAN_MACHINE_DOMAIN } from "@shared/domainConfig";
 import LandingPage from "@/pages/LandingPage";
 import HomePage from "@/pages/home";
+import PublicSite from "@/pages/PublicSite";
 
 function isCleanMachineDomain(): boolean {
   const host = window.location.hostname.toLowerCase();
@@ -47,5 +48,6 @@ export default function RootDomainHandler() {
     return <HomePage />;
   }
 
-  return <LandingPage />;
+  // Changed to serve PublicSite for the root tenant instead of the generic landing page
+  return <PublicSite forcedSubdomain="root" />;
 }
