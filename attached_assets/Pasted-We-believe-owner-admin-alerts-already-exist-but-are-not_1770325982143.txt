@@ -1,0 +1,39 @@
+We believe owner/admin alerts already exist but are not wired correctly after refactors. Do NOT build new alerting from scratch unless we confirm it’s missing. Minimal compute. Analyze first.
+
+GOALS:
+A) Find the existing code paths for:
+   1) Human handoff (needsHuman=true / automation paused)
+   2) Critical inbound SMS handler errors
+   3) Owner/admin notifications (SMS + email + push if present)
+B) Identify WHY owner notifications are not firing (missing call, feature flag, env var gate, tenant gate, quiet hours, etc.)
+C) Propose the smallest fix (wire existing notifier into the existing handoff/error path)
+
+STEP 1 — Locate handoff + pause logic:
+- rg -n "\\[AUTOMATION_PAUSED\\]|needsHuman|automation_paused_until|escalationService|human handoff|handoff" -S server shared .
+- Open the files that define:
+  - the decision that sets needsHuman=true
+  - the customer auto-reply "Thanks - a human will follow up shortly..."
+
+STEP 2 — Locate any notification/ops modules:
+- rg -n "notifyOwner|owner alert|admin alert|ops alert|alert.*owner|sendOwner|OWNER_|ADMIN_|onCall|pager|Sentry|captureException|SendGrid|sendEmail|mail\\.send|push|VAPID|webpush|Pushover|Slack|Discord" -S server shared .
+- If found, list the module(s) and how they’re intended to be called.
+
+STEP 3 — Locate SIP/Groundwire references (existing integration):
+- rg -n "Groundwire|SIP|sip:|VoIP|PBX|Telnyx|Twilio Voice|Client:|groundwire" -S server shared .
+- Summarize what exists (don’t change anything).
+
+STEP 4 — Trace why owner alerts don’t fire on human handoff:
+- Follow the handoff path and confirm:
+  - customer gets acknowledgment SMS (it does)
+  - what *should* happen next for owner notification
+  - whether that call is missing or gated
+
+STEP 5 — Trace why owner alerts don’t fire on critical errors:
+- rg -n "Critical failure in SMS handler|TWILIO TEST SMS INBOUND ERROR" -S server shared .
+- Confirm whether errors are only logged, or also routed to a notifier.
+
+OUTPUT:
+- Bullet list of files involved (paths)
+- Evidence of the existing notifier (or state clearly if none exists)
+- Exact reason alerts aren’t firing (e.g., disabled env var, missing call, tenant mismatch, quiet-hours, etc.)
+- The smallest code change required to re-wire it (DO NOT implement yet)
