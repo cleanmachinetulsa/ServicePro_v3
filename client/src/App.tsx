@@ -259,9 +259,7 @@ function Router() {
       </Route>
 
       {/* CM-4: Public Site Settings for generated website customization */}
-      <Route path="/">
-        <PublicSiteWrapper />
-      </Route>
+      <Route path="/" component={RootDomainHandler} />
       <Route path="/home">
         <LazyPage><HomePage /></LazyPage>
       </Route>
@@ -860,10 +858,7 @@ function Router() {
         <LazyPage><HomePage /></LazyPage>
       </Route>
 
-      {/* CM-DNS-2: Root route with domain-based routing */}
-      <Route path="/">
-        <PublicSiteWrapper />
-      </Route>
+      <Route path="/" component={RootDomainHandler} />
       <Route component={NotFound} />
     </Switch>
   );
