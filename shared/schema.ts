@@ -2121,6 +2121,7 @@ export const agentPreferences = pgTable("agent_preferences", {
 // Homepage Content - CMS for homepage text, colors, and branding (singleton table - only one row)
 export const homepageContent = pgTable('homepage_content', {
   id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().default('root'),
   
   // Template Selection
   templateId: varchar('template_id', { length: 50 }).notNull().default('current'),

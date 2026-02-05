@@ -722,16 +722,22 @@ export async function registerRoutes(app: Express) {
 
   // Homepage Content endpoints
   // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
+  // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
   app.get('/api/homepage-content', async (req: Request, res: Response) => {
     try {
       const { homepageContent } = await import('@shared/schema');
       
-      // Get the single row (or create default if doesn't exist)
-      let [content] = await db.select().from(homepageContent).limit(1);
+      // Get the row for 'root' (default tenant)
+      let [content] = await db.select()
+        .from(homepageContent)
+        .where(eq(homepageContent.tenantId, 'root'))
+        .limit(1);
       
       if (!content) {
-        // Create default content
-        [content] = await db.insert(homepageContent).values({}).returning();
+        // Create default content for root if it doesn't exist
+        [content] = await db.insert(homepageContent).values({
+          tenantId: 'root'
+        }).returning();
       }
       
       return res.json({ success: true, content });
@@ -741,7 +747,6 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
   app.put('/api/homepage-content', requireAuth, async (req: Request, res: Response) => {
     if (req.user.role !== 'owner' && req.user.role !== 'manager') {
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -757,8 +762,14 @@ export async function registerRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Invalid input', errors: parsed.error.issues });
       }
       
-      // Get existing row (using db directly - homepageContent is global)
-      let [existing] = await db.select().from(homepageContent).limit(1);
+      // Use 'root' for now as this is a singleton for the primary tenant
+      const targetTenantId = 'root';
+
+      // Get existing row for this tenant
+      let [existing] = await db.select()
+        .from(homepageContent)
+        .where(eq(homepageContent.tenantId, targetTenantId))
+        .limit(1);
       
       let updated;
       if (existing) {
@@ -766,6 +777,7 @@ export async function registerRoutes(app: Express) {
         [updated] = await db.update(homepageContent)
           .set({
             ...parsed.data,
+            tenantId: targetTenantId, // Ensure tenantId is preserved/set
             updatedAt: new Date(),
             updatedBy: req.user.id,
           })
@@ -776,6 +788,7 @@ export async function registerRoutes(app: Express) {
         [updated] = await db.insert(homepageContent)
           .values({
             ...parsed.data,
+            tenantId: targetTenantId,
             updatedBy: req.user.id,
           })
           .returning();
@@ -789,7 +802,6 @@ export async function registerRoutes(app: Express) {
   });
 
   // Template switching endpoint - non-destructive update of only templateId
-  // NOTE: homepageContent is a GLOBAL/singleton table (no tenantId) - use db directly
   app.put('/api/homepage-content/template', requireAuth, async (req: Request, res: Response) => {
     try {
       const { homepageContent } = await import('@shared/schema');
@@ -817,40 +829,42 @@ export async function registerRoutes(app: Express) {
         });
       }
       
-      // Get existing row (using db directly - homepageContent is global)
-      let [existing] = await db.select().from(homepageContent).limit(1);
+      const targetTenantId = 'root';
+
+      // Get existing row
+      let [existing] = await db.select()
+        .from(homepageContent)
+        .where(eq(homepageContent.tenantId, targetTenantId))
+        .limit(1);
       
       let updated;
       if (existing) {
-        // Update only the templateId field (non-destructive)
         [updated] = await db.update(homepageContent)
           .set({
             templateId: parsed.data.templateId,
             updatedAt: new Date(),
-            updatedBy: req.user.id,
+            updatedBy: req.user.id
           })
           .where(eq(homepageContent.id, existing.id))
           .returning();
       } else {
-        // Create new row with the selected template
         [updated] = await db.insert(homepageContent)
           .values({
+            tenantId: targetTenantId,
             templateId: parsed.data.templateId,
-            updatedBy: req.user.id,
+            updatedBy: req.user.id
           })
           .returning();
       }
       
-      return res.json({
-        success: true,
-        content: updated,
-        message: `Template switched to ${parsed.data.templateId}`
-      });
+      return res.json({ success: true, content: updated });
     } catch (error) {
-      console.error('[HOMEPAGE TEMPLATE] Error switching template:', error);
+      console.error('[HOMEPAGE CONTENT] Error switching template:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });
     }
   });
+
+  // Logo upload configuration
 
   // Logo upload configuration
   const logoStorage = multer.diskStorage({
