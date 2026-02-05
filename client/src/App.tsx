@@ -208,6 +208,12 @@ function LazyDashboard({ children }: { children: React.ReactNode }) {
   );
 }
 
+function PublicSiteWrapper() {
+  const [match, params] = useRoute('/site/:subdomain');
+  const subdomain = params?.subdomain || 'root';
+  return <PublicSite forcedSubdomain={subdomain} />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -253,8 +259,12 @@ function Router() {
       </Route>
 
       {/* CM-4: Public Site Settings for generated website customization */}
-      <Route path="/" component={HomePage} />
-      <Route path="/home" component={HomePage} />
+      <Route path="/">
+        <PublicSiteWrapper />
+      </Route>
+      <Route path="/home">
+        <LazyPage><HomePage /></LazyPage>
+      </Route>
 
       <Route path="/showcase">
         <LazyPage><ShowcasePage /></LazyPage>
@@ -845,10 +855,7 @@ function Router() {
         <LazyDashboard><CustomerPortalDashboard /></LazyDashboard>
       </Route>
 
-      {/* Customer-facing homepage for Clean Machine (tenant booking site) */}
-      <Route path="/home">
-        <LazyPage><HomePage /></LazyPage>
-      </Route>
+      {/* Customer-facing homepage for Clean Machine (tenant booking site) - Deprecated in favor of root route */}
       
       {/* CM-DNS-2: Root route with domain-based routing */}
       <Route path="/" component={RootDomainHandler} />

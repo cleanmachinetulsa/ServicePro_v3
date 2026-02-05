@@ -89,9 +89,12 @@ interface PublicSiteData {
   };
 }
 
-export default function PublicSite() {
+export default function PublicSite({ forcedSubdomain }: { forcedSubdomain?: string } = {}) {
   const [match, params] = useRoute('/site/:subdomain');
-  const subdomain = params?.subdomain;
+  const subdomain = forcedSubdomain || params?.subdomain;
+
+  // Debug log
+  console.log('[PUBLIC SITE] Subdomain:', subdomain);
 
   // Fetch public site data
   // CM-DNS-1: Use custom queryFn since this is a public endpoint that constructs URL from subdomain
