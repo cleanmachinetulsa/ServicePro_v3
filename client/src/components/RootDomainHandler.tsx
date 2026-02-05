@@ -48,5 +48,5 @@ export default function RootDomainHandler() {
     return <HomePage />;
   }
 
-  return <LandingPage />;
+  return <PublicSite forcedSubdomain="cleanmachine" />;
 }

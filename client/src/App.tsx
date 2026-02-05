@@ -210,7 +210,7 @@ function LazyDashboard({ children }: { children: React.ReactNode }) {
 
 function PublicSiteWrapper() {
   const [match, params] = useRoute('/site/:subdomain');
-  const subdomain = params?.subdomain || 'root';
+  const subdomain = params?.subdomain || 'cleanmachine';
   return <PublicSite forcedSubdomain={subdomain} />;
 }
 
@@ -258,6 +258,9 @@ function Router() {
         </AuthGuard>
       </Route>
 
+      <Route path="/">
+        <PublicSiteWrapper />
+      </Route>
       <Route path="/home">
         <LazyPage><HomePage /></LazyPage>
       </Route>

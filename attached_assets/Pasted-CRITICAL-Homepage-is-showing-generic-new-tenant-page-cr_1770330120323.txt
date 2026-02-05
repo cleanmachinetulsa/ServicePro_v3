@@ -1,0 +1,50 @@
+CRITICAL: Homepage is showing generic “new tenant page creator” template instead of root tenant’s configured homepage. We need to restore root tenant site rendering. Minimal compute. Analyze first. Do NOT delete data. Do NOT run destructive migrations.
+
+Symptoms:
+- The site now renders a generic detailing landing page (template) as if for a brand-new tenant
+- Previously it showed the owner’s prices/copy; now “homepage settings” won’t load
+
+Goal:
+- Determine why web requests are not resolving to the correct tenant/site config (root tenant), and why Page Creator template is being used.
+
+Step 1 — Identify the request path & tenant resolver for WEB (NOT Twilio)
+- Find the web tenant resolution logic:
+  - rg -n "tenant resolve|resolveTenant|tenantIdFromHost|host.*tenant|x-tenant|TENANT RESOLVE" -S server .
+  - Identify which resolver is used for normal web requests (host header, domain mapping, path prefix, cookie, etc).
+- Locate where the “page creator / template” site is rendered:
+  - rg -n "page creator|PageCreator|generic detailing|template|starter site|landing page|default site" -S server shared client .
+  - Open the handler/component that renders the generic page.
+
+Step 2 — Confirm what tenant the web app is actually resolving to
+- Find server logs for web requests (GET /, GET /api/..., etc). Add TEMP logging (only if needed) to print:
+  - req.hostname / Host header
+  - resolved tenantId
+  - reason (domain match? fallback?)
+  - whether it fell back to template/default tenant
+Keep logs minimal and remove after fix if possible.
+
+Step 3 — Check domain + env var gates (common cause)
+- Search for env vars used in tenant/domain mapping:
+  - rg -n "PUBLIC_APP_URL|APP_URL|BASE_URL|ROOT_TENANT|DEFAULT_TENANT|TENANT_FALLBACK|CANONICAL_HOST|DOMAIN|MULTITENANT" -S server .
+- Report current expected behavior: what host/domain should map to root tenant?
+- Determine if something changed (e.g., PUBLIC_APP_URL now wrong, or host normalization strips subdomain, or fallback logic changed).
+
+Step 4 — Check the data fetch for “homepage settings”
+- Find API route or DB query that loads homepage settings:
+  - rg -n "homepage settings|homePage|site settings|landing settings|siteConfig|tenantSettings|prices|copy" -S server shared .
+- Confirm:
+  - which table(s) store the settings
+  - what tenantId is used in the query
+  - whether it’s querying the wrong tenantId (e.g. template tenant) or returning null and then defaulting to template
+
+Step 5 — Smallest fix
+- If tenant resolver is wrong: fix mapping so requests to the owner’s domain resolve to tenantId='root'.
+- If homepage settings API is using wrong tenant: fix tenant plumbing in that route.
+- If the frontend is defaulting to template on 404: ensure it loads root settings and does not overwrite.
+
+Deliverable:
+- A short “Root cause” statement (1-2 sentences).
+- EXACT file(s) + line(s) changed.
+- What behavior is restored.
+- Any env var that must be corrected in Replit (with the exact name, but do NOT invent values).
+- Keep code changes minimal and reversible.
