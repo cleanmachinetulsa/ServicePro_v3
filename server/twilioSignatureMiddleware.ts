@@ -17,19 +17,27 @@ import twilio from 'twilio';
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 
 if (!twilioAuthToken) {
-  console.warn('[TWILIO SECURITY] ⚠️ TWILIO_AUTH_TOKEN not configured - webhook signature verification DISABLED');
-  console.warn('[TWILIO SECURITY] This is a SECURITY RISK in production. Set TWILIO_AUTH_TOKEN environment variable.');
+  if (process.env.NODE_ENV === 'production') {
+    console.error('CRITICAL: TWILIO_AUTH_TOKEN environment variable is required in production!');
+    console.error('CRITICAL: Without it, Twilio webhook signature verification is impossible and all webhook endpoints are unprotected.');
+    process.exit(1);
+  }
+  console.warn('[TWILIO SECURITY] ⚠️ TWILIO_AUTH_TOKEN not configured - all Twilio webhook requests will be REJECTED (503)');
+  console.warn('[TWILIO SECURITY] Set TWILIO_AUTH_TOKEN to enable webhook signature verification.');
 }
 
 /**
  * Middleware to verify Twilio webhook signatures
- * Automatically disabled in development if auth token is missing
+ * Fails closed when TWILIO_AUTH_TOKEN is not configured.
  */
 export function verifyTwilioSignature(req: Request, res: Response, next: NextFunction): void {
-  // Skip verification if auth token not configured (development only)
   if (!twilioAuthToken) {
-    console.warn(`[TWILIO SECURITY] Skipping signature verification for ${req.path} - no auth token`);
-    return next();
+    console.error(`[TWILIO SECURITY] Rejecting request to ${req.path} - TWILIO_AUTH_TOKEN not configured`);
+    res.status(503).json({
+      success: false,
+      error: 'Webhook verification unavailable: TWILIO_AUTH_TOKEN not configured',
+    });
+    return;
   }
 
   const signature = req.headers['x-twilio-signature'] as string;
@@ -92,8 +100,12 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
  */
 export function verifyTwilioSignatureGET(req: Request, res: Response, next: NextFunction): void {
   if (!twilioAuthToken) {
-    console.warn(`[TWILIO SECURITY] Skipping GET signature verification for ${req.path}`);
-    return next();
+    console.error(`[TWILIO SECURITY] Rejecting GET request to ${req.path} - TWILIO_AUTH_TOKEN not configured`);
+    res.status(503).json({
+      success: false,
+      error: 'Webhook verification unavailable: TWILIO_AUTH_TOKEN not configured',
+    });
+    return;
   }
 
   const signature = req.headers['x-twilio-signature'] as string;

@@ -246,7 +246,8 @@ export async function registerRoutes(app: Express) {
   registerBootstrapRoutes(app);
 
   // Port monitoring SMS delivery status callback (receives delivery confirmation from Twilio)
-  app.post('/api/test/port-sms-status', async (req: Request, res: Response) => {
+  // SECURITY: Verify request is genuinely from Twilio before trusting delivery status
+  app.post('/api/test/port-sms-status', verifyTwilioSignature, async (req: Request, res: Response) => {
     try {
       const { MessageStatus, MessageSid, Body } = req.body;
       
