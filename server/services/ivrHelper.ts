@@ -216,14 +216,17 @@ function buildForwardSipTwiml(sipUri: string, callerNumber: string, callbackBase
     console.error('[IVR HELPER] FORWARD_SIP missing sipUri');
     return buildVoicemailTwiml(callbackBaseUrl, voiceName);
   }
-  
+
+  const normalizedSipUri = sipUri.startsWith('sip:') ? sipUri : `sip:${sipUri}`;
+  console.log('[VOICE TRANSFER] Dialing SIP URI:', normalizedSipUri);
+
   const dialTimeout = 25;
-  
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="${voiceName}">Please hold while we connect you.</Say>
   <Dial callerId="${escapeXml(callerNumber)}" timeout="${dialTimeout}" action="${callbackBaseUrl}/twilio/voice/dial-status" method="POST">
-    <Sip>${escapeXml(sipUri)}</Sip>
+    <Sip>${escapeXml(normalizedSipUri)}</Sip>
   </Dial>
 </Response>`;
 }
