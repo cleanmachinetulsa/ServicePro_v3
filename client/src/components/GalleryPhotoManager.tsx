@@ -69,8 +69,7 @@ export default function GalleryPhotoManager() {
   const { data: photosData, isLoading } = useQuery<{ success: boolean; photos: GalleryPhoto[] }>({
     queryKey: ['/api/gallery', { includeInactive: true }],
     queryFn: async () => {
-      const response = await fetch('/api/gallery?includeInactive=true');
-      if (!response.ok) throw new Error('Failed to fetch photos');
+      const response = await apiRequest('GET', '/api/gallery?includeInactive=true');
       return response.json();
     },
     enabled: !useGooglePhotos, // Only fetch local photos when not using Google Photos
@@ -83,12 +82,7 @@ export default function GalleryPhotoManager() {
       if (!albumUrl) {
         return { success: true, photos: [] };
       }
-      const response = await fetch('/api/gallery/fetch-google-photos-album', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ albumUrl })
-      });
-      if (!response.ok) throw new Error('Failed to fetch Google Photos');
+      const response = await apiRequest('POST', '/api/gallery/fetch-google-photos-album', { albumUrl });
       return response.json();
     },
     enabled: useGooglePhotos && !!albumUrl, // Only fetch when toggle is on and URL is set

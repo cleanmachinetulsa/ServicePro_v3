@@ -7,6 +7,8 @@
  * - Handback Analysis
  */
 
+import { apiRequest } from '@/lib/queryClient';
+
 export interface ParsedBookingInfo {
   // Core booking details
   customerName?: string;
@@ -82,19 +84,7 @@ export interface SmartHandbackResponse {
  * Returns structured data that can be used to pre-fill a booking form.
  */
 export async function fetchSmartSchedule(conversationId: number): Promise<ParsedBookingInfo> {
-  const response = await fetch(`/api/conversations/${conversationId}/smart-schedule`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to parse conversation' }));
-    throw new Error(error.message || 'Failed to extract booking information');
-  }
-
+  const response = await apiRequest('POST', `/api/conversations/${conversationId}/smart-schedule`);
   const result = await response.json();
   return result.data;
 }
@@ -112,20 +102,7 @@ export async function handbackConversationToAI(
     customMessage?: string;
   }
 ): Promise<SmartHandbackResponse> {
-  const response = await fetch(`/api/conversations/${conversationId}/smart-handback`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(options || {}),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to hand back conversation' }));
-    throw new Error(error.message || 'Failed to return conversation to AI');
-  }
-
+  const response = await apiRequest('POST', `/api/conversations/${conversationId}/smart-handback`, options || {});
   const result = await response.json();
   return result;
 }
@@ -137,16 +114,7 @@ export async function handbackConversationToAI(
  * Does NOT perform the handback - just provides recommendations.
  */
 export async function fetchHandbackAnalysis(conversationId: number): Promise<SmartHandbackResult> {
-  const response = await fetch(`/api/conversations/${conversationId}/handback-analysis`, {
-    method: 'GET',
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Failed to analyze handback readiness' }));
-    throw new Error(error.message || 'Failed to get handback analysis');
-  }
-
+  const response = await apiRequest('GET', `/api/conversations/${conversationId}/handback-analysis`);
   const result = await response.json();
   // Backend returns { success, data, message } where data is SmartHandbackResult
   return result.data;

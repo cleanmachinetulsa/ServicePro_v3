@@ -5,6 +5,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { getQueryFn } from '@/lib/queryClient';
 
 export type BillingStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'unknown';
 
@@ -16,35 +17,29 @@ interface BillingStatusResponse {
 }
 
 export function useBillingStatus() {
-  const { data, isLoading, error } = useQuery<BillingStatusResponse>({
-    queryKey: ['billing-status'],
-    queryFn: async () => {
-      const res = await fetch('/api/tenant/billing/status', {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        if (res.status === 401) {
-          return { status: 'unknown', cancelAtPeriodEnd: false, hasStripeCustomer: false, hasSubscription: false };
-        }
-        throw new Error('Failed to fetch billing status');
-      }
-      const data = await res.json();
-      return {
-        status: data.status || 'unknown',
-        cancelAtPeriodEnd: data.cancelAtPeriodEnd || false,
-        hasStripeCustomer: data.hasStripeCustomer || false,
-        hasSubscription: !!data.subscriptionId,
-      };
-    },
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ['/api/tenant/billing/status'],
+    // Shared fetcher; on 401 return null so AuthGuard owns the redirect
+    // (this hook runs on every authed page; we don't want it racing the redirect).
+    queryFn: getQueryFn<any>({ on401: 'returnNull' }),
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     retry: false,
   });
 
+  const normalized: BillingStatusResponse = data
+    ? {
+        status: data.status || 'unknown',
+        cancelAtPeriodEnd: data.cancelAtPeriodEnd || false,
+        hasStripeCustomer: data.hasStripeCustomer || false,
+        hasSubscription: !!data.subscriptionId,
+      }
+    : { status: 'unknown', cancelAtPeriodEnd: false, hasStripeCustomer: false, hasSubscription: false };
+
   return {
-    status: data?.status || 'unknown',
-    isPastDue: data?.status === 'past_due',
-    isSuspended: data?.status === 'suspended',
+    status: normalized.status,
+    isPastDue: normalized.status === 'past_due',
+    isSuspended: normalized.status === 'suspended',
     isLoading,
     error,
   };

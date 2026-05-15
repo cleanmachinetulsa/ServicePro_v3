@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface CustomerInfo {
   id: number;
@@ -28,12 +29,7 @@ export function useCustomerSidebarData(conversationId: number | null) {
     queryKey: ['/api/tags/customer-profile', conversationId],
     queryFn: async () => {
       if (!conversationId) return null;
-      const res = await fetch(`/api/tags/customer-profile/${conversationId}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        throw new Error('Failed to fetch customer profile');
-      }
+      const res = await apiRequest('GET', `/api/tags/customer-profile/${conversationId}`);
       return res.json();
     },
     enabled: !!conversationId,

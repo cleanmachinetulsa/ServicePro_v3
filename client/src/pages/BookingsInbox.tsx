@@ -111,8 +111,7 @@ export default function BookingsInbox() {
       params.set("page", String(filters.page));
       params.set("limit", String(filters.limit));
       
-      const res = await fetch(`/api/admin/bookings/inbox?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to fetch bookings inbox");
+      const res = await apiRequest("GET", `/api/admin/bookings/inbox?${params.toString()}`);
       return res.json();
     },
   });
@@ -120,8 +119,7 @@ export default function BookingsInbox() {
   const { data: conversationDetail, isLoading: isLoadingDetail } = useQuery<ConversationDetail>({
     queryKey: ["/api/admin/bookings/inbox", selectedConversationId, "messages"],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/bookings/inbox/${selectedConversationId}/messages`);
-      if (!res.ok) throw new Error("Failed to fetch conversation");
+      const res = await apiRequest("GET", `/api/admin/bookings/inbox/${selectedConversationId}/messages`);
       return res.json();
     },
     enabled: !!selectedConversationId,
@@ -153,8 +151,7 @@ export default function BookingsInbox() {
     if (!selectedConversationId) return;
     
     try {
-      const res = await fetch(`/api/admin/bookings/inbox/${selectedConversationId}/debug-bundle`);
-      if (!res.ok) throw new Error("Failed to fetch debug bundle");
+      const res = await apiRequest("GET", `/api/admin/bookings/inbox/${selectedConversationId}/debug-bundle`);
       const bundle = await res.json();
       await navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
       toast({ title: "Debug bundle copied to clipboard" });

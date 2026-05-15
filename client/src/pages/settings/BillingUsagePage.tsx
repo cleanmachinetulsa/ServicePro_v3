@@ -189,12 +189,7 @@ export default function BillingUsagePage() {
   const handleManageBilling = async () => {
     setIsRedirecting(true);
     try {
-      const res = await fetch('/api/tenant/billing/portal-session', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
+      const res = await apiRequest('POST', '/api/tenant/billing/portal-session');
       const data = await res.json();
       
       if (data.success && data.portalUrl) {

@@ -89,8 +89,7 @@ export default function SubscriptionManager() {
   }>({
     queryKey: ['/api/subscriptions'],
     queryFn: async () => {
-      const response = await fetch('/api/subscriptions');
-      if (!response.ok) throw new Error('Failed to fetch subscriptions');
+      const response = await apiRequest('GET', '/api/subscriptions');
       return response.json();
     },
   });

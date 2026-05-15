@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { Save, Pencil, DollarSign } from "lucide-react";
 
 interface ServiceInfo {
@@ -32,10 +33,10 @@ export default function ServicesManagement() {
   const fetchServices = async () => {
     try {
       const [servicesRes, addonsRes] = await Promise.all([
-        fetch('/api/services'),
-        fetch('/api/addon-services')
+        apiRequest('GET', '/api/services'),
+        apiRequest('GET', '/api/addon-services'),
       ]);
-      
+
       const servicesData = await servicesRes.json();
       const addonsData = await addonsRes.json();
       
@@ -79,15 +80,12 @@ export default function ServicesManagement() {
 
     try {
       const endpoint = selectedService.isAddon ? '/api/addon-services/update' : '/api/services/update';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: selectedService.name,
-          priceRange: selectedService.priceRange,
-          overview: selectedService.overview,
-          detailedDescription: selectedService.detailedDescription
-        })
+      // Server route is PUT; previously this was POST and silently failed.
+      const response = await apiRequest('PUT', endpoint, {
+        name: selectedService.name,
+        priceRange: selectedService.priceRange,
+        overview: selectedService.overview,
+        detailedDescription: selectedService.detailedDescription,
       });
 
       if (response.ok) {
@@ -113,20 +111,15 @@ export default function ServicesManagement() {
     formData.append('image', file);
     
     try {
-      const response = await fetch('/api/upload-service-image', {
-        method: 'POST',
-        body: formData
+      const response = await apiRequest('POST', '/api/upload-service-image', formData, {
+        headers: {}, // let browser set multipart boundary
       });
       const data = await response.json();
-      
+
       if (data.success) {
-        await fetch('/api/save-service-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            serviceName: service.name,
-            imageUrl: data.imageUrl
-          })
+        await apiRequest('POST', '/api/save-service-image', {
+          serviceName: service.name,
+          imageUrl: data.imageUrl,
         });
         
         setServices(services.map(s => 

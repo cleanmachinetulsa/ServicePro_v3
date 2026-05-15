@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -64,10 +65,7 @@ const CustomerSearch = () => {
   const allCustomersQuery = useQuery({
     queryKey: ['/api/customers'],
     queryFn: async () => {
-      const response = await fetch('/api/customers?limit=50');
-      if (!response.ok) {
-        throw new Error('Failed to fetch customers');
-      }
+      const response = await apiRequest('GET', '/api/customers?limit=50');
       const data = await response.json();
       return data.customers as CustomerRecord[];
     },
@@ -81,10 +79,7 @@ const CustomerSearch = () => {
   const searchCustomersQuery = useQuery({
     queryKey: ['/api/customers/search', debouncedSearchQuery, searchField],
     queryFn: async () => {
-      const response = await fetch(`/api/customers/search?query=${encodeURIComponent(debouncedSearchQuery)}&field=${searchField}`);
-      if (!response.ok) {
-        throw new Error('Failed to search customers');
-      }
+      const response = await apiRequest('GET', `/api/customers/search?query=${encodeURIComponent(debouncedSearchQuery)}&field=${searchField}`);
       const data = await response.json();
       return data.results as CustomerRecord[];
     },
@@ -98,10 +93,7 @@ const CustomerSearch = () => {
       if (!selectedCustomer?.phone) {
         throw new Error('No customer selected');
       }
-      const response = await fetch(`/api/customers/${encodeURIComponent(selectedCustomer.phone)}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch customer details');
-      }
+      const response = await apiRequest('GET', `/api/customers/${encodeURIComponent(selectedCustomer.phone)}`);
       const data = await response.json();
       return {
         customer: data.customer as CustomerRecord,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,12 +101,7 @@ export function CustomerManagement() {
   // Update customer mutation
   const updateCustomer = useMutation({
     mutationFn: async (customer: Customer) => {
-      const response = await fetch(`/api/customers/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customer)
-      });
-      if (!response.ok) throw new Error('Failed to update customer');
+      const response = await apiRequest('POST', '/api/customers/update', customer);
       return response.json();
     },
     onSuccess: () => {
@@ -130,7 +125,7 @@ export function CustomerManagement() {
   // Fetch detailed customer info when selected
   const fetchCustomerDetails = async (phone: string) => {
     try {
-      const response = await fetch(`/api/enhanced/customers/${encodeURIComponent(phone)}`);
+      const response = await apiRequest('GET', `/api/enhanced/customers/${encodeURIComponent(phone)}`);
       const data = await response.json();
       if (data.success && data.customer) {
         setSelectedCustomer(data.customer);

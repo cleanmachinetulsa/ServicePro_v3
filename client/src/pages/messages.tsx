@@ -79,10 +79,7 @@ function MessagesPageContent() {
       if (conversationFilter !== null) {
         params.append('phoneLineId', conversationFilter.toString());
       }
-      const response = await fetch(`/api/conversations?${params.toString()}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch conversations');
+      const response = await apiRequest('GET', `/api/conversations?${params.toString()}`);
       return response.json();
     },
     refetchInterval: 10000,

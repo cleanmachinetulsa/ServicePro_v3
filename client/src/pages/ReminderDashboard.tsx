@@ -30,8 +30,7 @@ export default function ReminderDashboard() {
     queryKey: ['/api/reminders/jobs', statusFilter],
     queryFn: async () => {
       const query = statusFilter === 'all' ? '' : `?status=${statusFilter}`;
-      const response = await fetch(`/api/reminders/jobs${query}`);
-      if (!response.ok) throw new Error('Failed to fetch jobs');
+      const response = await apiRequest('GET', `/api/reminders/jobs${query}`);
       return response.json();
     },
     refetchInterval: 30000, // Auto-refresh every 30s
