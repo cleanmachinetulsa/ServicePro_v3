@@ -3305,42 +3305,34 @@ Follow up with this lead to set up their 14-day trial!
         where: req.tenantDb!.withTenantFilter(loyaltyPoints, eq(loyaltyPoints.customerId, customerData.id)),
       });
       
-      // Build customer object
+      // Build customer object — intentionally minimal to limit PII exposure on this public endpoint.
+      // Only fields needed for booking autofill are included; no financial, loyalty, or contact data.
       const customer = {
-        id: customerData.id,
         name: customerData.name,
-        phone: customerData.phone,
-        email: customerData.email,
         address: customerData.address,
         isReturning: customerData.isReturningCustomer || false,
-        loyaltyPoints: loyaltyPointsRecord?.points || 0,
-        loyaltyTier,
-        lifetimeValue,
       };
       
-      // Fetch recent appointment with service relation
-      // Use ONLY "with", NO "select"
+      // Fetch recent appointment for vehicle autofill only
       const recentAppt = await req.tenantDb!.query.appointments.findFirst({
         where: req.tenantDb!.withTenantFilter(appointments, eq(appointments.customerId, customerData.id)),
         orderBy: (appointments, { desc }) => [desc(appointments.scheduledTime)],
         with: {
-          service: true, // Drizzle will auto-join service table
+          service: true,
         },
       });
       
+      // Only expose vehicle details needed for prefill; no prices or internal IDs
       const recentAppointment = recentAppt ? {
-        id: recentAppt.id,
         vehicleYear: recentAppt.vehicleYear,
         vehicleMake: recentAppt.vehicleMake,
         vehicleModel: recentAppt.vehicleModel,
         vehicleColor: recentAppt.vehicleColor,
-        address: recentAppt.address,
-        scheduledTime: recentAppt.scheduledTime,
         serviceId: recentAppt.serviceId,
-        service: recentAppt.service, // Full service object from relation
+        service: recentAppt.service ? { id: recentAppt.service.id, name: (recentAppt.service as any).name } : null,
       } : null;
       
-      // Fetch past completed appointments with service relation
+      // Fetch past completed appointments for vehicle prefill only
       const pastApptsRaw = await req.tenantDb!.query.appointments.findMany({
         where: req.tenantDb!.withTenantFilter(appointments, and(
           eq(appointments.customerId, customerData.id),
@@ -3349,25 +3341,22 @@ Follow up with this lead to set up their 14-day trial!
         orderBy: (appointments, { desc }) => [desc(appointments.scheduledTime)],
         limit: 5,
         with: {
-          service: true, // Auto-join service table
+          service: true,
         },
       });
       
+      // Strip financial data and internal IDs from past appointments
       const pastAppointments = pastApptsRaw.map(appt => ({
-        id: appt.id,
         vehicleYear: appt.vehicleYear,
         vehicleMake: appt.vehicleMake,
         vehicleModel: appt.vehicleModel,
         vehicleColor: appt.vehicleColor,
-        address: appt.address,
-        scheduledTime: appt.scheduledTime,
         serviceId: appt.serviceId,
-        finalPrice: appt.finalPrice,
         status: appt.status,
-        service: appt.service, // Full service object
+        service: appt.service ? { id: (appt.service as any).id, name: (appt.service as any).name } : null,
       }));
       
-      // Fetch active recurring services
+      // Fetch active recurring services for autofill only — no internal IDs exposed
       const recurringServicesRaw = await req.tenantDb!.query.recurringServices?.findMany({
         where: req.tenantDb!.withTenantFilter(recurringServices, and(
           eq(recurringServices.customerId, customerData.id),
@@ -3384,10 +3373,9 @@ Follow up with this lead to set up their 14-day trial!
       };
       
       const recurringServicesData = recurringServicesRaw.map(rs => ({
-        id: rs.id,
         serviceId: rs.serviceId,
-        frequency: frequencyMap[rs.frequency] || rs.frequency, // Map to frontend format
-        nextServiceDate: rs.nextScheduledDate, // Correct field name
+        frequency: frequencyMap[rs.frequency] || rs.frequency,
+        nextServiceDate: rs.nextScheduledDate,
       }));
       
       res.json({

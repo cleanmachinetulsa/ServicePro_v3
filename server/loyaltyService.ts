@@ -248,7 +248,7 @@ export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string)
       const [found] = await tenantDb
         .select()
         .from(customers)
-        .where(eq(customers.phone, phoneFormat));
+        .where(tenantDb.withTenantFilter(customers, eq(customers.phone, phoneFormat)));
       
       if (found) {
         customer = found;
@@ -263,7 +263,7 @@ export async function getLoyaltyPointsByPhone(tenantDb: TenantDb, phone: string)
       const [points] = await tenantDb
         .select()
         .from(loyaltyPoints)
-        .where(eq(loyaltyPoints.customerId, customer.id));
+        .where(tenantDb.withTenantFilter(loyaltyPoints, eq(loyaltyPoints.customerId, customer.id)));
 
       if (!points) {
         // If no loyalty points record, check if customer has opted in
@@ -387,7 +387,7 @@ export async function getLoyaltyPointsByEmail(tenantDb: TenantDb, email: string)
     const [customer] = await tenantDb
       .select()
       .from(customers)
-      .where(eq(customers.email, email));
+      .where(tenantDb.withTenantFilter(customers, eq(customers.email, email)));
 
     if (customer) {
       console.log(`Customer found in PostgreSQL by email: ${customer.name}`);

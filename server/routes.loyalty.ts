@@ -117,6 +117,15 @@ export function registerLoyaltyRoutes(app: Express) {
     }
   });
 
+  // Strips PII fields that should never appear in a public loyalty portal response.
+  // The customer already knows their own name/points; we must not expose address,
+  // email, vehicle details, or any internal database ID to an unauthenticated caller.
+  function scrubLoyaltyCustomerPii(result: any) {
+    if (!result || !result.customer) return result;
+    const { address, email, vehicleInfo, lifetimeValue, ...safeCustomer } = result.customer;
+    return { ...result, customer: safeCustomer };
+  }
+
   // Get loyalty points by phone number (PUBLIC - Customer Rewards Portal V2)
   app.get('/api/loyalty/points/phone/:phone', async (req: Request, res: Response) => {
     try {
@@ -136,7 +145,7 @@ export function registerLoyaltyRoutes(app: Express) {
       
       res.json({ 
         success: true, 
-        data: result
+        data: scrubLoyaltyCustomerPii(result)
       });
     } catch (error) {
       console.error('Error getting loyalty points by phone:', error);
@@ -167,7 +176,7 @@ export function registerLoyaltyRoutes(app: Express) {
       
       res.json({ 
         success: true, 
-        data: result
+        data: scrubLoyaltyCustomerPii(result)
       });
     } catch (error) {
       console.error('Error getting loyalty points by email:', error);
