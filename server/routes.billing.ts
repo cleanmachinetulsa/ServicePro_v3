@@ -31,8 +31,11 @@ import {
 } from './services/stripeBillingService';
 import { getTenantDunningStatus } from './services/nightlyDunningService';
 import { requireRole } from './rbacMiddleware';
+import { requireAuth } from './authMiddleware';
 
 const router = Router();
+
+router.use(requireAuth);
 
 /**
  * Request schema for checkout session creation

@@ -10,8 +10,11 @@ import { z } from 'zod';
 import { tenantDomainService } from './services/tenantDomainService';
 import { createTenantDomainSchema, updateTenantDomainSchema } from '@shared/schema';
 import { log } from './vite';
+import { requireAuth } from './authMiddleware';
 
 const router = Router();
+
+router.use(requireAuth);
 
 router.get('/', async (req, res) => {
   try {

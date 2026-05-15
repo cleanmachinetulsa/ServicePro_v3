@@ -9,8 +9,11 @@ import { tenantConfig } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getIndustryPack } from '@shared/industryPacks';
+import { requireAuth } from './authMiddleware';
 
 const router = Router();
+
+router.use(requireAuth);
 
 const publicSiteSettingsSchema = z.object({
   heroTitle: z.string().optional().nullable(),
