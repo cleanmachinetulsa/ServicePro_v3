@@ -18,10 +18,11 @@ import {
   type TestimonialsLayoutKey,
 } from '@shared/publicSiteThemes';
 import { requireAuth } from './authMiddleware';
+import { requireRole } from './rbacMiddleware';
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('manager'));
 
 const themeKeys: PublicSiteThemeKey[] = ["clean-glass", "bold-gradient", "minimal-light", "dark-professional", "warm-friendly"];
 const heroLayoutKeys: HeroLayoutKey[] = ["centered", "image-left", "image-right", "full-width-bg"];

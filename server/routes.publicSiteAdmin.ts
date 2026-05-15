@@ -10,10 +10,11 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getIndustryPack } from '@shared/industryPacks';
 import { requireAuth } from './authMiddleware';
+import { requireRole } from './rbacMiddleware';
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('manager'));
 
 const publicSiteSettingsSchema = z.object({
   heroTitle: z.string().optional().nullable(),

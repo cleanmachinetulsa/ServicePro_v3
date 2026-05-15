@@ -16,10 +16,13 @@ import {
 } from '@shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
+import { requireRole } from './rbacMiddleware';
 import { getPortalActionsForIndustry, getPortalSettingsForIndustry } from '@shared/portalDefaults';
 import type { IndustryPackId } from '@shared/industryPacks';
 
 const router = Router();
+
+router.use(requireAuth, requireRole('manager'));
 
 // ============================================================
 // PORTAL SETTINGS
@@ -29,7 +32,7 @@ const router = Router();
  * GET /api/admin/portal/settings
  * Get portal settings for current tenant
  */
-router.get('/settings', requireAuth, async (req: Request, res: Response) => {
+router.get('/settings', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     
@@ -69,7 +72,7 @@ router.get('/settings', requireAuth, async (req: Request, res: Response) => {
  * PUT /api/admin/portal/settings
  * Create or update portal settings
  */
-router.put('/settings', requireAuth, async (req: Request, res: Response) => {
+router.put('/settings', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     
@@ -127,7 +130,7 @@ router.put('/settings', requireAuth, async (req: Request, res: Response) => {
  * GET /api/admin/portal/actions
  * Get all portal actions for current tenant
  */
-router.get('/actions', requireAuth, async (req: Request, res: Response) => {
+router.get('/actions', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     
@@ -167,7 +170,7 @@ router.get('/actions', requireAuth, async (req: Request, res: Response) => {
  * POST /api/admin/portal/actions
  * Create a new portal action
  */
-router.post('/actions', requireAuth, async (req: Request, res: Response) => {
+router.post('/actions', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     
@@ -204,7 +207,7 @@ router.post('/actions', requireAuth, async (req: Request, res: Response) => {
  * PUT /api/admin/portal/actions/:id
  * Update an existing portal action
  */
-router.put('/actions/:id', requireAuth, async (req: Request, res: Response) => {
+router.put('/actions/:id', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     const actionId = parseInt(req.params.id);
@@ -270,7 +273,7 @@ router.put('/actions/:id', requireAuth, async (req: Request, res: Response) => {
  * DELETE /api/admin/portal/actions/:id
  * Delete a portal action
  */
-router.delete('/actions/:id', requireAuth, async (req: Request, res: Response) => {
+router.delete('/actions/:id', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     const actionId = parseInt(req.params.id);
@@ -323,7 +326,7 @@ router.delete('/actions/:id', requireAuth, async (req: Request, res: Response) =
  * POST /api/admin/portal/actions/seed
  * Seed default actions from industry pack
  */
-router.post('/actions/seed', requireAuth, async (req: Request, res: Response) => {
+router.post('/actions/seed', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     
@@ -399,7 +402,7 @@ router.post('/actions/seed', requireAuth, async (req: Request, res: Response) =>
  * GET /api/admin/portal/install-logs
  * Get install prompt event logs
  */
-router.get('/install-logs', requireAuth, async (req: Request, res: Response) => {
+router.get('/install-logs', async (req: Request, res: Response) => {
   try {
     const tenantId = req.tenantId || 'root';
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
