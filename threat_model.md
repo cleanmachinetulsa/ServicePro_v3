@@ -27,9 +27,9 @@ Production scope for this scan is the deployed web app and its server-side integ
 
 ## Scan Anchors
 
-- **Primary production entry points:** `server/index.ts`, `server/routes.ts`, `server/routes.*.ts`, `server/routes/**/*.ts`
-- **Highest-risk code areas:** global auth/public gating in `server/routes.ts`; tenant resolution and fallback behavior in `server/tenantMiddleware.ts` and `server/authHelpers.ts`; auth/session middleware in `server/authMiddleware.ts` and `server/sessionMiddleware.ts`; public file/content routes like `server/routes.gallery.ts`; webhook verification in `server/twilioSignatureMiddleware.ts` and webhook route files; token-signing utilities such as `server/reminderActionTokens.ts`
-- **Public surfaces:** booking, reminders, loyalty lookups, gallery, public-site content, QR scan, webhooks, and customer self-service flows under `/api/public`, `/api/book*`, `/api/gallery`, `/api/loyalty/*`, `/api/qr/*`, `/api/webhooks/*`, `/api/voice*`, `/api/twilio*`, `/api/sms*`
+- **Primary production entry points:** `server/index.ts`, `server/routes.ts`, routers mounted directly from `server/index.ts`, `server/routes.*.ts`, `server/routes/**/*.ts`
+- **Highest-risk code areas:** routers mounted in `server/index.ts` before `registerRoutes(app)` because they bypass the later central `/api` auth gate; global auth/public gating in `server/routes.ts`; tenant resolution and fallback behavior in `server/tenantMiddleware.ts` and `server/authHelpers.ts`; auth/session middleware in `server/authMiddleware.ts` and `server/sessionMiddleware.ts`; public file/content routes like `server/routes.gallery.ts`; webhook verification in `server/twilioSignatureMiddleware.ts` and webhook route files; token-signing utilities such as `server/reminderActionTokens.ts` and QR signing in `server/routes.ts`
+- **Public surfaces:** booking, reminders, loyalty lookups, gallery, public-site content, QR scan, payer-approval links, webhooks, and customer self-service flows under `/api/public`, `/api/book*`, `/api/gallery`, `/api/loyalty/*`, `/api/qr/*`, `/api/payer-approval/*`, `/api/webhooks/*`, `/api/voice*`, `/api/twilio*`, `/api/sms*`
 - **Authenticated/admin surfaces:** dashboard, billing, campaign/admin tools, customer management, settings, imports, and root-admin usage routes
 - **Usually dev-only / lower-priority for production scans:** `server/tests/`, test fixtures, one-off migration helpers, mockup sandbox, and routes only mounted behind explicit non-production feature flags unless production reachability is shown
 
@@ -53,4 +53,4 @@ Several public endpoints trigger file uploads, remote fetches, AI workflows, or 
 
 ### Elevation of Privilege
 
-Because public and privileged routes are colocated and tenant context is injected centrally, broken route matching or missing `requireAuth` checks can turn owner/admin features into public ones. Every sensitive route must enforce both authentication and the correct tenant/role checks in the handler chain, not rely on naming conventions or frontend behavior.
+Because public and privileged routes are colocated and tenant context is injected centrally, broken route matching or missing `requireAuth` checks can turn owner/admin features into public ones. Routes mounted early in `server/index.ts` are especially risky because they do not inherit the later central `/api` gate. Every sensitive route must enforce both authentication and the correct tenant/role checks in the handler chain, not rely on naming conventions, mount order, or frontend behavior.
