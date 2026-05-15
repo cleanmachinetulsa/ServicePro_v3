@@ -431,7 +431,7 @@ export function buildVoicemailTwiml(
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   ${greetingTwiml}
-  <Record maxLength="120" playBeep="true" transcribe="true" action="${callbackBaseUrl}/twilio/voice/voicemail-complete" method="POST" recordingStatusCallback="${callbackBaseUrl}/twilio/voice/recording-status" recordingStatusCallbackMethod="POST" transcribeCallback="${callbackBaseUrl}/twilio/voice/voicemail-transcribed" finishOnKey="any"/>
+  <Record maxLength="120" playBeep="true" transcribe="true" action="${callbackBaseUrl}/twilio/voice/voicemail-complete" method="POST" recordingStatusCallback="${callbackBaseUrl}/twilio/voice/recording-status" recordingStatusCallbackMethod="POST" transcribeCallback="${callbackBaseUrl}/twilio/voice/voicemail-transcribed" finishOnKey="#"/>
   <Say voice="${voiceName}">We didn't receive your message. Goodbye.</Say>
   <Hangup/>
 </Response>`;
