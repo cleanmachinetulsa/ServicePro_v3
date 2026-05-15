@@ -9,6 +9,26 @@ import { useToast } from '@/hooks/use-toast';
 import { Lock, Fingerprint } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
+// Safely read ?next=... and only allow same-origin in-app paths.
+function getSafeNextPath(): string {
+  if (typeof window === 'undefined') return '/launch';
+  const raw = new URLSearchParams(window.location.search).get('next');
+  if (!raw) return '/launch';
+  try {
+    const decoded = decodeURIComponent(raw);
+    if (
+      decoded.startsWith('/') &&
+      !decoded.startsWith('//') &&
+      !decoded.startsWith('/login')
+    ) {
+      return decoded;
+    }
+  } catch {
+    // fall through
+  }
+  return '/launch';
+}
+
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -78,7 +98,7 @@ export default function LoginPage() {
         }
         
         setTimeout(() => {
-          setLocation('/launch');
+          setLocation(getSafeNextPath());
         }, 100);
       } else if (data.requires2FA) {
         // Password verified, now need 2FA code
@@ -145,7 +165,7 @@ export default function LoginPage() {
         }
         
         setTimeout(() => {
-          setLocation('/launch');
+          setLocation(getSafeNextPath());
         }, 100);
       } else {
         toast({ 
@@ -278,7 +298,7 @@ export default function LoginPage() {
         }
         
         setTimeout(() => {
-          setLocation('/launch');
+          setLocation(getSafeNextPath());
         }, 100);
       } else {
         toast({ 
