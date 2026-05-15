@@ -505,6 +505,11 @@ router.post('/api/payer-approval/:token/approve', async (req: Request, res: Resp
       return res.status(400).json({ error: 'Authorization link has expired' });
     }
     
+    // Require OTP verification before allowing approval
+    if (!authorization.otpVerified) {
+      return res.status(403).json({ error: 'OTP verification required before approving' });
+    }
+    
     // Update authorization status
     await req.tenantDb!
       .update(authorizations)
@@ -705,6 +710,11 @@ router.post('/api/payer-approval/:token/decline', async (req: Request, res: Resp
     // Check if already processed
     if (authorization.status !== 'pending') {
       return res.status(400).json({ error: `Authorization already ${authorization.status}` });
+    }
+    
+    // Require OTP verification before allowing decline
+    if (!authorization.otpVerified) {
+      return res.status(403).json({ error: 'OTP verification required before declining' });
     }
     
     // Update authorization status
