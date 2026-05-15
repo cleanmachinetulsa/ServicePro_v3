@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import axios from 'axios';
 import { getGoogleBusinessPhotos } from './googleIntegration';
 import * as GooglePhotosAlbum from 'google-photos-album-image-url-fetch';
+import { requireAuth } from './authMiddleware';
 
 const router = Router();
 
@@ -51,8 +52,12 @@ const upload = multer({
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const includeInactive = req.query.includeInactive === 'true';
-    
+    const requestedInactive = req.query.includeInactive === 'true';
+    // Only authenticated users may request inactive photos
+    const session = (req as any).session;
+    const isAuthenticated = !!(session?.userId);
+    const includeInactive = requestedInactive && isAuthenticated;
+
     let photos;
     if (includeInactive) {
       photos = await req.tenantDb!.select().from(galleryPhotos)
@@ -78,7 +83,7 @@ router.get('/', async (req: Request, res: Response) => {
  * POST /api/gallery
  * Upload multiple gallery photos
  */
-router.post('/', upload.array('photos', 20), async (req: Request, res: Response) => {
+router.post('/', requireAuth, upload.array('photos', 20), async (req: Request, res: Response) => {
   try {
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
       return res.status(400).json({ success: false, error: 'No files uploaded' });
@@ -133,7 +138,7 @@ router.post('/', upload.array('photos', 20), async (req: Request, res: Response)
  * PATCH /api/gallery/:id
  * Update photo details (title, description, isActive)
  */
-router.patch('/:id', async (req: Request, res: Response) => {
+router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const photoId = parseInt(req.params.id);
     const { title, description, isActive } = req.body;
@@ -163,7 +168,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
  * DELETE /api/gallery/:id
  * Delete a gallery photo
  */
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const photoId = parseInt(req.params.id);
     
@@ -204,7 +209,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
  * Update display order for multiple photos
  * Body: { photos: [{ id: number, displayOrder: number }] }
  */
-router.post('/reorder', async (req: Request, res: Response) => {
+router.post('/reorder', requireAuth, async (req: Request, res: Response) => {
   try {
     const { photos } = req.body;
     
@@ -234,7 +239,7 @@ router.post('/reorder', async (req: Request, res: Response) => {
  * POST /api/gallery/sync-google-photos
  * Fetch photos from Google Business Profile and populate gallery
  */
-router.post('/sync-google-photos', async (req: Request, res: Response) => {
+router.post('/sync-google-photos', requireAuth, async (req: Request, res: Response) => {
   try {
     const { googlePlaceId } = req.body;
     console.log('[GALLERY] Starting Google Business photos sync with Place ID:', googlePlaceId || 'using default');
@@ -333,7 +338,7 @@ router.post('/sync-google-photos', async (req: Request, res: Response) => {
  * shared album API access in April 2025. This may break if Google changes
  * their HTML structure. Use at your own risk.
  */
-router.post('/fetch-google-photos-album', async (req: Request, res: Response) => {
+router.post('/fetch-google-photos-album', requireAuth, async (req: Request, res: Response) => {
   try {
     const { albumUrl } = req.body;
     

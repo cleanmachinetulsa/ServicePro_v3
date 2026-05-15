@@ -2480,7 +2480,7 @@ export async function registerRoutes(app: Express) {
   app.get('/api/dashboard/today', getTodaysAppointments);
   app.get('/api/dashboard/appointment-counts', getMonthlyAppointmentCounts);
   app.get('/api/dashboard/messages', getRecentMessages);
-  app.put('/api/services/update', updateService);
+  app.put('/api/services/update', requireAuth, updateService);
 
   // Google reviews
   app.get('/api/google-reviews', async (req, res) => {
