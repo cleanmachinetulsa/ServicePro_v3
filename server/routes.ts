@@ -147,7 +147,19 @@ import customerPortalRoutes from './routes.customerPortal';
 import { blockDemoSMS, blockDemoEmail, blockDemoPayments, blockDemoVoice, blockDemoGoogleAPI, blockDemoFileUpload, isDemoSession, logDemoActivity } from './demoGuard';
 
 // QR Code Signing Utilities
-const QR_SECRET = process.env.QR_SECRET || 'your-secret-key-change-in-production';
+const QR_SECRET = (() => {
+  const secret = process.env.QR_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('QR_SECRET environment variable must be set in production. Refusing to start with an insecure fallback.');
+    }
+    console.warn('[SECURITY WARNING] QR_SECRET is not set. Using an insecure development fallback. Set QR_SECRET before deploying to production.');
+    return 'dev-only-insecure-qr-secret-do-not-use-in-production';
+  }
+  return secret;
+})();
+
+const QR_TOKEN_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000; // 1 year for physical/printed QR codes
 
 function generateQRCodeId(customerId: number): string {
   const timestamp = Date.now();
@@ -170,6 +182,12 @@ function verifyQRCodeId(qrCodeId: string): number | null {
     const timestamp = parseInt(timestampStr);
     
     if (isNaN(customerId) || isNaN(timestamp)) return null;
+
+    const age = Date.now() - timestamp;
+    if (age < 0 || age > QR_TOKEN_MAX_AGE_MS) {
+      console.warn(`QR code token expired or has future timestamp for customer ${customerId}`);
+      return null;
+    }
     
     const data = `${customerId}:${timestamp}`;
     const expectedSignature = crypto
