@@ -10,6 +10,7 @@
 import { Router } from 'express';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
+import { requireRole } from './rbacMiddleware';
 import {
   previewTargetList,
   createPortRecoveryCampaign,
@@ -46,7 +47,7 @@ const DEFAULT_SMS_TEMPLATE = `Hey this is Jody with Clean Machine Auto Detail. W
  * Returns canRun, totalTargets, sampleSms, and last run info
  * GET /api/admin/port-recovery/preview
  */
-router.get('/admin/preview', async (req, res) => {
+router.get('/admin/preview', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -137,7 +138,7 @@ router.get('/admin/preview', async (req, res) => {
  * Run the campaign with safety checks
  * POST /api/admin/port-recovery/run
  */
-router.post('/admin/run', async (req, res) => {
+router.post('/admin/run', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const userId = (req.session as any)?.userId;
@@ -231,7 +232,7 @@ router.post('/admin/run', async (req, res) => {
  * Get campaign configuration for editing
  * GET /api/admin/port-recovery/campaign
  */
-router.get('/admin/campaign', async (req, res) => {
+router.get('/admin/campaign', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const userId = (req.session as any)?.userId || 1;
@@ -256,7 +257,7 @@ router.get('/admin/campaign', async (req, res) => {
  * Update campaign configuration
  * PUT /api/admin/port-recovery/campaign
  */
-router.put('/admin/campaign', async (req, res) => {
+router.put('/admin/campaign', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const userId = (req.session as any)?.userId || 1;
@@ -323,7 +324,7 @@ router.put('/admin/campaign', async (req, res) => {
  * Get history of recent runs
  * GET /api/admin/port-recovery/history
  */
-router.get('/admin/history', async (req, res) => {
+router.get('/admin/history', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -372,7 +373,7 @@ function mapCampaignStatus(status: string): 'PENDING' | 'RUNNING' | 'COMPLETED' 
  * Preview target list without creating campaign
  * GET /api/port-recovery/preview
  */
-router.get('/preview', async (req, res) => {
+router.get('/preview', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -396,7 +397,7 @@ router.get('/preview', async (req, res) => {
  * Create a new port recovery campaign
  * POST /api/port-recovery/campaigns
  */
-router.post('/campaigns', async (req, res) => {
+router.post('/campaigns', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const userId = req.session?.userId;
@@ -429,7 +430,7 @@ router.post('/campaigns', async (req, res) => {
  * Get all campaigns for tenant
  * GET /api/port-recovery/campaigns
  */
-router.get('/campaigns', async (req, res) => {
+router.get('/campaigns', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -453,7 +454,7 @@ router.get('/campaigns', async (req, res) => {
  * Get a specific campaign
  * GET /api/port-recovery/campaigns/:id
  */
-router.get('/campaigns/:id', async (req, res) => {
+router.get('/campaigns/:id', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -489,7 +490,7 @@ router.get('/campaigns/:id', async (req, res) => {
  * Get campaign targets
  * GET /api/port-recovery/campaigns/:id/targets
  */
-router.get('/campaigns/:id/targets', async (req, res) => {
+router.get('/campaigns/:id/targets', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -526,7 +527,7 @@ router.get('/campaigns/:id/targets', async (req, res) => {
  * 
  * OKLAHOMA COMPLIANCE: Respects quiet hours (8pm-8am CST)
  */
-router.post('/campaigns/:id/run-batch', async (req, res) => {
+router.post('/campaigns/:id/run-batch', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -566,7 +567,7 @@ router.post('/campaigns/:id/run-batch', async (req, res) => {
  * 
  * OKLAHOMA COMPLIANCE: Respects quiet hours (8pm-8am CST)
  */
-router.post('/campaigns/:id/send-all', async (req, res) => {
+router.post('/campaigns/:id/send-all', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -637,7 +638,7 @@ router.post('/campaigns/:id/send-all', async (req, res) => {
  * POST /api/port-recovery/campaigns/:id/test-sms
  * Body (optional): { phone: "+1234567890" }
  */
-router.post('/campaigns/:id/test-sms', async (req, res) => {
+router.post('/campaigns/:id/test-sms', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -665,7 +666,7 @@ router.post('/campaigns/:id/test-sms', async (req, res) => {
  * 2. Populate missing emails from customer records
  * 3. Award points to matched customers who haven't received them yet
  */
-router.post('/campaigns/:id/backfill', async (req, res) => {
+router.post('/campaigns/:id/backfill', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -695,7 +696,7 @@ router.post('/campaigns/:id/backfill', async (req, res) => {
  * 
  * Body: { scheduledTime?: string } - ISO datetime string (defaults to 11am CST tomorrow)
  */
-router.post('/campaigns/:id/schedule-send', async (req, res) => {
+router.post('/campaigns/:id/schedule-send', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -804,7 +805,7 @@ router.post('/campaigns/:id/schedule-send', async (req, res) => {
  * Get scheduled send status for a campaign
  * GET /api/port-recovery/campaigns/:id/schedule-status
  */
-router.get('/campaigns/:id/schedule-status', async (req, res) => {
+router.get('/campaigns/:id/schedule-status', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const campaignId = parseInt(req.params.id);
     const scheduled = scheduledSends.get(campaignId);
@@ -839,7 +840,7 @@ router.get('/campaigns/:id/schedule-status', async (req, res) => {
  * Cancel a scheduled send
  * POST /api/port-recovery/campaigns/:id/cancel-schedule
  */
-router.post('/campaigns/:id/cancel-schedule', async (req, res) => {
+router.post('/campaigns/:id/cancel-schedule', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const campaignId = parseInt(req.params.id);
     const scheduled = scheduledSends.get(campaignId);
@@ -875,7 +876,7 @@ router.post('/campaigns/:id/cancel-schedule', async (req, res) => {
  * This pulls customers from Google Sheets Customer Database/Customer Information tabs
  * and adds any new ones to the campaign targets list.
  */
-router.post('/campaigns/:id/sync-customers', async (req, res) => {
+router.post('/campaigns/:id/sync-customers', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = req.session?.tenantId || 'default';
     const tenantDb = wrapTenantDb(db, tenantId);
@@ -975,7 +976,7 @@ router.post('/campaigns/:id/sync-customers', async (req, res) => {
  * Check quiet hours status
  * GET /api/port-recovery/quiet-hours-status
  */
-router.get('/quiet-hours-status', async (req, res) => {
+router.get('/quiet-hours-status', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const inQuietHours = isQuietHours();
     const nextAllowed = getNextAllowedSendTime();
@@ -1076,7 +1077,7 @@ router.get('/debug/sender-audit', async (req, res) => {
  * 
  * Returns all sent and failed records for the campaign
  */
-router.get('/campaigns/:id/report', async (req, res) => {
+router.get('/campaigns/:id/report', requireRole('manager', 'owner'), async (req, res) => {
   try {
     const tenantId = (req.session as any)?.tenantId || 'root';
     const tenantDb = wrapTenantDb(db, tenantId);

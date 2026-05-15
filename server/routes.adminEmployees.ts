@@ -2,14 +2,17 @@ import { Router, Request, Response } from 'express';
 import type { TenantDb } from './tenantDb';
 import { technicians, ptoRequests, shiftTrades, applicants, extensionPool, businessSettings } from '@shared/schema';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
+import { requireRole } from './rbacMiddleware';
 
 const router = Router();
 
 // Get employee overview statistics
-router.get('/api/admin/employees/overview', async (req: Request, res: Response) => {
+router.get('/api/admin/employees/overview', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     // Get total and active technicians
-    const allTechs = await req.tenantDb!.select().from(technicians);
+    const allTechs = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians)
+    );
     const totalTechnicians = allTechs.length;
     const activeTechnicians = allTechs.filter(t => t.employmentStatus === 'active').length;
     
@@ -67,11 +70,11 @@ router.get('/api/admin/employees/overview', async (req: Request, res: Response) 
 });
 
 // Get employee directory (for sidebar)
-router.get('/api/admin/employees/directory', async (req: Request, res: Response) => {
+router.get('/api/admin/employees/directory', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     const { search, status } = req.query;
 
-    let query = req.tenantDb!.select({
+    let techs = await req.tenantDb!.select({
       id: technicians.id,
       preferredName: technicians.preferredName,
       fullName: technicians.fullName,
@@ -80,10 +83,9 @@ router.get('/api/admin/employees/directory', async (req: Request, res: Response)
       role: technicians.role,
       photoThumb96: technicians.photoThumb96,
       profileReviewed: technicians.profileReviewed,
-    }).from(technicians);
-
-    // Apply filters
-    let techs = await query;
+    }).from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians)
+    );
 
     // Filter by search term
     if (search && typeof search === 'string') {
@@ -117,12 +119,14 @@ router.get('/api/admin/employees/directory', async (req: Request, res: Response)
 });
 
 // Get full employee profiles (for review queue)
-router.get('/api/admin/employees/profiles', async (req: Request, res: Response) => {
+router.get('/api/admin/employees/profiles', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     const { status } = req.query;
 
     // Get all technicians with full profile data
-    let techs = await req.tenantDb!.select().from(technicians);
+    let techs = await req.tenantDb!.select().from(technicians).where(
+      req.tenantDb!.withTenantFilter(technicians)
+    );
 
     // Filter by review status
     if (status === 'pending') {
@@ -148,7 +152,7 @@ router.get('/api/admin/employees/profiles', async (req: Request, res: Response) 
 });
 
 // Approve technician profile
-router.post('/api/admin/employees/:id/approve', async (req: Request, res: Response) => {
+router.post('/api/admin/employees/:id/approve', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
@@ -204,7 +208,7 @@ router.post('/api/admin/employees/:id/approve', async (req: Request, res: Respon
 });
 
 // Request changes to technician profile
-router.post('/api/admin/employees/:id/request-changes', async (req: Request, res: Response) => {
+router.post('/api/admin/employees/:id/request-changes', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
@@ -423,7 +427,7 @@ async function createGoogleWorkspaceAlias(emailAlias: string, targetEmail: strin
  * - Save generated email and extension anyway
  * - Admin can manually create alias in Google Workspace and retry
  */
-router.post('/api/admin/employees/:id/provision', async (req: Request, res: Response) => {
+router.post('/api/admin/employees/:id/provision', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { targetEmail } = req.body; // Optional: specify which Google Workspace account to add alias to
@@ -591,7 +595,7 @@ router.post('/api/admin/employees/:id/provision', async (req: Request, res: Resp
  * POST /api/admin/employees/:id/retry-provision
  * Only attempts to create Google Workspace alias (email/extension already assigned)
  */
-router.post('/api/admin/employees/:id/retry-provision', async (req: Request, res: Response) => {
+router.post('/api/admin/employees/:id/retry-provision', requireRole('manager', 'owner'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { targetEmail } = req.body;
