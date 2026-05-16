@@ -189,6 +189,24 @@ export default function ThreadView({
     return () => window.removeEventListener('composer:insert', handler as EventListener);
   }, [conversationId]);
 
+  // Audit T3 Task #21: 'r' keyboard shortcut in messages.tsx dispatches
+  // `composer:focus` to ask the active ThreadView to focus its composer
+  // textarea. Scope by conversationId so background threads don't steal focus.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { conversationId?: number } | undefined;
+      if (detail?.conversationId != null && detail.conversationId !== conversationId) return;
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+      });
+    };
+    window.addEventListener('composer:focus', handler as EventListener);
+    return () => window.removeEventListener('composer:focus', handler as EventListener);
+  }, [conversationId]);
+
   // Audit T2: re-pin to bottom after async images finish loading so the
   // composer rail stays anchored even when MMS images arrive late.
   useEffect(() => {

@@ -317,8 +317,13 @@ export function NightOpsConversationList({
                               : "opacity-0 group-hover:opacity-100"
                           )}
                           onClick={(e) => {
+                            // Stop propagation so the row's click handler
+                            // (which opens the conversation) does not fire,
+                            // but DO NOT toggle here — the Checkbox below is
+                            // the single source of truth. Toggling both
+                            // here and in onCheckedChange caused the
+                            // selection to cancel itself out.
                             e.stopPropagation();
-                            onToggleSelected(conv.id);
                           }}
                           data-testid={`select-conv-${conv.id}`}
                         >

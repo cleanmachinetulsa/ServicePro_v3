@@ -32,7 +32,9 @@ const labelFor = (c: ChannelKey): string => CHANNEL_LABEL[c] ?? c;
 
 type BulkAction = 'mark-read' | 'snooze' | 'resolve' | 'archive' | 'assign';
 interface BulkActionPayload {
-  snoozeUntil?: string;
+  // Matches the frontend payload shape (messages.tsx posts `snoozedUntil`)
+  // and the column name on conversations.snoozedUntil.
+  snoozedUntil?: string;
   agentUsername?: string;
 }
 

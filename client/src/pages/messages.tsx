@@ -295,14 +295,24 @@ function MessagesPageContent() {
   // Map of representative id -> [siblingConversationIds] so bulk actions on a
   // thread row can fan out to every sibling conversation (e.g. archive both
   // SMS and web rows for the same customer).
+  // Build sibling map from the UNFILTERED conversations list so that bulk
+  // actions on a thread row still fan out to channel siblings hidden by the
+  // current filter (e.g. webchat off in "All"). Otherwise archiving from the
+  // SMS view would orphan the customer's web/email conversations.
   const siblingMap = useMemo(() => {
+    const groups = new Map<string, number[]>();
+    for (const c of conversations) {
+      const key = normalizePhone(c.customerPhone) || `id:${c.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(c.id);
+    }
     const m = new Map<number, number[]>();
-    for (const row of sortedConversations) {
-      const sibs = (row as Conversation & { siblingConversationIds?: number[] }).siblingConversationIds;
-      m.set(row.id, sibs && sibs.length > 0 ? sibs : [row.id]);
+    for (const c of conversations) {
+      const key = normalizePhone(c.customerPhone) || `id:${c.id}`;
+      m.set(c.id, groups.get(key) || [c.id]);
     }
     return m;
-  }, [sortedConversations]);
+  }, [conversations]);
 
   const expandedSelectedIds = useMemo(() => {
     const out = new Set<number>();
