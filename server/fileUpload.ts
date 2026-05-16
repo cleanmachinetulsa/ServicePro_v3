@@ -199,18 +199,37 @@ export function registerFileUploadRoutes(app: Express) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      // Audit T1 W-8: per-session anonymous upload quota.
-      // Only enforced for *anonymous* / pre-identity uploads — once a customer
-      // has supplied phone/email we trust them and let identity-bound abuse
-      // checks (e.g. blocked customers) take over. This means the quota
-      // protects the public chat widget specifically, not authenticated flows.
-      const hasIdentity = Boolean(
-        (req.body?.customerPhone && String(req.body.customerPhone).trim()) ||
-        (req.body?.customerEmail && String(req.body.customerEmail).trim())
-      );
+      // Audit T1 W-8 (round-7 hardening): per-session anonymous upload quota.
+      // The quota is bypassed ONLY when we can match the supplied phone/email
+      // against an existing customer row in the tenant DB. Untrusted, free-form
+      // identity strings no longer skip the cap — an attacker cannot type a
+      // fake phone number to bypass the 5-photo / 25-MB anonymous limit.
+      let identityVerified = false;
       try {
-        if (hasIdentity) {
-          // Skip the anonymous quota — identified caller.
+        const phone = String(req.body?.customerPhone || '').trim();
+        const email = String(req.body?.customerEmail || '').trim();
+        const tenantDb = (req as any).tenantDb;
+        const tenantId = tenantDb?.tenantId;
+        if (tenantDb && tenantId && (phone || email)) {
+          const { resolveCustomerIdentity } = await import('./services/customerIdentityService');
+          const resolved = await resolveCustomerIdentity(tenantDb, {
+            tenantId,
+            phone: phone || undefined,
+            email: email || undefined,
+            fullName: '__upload_quota_probe__', // present so call doesn't throw on missing name
+          } as any).catch(() => null);
+          // Only trust the caller if a customer ALREADY existed in this
+          // tenant before the upload (i.e. we did not just auto-create one).
+          if (resolved && resolved.created === false && resolved.customer?.id) {
+            identityVerified = true;
+          }
+        }
+      } catch (err) {
+        console.warn('[UPLOAD QUOTA] Identity probe failed (treating as anonymous):', err);
+      }
+      try {
+        if (identityVerified) {
+          // Verified existing customer — skip the anonymous-visitor quota.
         } else {
         const { checkAndRecordUpload, getAnonymousSessionKey, QUOTA_LIMITS } = await import('./services/uploadQuotaService');
         const sessionKey = getAnonymousSessionKey(req as any);

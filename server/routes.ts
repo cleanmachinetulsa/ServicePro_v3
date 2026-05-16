@@ -1962,17 +1962,21 @@ export async function registerRoutes(app: Express) {
       const now = Date.now();
 
       // SECURITY: Generate a unique session-based identifier for web users
-      // Audit T1 W-1 (round-6 hardening): server-authoritative abuse keys.
-      // The client-supplied `sessionId` (localStorage) is convenient for the
-      // widget UX but cannot be trusted for abuse defense — an attacker can
-      // rotate it freely to evade limits. We therefore key rate-limit and
-      // captcha state on the *server-issued* express-session ID combined with
-      // the client IP and tenant. The client-supplied value is still passed
-      // back to the chat thread for grouping, but never participates in the
-      // trust boundary.
+      // Audit T1 W-1 (round-7 hardening): server-authoritative abuse keys
+      // that are NOT IP-rotatable.
+      //
+      // Primary trust key = (server-issued cookie session id + tenant).
+      // The express-session id is HttpOnly cookie-bound and only changes
+      // when the *server* issues a new cookie, so an attacker behind a
+      // proxy pool cannot get a fresh bucket by rotating IPs.
+      //
+      // Secondary IP+tenant bucket exists as defense-in-depth so a single
+      // proxy/IP cannot torch the AI budget across many rotated cookies
+      // either. Both buckets must allow the request.
       const tenantId = req.tenantDb?.tenantId || 'unknown';
-      const cookieSession: string = (req as any).session?.id || `noSess-${clientIp}`;
-      const trustedKey = `${clientIp}::${cookieSession}::${tenantId}`;
+      const cookieSession: string = (req as any).session?.id || `noSess-${clientIp}-${Math.random().toString(36).slice(2, 10)}`;
+      const trustedKey = `${cookieSession}::${tenantId}`;
+      const ipKey = `ip::${clientIp}::${tenantId}`;
       const rateLimitKey = trustedKey;
       // For client-side display / conversation grouping we still record any
       // client-supplied id, but it is intentionally NOT in the trust key.
@@ -1993,20 +1997,29 @@ export async function registerRoutes(app: Express) {
         }
       } catch { /* fall through with default */ }
 
-      if (!webChatAttempts.has(rateLimitKey)) webChatAttempts.set(rateLimitKey, []);
-      const attempts = webChatAttempts.get(rateLimitKey)!;
-      const recentAttempts = attempts.filter((timestamp) => now - timestamp < WEB_CHAT_WINDOW_MS);
-
-      if (recentAttempts.length >= perTenantLimit) {
-        console.warn(`[WEB CHAT] Rate limit exceeded for ${rateLimitKey}`);
+      // Defense-in-depth: an IP bucket sized at 4x the per-session cap so a
+      // single proxy can serve a handful of legitimate users behind NAT
+      // without starving them, but cannot churn cookies to drain the budget.
+      const ipBucketLimit = perTenantLimit * 4;
+      const checkBucket = (key: string, limit: number): { ok: boolean; count: number } => {
+        if (!webChatAttempts.has(key)) webChatAttempts.set(key, []);
+        const attempts = webChatAttempts.get(key)!;
+        const recent = attempts.filter((t) => now - t < WEB_CHAT_WINDOW_MS);
+        webChatAttempts.set(key, recent);
+        return { ok: recent.length < limit, count: recent.length };
+      };
+      const sessionBucket = checkBucket(rateLimitKey, perTenantLimit);
+      const ipBucket = checkBucket(ipKey, ipBucketLimit);
+      if (!sessionBucket.ok || !ipBucket.ok) {
+        console.warn(`[WEB CHAT] Rate limit exceeded — session=${sessionBucket.count}/${perTenantLimit} ip=${ipBucket.count}/${ipBucketLimit} key=${rateLimitKey}`);
         return res.status(429).json({
           success: false,
           error: 'Too many messages. Please slow down.',
         });
       }
-
-      recentAttempts.push(now);
-      webChatAttempts.set(rateLimitKey, recentAttempts);
+      // Record the request against both buckets.
+      webChatAttempts.get(rateLimitKey)!.push(now);
+      webChatAttempts.get(ipKey)!.push(now);
 
       const { Body, captchaToken } = req.body;
       const message = Body || '';
