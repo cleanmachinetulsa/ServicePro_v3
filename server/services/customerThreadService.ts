@@ -201,9 +201,7 @@ export async function resolveAutomationState(
       if (thread) {
         return {
           needsHumanAttention: thread.needsHumanAttention === true,
-          automationPausedUntil: thread.automationPausedUntil
-            ? new Date(thread.automationPausedUntil as any)
-            : null,
+          automationPausedUntil: toDateOrNull(thread.automationPausedUntil),
           controlMode: thread.controlMode || 'auto',
           source: 'thread',
         };
@@ -217,12 +215,15 @@ export async function resolveAutomationState(
   }
   return {
     needsHumanAttention: conversation.needsHumanAttention === true,
-    automationPausedUntil: conversation.automationPausedUntil
-      ? new Date(conversation.automationPausedUntil as any)
-      : null,
+    automationPausedUntil: toDateOrNull(conversation.automationPausedUntil),
     controlMode: conversation.controlMode || 'auto',
     source: 'conversation',
   };
+}
+
+function toDateOrNull(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  return value instanceof Date ? value : new Date(value);
 }
 
 /**

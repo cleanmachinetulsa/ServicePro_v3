@@ -5,7 +5,7 @@ import { generateAIResponse } from '../openai';
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
 import { conversations, messages as messagesTable } from '@shared/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, and } from 'drizzle-orm';
 import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
 import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
 import { isDuplicateInboundSms, recordProcessedInboundSms } from '../services/smsInboundDedup';
@@ -44,8 +44,17 @@ export const twilioTestSmsRouter = Router();
 const MessagingResponse = twilio.twiml.MessagingResponse;
 
 async function getOrCreateTestConversation(tenantDb: any, phone: string) {
+  // Audit T1 (Task #17): inbound SMS must select the SMS conversation row,
+  // not a sibling web/FB row that may share the same phone. Cross-channel
+  // state is unified at the THREAD level (customer_threads), not by row.
   let conversation = await tenantDb.query.conversations.findFirst({
-    where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, phone)),
+    where: tenantDb.withTenantFilter(
+      conversations,
+      and(
+        eq(conversations.customerPhone, phone),
+        eq(conversations.platform, 'sms'),
+      ),
+    ),
   });
 
   // Audit T1 (Task #17): inbound SMS must resolve a customer and attach the
@@ -343,7 +352,13 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // Prefer the thread-level state so a pause set by a sibling channel
     // (e.g. staff escalated in web chat) also pauses SMS for this customer.
     const { resolveAutomationState } = await import('../services/customerThreadService');
-    const automationState = await resolveAutomationState(tenantDb, conversation as any);
+    const automationState = await resolveAutomationState(tenantDb, {
+      id: conversation.id,
+      threadId: conversation.threadId ?? null,
+      needsHumanAttention: conversation.needsHumanAttention ?? null,
+      automationPausedUntil: conversation.automationPausedUntil ?? null,
+      controlMode: conversation.controlMode ?? null,
+    });
     const now = new Date();
     const automationPaused = automationState.automationPausedUntil
       ? automationState.automationPausedUntil > now

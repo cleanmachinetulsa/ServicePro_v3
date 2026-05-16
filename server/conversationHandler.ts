@@ -2,8 +2,7 @@ import { generateAIResponse } from './openai';
 import { getOrCreateConversation, addMessage } from './conversationService';
 import type { TenantDb } from './tenantDb';
 import { conversations, messages as messagesTable, customers } from '@shared/schema';
-import { eq } from 'drizzle-orm';
-import { asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { getCampaignContextForCustomer, getCustomerIdFromPhone, getCustomerIdFromEmail } from './services/campaignContextService';
 
 /**
@@ -102,7 +101,9 @@ async function processWebChatConversation(
     const conv = await tenantDb
       .select()
       .from(conversations)
-      .where(tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)))
+      .where(tenantDb.withTenantFilter(conversations,
+        and(eq(conversations.customerPhone, identifier), eq(conversations.platform, 'web')),
+      ))
       .limit(1);
     
     if (conv.length > 0) {
@@ -147,7 +148,9 @@ async function processWebChatConversation(
         const conv = await tenantDb
           .select()
           .from(conversations)
-          .where(tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)))
+          .where(tenantDb.withTenantFilter(conversations,
+            and(eq(conversations.customerPhone, identifier), eq(conversations.platform, 'web')),
+          ))
           .limit(1);
         if (conv.length > 0) {
           const sixHoursFromNow = new Date(Date.now() + 6 * 60 * 60 * 1000);
@@ -240,9 +243,13 @@ async function processAuthenticatedConversation(
       console.error('[AUTHENTICATED CHAT] Error loading campaign context:', error);
     }
     
-    // Get conversation history (lookup by phone for authenticated platforms)
+    // Get conversation history (lookup by phone + platform for authenticated
+    // channels — Audit T1 (Task #17): SMS and web each have their own
+    // conversation row; cross-channel state is unified via customer_threads).
     const conv = await tenantDb.query.conversations.findFirst({
-      where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)),
+      where: tenantDb.withTenantFilter(conversations,
+        and(eq(conversations.customerPhone, identifier), eq(conversations.platform, platform)),
+      ),
       with: {
         messages: {
           orderBy: [asc(messagesTable.timestamp)],
