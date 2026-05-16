@@ -723,10 +723,14 @@ function extractAddress(description: string): string {
  */
 export async function getCalendarWeather(req: Request, res: Response) {
   try {
-    // Clean Machine Auto Detail location: 4644 S Troost Ave Tulsa, OK 74105
-    const tulsaLat = 36.09;
-    const tulsaLng = -95.975;
-    
+    // Audit T1 W-5: pull service-area origin from tenant settings (no hardcoded coords).
+    const { getServiceAreaConfig } = await import('./googleMapsApi');
+    const tenantDb = (req as any).tenantDb;
+    if (!tenantDb) {
+      return res.status(400).json({ error: 'Tenant context required for weather forecast.' });
+    }
+    const { lat: tulsaLat, lng: tulsaLng } = await getServiceAreaConfig(tenantDb);
+
     const days = parseInt(req.query.days as string) || 14;
     const cacheKey = CacheKeys.dashboardWeather(days);
     

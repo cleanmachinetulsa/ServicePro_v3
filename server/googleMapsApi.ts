@@ -4,16 +4,17 @@ import type { TenantDb } from './db';
 import { businessSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
-// Default service area origin (overridable per tenant via business_settings.serviceAreaCenterLat/Lng)
-// Audit T1 W-5/I-7: prior hardcoded value kept only as fallback for tenants that have not
-// yet been backfilled with their own coordinates.
+// Audit T1 W-5/I-7: no hardcoded service area in source. Defaults come from
+// env vars (DEFAULT_SERVICE_AREA_LAT / DEFAULT_SERVICE_AREA_LNG / DEFAULT_MAX_DRIVE_MINUTES)
+// so the platform stays tenant-neutral; per-tenant values in business_settings override.
 const DEFAULT_SERVICE_AREA_CENTER = {
-  lat: 36.09,
-  lng: -95.975,
+  lat: process.env.DEFAULT_SERVICE_AREA_LAT ? Number(process.env.DEFAULT_SERVICE_AREA_LAT) : null,
+  lng: process.env.DEFAULT_SERVICE_AREA_LNG ? Number(process.env.DEFAULT_SERVICE_AREA_LNG) : null,
 };
 
-// Default maximum drive time in minutes (can be overridden by business settings)
-const DEFAULT_MAX_DRIVE_TIME_MINUTES = 26;
+const DEFAULT_MAX_DRIVE_TIME_MINUTES = process.env.DEFAULT_MAX_DRIVE_MINUTES
+  ? Number(process.env.DEFAULT_MAX_DRIVE_MINUTES)
+  : 26;
 
 // We'll keep this for conversion if needed
 const METERS_PER_MILE = 1609.34;
@@ -29,10 +30,22 @@ export async function getServiceAreaConfig(tenantDb: TenantDb): Promise<{ lat: n
     const lat = row?.serviceAreaCenterLat != null ? Number(row.serviceAreaCenterLat) : DEFAULT_SERVICE_AREA_CENTER.lat;
     const lng = row?.serviceAreaCenterLng != null ? Number(row.serviceAreaCenterLng) : DEFAULT_SERVICE_AREA_CENTER.lng;
     const maxDriveMinutes = row?.maxDriveTimeMinutes || DEFAULT_MAX_DRIVE_TIME_MINUTES;
-    return { lat, lng, maxDriveMinutes };
+    if (lat == null || lng == null) {
+      throw new Error(
+        '[MAPS API] No service area configured. Set business_settings.serviceAreaCenterLat/Lng for this tenant or DEFAULT_SERVICE_AREA_LAT/LNG env vars.'
+      );
+    }
+    return { lat: lat as number, lng: lng as number, maxDriveMinutes };
   } catch (error) {
-    console.warn('[MAPS API] Could not load service area from settings, using defaults:', error);
-    return { ...DEFAULT_SERVICE_AREA_CENTER, maxDriveMinutes: DEFAULT_MAX_DRIVE_TIME_MINUTES };
+    console.warn('[MAPS API] Could not load service area from settings:', error);
+    if (DEFAULT_SERVICE_AREA_CENTER.lat == null || DEFAULT_SERVICE_AREA_CENTER.lng == null) {
+      throw error;
+    }
+    return {
+      lat: DEFAULT_SERVICE_AREA_CENTER.lat as number,
+      lng: DEFAULT_SERVICE_AREA_CENTER.lng as number,
+      maxDriveMinutes: DEFAULT_MAX_DRIVE_TIME_MINUTES,
+    };
   }
 }
 

@@ -139,6 +139,31 @@ async function processWebChatConversation(
       console.warn(`[WEB CHAT] AI budget exhausted for tenant ${tenantId} (${decision.tokensUsedToday}/${decision.budget})`);
       // Fire-and-forget owner notification (de-duped by Slack on their side)
       notifyOwnerBudgetExhausted(tenantId, decision.tokensUsedToday, decision.budget).catch(() => {});
+
+      // Audit T1 S-10: route this conversation to staff. Flag the existing
+      // conversation row (if any) as needing human attention and pause AI
+      // automation for 6 hours so staff can respond manually.
+      try {
+        const conv = await tenantDb
+          .select()
+          .from(conversations)
+          .where(tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, identifier)))
+          .limit(1);
+        if (conv.length > 0) {
+          const sixHoursFromNow = new Date(Date.now() + 6 * 60 * 60 * 1000);
+          await tenantDb
+            .update(conversations)
+            .set({
+              needsHumanAttention: true,
+              automationPausedUntil: sixHoursFromNow,
+            })
+            .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conv[0].id)));
+          console.log(`[WEB CHAT] Escalated conversation ${conv[0].id} (budget exhausted, automation paused 6h)`);
+        }
+      } catch (escalateErr) {
+        console.error('[WEB CHAT] Escalation flag write failed (non-blocking):', escalateErr);
+      }
+
       return { response: decision.cannedReply || "Thanks for reaching out — we'll be in touch shortly!" };
     }
 

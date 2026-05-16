@@ -446,6 +446,9 @@ export default function EnhancedChatbotUI() {
         formData.append('customerPhone', customerPhone);
         formData.append('customerEmail', customerEmail);
         formData.append('vehicleInfo', vehicleInfo);
+        // Audit T1 W-2: stable session ID so server-side per-session upload
+        // quota (5 photos / 25MB / 24h) tracks the same browser across uploads.
+        formData.append('sessionId', sessionId);
 
         console.log('Uploading file with data:', {
           name: customerName,
@@ -458,6 +461,7 @@ export default function EnhancedChatbotUI() {
 
         response = await fetch('/api/upload-photo', {
           method: 'POST',
+          headers: { 'X-Web-Chat-Session': sessionId },
           body: formData,
         });
       } else {
@@ -865,8 +869,8 @@ export default function EnhancedChatbotUI() {
             variants={typingVariants}
           >
             <div className="max-w-[85%] bg-white text-gray-800 rounded-2xl rounded-tl-md px-3 py-2 flex items-center gap-2 shadow-sm border border-gray-200">
-              <img src={logoUrl} alt="Clean Machine" className="h-3 w-3 rounded-full" />
-              <span className="text-[10px] opacity-60 font-medium">Clean Machine is typing</span>
+              <img src={widgetConfig.avatarUrl || logoUrl} alt={widgetConfig.personaName || 'Assistant'} className="h-3 w-3 rounded-full" />
+              <span className="text-[10px] opacity-60 font-medium">{widgetConfig.personaName || 'Clean Machine'} is typing</span>
               <div className="flex gap-1">
                 {[0, 1, 2].map(i => (
                   <motion.div
@@ -936,8 +940,8 @@ export default function EnhancedChatbotUI() {
           
           {/* Logo */}
           <img 
-            src={logoUrl} 
-            alt="Clean Machine" 
+            src={widgetConfig.avatarUrl || logoUrl} 
+            alt={widgetConfig.personaName || 'Assistant'} 
             className="h-8 w-8 rounded-full relative z-10 border-2 border-white/30" 
           />
         </motion.button>
@@ -955,11 +959,11 @@ export default function EnhancedChatbotUI() {
           <div className="flex items-center justify-between relative z-10">
             <div className="flex items-center gap-2">
               <img
-                src={logoUrl}
-                alt="Clean Machine"
+                src={widgetConfig.avatarUrl || logoUrl}
+                alt={widgetConfig.personaName || 'Assistant'}
                 className="h-7 w-7 rounded-full border-2 border-white/30 shadow-md"
               />
-              <h1 className="text-base font-semibold tracking-tight">Clean Machine</h1>
+              <h1 className="text-base font-semibold tracking-tight">{widgetConfig.personaName || 'Clean Machine'}</h1>
             </div>
             <div className="flex items-center gap-1">
               <TooltipProvider>
@@ -1035,7 +1039,7 @@ export default function EnhancedChatbotUI() {
                       <CarIcon className="h-3 w-3 text-blue-600" />
                     )}
                     <span className="text-[10px] opacity-60 font-medium">
-                      {message.sender === "user" ? "You" : "Clean Machine"} • {message.timestamp.toLocaleTimeString([], {
+                      {message.sender === "user" ? "You" : (widgetConfig.personaName || "Clean Machine")} • {message.timestamp.toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
