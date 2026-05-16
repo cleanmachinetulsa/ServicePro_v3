@@ -88,19 +88,19 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   const tenantDb = (req as any).tenantDb as TenantDb;
   const sig = req.headers['stripe-signature'] as string;
   
+  const { rejectIfProduction } = await import('./services/webhookVerifierPolicy');
+
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    console.error('[STRIPE WEBHOOK] SECURITY: STRIPE_WEBHOOK_SECRET not set - rejecting webhook (fail-closed)');
-    return res.status(503).json({ error: 'Webhook secret not configured' });
+    if (!rejectIfProduction(res, { provider: 'stripe', reason: 'missing_secret' })) return;
+    // Dev soft-pass: accept body as-is.
   }
 
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
+    event = process.env.STRIPE_WEBHOOK_SECRET
+      ? stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET)
+      : req.body;
     
     // Handle the event
     switch (event.type) {

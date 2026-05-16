@@ -216,8 +216,9 @@ app.use(cookieParser());
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '1mb' }));
 
 app.use(express.json({
-  verify: (req: any, _res, buf) => {
-    // Capture raw body for webhook signature verification (Facebook, SendGrid)
+  verify: (req: Request, _res, buf) => {
+    // Capture raw body for webhook signature verification (Facebook, SendGrid, etc.).
+    // Typed via the Express Request augmentation in server/types/express.d.ts.
     const url: string = req.url || '';
     if (url.startsWith('/api/facebook/webhook') || url.startsWith('/api/webhooks/')) {
       req.rawBody = buf;

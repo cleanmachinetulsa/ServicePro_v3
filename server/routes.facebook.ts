@@ -8,35 +8,33 @@ import { eq } from 'drizzle-orm';
 import axios from 'axios';
 import { getOrCreateConversation, addMessage } from './conversationService';
 import { generateAIResponse } from './openai';
+import { rejectIfProduction } from './services/webhookVerifierPolicy';
 
 const router = Router();
 
 /**
- * Verify Facebook webhook signature using x-hub-signature-256 (HMAC-SHA256 of raw body
- * with FACEBOOK_APP_SECRET). Fail-closed in production: if app secret or raw body is
- * missing, the webhook is rejected.
+ * Verify Facebook/Meta webhook signature using x-hub-signature-256
+ * (HMAC-SHA256 of raw body with FACEBOOK_APP_SECRET).
+ *
+ * Production: fail-closed via rejectIfProduction → 401.
+ * Development: soft-warn and continue.
  *
  * https://developers.facebook.com/docs/messenger-platform/webhook#security
  */
-function verifyFacebookSignature(req: Request, res: Response, next: NextFunction) {
+export function verifyFacebookSignature(req: Request, res: Response, next: NextFunction) {
   const appSecret = process.env.FACEBOOK_APP_SECRET;
-  const isProduction = process.env.NODE_ENV === 'production';
 
   if (!appSecret) {
-    if (isProduction) {
-      console.error('[FACEBOOK WEBHOOK] SECURITY: FACEBOOK_APP_SECRET not configured - rejecting webhook');
-      return res.status(503).send('Webhook signature verification not configured');
-    }
-    console.warn('[FACEBOOK WEBHOOK] FACEBOOK_APP_SECRET not set (dev only) - skipping signature verification');
+    if (!rejectIfProduction(res, { provider: 'facebook', reason: 'missing_secret' })) return;
     return next();
   }
 
   const signature = req.header('x-hub-signature-256') || '';
-  const rawBody: Buffer | undefined = (req as any).rawBody;
+  const rawBody: Buffer | undefined = req.rawBody;
 
   if (!signature || !signature.startsWith('sha256=') || !rawBody) {
-    console.error('[FACEBOOK WEBHOOK] Missing or malformed x-hub-signature-256 / raw body');
-    return res.status(401).send('Invalid signature');
+    if (!rejectIfProduction(res, { provider: 'facebook', reason: 'missing_signature' })) return;
+    return next();
   }
 
   const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
@@ -44,8 +42,8 @@ function verifyFacebookSignature(req: Request, res: Response, next: NextFunction
   const b = Buffer.from(expected);
 
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    console.error('[FACEBOOK WEBHOOK] Signature mismatch - rejecting webhook');
-    return res.status(401).send('Invalid signature');
+    if (!rejectIfProduction(res, { provider: 'facebook', reason: 'invalid_signature' })) return;
+    return next();
   }
 
   next();
@@ -194,10 +192,7 @@ router.get('/webhook', (req: Request, res: Response) => {
   // to prevent attackers from re-binding the webhook with a known default token.
   const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
   if (!VERIFY_TOKEN) {
-    if (process.env.NODE_ENV === 'production') {
-      console.error('[FACEBOOK WEBHOOK] SECURITY: FACEBOOK_WEBHOOK_VERIFY_TOKEN not configured - rejecting verification');
-      return res.sendStatus(503);
-    }
+    if (!rejectIfProduction(res, { provider: 'facebook', reason: 'missing_secret', detail: 'FACEBOOK_WEBHOOK_VERIFY_TOKEN' })) return;
     console.warn('[FACEBOOK WEBHOOK] FACEBOOK_WEBHOOK_VERIFY_TOKEN not set (dev only)');
   }
 

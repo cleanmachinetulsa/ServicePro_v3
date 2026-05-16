@@ -28,7 +28,32 @@ Production scope for this scan is the deployed web app and its server-side integ
 ## Scan Anchors
 
 - **Primary production entry points:** `server/index.ts`, `server/routes.ts`, routers mounted directly from `server/index.ts`, `server/routes.*.ts`, `server/routes/**/*.ts`
-- **Highest-risk code areas:** routers mounted in `server/index.ts` before `registerRoutes(app)` because they bypass the later central `/api` auth gate; global auth/public gating in `server/routes.ts`; tenant resolution and fallback behavior in `server/tenantMiddleware.ts` and `server/authHelpers.ts`; auth/session middleware in `server/authMiddleware.ts` and `server/sessionMiddleware.ts`; public file/content routes like `server/routes.gallery.ts`; webhook verification in `server/twilioSignatureMiddleware.ts` and webhook route files; token-signing utilities such as `server/reminderActionTokens.ts` and QR signing in `server/routes.ts`
+- **Highest-risk code areas:** routers mounted in `server/index.ts` before `registerRoutes(app)` because they bypass the later central `/api` auth gate; global auth/public gating in `server/routes.ts`; tenant resolution and fallback behavior in `server/tenantMiddleware.ts` and `server/authHelpers.ts`; auth/session middleware in `server/authMiddleware.ts` and `server/sessionMiddleware.ts`; public file/content routes like `server/routes.gallery.ts`; webhook verification in `server/twilioSignatureMiddleware.ts`, `server/services/webhookVerifierPolicy.ts`, and the per-provider webhook route files (`server/routes.stripeWebhooks.ts`, `server/routes.facebook.ts`, `server/routes.sendgridWebhook.ts`); token-signing utilities such as `server/reminderActionTokens.ts` and QR signing in `server/routes.ts`
+
+### Webhook signature registry (non-Twilio)
+
+Every inbound webhook below verifies provider-specific signatures against the
+raw request body and uses `rejectIfProduction()` from
+`server/services/webhookVerifierPolicy.ts` so any missing-secret / missing-header
+/ invalid-signature / stale-timestamp condition returns **HTTP 401** with a
+structured warning log in production. In development the same conditions are
+logged as soft warnings and the handler continues, so local testing without
+provider secrets remains possible. Set `WEBHOOK_VERIFY_STRICT=1` to force
+production-style enforcement in dev.
+
+| Provider | Inbound route | Secret env var(s) | Verifier |
+|---|---|---|---|
+| Stripe | `POST /api/webhooks/stripe` | `STRIPE_WEBHOOK_SECRET` | `stripe.webhooks.constructEvent` over the raw body mounted by `express.raw({type:'application/json'})` BEFORE `express.json()` in `server/index.ts` |
+| Meta / Facebook / Instagram | `POST /api/facebook/webhook` | `FACEBOOK_APP_SECRET`, `FACEBOOK_WEBHOOK_VERIFY_TOKEN` | `verifyFacebookSignature` middleware: HMAC-SHA256 of `req.rawBody` compared with `crypto.timingSafeEqual` against `x-hub-signature-256`; GET handshake requires the verify token (no hardcoded fallback) |
+| SendGrid | `POST /api/webhooks/sendgrid` | `SENDGRID_WEBHOOK_PUBLIC_KEY` | ECDSA `crypto.createVerify('sha256')` over `timestamp + rawBody`, with a 10-minute timestamp skew check |
+
+`req.rawBody` is captured by an `express.json({ verify })` hook in
+`server/index.ts` for any URL under `/api/facebook/webhook` or `/api/webhooks/`,
+typed via the Express `Request` augmentation in `server/types/express.d.ts`.
+
+The registry is enforced by `server/tests/webhookSignatureRegistry.test.ts`,
+which fails the build if a new `webhook` POST route is added without a verifier
+or if the policy file is changed to no longer return 401 in production.
 - **Public surfaces:** booking, reminders, loyalty lookups, gallery, public-site content, QR scan, payer-approval links, webhooks, and customer self-service flows under `/api/public`, `/api/book*`, `/api/gallery`, `/api/loyalty/*`, `/api/qr/*`, `/api/payer-approval/*`, `/api/webhooks/*`, `/api/voice*`, `/api/twilio*`, `/api/sms*`
 - **Authenticated/admin surfaces:** dashboard, billing, campaign/admin tools, customer management, settings, imports, and root-admin usage routes
 - **Usually dev-only / lower-priority for production scans:** `server/tests/`, test fixtures, one-off migration helpers, mockup sandbox, and routes only mounted behind explicit non-production feature flags unless production reachability is shown

@@ -17,6 +17,7 @@ import { markDepositPaid } from './depositManager';
 import { getTierForPriceId } from './services/stripeService';
 import { createTenantDb, type TenantDb } from './tenantDb';
 import { db } from './db';
+import { rejectIfProduction } from './services/webhookVerifierPolicy';
 import type { TenantInfo } from './tenantMiddleware';
 import {
   mapStripeToBillingStatus,
@@ -158,15 +159,16 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
   }
 
   if (!webhookSecret) {
-    console.error('[STRIPE WEBHOOK] SECURITY: STRIPE_WEBHOOK_SECRET not configured - rejecting webhook');
-    return res.status(503).send('Webhook secret not configured');
+    if (!rejectIfProduction(res, { provider: 'stripe', reason: 'missing_secret' })) return;
+    // Dev soft-pass: accept the unverified body so local testing still works.
+    const event = req.body as Stripe.Event;
+    return res.status(200).json({ received: true, devUnverified: true });
   }
 
   const sig = req.headers['stripe-signature'];
 
   if (!sig) {
-    console.error('[STRIPE WEBHOOK] Missing stripe-signature header');
-    return res.status(400).send('Missing signature');
+    if (!rejectIfProduction(res, { provider: 'stripe', reason: 'missing_signature' })) return;
   }
 
   let event: Stripe.Event;
@@ -179,8 +181,13 @@ router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
       webhookSecret
     );
   } catch (err: any) {
-    console.error('[STRIPE WEBHOOK] Signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    if (!rejectIfProduction(res, { provider: 'stripe', reason: 'invalid_signature', detail: err.message })) return;
+    // Dev soft-pass when the signature didn't validate: parse the raw body and continue.
+    try {
+      event = JSON.parse(Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body));
+    } catch {
+      return res.status(400).send('Malformed body');
+    }
   }
 
   // SP-27: DB-based idempotency check

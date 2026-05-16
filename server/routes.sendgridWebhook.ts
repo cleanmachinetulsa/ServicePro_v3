@@ -2,60 +2,56 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { campaignRecipients, emailSuppressionList } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import { rejectIfProduction, type WebhookFailure } from './services/webhookVerifierPolicy';
 
 const router = Router();
 
 /**
  * Verify SendGrid webhook signature
  * https://docs.sendgrid.com/for-developers/tracking-events/getting-started-event-webhook-security-features
+ *
+ * Returns:
+ *   { ok: true }                 — verified, proceed.
+ *   { ok: false, fail: ... }     — caller must call rejectIfProduction(res, fail)
+ *                                  which writes 401 in prod or soft-passes in dev.
  */
-function verifySignature(req: Request): boolean {
+function verifySignature(req: Request): { ok: true } | { ok: false; fail: WebhookFailure } {
   const publicKey = process.env.SENDGRID_WEBHOOK_PUBLIC_KEY;
   if (!publicKey) {
-    console.error('[SENDGRID WEBHOOK] SECURITY: No public key configured - rejecting webhook');
-    return false; // Require public key in production
+    return { ok: false, fail: { provider: 'sendgrid', reason: 'missing_secret' } };
   }
-  
+
   const signature = req.headers['x-twilio-email-event-webhook-signature'] as string;
   const timestamp = req.headers['x-twilio-email-event-webhook-timestamp'] as string;
-  
+
   if (!signature || !timestamp) {
-    console.error('[SENDGRID WEBHOOK] Missing signature or timestamp headers');
-    return false;
+    return { ok: false, fail: { provider: 'sendgrid', reason: 'missing_signature' } };
   }
-  
-  // Verify timestamp is recent (within 10 minutes)
+
   const now = Math.floor(Date.now() / 1000);
   const requestTime = parseInt(timestamp);
   if (Math.abs(now - requestTime) > 600) {
-    console.error('[SENDGRID WEBHOOK] Timestamp too old or invalid');
-    return false;
+    return { ok: false, fail: { provider: 'sendgrid', reason: 'stale_timestamp' } };
   }
-  
+
   try {
-    // Use raw body for signature verification (SendGrid signs the raw payload).
-    // Raw body is captured by the global express.json() verify hook in server/index.ts.
-    const rawBuf: Buffer | undefined = (req as any).rawBody;
+    const rawBuf: Buffer | undefined = req.rawBody;
     if (!rawBuf || rawBuf.length === 0) {
-      console.error('[SENDGRID WEBHOOK] Raw body missing - cannot verify signature');
-      return false;
+      return { ok: false, fail: { provider: 'sendgrid', reason: 'malformed', detail: 'raw body missing' } };
     }
     const payload = Buffer.concat([Buffer.from(timestamp), rawBuf]);
-    
-    // Create ECDSA verifier
+
     const verify = crypto.createVerify('sha256');
     verify.update(payload);
     verify.end();
-    
-    // Verify signature
+
     const isValid = verify.verify(publicKey, signature, 'base64');
     if (!isValid) {
-      console.error('[SENDGRID WEBHOOK] Invalid signature');
+      return { ok: false, fail: { provider: 'sendgrid', reason: 'invalid_signature' } };
     }
-    return isValid;
-  } catch (error) {
-    console.error('[SENDGRID WEBHOOK] Signature verification error:', error);
-    return false;
+    return { ok: true };
+  } catch (error: any) {
+    return { ok: false, fail: { provider: 'sendgrid', reason: 'invalid_signature', detail: error?.message } };
   }
 }
 
@@ -68,12 +64,12 @@ function verifySignature(req: Request): boolean {
 router.post('/api/webhooks/sendgrid',
   async (req: Request, res: Response) => {
     try {
-      // Verify signature
-      if (!verifySignature(req)) {
-        console.error('[SENDGRID WEBHOOK] Signature verification failed - rejecting webhook');
-        return res.status(401).json({ error: 'Invalid signature' });
+      const result = verifySignature(req);
+      if (!result.ok) {
+        if (!rejectIfProduction(res, result.fail)) return;
+        // Dev soft-pass: continue with the (unverified) parsed body.
       }
-      
+
       const events = Array.isArray(req.body) ? req.body : [req.body];
       
       console.log(`[SENDGRID WEBHOOK] Received ${events.length} events`);
