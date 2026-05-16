@@ -50,6 +50,10 @@ if (!STRIPE_ENABLED) {
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
 
+if (STRIPE_ENABLED && !webhookSecret && process.env.NODE_ENV === 'production') {
+  console.error('[STRIPE WEBHOOKS] FATAL: STRIPE_WEBHOOK_SECRET not configured in production. Webhooks will be rejected.');
+}
+
 // In-memory cache for quick duplicate detection (DB is source of truth)
 const processedEventsCache = new Set<string>();
 
@@ -151,6 +155,11 @@ async function resolveTenantContext(tenantId: string | null | undefined): Promis
 router.post('/api/webhooks/stripe', async (req: Request, res: Response) => {
   if (!stripe) {
     return res.status(503).send('Stripe webhooks not configured');
+  }
+
+  if (!webhookSecret) {
+    console.error('[STRIPE WEBHOOK] SECURITY: STRIPE_WEBHOOK_SECRET not configured - rejecting webhook');
+    return res.status(503).send('Webhook secret not configured');
   }
 
   const sig = req.headers['stripe-signature'];

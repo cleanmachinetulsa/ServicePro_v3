@@ -1,4 +1,5 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { db } from './db';
 import type { TenantDb } from './tenantDb';
 import { facebookPageTokens, conversations, messages } from '@shared/schema';
@@ -9,6 +10,46 @@ import { getOrCreateConversation, addMessage } from './conversationService';
 import { generateAIResponse } from './openai';
 
 const router = Router();
+
+/**
+ * Verify Facebook webhook signature using x-hub-signature-256 (HMAC-SHA256 of raw body
+ * with FACEBOOK_APP_SECRET). Fail-closed in production: if app secret or raw body is
+ * missing, the webhook is rejected.
+ *
+ * https://developers.facebook.com/docs/messenger-platform/webhook#security
+ */
+function verifyFacebookSignature(req: Request, res: Response, next: NextFunction) {
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (!appSecret) {
+    if (isProduction) {
+      console.error('[FACEBOOK WEBHOOK] SECURITY: FACEBOOK_APP_SECRET not configured - rejecting webhook');
+      return res.status(503).send('Webhook signature verification not configured');
+    }
+    console.warn('[FACEBOOK WEBHOOK] FACEBOOK_APP_SECRET not set (dev only) - skipping signature verification');
+    return next();
+  }
+
+  const signature = req.header('x-hub-signature-256') || '';
+  const rawBody: Buffer | undefined = (req as any).rawBody;
+
+  if (!signature || !signature.startsWith('sha256=') || !rawBody) {
+    console.error('[FACEBOOK WEBHOOK] Missing or malformed x-hub-signature-256 / raw body');
+    return res.status(401).send('Invalid signature');
+  }
+
+  const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    console.error('[FACEBOOK WEBHOOK] Signature mismatch - rejecting webhook');
+    return res.status(401).send('Invalid signature');
+  }
+
+  next();
+}
 
 /**
  * Get all configured Facebook pages
@@ -149,10 +190,18 @@ router.get('/webhook', (req: Request, res: Response) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  // You'll set a verify token in your Facebook App settings
-  const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN || 'clean_machine_verify_token_2025';
+  // VERIFY_TOKEN must be configured via env. Fail-closed in production if missing
+  // to prevent attackers from re-binding the webhook with a known default token.
+  const VERIFY_TOKEN = process.env.FACEBOOK_WEBHOOK_VERIFY_TOKEN;
+  if (!VERIFY_TOKEN) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[FACEBOOK WEBHOOK] SECURITY: FACEBOOK_WEBHOOK_VERIFY_TOKEN not configured - rejecting verification');
+      return res.sendStatus(503);
+    }
+    console.warn('[FACEBOOK WEBHOOK] FACEBOOK_WEBHOOK_VERIFY_TOKEN not set (dev only)');
+  }
 
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+  if (mode === 'subscribe' && VERIFY_TOKEN && token === VERIFY_TOKEN) {
     console.log('[FACEBOOK WEBHOOK] ✅ Webhook verified!');
     res.status(200).send(challenge);
   } else {
@@ -165,7 +214,7 @@ router.get('/webhook', (req: Request, res: Response) => {
  * Facebook Messenger Webhook - Receive Messages
  * POST /api/facebook/webhook
  */
-router.post('/webhook', async (req: Request, res: Response) => {
+router.post('/webhook', verifyFacebookSignature, async (req: Request, res: Response) => {
   try {
     const body = req.body;
 

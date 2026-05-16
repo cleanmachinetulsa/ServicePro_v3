@@ -89,23 +89,18 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers['stripe-signature'] as string;
   
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    console.warn('STRIPE_WEBHOOK_SECRET is not set, skipping signature verification');
+    console.error('[STRIPE WEBHOOK] SECURITY: STRIPE_WEBHOOK_SECRET not set - rejecting webhook (fail-closed)');
+    return res.status(503).json({ error: 'Webhook secret not configured' });
   }
-  
+
   let event;
-  
+
   try {
-    // Verify webhook signature if secret is set
-    if (process.env.STRIPE_WEBHOOK_SECRET) {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } else {
-      // If no webhook secret, parse the body directly (less secure)
-      event = req.body;
-    }
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
     
     // Handle the event
     switch (event.type) {

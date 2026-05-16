@@ -212,7 +212,18 @@ app.use(limiter);
 // Cookie parser middleware (required for reading custom cookies like customer session)
 app.use(cookieParser());
 
-app.use(express.json());
+// Stripe webhook needs raw body for signature verification — must come BEFORE express.json()
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '1mb' }));
+
+app.use(express.json({
+  verify: (req: any, _res, buf) => {
+    // Capture raw body for webhook signature verification (Facebook, SendGrid)
+    const url: string = req.url || '';
+    if (url.startsWith('/api/facebook/webhook') || url.startsWith('/api/webhooks/')) {
+      req.rawBody = buf;
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: false }));
 
 // Serve uploaded files from public directory

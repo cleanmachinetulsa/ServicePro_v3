@@ -2,25 +2,8 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { campaignRecipients, emailSuppressionList } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import crypto from 'crypto';
-import { json } from 'express';
 
 const router = Router();
-
-/**
- * Raw body middleware for webhook signature verification
- * Captures raw body before JSON parsing so we can verify SendGrid's signature
- */
-const rawBodySaver = (req: Request, res: Response, next: NextFunction) => {
-  let data = '';
-  req.setEncoding('utf8');
-  req.on('data', (chunk) => {
-    data += chunk;
-  });
-  req.on('end', () => {
-    (req as any).rawBody = data;
-    next();
-  });
-};
 
 /**
  * Verify SendGrid webhook signature
@@ -50,9 +33,14 @@ function verifySignature(req: Request): boolean {
   }
   
   try {
-    // Use raw body for signature verification (SendGrid signs the raw payload)
-    const rawBody = (req as any).rawBody || '';
-    const payload = timestamp + rawBody;
+    // Use raw body for signature verification (SendGrid signs the raw payload).
+    // Raw body is captured by the global express.json() verify hook in server/index.ts.
+    const rawBuf: Buffer | undefined = (req as any).rawBody;
+    if (!rawBuf || rawBuf.length === 0) {
+      console.error('[SENDGRID WEBHOOK] Raw body missing - cannot verify signature');
+      return false;
+    }
+    const payload = Buffer.concat([Buffer.from(timestamp), rawBuf]);
     
     // Create ECDSA verifier
     const verify = crypto.createVerify('sha256');
@@ -77,9 +65,7 @@ function verifySignature(req: Request): boolean {
  * 
  * IMPORTANT: Uses raw body middleware for signature verification
  */
-router.post('/api/webhooks/sendgrid', 
-  rawBodySaver, 
-  json(), // Parse JSON after saving raw body
+router.post('/api/webhooks/sendgrid',
   async (req: Request, res: Response) => {
     try {
       // Verify signature
