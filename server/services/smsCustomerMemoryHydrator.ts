@@ -46,6 +46,20 @@ function formatLocalDate(d: Date) {
   }
 }
 
+/**
+ * Audit T1 (Task #17) — thread-awareness note:
+ *
+ * This hydrator is keyed on the customer (looked up by phone) and reads from
+ * `customers` + `appointments`, both of which are scoped per-tenant per-
+ * customer rather than per-conversation. Because there is exactly one
+ * customer row per identified user — and that same customer row is what
+ * `customer_threads` is keyed on — the hydrated profile (name, address,
+ * vehicles, last service) already represents the *cross-channel* customer
+ * identity. No additional thread-level read is needed here; cross-channel
+ * *conversation history* is handled in `smsConversationContextService`,
+ * which loads messages across all sibling conversations sharing the
+ * thread.
+ */
 export async function hydrateSmsConversationStateFromDb(opts: {
   tenantDb: any;
   tenantId: string;

@@ -310,7 +310,12 @@ export async function getOrCreateConversation(
         )
         .limit(1);
     } else {
-      // Check if there's an active conversation for this phone
+      // Audit T1 (Task #17): For phone-based channels (SMS, web), look up the
+      // active conversation per (phone, platform) so SMS and web get their own
+      // conversation rows. Cross-channel state is unified at the THREAD level
+      // (customer_threads), not by collapsing rows. Without this, SMS+web for
+      // the same phone collide into one conversation and there is no sibling
+      // conversation to hydrate cross-channel context from.
       existingConversation = await tenantDb
         .select()
         .from(conversations)
@@ -318,6 +323,7 @@ export async function getOrCreateConversation(
           tenantDb.withTenantFilter(conversations,
             and(
               eq(conversations.customerPhone, customerPhone),
+              eq(conversations.platform, platform),
               eq(conversations.status, 'active')
             )
           )
