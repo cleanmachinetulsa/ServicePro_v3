@@ -193,6 +193,32 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
     }
     const tenant = await loadTenantBySlugOrHost(slug, hostQuery);
     if (!tenant) return res.status(404).json({ error: 'tenant not found' });
+
+    // Audit T3 Task #23 (review fix): respect tenant feature flag + plan gate.
+    // Public status is a premium surface; an owner who hasn't opted in must
+    // not expose operational metrics. We return 404 (not 403) so an attacker
+    // cannot enumerate which tenants disabled the page.
+    const { db } = await import('./db');
+    const { hasFeature } = await import('@shared/features');
+    const rootDb2 = wrapTenantDb(db, 'root');
+    const [tcfg] = await rootDb2
+      .select({ industryConfig: tenantConfig.industryConfig })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenant.id))
+      .limit(1);
+    const [trow] = await rootDb2
+      .select({ planTier: tenants.planTier })
+      .from(tenants)
+      .where(eq(tenants.id, tenant.id))
+      .limit(1);
+    const flag = (tcfg?.industryConfig as { featureFlags?: { publicStatusEnabled?: unknown } } | null)
+      ?.featureFlags?.publicStatusEnabled;
+    const enabled = flag === true; // default OFF — must be explicitly opted in
+    const planAllowed = hasFeature({ planTier: trow?.planTier }, 'aiSmsAgent');
+    if (!enabled || !planAllowed) {
+      return res.status(404).json({ error: 'tenant not found' });
+    }
+
     const payload = await buildStatusPayload(tenant.id, tenant.name);
     cache.set(cacheKey, { at: Date.now(), payload });
     res.json(payload);

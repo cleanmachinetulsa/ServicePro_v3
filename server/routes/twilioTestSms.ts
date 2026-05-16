@@ -423,6 +423,16 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       if (tenantId && await hasLiveHandoffOffer(tenantId, conversation.id)) {
         const action = classifyHandoffReply(Body);
         if (action === 'call') {
+          // Audit T3 Task #23 (review fix): record a distinct callback-request
+          // artifact FIRST so the owner inbox has a structured row, then run
+          // the existing transfer-to-human path so SMS/Slack/owner push fire.
+          const { recordCallbackRequest } = await import('../services/callbackRequestService');
+          await recordCallbackRequest({
+            tenantId,
+            conversationId: conversation.id,
+            customerPhone: From,
+            reason: 'customer_requested_callback_via_handoff_offer',
+          });
           const { transferConversationToHuman } = await import('../services/aiToolHelpers');
           await transferConversationToHuman(
             tenantId,
@@ -434,7 +444,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
           await clearHandoffOffer(tenantId, conversation.id);
           const reply = truncateSmsResponse(`Got it — we'll call you back within 30 minutes.`);
           await addMessage(tenantDb, conversation.id, reply, 'ai', {
-            toolCalls: ['offer_human_handoff:accepted_call'],
+            toolCalls: ['offer_human_handoff:accepted_call', 'request_callback'],
           });
           twimlResponse.message(reply);
           res.type('text/xml').send(twimlResponse.toString());

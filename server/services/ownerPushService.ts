@@ -9,8 +9,8 @@
 
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
-import { pushSubscriptions } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { pushSubscriptions, users } from '@shared/schema';
+import { and, eq, inArray } from 'drizzle-orm';
 import { sendPushNotification, type PushNotificationPayload } from '../pushNotificationService';
 
 export interface OwnerEscalationPushOptions {
@@ -28,16 +28,32 @@ export async function notifyOwnerEscalation(opts: OwnerEscalationPushOptions): P
   const { tenantId, conversationId, reason, customerLabel, urgency } = opts;
   try {
     const tenantDb = wrapTenantDb(db, tenantId);
+
+    // Audit T3 Task #23 (review fix): restrict push delivery to owner-role
+    // users only. We INNER JOIN push_subscriptions ↔ users on tenant + role
+    // so a manager/employee who happens to have a subscription does not
+    // receive owner-only escalation pings.
     const subs = await tenantDb
       .select({ userId: pushSubscriptions.userId })
       .from(pushSubscriptions)
+      .innerJoin(
+        users,
+        and(
+          eq(users.id, pushSubscriptions.userId),
+          eq(users.tenantId, tenantId),
+          eq(users.role, 'owner'),
+          eq(users.isActive, true),
+        ),
+      )
       .where(eq(pushSubscriptions.tenantId, tenantId));
 
     const userIds = Array.from(new Set(subs.map((s) => s.userId).filter((u): u is number => typeof u === 'number')));
     if (userIds.length === 0) {
-      console.log(`[OWNER PUSH] No subscribers for tenant=${tenantId}`);
+      console.log(`[OWNER PUSH] No owner subscribers for tenant=${tenantId}`);
       return { attempted: 0, succeeded: 0 };
     }
+    // Suppress unused-import warning when only inArray is needed elsewhere.
+    void inArray;
 
     const payload: PushNotificationPayload = {
       title: urgency === 'high' ? '🚨 Customer needs you' : '👋 Customer needs you',

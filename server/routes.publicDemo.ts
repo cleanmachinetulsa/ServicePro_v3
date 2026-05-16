@@ -89,6 +89,30 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
     }
     const tenant = await loadTenantBySlug(slug);
     if (!tenant) return res.status(404).json({ error: 'tenant not found' });
+
+    // Audit T3 Task #23 (review fix): tenant feature flag + plan gate. The
+    // productized demo is a premium surface; default OFF unless the tenant
+    // owner explicitly opts in. 404 (not 403) so we don't leak enablement.
+    const { hasFeature } = await import('@shared/features');
+    const rootDb = wrapTenantDb(db, 'root');
+    const [tcfg] = await rootDb
+      .select({ industryConfig: tenantConfig.industryConfig })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenant.id))
+      .limit(1);
+    const [trow] = await rootDb
+      .select({ planTier: tenants.planTier })
+      .from(tenants)
+      .where(eq(tenants.id, tenant.id))
+      .limit(1);
+    const flag = (tcfg?.industryConfig as { featureFlags?: { publicDemoEnabled?: unknown } } | null)
+      ?.featureFlags?.publicDemoEnabled;
+    const enabled = flag === true;
+    const planAllowed = hasFeature({ planTier: trow?.planTier }, 'aiSmsAgent');
+    if (!enabled || !planAllowed) {
+      return res.status(404).json({ error: 'tenant not found' });
+    }
+
     // Resolution order: tenant-stored (admin editor) → env override → default.
     const script =
       (await loadTenantScript(tenant.id)) ||
