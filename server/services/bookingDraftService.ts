@@ -268,7 +268,12 @@ export function extractSlotsFromMessage(content: string): Array<{ label: string;
 }
 
 /**
- * Extract SMS booking state from conversation history
+ * @deprecated SMS-AUDIT-T1 (S-5): Do not use. Booking state is reconstructed
+ * by parsing prior assistant turns here, which causes the AI to confirm its own
+ * hallucinations as truth. The persisted `bookingDraftService` row is the
+ * single source of truth for SMS booking state. This export is retained only
+ * for backwards-compatibility tests; production code paths must read state via
+ * `getSmsBookingState()` instead.
  */
 export function extractSmsBookingStateFromHistory(historyMessages: HistoryMessage[]): SmsBookingState {
   const state: SmsBookingState = {};

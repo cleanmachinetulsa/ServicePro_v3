@@ -14,7 +14,7 @@
  */
 
 import type { TenantDb } from '../tenantDb';
-import { customers } from '@shared/schema';
+import { customers, conversations } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 
 // STOP keywords - case insensitive, exact match only
@@ -180,7 +180,40 @@ export async function handleSmsConsentKeywords(params: {
     console.log(`[SMS CONSENT] START keyword detected: "${normalized}" from ${fromPhone}`);
     
     await updateSmsConsent(tenantDb, tenantId, fromPhone, true);
-    
+
+    // SMS-AUDIT-T1 (S-7): TCPA START must also clear any prior automation pause
+    // and human-attention escalation flags on the customer's SMS conversation.
+    // Without this, a customer who previously got escalated and then re-opted-in
+    // would still be silently routed to "a human will follow up" forever.
+    const normalizedPhone = normalizeE164(fromPhone);
+    if (normalizedPhone) {
+      try {
+        const result = await tenantDb
+          .update(conversations)
+          .set({
+            needsHumanAttention: false,
+            automationPausedUntil: null,
+            smsOptOut: false,
+            smsOptOutAt: null,
+          })
+          .where(
+            and(
+              eq(conversations.tenantId, tenantId),
+              eq(conversations.customerPhone, normalizedPhone),
+              eq(conversations.platform, 'sms'),
+            )
+          )
+          .returning({ id: conversations.id });
+
+        if (result.length > 0) {
+          console.log(`[SMS CONSENT] START cleared escalation/pause on ${result.length} conversation(s) for ${normalizedPhone}`);
+        }
+      } catch (err: any) {
+        // Non-blocking: consent is already recorded above
+        console.warn(`[SMS CONSENT] Failed to clear escalation flags on START for ${normalizedPhone}: ${err?.message}`);
+      }
+    }
+
     // Optional confirmation message
     const confirmMessage = "You've been re-subscribed to Clean Machine Auto Detail messages. Reply STOP to opt out anytime.";
     

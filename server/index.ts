@@ -78,12 +78,49 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// SMS-AUDIT-T1 (I-9): DEMO_MODE must NEVER be enabled in production.
+// DEMO_MODE causes outbound SMS, email, and notification helpers to log
+// instead of sending. Leaving it on in prod silently breaks every customer
+// notification. Fail-fast at boot rather than discover this from a missed
+// booking confirmation. Accept any common truthy spelling so an operator
+// who sets DEMO_MODE=1, =true, =TRUE, or =yes still gets caught.
+const _demoModeRaw = (process.env.DEMO_MODE || '').trim().toLowerCase();
+const _demoModeTruthy = ['1', 'true', 'yes', 'on'].includes(_demoModeRaw);
+if (process.env.NODE_ENV === 'production' && _demoModeTruthy) {
+  console.error(`[BOOT FATAL] DEMO_MODE=${process.env.DEMO_MODE} is forbidden in production - aborting startup.`);
+  console.error('[BOOT FATAL] DEMO_MODE silently disables outbound SMS/email/notifications.');
+  console.error('[BOOT FATAL] Unset DEMO_MODE before deploying to production.');
+  process.exit(1);
+}
+
 const app = express();
 
 // CLOUD RUN HEALTH CHECK: Must respond immediately before any middleware
 // This allows Cloud Run to verify the service is alive during initialization
 app.get('/healthz', (_req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// SMS-AUDIT-T1 (S-9): Background-jobs status endpoint for the staff UI banner.
+// The Messaging Center / dashboard polls this and shows a red "Background jobs:
+// OFF" banner when bgJobsEnabled is false, so silent feature loss is visible.
+app.get('/api/system/bg-jobs-status', (_req, res) => {
+  const bgJobsEnabled = process.env.PLATFORM_BG_JOBS_ENABLED === '1';
+  res.status(200).json({
+    bgJobsEnabled,
+    environment: process.env.NODE_ENV || 'development',
+    silentFeaturesDisabled: bgJobsEnabled ? [] : [
+      'booking_confirmation_reminders',
+      'booking_auto_cancel',
+      'recurring_services_scheduler',
+      'email_campaign_scheduler',
+      'dunning_and_invoice_generator',
+      'unanswered_message_monitor',
+      'system_health_monitor',
+      'sheets_customer_auto_sync',
+    ],
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // CRITICAL: Trust proxy headers (required for Replit deployment)
@@ -647,6 +684,25 @@ async function startDeferredInitialization() {
       console.log('[SERVER] Booking confirmation monitor started - checks hourly for reminders');
     } else {
       console.log('[SERVER] Background jobs DISABLED (PLATFORM_BG_JOBS_ENABLED=0). SMS inbound is still active.');
+      // SMS-AUDIT-T1 (S-9): Loudly warn in production if background jobs are off.
+      // Without this, booking-confirmation reminders, auto-cancel, dunning, and
+      // health monitors silently never run in a freshly deployed environment.
+      if (process.env.NODE_ENV === 'production') {
+        console.error('');
+        console.error('========================================================================');
+        console.error('[SERVER WARNING] PLATFORM_BG_JOBS_ENABLED is NOT set in PRODUCTION.');
+        console.error('[SERVER WARNING] The following features are SILENTLY DISABLED:');
+        console.error('[SERVER WARNING]   - Booking confirmation reminders (7d/48h)');
+        console.error('[SERVER WARNING]   - Unconfirmed booking auto-cancel (24h)');
+        console.error('[SERVER WARNING]   - Recurring services scheduler');
+        console.error('[SERVER WARNING]   - Email campaign scheduler');
+        console.error('[SERVER WARNING]   - Nightly dunning + invoice generator');
+        console.error('[SERVER WARNING]   - Unanswered-message + health monitors');
+        console.error('[SERVER WARNING]   - Google Sheets customer auto-sync');
+        console.error('[SERVER WARNING] Set PLATFORM_BG_JOBS_ENABLED=1 to restore them.');
+        console.error('========================================================================');
+        console.error('');
+      }
     }
 
     console.log('[DEFERRED INIT] Background initialization complete');

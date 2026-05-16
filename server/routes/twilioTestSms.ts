@@ -9,7 +9,6 @@ import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '..
 import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
 import { isDuplicateInboundSms, recordProcessedInboundSms } from '../services/smsInboundDedup';
 import { 
-  extractSmsBookingStateFromHistory, 
   detectSlotSelection, 
   getSmsBookingState,
   updateSmsBookingState,
@@ -124,22 +123,35 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
   try {
     const { Body, From, To, MessageSid, NumMedia } = req.body || {};
     const messageSid = dedupeMessageSid || MessageSid;
-    
-    // Record this MessageSid as processed (idempotent, safe to call)
+
+    // SMS-AUDIT-T1 (S-2): Synchronous dedup BEFORE any LLM/booking work.
+    // Twilio retries can arrive within ~50ms; fire-and-forget insert lets
+    // both retries pass dedup and double-bills the LLM. Await + check result.
     if (messageSid) {
-      void recordProcessedInboundSms(messageSid, From, To, 'root');
+      const isNew = await recordProcessedInboundSms(messageSid, From, To, 'root');
+      if (!isNew) {
+        console.log(`[TWILIO SMS INBOUND] Duplicate retry sid=${messageSid} - returning empty TwiML`);
+        res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+        return;
+      }
     }
-    
+
     console.log("[TWILIO SMS INBOUND] Parsed fields:", {
       From,
       To,
       Body,
     });
-    
-    // P0-HOTFIX: Ignore iMessage reaction messages (Loved, Liked, Emphasized, etc.)
-    // These are not real customer messages and should not trigger AI or booking flows
-    const iMessageReactionPattern = /^(Loved|Liked|Emphasized|Laughed at|Disliked|Questioned)\s+".*"/i;
-    if (Body && iMessageReactionPattern.test(Body.trim())) {
+
+    // SMS-AUDIT-T1 (S-3): Ignore iMessage tapback reactions ("Loved", "Liked", etc.).
+    // Tighter than the original prefix match: requires the full Apple-generated
+    // grammar (reaction + space + ASCII or curly-quoted echo of the prior message)
+    // and is gated to text-only inbound (NumMedia=0) so a customer message that
+    // happens to start with "Loved \"...\"" while attaching a real photo is not
+    // dropped.
+    const isTextOnly = !NumMedia || parseInt(String(NumMedia), 10) === 0;
+    const iMessageReactionPattern =
+      /^(Loved|Liked|Emphasized|Laughed at|Disliked|Questioned)\s+["“].+["”][\s.!?]*$/i;
+    if (isTextOnly && Body && iMessageReactionPattern.test(Body.trim())) {
       console.log(`[SMS_REACTION_IGNORED] phone=${From} sid=${MessageSid} body="${Body.substring(0, 50)}"`);
       res.status(204).send();
       return;
@@ -374,14 +386,11 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       console.log(`[SMS CONTEXT] Rebuilt after state reset: loaded=${conversationHistory.length} messages`);
     }
     
-    // 3. Extract fresh state from conversation history and merge with persisted
-    const historyState = extractSmsBookingStateFromHistory(conversationHistory);
-    const smsBookingState: SmsBookingState = {
-      ...historyState,
-      ...persistedState, // Persisted state takes precedence (has chosenSlotLabel etc.)
-      // But use fresh lastOfferedSlots from history if available
-      lastOfferedSlots: historyState.lastOfferedSlots || persistedState.lastOfferedSlots,
-    };
+    // SMS-AUDIT-T1 (S-5): Booking state comes ONLY from the persisted draft row.
+    // Reconstructing state by parsing prior assistant turns is the root cause of
+    // "AI confused itself, then the parser adopted its hallucination as truth."
+    // The bookingDraftService is the single source of truth (R1.6 work).
+    const smsBookingState: SmsBookingState = { ...persistedState };
     
     // Log draft state for debugging
     console.log('[SMS DRAFT] State:', getSmsBookingStateSummary(smsBookingState));
