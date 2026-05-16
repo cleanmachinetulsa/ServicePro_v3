@@ -280,10 +280,11 @@ export default function EnhancedChatbotUI() {
           setConversationId(resolved.conversationId);
           if (resolved.takenOverBy) setTakenOverBy(resolved.takenOverBy);
           if (Array.isArray(resolved.messages) && resolved.messages.length > 0) {
-            const hydrated = resolved.messages.map((m: any) => ({
+            type ResolvedMsg = { id: string | number; content: string; sender: string; timestamp: string | number | Date };
+            const hydrated = (resolved.messages as ResolvedMsg[]).map((m) => ({
               id: String(m.id),
               text: String(m.content || ''),
-              sender: m.sender === 'customer' ? 'user' : 'bot',
+              sender: m.sender === 'customer' ? ('user' as const) : ('bot' as const),
               timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
             }));
             setMessages(hydrated);

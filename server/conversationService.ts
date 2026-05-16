@@ -10,7 +10,7 @@ import {
 } from './websocketService';
 import { getBookingStatusFromState, BookingStatus } from '@shared/ai/smsAgentConfig';
 import { conversationState } from './conversationState';
-import { findOrCreateCustomer } from './services/customerIdentityService';
+import { findOrCreateCustomer, normalizePhone, normalizeEmail } from './services/customerIdentityService';
 
 /**
  * CM-MESSAGE-PERF: Optimized conversation list with pagination and eliminated N+1 queries
@@ -503,6 +503,98 @@ export async function getOrCreateConversation(
  * Returns the resolved customerId (or null if no usable identity was supplied
  * and the conversation is still anonymous).
  */
+/**
+ * Audit T2 #20 (round 3): resolve the canonical web conversation for a given
+ * sp_chat cookie. Once a visitor has supplied phone/email on ANY device, every
+ * subsequent web POST from a cookie that maps to that same customer must write
+ * to the same conversation row — otherwise per-device cookies create parallel
+ * threads and history splits. Returns null if the cookie is anonymous or no
+ * canonical conversation exists yet.
+ */
+/**
+ * Audit T2 #20 (round 4): resolve canonical web conversation by an identity
+ * hint (phone/email). Used for the cross-device first-touch case: a brand-new
+ * cookie that has never been mapped, but the very first POST already carries
+ * the customer's phone/email. We must route that message into the customer's
+ * existing canonical web conversation BEFORE creating a new one — otherwise
+ * device B's first message forks history.
+ */
+export async function resolveCanonicalWebConversationByIdentity(
+  tenantDb: TenantDb,
+  identity: { phone?: string | null; email?: string | null },
+): Promise<{ conversation: typeof conversations.$inferSelect; customerId: number } | null> {
+  try {
+    // Normalize the same way findOrCreateCustomer does so lookups match
+    // stored customer rows (E.164 phone, lowercased email). Without this,
+    // device B's "(918) 555-1212" would miss a customer stored as
+    // "+19185551212" and fork conversation history.
+    const phone = normalizePhone(identity.phone || null);
+    const email = normalizeEmail(identity.email || null);
+    if (!phone && !email) return null;
+
+    const { customers } = await import('@shared/schema');
+    const orExprs = [];
+    if (phone) orExprs.push(eq(customers.phone, phone));
+    if (email) orExprs.push(eq(customers.email, email));
+    if (orExprs.length === 0) return null;
+
+    // Tenant scoping comes from withTenantFilter via tenantDb.
+    const matched = await tenantDb
+      .select()
+      .from(customers)
+      .where(tenantDb.withTenantFilter(customers, or(...orExprs)!))
+      .limit(2);
+    if (matched.length === 0) return null;
+    // Conflict guard: if phone and email map to different customers, bail
+    // out rather than guess. The first POST will fall through to the
+    // anonymous path and linkWebChatIdentity will resolve deterministically.
+    if (matched.length > 1) {
+      console.warn('[CONVERSATION] identity hint matched multiple customers; skipping canonical resolve');
+      return null;
+    }
+    const existingCustomer = matched[0];
+
+    const [conv] = await tenantDb
+      .select()
+      .from(conversations)
+      .where(tenantDb.withTenantFilter(conversations,
+        and(eq(conversations.customerId, existingCustomer.id), eq(conversations.platform, 'web'))))
+      .orderBy(desc(conversations.lastMessageTime))
+      .limit(1);
+    if (!conv) return null;
+    return { conversation: conv, customerId: existingCustomer.id };
+  } catch (err) {
+    console.warn('[CONVERSATION] resolveCanonicalWebConversationByIdentity failed:', err);
+    return null;
+  }
+}
+
+export async function resolveCanonicalWebConversation(
+  tenantDb: TenantDb,
+  webId: string,
+): Promise<typeof conversations.$inferSelect | null> {
+  try {
+    const { webChatIdentities } = await import('@shared/schema');
+    const [identity] = await tenantDb
+      .select()
+      .from(webChatIdentities)
+      .where(tenantDb.withTenantFilter(webChatIdentities, eq(webChatIdentities.webId, webId)))
+      .limit(1);
+    if (!identity?.customerId) return null;
+    const [conv] = await tenantDb
+      .select()
+      .from(conversations)
+      .where(tenantDb.withTenantFilter(conversations,
+        and(eq(conversations.customerId, identity.customerId), eq(conversations.platform, 'web'))))
+      .orderBy(desc(conversations.lastMessageTime))
+      .limit(1);
+    return conv || null;
+  } catch (err) {
+    console.warn('[CONVERSATION] resolveCanonicalWebConversation failed:', err);
+    return null;
+  }
+}
+
 export async function linkWebChatIdentity(
   tenantDb: TenantDb,
   conversationId: number,
