@@ -9,6 +9,15 @@ import { conversationState } from './conversationState';
 import { handleDamagePhotoUpload } from './damageAssessment';
 import { requireAuth } from './authMiddleware';
 import { getConversationById } from './conversationService';
+import { objectStorageClient } from './replit_integrations/object_storage';
+
+// Object Storage bucket for service images (durable across checkpoints)
+const SERVICE_IMAGES_BUCKET = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID || '';
+const SERVICE_IMAGES_PREFIX = 'public/services';
+
+function getServiceImageObjectName(filename: string): string {
+  return `${SERVICE_IMAGES_PREFIX}/${filename}`;
+}
 
 // Set up storage for uploaded files
 const storage = multer.diskStorage({
@@ -120,24 +129,12 @@ const voicemailGreetingUpload = multer({
   }
 });
 
-// Storage configuration for service images (saved to public directory)
-const serviceImageStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'services');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, `service-${uniqueSuffix}${ext}`);
-  }
-});
+// Storage configuration for service images: use in-memory buffer so we can
+// upload directly to Object Storage (durable, survives checkpoint rollbacks).
+const serviceImageStorage = multer.memoryStorage();
 
 // Create multer instance for service images
-const serviceImageUpload = multer({ 
+const serviceImageUpload = multer({
   storage: serviceImageStorage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB max size
@@ -424,29 +421,94 @@ View photo: ${result}`;
     }
   });
 
-  // Route for uploading service images
+  // Route for uploading service images (writes to Object Storage)
   app.post('/api/upload-service-image', serviceImageUpload.single('image'), async (req: Request, res: Response) => {
     try {
-      if (!req.file) {
+      if (!req.file || !req.file.buffer) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
-      // Return the public URL for the uploaded image
-      const imageUrl = `/uploads/services/${req.file.filename}`;
-      
+      if (!SERVICE_IMAGES_BUCKET) {
+        return res.status(500).json({ error: 'Object storage not configured' });
+      }
+
+      // Generate unique filename, preserve extension
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const ext = path.extname(req.file.originalname) || '.jpg';
+      const filename = `service-${uniqueSuffix}${ext}`;
+
+      // Upload buffer to Object Storage at public/services/<filename>
+      const objectName = getServiceImageObjectName(filename);
+      const bucket = objectStorageClient.bucket(SERVICE_IMAGES_BUCKET);
+      const file = bucket.file(objectName);
+      await file.save(req.file.buffer, {
+        contentType: req.file.mimetype || 'image/jpeg',
+        resumable: false,
+        metadata: {
+          contentType: req.file.mimetype || 'image/jpeg',
+          metadata: {
+            'custom:aclPolicy': JSON.stringify({ owner: 'system', visibility: 'public' }),
+          },
+        },
+      });
+
+      // Public URL stays the same shape; served by /uploads/services/:filename below
+      const imageUrl = `/uploads/services/${filename}`;
+
       res.status(200).json({
         success: true,
         message: 'Image uploaded successfully',
-        imageUrl: imageUrl,
-        filename: req.file.filename
+        imageUrl,
+        filename,
       });
     } catch (error: any) {
       console.error('Error uploading service image:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         message: error.message || 'An unexpected error occurred'
       });
     }
+  });
+
+  // Serve service images from Object Storage (durable across checkpoints).
+  // Falls back to local disk for any legacy files not yet migrated.
+  app.get('/uploads/services/:filename', async (req: Request, res: Response) => {
+    const { filename } = req.params;
+    // Reject path traversal attempts
+    if (!filename || filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+      return res.status(400).end();
+    }
+    try {
+      if (SERVICE_IMAGES_BUCKET) {
+        const bucket = objectStorageClient.bucket(SERVICE_IMAGES_BUCKET);
+        const file = bucket.file(getServiceImageObjectName(filename));
+        const [exists] = await file.exists();
+        if (exists) {
+          const [metadata] = await file.getMetadata();
+          res.set({
+            'Content-Type': metadata.contentType || 'image/jpeg',
+            'Cache-Control': 'public, max-age=86400',
+          });
+          if (metadata.size) res.set('Content-Length', String(metadata.size));
+          file.createReadStream()
+            .on('error', (err) => {
+              console.error('Stream error serving service image:', err);
+              if (!res.headersSent) res.status(500).end();
+            })
+            .pipe(res);
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching service image from Object Storage:', err);
+      // fall through to disk fallback
+    }
+
+    // Fallback: legacy disk location
+    const diskPath = path.join(process.cwd(), 'public', 'uploads', 'services', filename);
+    if (fs.existsSync(diskPath)) {
+      return res.sendFile(diskPath);
+    }
+    return res.status(404).end();
   });
 
   // Route for saving service image URL to database
@@ -483,34 +545,46 @@ View photo: ${result}`;
     }
   });
 
-  // Route for deleting service images
-  app.delete('/api/delete-service-image', (req: Request, res: Response) => {
+  // Route for deleting service images (from Object Storage; also cleans legacy disk copy)
+  app.delete('/api/delete-service-image', async (req: Request, res: Response) => {
     try {
       const { imageUrl } = req.body;
-      
       if (!imageUrl) {
         return res.status(400).json({ error: 'Image URL is required' });
       }
-      
-      // Extract filename from URL
+
       const filename = path.basename(imageUrl);
-      const filepath = path.join(process.cwd(), 'public', 'uploads', 'services', filename);
-      
-      // Check if file exists
-      if (fs.existsSync(filepath)) {
-        fs.unlinkSync(filepath);
-        res.status(200).json({
-          success: true,
-          message: 'Image deleted successfully'
-        });
-      } else {
-        res.status(404).json({
-          error: 'File not found'
-        });
+      let removed = false;
+
+      // Try Object Storage first
+      if (SERVICE_IMAGES_BUCKET) {
+        try {
+          const file = objectStorageClient
+            .bucket(SERVICE_IMAGES_BUCKET)
+            .file(getServiceImageObjectName(filename));
+          const [exists] = await file.exists();
+          if (exists) {
+            await file.delete();
+            removed = true;
+          }
+        } catch (err) {
+          console.error('Error deleting from Object Storage:', err);
+        }
       }
+
+      // Also remove any legacy disk copy
+      const filepath = path.join(process.cwd(), 'public', 'uploads', 'services', filename);
+      if (fs.existsSync(filepath)) {
+        try { fs.unlinkSync(filepath); removed = true; } catch {}
+      }
+
+      if (removed) {
+        return res.status(200).json({ success: true, message: 'Image deleted successfully' });
+      }
+      return res.status(404).json({ error: 'File not found' });
     } catch (error: any) {
       console.error('Error deleting service image:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         message: error.message || 'An unexpected error occurred'
       });
