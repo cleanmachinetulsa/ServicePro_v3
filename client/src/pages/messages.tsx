@@ -6,8 +6,6 @@ import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
 import { useLocation, useSearch } from 'wouter';
 import { 
   PlusCircle, 
-  PanelRight, 
-  PanelRightClose,
   Phone,
   CalendarDays,
   LayoutDashboard
@@ -56,7 +54,6 @@ function MessagesPageContent() {
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showProfilePanel, setShowProfilePanel] = useState(true);
   const [showComposeDialog, setShowComposeDialog] = useState(false);
   const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
   const [includeWebchatInAll, setIncludeWebchatInAll] = useState(false);
@@ -259,7 +256,7 @@ function MessagesPageContent() {
         conversationList={conversationListNode}
         threadView={threadViewNode}
         contextPanel={contextPanelNode}
-        showContextPanel={showProfilePanel && !!selectedConversation}
+        showContextPanel={!!selectedConversation}
         selectedConversationId={selectedConversation}
         headerActions={
           <TooltipButtonGroup delayDuration={150}>
@@ -298,16 +295,6 @@ function MessagesPageContent() {
                   >
                     <CalendarDays className="h-3.5 w-3.5 sm:mr-1.5" />
                     <span className="hidden sm:inline">Share</span>
-                  </ButtonWithTooltip>
-                  <ButtonWithTooltip 
-                    size="sm" 
-                    onClick={() => setShowProfilePanel(!showProfilePanel)}
-                    className="nightops-button text-xs hidden lg:flex"
-                    data-testid="button-toggle-profile"
-                    tooltip={showProfilePanel ? "Hide Context Panel" : "Show Context Panel"}
-                    tooltipSide="bottom"
-                  >
-                    {showProfilePanel ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRight className="h-3.5 w-3.5" />}
                   </ButtonWithTooltip>
                 </>
               )}

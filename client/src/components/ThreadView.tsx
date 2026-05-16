@@ -1709,12 +1709,12 @@ export default function ThreadView({
                   // Audit T2: channel-aware send button — color, label tooltip, and
                   // testid morph to match the active conversation's platform.
                   const platform = (conversation.platform || 'sms').toLowerCase();
-                  const channelMap: Record<string, { label: string; cls: string }> = {
-                    sms: { label: 'Send SMS', cls: 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700' },
-                    email: { label: 'Send Email', cls: 'bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-700' },
-                    facebook: { label: 'Send via Messenger', cls: 'bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700' },
-                    instagram: { label: 'Send via Instagram', cls: 'bg-pink-500 hover:bg-pink-600 dark:bg-pink-600 dark:hover:bg-pink-700' },
-                    web: { label: 'Send Web Chat', cls: 'bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700' },
+                  const channelMap: Record<string, { label: string; short: string; cls: string }> = {
+                    sms: { label: 'Send SMS', short: 'SMS', cls: 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700' },
+                    email: { label: 'Send Email', short: 'Email', cls: 'bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-700' },
+                    facebook: { label: 'Send via Messenger', short: 'Messenger', cls: 'bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700' },
+                    instagram: { label: 'Send via Instagram', short: 'IG', cls: 'bg-pink-500 hover:bg-pink-600 dark:bg-pink-600 dark:hover:bg-pink-700' },
+                    web: { label: 'Send Web Chat', short: 'Web', cls: 'bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700' },
                   };
                   const cfg = channelMap[platform] || channelMap.sms;
                   return (
@@ -1722,13 +1722,16 @@ export default function ThreadView({
                       onClick={handleSendMessage}
                       disabled={!messageInput.trim() || sendMessageMutation.isPending}
                       title={cfg.label}
-                      className={`h-11 w-11 ${cfg.cls} text-white rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed p-0 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-700`}
+                      className={`h-11 px-4 gap-1.5 ${cfg.cls} text-white rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-700`}
                       data-testid={`button-send-${platform}`}
                     >
                       {sendMessageMutation.isPending ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
                       ) : (
-                        <Send className="h-5 w-5 translate-x-[1px]" />
+                        <>
+                          <Send className="h-4 w-4" />
+                          <span className="text-xs font-semibold">{cfg.short}</span>
+                        </>
                       )}
                     </Button>
                   );

@@ -44,20 +44,33 @@ export function useReadReceipts({
   const lastSentHighestRef = useRef<number>(0);
   const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const inFlightRef = useRef<number>(0);
+
   const markUpTo = useMutation({
     mutationFn: async (messageId: number) => {
+      inFlightRef.current = messageId;
       return apiRequest('PATCH', `/api/messages/read-up-to/${messageId}`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, messageId) => {
+      // Audit T2 follow-up: only advance the high-watermark on success so a
+      // failed PATCH retries on the next observed message instead of getting
+      // silently swallowed.
+      if (messageId > lastSentHighestRef.current) {
+        lastSentHighestRef.current = messageId;
+      }
+      inFlightRef.current = 0;
       queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+    },
+    onError: () => {
+      inFlightRef.current = 0;
     },
   });
 
   const flush = useCallback(() => {
     const id = highestSeenIdRef.current;
     if (id <= lastSentHighestRef.current) return;
-    lastSentHighestRef.current = id;
+    if (id === inFlightRef.current) return;
     markUpTo.mutate(id);
   }, [markUpTo]);
 
