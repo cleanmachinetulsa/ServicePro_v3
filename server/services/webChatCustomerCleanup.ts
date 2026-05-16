@@ -35,7 +35,12 @@ export async function cleanupStaleWebChatStubs(
   opts: { olderThanDays?: number; dryRun?: boolean } = {},
 ): Promise<WebChatCleanupResult> {
   const olderThanDays = opts.olderThanDays ?? 30;
-  const dryRun = !!opts.dryRun;
+  // Fail-safe rollout: default to dry-run unless the caller (or env flag)
+  // explicitly opts in. Prevents accidental mass-deletes if a cron is wired
+  // before tenant-safety review.
+  const explicitDryRun = typeof opts.dryRun === 'boolean' ? opts.dryRun : null;
+  const enabled = process.env.WEB_CHAT_CLEANUP_ENABLED === '1';
+  const dryRun = explicitDryRun !== null ? explicitDryRun : !enabled;
   const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
 
   // -- Pass 1: anonymous conversations --

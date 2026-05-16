@@ -1930,10 +1930,10 @@ export async function registerRoutes(app: Express) {
   // Public widget config endpoint (Audit T1 W-6)
   app.get('/api/web-chat/config', async (req: Request, res: Response) => {
     try {
-      // Audit T2 Task #20: issue HttpOnly signed sp_chat cookie on first page
-      // load so cross-device identity (once phone/email is provided) and SSE
-      // ownership checks have a stable, server-trusted handle that survives
-      // localStorage clears and is not forgeable by the client.
+      // Audit T2 #20: issue the HttpOnly signed sp_chat cookie on first page
+      // load so SSE ownership checks have a stable, server-trusted handle
+      // that survives localStorage clears and is not forgeable by the client.
+      // Per-cookie only — see SECURITY note below re: web_chat_identities.
       const { ensureWebChatCookie } = await import('./services/webChatCookie');
       const webId = ensureWebChatCookie(req, res);
       // NOTE: we intentionally do NOT pre-create a web_chat_identities row
@@ -1970,12 +1970,10 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  // Audit T2 Task #20 — SSE channel pushed by websocketService when staff
-  // takes over, types, or sends a message on the visitor's web-chat
-  // conversation. Authenticated by the sp_chat cookie: the cookie's webId
-  // must map to a conversation whose customer_phone is `web-chat-<webId>`.
-  // No auth = no stream. Cross-conversation eavesdropping is blocked by the
-  // ownership check below.
+  // Audit T2 #20 — SSE channel pushed by websocketService when staff takes
+  // over, types, or sends a message on the visitor's web-chat conversation.
+  // Authenticated strictly per-cookie: the conversation's customer_phone
+  // must equal `web-chat-<cookie.webId>`. No auth = no stream.
   app.get('/api/web-chat/stream', async (req: Request, res: Response) => {
     try {
       const conversationId = parseInt(String(req.query.conversationId || ''), 10);
