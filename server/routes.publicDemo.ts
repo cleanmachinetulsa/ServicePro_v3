@@ -142,8 +142,10 @@ export const adminRouter = Router();
 // only owner/manager/staff users on the tenant can read or edit the demo
 // script. Any authenticated technician/customer-side principal is rejected.
 function requireStaffOrOwner(req: Request, res: Response, next: NextFunction) {
-  const session = (req as Request & { session?: { user?: { role?: string; tenantId?: string } } }).session;
-  const role = session?.user?.role;
+  // requireAuth populates `req.user` from the users table (see
+  // server/authMiddleware.ts), not `req.session.user`. Read role from there.
+  const user = (req as Request & { user?: { role?: string } }).user;
+  const role = user?.role;
   const allowed = role === 'owner' || role === 'manager' || role === 'staff' || role === 'admin';
   if (!allowed) {
     return res.status(403).json({ error: 'forbidden' });
