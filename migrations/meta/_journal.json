@@ -15,6 +15,20 @@
       "when": 1763940971585,
       "tag": "0001_aspiring_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764100000000,
+      "tag": "0002_portal_settings_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779999999000,
+      "tag": "0003_audit_t1_business_settings",
+      "breakpoints": true
     }
   ]
 }

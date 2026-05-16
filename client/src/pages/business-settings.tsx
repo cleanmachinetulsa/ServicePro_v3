@@ -706,6 +706,187 @@ function MaintenanceModeTab() {
   );
 }
 
+// Audit T1 W-6: Chat Widget configuration tab
+function ChatWidgetTab() {
+  const { toast } = useToast();
+  const [chatGreeting, setChatGreeting] = useState('');
+  const [chatPersonaName, setChatPersonaName] = useState('');
+  const [chatAvatarUrl, setChatAvatarUrl] = useState('');
+  const [webChatRateLimitPerWindow, setRateLimit] = useState<number | ''>('');
+  const [aiDailyTokenBudget, setAiBudget] = useState<number | ''>('');
+  const [aiBudgetExhaustedReply, setExhaustedReply] = useState('');
+  const [serviceAreaCenterLat, setLat] = useState<string>('');
+  const [serviceAreaCenterLng, setLng] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/business-settings', { credentials: 'include' })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.success && data.settings) {
+          const s = data.settings;
+          setChatGreeting(s.chatGreeting ?? '');
+          setChatPersonaName(s.chatPersonaName ?? '');
+          setChatAvatarUrl(s.chatAvatarUrl ?? '');
+          setRateLimit(s.webChatRateLimitPerWindow ?? '');
+          setAiBudget(s.aiDailyTokenBudget ?? '');
+          setExhaustedReply(s.aiBudgetExhaustedReply ?? '');
+          setLat(s.serviceAreaCenterLat != null ? String(s.serviceAreaCenterLat) : '');
+          setLng(s.serviceAreaCenterLng != null ? String(s.serviceAreaCenterLng) : '');
+        }
+      })
+      .catch(() => { /* fallthrough */ })
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        chatGreeting: chatGreeting || null,
+        chatPersonaName: chatPersonaName || null,
+        chatAvatarUrl: chatAvatarUrl || null,
+        webChatRateLimitPerWindow: webChatRateLimitPerWindow === '' ? null : Number(webChatRateLimitPerWindow),
+        aiDailyTokenBudget: aiDailyTokenBudget === '' ? null : Number(aiDailyTokenBudget),
+        aiBudgetExhaustedReply: aiBudgetExhaustedReply || null,
+        serviceAreaCenterLat: serviceAreaCenterLat === '' ? null : serviceAreaCenterLat,
+        serviceAreaCenterLng: serviceAreaCenterLng === '' ? null : serviceAreaCenterLng,
+      };
+      const res = await fetch('/api/business-settings', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to save');
+      toast({ title: 'Saved', description: 'Chat widget settings updated.' });
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Save failed', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return <div className="py-8 text-center text-gray-500">Loading chat widget settings...</div>;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <div className="flex items-center">
+            <MessageSquare className="mr-2 h-5 w-5" />
+            Chat Widget Configuration
+          </div>
+        </CardTitle>
+        <CardDescription>
+          Customize how the public web chat widget greets visitors and protect your AI usage from abuse.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="chatGreeting">Welcome message</Label>
+          <Input
+            id="chatGreeting"
+            data-testid="input-chat-greeting"
+            placeholder="Hey! How can we help today?"
+            value={chatGreeting}
+            onChange={(e) => setChatGreeting(e.target.value)}
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="chatPersonaName">Assistant name</Label>
+            <Input
+              id="chatPersonaName"
+              data-testid="input-persona-name"
+              placeholder="Clean Machine Assistant"
+              value={chatPersonaName}
+              onChange={(e) => setChatPersonaName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="chatAvatarUrl">Assistant avatar URL</Label>
+            <Input
+              id="chatAvatarUrl"
+              data-testid="input-avatar-url"
+              placeholder="https://…/avatar.png"
+              value={chatAvatarUrl}
+              onChange={(e) => setChatAvatarUrl(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="rateLimit">Messages per minute (per visitor)</Label>
+            <Input
+              id="rateLimit"
+              data-testid="input-rate-limit"
+              type="number"
+              min={1}
+              placeholder="10"
+              value={webChatRateLimitPerWindow}
+              onChange={(e) => setRateLimit(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="aiBudget">Daily AI token budget</Label>
+            <Input
+              id="aiBudget"
+              data-testid="input-ai-budget"
+              type="number"
+              min={1000}
+              placeholder="200000"
+              value={aiDailyTokenBudget}
+              onChange={(e) => setAiBudget(e.target.value === '' ? '' : Number(e.target.value))}
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="exhaustedReply">Reply when AI budget exhausted</Label>
+          <Input
+            id="exhaustedReply"
+            data-testid="input-exhausted-reply"
+            placeholder="Thanks for reaching out — we'll be in touch shortly!"
+            value={aiBudgetExhaustedReply}
+            onChange={(e) => setExhaustedReply(e.target.value)}
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="lat">Service area latitude</Label>
+            <Input
+              id="lat"
+              data-testid="input-service-lat"
+              placeholder="36.0900"
+              value={serviceAreaCenterLat}
+              onChange={(e) => setLat(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lng">Service area longitude</Label>
+            <Input
+              id="lng"
+              data-testid="input-service-lng"
+              placeholder="-95.9750"
+              value={serviceAreaCenterLng}
+              onChange={(e) => setLng(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSave} disabled={isSaving} data-testid="button-save-chat-widget">
+            {isSaving ? 'Saving…' : 'Save chat widget settings'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function BusinessSettings() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
@@ -982,6 +1163,10 @@ export default function BusinessSettings() {
           <TabsTrigger value="branding" className="flex items-center whitespace-nowrap">
             <Settings className="mr-2 h-4 w-4" />
             {isSimpleMode ? 'Look & Feel' : 'Branding'}
+          </TabsTrigger>
+          <TabsTrigger value="chat-widget" className="flex items-center whitespace-nowrap" data-testid="tab-chat-widget">
+            <MessageSquare className="mr-2 h-4 w-4" />
+            Chat Widget
           </TabsTrigger>
           {!isSimpleMode && (
             <TabsTrigger value="notifications" className="flex items-center whitespace-nowrap">
@@ -1496,6 +1681,12 @@ export default function BusinessSettings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Audit T1 W-6: Chat Widget tab — tenant-customizable greeting,
+            persona, avatar, anti-abuse rate limit, and AI token budget. */}
+        <TabsContent value="chat-widget" className="space-y-4">
+          <ChatWidgetTab />
         </TabsContent>
 
         {/* Maintenance Tab - Advanced Mode Only */}
