@@ -3,6 +3,7 @@ import { db } from './db';
 import { users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { wrapTenantDb } from './tenantDb';
+import { pushWebChatEvent } from './services/webChatSseHub';
 
 let io: SocketIOServer | null = null;
 
@@ -179,6 +180,22 @@ export function broadcastNewMessage(conversationId: number, message: any) {
     sender: message.sender,
     timestamp: message.timestamp,
   });
+
+  // Audit T2 Task #20: mirror agent/AI-sent messages to any web-chat widget
+  // listening on the SSE channel for this conversation. Customer-sent messages
+  // are echoed by the widget itself and would just be a self-confirmation, so
+  // we skip them.
+  if (message?.sender === 'agent' || message?.sender === 'ai') {
+    pushWebChatEvent(conversationId, {
+      type: 'message',
+      id: message.id,
+      content: message.content,
+      sender: message.sender,
+      timestamp: typeof message.timestamp === 'string'
+        ? message.timestamp
+        : (message.timestamp?.toISOString?.() || new Date().toISOString()),
+    });
+  }
 }
 
 /**
@@ -219,6 +236,19 @@ export function broadcastControlModeChange(conversationId: number, controlMode: 
     controlMode,
     assignedAgent,
   });
+
+  // Audit T2 Task #20: tell the web-chat widget when a human takes over, so
+  // it can swap the bot avatar for the staff member's name and stop showing
+  // the bot's "thinking" pill. Going back to auto fires a handed_back event.
+  if (controlMode === 'manual' || controlMode === 'paused') {
+    pushWebChatEvent(conversationId, {
+      type: 'taken_over',
+      agent: assignedAgent,
+      controlMode,
+    });
+  } else if (controlMode === 'auto') {
+    pushWebChatEvent(conversationId, { type: 'handed_back' });
+  }
 }
 
 /**
@@ -250,6 +280,10 @@ export function broadcastTypingIndicator(conversationId: number, username: strin
     username,
     isTyping,
   });
+
+  // Audit T2 Task #20: surface staff typing in the web-chat widget so the
+  // visitor sees "Jody is typing…" the moment staff starts a reply.
+  pushWebChatEvent(conversationId, { type: 'typing', isTyping, username });
 }
 
 /**

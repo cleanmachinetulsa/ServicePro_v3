@@ -183,6 +183,16 @@ export default function EnhancedChatbotUI() {
   const [captchaVerified, setCaptchaVerified] = useState(false);
   const captchaContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Audit T2 Task #20: cross-device identity + live UX state.
+  // - conversationId: returned by /api/web-chat after the first send; lets the
+  //   widget open a server-pushed SSE channel scoped to this exact conversation.
+  // - takenOverBy: when staff takes over, swap the bot avatar/name in the UI.
+  // - staffTyping: render a "Jody is typing…" pill while staff composes.
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [takenOverBy, setTakenOverBy] = useState<string | null>(null);
+  const [staffTyping, setStaffTyping] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
+
   // Audit T1 W-1: mount Turnstile/hCaptcha widget when configured so the user
   // can actually obtain a token. Without this, /api/web-chat would 403 forever.
   useEffect(() => {
@@ -261,6 +271,74 @@ export default function EnhancedChatbotUI() {
       .catch(() => { /* fallback to defaults */ });
     return () => { cancelled = true; };
   }, []);
+
+  // Audit T2 Task #20: SSE subscription to /api/web-chat/stream. Opens after
+  // the first POST returns a conversationId, then receives:
+  //   - taken_over:  staff has assumed the thread → swap avatar/name
+  //   - handed_back: thread returned to AI auto mode → revert
+  //   - typing:      staff typing pill on/off
+  //   - message:     inbound agent/AI message → append to thread
+  // The browser's EventSource handles reconnect automatically. Ownership is
+  // enforced server-side via the sp_chat HttpOnly cookie.
+  useEffect(() => {
+    if (!conversationId) return;
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
+    const es = new EventSource(`/api/web-chat/stream?conversationId=${conversationId}`, {
+      withCredentials: true,
+    });
+    sseRef.current = es;
+
+    es.addEventListener('taken_over', (evt: MessageEvent) => {
+      try {
+        const data = JSON.parse(evt.data);
+        setTakenOverBy(data.agent || 'our team');
+      } catch { /* noop */ }
+    });
+    es.addEventListener('handed_back', () => {
+      setTakenOverBy(null);
+      setStaffTyping(false);
+    });
+    es.addEventListener('typing', (evt: MessageEvent) => {
+      try {
+        const data = JSON.parse(evt.data);
+        setStaffTyping(!!data.isTyping);
+      } catch { /* noop */ }
+    });
+    es.addEventListener('message', (evt: MessageEvent) => {
+      try {
+        const data = JSON.parse(evt.data);
+        // Ignore our own AI reply — POST handler already appended it.
+        if (data.sender !== 'agent') return;
+        setStaffTyping(false);
+        setMessages((prev) => {
+          const idStr = `srv-${data.id}`;
+          if (prev.some((m) => m.id === idStr)) return prev;
+          return [
+            ...prev,
+            {
+              id: idStr,
+              text: String(data.content || ''),
+              sender: 'bot',
+              timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+            },
+          ];
+        });
+        setHasNewMessage(true);
+      } catch { /* noop */ }
+    });
+    es.onerror = () => {
+      // Browser will auto-reconnect; nothing to do unless we want to surface
+      // a "reconnecting…" state. Silent for now.
+    };
+
+    return () => {
+      try { es.close(); } catch { /* noop */ }
+      sseRef.current = null;
+    };
+  }, [conversationId]);
 
   // Parse URL parameters to check if we should auto-open the scheduler
   useEffect(() => {
@@ -636,6 +714,13 @@ export default function EnhancedChatbotUI() {
           Body: messageText,
           sessionId,
           captchaToken: !captchaVerified ? pendingCaptchaToken : undefined,
+          // Audit T2 Task #20: forward any identity hints the visitor has
+          // already filled in (booking form, contact card, etc.) so the
+          // anonymous web-chat conversation gets promoted to a real customer
+          // + cross-channel thread as early as possible.
+          identityPhone: customerPhone || undefined,
+          identityEmail: customerEmail || undefined,
+          identityName: customerName || undefined,
         }),
       });
 
@@ -665,6 +750,12 @@ export default function EnhancedChatbotUI() {
       }
 
       const responseText = data.message;
+
+      // Audit T2 Task #20: capture the server-side conversation id so the
+      // SSE subscription effect can open a stream scoped to this exact thread.
+      if (typeof data.conversationId === 'number' && data.conversationId !== conversationId) {
+        setConversationId(data.conversationId);
+      }
 
       // Add bot response to chat
       const botMessage: Message = {
@@ -856,11 +947,18 @@ export default function EnhancedChatbotUI() {
     return null;
   };
 
-  // Render typing indicator with animation
+  // Render typing indicator with animation.
+  // Audit T2 Task #20: when staff has taken over, the pill swaps to the
+  // staff member's name and the bot avatar is replaced by a generic person
+  // icon, so the visitor immediately sees that a real human is on the line.
   const renderTypingIndicator = () => {
+    const showTyping = isTyping || staffTyping;
+    const persona = takenOverBy
+      ? `${takenOverBy}`
+      : (widgetConfig.personaName || 'Clean Machine');
     return (
       <AnimatePresence>
-        {isTyping && (
+        {showTyping && (
           <motion.div
             className="flex items-center mb-3"
             initial="initial"
@@ -869,8 +967,14 @@ export default function EnhancedChatbotUI() {
             variants={typingVariants}
           >
             <div className="max-w-[85%] bg-white text-gray-800 rounded-2xl rounded-tl-md px-3 py-2 flex items-center gap-2 shadow-sm border border-gray-200">
-              <img src={widgetConfig.avatarUrl || logoUrl} alt={widgetConfig.personaName || 'Assistant'} className="h-3 w-3 rounded-full" />
-              <span className="text-[10px] opacity-60 font-medium">{widgetConfig.personaName || 'Clean Machine'} is typing</span>
+              {takenOverBy ? (
+                <span className="inline-flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white">
+                  {persona.charAt(0).toUpperCase()}
+                </span>
+              ) : (
+                <img src={widgetConfig.avatarUrl || logoUrl} alt={persona} className="h-3 w-3 rounded-full" />
+              )}
+              <span className="text-[10px] opacity-60 font-medium">{persona} is typing</span>
               <div className="flex gap-1">
                 {[0, 1, 2].map(i => (
                   <motion.div
@@ -885,6 +989,21 @@ export default function EnhancedChatbotUI() {
           </motion.div>
         )}
       </AnimatePresence>
+    );
+  };
+
+  // Audit T2 Task #20: persistent banner when staff has taken over the
+  // thread, so the visitor knows the AI has stepped aside even between
+  // typing pulses.
+  const renderTakeoverBanner = () => {
+    if (!takenOverBy) return null;
+    return (
+      <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800 flex items-center gap-2">
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white">
+          {takenOverBy.charAt(0).toUpperCase()}
+        </span>
+        <span><strong>{takenOverBy}</strong> from our team has joined the chat.</span>
+      </div>
     );
   };
 
@@ -1084,6 +1203,7 @@ export default function EnhancedChatbotUI() {
             ))}
           </AnimatePresence>
 
+          {renderTakeoverBanner()}
           {renderTypingIndicator()}
           <div ref={messageEndRef} />
         </div>

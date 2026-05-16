@@ -1930,6 +1930,13 @@ export async function registerRoutes(app: Express) {
   // Public widget config endpoint (Audit T1 W-6)
   app.get('/api/web-chat/config', async (req: Request, res: Response) => {
     try {
+      // Audit T2 Task #20: issue HttpOnly signed sp_chat cookie on first page
+      // load so cross-device identity (once phone/email is provided) and SSE
+      // ownership checks have a stable, server-trusted handle that survives
+      // localStorage clears and is not forgeable by the client.
+      const { ensureWebChatCookie } = await import('./services/webChatCookie');
+      const webId = ensureWebChatCookie(req, res);
+
       const { businessSettings } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       const rows = await req.tenantDb!.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
@@ -1938,6 +1945,7 @@ export async function registerRoutes(app: Express) {
       const provider = getProvider();
       return res.json({
         success: true,
+        webId, // expose to widget so it can derive the SSE channel; signed cookie remains the source of truth
         greeting: row?.chatGreeting || `Hey! How can I help with your detail today?`,
         personaName: row?.chatPersonaName || row?.businessName || 'Assistant',
         avatarUrl: row?.chatAvatarUrl || null,
@@ -1953,6 +1961,75 @@ export async function registerRoutes(app: Express) {
     } catch (err) {
       console.warn('[WEB CHAT CONFIG] Error:', err);
       return res.json({ success: true, greeting: null, personaName: null, avatarUrl: null, captcha: { provider: 'none', siteKey: null } });
+    }
+  });
+
+  // Audit T2 Task #20 — SSE channel pushed by websocketService when staff
+  // takes over, types, or sends a message on the visitor's web-chat
+  // conversation. Authenticated by the sp_chat cookie: the cookie's webId
+  // must map to a conversation whose customer_phone is `web-chat-<webId>`.
+  // No auth = no stream. Cross-conversation eavesdropping is blocked by the
+  // ownership check below.
+  app.get('/api/web-chat/stream', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(String(req.query.conversationId || ''), 10);
+      if (!Number.isFinite(conversationId) || conversationId <= 0) {
+        return res.status(400).end();
+      }
+      const { readWebChatCookie, webIdentifierFor } = await import('./services/webChatCookie');
+      const webId = readWebChatCookie(req);
+      if (!webId) return res.status(401).end();
+
+      // Verify the cookie owns this conversation (tenant-scoped).
+      const { eq, and } = await import('drizzle-orm');
+      const { conversations } = await import('@shared/schema');
+      const [conv] = await req.tenantDb!
+        .select({
+          id: conversations.id,
+          customerPhone: conversations.customerPhone,
+          platform: conversations.platform,
+        })
+        .from(conversations)
+        .where(
+          req.tenantDb!.withTenantFilter(conversations,
+            and(eq(conversations.id, conversationId), eq(conversations.platform, 'web'))
+          )
+        )
+        .limit(1);
+      if (!conv || conv.customerPhone !== webIdentifierFor(webId)) {
+        return res.status(403).end();
+      }
+
+      // Open the SSE stream.
+      res.set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no', // disable proxy buffering
+      });
+      res.flushHeaders?.();
+      res.write('event: ready\ndata: {"ok":true}\n\n');
+
+      const { registerWebChatClient } = await import('./services/webChatSseHub');
+      const unregister = registerWebChatClient(conversationId, res);
+
+      // Heartbeat every 25s so intermediaries don't reap the connection and
+      // so the client's onerror handler can reconnect quickly if the server
+      // really did die.
+      const heartbeat = setInterval(() => {
+        try { res.write(': ping\n\n'); } catch { /* noop */ }
+      }, 25_000);
+
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        unregister();
+        try { res.end(); } catch { /* noop */ }
+      };
+      req.on('close', cleanup);
+      req.on('aborted', cleanup);
+    } catch (err) {
+      console.error('[WEB CHAT SSE] Error opening stream:', err);
+      try { res.status(500).end(); } catch { /* noop */ }
     }
   });
 
@@ -2060,32 +2137,64 @@ export async function registerRoutes(app: Express) {
         markSessionVerified(compositeKey);
       }
 
-      const webIdentifier = `web-chat-${sessionId}`;
-      
+      // Audit T2 Task #20: prefer the server-issued sp_chat cookie webId over
+      // the client-supplied sessionId. The cookie is HttpOnly, signed, and
+      // persists 30d across browser sessions, so the same visitor on the same
+      // device always lands on the same conversation. If the cookie is missing
+      // (visitor never hit /config, e.g., they POSTed directly), we mint one
+      // here so the channel still works.
+      const { ensureWebChatCookie, webIdentifierFor } = await import('./services/webChatCookie');
+      const cookieWebId = ensureWebChatCookie(req, res);
+      // Fail-closed fallback when SESSION_SECRET is missing/weak in
+      // production: we cannot mint a trusted sp_chat cookie, so we fall back
+      // to the (untrusted) client-supplied sessionId just for conversation
+      // grouping. The SSE channel will be unavailable for that visitor —
+      // which is the correct degraded behavior, not silent forgery.
+      const webIdentifier = cookieWebId
+        ? webIdentifierFor(cookieWebId)
+        : `web-chat-fallback-${sessionId}`;
+
       // Process the web chat message (isolated from SMS customers)
-      const { getOrCreateConversation, addMessage } = await import('./conversationService');
+      const { getOrCreateConversation, addMessage, linkWebChatIdentity } = await import('./conversationService');
       const { processConversation } = await import('./conversationHandler');
-      
+
       const { conversation } = await getOrCreateConversation(
         req.tenantDb!,
-        webIdentifier, // Use session-based ID, not client-supplied phone
+        webIdentifier, // cookie-backed handle, NOT a real phone
         null, // customerName
         'web', // platform
         undefined, undefined, undefined, undefined, undefined, undefined
       );
-      
+
+      // Audit T2 Task #20: if the widget surfaces a real phone/email/name
+      // alongside the message body (typed in-chat or pulled from a booking
+      // form), promote the anonymous web-chat conversation to a real
+      // customer + customer_thread so cross-channel state lights up
+      // immediately. Idempotent and non-fatal.
+      const identityPhone = typeof req.body?.identityPhone === 'string' ? req.body.identityPhone : null;
+      const identityEmail = typeof req.body?.identityEmail === 'string' ? req.body.identityEmail : null;
+      const identityName = typeof req.body?.identityName === 'string' ? req.body.identityName : null;
+      if (identityPhone || identityEmail) {
+        await linkWebChatIdentity(req.tenantDb!, conversation.id, {
+          phone: identityPhone,
+          email: identityEmail,
+          fullName: identityName,
+        });
+      }
+
       // Save incoming message
       await addMessage(req.tenantDb!, conversation.id, message, 'customer', 'web');
-      
+
       // Process with AI
       const response = await processConversation(req.tenantDb!, webIdentifier, message, 'web');
-      
+
       // Save AI response to database
       await addMessage(req.tenantDb!, conversation.id, response.response, 'ai', 'web');
-      
+
       return res.json({
         success: true,
         message: response.response,
+        conversationId: conversation.id, // widget uses this to subscribe via SSE
       });
     } catch (error: any) {
       console.error('[WEB CHAT] Error processing web chat message:', error);

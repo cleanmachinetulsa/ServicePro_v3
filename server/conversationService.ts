@@ -342,7 +342,14 @@ export async function getOrCreateConversation(
       const tenantIdForLate = (tenantDb as any).tenantId || 'root';
       let lateCustomerId: number | null = conv.customerId ?? null;
 
-      if (!lateCustomerId && (customerPhone || emailAddress)) {
+      // Audit T2 Task #20: same defer rule applies on late-attach. An
+      // anonymous web-chat conversation should NOT spawn a customers row on
+      // every subsequent message; it must wait for real identity.
+      const isAnonWebLate = platform === 'web'
+        && typeof customerPhone === 'string'
+        && customerPhone.startsWith('web-chat-')
+        && !emailAddress;
+      if (!lateCustomerId && !isAnonWebLate && (customerPhone || emailAddress)) {
         try {
           const platformSource = platform === 'sms' ? 'sms'
             : platform === 'email' ? 'email'
@@ -385,7 +392,20 @@ export async function getOrCreateConversation(
     let customerId: number | null = null;
     const tenantId = (tenantDb as any).tenantId || 'root';
     
-    if (customerPhone || emailAddress) {
+    // Audit T2 Task #20: defer customers-row creation for anonymous web
+    // visitors. The widget seeds the conversation with a synthetic
+    // `web-chat-<webId>` "phone", which is just a cookie handle — not a real
+    // identifier — so creating a customers row at this point pollutes the
+    // CRM with thousands of stub rows that never resolve. We hold the
+    // identifier on conversations.customer_phone only, and create / link the
+    // real customer + thread the moment the visitor supplies a phone, email,
+    // or schedules an appointment (see linkWebChatIdentity below).
+    const isAnonymousWebHandle = platform === 'web'
+      && typeof customerPhone === 'string'
+      && customerPhone.startsWith('web-chat-')
+      && !emailAddress;
+
+    if (!isAnonymousWebHandle && (customerPhone || emailAddress)) {
       try {
         const platformSource = platform === 'sms' ? 'sms' 
           : platform === 'email' ? 'email'
@@ -471,6 +491,80 @@ export async function getOrCreateConversation(
   } catch (error) {
     console.error('Error getting or creating conversation:', error);
     throw error;
+  }
+}
+
+/**
+ * Audit T2 Task #20 — promote an anonymous web-chat conversation to a real
+ * customer the first time the visitor supplies a phone, email, or schedules
+ * an appointment. Idempotent: safe to call on every web-chat POST that
+ * carries an identity hint; bails fast if the conversation is already linked.
+ *
+ * Returns the resolved customerId (or null if no usable identity was supplied
+ * and the conversation is still anonymous).
+ */
+export async function linkWebChatIdentity(
+  tenantDb: TenantDb,
+  conversationId: number,
+  identity: { phone?: string | null; email?: string | null; fullName?: string | null },
+): Promise<number | null> {
+  try {
+    const phone = identity.phone?.trim() || null;
+    const email = identity.email?.trim() || null;
+    if (!phone && !email) return null;
+
+    // Don't link the synthetic web-chat-<webId> handle — that's the anonymous
+    // cookie value, not a real phone number.
+    if (phone && phone.startsWith('web-chat-')) return null;
+
+    const [conv] = await tenantDb
+      .select()
+      .from(conversations)
+      .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+      .limit(1);
+    if (!conv) return null;
+    if (conv.customerId) return conv.customerId; // already linked
+
+    const tenantId = (tenantDb as any).tenantId || 'root';
+    const ident = await findOrCreateCustomer(tenantDb, {
+      tenantId,
+      phone,
+      email,
+      fullName: identity.fullName || conv.customerName || null,
+      source: 'web',
+    });
+    const customerId = ident.customer.id;
+
+    // Find/create the cross-channel thread row so escalation / pause /
+    // booking-offer state is shared with this customer's SMS conversations.
+    let threadId: number | null = null;
+    try {
+      const { findOrCreateThread, attachConversationToThread } =
+        await import('./services/customerThreadService');
+      const thread = await findOrCreateThread(tenantDb, tenantId, customerId);
+      threadId = thread.id;
+      await attachConversationToThread(tenantDb, conversationId, thread.id);
+    } catch (threadErr) {
+      console.error('[CONVERSATION] linkWebChatIdentity thread attach failed:', threadErr);
+    }
+
+    await tenantDb
+      .update(conversations)
+      .set({
+        customerId,
+        threadId: threadId ?? conv.threadId ?? null,
+        // Keep customerPhone as the web-chat-<webId> handle so the SSE
+        // cookie→conversation lookup keeps working. Promote the real phone
+        // to a dedicated column only if we add one later.
+        customerName: identity.fullName || conv.customerName || null,
+      })
+      .where(eq(conversations.id, conversationId));
+
+    console.log(`[WEB CHAT IDENTITY] conv=${conversationId} linked to customer=${customerId} thread=${threadId}`);
+    return customerId;
+  } catch (err) {
+    console.error('[WEB CHAT IDENTITY] linkWebChatIdentity failed (non-fatal):', err);
+    return null;
   }
 }
 
