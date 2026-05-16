@@ -142,7 +142,33 @@ function MessagesPageContent() {
     );
   });
 
-  const sortedConversations = [...filteredConversations].sort((a, b) => {
+  // Audit T2: thread-aware grouping. Collapse multiple conversations for the
+  // same customer (matched by normalized phone, falling back to id) into a
+  // single representative thread row. The representative is the most recently
+  // active conversation; unreadCount, needsHumanAttention, controlMode='manual',
+  // pinned, and starred are aggregated across sibling channels so the row
+  // surfaces the strongest signal regardless of which channel triggered it.
+  const normalizePhone = (p: string | null | undefined) =>
+    (p || '').replace(/[^\d+]/g, '').toLowerCase();
+  const threadGroups = new Map<string, Conversation[]>();
+  filteredConversations.forEach(conv => {
+    const key = normalizePhone(conv.customerPhone) || `id:${conv.id}`;
+    if (!threadGroups.has(key)) threadGroups.set(key, []);
+    threadGroups.get(key)!.push(conv);
+  });
+  const threadRows: Conversation[] = Array.from(threadGroups.values()).map(group => {
+    const sorted = [...group].sort(
+      (a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime(),
+    );
+    const rep = sorted[0];
+    const unreadCount = group.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
+    const needsHumanAttention = group.some(c => c.needsHumanAttention);
+    const controlMode = group.some(c => c.controlMode === 'manual') ? 'manual' : rep.controlMode;
+    const pinned = group.some(c => c.pinned);
+    const starred = group.some(c => c.starred);
+    return { ...rep, unreadCount, needsHumanAttention, controlMode, pinned, starred };
+  });
+  const sortedConversations = threadRows.sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
     return new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime();
