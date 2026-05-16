@@ -207,6 +207,23 @@ export async function handleSmsConsentKeywords(params: {
 
         if (result.length > 0) {
           console.log(`[SMS CONSENT] START cleared escalation/pause on ${result.length} conversation(s) for ${normalizedPhone}`);
+          // SMS-AUDIT-T1 (S-7): Emit a Slack notice for every TCPA re-opt-in
+          // so the support team can audit who restored automation and when.
+          try {
+            const { notifySlackAudit } = await import('./slackNotifyAudit');
+            void notifySlackAudit(
+              `:white_check_mark: TCPA START re-opt-in cleared escalation flags`,
+              {
+                tenantId,
+                phone: normalizedPhone,
+                conversationsCleared: result.length,
+                keyword: normalized,
+                at: new Date().toISOString(),
+              },
+            );
+          } catch {
+            // Slack notice is non-blocking
+          }
         }
       } catch (err: any) {
         // Non-blocking: consent is already recorded above

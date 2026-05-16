@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { AiHelpSearch } from '@/components/AiHelpSearch';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { PastDueWarningBanner } from '@/components/billing/PastDueWarningBanner';
+import { BgJobsBanner } from '@/components/BgJobsBanner';
 import { navigationItems, NavigationItem, filterNavForMode } from '@/config/navigationItems';
 import { useSimpleModeConfig } from '@/hooks/useUiExperienceMode';
 import { isRootTenant } from '@/utils/tenantRouting';
@@ -257,7 +258,10 @@ export function AppShell({
       <div className="flex-1 flex flex-col min-h-0">
         {/* Impersonation Banner */}
         <ImpersonationBanner />
-        
+
+        {/* SMS-AUDIT-T1 (S-9): Background-jobs OFF banner */}
+        <BgJobsBanner />
+
         {/* Past Due Warning Banner (SP-6) */}
         {isPastDue && <PastDueWarningBanner />}
         

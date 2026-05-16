@@ -111,6 +111,15 @@ describe('SMS-AUDIT-T1 S-8: outbound SMS channel guard', () => {
     ).toEqual([]);
   });
 
+  // Migration target: the boundary the audit wants is "ONLY smsFailoverService
+  // can call twilio.messages.create". The current ALLOWED_FILES list is the
+  // baseline as of SMS-AUDIT-T1; tasks #15-#23 track migrating each entry off
+  // direct sends. When the list shrinks to a single entry this todo can flip
+  // to a real test.
+  it.todo(
+    'MIGRATION TARGET: only server/smsFailoverService.ts may call twilio.messages.create',
+  );
+
   it('no NEW file calls twilio(.client)?.messages.create directly', () => {
     const offenders: string[] = [];
     for (const abs of allFiles) {

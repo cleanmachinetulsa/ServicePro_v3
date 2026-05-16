@@ -684,6 +684,16 @@ async function startDeferredInitialization() {
       console.log('[SERVER] Booking confirmation monitor started - checks hourly for reminders');
     } else {
       console.log('[SERVER] Background jobs DISABLED (PLATFORM_BG_JOBS_ENABLED=0). SMS inbound is still active.');
+      // SMS-AUDIT-T1 (S-9): Slack-ping on production startup with bg jobs off.
+      if (process.env.NODE_ENV === 'production') {
+        const { notifySlackAudit } = await import('./services/slackNotifyAudit');
+        void notifySlackAudit(
+          ':warning: ServicePro started in production with PLATFORM_BG_JOBS_ENABLED=0. ' +
+          'Booking confirmation reminders, auto-cancel, dunning, and health monitors are SILENT. ' +
+          'Set PLATFORM_BG_JOBS_ENABLED=1 to restore.',
+          { environment: 'production', startupTime: new Date().toISOString() },
+        );
+      }
       // SMS-AUDIT-T1 (S-9): Loudly warn in production if background jobs are off.
       // Without this, booking-confirmation reminders, auto-cancel, dunning, and
       // health monitors silently never run in a freshly deployed environment.

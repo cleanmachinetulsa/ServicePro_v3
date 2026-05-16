@@ -27,10 +27,25 @@ describe('SMS-AUDIT-T1 S-3: iMessage tapback filter', () => {
     expect(isTapback('liked "ok"', 0)).toBe(true);
   });
 
-  it('does NOT match a real customer message that merely starts with a reaction word', () => {
-    expect(isTapback('Loved my last detail, can I book again?', 0)).toBe(false);
-    expect(isTapback('Liked the service. Thanks!', 0)).toBe(false);
-    expect(isTapback('Emphasized that I need it tomorrow', 0)).toBe(false);
+  it('does NOT misclassify ten realistic customer messages as tapbacks', () => {
+    // The original audit found that the loose regex was eating real customer
+    // messages. These are ten realistic English false-positives that MUST
+    // pass through to the LLM.
+    const realCustomerMessages = [
+      'Loved my last detail, can I book again?',
+      'Liked the service. Thanks!',
+      'Emphasized that I need it tomorrow',
+      'Loved it! When can you come back?',
+      'Liked everything except the price - any discount?',
+      'Loved the wash, do you do interiors too?',
+      'My wife loved "the polish job" she said',
+      'Disliked the wait time but the work was great',
+      'Questioned by my husband whether we should book monthly',
+      'Laughed at how dirty it was before vs after - amazing',
+    ];
+    for (const msg of realCustomerMessages) {
+      expect(isTapback(msg, 0), `should NOT match: "${msg}"`).toBe(false);
+    }
   });
 
   it('does NOT match a reaction-shaped string when an MMS attachment is present', () => {
