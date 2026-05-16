@@ -169,6 +169,19 @@ export async function escalateSmsToHuman(context: EscalationContext): Promise<{
   if (tenantId && conversationId) {
     const reasonText = customReasonLabel ? `${reason}: ${customReasonLabel}` : reason;
     conversationFlagged = await markConversationNeedsHuman(tenantId, conversationId, reasonText, pauseHours ?? AUTOMATION_PAUSE_HOURS);
+    // Audit T3 Task #23: fire owner Web Push deep-linked to the thread.
+    try {
+      const { notifyOwnerEscalation } = await import('./ownerPushService');
+      void notifyOwnerEscalation({
+        tenantId,
+        conversationId,
+        reason: reasonText,
+        customerLabel: fromPhone,
+        urgency: 'high',
+      });
+    } catch (pushErr) {
+      console.warn('[ESCALATION] owner push notify failed:', pushErr);
+    }
   }
   
   const ownerPhone = await getTenantOwnerPhone(tenantId);

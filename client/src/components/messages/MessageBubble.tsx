@@ -10,6 +10,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useState, useRef, useEffect } from 'react';
 import { getProxiedAudioUrl } from '@/lib/twilioMediaProxy';
+import { AiToolPill } from '@/components/AiToolPill';
 
 /**
  * MessageBubble Component - Extensible message display with render-prop slots
@@ -546,6 +547,11 @@ export default function MessageBubble({
                 <Bot className="h-2.5 w-2.5" />
                 <span className="text-[10px] font-medium">AI</span>
               </div>
+            )}
+
+            {/* Audit T3 Task #23: AI guardrail pill — shows tools the AI invoked for this reply */}
+            {message.sender === 'ai' && Array.isArray((message.metadata as any)?.toolCalls) && (message.metadata as any).toolCalls.length > 0 && (
+              <AiToolPill toolNames={(message.metadata as any).toolCalls as string[]} compact />
             )}
             
             {/* Delivery Indicator for sent messages - Production-grade checkmarks */}

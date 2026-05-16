@@ -591,6 +591,21 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "offer_human_handoff",
+      description: "Proactively offer the customer the choice between a quick call back from a teammate OR staying by text. Use when the answer is complex, the customer sounds frustrated/confused, or the request is outside your tools — but BEFORE you give up and silently escalate. Arms the conversation to interpret the next 'call' / 'text' reply correctly.",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: { type: "string", description: "One-line reason you are offering a handoff." },
+          urgency: { type: "string", enum: ["low", "high"], description: "How urgent the handoff offer is" }
+        },
+        required: ["reason"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "weather_check_for_appointment",
       description: "Check weather risk for a specific upcoming appointment. Returns `{risk, summary, suggest_reschedule}`. Prefer passing appointment_id from get_existing_appointment; if you only have a phone, the helper will look up the customer's next upcoming appointment.",
       parameters: {
@@ -631,8 +646,16 @@ async function executeFunctionCall(
   functionName: string,
   args: any,
   isWebChat: boolean = false,
-  tenantId?: string
+  tenantId?: string,
+  conversationIdHint?: number
 ): Promise<string> {
+  // Audit T3 Task #23: capture tool name for AI guardrail pill so the
+  // caller can persist it onto messages.metadata.toolCalls when the
+  // assistant message is written.
+  try {
+    const { recordToolCallForConversation } = await import('./services/aiToolMetadata');
+    recordToolCallForConversation(conversationIdHint, functionName);
+  } catch { /* non-fatal */ }
   // SECURITY: Block privileged functions for web chat users
   if (isWebChat && !WEB_SAFE_FUNCTION_NAMES.includes(functionName)) {
     console.warn(`[SECURITY] Blocked web chat attempt to call privileged function: ${functionName}`);
@@ -823,6 +846,19 @@ async function executeFunctionCall(
           args.urgency === 'high' ? 'high' : 'low',
         );
         return JSON.stringify(result);
+      }
+      case "offer_human_handoff": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        if (typeof conversationIdHint !== 'number') {
+          return JSON.stringify({ success: false, error: 'conversation context required' });
+        }
+        const { armHandoffOffer } = await import('./services/handoffOfferService');
+        const urgency = args.urgency === 'high' ? 'high' as const : 'low' as const;
+        await armHandoffOffer(tenantId, conversationIdHint, { reason: args.reason, urgency });
+        const prompt = urgency === 'high'
+          ? `Want me to have someone call you in the next few minutes, or stay by text? Reply "call" or "text".`
+          : `Would you rather a quick call from our team, or keep it by text? Reply "call" or "text".`;
+        return JSON.stringify({ success: true, handoffOffered: true, prompt });
       }
       case "weather_check_for_appointment": {
         if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
@@ -1035,7 +1071,7 @@ export async function generateAIResponse(
             console.log(`[SMS AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
             
             // Audit T2 Task #19: thread tenantId so staff-action tools can resolve tenant context.
-            const functionResult = await executeFunctionCall(functionName, functionArgs, false, tenantId);
+            const functionResult = await executeFunctionCall(functionName, functionArgs, false, tenantId, conversationId);
             
             currentMessages.push({
               role: "tool",
@@ -1194,7 +1230,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
             
             // SECURITY: Pass isWebChat=true to block privileged functions
             // Pass tenantId for Smart Availability Deep Links (booking URL generation)
-            const functionResult = await executeFunctionCall(functionName, functionArgs, true, tenantId);
+            const functionResult = await executeFunctionCall(functionName, functionArgs, true, tenantId, conversationId);
             
             currentMessages.push({
               role: "tool",
@@ -1554,7 +1590,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
         console.log(`[AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
         
         // Audit T2 Task #19: thread tenantId so staff-action tools can resolve tenant context.
-        const functionResult = await executeFunctionCall(functionName, functionArgs, false, tenantId);
+        const functionResult = await executeFunctionCall(functionName, functionArgs, false, tenantId, conversationId);
         
         currentMessages.push({
           role: "tool",

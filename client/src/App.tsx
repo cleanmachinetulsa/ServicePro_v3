@@ -51,6 +51,10 @@ const DemoLandingPage = lazy(() => import("@/pages/DemoLandingPage"));
 const DemoVerifyPage = lazy(() => import("@/pages/DemoVerifyPage"));
 const DemoDashboardPage = lazy(() => import("@/pages/DemoDashboardPage"));
 const DemoPage = lazy(() => import("@/pages/demo"));
+// Audit T3 Task #23: premium product plays
+const AiReplayPage = lazy(() => import("@/pages/AiReplay"));
+const PublicStatusPage = lazy(() => import("@/pages/PublicStatusPage"));
+const DemoModePage = lazy(() => import("@/pages/DemoModePage"));
 
 // Auth & Account pages
 const ForgotPasswordPage = lazy(() => import("./pages/forgot-password"));
@@ -224,6 +228,23 @@ function Router() {
       {/* CM-DEMO-1: Demo Mode Routes (PUBLIC - NO AUTH) */}
       <Route path="/demo">
         <LazyPage><DemoLandingPage /></LazyPage>
+      </Route>
+      {/* Audit T3 Task #23: productized demo per tenant (PUBLIC - NO AUTH) */}
+      <Route path="/demo/:tenant">
+        {(params) => <LazyPage><DemoModePage /></LazyPage>}
+      </Route>
+      {/* Audit T3 Task #23: public status page (PUBLIC - NO AUTH) */}
+      <Route path="/status/:slug">
+        {(params) => <LazyPage><PublicStatusPage /></LazyPage>}
+      </Route>
+      <Route path="/status">
+        <LazyPage><PublicStatusPage /></LazyPage>
+      </Route>
+      {/* Audit T3 Task #23: AI replay (auth required) */}
+      <Route path="/admin/ai-replay/:threadId">
+        <AuthGuard>
+          <LazyPage><AiReplayPage /></LazyPage>
+        </AuthGuard>
       </Route>
       <Route path="/demo/verify">
         <LazyPage><DemoVerifyPage /></LazyPage>

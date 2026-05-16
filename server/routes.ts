@@ -112,6 +112,10 @@ import {
   sendBusinessEmail,
 } from './emailService';
 import { registerAuthRoutes } from './routes.auth';
+// Audit T3 Task #23: premium product plays
+import aiReplayRouter from './routes.aiReplay';
+import publicStatusRouter from './routes.publicStatus';
+import publicDemoRouter from './routes.publicDemo';
 import { registerWebAuthnRoutes } from './routes.webauthn';
 import { registerBootstrapRoutes } from './routes.bootstrap';
 import { registerSearchRoutes } from './routes.search';
@@ -256,6 +260,11 @@ export async function registerRoutes(app: Express) {
 
   // Register authentication routes
   registerAuthRoutes(app);
+
+  // Audit T3 Task #23: premium plays — public status + demo (no auth), admin replay (requireAuth inside router)
+  app.use('/api/public/status', publicStatusRouter);
+  app.use('/api/public/demo', publicDemoRouter);
+  app.use('/api/admin/ai-replay', aiReplayRouter);
   
   // Register WebAuthn biometric authentication routes
   registerWebAuthnRoutes(app);

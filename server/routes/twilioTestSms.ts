@@ -178,9 +178,26 @@ async function getConversationHistory(tenantDb: any, conversationId: number) {
   }));
 }
 
-async function addMessage(tenantDb: any, conversationId: number, content: string, sender: string) {
+async function addMessage(
+  tenantDb: any,
+  conversationId: number,
+  content: string,
+  sender: string,
+  metadata?: Record<string, unknown>,
+) {
   const now = new Date();
-  
+
+  // Audit T3 Task #23: auto-pull most-recent AI tool calls for the
+  // assistant pill, unless caller supplied explicit metadata.
+  let finalMetadata = metadata;
+  if (!finalMetadata && sender === 'ai') {
+    try {
+      const { takeToolCallsForConversation } = await import('../services/aiToolMetadata');
+      const tools = takeToolCallsForConversation(conversationId);
+      if (tools.length > 0) finalMetadata = { toolCalls: tools };
+    } catch { /* non-fatal */ }
+  }
+
   // Insert the message
   await tenantDb
     .insert(messagesTable)
@@ -191,6 +208,7 @@ async function addMessage(tenantDb: any, conversationId: number, content: string
       fromCustomer: sender === 'customer',
       platform: 'sms',
       timestamp: now,
+      ...(finalMetadata ? { metadata: finalMetadata } : {}),
     });
   
   // Update conversation's last_message_time so it appears in the messages list
@@ -386,7 +404,55 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     // Add customer message
     await addMessage(tenantDb, conversation.id, Body, 'customer');
-    
+
+    // Audit T3 Task #23: intercept "call" / "text" reply when a handoff offer
+    // is live on this conversation. Runs BEFORE the LLM so a one-word reply
+    // is honored exactly as the AI promised.
+    try {
+      const { hasLiveHandoffOffer, classifyHandoffReply, clearHandoffOffer } =
+        await import('../services/handoffOfferService');
+      if (tenantId && await hasLiveHandoffOffer(tenantId, conversation.id)) {
+        const action = classifyHandoffReply(Body);
+        if (action === 'call') {
+          const { transferConversationToHuman } = await import('../services/aiToolHelpers');
+          await transferConversationToHuman(
+            tenantId,
+            From,
+            'customer_requested_callback_via_handoff_offer',
+            'high',
+            conversation.id,
+          );
+          await clearHandoffOffer(tenantId, conversation.id);
+          const reply = truncateSmsResponse(`Got it — we'll call you back within 30 minutes.`);
+          await addMessage(tenantDb, conversation.id, reply, 'ai', {
+            toolCalls: ['offer_human_handoff:accepted_call'],
+          });
+          twimlResponse.message(reply);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+        if (action === 'text') {
+          await clearHandoffOffer(tenantId, conversation.id);
+          // Resume automation; if it was paused by the offer, unblock.
+          try {
+            await tenantDb
+              .update(conversations)
+              .set({ automationPausedUntil: null })
+              .where(eq(conversations.id, conversation.id));
+          } catch { /* non-fatal */ }
+          const reply = truncateSmsResponse(`Sounds good — keeping it by text. What else can I help with?`);
+          await addMessage(tenantDb, conversation.id, reply, 'ai', {
+            toolCalls: ['offer_human_handoff:accepted_text'],
+          });
+          twimlResponse.message(reply);
+          res.type('text/xml').send(twimlResponse.toString());
+          return;
+        }
+      }
+    } catch (handoffErr) {
+      console.warn('[HANDOFF INTERCEPT] non-fatal error:', handoffErr);
+    }
+
     // SP-22: Detect customer language from message
     let customerLanguage: SupportedLanguage = conversation.customerLanguage || 'en';
     if (!conversation.customerLanguage || conversation.customerLanguage === 'unknown') {
@@ -1227,7 +1293,12 @@ Customer text: "${Body}"`,
         conversationHistory,
         false,
         tenantId,
-        conversation.controlMode || 'auto'
+        conversation.controlMode || 'auto',
+        undefined,
+        // Audit T3 Task #23: thread conversationId so offer_human_handoff can
+        // arm the conversation and so per-reply tool calls can be captured for
+        // the AI guardrail pill via takeToolCallsForConversation.
+        conversation.id,
       );
     }
     
