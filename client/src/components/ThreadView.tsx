@@ -137,6 +137,10 @@ export default function ThreadView({
 }: ThreadViewProps) {
   const { activeSendLineId } = usePhoneLine();
   const [messageInput, setMessageInput] = useState('');
+  // Audit T2: per-message channel override. Defaults to the conversation's
+  // active platform but the agent can override per-send (e.g. switch from SMS
+  // to Email for a specific reply).
+  const [channelOverride, setChannelOverride] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [showLoadMore, setShowLoadMore] = useState(true);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -310,11 +314,12 @@ export default function ThreadView({
 
   const sendMessageMutation = useMutation({
     mutationFn: async (payload: { content: string; attachments?: any[] }) => {
+      const effectiveChannel = channelOverride || conversation?.platform || 'web';
       const response = await apiRequest('POST', `/api/conversations/${conversationId}/send-message`, { 
         content: payload.content,
-        channel: conversation?.platform || 'web',
+        channel: effectiveChannel,
         attachments: payload.attachments || [],
-        phoneLineId: conversation?.platform === 'sms' 
+        phoneLineId: effectiveChannel === 'sms' 
           ? (conversation.phoneLineId || activeSendLineId) 
           : undefined
       });
@@ -384,6 +389,7 @@ export default function ThreadView({
     },
     onSuccess: () => {
       setMessageInput('');
+      setChannelOverride(null); // Reset per-message channel override after send
       setFailedMessage(null); // Clear failed message on success
       // Invalidate to get the real message from server (replaces optimistic one)
       queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
@@ -1708,9 +1714,11 @@ export default function ThreadView({
                 </Popover>
 
                 {(() => {
-                  // Audit T2: channel-aware send button — color, label tooltip, and
-                  // testid morph to match the active conversation's platform.
-                  const platform = (conversation.platform || 'sms').toLowerCase();
+                  // Audit T2: per-message channel override chip — agent can pick a
+                  // different channel for this single send (e.g. Email instead of
+                  // the conversation's default SMS). Resets to the conversation
+                  // default after the message is sent (handled by onSuccess clearing).
+                  const platform = (channelOverride || conversation.platform || 'sms').toLowerCase();
                   const channelMap: Record<string, { label: string; short: string; cls: string }> = {
                     sms: { label: 'Send SMS', short: 'SMS', cls: 'bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700' },
                     email: { label: 'Send Email', short: 'Email', cls: 'bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-700' },
@@ -1719,7 +1727,23 @@ export default function ThreadView({
                     web: { label: 'Send Web Chat', short: 'Web', cls: 'bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700' },
                   };
                   const cfg = channelMap[platform] || channelMap.sms;
+                  const overrideOptions = ['sms', 'email', 'web', 'facebook', 'instagram'].filter(
+                    p => p !== (conversation.platform || 'sms').toLowerCase(),
+                  );
                   return (
+                    <>
+                    <select
+                      value={channelOverride || ''}
+                      onChange={e => setChannelOverride(e.target.value || null)}
+                      className="h-8 text-[10px] rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                      title="Send via different channel for this message only"
+                      data-testid="select-channel-override"
+                    >
+                      <option value="">via {(conversation.platform || 'sms').toUpperCase()}</option>
+                      {overrideOptions.map(p => (
+                        <option key={p} value={p}>via {p.toUpperCase()}</option>
+                      ))}
+                    </select>
                     <Button
                       onClick={handleSendMessage}
                       disabled={!messageInput.trim() || sendMessageMutation.isPending}
@@ -1736,6 +1760,7 @@ export default function ThreadView({
                         </>
                       )}
                     </Button>
+                    </>
                   );
                 })()}
               </div>

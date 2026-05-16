@@ -124,6 +124,20 @@ export function NightOpsConversationList({
     }
   };
 
+  // Audit T2: thread-aware channel pills. Build a phone -> set<platform> map so
+  // each row can render every channel where this customer is reachable, even
+  // before a server-side customer_threads merge layer ships.
+  const channelsByPhone = (() => {
+    const map = new Map<string, Set<string>>();
+    conversations.forEach(c => {
+      if (!c.customerPhone) return;
+      const key = c.customerPhone;
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key)!.add(c.platform);
+    });
+    return map;
+  })();
+
   const getPhoneLineLabel = (phoneLineId: number | null) => {
     if (!phoneLineId || phoneLines.length === 0) return null;
     const line = phoneLines.find(l => l.id === phoneLineId);
@@ -343,16 +357,29 @@ export function NightOpsConversationList({
                         </p>
 
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className={cn("p-1 rounded-md bg-slate-800/60", getPlatformColor(conv.platform))}>
-                                {getPlatformIcon(conv.platform)}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="text-xs">
-                              {conv.platform.charAt(0).toUpperCase() + conv.platform.slice(1)}
-                            </TooltipContent>
-                          </Tooltip>
+                          {(() => {
+                            const all = channelsByPhone.get(conv.customerPhone) || new Set([conv.platform]);
+                            const ordered = [conv.platform, ...Array.from(all).filter(p => p !== conv.platform)];
+                            return ordered.map(p => (
+                              <Tooltip key={p}>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className={cn(
+                                      "p-1 rounded-md bg-slate-800/60",
+                                      getPlatformColor(p),
+                                      p === conv.platform && "ring-1 ring-cyan-400/50"
+                                    )}
+                                    data-testid={`channel-pill-${conv.id}-${p}`}
+                                  >
+                                    {getPlatformIcon(p)}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="text-xs">
+                                  {p === conv.platform ? `Active: ${p}` : `Also reachable via ${p}`}
+                                </TooltipContent>
+                              </Tooltip>
+                            ));
+                          })()}
                           
                           {phoneLineLabel && (
                             <span className="text-[0.6rem] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 border border-slate-700/50">
