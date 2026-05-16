@@ -306,10 +306,18 @@ export async function transferConversationToHuman(
 
     let convId = conversationIdHint;
     if (!convId) {
+      // SECURITY: explicit tenantId filter — tenantDb.select is a pass-through
+      // and does NOT auto-scope SELECTs, so an unfiltered phone lookup would
+      // be able to resolve a conversation from another tenant if two tenants
+      // share the same customer phone number.
       const [conv] = await tenantDb
         .select({ id: conversations.id })
         .from(conversations)
-        .where(and(eq(conversations.customerPhone, normalized), eq(conversations.platform, 'sms')))
+        .where(and(
+          eq(conversations.tenantId, tenantId),
+          eq(conversations.customerPhone, normalized),
+          eq(conversations.platform, 'sms'),
+        ))
         .orderBy(desc(conversations.lastMessageTime))
         .limit(1);
       convId = conv?.id;

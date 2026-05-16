@@ -327,6 +327,43 @@ describe('transferConversationToHuman — side effects', () => {
   });
 });
 
+describe('transferConversationToHuman — tenant scoping', () => {
+  it('only escalates the conversation returned by the tenant-scoped lookup (no cross-tenant resolution)', async () => {
+    // The shared tenantDb mock returns whatever tenantDbRows says. Simulating
+    // "the tenant-scoped lookup found conversation 555 belonging to tenant-A"
+    // by setting that row here; the helper must then pass tenant-A through to
+    // escalateSmsToHuman with that conversationId.
+    const prev = tenantDbRows;
+    tenantDbRows = [{ id: 555, scheduledTime: new Date() }];
+    try {
+      await transferConversationToHuman(
+        'tenant-A',
+        '+15557770000',
+        'cross-tenant check',
+        'low',
+        // no conversationIdHint -> forces the lookup path
+      );
+      expect(escalateMock).toHaveBeenCalledTimes(1);
+      expect(escalateMock.mock.calls[0][0].tenantId).toBe('tenant-A');
+      expect(escalateMock.mock.calls[0][0].conversationId).toBe(555);
+    } finally {
+      tenantDbRows = prev;
+    }
+  });
+
+  it('source code asserts a tenantId equality predicate in the conversation lookup query', async () => {
+    // Belt-and-suspenders regression: read the helper source and verify the
+    // tenantId filter is present in the where(...) clause for the conversation
+    // lookup. This protects against accidental removal of the scope filter.
+    const fs = await import('node:fs/promises');
+    const src = await fs.readFile(
+      new URL('../aiToolHelpers.ts', import.meta.url),
+      'utf8',
+    );
+    expect(src).toMatch(/eq\(conversations\.tenantId,\s*tenantId\)/);
+  });
+});
+
 describe('AI-invoked transfer_to_human — integration', () => {
   it('exercises the same persisted-state + notification path the openai dispatcher uses', async () => {
     // Mirror the exact shape the openai dispatcher passes through.
