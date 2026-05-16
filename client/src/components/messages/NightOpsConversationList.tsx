@@ -173,9 +173,12 @@ export function NightOpsConversationList({
     }
   }, [selectedId]);
 
-  // Audit T2: pinned "Needs you" tab — count of conversations needing human attention
+  // Audit T2: pinned "Needs you" tab — needs_human_attention OR control_mode = 'manual'.
   const needsYouCount = conversations.filter(
-    (c) => c.needsHumanAttention && c.status !== 'resolved' && c.status !== 'closed',
+    (c) =>
+      (c.needsHumanAttention || c.controlMode === 'manual') &&
+      c.status !== 'resolved' &&
+      c.status !== 'closed',
   ).length;
 
   const filterOptions: Array<{ value: string; label: string; badge?: number; pinned?: boolean }> = [

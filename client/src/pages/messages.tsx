@@ -117,7 +117,12 @@ function MessagesPageContent() {
         categoryMatch = includeWebchatInAll ? true : conv.platform !== 'web';
         break;
       case 'attention':
-        categoryMatch = conv.needsHumanAttention && conv.status !== 'resolved' && conv.status !== 'closed';
+        // Audit T2: "Needs you" = needs_human_attention OR control_mode = 'manual'
+        // (manual takeovers don't always set needsHumanAttention)
+        categoryMatch =
+          (conv.needsHumanAttention || conv.controlMode === 'manual') &&
+          conv.status !== 'resolved' &&
+          conv.status !== 'closed';
         break;
       case 'unread':
         categoryMatch = (conv.unreadCount ?? 0) > 0;

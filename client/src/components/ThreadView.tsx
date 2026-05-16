@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import VirtualizedMessageList from './VirtualizedMessageList';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Card } from '@/components/ui/card';
@@ -1400,44 +1401,20 @@ export default function ThreadView({
                     </div>
                   )}
                   
-                  {groupMessagesByDate(filteredMessages).map((group, groupIndex) => (
-                    <div key={groupIndex} className="mb-6">
-                      {/* Date Divider */}
-                      <div className="flex items-center justify-center mb-4">
-                        <div className="bg-white dark:bg-gray-800 px-3 py-1 rounded-full shadow-sm border border-gray-200 dark:border-gray-700">
-                          <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                            {formatDateDivider(group.date)}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {/* Messages in this date group */}
-                      <div className="space-y-0.5">
-                        {group.messages.map((message) => (
-                          <div
-                            key={message.id}
-                            ref={(el) => observeMessage(el, message)}
-                            data-message-id={message.id}
-                          >
-                            <MessageBubble
-                              message={message}
-                              conversationCustomerName={conversation.customerName}
-                              conversationCustomerPhone={conversation.customerPhone}
-                              conversationAssignedAgent={conversation.assignedAgent}
-                              reactions={reactions.filter(r => r.messageId === message.id)}
-                              onAddReaction={(emoji) => addReactionMutation.mutate({ messageId: message.id, emoji })}
-                              onRemoveReaction={(reactionId) => removeReactionMutation.mutate(reactionId)}
-                              currentUserId={(currentUser as any)?.id}
-                              reactionSlot={messageReactionSlot}
-                              scheduledMetaSlot={scheduledMetaSlot}
-                              deliveryIndicatorSlot={deliveryIndicatorSlot}
-                              messageActionSlot={messageActionSlot}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                  <VirtualizedMessageList
+                    messages={filteredMessages}
+                    scrollParentRef={containerRef}
+                    conversation={conversation}
+                    reactions={reactions}
+                    addReactionMutation={addReactionMutation}
+                    removeReactionMutation={removeReactionMutation}
+                    currentUser={currentUser}
+                    messageReactionSlot={messageReactionSlot}
+                    scheduledMetaSlot={scheduledMetaSlot}
+                    deliveryIndicatorSlot={deliveryIndicatorSlot}
+                    messageActionSlot={messageActionSlot}
+                    observeMessage={observeMessage}
+                  />
                   
                   {/* Typing Indicator - AI or Users */}
                   {(showTyping || typingUsers.size > 0) && (
