@@ -266,6 +266,9 @@ export default function EnhancedChatbotUI() {
           personaName: data.personaName || null,
           avatarUrl: data.avatarUrl || null,
           captcha: data.captcha || { provider: 'none', siteKey: null },
+          // Audit T3 Task #23 (review fix): persist the tenant flag so the
+          // guardrail pill actually renders when the owner has opted in.
+          showAiPill: data.showAiPill === true,
         });
         if (data.greeting) {
           setMessages((prev) => {

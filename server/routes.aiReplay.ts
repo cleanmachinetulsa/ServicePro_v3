@@ -10,7 +10,7 @@
  *   - tenant-scoped query (cannot see other tenants' replay)
  */
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { requireAuth } from './authMiddleware';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
@@ -20,9 +20,63 @@ import { hasFeature } from '@shared/features';
 
 const router = Router();
 
-router.get('/:threadId', requireAuth, async (req: Request, res: Response) => {
+/**
+ * Audit T3 Task #23: AI replay exposes raw model output and tool arguments.
+ * That is privileged data; restrict to staff-level roles (owner / manager /
+ * staff). Customers and unauthenticated callers must not read it even within
+ * their own tenant.
+ */
+function requireStaffOrOwner(req: Request, res: Response, next: NextFunction) {
+  const role = (req as Request & { user?: { role?: string } }).user?.role;
+  if (role === 'owner' || role === 'manager' || role === 'staff' || role === 'admin') {
+    return next();
+  }
+  return res.status(403).json({ error: 'Staff or owner role required for AI replay' });
+}
+
+interface AiMessageMetadata {
+  toolCalls?: unknown;
+  toolCallDetails?: unknown;
+  modelOutput?: unknown;
+  finalSentText?: unknown;
+}
+
+interface ParsedToolCall { name: string; args?: Record<string, unknown> | null }
+
+function parseAiMetadata(raw: unknown): {
+  toolNames: string[];
+  toolCallDetails: ParsedToolCall[];
+  modelOutput: string | null;
+  finalSentText: string | null;
+} {
+  const md = (raw && typeof raw === 'object' ? raw : {}) as AiMessageMetadata;
+  const toolNames = Array.isArray(md.toolCalls)
+    ? md.toolCalls.filter((v): v is string => typeof v === 'string')
+    : [];
+  const toolCallDetails = Array.isArray(md.toolCallDetails)
+    ? md.toolCallDetails
+        .filter((v): v is { name: unknown; args?: unknown } => !!v && typeof v === 'object')
+        .map((v) => ({
+          name: typeof v.name === 'string' ? v.name : '',
+          args: v.args && typeof v.args === 'object' ? (v.args as Record<string, unknown>) : null,
+        }))
+        .filter((v) => v.name.length > 0)
+    : [];
+  return {
+    toolNames,
+    toolCallDetails,
+    modelOutput: typeof md.modelOutput === 'string' ? md.modelOutput : null,
+    finalSentText: typeof md.finalSentText === 'string' ? md.finalSentText : null,
+  };
+}
+
+router.get('/:threadId', requireAuth, requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
-    const tenantId = ((req as any).tenantId as string | undefined) || (req as any).session?.activeTenantId;
+    const reqWithCtx = req as Request & {
+      tenantId?: string;
+      session?: { activeTenantId?: string };
+    };
+    const tenantId = reqWithCtx.tenantId || reqWithCtx.session?.activeTenantId;
     if (!tenantId) return res.status(400).json({ error: 'tenant context required' });
 
     // Plan gate — replay is a Pro+ feature surfaced through aiSmsAgent.
@@ -86,20 +140,18 @@ router.get('/:threadId', requireAuth, async (req: Request, res: Response) => {
         return at - bt;
       })
       .map((m) => {
-        const md = (m.metadata as any) || {};
-        const toolNames: string[] = Array.isArray(md.toolCalls) ? md.toolCalls : [];
-        const toolCallDetails: Array<{ name: string; args?: any }> = Array.isArray(md.toolCallDetails) ? md.toolCallDetails : [];
+        const parsed = parseAiMetadata(m.metadata);
         return {
           id: m.id,
           conversationId: m.conversationId,
           content: m.content,
-          finalSentText: typeof md.finalSentText === 'string' ? md.finalSentText : m.content,
-          modelOutput: typeof md.modelOutput === 'string' ? md.modelOutput : m.content,
+          finalSentText: parsed.finalSentText ?? m.content,
+          modelOutput: parsed.modelOutput ?? m.content,
           timestamp: m.timestamp,
-          toolNames,
-          toolCalls: toolCallDetails.length > 0
-            ? toolCallDetails
-            : toolNames.map((name) => ({ name, args: null })),
+          toolNames: parsed.toolNames,
+          toolCalls: parsed.toolCallDetails.length > 0
+            ? parsed.toolCallDetails
+            : parsed.toolNames.map((name) => ({ name, args: null as Record<string, unknown> | null })),
         };
       });
 

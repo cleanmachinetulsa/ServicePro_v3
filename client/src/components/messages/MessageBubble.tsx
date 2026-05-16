@@ -550,9 +550,14 @@ export default function MessageBubble({
             )}
 
             {/* Audit T3 Task #23: AI guardrail pill — shows tools the AI invoked for this reply */}
-            {message.sender === 'ai' && Array.isArray((message.metadata as any)?.toolCalls) && (message.metadata as any).toolCalls.length > 0 && (
-              <AiToolPill toolNames={(message.metadata as any).toolCalls as string[]} compact />
-            )}
+            {(() => {
+              if (message.sender !== 'ai') return null;
+              const md = message.metadata as { toolCalls?: unknown } | null | undefined;
+              const toolNames = Array.isArray(md?.toolCalls)
+                ? md!.toolCalls.filter((v): v is string => typeof v === 'string')
+                : [];
+              return toolNames.length > 0 ? <AiToolPill toolNames={toolNames} compact /> : null;
+            })()}
             
             {/* Delivery Indicator for sent messages - Production-grade checkmarks */}
             {isSent && (

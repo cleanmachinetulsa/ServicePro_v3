@@ -1954,18 +1954,41 @@ export async function registerRoutes(app: Express) {
       // exists for a future OTP/portal-session flow; do not populate it
       // from this anonymous endpoint.
 
-      const { businessSettings } = await import('@shared/schema');
+      const { businessSettings, tenantConfig } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       const rows = await req.tenantDb!.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
       const row = rows[0];
       const { getProvider } = await import('./services/webChatCaptcha');
       const provider = getProvider();
+
+      // Audit T3 Task #23: tenant-configurable AI guardrail pill on web chat.
+      // Stored on tenantConfig.industryConfig.featureFlags.showAiPillOnWebChat
+      // (existing JSONB column — no schema migration required).
+      let showAiPill = false;
+      try {
+        const tenantId = req.tenantDb?.tenantId;
+        if (tenantId) {
+          const { db } = await import('./db');
+          const { wrapTenantDb } = await import('./tenantDb');
+          const rootDb = wrapTenantDb(db, 'root');
+          const [cfg] = await rootDb
+            .select({ industryConfig: tenantConfig.industryConfig })
+            .from(tenantConfig)
+            .where(eq(tenantConfig.tenantId, tenantId))
+            .limit(1);
+          const flag = (cfg?.industryConfig as { featureFlags?: { showAiPillOnWebChat?: unknown } } | null)
+            ?.featureFlags?.showAiPillOnWebChat;
+          showAiPill = flag === true;
+        }
+      } catch { /* default false */ }
+
       return res.json({
         success: true,
         webId, // expose to widget so it can derive the SSE channel; signed cookie remains the source of truth
         greeting: row?.chatGreeting || `Hey! How can I help with your detail today?`,
         personaName: row?.chatPersonaName || row?.businessName || 'Assistant',
         avatarUrl: row?.chatAvatarUrl || null,
+        showAiPill,
         captcha: {
           provider,
           siteKey: provider === 'turnstile'
@@ -2694,16 +2717,28 @@ export async function registerRoutes(app: Express) {
         conversation.id // Audit T3 Task #21: tag AI usage by thread
       );
 
-      // Save AI response
-      await addMessage(req.tenantDb!, conversation.id, response, 'ai', platform);
-
-      // Audit T3 Task #23: return any tool names captured during this reply
-      // so the web chat widget can render the guardrail pill (tenant-gated).
+      // Audit T3 Task #23: drain tool calls captured during this generate
+      // call (take, not peek) and persist them onto messages.metadata so the
+      // staff inbox + AI replay can render the guardrail pill from durable
+      // state. Subsequent replies on the same thread get a fresh list.
       let aiTools: string[] = [];
+      let aiMessageMetadata: Record<string, unknown> | null = null;
       try {
-        const { peekToolCallsForConversation } = await import('./services/aiToolMetadata');
-        aiTools = peekToolCallsForConversation(conversation.id).map((c) => c.name);
+        const { takeToolCallsForConversation } = await import('./services/aiToolMetadata');
+        const calls = takeToolCallsForConversation(conversation.id);
+        aiTools = calls.map((c) => c.name);
+        if (calls.length > 0) {
+          aiMessageMetadata = {
+            toolCalls: aiTools,
+            toolCallDetails: calls,
+            modelOutput: response,
+            finalSentText: response,
+          };
+        }
       } catch { /* non-fatal */ }
+
+      // Save AI response (with metadata when we have tool-call provenance).
+      await addMessage(req.tenantDb!, conversation.id, response, 'ai', platform, aiMessageMetadata);
 
       // Return appropriate format
       if (isWebClient) {
