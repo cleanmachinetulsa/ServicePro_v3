@@ -2044,17 +2044,20 @@ export async function registerRoutes(app: Express) {
       // Captcha verification state is keyed on the *trusted* server session
       // (cookie+ip+tenant), not the client-supplied id, so attackers cannot
       // share or replay a verified id across rotated client sessions.
-      if (!isSessionVerified(trustedKey)) {
+      // Captcha verification state is keyed on the same composite trust key
+      // used by the rate limiter (server-issued cookie session + IP + tenant)
+      // so a verified attestation cannot be replayed across rotated clients.
+      if (!isSessionVerified(compositeKey)) {
         const verify = await verifyCaptchaToken(captchaToken, clientIp);
         if (!verify.ok) {
-          console.warn(`[WEB CHAT] Captcha rejected (${verify.reason}) for ${trustedKey}`);
+          console.warn(`[WEB CHAT] Captcha rejected (${verify.reason}) for ${compositeKey}`);
           return res.status(403).json({
             success: false,
             error: 'captcha_required',
             captchaProvider: getProvider(),
           });
         }
-        markSessionVerified(trustedKey);
+        markSessionVerified(compositeKey);
       }
 
       const webIdentifier = `web-chat-${sessionId}`;
