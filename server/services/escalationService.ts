@@ -115,6 +115,28 @@ async function markConversationNeedsHuman(
         automationPausedUntil: pauseUntil,
       })
       .where(eq(conversations.id, conversationId));
+
+    // Audit T1 (Task #17): Propagate to the customer thread so escalation is
+    // cross-channel. If the conversation has no thread (anonymous), the
+    // per-conversation row above still drives the behavior.
+    try {
+      const [conv] = await tenantDb
+        .select({ threadId: conversations.threadId })
+        .from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
+      if (conv?.threadId) {
+        const { setThreadEscalation } = await import('./customerThreadService');
+        await setThreadEscalation(tenantDb, conv.threadId, {
+          needsHumanAttention: true,
+          needsHumanReason: reason,
+          automationPausedUntil: pauseUntil,
+        });
+      }
+    } catch (propErr) {
+      console.warn(`[ESCALATION] thread propagation failed for conv=${conversationId}:`, propErr);
+    }
+
     console.log(`[ESCALATION] Marked conversation=${conversationId} needsHumanAttention=true automationPausedUntil=${pauseUntil.toISOString()} reason=${reason}`);
     return true;
   } catch (err) {
@@ -228,6 +250,27 @@ export async function clearEscalation(
         automationPausedUntil: null,
       })
       .where(eq(conversations.id, conversationId));
+
+    // Audit T1 (Task #17): clear at the thread level too so other channels
+    // (web chat, email, FB) resume automation in lock-step.
+    try {
+      const [conv] = await tenantDb
+        .select({ threadId: conversations.threadId })
+        .from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
+      if (conv?.threadId) {
+        const { setThreadEscalation } = await import('./customerThreadService');
+        await setThreadEscalation(tenantDb, conv.threadId, {
+          needsHumanAttention: false,
+          needsHumanReason: null,
+          automationPausedUntil: null,
+        });
+      }
+    } catch (propErr) {
+      console.warn(`[ESCALATION] thread clear propagation failed for conv=${conversationId}:`, propErr);
+    }
+
     console.log(`[ESCALATION] Cleared conversation=${conversationId} needsHumanAttention=false automationPausedUntil=null`);
     return true;
   } catch (err) {

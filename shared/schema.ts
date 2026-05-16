@@ -921,11 +921,51 @@ export const conversations = pgTable("conversations", {
   bookingOfferExpiresAt: timestamp("booking_offer_expires_at", { withTimezone: true }), // When offer expires (TTL)
   bookingOfferPayloadHash: text("booking_offer_payload_hash"), // Hash of offered slots for verification
   automationPausedUntil: timestamp("automation_paused_until", { withTimezone: true }), // Pause automation until this time
+
+  // Audit T1 (Task #17): Cross-channel customer threads. When the inbound
+  // identity resolves to a known customer, every conversation row for that
+  // customer in this tenant points at the same customer_threads row, so SMS,
+  // web chat, FB, and email share one source of truth for escalation,
+  // automation pause, and live booking offers.
+  // FK declared inline via AnyPgColumn ref in `references()` below to avoid
+  // forward-declaration issues, since `customerThreads` is defined further
+  // down in this file.
+  threadId: integer("thread_id").references((): any => customerThreads.id),
 }, (table) => ({
   emailThreadIndex: index("conversations_email_thread_idx").on(table.platform, table.emailThreadId),
   emailAddressIndex: index("conversations_email_address_idx").on(table.platform, table.emailAddress),
   phoneLineIndex: index("conversations_phone_line_idx").on(table.phoneLineId),
+  threadIdIndex: index("conversations_thread_id_idx").on(table.threadId),
 }));
+
+// Audit T1 (Task #17): Cross-channel customer threads.
+// One row per (tenant_id, customer_id). conversations.thread_id FKs here.
+// Reads for `automation_paused_until`, `needs_human_attention`, `control_mode`
+// and live booking-offer state PREFER the thread row and fall back to the
+// owning conversation when thread_id is NULL (anonymous web-chat).
+export const customerThreads = pgTable("customer_threads", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  status: varchar("status", { length: 20 }).notNull().default('active'),
+  controlMode: varchar("control_mode", { length: 20 }).notNull().default('auto'),
+  automationPausedUntil: timestamp("automation_paused_until", { withTimezone: true }),
+  needsHumanAttention: boolean("needs_human_attention").notNull().default(false),
+  needsHumanReason: text("needs_human_reason"),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }).defaultNow(),
+  // Booking offer arming, scoped to the thread so a YES on SMS confirms an
+  // offer that was armed in web chat (and vice versa).
+  bookingOfferArmedAt: timestamp("booking_offer_armed_at", { withTimezone: true }),
+  bookingOfferExpiresAt: timestamp("booking_offer_expires_at", { withTimezone: true }),
+  bookingOfferPayloadHash: text("booking_offer_payload_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  tenantCustomerUnique: uniqueIndex("customer_threads_tenant_customer_unique").on(table.tenantId, table.customerId),
+  tenantIdIdx: index("customer_threads_tenant_id_idx").on(table.tenantId),
+}));
+
+export type CustomerThread = typeof customerThreads.$inferSelect;
+export type InsertCustomerThread = typeof customerThreads.$inferInsert;
 
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),

@@ -29,6 +29,13 @@
       "when": 1779999999000,
       "tag": "0003_audit_t1_business_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781000000000,
+      "tag": "0004_audit_t1_customer_threads",
+      "breakpoints": true
     }
   ]
 }

@@ -47,8 +47,73 @@ async function getOrCreateTestConversation(tenantDb: any, phone: string) {
   let conversation = await tenantDb.query.conversations.findFirst({
     where: tenantDb.withTenantFilter(conversations, eq(conversations.customerPhone, phone)),
   });
-  
+
+  // Audit T1 (Task #17): inbound SMS must resolve a customer and attach the
+  // conversation to the cross-channel `customer_threads` row, otherwise SMS
+  // escalation/automation/booking-offer state cannot be shared with web/FB/
+  // email. Identity resolution + thread linkage are wrapped in non-fatal
+  // try/catch — a failure here must never block message processing.
+  const tenantId = (tenantDb as any).tenantId || 'root';
+
+  async function ensureCustomerAndThread(convId: number, currentCustomerId: number | null, currentThreadId: number | null) {
+    let customerId = currentCustomerId;
+    if (!customerId && phone) {
+      try {
+        const { findOrCreateCustomer } = await import('../services/customerIdentityService');
+        const ident = await findOrCreateCustomer(tenantDb, {
+          tenantId,
+          phone,
+          email: null,
+          fullName: null,
+          source: 'sms',
+        });
+        customerId = ident.customer.id;
+        await tenantDb
+          .update(conversations)
+          .set({ customerId })
+          .where(eq(conversations.id, convId));
+      } catch (idErr) {
+        console.warn('[TWILIO TEST SMS] customer identity resolve failed (continuing):', idErr);
+        return { customerId: null as number | null, threadId: currentThreadId };
+      }
+    }
+    let threadId = currentThreadId;
+    if (customerId && !threadId) {
+      try {
+        const { findOrCreateThread, attachConversationToThread } =
+          await import('../services/customerThreadService');
+        const thread = await findOrCreateThread(tenantDb, tenantId, customerId);
+        await attachConversationToThread(tenantDb, convId, thread.id);
+        threadId = thread.id;
+      } catch (threadErr) {
+        console.warn('[TWILIO TEST SMS] thread attach failed (continuing):', threadErr);
+      }
+    }
+    return { customerId, threadId };
+  }
+
   if (!conversation) {
+    // Resolve customer first so the new conversation row gets customerId +
+    // threadId atomically.
+    let customerId: number | null = null;
+    let threadId: number | null = null;
+    try {
+      const { findOrCreateCustomer } = await import('../services/customerIdentityService');
+      const ident = await findOrCreateCustomer(tenantDb, {
+        tenantId,
+        phone,
+        email: null,
+        fullName: null,
+        source: 'sms',
+      });
+      customerId = ident.customer.id;
+      const { findOrCreateThread } = await import('../services/customerThreadService');
+      const thread = await findOrCreateThread(tenantDb, tenantId, customerId);
+      threadId = thread.id;
+    } catch (resolveErr) {
+      console.warn('[TWILIO TEST SMS] identity/thread resolve failed (continuing without):', resolveErr);
+    }
+
     const [created] = await tenantDb
       .insert(conversations)
       .values({
@@ -56,12 +121,23 @@ async function getOrCreateTestConversation(tenantDb: any, phone: string) {
         platform: 'sms',
         status: 'active',
         controlMode: 'auto',
+        customerId,
+        threadId,
       })
       .returning();
     conversation = created;
-    console.log('[TWILIO TEST SMS] Created new conversation for', phone);
+    console.log(`[TWILIO TEST SMS] Created new conversation for ${phone} (customerId=${customerId}, threadId=${threadId})`);
+  } else if (!conversation.customerId || !conversation.threadId) {
+    // Existing pre-T1 conversation: backfill customer + thread on next inbound.
+    const { customerId, threadId } = await ensureCustomerAndThread(
+      conversation.id,
+      conversation.customerId ?? null,
+      conversation.threadId ?? null,
+    );
+    conversation.customerId = customerId;
+    conversation.threadId = threadId;
   }
-  
+
   return conversation;
 }
 
@@ -263,13 +339,19 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     
     const conversation = await getOrCreateTestConversation(tenantDb, From);
     
-    // R1.6: Check if automation is paused (escalated or needsHumanAttention)
+    // R1.6 + Audit T1 (Task #17): Check automation pause / human attention.
+    // Prefer the thread-level state so a pause set by a sibling channel
+    // (e.g. staff escalated in web chat) also pauses SMS for this customer.
+    const { resolveAutomationState } = await import('../services/customerThreadService');
+    const automationState = await resolveAutomationState(tenantDb, conversation as any);
     const now = new Date();
-    const automationPaused = conversation.automationPausedUntil && new Date(conversation.automationPausedUntil) > now;
-    const needsHuman = conversation.needsHumanAttention === true;
-    
+    const automationPaused = automationState.automationPausedUntil
+      ? automationState.automationPausedUntil > now
+      : false;
+    const needsHuman = automationState.needsHumanAttention;
+
     if (needsHuman || automationPaused) {
-      console.log(`[AUTOMATION_PAUSED] conversationId=${conversation.id} needsHuman=${needsHuman} pausedUntil=${conversation.automationPausedUntil || 'N/A'}`);
+      console.log(`[AUTOMATION_PAUSED] conversationId=${conversation.id} source=${automationState.source} needsHuman=${needsHuman} pausedUntil=${automationState.automationPausedUntil?.toISOString() || 'N/A'}`);
       
       // Record message but don't process with AI
       await addMessage(tenantDb, conversation.id, Body, 'customer');

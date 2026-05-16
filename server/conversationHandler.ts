@@ -158,6 +158,22 @@ async function processWebChatConversation(
               automationPausedUntil: sixHoursFromNow,
             })
             .where(tenantDb.withTenantFilter(conversations, eq(conversations.id, conv[0].id)));
+
+          // Audit T1 (Task #17): propagate budget escalation to the cross-channel
+          // thread so SMS / FB / email automation also pauses for this customer.
+          if ((conv[0] as any).threadId) {
+            try {
+              const { setThreadEscalation } = await import('./services/customerThreadService');
+              await setThreadEscalation(tenantDb, (conv[0] as any).threadId, {
+                needsHumanAttention: true,
+                needsHumanReason: 'ai_budget_exhausted',
+                automationPausedUntil: sixHoursFromNow,
+              });
+            } catch (threadErr) {
+              console.warn('[WEB CHAT] thread escalation propagation failed:', threadErr);
+            }
+          }
+
           console.log(`[WEB CHAT] Escalated conversation ${conv[0].id} (budget exhausted, automation paused 6h)`);
         }
       } catch (escalateErr) {

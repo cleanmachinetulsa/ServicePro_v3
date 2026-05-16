@@ -326,7 +326,52 @@ export async function getOrCreateConversation(
     }
 
     if (existingConversation && existingConversation.length > 0) {
-      return { conversation: existingConversation[0], isNew: false };
+      const conv = existingConversation[0];
+      // Audit T1 (Task #17): Late attach. If this conversation was created
+      // before identity was known (or before threads existed), try to resolve
+      // the customer now (by phone/email) and then link it to that customer's
+      // thread, so subsequent reads of escalation / pause / booking-offer
+      // state become cross-channel. All wrapped in non-fatal try/catch — a
+      // linkage failure must never block messaging.
+      const tenantIdForLate = (tenantDb as any).tenantId || 'root';
+      let lateCustomerId: number | null = conv.customerId ?? null;
+
+      if (!lateCustomerId && (customerPhone || emailAddress)) {
+        try {
+          const platformSource = platform === 'sms' ? 'sms'
+            : platform === 'email' ? 'email'
+            : platform === 'facebook' || platform === 'instagram' ? 'social'
+            : 'web';
+          const ident = await findOrCreateCustomer(tenantDb, {
+            tenantId: tenantIdForLate,
+            phone: customerPhone || null,
+            email: emailAddress || null,
+            fullName: customerName || null,
+            source: platformSource,
+          });
+          lateCustomerId = ident.customer.id;
+          await tenantDb
+            .update(conversations)
+            .set({ customerId: lateCustomerId })
+            .where(eq(conversations.id, conv.id));
+          (conv as any).customerId = lateCustomerId;
+        } catch (idErr) {
+          console.warn('[CONVERSATION] late identity resolve failed (continuing):', idErr);
+        }
+      }
+
+      if (!conv.threadId && lateCustomerId) {
+        try {
+          const { findOrCreateThread, attachConversationToThread } =
+            await import('./services/customerThreadService');
+          const thread = await findOrCreateThread(tenantDb, tenantIdForLate, lateCustomerId);
+          await attachConversationToThread(tenantDb, conv.id, thread.id);
+          (conv as any).threadId = thread.id;
+        } catch (threadErr) {
+          console.error('[CONVERSATION] late thread attach failed:', threadErr);
+        }
+      }
+      return { conversation: conv, isNew: false };
     }
 
     // Use unified Customer Identity Service to find or create customer
@@ -373,7 +418,23 @@ export async function getOrCreateConversation(
     // Create new conversation
     // Default to Main Line (ID 1) for SMS if phoneLineId not provided
     const effectivePhoneLineId = platform === 'sms' ? (phoneLineId || 1) : null;
-    
+
+    // Audit T1 (Task #17): If we resolved a customerId, find/create the
+    // cross-channel thread row BEFORE inserting the conversation so we can
+    // store thread_id atomically. Anonymous conversations (no customerId)
+    // keep thread_id = NULL and read state from the conversation row.
+    let threadId: number | null = null;
+    if (customerId) {
+      try {
+        const { findOrCreateThread } = await import('./services/customerThreadService');
+        const thread = await findOrCreateThread(tenantDb, tenantId, customerId);
+        threadId = thread.id;
+      } catch (threadErr) {
+        // Non-fatal: missing thread degrades to per-conversation behavior.
+        console.error('[CONVERSATION] thread create failed (continuing without thread):', threadErr);
+      }
+    }
+
     const newConversation = await tenantDb
       .insert(conversations)
       .values({
@@ -393,6 +454,7 @@ export async function getOrCreateConversation(
         intent: 'Information Gathering',
         needsHumanAttention: false,
         resolved: false,
+        threadId,
       })
       .returning();
 

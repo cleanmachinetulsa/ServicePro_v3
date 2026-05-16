@@ -445,7 +445,24 @@ export async function armBookingOffer(
       bookingOfferPayloadHash: offerHash,
     })
     .where(eq(conversations.id, conversationId));
-  
+
+  // Audit T1 (Task #17): Mirror the offer onto the customer thread so a YES
+  // arriving on a sibling channel (e.g. SMS confirming an offer armed in web
+  // chat) still finds a live offer in `hasLiveBookingOffer`.
+  try {
+    const [conv] = await tenantDb
+      .select({ threadId: conversations.threadId })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .limit(1);
+    if (conv?.threadId) {
+      const { armThreadBookingOffer } = await import('./customerThreadService');
+      await armThreadBookingOffer(tenantDb, conv.threadId, offerHash, expiresAt);
+    }
+  } catch (propErr) {
+    console.warn(`[OFFER ARM] thread propagation failed for conv=${conversationId}:`, propErr);
+  }
+
   console.log(`[OFFER ARM] conversationId=${conversationId} hash=${offerHash} expires=${expiresAt.toISOString()} ttl=${ttlMinutes}min`);
   return { offerHash, expiresAt };
 }
@@ -459,6 +476,7 @@ export async function hasLiveBookingOffer(
 ): Promise<{ isLive: boolean; expiresAt?: Date; payloadHash?: string }> {
   const [conv] = await tenantDb
     .select({
+      threadId: conversations.threadId,
       bookingOfferArmedAt: conversations.bookingOfferArmedAt,
       bookingOfferExpiresAt: conversations.bookingOfferExpiresAt,
       bookingOfferPayloadHash: conversations.bookingOfferPayloadHash,
@@ -466,19 +484,49 @@ export async function hasLiveBookingOffer(
     .from(conversations)
     .where(eq(conversations.id, conversationId))
     .limit(1);
-  
-  if (!conv || !conv.bookingOfferArmedAt || !conv.bookingOfferExpiresAt) {
+
+  // Audit T1 (Task #17): Prefer the thread-level offer when this conversation
+  // belongs to a thread, so a YES on SMS still finds an offer that was armed
+  // in web chat (and vice versa). Falls back to the conversation row for
+  // anonymous threads.
+  let armedAt = conv?.bookingOfferArmedAt ?? null;
+  let expires = conv?.bookingOfferExpiresAt ?? null;
+  let hash = conv?.bookingOfferPayloadHash ?? null;
+
+  if (conv?.threadId) {
+    try {
+      const { customerThreads } = await import('@shared/schema');
+      const [thread] = await tenantDb
+        .select({
+          bookingOfferArmedAt: customerThreads.bookingOfferArmedAt,
+          bookingOfferExpiresAt: customerThreads.bookingOfferExpiresAt,
+          bookingOfferPayloadHash: customerThreads.bookingOfferPayloadHash,
+        })
+        .from(customerThreads)
+        .where(eq(customerThreads.id, conv.threadId))
+        .limit(1);
+      if (thread?.bookingOfferArmedAt && thread?.bookingOfferExpiresAt) {
+        armedAt = thread.bookingOfferArmedAt;
+        expires = thread.bookingOfferExpiresAt;
+        hash = thread.bookingOfferPayloadHash;
+      }
+    } catch (threadErr) {
+      console.warn(`[OFFER CHECK] thread read failed for conv=${conversationId}:`, threadErr);
+    }
+  }
+
+  if (!armedAt || !expires) {
     return { isLive: false };
   }
-  
+
   const now = new Date();
-  const expiresAt = new Date(conv.bookingOfferExpiresAt);
+  const expiresAt = new Date(expires);
   const isLive = expiresAt > now;
-  
+
   return {
     isLive,
     expiresAt,
-    payloadHash: conv.bookingOfferPayloadHash || undefined,
+    payloadHash: hash || undefined,
   };
 }
 
