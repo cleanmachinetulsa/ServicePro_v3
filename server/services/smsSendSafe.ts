@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * R1-STRICT SMS Send Safe Helper
  * 
@@ -99,7 +100,7 @@ export async function sendSmsSafe(params: SmsSendParams): Promise<SmsSendResult>
       process.env.TWILIO_AUTH_TOKEN
     );
     
-    const message = await twilioClient.messages.create({
+    const message = await sendDirectTwilioSMS({
       to: normalizedTo,
       from: normalizedFrom,
       body: sanitizedBody.slice(0, 1600),

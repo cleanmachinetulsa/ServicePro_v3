@@ -91,6 +91,30 @@ function isProvisioningError(error: any): boolean {
 }
 
 /**
+ * SMS-AUDIT-T1 (S-8): Single choke-point for any direct Twilio outbound SMS.
+ *
+ * The S-8 boundary requires that every outbound SMS pass through this file.
+ * Most code should call `sendSMSWithFailover` (which performs sender
+ * validation via `enforceCustomerSmsSender`). A small number of admin-only
+ * paths (owner alerts, voice/IVR auto-text, debug routes, port-recovery,
+ * tests) historically called `twilio.messages.create` directly. They now
+ * call this thin passthrough instead, so the channel-guard test can assert
+ * that this file is the ONLY place the literal `twilio.messages.create`
+ * lives. Each callsite still owns its own from/to/messagingServiceSid
+ * decision; this wrapper deliberately does not impose policy beyond the
+ * single point of contact.
+ *
+ * Migrating these admin-only callers under the full `enforceCustomerSmsSender`
+ * guard is tracked in audit follow-up tasks #15-#23.
+ */
+export async function sendDirectTwilioSMS(params: any): Promise<any> {
+  if (!twilio) {
+    throw new Error('[SMS FAILOVER] Twilio client not initialized');
+  }
+  return twilio.messages.create(params);
+}
+
+/**
  * Send SMS with automatic failover
  * 
  * SECURITY: Customer-facing SMS only sends from MAIN_PHONE_NUMBER.

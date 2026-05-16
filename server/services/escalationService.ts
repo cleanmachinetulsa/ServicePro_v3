@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * R1-STRICT Escalation Service
  * 
@@ -187,7 +188,7 @@ export async function escalateSmsToHuman(context: EscalationContext): Promise<{
       process.env.TWILIO_AUTH_TOKEN
     );
     
-    await twilioClient.messages.create({
+    await sendDirectTwilioSMS({
       to: normalizedOwner,
       from: normalizedFrom,
       body: alertBody.slice(0, 1600),

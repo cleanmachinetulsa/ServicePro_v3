@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * Port Recovery Campaign Service
  * 
@@ -821,14 +822,14 @@ async function sendPortRecoverySms(
     const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
     
     if (messagingServiceSid) {
-      const message = await twilioClient.messages.create({
+      const message = await sendDirectTwilioSMS({
         messagingServiceSid,
         to: target.phone,
         body: messageBody,
       });
       return { success: true, twilioSid: message.sid };
     } else {
-      const message = await twilioClient.messages.create({
+      const message = await sendDirectTwilioSMS({
         to: target.phone,
         from: fromNumber,
         body: messageBody,

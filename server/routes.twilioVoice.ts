@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from './smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 import express, { Request, Response } from 'express';
 import twilio from 'twilio';
 import { phoneLines, customers, conversations, messages, notificationSettings } from '@shared/schema';
@@ -689,7 +690,7 @@ Respond ONLY with the SMS message text, nothing else.`;
     if (!mainPhoneNumber) {
       console.warn('[TWILIO VOICE] No from number configured, skipping auto SMS');
     } else {
-      await twilioClient.messages.create({
+      await sendDirectTwilioSMS({
         body: smsResponse,
         from: mainPhoneNumber,
         to: fromNumber,

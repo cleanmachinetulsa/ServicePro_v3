@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from './smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 import { Router, Request, Response } from 'express';
 import * as Twilio from 'twilio';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
@@ -76,7 +77,7 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
     // Forward the message to business owner's personal phone
     const forwardedMessage = `🚨 SYSTEM DOWN - Customer Message Forwarded:\n\nFrom: ${customerPhone}\n\n${messageBody}`;
     
-    await twilio.messages.create({
+    await sendDirectTwilioSMS({
       body: forwardedMessage,
       from: twilioPhoneNumber,
       to: fallbackPhone,
@@ -85,7 +86,7 @@ router.post('/sms-fallback', verifyTwilioSignature, async (req: Request, res: Re
     console.log('[SMS FALLBACK] Message forwarded successfully to:', fallbackPhone);
 
     // Send auto-reply to customer
-    await twilio.messages.create({
+    await sendDirectTwilioSMS({
       body: autoReplyMessage,
       from: twilioPhoneNumber,
       to: customerPhone,

@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 import { Router, Request, Response } from 'express';
 import twilio from 'twilio';
 import { generateAIResponse } from '../openai';
@@ -565,7 +566,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
               process.env.TWILIO_ACCOUNT_SID,
               process.env.TWILIO_AUTH_TOKEN
             );
-            await twilioClient.messages.create({
+            await sendDirectTwilioSMS({
               to: ownerPhone,
               from: To,
               body: `⚠️ RESCHEDULE (fail-open): Customer ${From} wants to reschedule but lookup failed. Please check their calendar.`,
@@ -892,7 +893,7 @@ Customer text: "${Body}"`,
                   process.env.TWILIO_AUTH_TOKEN
                 );
                 const escalationMsg = `🚨 BOOKING FAILED - NEEDS HUMAN:\nCustomer: ${From}\nService: ${smsBookingState.service || 'Unknown'}\nTime: ${slotSelection.chosenSlotLabel}\nAddress: ${smsBookingState.address || 'Not provided'}\nError: ${bookingError || 'Calendar insert failed'}`;
-                await twilioClient.messages.create({
+                await sendDirectTwilioSMS({
                   to: ownerPhone,
                   from: To,
                   body: escalationMsg,
@@ -1019,7 +1020,7 @@ Customer text: "${Body}"`,
                   process.env.TWILIO_ACCOUNT_SID,
                   process.env.TWILIO_AUTH_TOKEN
                 );
-                await twilioClient.messages.create({
+                await sendDirectTwilioSMS({
                   to: ownerPhone,
                   from: To,
                   body: ownerMsg,
@@ -1054,7 +1055,7 @@ Customer text: "${Body}"`,
                 process.env.TWILIO_AUTH_TOKEN
               );
               const escalationMsg = `🚨 BOOKING EXCEPTION - NEEDS HUMAN:\nCustomer: ${From}\nService: ${smsBookingState.service || 'Unknown'}\nTime: ${slotSelection.chosenSlotLabel}\nAddress: ${smsBookingState.address || 'Not provided'}\nError: ${bookingErr?.message || 'Unknown exception'}`;
-              await twilioClient.messages.create({
+              await sendDirectTwilioSMS({
                 to: ownerPhone,
                 from: To,
                 body: escalationMsg,

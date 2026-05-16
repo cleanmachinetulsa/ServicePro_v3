@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 import { Router } from "express";
 import { twilioClient, TWILIO_TEST_SMS_NUMBER, assertTwilioReady } from "../twilioClient";
 
@@ -33,7 +34,7 @@ twilioDebugSmsRouter.get("/debug-send", async (req, res) => {
       to,
     });
 
-    const result = await twilioClient.messages.create({
+    const result = await sendDirectTwilioSMS({
       from: TWILIO_TEST_SMS_NUMBER as string,
       to,
       body: "ServicePro Twilio test: outbound SMS is working. 🎉",

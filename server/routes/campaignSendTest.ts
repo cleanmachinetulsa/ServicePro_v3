@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 import { Router, Request, Response } from 'express';
 import { sql } from 'drizzle-orm';
 import type { TenantDb } from '../tenantDb';
@@ -139,7 +140,7 @@ router.post('/sms/:id/send-test', async (req: Request, res: Response) => {
         messageParams.from = fromPhone;
       }
 
-      const result = await twilioClient.messages.create(messageParams);
+      const result = await sendDirectTwilioSMS(messageParams);
       messageSid = result.sid;
       console.log(`[CAMPAIGN TEST SEND] ok=true campaignId=${campaign.id} to=${phone} chars=${finalMessage.length} sid=${messageSid}`);
     } catch (twilioError: any) {

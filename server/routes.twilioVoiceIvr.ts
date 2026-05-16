@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from './smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * Phase 2.3: IVR Callback Routes
  * 
@@ -740,7 +741,7 @@ async function sendBookingInfoSms(toNumber: string, ivrConfig: { businessName: s
       return;
     }
     
-    await twilioClient.messages.create({
+    await sendDirectTwilioSMS({
       to: toNumber,
       from: fromNumber,
       body: message,
@@ -781,7 +782,7 @@ async function sendConfigDrivenSms(toNumber: string, smsText: string, tenantId: 
       return;
     }
     
-    await twilioClient.messages.create({
+    await sendDirectTwilioSMS({
       to: toNumber,
       from: fromNumber,
       body: smsText,
@@ -825,7 +826,7 @@ async function notifyVoicemail(
     if (twilioClient && ownerPhone && fromNumber) {
       const message = `🎙️ New voicemail from ${callerNumber}. Recording: ${recordingUrl}`;
       
-      await twilioClient.messages.create({
+      await sendDirectTwilioSMS({
         to: ownerPhone,
         from: fromNumber,
         body: message,

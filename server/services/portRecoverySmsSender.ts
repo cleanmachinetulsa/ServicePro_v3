@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * Port Recovery SMS Sender - Strict Single Sender for Campaigns
  * 
@@ -252,7 +253,7 @@ export async function sendPortRecoverySms(params: PortRecoverySendParams): Promi
   try {
     console.log(`[PORT RECOVERY SMS SEND] Sending: tenantId=${tenantId} campaignKey=${campaignKey} to=${normalizedTo} from=${fromUsed}`);
     
-    const message = await twilioClient.messages.create({
+    const message = await sendDirectTwilioSMS({
       to: normalizedTo,
       from: fromUsed, // ALWAYS use specific FROM, never MessagingServiceSid
       body,

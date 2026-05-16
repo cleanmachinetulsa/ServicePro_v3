@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 import { Router, Request, Response } from "express";
 import twilio from "twilio";
 import { getTwilioClient, TWILIO_TEST_SMS_NUMBER } from "../twilioClient";
@@ -85,7 +86,7 @@ twilioTestVoiceRouter.post("/handle-key", async (req, res) => {
       case "2":
         if (twilioClient && TWILIO_TEST_SMS_NUMBER && From) {
           try {
-            await twilioClient.messages.create({
+            await sendDirectTwilioSMS({
               from: TWILIO_TEST_SMS_NUMBER,
               to: From,
               body:
@@ -220,7 +221,7 @@ twilioTestVoiceRouter.post(
           "[TWILIO TEST VOICE VOICEMAIL TRANSCRIPTION] No transcription text provided"
         );
         if (twilioClient && TWILIO_TEST_SMS_NUMBER) {
-          await twilioClient.messages.create({
+          await sendDirectTwilioSMS({
             from: TWILIO_TEST_SMS_NUMBER as string,
             to: from,
             body:
@@ -276,7 +277,7 @@ twilioTestVoiceRouter.post(
           { hasClient: !!twilioClient, fromNumber: TWILIO_TEST_SMS_NUMBER }
         );
       } else {
-        const msg = await twilioClient.messages.create({
+        const msg = await sendDirectTwilioSMS({
           from: TWILIO_TEST_SMS_NUMBER as string,
           to: from,
           body: aiReply,

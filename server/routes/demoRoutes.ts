@@ -1,3 +1,4 @@
+import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * CM-DEMO-1: Demo Mode API Routes
  * 
@@ -106,7 +107,7 @@ router.post('/send-code', demoCodeLimiter, async (req: Request, res: Response) =
           console.error('[DEMO API] No Twilio phone number configured');
           return false;
         }
-        await twilioClient.messages.create({
+        await sendDirectTwilioSMS({
           to,
           from: fromNumber,
           body,
