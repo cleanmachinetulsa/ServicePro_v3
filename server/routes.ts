@@ -2678,7 +2678,9 @@ export async function registerRoutes(app: Express) {
         conversationHistory,
         false, // isDemoMode
         tenantId, // PHASE 11: tenant-aware SMS prompts
-        conversation.controlMode || 'auto' // AI BEHAVIOR V2: control mode awareness
+        conversation.controlMode || 'auto', // AI BEHAVIOR V2: control mode awareness
+        undefined, // modelOverride
+        conversation.id // Audit T3 Task #21: tag AI usage by thread
       );
 
       // Save AI response
@@ -2754,7 +2756,12 @@ export async function registerRoutes(app: Express) {
         phone,
         platform,
         behaviorSettings,
-        conversationHistory
+        conversationHistory,
+        false,
+        undefined,
+        undefined,
+        undefined,
+        conversation.id // Audit T3 Task #21: tag AI usage by thread
       );
 
       // Save AI response

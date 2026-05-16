@@ -139,9 +139,16 @@ export async function recordAiUsage(
   feature: UsageFeature,
   inputTokens: number,
   outputTokens: number,
-  model: string = 'gpt-4o'
+  model: string = 'gpt-4o',
+  conversationId?: number
 ): Promise<void> {
   const totalTokens = inputTokens + outputTokens;
+  const meta: Record<string, any> = { model, inputTokens, outputTokens };
+  // Audit T3 Task #21: tag AI usage by conversation so the per-thread
+  // "AI: N calls, $X" footer can sum events without scanning everything.
+  if (typeof conversationId === 'number' && Number.isFinite(conversationId)) {
+    meta.conversationId = conversationId;
+  }
   await recordUsageEvent({
     tenantId,
     channel: 'ai',
@@ -149,7 +156,7 @@ export async function recordAiUsage(
     source: 'openai',
     feature,
     quantity: totalTokens,
-    metadata: { model, inputTokens, outputTokens },
+    metadata: meta,
   });
 }
 

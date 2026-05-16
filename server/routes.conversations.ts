@@ -1,8 +1,9 @@
 import { Express, Request, Response, NextFunction } from 'express';
 import twilio from 'twilio';
 import axios from 'axios';
-import { facebookPageTokens, conversations, messageReactions, messages, customers, appointments } from '@shared/schema';
-import { eq, and, inArray, gte, lte, ne } from 'drizzle-orm';
+import { facebookPageTokens, conversations, messageReactions, messages, customers, appointments, usageEvents } from '@shared/schema';
+import { eq, and, inArray, gte, lte, ne, sql, desc } from 'drizzle-orm';
+import { db } from './db';
 import { requireAuth } from './authMiddleware';
 import { normalizePhone } from './phoneValidationMiddleware';
 import {
@@ -24,6 +25,348 @@ import {
 export function registerConversationRoutes(app: Express) {
   // Apply authentication middleware to all conversation routes
   app.use('/api/conversations*', requireAuth);
+
+  // ============================================================
+  // Audit T3 Task #21 — Power-user polish: per-thread AI usage,
+  // thread summary, channel switching, and bulk actions.
+  // ============================================================
+
+  // GPT-4o public pricing per 1k tokens (input/output). Kept inline since
+  // there is no central rate table yet; safe to read-only estimate.
+  const AI_RATES: Record<string, { in: number; out: number }> = {
+    'gpt-4o': { in: 0.005, out: 0.015 },
+    'gpt-4o-mini': { in: 0.00015, out: 0.0006 },
+  };
+  const estimateAiCost = (model: string | undefined, inTok: number, outTok: number): number => {
+    const r = AI_RATES[model || 'gpt-4o'] || AI_RATES['gpt-4o'];
+    return (inTok / 1000) * r.in + (outTok / 1000) * r.out;
+  };
+
+  // In-process LRU-ish cache for thread summaries. Bounded to avoid leaks.
+  const summaryCache = new Map<string, { summary: string; generatedAt: number; messageCount: number }>();
+  const SUMMARY_CACHE_MAX = 500;
+
+  // -------- GET /api/conversations/:id/ai-usage --------
+  // Sums AI usage events tagged with this conversationId in metadata
+  // over the last 90 days, tenant-scoped. Returns call count, tokens,
+  // and estimated cost in USD.
+  app.get('/api/conversations/:id/ai-usage', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
+      }
+      const tenantId = (req.tenant as any)?.id || 'root';
+
+      // Confirm conversation belongs to tenant before exposing anything.
+      const own = await req.tenantDb!
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+        .limit(1);
+      if (own.length === 0) {
+        return res.status(404).json({ success: false, message: 'Conversation not found' });
+      }
+
+      const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      const rows = await db
+        .select({
+          model: sql<string>`COALESCE(${usageEvents.metadata}->>'model', 'gpt-4o')`,
+          inputTokens: sql<number>`COALESCE((${usageEvents.metadata}->>'inputTokens')::int, 0)`,
+          outputTokens: sql<number>`COALESCE((${usageEvents.metadata}->>'outputTokens')::int, 0)`,
+        })
+        .from(usageEvents)
+        .where(and(
+          eq(usageEvents.tenantId, tenantId),
+          eq(usageEvents.channel, 'ai'),
+          gte(usageEvents.timestamp, since),
+          sql`(${usageEvents.metadata}->>'conversationId')::int = ${conversationId}`,
+        ));
+
+      let calls = 0;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let costUsd = 0;
+      for (const r of rows) {
+        calls += 1;
+        inputTokens += r.inputTokens || 0;
+        outputTokens += r.outputTokens || 0;
+        costUsd += estimateAiCost(r.model, r.inputTokens || 0, r.outputTokens || 0);
+      }
+
+      res.json({
+        success: true,
+        data: {
+          conversationId,
+          calls,
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          costUsd: Math.round(costUsd * 10000) / 10000,
+          windowDays: 90,
+        },
+      });
+    } catch (error) {
+      console.error('[AI USAGE] Error:', error);
+      res.status(500).json({ success: false, message: 'Failed to load AI usage' });
+    }
+  });
+
+  // -------- GET /api/conversations/:id/summary --------
+  // gpt-4o-mini 2-line summary of the last 40 messages. Cached in-memory by
+  // (conversationId, lastMessageId) so repeat opens are free.
+  app.get('/api/conversations/:id/summary', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
+      }
+
+      const own = await req.tenantDb!
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+        .limit(1);
+      if (own.length === 0) {
+        return res.status(404).json({ success: false, message: 'Conversation not found' });
+      }
+
+      const recent = await req.tenantDb!
+        .select({
+          id: messages.id,
+          content: messages.content,
+          sender: messages.sender,
+          timestamp: messages.timestamp,
+        })
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId))
+        .orderBy(desc(messages.timestamp))
+        .limit(40);
+
+      if (recent.length <= 20) {
+        return res.json({
+          success: true,
+          data: { summary: null, messageCount: recent.length, reason: 'thread_too_short' },
+        });
+      }
+
+      const ordered = recent.reverse();
+      const lastId = ordered[ordered.length - 1].id;
+      const cacheKey = `${conversationId}:${lastId}`;
+      const hit = summaryCache.get(cacheKey);
+      if (hit) {
+        return res.json({
+          success: true,
+          data: { summary: hit.summary, messageCount: hit.messageCount, cached: true },
+        });
+      }
+
+      if (!process.env.OPENAI_API_KEY) {
+        return res.json({
+          success: true,
+          data: { summary: null, messageCount: ordered.length, reason: 'openai_not_configured' },
+        });
+      }
+
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const transcript = ordered
+        .map(m => `${m.sender}: ${(m.content || '').slice(0, 400)}`)
+        .join('\n');
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        max_tokens: 160,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You summarize customer service chat threads for a support agent in 2 short lines. '
+              + 'Line 1: what the customer wants. Line 2: open questions or next action. '
+              + 'No greetings, no preamble, no markdown. Plain text only.',
+          },
+          { role: 'user', content: transcript },
+        ],
+      });
+      const summary = (completion.choices?.[0]?.message?.content || '').trim();
+
+      const tenantId = (req.tenant as any)?.id || 'root';
+      try {
+        const { recordAiUsage } = await import('./services/usageEventService');
+        await recordAiUsage(
+          tenantId,
+          'ai_chat',
+          completion.usage?.prompt_tokens || 0,
+          completion.usage?.completion_tokens || 0,
+          'gpt-4o-mini',
+          conversationId,
+        );
+      } catch (usageErr) {
+        console.warn('[THREAD SUMMARY] usage record failed:', usageErr);
+      }
+
+      // bounded LRU eviction
+      if (summaryCache.size >= SUMMARY_CACHE_MAX) {
+        const oldestKey = summaryCache.keys().next().value;
+        if (oldestKey) summaryCache.delete(oldestKey);
+      }
+      summaryCache.set(cacheKey, { summary, generatedAt: Date.now(), messageCount: ordered.length });
+
+      res.json({
+        success: true,
+        data: { summary, messageCount: ordered.length, cached: false },
+      });
+    } catch (error) {
+      console.error('[THREAD SUMMARY] Error:', error);
+      res.status(500).json({ success: false, message: 'Failed to summarize thread' });
+    }
+  });
+
+  // -------- POST /api/conversations/:id/switch-channel --------
+  // Appends a handoff system message on the current conversation, then
+  // finds-or-creates a sibling conversation on the target platform for the
+  // same customer phone. Returns the target conversation id so the UI can
+  // jump to it. Caller is responsible for the actual outbound message on
+  // the new channel — this only stages the thread.
+  app.post('/api/conversations/:id/switch-channel', async (req: Request, res: Response) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      const { to } = req.body as { to?: string };
+      const allowed = ['sms', 'web', 'email', 'facebook', 'instagram'] as const;
+      if (isNaN(conversationId) || !to || !(allowed as readonly string[]).includes(to)) {
+        return res.status(400).json({ success: false, message: 'Invalid id or target channel' });
+      }
+
+      const current = await req.tenantDb!
+        .select()
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)))
+        .limit(1);
+      if (current.length === 0) {
+        return res.status(404).json({ success: false, message: 'Conversation not found' });
+      }
+      const curr = current[0];
+      if (curr.platform === to) {
+        return res.status(400).json({ success: false, message: 'Already on that channel' });
+      }
+
+      const handoffNote = `↪️ Switched channel: continuing on ${to.toUpperCase()}.`;
+      try {
+        await addMessage(req.tenantDb!, conversationId, handoffNote, 'agent', curr.platform as any, {
+          type: 'channel_switch',
+          to,
+        });
+      } catch (e) {
+        console.warn('[SWITCH-CHANNEL] handoff note insert failed (non-blocking):', e);
+      }
+
+      if (!curr.customerPhone) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot switch channel: conversation has no phone number',
+        });
+      }
+
+      const target = await getOrCreateConversation(
+        req.tenantDb!,
+        curr.customerPhone,
+        curr.customerName,
+        to as any,
+        undefined,
+        undefined,
+        (curr as any).emailAddress || undefined,
+      );
+      const targetId = (target as any).conversation?.id ?? (target as any).id;
+
+      try {
+        await addMessage(
+          req.tenantDb!,
+          targetId,
+          `↩️ Continued from ${String(curr.platform).toUpperCase()}.`,
+          'agent',
+          to as any,
+          { type: 'channel_switch', from: curr.platform },
+        );
+      } catch (e) {
+        console.warn('[SWITCH-CHANNEL] target note insert failed (non-blocking):', e);
+      }
+
+      res.json({ success: true, data: { targetConversationId: targetId, platform: to } });
+    } catch (error) {
+      console.error('[SWITCH-CHANNEL] Error:', error);
+      res.status(500).json({ success: false, message: 'Failed to switch channel' });
+    }
+  });
+
+  // -------- POST /api/conversations/bulk-action --------
+  // Apply mark-read | snooze | resolve | archive | assign to a batch of
+  // tenant-owned conversations. The frontend is responsible for expanding
+  // a thread row into siblingConversationIds before posting.
+  app.post('/api/conversations/bulk-action', async (req: Request, res: Response) => {
+    try {
+      const { action, ids, payload } = req.body as {
+        action?: string;
+        ids?: number[];
+        payload?: any;
+      };
+      const validActions = ['mark-read', 'snooze', 'resolve', 'archive', 'assign'] as const;
+      if (!action || !(validActions as readonly string[]).includes(action)) {
+        return res.status(400).json({ success: false, message: 'Invalid action' });
+      }
+      const cleanIds = Array.isArray(ids)
+        ? ids.map(n => Number(n)).filter(n => Number.isFinite(n) && n > 0)
+        : [];
+      if (cleanIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'No conversations selected' });
+      }
+      if (cleanIds.length > 200) {
+        return res.status(400).json({ success: false, message: 'Too many conversations (max 200)' });
+      }
+
+      let updateSet: Record<string, any> | null = null;
+      switch (action) {
+        case 'mark-read':
+          updateSet = { unreadCount: 0 };
+          break;
+        case 'snooze': {
+          const until = payload?.snoozedUntil
+            ? new Date(payload.snoozedUntil)
+            : new Date(Date.now() + 60 * 60 * 1000);
+          updateSet = { snoozedUntil: until };
+          break;
+        }
+        case 'resolve':
+          updateSet = { status: 'closed', resolved: true };
+          break;
+        case 'archive':
+          updateSet = { archived: true, archivedAt: new Date() };
+          break;
+        case 'assign':
+          if (!payload?.agentUsername || typeof payload.agentUsername !== 'string') {
+            return res.status(400).json({ success: false, message: 'agentUsername required' });
+          }
+          updateSet = {
+            controlMode: 'manual',
+          };
+          break;
+      }
+
+      const updated = await req.tenantDb!
+        .update(conversations)
+        .set(updateSet!)
+        .where(req.tenantDb!.withTenantFilter(conversations, inArray(conversations.id, cleanIds)))
+        .returning({ id: conversations.id });
+
+      res.json({
+        success: true,
+        data: { action, requested: cleanIds.length, updated: updated.length },
+      });
+    } catch (error) {
+      console.error('[BULK-ACTION] Error:', error);
+      res.status(500).json({ success: false, message: 'Failed to apply bulk action' });
+    }
+  });
   // Create a new conversation (from Messages UI)
   // Phone validation happens via conditional middleware below
   app.post('/api/conversations/create', async (req: Request, res: Response, next: NextFunction) => {

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ButtonWithTooltip, TooltipButtonGroup } from '@/components/ui/button-with-tooltip';
 import { PhoneLineProvider, usePhoneLine } from '@/contexts/PhoneLineContext';
@@ -8,8 +8,21 @@ import {
   PlusCircle, 
   Phone,
   CalendarDays,
-  LayoutDashboard
+  LayoutDashboard,
+  Keyboard,
+  CheckCircle2,
+  Clock,
+  Archive,
+  X,
+  MailOpen,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import io from 'socket.io-client';
 import { NightOpsMessagesLayout } from '@/components/messages/NightOpsMessagesLayout';
 import { NightOpsConversationList } from '@/components/messages/NightOpsConversationList';
@@ -57,6 +70,10 @@ function MessagesPageContent() {
   const [showComposeDialog, setShowComposeDialog] = useState(false);
   const [showShareAvailabilityModal, setShowShareAvailabilityModal] = useState(false);
   const [includeWebchatInAll, setIncludeWebchatInAll] = useState(false);
+  // Audit T3 Task #21: bulk selection + cheatsheet modal
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -243,6 +260,150 @@ function MessagesPageContent() {
   });
   const phoneLines = phoneLinesData?.lines || [];
 
+  // Audit T3 Task #21: selection helpers
+  const toggleSelected = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  // Map of representative id -> [siblingConversationIds] so bulk actions on a
+  // thread row can fan out to every sibling conversation (e.g. archive both
+  // SMS and web rows for the same customer).
+  const siblingMap = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const row of sortedConversations) {
+      m.set(row.id, (row as any).siblingConversationIds || [row.id]);
+    }
+    return m;
+  }, [sortedConversations]);
+
+  const expandedSelectedIds = useMemo(() => {
+    const out = new Set<number>();
+    selectedIds.forEach(id => {
+      (siblingMap.get(id) || [id]).forEach(sid => out.add(sid));
+    });
+    return Array.from(out);
+  }, [selectedIds, siblingMap]);
+
+  const bulkMutation = useMutation({
+    mutationFn: async (action: 'mark-read' | 'snooze' | 'resolve' | 'archive') => {
+      const res = await apiRequest('POST', '/api/conversations/bulk-action', {
+        action,
+        ids: expandedSelectedIds,
+      });
+      return res.json();
+    },
+    onSuccess: (json: any, action) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+      clearSelection();
+      toast({
+        title: 'Bulk update applied',
+        description: `${action} → ${json?.data?.updated ?? 0} conversation(s)`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Bulk update failed',
+        description: err?.message || 'Could not apply action',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // ----- Audit T3 Task #21: keyboard shortcuts -----
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const editable =
+        tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
+
+      // Always allow Esc + ? even from inputs? Allow Esc always.
+      if (e.key === 'Escape') {
+        if (showCheatsheet) setShowCheatsheet(false);
+        if (selectedIds.size > 0) clearSelection();
+        return;
+      }
+      if (editable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const key = e.key;
+      // ? cheatsheet (Shift + /)
+      if (key === '?') {
+        e.preventDefault();
+        setShowCheatsheet(v => !v);
+        return;
+      }
+      if (key === '/') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (key === 'j' || key === 'k') {
+        e.preventDefault();
+        if (sortedConversations.length === 0) return;
+        const curr = selectedConversation
+          ? sortedConversations.findIndex(c => c.id === selectedConversation)
+          : -1;
+        const len = sortedConversations.length;
+        const next = key === 'j'
+          ? (curr < len - 1 ? curr + 1 : 0)
+          : (curr > 0 ? curr - 1 : len - 1);
+        setSelectedConversation(sortedConversations[next].id);
+        return;
+      }
+
+      if (!selectedConversation) return;
+      switch (key) {
+        case 'e':
+          e.preventDefault();
+          apiRequest('POST', `/api/conversations/${selectedConversation}/resolve`)
+            .then(() => {
+              queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+              toast({ title: 'Resolved', description: 'Conversation marked as resolved' });
+            })
+            .catch(() => toast({ title: 'Failed to resolve', variant: 'destructive' }));
+          break;
+        case 'r':
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent('composer:focus', {
+            detail: { conversationId: selectedConversation },
+          }));
+          break;
+        case 's': {
+          e.preventDefault();
+          const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+          apiRequest('POST', `/api/conversations/${selectedConversation}/snooze`, { snoozedUntil: until })
+            .then(() => {
+              queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+              toast({ title: 'Snoozed', description: 'Snoozed for 1 hour' });
+            })
+            .catch(() => toast({ title: 'Snooze failed', variant: 'destructive' }));
+          break;
+        }
+        case 't':
+          e.preventDefault();
+          handleTakeOver();
+          break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    sortedConversations,
+    selectedConversation,
+    showCheatsheet,
+    selectedIds.size,
+    clearSelection,
+    queryClient,
+    toast,
+  ]);
+
   const conversationListNode = (
     <NightOpsConversationList
       conversations={sortedConversations}
@@ -256,6 +417,9 @@ function MessagesPageContent() {
       phoneLines={phoneLines}
       includeWebchatInAll={includeWebchatInAll}
       onIncludeWebchatToggle={setIncludeWebchatInAll}
+      selectedIds={selectedIds}
+      onToggleSelected={toggleSelected}
+      searchInputRef={searchInputRef}
     />
   );
 
@@ -265,6 +429,7 @@ function MessagesPageContent() {
       onBack={() => setSelectedConversation(null)}
       onTakeOver={handleTakeOver}
       controlMode={selectedConv?.controlMode as any}
+      onConversationSelected={setSelectedConversation}
     />
   );
 
@@ -391,6 +556,101 @@ function MessagesPageContent() {
       >
         <PlusCircle className="h-6 w-6" />
       </Button>
+
+      {/* Audit T3 Task #21: bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-page-header bg-slate-900/95 backdrop-blur border border-cyan-500/40 rounded-full shadow-[0_0_20px_rgba(34,211,238,0.4)] px-4 py-2 flex items-center gap-2"
+          data-testid="bulk-action-bar"
+        >
+          <span className="text-xs text-cyan-300 tabular-nums mr-1">
+            {selectedIds.size} selected
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-slate-200 hover:bg-slate-800"
+            onClick={() => bulkMutation.mutate('mark-read')}
+            disabled={bulkMutation.isPending}
+            data-testid="bulk-mark-read"
+          >
+            <MailOpen className="h-3.5 w-3.5 mr-1" /> Mark read
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-slate-200 hover:bg-slate-800"
+            onClick={() => bulkMutation.mutate('snooze')}
+            disabled={bulkMutation.isPending}
+            data-testid="bulk-snooze"
+          >
+            <Clock className="h-3.5 w-3.5 mr-1" /> Snooze 1h
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-slate-200 hover:bg-slate-800"
+            onClick={() => bulkMutation.mutate('resolve')}
+            disabled={bulkMutation.isPending}
+            data-testid="bulk-resolve"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Resolve
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-slate-200 hover:bg-slate-800"
+            onClick={() => bulkMutation.mutate('archive')}
+            disabled={bulkMutation.isPending}
+            data-testid="bulk-archive"
+          >
+            <Archive className="h-3.5 w-3.5 mr-1" /> Archive
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+            onClick={clearSelection}
+            data-testid="bulk-clear"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {/* Audit T3 Task #21: keyboard cheatsheet */}
+      <Dialog open={showCheatsheet} onOpenChange={setShowCheatsheet}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 sm:max-w-md" data-testid="cheatsheet-modal">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Keyboard className="h-4 w-4 text-cyan-400" />
+              Keyboard shortcuts
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Move faster through the inbox.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-2 text-sm">
+            {[
+              ['j / k', 'Next / previous conversation'],
+              ['e', 'Resolve current conversation'],
+              ['r', 'Reply (focus composer)'],
+              ['s', 'Snooze 1 hour'],
+              ['t', 'Take over (manual control)'],
+              ['/', 'Focus search'],
+              ['?', 'Toggle this cheatsheet'],
+              ['Esc', 'Clear selection / close modal'],
+            ].map(([k, label]) => (
+              <div key={k} className="flex items-center justify-between py-1.5 border-b border-slate-800 last:border-0">
+                <span className="text-slate-300">{label}</span>
+                <kbd className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-xs font-mono text-cyan-300">
+                  {k}
+                </kbd>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

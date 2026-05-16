@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   User, 
   Phone, 
@@ -719,6 +720,45 @@ export function NightOpsContextPanel({
           Book Appointment
         </Button>
       </div>
+
+      {/* Audit T3 Task #21: per-thread AI cost footer */}
+      <AiCostFooter conversationId={conversationId ?? null} />
+    </div>
+  );
+}
+
+// Audit T3 Task #21: AI cost footer — shows calls + estimated cost for the
+// active thread over the past 90 days. Hidden when no conversation is open.
+function AiCostFooter({ conversationId }: { conversationId: number | null }) {
+  const { data } = useQuery<{
+    success: boolean;
+    data: { calls: number; totalTokens: number; costUsd: number };
+  }>({
+    queryKey: ['/api/conversations', conversationId, 'ai-usage'],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${conversationId}/ai-usage`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to load AI usage');
+      return res.json();
+    },
+    enabled: !!conversationId,
+    refetchInterval: 30000,
+  });
+  if (!conversationId || !data?.data) return null;
+  const d = data.data;
+  return (
+    <div
+      className="mt-3 px-3 py-2 rounded-lg border border-slate-700/40 bg-slate-900/40 flex items-center justify-between text-[0.7rem] text-slate-400"
+      data-testid="ai-cost-footer"
+    >
+      <span className="flex items-center gap-1.5">
+        <Sparkles className="h-3 w-3 text-cyan-400" />
+        AI: {d.calls} call{d.calls === 1 ? '' : 's'}
+      </span>
+      <span className="tabular-nums">
+        {d.totalTokens.toLocaleString()} tok · ${d.costUsd.toFixed(4)}
+      </span>
     </div>
   );
 }

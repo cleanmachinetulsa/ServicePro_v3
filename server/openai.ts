@@ -865,7 +865,8 @@ export async function generateAIResponse(
   isDemoMode: boolean = false,
   tenantId?: string,
   controlMode?: 'auto' | 'manual' | 'paused',  // AI BEHAVIOR V2: control mode awareness
-  modelOverride?: string  // Audit T1 S-10/W-1: per-tenant token-budget downgrade
+  modelOverride?: string,  // Audit T1 S-10/W-1: per-tenant token-budget downgrade
+  conversationId?: number  // Audit T3 Task #21: tag AI usage events by thread
 ) {
   try {
     // PHASE 11 + AI BEHAVIOR V2: Use SMS-optimized, state-aware prompt for SMS platform
@@ -992,7 +993,7 @@ export async function generateAIResponse(
             );
             
             if (tenantId) {
-              await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, SMS_AGENT_MODEL);
+              await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, SMS_AGENT_MODEL, conversationId);
               
               // CM-Billing-Prep: Record to usage ledger for billing
               const { recordAiMessage } = await import('./usage/usageRecorder');
@@ -1520,7 +1521,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
         );
         
         if (tenantId) {
-          await recordAiUsage(tenantId, 'ai_chat', inputTokens, outputTokens, effectiveModel);
+          await recordAiUsage(tenantId, 'ai_chat', inputTokens, outputTokens, effectiveModel, conversationId);
         }
       } catch (err) {
         console.error('[OPENAI USAGE LOG] Error:', err);

@@ -95,6 +95,9 @@ async function processWebChatConversation(
   
   // Get conversation history - simplified query without relations to avoid Drizzle issues
   let conversationHistory: Array<{ content: string; role: 'user' | 'assistant'; sender: string; metadata: Record<string, any> | null }> = [];
+  // Audit T3 Task #21: capture web conversation id so AI usage events can be
+  // tagged with conversationId for the per-thread cost footer.
+  let webConvIdForUsage: number | undefined;
   
   try {
     // Try to find existing conversation and get messages
@@ -107,6 +110,7 @@ async function processWebChatConversation(
       .limit(1);
     
     if (conv.length > 0) {
+      webConvIdForUsage = conv[0].id;
       const msgs = await tenantDb
         .select()
         .from(messagesTable)
@@ -201,6 +205,7 @@ async function processWebChatConversation(
       tenantId, // Pass tenant ID for proper prompt building
       'auto', // control mode
       decision.model, // model override (base or 'gpt-4o-mini' under budget pressure)
+      webConvIdForUsage, // Audit T3 Task #21: tag AI usage by thread
     );
 
     return { response: response || 'I apologize, but I had trouble processing that. Could you rephrase your question?' };
@@ -283,7 +288,12 @@ Customer message: ${message}`;
       identifier,
       platform === 'sms' ? 'sms' : 'web',
       undefined,
-      conversationHistory
+      conversationHistory,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      conv?.id // Audit T3 Task #21: tag AI usage by thread
     );
 
     return {

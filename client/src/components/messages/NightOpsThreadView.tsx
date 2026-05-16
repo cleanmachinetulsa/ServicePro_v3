@@ -1,36 +1,54 @@
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { 
-  ArrowLeft, 
-  Send,
+import {
+  ArrowLeft,
   MessageSquare,
-  Inbox
+  Inbox,
+  Sparkles,
+  ArrowLeftRight,
+  Phone,
+  Globe,
+  Mail,
 } from 'lucide-react';
+import { SiFacebook, SiInstagram } from 'react-icons/si';
 import ThreadView from '@/components/ThreadView';
 import { AutopilotBanner } from './AutopilotBanner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface NightOpsThreadViewProps {
   conversationId: number | null;
   onBack?: () => void;
   onTakeOver?: () => void;
   controlMode?: 'ai' | 'human' | 'hybrid' | 'auto' | 'manual' | 'paused';
+  // Audit T3 Task #21: select a sibling conversation after channel switch
+  onConversationSelected?: (id: number) => void;
 }
 
 export function NightOpsThreadView({
   conversationId,
   onBack,
   onTakeOver,
-  controlMode = 'auto'
+  controlMode = 'auto',
+  onConversationSelected,
 }: NightOpsThreadViewProps) {
 
   if (!conversationId) {
     return (
-      <div 
+      <div
         className="flex-1 flex flex-col items-center justify-center p-8 text-center"
         data-testid="thread-empty-state"
       >
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
@@ -38,7 +56,7 @@ export function NightOpsThreadView({
         >
           <Inbox className="h-10 w-10 text-slate-600" />
         </motion.div>
-        <motion.h3 
+        <motion.h3
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.3 }}
@@ -46,7 +64,7 @@ export function NightOpsThreadView({
         >
           Select a conversation
         </motion.h3>
-        <motion.p 
+        <motion.p
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.3 }}
@@ -63,13 +81,16 @@ export function NightOpsThreadView({
           <kbd className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50 mr-1">↑</kbd>
           <kbd className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50">↓</kbd>
           <span className="ml-2">to navigate</span>
+          <span className="mx-2 text-slate-700">·</span>
+          <kbd className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/50">?</kbd>
+          <span className="ml-2">for shortcuts</span>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div 
+    <div
       className="flex-1 flex flex-col min-h-0 nightops-thread-wrapper"
       data-testid="thread-view"
     >
@@ -95,6 +116,13 @@ export function NightOpsThreadView({
         />
       </div>
 
+      {/* Audit T3 Task #21: thread summary banner + channel switch action */}
+      <ThreadActionsRow
+        conversationId={conversationId}
+        onConversationSelected={onConversationSelected}
+      />
+      <ThreadSummaryBanner conversationId={conversationId} />
+
       <div className="flex-1 min-h-0 flex flex-col nightops-threadview-container">
         <ThreadView
           conversationId={conversationId}
@@ -102,6 +130,118 @@ export function NightOpsThreadView({
           hideHeader={true}
         />
       </div>
+    </div>
+  );
+}
+
+// Audit T3 Task #21: lazy thread summary using gpt-4o-mini. Server returns
+// null summary if the thread has <= 20 messages, in which case we hide.
+function ThreadSummaryBanner({ conversationId }: { conversationId: number }) {
+  const { data, isLoading } = useQuery<{
+    success: boolean;
+    data: { summary: string | null; messageCount: number; cached?: boolean };
+  }>({
+    queryKey: ['/api/conversations', conversationId, 'summary'],
+    queryFn: async () => {
+      const res = await fetch(`/api/conversations/${conversationId}/summary`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to load summary');
+      return res.json();
+    },
+    enabled: !!conversationId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const summary = data?.data?.summary;
+  if (isLoading) return null;
+  if (!summary) return null;
+  return (
+    <div
+      className="px-4 py-2 border-b border-slate-700/40 bg-slate-900/60"
+      data-testid="thread-summary-banner"
+    >
+      <div className="flex items-start gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-cyan-400 mt-0.5 flex-shrink-0" />
+        <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+          {summary}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Audit T3 Task #21: channel switch dropdown. Sends a handoff message on the
+// current channel and creates/finds the sibling conversation on the target.
+function ThreadActionsRow({
+  conversationId,
+  onConversationSelected,
+}: {
+  conversationId: number;
+  onConversationSelected?: (id: number) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const channels: Array<{ value: 'sms' | 'web' | 'email' | 'facebook' | 'instagram'; label: string; icon: any }> = [
+    { value: 'sms', label: 'SMS', icon: Phone },
+    { value: 'web', label: 'Web chat', icon: Globe },
+    { value: 'email', label: 'Email', icon: Mail },
+    { value: 'facebook', label: 'Facebook', icon: SiFacebook },
+    { value: 'instagram', label: 'Instagram', icon: SiInstagram },
+  ];
+
+  const switchMutation = useMutation({
+    mutationFn: async (to: string) => {
+      const res = await apiRequest('POST', `/api/conversations/${conversationId}/switch-channel`, { to });
+      return res.json();
+    },
+    onSuccess: (json: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+      const targetId = json?.data?.targetConversationId;
+      if (targetId && onConversationSelected) onConversationSelected(targetId);
+      toast({ title: 'Channel switched', description: `Continuing on ${json?.data?.platform?.toUpperCase()}` });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Switch failed',
+        description: err?.message || 'Could not switch channel',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  return (
+    <div className="px-3 py-1.5 border-b border-slate-700/40 flex items-center justify-end gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+            data-testid="button-switch-channel"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5 mr-1.5" />
+            Switch channel
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="bg-slate-900 border-slate-700">
+          <DropdownMenuLabel className="text-xs text-slate-400">Continue on...</DropdownMenuLabel>
+          {channels.map(c => {
+            const Icon = c.icon;
+            return (
+              <DropdownMenuItem
+                key={c.value}
+                onClick={() => switchMutation.mutate(c.value)}
+                disabled={switchMutation.isPending}
+                className="text-slate-200 focus:bg-slate-800 focus:text-slate-100 cursor-pointer"
+                data-testid={`switch-channel-${c.value}`}
+              >
+                <Icon className="h-3.5 w-3.5 mr-2" />
+                {c.label}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

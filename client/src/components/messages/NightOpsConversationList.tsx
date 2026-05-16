@@ -18,8 +18,10 @@ import {
   Mic,
   Clock,
   CheckCircle2,
-  Circle
+  Circle,
+  Check
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SiFacebook, SiInstagram } from 'react-icons/si';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -76,6 +78,10 @@ interface NightOpsConversationListProps {
   phoneLines?: PhoneLine[];
   includeWebchatInAll?: boolean;
   onIncludeWebchatToggle?: (value: boolean) => void;
+  // Audit T3 Task #21: bulk selection
+  selectedIds?: Set<number>;
+  onToggleSelected?: (id: number) => void;
+  searchInputRef?: React.RefObject<HTMLInputElement>;
 }
 
 export function NightOpsConversationList({
@@ -89,10 +95,14 @@ export function NightOpsConversationList({
   onFilterChange,
   phoneLines = [],
   includeWebchatInAll = false,
-  onIncludeWebchatToggle
+  onIncludeWebchatToggle,
+  selectedIds,
+  onToggleSelected,
+  searchInputRef: externalSearchRef,
 }: NightOpsConversationListProps) {
   const listRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const internalSearchRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = externalSearchRef ?? internalSearchRef;
 
   const getInitials = (name: string | null, phone: string | null) => {
     if (name) {
@@ -282,21 +292,43 @@ export function NightOpsConversationList({
                 const phoneLineLabel = getPhoneLineLabel(conv.phoneLineId);
                 
                 return (
-                  <motion.button
+                  <motion.div
                     key={conv.id}
-                    onClick={() => onSelect(conv.id)}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(index * 0.02, 0.2), duration: 0.15 }}
                     className={cn(
-                      "w-full text-left p-3 rounded-xl transition-all duration-200",
+                      "group w-full text-left p-3 rounded-xl transition-all duration-200 cursor-pointer",
                       "nightops-conversation-row focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50",
-                      selectedId === conv.id && "selected"
+                      selectedId === conv.id && "selected",
+                      selectedIds?.has(conv.id) && "ring-1 ring-cyan-500/40 bg-cyan-500/5"
                     )}
                     data-testid={`conversation-${conv.id}`}
                     data-conversation-id={conv.id}
+                    onClick={() => onSelect(conv.id)}
                   >
                     <div className="flex items-start gap-3">
+                      {onToggleSelected && (
+                        <div
+                          className={cn(
+                            "flex-shrink-0 pt-1 transition-opacity",
+                            selectedIds && selectedIds.size > 0
+                              ? "opacity-100"
+                              : "opacity-0 group-hover:opacity-100"
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleSelected(conv.id);
+                          }}
+                          data-testid={`select-conv-${conv.id}`}
+                        >
+                          <Checkbox
+                            checked={selectedIds?.has(conv.id) || false}
+                            onCheckedChange={() => onToggleSelected(conv.id)}
+                            className="h-4 w-4"
+                          />
+                        </div>
+                      )}
                       <div className="relative flex-shrink-0">
                         <div className={cn(
                           "nightops-avatar w-10 h-10 text-sm",
@@ -399,7 +431,7 @@ export function NightOpsConversationList({
                         </div>
                       </div>
                     </div>
-                  </motion.button>
+                  </motion.div>
                 );
               })}
             </div>
