@@ -57,13 +57,20 @@ router.post('/admin/ai-actions/send-invoice', async (req: Request, res: Response
   const tenantId = getTenantId(req);
   if (!tenantId) return res.status(401).json({ success: false, error: 'Authentication required' });
 
-  const parsed = baseSchema.extend({ channel: z.enum(['sms', 'email', 'both']).optional() }).safeParse(req.body);
+  const parsed = baseSchema.extend({
+    channel: z.enum(['sms', 'email', 'both']).optional(),
+    appointmentId: z.union([z.string(), z.number()]).optional(),
+  }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.errors[0]?.message });
 
   const { phone } = await resolveConversation(tenantId, parsed.data.conversationId);
   if (!phone) return res.status(404).json({ success: false, error: 'Conversation has no phone on file' });
 
-  const result = await sendInvoiceToCustomer(tenantId, phone, parsed.data.channel || 'sms');
+  const result = await sendInvoiceToCustomer(tenantId, {
+    phone,
+    channel: parsed.data.channel || 'sms',
+    appointmentId: parsed.data.appointmentId,
+  });
   console.log(`${LOG} send-invoice tenant=${tenantId} conv=${parsed.data.conversationId} -> ${JSON.stringify(result)}`);
   return res.json(result);
 });
@@ -142,7 +149,7 @@ router.post('/admin/ai-actions/weather-check', async (req: Request, res: Respons
   const { phone } = await resolveConversation(tenantId, parsed.data.conversationId);
   if (!phone) return res.status(404).json({ success: false, error: 'Conversation has no phone on file' });
 
-  const result = await weatherCheckForAppointment(tenantId, phone);
+  const result = await weatherCheckForAppointment(tenantId, { phone });
   return res.json(result);
 });
 

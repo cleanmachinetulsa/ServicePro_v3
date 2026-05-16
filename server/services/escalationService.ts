@@ -23,6 +23,10 @@ export type EscalationReason =
   | 'unknown';
 
 export interface EscalationContext {
+  /** R1.6 / Audit T2: override default 6-hour pause */
+  pauseHours?: number;
+  /** Audit T2: free-form label appended after the reason tag in the owner SMS */
+  customReasonLabel?: string;
   tenantId: string | null;
   reason: EscalationReason;
   fromPhone: string;
@@ -157,13 +161,14 @@ export async function escalateSmsToHuman(context: EscalationContext): Promise<{
   ownerNotified: boolean;
   conversationFlagged: boolean;
 }> {
-  const { tenantId, reason, fromPhone, toPhone, conversationId, messageSid, additionalInfo } = context;
+  const { tenantId, reason, fromPhone, toPhone, conversationId, messageSid, additionalInfo, pauseHours, customReasonLabel } = context;
   
   let conversationFlagged = false;
   let ownerNotified = false;
   
   if (tenantId && conversationId) {
-    conversationFlagged = await markConversationNeedsHuman(tenantId, conversationId, reason);
+    const reasonText = customReasonLabel ? `${reason}: ${customReasonLabel}` : reason;
+    conversationFlagged = await markConversationNeedsHuman(tenantId, conversationId, reasonText, pauseHours ?? AUTOMATION_PAUSE_HOURS);
   }
   
   const ownerPhone = await getTenantOwnerPhone(tenantId);

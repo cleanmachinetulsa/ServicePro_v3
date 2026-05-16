@@ -54,18 +54,78 @@ async function resolveCustomer(tenantId: string, phone: string) {
 // ---------------------------------------------------------------------------
 // send_invoice
 // ---------------------------------------------------------------------------
+export interface SendInvoiceArgs {
+  /** Required: customer phone in any format */
+  phone: string;
+  /** Optional: target a specific appointment's invoice (DB id or Google Calendar event id) */
+  appointmentId?: string | number;
+  /** Optional: line items used when creating a manual invoice (NOT YET FULLY WIRED — currently surfaced for future use; today the helper picks the latest invoice for the appointment/customer). */
+  line_items?: Array<{ description: string; amount_cents: number; quantity?: number }>;
+  channel?: 'sms' | 'email' | 'both';
+  /** Explicit override (admin path) */
+  invoiceId?: number;
+}
+
 export async function sendInvoiceToCustomer(
   tenantId: string,
-  phone: string,
-  channel: 'sms' | 'email' | 'both' = 'sms',
-  invoiceIdOverride?: number,
-): Promise<{ success: boolean; invoiceId?: number; channel: string; error?: string }> {
+  args: SendInvoiceArgs,
+): Promise<{ success: boolean; invoiceId?: number; appointmentId?: number; channel: string; error?: string }> {
+  const channel = args.channel || 'sms';
   try {
     if (!tenantId) return { success: false, channel, error: 'Missing tenantId' };
-    const { tenantDb, customer } = await resolveCustomer(tenantId, phone);
+    if (!args.phone) return { success: false, channel, error: 'phone is required' };
+
+    const { tenantDb, customer } = await resolveCustomer(tenantId, args.phone);
     if (!customer) return { success: false, channel, error: 'Customer not found in this tenant' };
 
-    let invoiceId = invoiceIdOverride;
+    let invoiceId = args.invoiceId;
+    let resolvedAppointmentId: number | undefined;
+
+    if (!invoiceId && args.appointmentId !== undefined && args.appointmentId !== null && args.appointmentId !== '') {
+      const raw = String(args.appointmentId);
+      const numeric = /^\d+$/.test(raw) ? parseInt(raw, 10) : null;
+
+      let appt: { id: number } | undefined;
+      if (numeric !== null) {
+        const rows = await tenantDb
+          .select({ id: appointments.id })
+          .from(appointments)
+          .where(and(eq(appointments.tenantId, tenantId), eq(appointments.id, numeric)))
+          .limit(1);
+        appt = rows[0];
+      }
+      if (!appt) {
+        const rows = await tenantDb
+          .select({ id: appointments.id })
+          .from(appointments)
+          .where(and(eq(appointments.tenantId, tenantId), eq(appointments.calendarEventId, raw)))
+          .limit(1);
+        appt = rows[0];
+      }
+
+      if (!appt) {
+        return { success: false, channel, error: `Appointment ${raw} not found in this tenant` };
+      }
+      resolvedAppointmentId = appt.id;
+
+      const [byAppt] = await tenantDb
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(and(eq(invoices.tenantId, tenantId), eq(invoices.appointmentId, appt.id)))
+        .orderBy(desc(invoices.createdAt))
+        .limit(1);
+
+      if (!byAppt) {
+        return {
+          success: false,
+          channel,
+          appointmentId: appt.id,
+          error: 'No invoice exists for that appointment yet. Create the invoice in the dashboard first.',
+        };
+      }
+      invoiceId = byAppt.id;
+    }
+
     if (!invoiceId) {
       const [latest] = await tenantDb
         .select({ id: invoices.id })
@@ -77,8 +137,12 @@ export async function sendInvoiceToCustomer(
       invoiceId = latest.id;
     }
 
+    if (args.line_items && args.line_items.length > 0) {
+      console.warn(`${LOG} sendInvoiceToCustomer: line_items received but ad-hoc invoice creation is not implemented; sending existing invoice ${invoiceId} instead.`);
+    }
+
     const ok = await sendInvoiceNotification(tenantDb, invoiceId, channel);
-    return { success: ok, invoiceId, channel };
+    return { success: ok, invoiceId, appointmentId: resolvedAppointmentId, channel };
   } catch (err: any) {
     console.error(`${LOG} sendInvoiceToCustomer failed:`, err);
     return { success: false, channel, error: err?.message || 'send_invoice failed' };
@@ -193,16 +257,23 @@ export async function transferConversationToHuman(
   success: boolean;
   conversationId?: number;
   handoffMessage: string;
+  customerSmsSent?: boolean;
+  slackNotified?: boolean;
+  pauseHours?: number;
   error?: string;
 }> {
   const handoffMessage = urgency === 'high'
     ? `Got it — I'm flagging this for a teammate to jump in right now. You'll hear back shortly.`
     : `Thanks — I'll have a teammate take it from here and follow up with you soon.`;
 
-  try {
-    if (!tenantId) return { success: false, handoffMessage, error: 'Missing tenantId' };
+  // Urgency-based pause window: high urgency pauses longer so a human has
+  // breathing room; low urgency uses a shorter pause.
+  const pauseHours = urgency === 'high' ? 12 : 2;
 
-    const tenantDb = wrapTenantDb(db, tenantId);
+  try {
+    if (!tenantId) return { success: false, handoffMessage, pauseHours, error: 'Missing tenantId' };
+
+    const { tenantDb } = await resolveCustomer(tenantId, phone);
     const normalized = normalizePhone(phone);
 
     let convId = conversationIdHint;
@@ -217,27 +288,64 @@ export async function transferConversationToHuman(
     }
 
     if (!convId) {
-      return { success: false, handoffMessage, error: 'No active conversation found to escalate' };
+      return { success: false, handoffMessage, pauseHours, error: 'No active conversation found to escalate' };
     }
 
+    // 1. Flag conversation + pause automation (urgency-driven) and notify owner.
+    //    `customReasonLabel` lets the real free-form reason show up in the alert
+    //    instead of being collapsed to "unknown".
     const { escalateSmsToHuman } = await import('./escalationService');
-    const result = await escalateSmsToHuman({
+    const escalation = await escalateSmsToHuman({
       tenantId,
       reason: 'unknown',
       fromPhone: normalized,
       toPhone: normalized,
       conversationId: convId,
       additionalInfo: `${urgency.toUpperCase()}: ${reason}`,
+      customReasonLabel: reason,
+      pauseHours,
     });
 
+    // 2. Send the customer-facing handoff SMS so they know a human is coming.
+    let customerSmsSent = false;
+    try {
+      const sms = await sendSMS(tenantDb, normalized, handoffMessage);
+      customerSmsSent = sms.success;
+    } catch (smsErr) {
+      console.warn(`${LOG} transferConversationToHuman: customer SMS failed:`, smsErr);
+    }
+
+    // 3. Post a Slack alert with the conversation deep link.
+    let slackNotified = false;
+    try {
+      const { notifySlackAudit } = await import('./slackNotifyAudit');
+      await notifySlackAudit(
+        `:rotating_light: Conversation handed off to human (${urgency.toUpperCase()})`,
+        {
+          tenantId,
+          conversationId: convId,
+          customerPhone: normalized,
+          reason,
+          pauseHours,
+          link: `/messages?conversationId=${convId}`,
+        },
+      );
+      slackNotified = true;
+    } catch (slackErr) {
+      console.warn(`${LOG} transferConversationToHuman: Slack notify failed:`, slackErr);
+    }
+
     return {
-      success: result.success,
+      success: escalation.success || customerSmsSent,
       conversationId: convId,
       handoffMessage,
+      customerSmsSent,
+      slackNotified,
+      pauseHours,
     };
   } catch (err: any) {
     console.error(`${LOG} transferConversationToHuman failed:`, err);
-    return { success: false, handoffMessage, error: err?.message || 'transfer_to_human failed' };
+    return { success: false, handoffMessage, pauseHours, error: err?.message || 'transfer_to_human failed' };
   }
 }
 
@@ -249,41 +357,93 @@ export async function transferConversationToHuman(
 const DEFAULT_LAT = 36.1540;
 const DEFAULT_LON = -95.9928;
 
+export interface WeatherCheckArgs {
+  /** Customer phone (fallback lookup for next upcoming appointment) */
+  phone?: string;
+  /** Preferred: explicit appointment id (DB id or Google Calendar event id) */
+  appointmentId?: string | number;
+  coords?: { latitude?: number; longitude?: number };
+}
+
 export async function weatherCheckForAppointment(
   tenantId: string,
-  phone: string,
-  coords?: { latitude?: number; longitude?: number },
+  args: WeatherCheckArgs | string,  // backward-compat: old signature accepted phone string
+  legacyPhone?: string,
+  legacyCoords?: { latitude?: number; longitude?: number },
 ): Promise<{
   success: boolean;
   hasAppointment: boolean;
   scheduledTime?: string;
+  /** Spec field: simplified risk bucket */
+  risk?: 'low' | 'medium' | 'high';
+  /** Spec field: short human summary suitable for SMS */
+  summary?: string;
+  /** Spec field: should the staff offer to reschedule? */
+  suggest_reschedule?: boolean;
+  /** Legacy detail fields (kept for existing callers / tests) */
   level?: 'low' | 'medium' | 'high' | 'extreme';
   severityText?: string;
   actionText?: string;
   error?: string;
 }> {
+  // Normalize the args (supports both new object form and old positional form).
+  let phone: string | undefined;
+  let appointmentId: string | number | undefined;
+  let coords: { latitude?: number; longitude?: number } | undefined;
+  if (typeof args === 'string') {
+    phone = args || legacyPhone;
+    coords = legacyCoords;
+  } else if (args) {
+    phone = args.phone;
+    appointmentId = args.appointmentId;
+    coords = args.coords;
+  }
+
   try {
     if (!tenantId) {
       return { success: false, hasAppointment: false, error: 'Missing tenantId' };
     }
 
-    // Audit T2 Task #19 review fix: tenant-scoped appointment lookup.
-    // Replaces the global `getExistingAppointment(phone)` call which did not
-    // filter by tenant and could leak cross-tenant scheduling state.
-    const { tenantDb, customer } = await resolveCustomer(tenantId, phone);
-    if (!customer) return { success: true, hasAppointment: false };
+    const tenantDb = wrapTenantDb(db, tenantId);
+    let appt: typeof appointments.$inferSelect | undefined;
 
-    const now = new Date();
-    const [appt] = await tenantDb
-      .select()
-      .from(appointments)
-      .where(and(
-        eq(appointments.tenantId, tenantId),
-        eq(appointments.customerId, customer.id),
-        gte(appointments.scheduledTime, now),
-      ))
-      .orderBy(appointments.scheduledTime)
-      .limit(1);
+    if (appointmentId !== undefined && appointmentId !== null && appointmentId !== '') {
+      const raw = String(appointmentId);
+      const numeric = /^\d+$/.test(raw) ? parseInt(raw, 10) : null;
+      if (numeric !== null) {
+        const rows = await tenantDb
+          .select()
+          .from(appointments)
+          .where(and(eq(appointments.tenantId, tenantId), eq(appointments.id, numeric)))
+          .limit(1);
+        appt = rows[0];
+      }
+      if (!appt) {
+        const rows = await tenantDb
+          .select()
+          .from(appointments)
+          .where(and(eq(appointments.tenantId, tenantId), eq(appointments.calendarEventId, raw)))
+          .limit(1);
+        appt = rows[0];
+      }
+    } else if (phone) {
+      const { customer } = await resolveCustomer(tenantId, phone);
+      if (!customer) return { success: true, hasAppointment: false };
+      const now = new Date();
+      const rows = await tenantDb
+        .select()
+        .from(appointments)
+        .where(and(
+          eq(appointments.tenantId, tenantId),
+          eq(appointments.customerId, customer.id),
+          gte(appointments.scheduledTime, now),
+        ))
+        .orderBy(appointments.scheduledTime)
+        .limit(1);
+      appt = rows[0];
+    } else {
+      return { success: false, hasAppointment: false, error: 'appointmentId or phone is required' };
+    }
 
     if (!appt) {
       return { success: true, hasAppointment: false };
@@ -311,10 +471,22 @@ export async function weatherCheckForAppointment(
       industryType: 'auto_detailing',
     });
 
+    // Map detailed level -> simplified spec risk bucket.
+    const riskBucket: 'low' | 'medium' | 'high' =
+      risk.level === 'low' ? 'low'
+      : risk.level === 'medium' ? 'medium'
+      : 'high';
+
+    const suggest_reschedule = riskBucket === 'high';
+    const summary = `${risk.severityText} ${risk.actionText}`.trim();
+
     return {
       success: true,
       hasAppointment: true,
       scheduledTime: apptDate.toISOString(),
+      risk: riskBucket,
+      summary,
+      suggest_reschedule,
       level: risk.level,
       severityText: risk.severityText,
       actionText: risk.actionText,

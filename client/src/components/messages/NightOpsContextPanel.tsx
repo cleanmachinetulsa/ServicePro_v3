@@ -170,8 +170,14 @@ export function NightOpsContextPanel({
         });
       } else if (actionId === 'weather') {
         toast({
-          title: `Weather risk: ${data.level || 'unknown'}`,
-          description: data.actionText || data.severityText || 'See dashboard.',
+          title: `Weather risk: ${data.risk || data.level || 'unknown'}`,
+          description: data.summary || data.actionText || 'See dashboard.',
+        });
+      } else if (actionId === 'gift-card') {
+        const dollars = typeof data?.balanceCents === 'number' ? (data.balanceCents / 100).toFixed(2) : '?';
+        toast({
+          title: `Gift card balance: $${dollars} ${data?.currency || 'USD'}`,
+          description: data?.smsSent ? 'Balance texted to customer.' : 'Lookup OK; SMS not sent.',
         });
       } else {
         toast({ title: onSuccessMessage });
@@ -630,6 +636,30 @@ export function NightOpsContextPanel({
               <Share2 className="h-3.5 w-3.5 mr-1.5" />
             )}
             Referral Link
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!conversationId || pendingAction !== null}
+            onClick={() => {
+              const code = window.prompt('Gift card code (full or last 4):');
+              if (!code) return;
+              runStaffAction(
+                'gift-card',
+                '/api/admin/ai-actions/send-gift-card-balance',
+                { giftCardCode: code.trim() },
+                'Gift card balance sent',
+              );
+            }}
+            className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+            data-testid="button-action-gift-card-balance"
+          >
+            {pendingAction === 'gift-card' ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <DollarSign className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Gift Card Balance
           </Button>
           <Button
             variant="outline"

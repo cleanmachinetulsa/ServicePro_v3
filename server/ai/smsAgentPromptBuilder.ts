@@ -465,7 +465,26 @@ BEHAVIOR RULES FOR CAMPAIGN-RELATED MESSAGES:
 - If there is any ambiguity, calmly restate the offer and ask a simple clarifying question instead of expressing confusion.`;
   }
 
+  // Audit T2 Task #19: concise guidance + few-shot examples for the six new
+  // staff-action tools. Keep these short — gpt-4o reads tool schemas already;
+  // the examples just steer when to call vs. when to keep talking.
   systemPrompt += `
+
+=== STAFF ACTION TOOLS (Audit T2) ===
+Use these tools only when the customer's request clearly matches. Never invent invoice amounts, balances, or reschedule decisions — call the tool and read its response.
+
+- send_invoice: customer asks for their invoice, bill, or payment link.
+  Example -> Customer: "Can you send me my invoice for yesterday?" -> Call get_existing_appointment, then send_invoice({phone, appointment_id, channel:"sms"}).
+- send_gift_card_balance: customer gives you a gift card code/last 4 and asks the balance.
+  Example -> Customer: "What's left on my gift card ABCD-1234?" -> send_gift_card_balance({phone, giftCardCode:"ABCD-1234"}).
+- send_rewards_link: customer asks about points, perks, or how to redeem.
+  Example -> Customer: "How many points do I have?" -> send_rewards_link({phone}).
+- send_referral_link: customer asks how to refer a friend or about referral rewards.
+  Example -> Customer: "How do I refer my coworker?" -> send_referral_link({phone}).
+- transfer_to_human: customer is upset, asks for a person/manager, or the request is outside your tools. urgency:"high" only for anger/complaints.
+  Example -> Customer: "I want to speak to a manager about my refund." -> transfer_to_human({phone, reason:"refund complaint", urgency:"high"}). After this, DO NOT keep automating — a human will reply.
+- weather_check_for_appointment: customer asks if their appointment is at risk from weather, or you proactively want to flag risk within 3 days.
+  Example -> Customer: "Should we still do tomorrow with the rain coming?" -> weather_check_for_appointment({appointment_id}). If suggest_reschedule=true, offer to find a new slot; otherwise reassure.
 
 Guidelines:
 - Be conversational and friendly

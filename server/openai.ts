@@ -497,11 +497,28 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "send_invoice",
-      description: "Send the customer's most recent invoice via SMS, email, or both. Use when customer asks for their invoice, payment link, or how much they owe. Looks up the latest invoice on file for the customer's phone number.",
+      description: "Send a customer their invoice for a specific appointment (preferred), or fall back to the most recent invoice on file. Use when the customer asks for their invoice, payment link, or how much they owe.",
       parameters: {
         type: "object",
         properties: {
           phone: { type: "string", description: "Customer's phone number" },
+          appointment_id: {
+            type: "string",
+            description: "Preferred. Appointment id (numeric DB id or Google Calendar event id) returned by get_existing_appointment / create_appointment. Targets the invoice tied to that appointment."
+          },
+          line_items: {
+            type: "array",
+            description: "Optional. Line items used when creating an ad-hoc invoice. Currently informational only; the helper logs them and sends the appointment's existing invoice. Provide only when no invoice exists yet.",
+            items: {
+              type: "object",
+              properties: {
+                description: { type: "string" },
+                amount_cents: { type: "integer" },
+                quantity: { type: "integer" }
+              },
+              required: ["description", "amount_cents"]
+            }
+          },
           channel: {
             type: "string",
             enum: ["sms", "email", "both"],
@@ -575,13 +592,19 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "weather_check_for_appointment",
-      description: "Check weather risk for the customer's upcoming appointment and return a recommendation. Use proactively when an appointment is within 3 days and weather is uncertain.",
+      description: "Check weather risk for a specific upcoming appointment. Returns `{risk, summary, suggest_reschedule}`. Prefer passing appointment_id from get_existing_appointment; if you only have a phone, the helper will look up the customer's next upcoming appointment.",
       parameters: {
         type: "object",
         properties: {
-          phone: { type: "string", description: "Customer's phone number" }
-        },
-        required: ["phone"]
+          appointment_id: {
+            type: "string",
+            description: "Preferred. Appointment id (numeric DB id or Google Calendar event id)."
+          },
+          phone: {
+            type: "string",
+            description: "Fallback. Customer phone — only used when appointment_id is not supplied."
+          }
+        }
       }
     }
   }
@@ -764,7 +787,12 @@ async function executeFunctionCall(
       case "send_invoice": {
         if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
         const { sendInvoiceToCustomer } = await import('./services/aiToolHelpers');
-        const result = await sendInvoiceToCustomer(tenantId, args.phone, args.channel || 'sms');
+        const result = await sendInvoiceToCustomer(tenantId, {
+          phone: args.phone,
+          appointmentId: args.appointment_id,
+          line_items: args.line_items,
+          channel: args.channel || 'sms',
+        });
         return JSON.stringify(result);
       }
       case "send_gift_card_balance": {
@@ -799,7 +827,10 @@ async function executeFunctionCall(
       case "weather_check_for_appointment": {
         if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
         const { weatherCheckForAppointment } = await import('./services/aiToolHelpers');
-        const result = await weatherCheckForAppointment(tenantId, args.phone);
+        const result = await weatherCheckForAppointment(tenantId, {
+          phone: args.phone,
+          appointmentId: args.appointment_id,
+        });
         return JSON.stringify(result);
       }
 
