@@ -161,10 +161,11 @@ async function processWebChatConversation(
 
           // Audit T1 (Task #17): propagate budget escalation to the cross-channel
           // thread so SMS / FB / email automation also pauses for this customer.
-          if ((conv[0] as any).threadId) {
+          const convThreadId = conv[0].threadId;
+          if (convThreadId) {
             try {
               const { setThreadEscalation } = await import('./services/customerThreadService');
-              await setThreadEscalation(tenantDb, (conv[0] as any).threadId, {
+              await setThreadEscalation(tenantDb, convThreadId, {
                 needsHumanAttention: true,
                 needsHumanReason: 'ai_budget_exhausted',
                 automationPausedUntil: sixHoursFromNow,

@@ -433,6 +433,8 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       tenantDb,
       behaviorSettings: conversation.behaviorSettings as Record<string, any>,
       sessionStartedAt, // Filter to current booking session
+      // Audit T1 (Task #17): pull cross-channel history for the same customer.
+      threadId: conversation.threadId ?? null,
     });
     
     // Use formatted messages from context builder
@@ -463,6 +465,7 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
         tenantDb,
         behaviorSettings: conversation.behaviorSettings as Record<string, any>,
         sessionStartedAt: newSessionStart,
+        threadId: conversation.threadId ?? null,
       });
       // CRITICAL: Use rebuilt context for this session - NOT stale context
       conversationHistory = rebuildContext.recentMessages;

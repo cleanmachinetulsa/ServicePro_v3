@@ -354,7 +354,7 @@ export async function getOrCreateConversation(
             .update(conversations)
             .set({ customerId: lateCustomerId })
             .where(eq(conversations.id, conv.id));
-          (conv as any).customerId = lateCustomerId;
+          conv.customerId = lateCustomerId;
         } catch (idErr) {
           console.warn('[CONVERSATION] late identity resolve failed (continuing):', idErr);
         }
@@ -366,7 +366,7 @@ export async function getOrCreateConversation(
             await import('./services/customerThreadService');
           const thread = await findOrCreateThread(tenantDb, tenantIdForLate, lateCustomerId);
           await attachConversationToThread(tenantDb, conv.id, thread.id);
-          (conv as any).threadId = thread.id;
+          conv.threadId = thread.id;
         } catch (threadErr) {
           console.error('[CONVERSATION] late thread attach failed:', threadErr);
         }

@@ -18,6 +18,7 @@ import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
 import { conversations, customers, customerThreads } from '@shared/schema';
 import { getOrCreateConversation } from '../conversationService';
+import { armBookingOffer, hasLiveBookingOffer } from '../services/bookingDraftService';
 
 const TENANT_ID = `t1-thread-test-${Date.now()}`;
 const PHONE = `+1555${Date.now().toString().slice(-7)}`;
@@ -115,5 +116,19 @@ describe('customer_threads cross-channel model', () => {
       null,
       'anonymous web-chat conversation must keep thread_id NULL',
     );
+
+    // 5) Audit T1 cross-channel offer: arm a booking offer on the WEB
+    // conversation; SMS conversation (sibling on the same thread) must see
+    // the offer as live via hasLiveBookingOffer. This is the "YES on SMS
+    // confirms an offer armed on web" guarantee.
+    const { offerHash } = await armBookingOffer(
+      tenantDb,
+      webResult.conversation.id,
+      [{ label: 'Tue 10am', iso: new Date(Date.now() + 48 * 3600_000).toISOString() }],
+      30,
+    );
+    const liveFromSms = await hasLiveBookingOffer(tenantDb, smsResult.conversation.id);
+    assert.equal(liveFromSms.isLive, true, 'SMS sibling must see offer armed on web as live');
+    assert.equal(liveFromSms.payloadHash, offerHash, 'SMS sibling must see the same offer hash');
   });
 });

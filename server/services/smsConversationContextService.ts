@@ -10,8 +10,8 @@
  * 3. Detecting suspicious gaps in conversation history
  */
 
-import { messages as messagesTable } from '@shared/schema';
-import { eq, asc } from 'drizzle-orm';
+import { messages as messagesTable, conversations } from '@shared/schema';
+import { eq, asc, inArray } from 'drizzle-orm';
 
 export interface SmsConversationContext {
   conversationId: number;
@@ -54,15 +54,45 @@ export async function buildSmsLlmContext(
     tenantDb: any;
     behaviorSettings?: Record<string, any>;
     sessionStartedAt?: number; // Unix timestamp - filter messages to current session
+    threadId?: number | null;  // Audit T1 (Task #17): cross-channel thread id
   }
 ): Promise<SmsConversationContext> {
-  const { tenantId, conversationId, fromPhone, toPhone, tenantDb, behaviorSettings, sessionStartedAt } = params;
-  
-  // === Load conversation history ===
+  const { tenantId, conversationId, fromPhone, toPhone, tenantDb, behaviorSettings, sessionStartedAt, threadId } = params;
+
+  // Audit T1 (Task #17): Build the list of conversation IDs whose messages
+  // should feed the LLM. When the SMS conversation belongs to a customer
+  // thread, include EVERY conversation row sharing that thread (web chat,
+  // FB / IG, email) so the agent has the customer's full cross-channel
+  // history. Anonymous conversations (no thread) keep single-channel
+  // behavior. We resolve siblings before message load and fall back to the
+  // single conversation if the thread lookup fails.
+  let conversationIds: number[] = [conversationId];
+  if (threadId) {
+    try {
+      const siblings = await tenantDb
+        .select({ id: conversations.id })
+        .from(conversations)
+        .where(tenantDb.withTenantFilter(conversations, eq(conversations.threadId, threadId)));
+      const ids = (siblings as Array<{ id: number }>).map((s) => s.id);
+      if (ids.length > 0) conversationIds = Array.from(new Set([conversationId, ...ids]));
+      console.log(`[SMS CONTEXT] cross_channel thread=${threadId} sibling_convs=${ids.join(',') || conversationId}`);
+    } catch (err) {
+      console.warn(`[SMS CONTEXT] cross-channel sibling lookup failed thread=${threadId}, falling back to single conversation:`, err);
+    }
+  }
+
+  // === Load conversation history (single conv, or all siblings in thread) ===
   const allMessages = await tenantDb
     .select()
     .from(messagesTable)
-    .where(tenantDb.withTenantFilter(messagesTable, eq(messagesTable.conversationId, conversationId)))
+    .where(
+      tenantDb.withTenantFilter(
+        messagesTable,
+        conversationIds.length === 1
+          ? eq(messagesTable.conversationId, conversationIds[0])
+          : inArray(messagesTable.conversationId, conversationIds),
+      ),
+    )
     .orderBy(asc(messagesTable.timestamp));
   
   // === Deduplicate messages (keep last occurrence) ===

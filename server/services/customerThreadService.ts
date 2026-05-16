@@ -20,7 +20,12 @@
  */
 
 import { eq, and, isNull } from 'drizzle-orm';
-import { conversations, customerThreads, type CustomerThread } from '@shared/schema';
+import {
+  conversations,
+  customerThreads,
+  type CustomerThread,
+  type InsertCustomerThread,
+} from '@shared/schema';
 import type { TenantDb } from '../tenantDb';
 
 /**
@@ -47,11 +52,14 @@ export async function findOrCreateThread(
   if (existing.length > 0) return existing[0];
 
   // Race-safe insert: rely on the unique index. If a concurrent inbound
-  // already inserted the row, re-select.
+  // already inserted the row, re-select. `tenantId` is auto-injected by
+  // `tenantDb.insert` (registered in TABLE_METADATA), so the insert payload
+  // only needs `customerId`.
   try {
+    const insertValues: Pick<InsertCustomerThread, 'customerId'> = { customerId };
     const inserted = await tenantDb
       .insert(customerThreads)
-      .values({ customerId } as any)
+      .values(insertValues)
       .returning();
     if (inserted.length > 0) return inserted[0];
   } catch (err) {
