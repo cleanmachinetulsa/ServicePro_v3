@@ -508,7 +508,7 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           line_items: {
             type: "array",
-            description: "Optional. Line items used when creating an ad-hoc invoice. Currently informational only; the helper logs them and sends the appointment's existing invoice. Provide only when no invoice exists yet.",
+            description: "Optional. Proposed line items for an ad-hoc invoice. NOTE: ad-hoc creation is not yet wired — if an existing invoice is found (by appointment or latest), it is sent and the line_items are ignored; if no invoice exists, the helper returns an explicit unsupported-ad-hoc error instead of inventing one.",
             items: {
               type: "object",
               properties: {

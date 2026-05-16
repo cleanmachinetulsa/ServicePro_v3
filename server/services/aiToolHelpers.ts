@@ -133,7 +133,19 @@ export async function sendInvoiceToCustomer(
         .where(and(eq(invoices.tenantId, tenantId), eq(invoices.customerId, customer.id)))
         .orderBy(desc(invoices.createdAt))
         .limit(1);
-      if (!latest) return { success: false, channel, error: 'No invoice on file for this customer' };
+      if (!latest) {
+        // Ad-hoc invoice creation from line_items is not yet wired (see
+        // followup #29 / future work). Be explicit instead of silently
+        // sending the wrong invoice.
+        if (args.line_items && args.line_items.length > 0) {
+          return {
+            success: false,
+            channel,
+            error: 'Ad-hoc invoice creation from line_items is not yet supported. Create the invoice in the dashboard first, then re-send.',
+          };
+        }
+        return { success: false, channel, error: 'No invoice on file for this customer' };
+      }
       invoiceId = latest.id;
     }
 
@@ -160,6 +172,7 @@ export async function sendGiftCardBalance(
   success: boolean;
   balanceCents?: number;
   currency?: string;
+  redeemLink?: string;
   smsSent?: boolean;
   error?: string;
 }> {
@@ -176,7 +189,12 @@ export async function sendGiftCardBalance(
     const currency = validation.currency || 'USD';
     const dollars = (balance / 100).toFixed(2);
     const last4 = (giftCardCode || '').slice(-4);
-    const body = `Your gift card ending in ${last4} has $${dollars} ${currency} remaining. Reply with any questions.`;
+
+    // Spec: include a redemption link so the customer can apply the card at
+    // checkout. Tenant base URL + standard /gift-card/redeem entry point.
+    const baseUrl = await getTenantPublicBaseUrl(tenantId);
+    const redeemLink = `${baseUrl}/gift-card/redeem?code=${encodeURIComponent(giftCardCode)}`;
+    const body = `Your gift card ending in ${last4} has $${dollars} ${currency} remaining. Redeem it at checkout: ${redeemLink}`;
 
     const { tenantDb } = await resolveCustomer(tenantId, phone);
     const sms = await sendSMS(tenantDb, phone, body);
@@ -184,6 +202,7 @@ export async function sendGiftCardBalance(
       success: true,
       balanceCents: balance,
       currency,
+      redeemLink,
       smsSent: sms.success,
     };
   } catch (err: any) {
@@ -247,12 +266,19 @@ export async function sendReferralLinkToCustomer(
 // ---------------------------------------------------------------------------
 // transfer_to_human
 // ---------------------------------------------------------------------------
+/** Spec default pause window after a handoff (Audit T2 #19). */
+export const DEFAULT_TRANSFER_PAUSE_HOURS = 6;
+/** High-urgency override: pause longer so a human has breathing room. */
+export const HIGH_URGENCY_PAUSE_HOURS = 12;
+
 export async function transferConversationToHuman(
   tenantId: string,
   phone: string,
   reason: string,
   urgency: 'low' | 'high' = 'low',
   conversationIdHint?: number,
+  /** Optional explicit override; falls back to urgency-based default. */
+  pauseHoursOverride?: number,
 ): Promise<{
   success: boolean;
   conversationId?: number;
@@ -266,9 +292,11 @@ export async function transferConversationToHuman(
     ? `Got it — I'm flagging this for a teammate to jump in right now. You'll hear back shortly.`
     : `Thanks — I'll have a teammate take it from here and follow up with you soon.`;
 
-  // Urgency-based pause window: high urgency pauses longer so a human has
-  // breathing room; low urgency uses a shorter pause.
-  const pauseHours = urgency === 'high' ? 12 : 2;
+  // Pause window: default 6h per spec. High urgency bumps to 12h. Callers can
+  // override explicitly when they have product-specific needs.
+  const pauseHours = pauseHoursOverride !== undefined && pauseHoursOverride > 0
+    ? pauseHoursOverride
+    : (urgency === 'high' ? HIGH_URGENCY_PAUSE_HOURS : DEFAULT_TRANSFER_PAUSE_HOURS);
 
   try {
     if (!tenantId) return { success: false, handoffMessage, pauseHours, error: 'Missing tenantId' };
