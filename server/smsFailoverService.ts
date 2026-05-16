@@ -18,22 +18,12 @@
 import type { TenantDb } from './db';
 import { phoneLines } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import * as Twilio from 'twilio';
 import { phoneConfig, PHONE_TWILIO_MAIN } from './config/phoneConfig';
-import { enforceCustomerSmsSender } from './services/smsSendGuard';
-
-const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-
-let twilio: any = null;
-if (twilioAccountSid && twilioAuthToken) {
-  try {
-    twilio = Twilio.default(twilioAccountSid, twilioAuthToken);
-    console.log('[SMS FAILOVER] Twilio client initialized');
-  } catch (error) {
-    console.error('[SMS FAILOVER] Failed to initialize Twilio client:', error);
-  }
-}
+import {
+  enforceCustomerSmsSender,
+  sendDirectTwilioSMS,
+  isTwilioInitialized,
+} from './services/smsSendGuard';
 
 // Cache backup phone line to avoid repeated DB queries
 let backupPhoneLineCache: { number: string; id: number; label: string } | null = null;
@@ -91,30 +81,6 @@ function isProvisioningError(error: any): boolean {
 }
 
 /**
- * SMS-AUDIT-T1 (S-8): Single choke-point for any direct Twilio outbound SMS.
- *
- * The S-8 boundary requires that every outbound SMS pass through this file.
- * Most code should call `sendSMSWithFailover` (which performs sender
- * validation via `enforceCustomerSmsSender`). A small number of admin-only
- * paths (owner alerts, voice/IVR auto-text, debug routes, port-recovery,
- * tests) historically called `twilio.messages.create` directly. They now
- * call this thin passthrough instead, so the channel-guard test can assert
- * that this file is the ONLY place the literal `twilio.messages.create`
- * lives. Each callsite still owns its own from/to/messagingServiceSid
- * decision; this wrapper deliberately does not impose policy beyond the
- * single point of contact.
- *
- * Migrating these admin-only callers under the full `enforceCustomerSmsSender`
- * guard is tracked in audit follow-up tasks #15-#23.
- */
-export async function sendDirectTwilioSMS(params: any): Promise<any> {
-  if (!twilio) {
-    throw new Error('[SMS FAILOVER] Twilio client not initialized');
-  }
-  return twilio.messages.create(params);
-}
-
-/**
  * Send SMS with automatic failover
  * 
  * SECURITY: Customer-facing SMS only sends from MAIN_PHONE_NUMBER.
@@ -142,7 +108,7 @@ export async function sendSMSWithFailover(
   allowAdmin: boolean = false
 ): Promise<{ success: boolean; messageSid?: string; error?: any; usedBackup: boolean; fromNumber?: string }> {
   
-  if (!twilio) {
+  if (!isTwilioInitialized()) {
     return { 
       success: false, 
       error: 'Twilio client not initialized',
@@ -190,7 +156,7 @@ export async function sendSMSWithFailover(
     }
 
     try {
-      const response = await twilio.messages.create(smsParams);
+      const response = await sendDirectTwilioSMS(smsParams);
       const sendMethod = usingMessagingService ? `Messaging Service ${messagingServiceSid}` : `primary line ${validatedFrom}`;
       console.log(`[SMS FAILOVER] ✅ SUCCESS via ${sendMethod} - SID: ${response.sid}`);
       return { 
@@ -222,7 +188,7 @@ export async function sendSMSWithFailover(
                 msgSvcParams.statusCallback = statusCallback;
               }
               
-              const msgSvcResponse = await twilio.messages.create(msgSvcParams);
+              const msgSvcResponse = await sendDirectTwilioSMS(msgSvcParams);
               console.log(`[SMS FAILOVER] ✅ SUCCESS via Messaging Service failover - SID: ${msgSvcResponse.sid}`);
               return {
                 success: true,
@@ -272,7 +238,7 @@ export async function sendSMSWithFailover(
         }
 
         try {
-          const backupResponse = await twilio.messages.create(backupParams);
+          const backupResponse = await sendDirectTwilioSMS(backupParams);
           console.log(`[SMS FAILOVER] ✅ SUCCESS via backup line ${backupLine.number} - SID: ${backupResponse.sid}`);
           console.log(`[SMS FAILOVER] 🔄 FAILOVER SUCCESSFUL (admin) - Message delivered via ${backupLine.label}`);
           
@@ -359,7 +325,7 @@ This is normal for recently ported numbers. The port should complete within 1-7 
 
 No action needed - failover is automatic.`;
 
-    await twilio.messages.create({
+    await sendDirectTwilioSMS({
       body: alertMessage,
       from: backupNumber, // Use backup since primary is down
       to: adminPhone,

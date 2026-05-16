@@ -1,4 +1,4 @@
-import { sendDirectTwilioSMS } from '../smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
+import { sendDirectTwilioSMS } from './smsSendGuard'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * R1-STRICT SMS Send Safe Helper
  * 

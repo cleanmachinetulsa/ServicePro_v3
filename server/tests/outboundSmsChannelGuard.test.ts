@@ -19,7 +19,7 @@ import { join, relative, sep } from 'node:path';
 
 const SERVER_DIR = join(process.cwd(), 'server');
 const PATTERN = /(?:twilio|twilioClient)\.messages\.create/;
-const ONLY_ALLOWED_FILE = 'server/smsFailoverService.ts';
+const ONLY_ALLOWED_FILE = 'server/services/smsSendGuard.ts';
 
 function walk(dir: string, out: string[] = []): string[] {
   let entries: string[];

@@ -252,3 +252,62 @@ function maskPhone(phone: string | null | undefined): string {
   if (phone.length <= 4) return phone;
   return `***${phone.slice(-4)}`;
 }
+
+// =============================================================================
+// SMS-AUDIT-T1 (S-8): Outbound Twilio choke-point
+// =============================================================================
+//
+// Per the audit acceptance criteria, this guard module is the SINGLE place
+// allowed to invoke the underlying Twilio messages.create API. Any caller that
+// needs to put bytes on the wire MUST go through `sendDirectTwilioSMS` below
+// (admin-only / specialized paths) or through `sendSMSWithFailover` in
+// `server/smsFailoverService.ts`, which itself routes through this wrapper
+// after running `enforceCustomerSmsSender`.
+//
+// The boundary test in `server/tests/outboundSmsChannelGuard.test.ts` asserts
+// that no other file in `server/` contains the literal Twilio create call.
+// Adding a new direct caller is intentionally hard: route it through this
+// file instead.
+
+import * as Twilio from 'twilio';
+import type {
+  MessageInstance,
+  MessageListInstanceCreateOptions,
+} from 'twilio/lib/rest/api/v2010/account/message';
+
+const _twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+const _twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+
+let _twilioClient: ReturnType<typeof Twilio.default> | null = null;
+if (_twilioAccountSid && _twilioAuthToken) {
+  try {
+    _twilioClient = Twilio.default(_twilioAccountSid, _twilioAuthToken);
+    console.log('[SMS GUARD] Twilio choke-point client initialized');
+  } catch (error) {
+    console.error('[SMS GUARD] Failed to initialize Twilio client:', error);
+  }
+}
+
+export function isTwilioInitialized(): boolean {
+  return _twilioClient !== null;
+}
+
+/**
+ * Single choke-point passthrough to Twilio's messages.create. Strongly typed
+ * against the Twilio SDK's own MessageListInstanceCreateOptions /
+ * MessageInstance to prevent silent drift.
+ *
+ * Most callers should use `sendSMSWithFailover` (which performs sender
+ * validation via `enforceCustomerSmsSender`). Callers that use this directly
+ * are admin-only / specialized paths (owner alerts, voice/IVR auto-text,
+ * port-recovery, debug routes, test campaigns). Migrating those under the
+ * full guard is tracked in audit follow-up tasks #15-#23.
+ */
+export async function sendDirectTwilioSMS(
+  params: MessageListInstanceCreateOptions,
+): Promise<MessageInstance> {
+  if (!_twilioClient) {
+    throw new Error('[SMS GUARD] Twilio client not initialized');
+  }
+  return _twilioClient.messages.create(params);
+}

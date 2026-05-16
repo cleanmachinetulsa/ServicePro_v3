@@ -1,4 +1,4 @@
-import { sendDirectTwilioSMS } from './smsFailoverService'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
+import { sendDirectTwilioSMS } from './services/smsSendGuard'; // SMS-AUDIT-T1 S-8: outbound SMS choke-point
 /**
  * Phase 2.3: IVR Callback Routes
  * 
