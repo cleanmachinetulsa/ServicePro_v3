@@ -133,18 +133,30 @@ export async function createCustomer(
 
     return created;
   } catch (error: any) {
-    // Handle unique constraint violation on phone (error code 23505)
-    if (error.code === '23505' && error.constraint === 'customers_phone_unique') {
-      // Phone already exists for this tenant - fetch and return existing customer
-      if (data.phone) {
-        const existing = await findByPhone(db, tenantId, data.phone);
+    // Handle unique-constraint violations (Postgres SQLSTATE 23505) generically.
+    // Round-9 hardening: Audit T1 migration replaced the legacy global
+    // `customers_phone_unique` / `customers_email_unique` constraints with
+    // tenant-scoped equivalents (`customers_tenant_phone_unique` /
+    // `customers_tenant_email_unique`). Rather than hard-code constraint
+    // names — which silently breaks idempotency the next time names change —
+    // we treat ANY 23505 on this table as "row already exists in this tenant"
+    // and look it up by the supplied phone/email.
+    if (error.code === '23505') {
+      try {
+        const existing = await findByPhoneOrEmail(
+          db,
+          tenantId,
+          data.phone || null,
+          data.email || null,
+        );
         if (existing) {
-          console.log(`[CUSTOMER REPO] Duplicate phone, returning existing customer: ${data.phone} id=${existing.id}`);
+          console.log(`[CUSTOMER REPO] Duplicate (constraint=${error.constraint || 'unknown'}), returning existing customer id=${existing.id}`);
           return existing;
         }
+      } catch (lookupErr) {
+        console.warn('[CUSTOMER REPO] Duplicate-lookup fallback failed:', lookupErr);
       }
     }
-    // Re-throw if not a phone unique constraint error
     throw error;
   }
 }

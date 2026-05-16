@@ -102,14 +102,36 @@ export async function notifyOwnerBudgetExhausted(tenantId: string, used: number,
   } catch (err) {
     console.warn('[AI BUDGET] Slack notify failed:', err);
   }
-  // Push (best-effort to all subscribed owner devices). Fail-open per Audit T1.
+  // Push — TENANT-SCOPED. We resolve owner/manager users for this tenant
+  // and notify only those user IDs. Audit T1 explicitly forbids broadcasting
+  // tenant-specific events across the platform, so sendPushToAllUsers is
+  // intentionally NOT used here. Fail-open per Audit T1.
   try {
-    const { sendPushToAllUsers } = await import('../pushNotificationService');
-    await sendPushToAllUsers({
-      title,
-      body,
-      data: { type: 'ai_budget_exhausted', tenantId, used, budget },
-    });
+    const { sendPushNotification } = await import('../pushNotificationService');
+    const { db } = await import('../db');
+    const { users } = await import('@shared/schema');
+    const { eq, and, inArray } = await import('drizzle-orm');
+    const tenantOwners = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(
+        eq(users.tenantId, tenantId),
+        inArray(users.role, ['owner', 'manager']),
+      ));
+    if (tenantOwners.length === 0) {
+      console.warn(`[AI BUDGET] No owner/manager users found for tenant ${tenantId}; skipping push.`);
+    } else {
+      await Promise.all(tenantOwners.map((u) =>
+        sendPushNotification(u.id, {
+          title,
+          body,
+          tag: `ai_budget_exhausted:${tenantId}`,
+          data: { type: 'ai_budget_exhausted', tenantId, used, budget },
+        }).catch((err) => {
+          console.warn(`[AI BUDGET] Push to user ${u.id} failed:`, err);
+        })
+      ));
+    }
   } catch (err) {
     console.warn('[AI BUDGET] Push notify failed:', err);
   }
