@@ -15,6 +15,7 @@ import {
   Archive,
   X,
   MailOpen,
+  UserPlus,
 } from 'lucide-react';
 import {
   Dialog,
@@ -23,7 +24,28 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import io from 'socket.io-client';
+
+// Audit T3 Task #21: bulk-action contracts shared between page and API
+interface StaffUser {
+  id: number;
+  username: string;
+  fullName: string | null;
+  isActive: boolean | null;
+}
+type BulkAction = 'mark-read' | 'snooze' | 'resolve' | 'archive' | 'assign';
+interface BulkActionPayload {
+  agentUsername?: string;
+  snoozedUntil?: string;
+}
+
 import { NightOpsMessagesLayout } from '@/components/messages/NightOpsMessagesLayout';
 import { NightOpsConversationList } from '@/components/messages/NightOpsConversationList';
 import { NightOpsThreadView } from '@/components/messages/NightOpsThreadView';
@@ -289,15 +311,26 @@ function MessagesPageContent() {
     return Array.from(out);
   }, [selectedIds, siblingMap]);
 
-  const bulkMutation = useMutation({
-    mutationFn: async (action: 'mark-read' | 'snooze' | 'resolve' | 'archive') => {
+  // Audit T3 Task #21: staff users for bulk assign menu
+  const { data: staffData } = useQuery<{ success: boolean; users: StaffUser[] }>({
+    queryKey: ['/api/users/all'],
+  });
+  const staffUsers = (staffData?.users || []).filter(u => u.isActive !== false);
+
+  const bulkMutation = useMutation<
+    { success: boolean; data: { action: BulkAction; requested: number; updated: number } },
+    Error,
+    { action: BulkAction; payload?: BulkActionPayload }
+  >({
+    mutationFn: async ({ action, payload }) => {
       const res = await apiRequest('POST', '/api/conversations/bulk-action', {
         action,
         ids: expandedSelectedIds,
+        payload,
       });
       return res.json();
     },
-    onSuccess: (json: any, action) => {
+    onSuccess: (json, { action }) => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
       clearSelection();
       toast({
@@ -305,7 +338,7 @@ function MessagesPageContent() {
         description: `${action} → ${json?.data?.updated ?? 0} conversation(s)`,
       });
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast({
         title: 'Bulk update failed',
         description: err?.message || 'Could not apply action',
@@ -570,7 +603,7 @@ function MessagesPageContent() {
             size="sm"
             variant="ghost"
             className="h-7 text-xs text-slate-200 hover:bg-slate-800"
-            onClick={() => bulkMutation.mutate('mark-read')}
+            onClick={() => bulkMutation.mutate({ action: 'mark-read' })}
             disabled={bulkMutation.isPending}
             data-testid="bulk-mark-read"
           >
@@ -580,7 +613,10 @@ function MessagesPageContent() {
             size="sm"
             variant="ghost"
             className="h-7 text-xs text-slate-200 hover:bg-slate-800"
-            onClick={() => bulkMutation.mutate('snooze')}
+            onClick={() => bulkMutation.mutate({
+              action: 'snooze',
+              payload: { snoozedUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+            })}
             disabled={bulkMutation.isPending}
             data-testid="bulk-snooze"
           >
@@ -590,7 +626,7 @@ function MessagesPageContent() {
             size="sm"
             variant="ghost"
             className="h-7 text-xs text-slate-200 hover:bg-slate-800"
-            onClick={() => bulkMutation.mutate('resolve')}
+            onClick={() => bulkMutation.mutate({ action: 'resolve' })}
             disabled={bulkMutation.isPending}
             data-testid="bulk-resolve"
           >
@@ -600,12 +636,44 @@ function MessagesPageContent() {
             size="sm"
             variant="ghost"
             className="h-7 text-xs text-slate-200 hover:bg-slate-800"
-            onClick={() => bulkMutation.mutate('archive')}
+            onClick={() => bulkMutation.mutate({ action: 'archive' })}
             disabled={bulkMutation.isPending}
             data-testid="bulk-archive"
           >
             <Archive className="h-3.5 w-3.5 mr-1" /> Archive
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-slate-200 hover:bg-slate-800"
+                disabled={bulkMutation.isPending || staffUsers.length === 0}
+                data-testid="bulk-assign"
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-1" /> Assign
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="bg-slate-900 border-slate-700 max-h-72 overflow-auto">
+              <DropdownMenuLabel className="text-xs text-slate-400">Assign to...</DropdownMenuLabel>
+              {staffUsers.length === 0 && (
+                <div className="px-2 py-1.5 text-xs text-slate-500">No teammates</div>
+              )}
+              {staffUsers.map(u => (
+                <DropdownMenuItem
+                  key={u.id}
+                  onClick={() => bulkMutation.mutate({
+                    action: 'assign',
+                    payload: { agentUsername: u.username },
+                  })}
+                  className="text-slate-200 focus:bg-slate-800 focus:text-slate-100 cursor-pointer"
+                  data-testid={`bulk-assign-${u.username}`}
+                >
+                  {u.fullName || u.username}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             size="icon"
             variant="ghost"

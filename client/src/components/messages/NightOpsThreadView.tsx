@@ -11,7 +11,18 @@ import {
   Globe,
   Mail,
 } from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
+import type { IconType } from 'react-icons';
 import { SiFacebook, SiInstagram } from 'react-icons/si';
+
+type ChannelIcon = ComponentType<SVGProps<SVGSVGElement> & { className?: string }> | IconType;
+type ChannelKey = 'sms' | 'web' | 'email' | 'facebook' | 'instagram';
+interface ChannelOption { value: ChannelKey; label: string; icon: ChannelIcon }
+interface SwitchChannelResponse {
+  success: boolean;
+  data?: { targetConversationId: number; platform: ChannelKey };
+  message?: string;
+}
 import ThreadView from '@/components/ThreadView';
 import { AutopilotBanner } from './AutopilotBanner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -181,7 +192,7 @@ function ThreadActionsRow({
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const channels: Array<{ value: 'sms' | 'web' | 'email' | 'facebook' | 'instagram'; label: string; icon: any }> = [
+  const channels: ChannelOption[] = [
     { value: 'sms', label: 'SMS', icon: Phone },
     { value: 'web', label: 'Web chat', icon: Globe },
     { value: 'email', label: 'Email', icon: Mail },
@@ -189,18 +200,18 @@ function ThreadActionsRow({
     { value: 'instagram', label: 'Instagram', icon: SiInstagram },
   ];
 
-  const switchMutation = useMutation({
-    mutationFn: async (to: string) => {
+  const switchMutation = useMutation<SwitchChannelResponse, Error, ChannelKey>({
+    mutationFn: async (to) => {
       const res = await apiRequest('POST', `/api/conversations/${conversationId}/switch-channel`, { to });
       return res.json();
     },
-    onSuccess: (json: any) => {
+    onSuccess: (json) => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
       const targetId = json?.data?.targetConversationId;
       if (targetId && onConversationSelected) onConversationSelected(targetId);
-      toast({ title: 'Channel switched', description: `Continuing on ${json?.data?.platform?.toUpperCase()}` });
+      toast({ title: 'Channel switched', description: `Continuing on ${json?.data?.platform?.toUpperCase() ?? ''}` });
     },
-    onError: (err: any) => {
+    onError: (err) => {
       toast({
         title: 'Switch failed',
         description: err?.message || 'Could not switch channel',

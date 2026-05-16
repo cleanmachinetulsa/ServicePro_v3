@@ -272,12 +272,12 @@ export function registerConversationRoutes(app: Express) {
         req.tenantDb!,
         curr.customerPhone,
         curr.customerName,
-        to as any,
+        to,
         undefined,
         undefined,
-        (curr as any).emailAddress || undefined,
+        curr.emailAddress || undefined,
       );
-      const targetId = (target as any).conversation?.id ?? (target as any).id;
+      const targetId = target.conversation.id;
 
       try {
         await addMessage(
@@ -348,6 +348,7 @@ export function registerConversationRoutes(app: Express) {
           }
           updateSet = {
             controlMode: 'manual',
+            assignedAgent: payload.agentUsername,
           };
           break;
       }
