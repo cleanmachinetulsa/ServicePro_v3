@@ -695,7 +695,8 @@ export async function generateAIResponse(
   conversationHistory?: Array<{ content: string; role: string; sender: string }>,
   isDemoMode: boolean = false,
   tenantId?: string,
-  controlMode?: 'auto' | 'manual' | 'paused'  // AI BEHAVIOR V2: control mode awareness
+  controlMode?: 'auto' | 'manual' | 'paused',  // AI BEHAVIOR V2: control mode awareness
+  modelOverride?: string  // Audit T1 S-10/W-1: per-tenant token-budget downgrade
 ) {
   try {
     // PHASE 11 + AI BEHAVIOR V2: Use SMS-optimized, state-aware prompt for SMS platform
@@ -1303,9 +1304,10 @@ IMPORTANT WEB CHAT RESTRICTIONS:
       iterations++;
       
       // Use demo rate limiter if in demo mode
+      const effectiveModel = modelOverride || SMS_AGENT_MODEL;
       const makeOpenAICall = async () => {
         return await openai.chat.completions.create({
-          model: SMS_AGENT_MODEL,
+          model: effectiveModel,
           messages: currentMessages,
           tools: SCHEDULING_FUNCTIONS,
           tool_choice: "auto",
@@ -1343,7 +1345,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
         );
         
         if (tenantId) {
-          await recordAiUsage(tenantId, 'ai_chat', inputTokens, outputTokens, SMS_AGENT_MODEL);
+          await recordAiUsage(tenantId, 'ai_chat', inputTokens, outputTokens, effectiveModel);
         }
       } catch (err) {
         console.error('[OPENAI USAGE LOG] Error:', err);

@@ -1922,45 +1922,113 @@ export async function registerRoutes(app: Express) {
 
   // Web Chat endpoint (for homepage chatbot)
   // SECURITY: No Twilio signature required - this is for web clients only
-  // Rate-limited to prevent abuse
+  // Audit T1 W-1: rate-limit keyed by ip+session+tenant; captcha required on first message
   const webChatAttempts = new Map<string, number[]>();
-  const WEB_CHAT_RATE_LIMIT = 20; // Max 20 messages per IP per 5 minutes
+  const DEFAULT_WEB_CHAT_RATE_LIMIT = 20; // Per 5min per (ip+session+tenant) — overridable via business_settings
   const WEB_CHAT_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-  
+
+  // Public widget config endpoint (Audit T1 W-6)
+  app.get('/api/web-chat/config', async (req: Request, res: Response) => {
+    try {
+      const { businessSettings } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const rows = await req.tenantDb!.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+      const row = rows[0];
+      const { getProvider } = await import('./services/webChatCaptcha');
+      const provider = getProvider();
+      return res.json({
+        success: true,
+        greeting: row?.chatGreeting || `Hey! How can I help with your detail today?`,
+        personaName: row?.chatPersonaName || row?.businessName || 'Assistant',
+        avatarUrl: row?.chatAvatarUrl || null,
+        captcha: {
+          provider,
+          siteKey: provider === 'turnstile'
+            ? (process.env.TURNSTILE_SITE_KEY || null)
+            : provider === 'hcaptcha'
+              ? (process.env.HCAPTCHA_SITE_KEY || null)
+              : null,
+        },
+      });
+    } catch (err) {
+      console.warn('[WEB CHAT CONFIG] Error:', err);
+      return res.json({ success: true, greeting: null, personaName: null, avatarUrl: null, captcha: { provider: 'none', siteKey: null } });
+    }
+  });
+
   app.post('/api/web-chat', async (req: Request, res: Response) => {
     try {
       const clientIp = req.ip || 'unknown';
       const now = Date.now();
-      
-      // Rate limiting check
-      if (!webChatAttempts.has(clientIp)) {
-        webChatAttempts.set(clientIp, []);
-      }
-      
-      const attempts = webChatAttempts.get(clientIp)!;
-      const recentAttempts = attempts.filter(timestamp => now - timestamp < WEB_CHAT_WINDOW_MS);
-      
-      if (recentAttempts.length >= WEB_CHAT_RATE_LIMIT) {
-        console.warn(`[WEB CHAT] Rate limit exceeded for IP ${clientIp}`);
-        return res.status(429).json({ 
-          success: false, 
-          error: 'Too many messages. Please slow down.' 
+
+      // SECURITY: Generate a unique session-based identifier for web users
+      // NEVER trust client-supplied phone numbers - prevents customer impersonation
+      // Audit T1: prefer the client-supplied stable session ID (localStorage-backed)
+      // for anonymous traffic; the Express session ID is unstable when
+      // saveUninitialized=false, which would let attackers churn IDs to evade
+      // rate limits. The client value is *combined* with IP + tenant in the
+      // limiter key, so it can only narrow scope, not impersonate another user.
+      const headerSession = typeof req.headers['x-web-chat-session'] === 'string'
+        ? (req.headers['x-web-chat-session'] as string)
+        : undefined;
+      const clientSession = typeof req.body?.sessionId === 'string' ? req.body.sessionId : undefined;
+      const cookieSession = (req as any).session?.id;
+      const sessionId = clientSession || headerSession || cookieSession || `web-${clientIp}-${Math.random().toString(36).substr(2, 9)}`;
+      const tenantId = req.tenantDb?.tenantId || 'unknown';
+
+      // Audit T1 W-1: rate-limit key is (ip + session + tenant) so a single
+      // session can't hop IPs to bypass and a noisy IP can't starve a real user.
+      const rateLimitKey = `${clientIp}::${sessionId}::${tenantId}`;
+
+      // Resolve per-tenant rate limit (fall back to default)
+      let perTenantLimit = DEFAULT_WEB_CHAT_RATE_LIMIT;
+      try {
+        const { businessSettings } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        const settings = await req.tenantDb!.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+        if (settings[0]?.webChatRateLimitPerWindow && settings[0].webChatRateLimitPerWindow > 0) {
+          perTenantLimit = settings[0].webChatRateLimitPerWindow;
+        }
+      } catch { /* fall through with default */ }
+
+      if (!webChatAttempts.has(rateLimitKey)) webChatAttempts.set(rateLimitKey, []);
+      const attempts = webChatAttempts.get(rateLimitKey)!;
+      const recentAttempts = attempts.filter((timestamp) => now - timestamp < WEB_CHAT_WINDOW_MS);
+
+      if (recentAttempts.length >= perTenantLimit) {
+        console.warn(`[WEB CHAT] Rate limit exceeded for ${rateLimitKey}`);
+        return res.status(429).json({
+          success: false,
+          error: 'Too many messages. Please slow down.',
         });
       }
-      
+
       recentAttempts.push(now);
-      webChatAttempts.set(clientIp, recentAttempts);
-      
-      const { Body } = req.body;
+      webChatAttempts.set(rateLimitKey, recentAttempts);
+
+      const { Body, captchaToken } = req.body;
       const message = Body || '';
-      
+
       if (!message.trim()) {
         return res.status(400).json({ success: false, error: 'Message is required' });
       }
-      
-      // SECURITY: Generate a unique session-based identifier for web users
-      // NEVER trust client-supplied phone numbers - prevents customer impersonation
-      const sessionId = (req as any).session?.id || `web-${clientIp}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Audit T1 W-1: captcha gate — required for first message of a session.
+      // Subsequent messages on the same session are exempt.
+      const { isSessionVerified, markSessionVerified, verifyCaptchaToken, getProvider } = await import('./services/webChatCaptcha');
+      if (!isSessionVerified(sessionId)) {
+        const verify = await verifyCaptchaToken(captchaToken, clientIp);
+        if (!verify.ok) {
+          console.warn(`[WEB CHAT] Captcha rejected (${verify.reason}) for session ${sessionId}`);
+          return res.status(403).json({
+            success: false,
+            error: 'captcha_required',
+            captchaProvider: getProvider(),
+          });
+        }
+        markSessionVerified(sessionId);
+      }
+
       const webIdentifier = `web-chat-${sessionId}`;
       
       // Process the web chat message (isolated from SMS customers)

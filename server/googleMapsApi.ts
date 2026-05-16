@@ -4,10 +4,12 @@ import type { TenantDb } from './db';
 import { businessSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
-// Central business location: 4644 S Troost Ave Tulsa, OK 74105
-const BUSINESS_LOCATION = {
+// Default service area origin (overridable per tenant via business_settings.serviceAreaCenterLat/Lng)
+// Audit T1 W-5/I-7: prior hardcoded value kept only as fallback for tenants that have not
+// yet been backfilled with their own coordinates.
+const DEFAULT_SERVICE_AREA_CENTER = {
   lat: 36.09,
-  lng: -95.975
+  lng: -95.975,
 };
 
 // Default maximum drive time in minutes (can be overridden by business settings)
@@ -17,18 +19,29 @@ const DEFAULT_MAX_DRIVE_TIME_MINUTES = 26;
 const METERS_PER_MILE = 1609.34;
 
 /**
+ * Read the tenant's service-area config (origin + max drive time) from
+ * business_settings, falling back to global defaults if unset.
+ */
+export async function getServiceAreaConfig(tenantDb: TenantDb): Promise<{ lat: number; lng: number; maxDriveMinutes: number }> {
+  try {
+    const settings = await tenantDb.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+    const row = settings[0];
+    const lat = row?.serviceAreaCenterLat != null ? Number(row.serviceAreaCenterLat) : DEFAULT_SERVICE_AREA_CENTER.lat;
+    const lng = row?.serviceAreaCenterLng != null ? Number(row.serviceAreaCenterLng) : DEFAULT_SERVICE_AREA_CENTER.lng;
+    const maxDriveMinutes = row?.maxDriveTimeMinutes || DEFAULT_MAX_DRIVE_TIME_MINUTES;
+    return { lat, lng, maxDriveMinutes };
+  } catch (error) {
+    console.warn('[MAPS API] Could not load service area from settings, using defaults:', error);
+    return { ...DEFAULT_SERVICE_AREA_CENTER, maxDriveMinutes: DEFAULT_MAX_DRIVE_TIME_MINUTES };
+  }
+}
+
+/**
  * Get max drive time from business settings or use default
  */
 async function getMaxDriveTime(tenantDb: TenantDb): Promise<number> {
-  try {
-    const settings = await tenantDb.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
-    if (settings.length > 0 && settings[0].maxDriveTimeMinutes) {
-      return settings[0].maxDriveTimeMinutes;
-    }
-  } catch (error) {
-    console.warn('[MAPS API] Could not load max drive time from settings, using default:', error);
-  }
-  return DEFAULT_MAX_DRIVE_TIME_MINUTES;
+  const cfg = await getServiceAreaConfig(tenantDb);
+  return cfg.maxDriveMinutes;
 }
 
 /**
@@ -272,8 +285,9 @@ export async function checkDistanceToBusinessLocation(tenantDbOrAddress: TenantD
       return geocodeResult; // Return the error from geocoding
     }
 
-    // Get coordinates for origin (business) and destination (customer)
-    const origins = `${BUSINESS_LOCATION.lat},${BUSINESS_LOCATION.lng}`;
+    // Get coordinates for origin (tenant service area center) and destination (customer)
+    const serviceArea = await getServiceAreaConfig(actualTenantDb);
+    const origins = `${serviceArea.lat},${serviceArea.lng}`;
     const destinations = `${geocodeResult.location.lat},${geocodeResult.location.lng}`;
 
     // Call the Distance Matrix API
@@ -391,7 +405,8 @@ export async function calculateETAAndGenerateNavLink(tenantDb: TenantDb, address
     // Generate Google Maps navigation URL
     // This uses the mobile-friendly Google Maps URL scheme
     const encodedAddress = encodeURIComponent(address);
-    const navigationUrl = `https://www.google.com/maps/dir/?api=1&origin=${BUSINESS_LOCATION.lat},${BUSINESS_LOCATION.lng}&destination=${encodedAddress}&travelmode=driving`;
+    const serviceArea = await getServiceAreaConfig(tenantDb);
+    const navigationUrl = `https://www.google.com/maps/dir/?api=1&origin=${serviceArea.lat},${serviceArea.lng}&destination=${encodedAddress}&travelmode=driving`;
     
     return {
       success: true,

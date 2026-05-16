@@ -198,7 +198,31 @@ export function registerFileUploadRoutes(app: Express) {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
+
+      // Audit T1 W-8: per-session anonymous upload quota
+      // Cap pre-identity uploads to prevent storage abuse from anonymous chat visitors.
+      try {
+        const { checkAndRecordUpload, getAnonymousSessionKey, QUOTA_LIMITS } = await import('./services/uploadQuotaService');
+        const sessionKey = getAnonymousSessionKey(req as any);
+        const quota = checkAndRecordUpload(sessionKey, req.file.size);
+        if (!quota.allowed) {
+          // Best-effort cleanup of the just-uploaded temp file
+          try {
+            const fs = await import('fs');
+            if (req.file?.path) fs.unlinkSync(req.file.path);
+          } catch { /* ignore */ }
+          console.warn(`[UPLOAD QUOTA] Denied (${quota.reason}) for session ${sessionKey}`);
+          return res.status(429).json({
+            error: quota.reason === 'photo_count'
+              ? `Upload limit reached (max ${QUOTA_LIMITS.MAX_PHOTOS_PER_SESSION} photos per 24 hours). Please contact us directly to share more.`
+              : `Upload size limit reached (max ${Math.round(QUOTA_LIMITS.MAX_BYTES_PER_SESSION / (1024 * 1024))} MB per 24 hours). Please contact us directly to share more.`,
+            code: 'quota_exceeded',
+          });
+        }
+      } catch (quotaErr) {
+        console.warn('[UPLOAD QUOTA] Quota check failed (allowing through):', quotaErr);
+      }
+
       // Get form data
       const customerName = req.body.customerName || '';
       const customerPhone = req.body.customerPhone || '';

@@ -130,6 +130,22 @@ async function processWebChatConversation(
     // Web chat can check availability but CANNOT create appointments
     console.log('[WEB CHAT] Processing with web-safe scheduling AI for tenant:', tenantId);
     
+    // Audit T1 S-10/W-1: per-tenant AI token budget guard
+    const { resolveBudgetDecision, notifyOwnerBudgetExhausted } = await import('./services/aiTokenBudget');
+    const SMS_AGENT_MODEL = process.env.SMS_AGENT_MODEL || 'gpt-4o';
+    const decision = await resolveBudgetDecision(tenantDb, tenantId, SMS_AGENT_MODEL);
+
+    if (decision.status === 'exhausted') {
+      console.warn(`[WEB CHAT] AI budget exhausted for tenant ${tenantId} (${decision.tokensUsedToday}/${decision.budget})`);
+      // Fire-and-forget owner notification (de-duped by Slack on their side)
+      notifyOwnerBudgetExhausted(tenantId, decision.tokensUsedToday, decision.budget).catch(() => {});
+      return { response: decision.cannedReply || "Thanks for reaching out — we'll be in touch shortly!" };
+    }
+
+    if (decision.status === 'downgrade') {
+      console.log(`[WEB CHAT] Budget at ${Math.round((decision.tokensUsedToday / decision.budget) * 100)}% — downgrading to ${decision.model}`);
+    }
+
     const response = await generateAIResponse(
       message,
       identifier,
@@ -138,7 +154,8 @@ async function processWebChatConversation(
       conversationHistory,
       false, // not demo mode
       tenantId, // Pass tenant ID for proper prompt building
-      'auto' // control mode
+      'auto', // control mode
+      decision.model, // model override (base or 'gpt-4o-mini' under budget pressure)
     );
 
     return { response: response || 'I apologize, but I had trouble processing that. Could you rephrase your question?' };

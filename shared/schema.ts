@@ -1896,8 +1896,19 @@ export const businessSettings = pgTable("business_settings", {
   allowWeekendBookings: boolean("allow_weekend_bookings").notNull().default(false), // Allow weekend bookings
   halfHourIncrements: boolean("half_hour_increments").notNull().default(true), // Allow 30-minute booking slots
   minimumNoticeHours: integer("minimum_notice_hours").notNull().default(24), // Hours before booking allowed
-  maxDriveTimeMinutes: integer("max_drive_time_minutes").notNull().default(26), // Maximum drive time from Tulsa base (in minutes)
+  maxDriveTimeMinutes: integer("max_drive_time_minutes").notNull().default(26), // Maximum drive time from base (in minutes)
+  // Service area origin coordinates (Audit T1 W-5/I-7: de-hardcode)
+  serviceAreaCenterLat: numeric("service_area_center_lat", { precision: 10, scale: 7 }),
+  serviceAreaCenterLng: numeric("service_area_center_lng", { precision: 10, scale: 7 }),
   etaPadding: integer("eta_padding").notNull().default(15), // Minutes to add to ETA estimates (buffer time)
+  // Web chat tenant-customizable widget (Audit T1 W-6)
+  chatGreeting: text("chat_greeting"),
+  chatPersonaName: varchar("chat_persona_name", { length: 100 }),
+  chatAvatarUrl: text("chat_avatar_url"),
+  // Web chat abuse defense (Audit T1 W-1, S-10/W-1 budget)
+  webChatRateLimitPerWindow: integer("web_chat_rate_limit_per_window").default(20), // Max requests per 5min per (ip+session+tenant)
+  aiDailyTokenBudget: integer("ai_daily_token_budget").default(0), // 0 = unlimited
+  aiBudgetExhaustedReply: text("ai_budget_exhausted_reply").default("Thanks for reaching out! We're getting back to messages shortly — text or call us and we'll respond as soon as possible."),
   googlePlaceId: text("google_place_id").default(""), // Google Business Profile Place ID for reviews/photos
   excludedServices: text("excluded_services").array().default([]), // Services we don't offer (shown to AI for quick rejection)
   

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -162,6 +162,105 @@ export default function EnhancedChatbotUI() {
   const [hasNewMessage, setHasNewMessage] = useState(false); // For auto-scroll
   const [smsConsentShown, setSmsConsentShown] = useState(false); // Track if SMS consent shown
   const [isMinimized, setIsMinimized] = useState(false); // Track if chat is minimized
+
+  // Audit T1 W-1/W-6: stable per-browser session id for rate-limit + captcha gating,
+  // and tenant-customizable widget config (greeting / persona / avatar).
+  const sessionId = useMemo(() => {
+    let sid = localStorage.getItem('webChatSessionId');
+    if (!sid) {
+      sid = `wcs-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem('webChatSessionId', sid);
+    }
+    return sid;
+  }, []);
+  const [widgetConfig, setWidgetConfig] = useState<{
+    greeting: string | null;
+    personaName: string | null;
+    avatarUrl: string | null;
+    captcha: { provider: 'turnstile' | 'hcaptcha' | 'none'; siteKey: string | null };
+  }>({ greeting: null, personaName: null, avatarUrl: null, captcha: { provider: 'none', siteKey: null } });
+  const [pendingCaptchaToken, setPendingCaptchaToken] = useState<string | null>(null);
+  const [captchaVerified, setCaptchaVerified] = useState(false);
+  const captchaContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Audit T1 W-1: mount Turnstile/hCaptcha widget when configured so the user
+  // can actually obtain a token. Without this, /api/web-chat would 403 forever.
+  useEffect(() => {
+    const { provider, siteKey } = widgetConfig.captcha;
+    if (!siteKey || provider === 'none' || captchaVerified) return;
+    const container = captchaContainerRef.current;
+    if (!container) return;
+
+    const scriptSrc =
+      provider === 'turnstile'
+        ? 'https://challenges.cloudflare.com/turnstile/v0/api.js'
+        : 'https://js.hcaptcha.com/1/api.js';
+    let scriptEl = document.querySelector<HTMLScriptElement>(`script[src="${scriptSrc}"]`);
+    if (!scriptEl) {
+      scriptEl = document.createElement('script');
+      scriptEl.src = scriptSrc;
+      scriptEl.async = true;
+      scriptEl.defer = true;
+      document.head.appendChild(scriptEl);
+    }
+
+    let widgetId: string | null = null;
+    let cancelled = false;
+    const tryRender = () => {
+      if (cancelled) return;
+      const w: any = window as any;
+      const api = provider === 'turnstile' ? w.turnstile : w.hcaptcha;
+      if (!api || !api.render) {
+        setTimeout(tryRender, 250);
+        return;
+      }
+      try {
+        widgetId = api.render(container, {
+          sitekey: siteKey,
+          callback: (token: string) => setPendingCaptchaToken(token),
+          'expired-callback': () => setPendingCaptchaToken(null),
+          'error-callback': () => setPendingCaptchaToken(null),
+        });
+      } catch {
+        // Already rendered — ignore.
+      }
+    };
+    tryRender();
+
+    return () => {
+      cancelled = true;
+      const w: any = window as any;
+      const api = provider === 'turnstile' ? w.turnstile : w.hcaptcha;
+      if (api?.remove && widgetId) {
+        try { api.remove(widgetId); } catch { /* noop */ }
+      }
+    };
+  }, [widgetConfig.captcha.provider, widgetConfig.captcha.siteKey, captchaVerified]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/web-chat/config')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.success) return;
+        setWidgetConfig({
+          greeting: data.greeting || null,
+          personaName: data.personaName || null,
+          avatarUrl: data.avatarUrl || null,
+          captcha: data.captcha || { provider: 'none', siteKey: null },
+        });
+        if (data.greeting) {
+          setMessages((prev) => {
+            if (prev.length === 1 && prev[0].id === 'welcome') {
+              return [{ ...prev[0], text: data.greeting }];
+            }
+            return prev;
+          });
+        }
+      })
+      .catch(() => { /* fallback to defaults */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Parse URL parameters to check if we should auto-open the scheduler
   useEffect(() => {
@@ -527,11 +626,22 @@ export default function EnhancedChatbotUI() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Web-Chat-Session": sessionId,
         },
         body: JSON.stringify({
           Body: messageText,
+          sessionId,
+          captchaToken: !captchaVerified ? pendingCaptchaToken : undefined,
         }),
       });
+
+      // Audit T1 W-1: 403 captcha_required → surface a friendly nudge
+      if (response.status === 403) {
+        const data = await response.json().catch(() => ({}));
+        if (data?.error === 'captcha_required') {
+          throw new Error('Please complete the verification to continue chatting.');
+        }
+      }
 
       if (!response.ok) {
         throw new Error(`Server responded with ${response.status}`);
@@ -542,6 +652,12 @@ export default function EnhancedChatbotUI() {
 
       if (!data.success) {
         throw new Error(data.error || 'Failed to get response');
+      }
+
+      // Mark captcha as verified for the rest of this session
+      if (!captchaVerified) {
+        setCaptchaVerified(true);
+        setPendingCaptchaToken(null);
       }
 
       const responseText = data.message;
@@ -883,7 +999,13 @@ export default function EnhancedChatbotUI() {
         </Dialog>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-3 bg-gradient-to-b from-gray-50/50 to-white">
+        <div
+          className="flex-1 overflow-y-auto p-3 bg-gradient-to-b from-gray-50/50 to-white"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions text"
+          aria-label="Chat messages"
+        >
           <AnimatePresence initial={false}>
             {messages.map((message) => (
               <motion.div
@@ -962,6 +1084,14 @@ export default function EnhancedChatbotUI() {
           <div ref={messageEndRef} />
         </div>
 
+        {/* Audit T1 W-1: captcha widget — only rendered when tenant configured a provider
+            and the visitor has not yet completed their first verified message. */}
+        {!captchaVerified && widgetConfig.captcha.provider !== 'none' && widgetConfig.captcha.siteKey && (
+          <div className="px-3 pt-2 flex-shrink-0 bg-white">
+            <div ref={captchaContainerRef} data-testid="web-chat-captcha" />
+          </div>
+        )}
+
         {/* Input Area */}
         <div className="p-3 border-t border-gray-200 flex-shrink-0 bg-white">
           <form onSubmit={handleSubmit} className="flex gap-2">
@@ -996,10 +1126,11 @@ export default function EnhancedChatbotUI() {
             <Button
               type="submit"
               size="icon"
+              aria-label="Send message"
               disabled={isTyping || !inputText.trim()}
               className="h-9 w-9 rounded-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             >
-              <PaperPlaneIcon className="h-4 w-4" />
+              <PaperPlaneIcon className="h-4 w-4" aria-hidden="true" />
               <span className="sr-only">Send</span>
             </Button>
           </form>
