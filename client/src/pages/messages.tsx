@@ -482,7 +482,16 @@ function MessagesPageContent() {
       conversationId={selectedConversation}
       onBack={() => setSelectedConversation(null)}
       onTakeOver={handleTakeOver}
-      controlMode={selectedConv?.controlMode as any}
+      controlMode={
+        (selectedConv?.controlMode as
+          | 'ai'
+          | 'human'
+          | 'hybrid'
+          | 'auto'
+          | 'manual'
+          | 'paused'
+          | undefined) ?? 'auto'
+      }
       onConversationSelected={setSelectedConversation}
     />
   );

@@ -100,43 +100,43 @@ describe('Audit T3 Task #21 — power-user backend invariants', () => {
     await db.insert(usageEvents).values([
       {
         tenantId: TENANT_A,
-        kind: 'ai',
-        units: 1,
-        model: 'gpt-4o',
-        inputTokens: 1000,
-        outputTokens: 500,
-        metadata: { conversationId: conv.id },
+        channel: 'ai',
+        direction: 'outbound',
+        source: 'openai',
+        feature: 'ai_sms',
+        quantity: 1500,
+        metadata: { model: 'gpt-4o', inputTokens: 1000, outputTokens: 500, conversationId: conv.id },
       },
       {
         tenantId: TENANT_A,
-        kind: 'ai',
-        units: 1,
-        model: 'gpt-4o',
-        inputTokens: 2000,
-        outputTokens: 400,
-        metadata: { conversationId: conv.id },
+        channel: 'ai',
+        direction: 'outbound',
+        source: 'openai',
+        feature: 'ai_sms',
+        quantity: 2400,
+        metadata: { model: 'gpt-4o', inputTokens: 2000, outputTokens: 400, conversationId: conv.id },
       },
       {
         tenantId: TENANT_B,
-        kind: 'ai',
-        units: 1,
-        model: 'gpt-4o',
-        inputTokens: 9999,
-        outputTokens: 9999,
-        metadata: { conversationId: conv.id },
+        channel: 'ai',
+        direction: 'outbound',
+        source: 'openai',
+        feature: 'ai_sms',
+        quantity: 19998,
+        metadata: { model: 'gpt-4o', inputTokens: 9999, outputTokens: 9999, conversationId: conv.id },
       },
     ]);
 
     const rows = await dbA
       .select({
-        inTok: sql<number>`COALESCE(SUM(${usageEvents.inputTokens}), 0)`,
-        outTok: sql<number>`COALESCE(SUM(${usageEvents.outputTokens}), 0)`,
+        inTok: sql<number>`COALESCE(SUM((${usageEvents.metadata}->>'inputTokens')::int), 0)`,
+        outTok: sql<number>`COALESCE(SUM((${usageEvents.metadata}->>'outputTokens')::int), 0)`,
       })
       .from(usageEvents)
       .where(
         dbA.withTenantFilter(
           usageEvents,
-          sql`${usageEvents.kind} = 'ai' AND ${usageEvents.metadata}->>'conversationId' = ${String(conv.id)}`,
+          sql`${usageEvents.channel} = 'ai' AND ${usageEvents.metadata}->>'conversationId' = ${String(conv.id)}`,
         ),
       );
 
