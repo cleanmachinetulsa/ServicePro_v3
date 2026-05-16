@@ -23,9 +23,11 @@ interface SwitchChannelResponse {
   data?: { targetConversationId: number; platform: ChannelKey };
   message?: string;
 }
+import { useEffect } from 'react';
 import ThreadView from '@/components/ThreadView';
 import { AutopilotBanner } from './AutopilotBanner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import io from 'socket.io-client';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -148,6 +150,7 @@ export function NightOpsThreadView({
 // Audit T3 Task #21: lazy thread summary using gpt-4o-mini. Server returns
 // null summary if the thread has <= 20 messages, in which case we hide.
 function ThreadSummaryBanner({ conversationId }: { conversationId: number }) {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<{
     success: boolean;
     data: { summary: string | null; messageCount: number; cached?: boolean };
@@ -163,6 +166,27 @@ function ThreadSummaryBanner({ conversationId }: { conversationId: number }) {
     enabled: !!conversationId,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Audit T3 Task #21: refetch summary when a new message arrives on this
+  // thread. The server cache key already includes lastMessageId, so a refetch
+  // naturally regenerates the summary when the underlying messages change.
+  useEffect(() => {
+    if (!conversationId) return;
+    const socket = io();
+    const invalidate = () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/conversations', conversationId, 'summary'],
+      });
+    };
+    socket.on('connect', () => socket.emit('join_monitoring'));
+    socket.on('new_message', invalidate);
+    socket.on('conversation_updated', invalidate);
+    return () => {
+      socket.emit('leave_monitoring');
+      socket.disconnect();
+    };
+  }, [conversationId, queryClient]);
+
   const summary = data?.data?.summary;
   if (isLoading) return null;
   if (!summary) return null;

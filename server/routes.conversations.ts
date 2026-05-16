@@ -321,7 +321,10 @@ export function registerConversationRoutes(app: Express) {
         undefined,
         curr.emailAddress || undefined,
       );
-      const targetId = target.conversation.id;
+      // getOrCreateConversation returns a union; coerce id to number for type
+      // safety since downstream calls expect a concrete number.
+      const targetConv = target.conversation as { id: number };
+      const targetId: number = Number(targetConv.id);
 
       try {
         await addMessage(

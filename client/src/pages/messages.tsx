@@ -258,6 +258,16 @@ function MessagesPageContent() {
 
     socket.on('new_message', () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+      // Audit T3 Task #21: also refresh per-thread AI cost + summary so the
+      // ContextPanel/SummaryBanner reflect newly delivered messages.
+      if (selectedConversation) {
+        queryClient.invalidateQueries({
+          queryKey: ['/api/conversations', selectedConversation, 'summary'],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['/api/conversations', selectedConversation, 'ai-usage'],
+        });
+      }
     });
 
     socket.on('conversation_updated', () => {
