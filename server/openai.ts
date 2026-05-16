@@ -968,12 +968,17 @@ IMPORTANT WEB CHAT RESTRICTIONS:
         let iterations = 0;
         let finalResponse = "";
         
+        // Audit T1 S-10/W-1: honor token-budget downgrade in the web-chat path.
+        // When a tenant crosses 80% of its daily AI budget, conversationHandler
+        // passes modelOverride='gpt-4o-mini' so the cheaper model is used here
+        // (and recorded in usage telemetry) instead of the full SMS_AGENT_MODEL.
+        const webEffectiveModel = modelOverride || SMS_AGENT_MODEL;
         while (iterations < MAX_WEB_ITERATIONS) {
           iterations++;
           
           // Make OpenAI call with WEB-SAFE scheduling functions only
           const completion = await openai!.chat.completions.create({
-            model: SMS_AGENT_MODEL,
+            model: webEffectiveModel,
             messages: currentMessages,
             tools: WEB_SAFE_SCHEDULING_FUNCTIONS, // Only get_available_slots and get_upsell_offers
             tool_choice: "auto",
@@ -987,7 +992,7 @@ IMPORTANT WEB CHAT RESTRICTIONS:
               const inputTokens = completion.usage?.prompt_tokens || 0;
               const outputTokens = completion.usage?.completion_tokens || 0;
               void recordAiMessage(tenantId, inputTokens + outputTokens, {
-                model: SMS_AGENT_MODEL,
+                model: webEffectiveModel,
                 inputTokens,
                 outputTokens,
                 platform: 'web',
