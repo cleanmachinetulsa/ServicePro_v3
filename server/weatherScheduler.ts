@@ -9,7 +9,10 @@ import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
 import { services } from '@shared/schema';
 
-const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'cleanmachinetulsa@gmail.com';
+const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
+const DEFAULT_SERVICE_AREA_LABEL = process.env.DEFAULT_SERVICE_AREA_LABEL || '';
+const DEFAULT_SERVICE_AREA_LAT = Number(process.env.DEFAULT_SERVICE_AREA_LAT || '0');
+const DEFAULT_SERVICE_AREA_LON = Number(process.env.DEFAULT_SERVICE_AREA_LON || '0');
 
 // Cache of known service names for validating calendar events
 let knownServiceNames: string[] = [];
@@ -128,7 +131,7 @@ async function getUpcomingAppointments(): Promise<Appointment[]> {
         
         // Extract location
         const locationMatch = description.match(/Address:\s*([^\n]+)/);
-        const location = event.location || (locationMatch ? locationMatch[1].trim() : 'Tulsa, OK');
+        const location = event.location || (locationMatch ? locationMatch[1].trim() : DEFAULT_SERVICE_AREA_LABEL);
 
         console.log(`[WEATHER] Valid appointment found: ${matchedService} - ${customerName} on ${event.start.dateTime || event.start.date}`);
 
@@ -157,8 +160,15 @@ async function getUpcomingAppointments(): Promise<Appointment[]> {
 async function processAppointmentWeather(appointment: Appointment) {
   try {
     const appointmentDate = new Date(appointment.date);
-    const latitude = 36.1236407; // Tulsa, OK coordinates
-    const longitude = -95.9359214;
+    // Service-area centroid sourced from env (DEFAULT_SERVICE_AREA_LAT/LON);
+    // weather check is skipped if not configured rather than falling back to
+    // a hard-coded city.
+    const latitude = DEFAULT_SERVICE_AREA_LAT;
+    const longitude = DEFAULT_SERVICE_AREA_LON;
+    if (!latitude || !longitude) {
+      console.warn('[WEATHER] DEFAULT_SERVICE_AREA_LAT/LON not configured; skipping weather check.');
+      return { needsAlert: false };
+    }
     
     const weatherData = await checkAppointmentWeather(latitude, longitude, appointment.date);
 

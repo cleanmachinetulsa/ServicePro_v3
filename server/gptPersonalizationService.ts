@@ -236,7 +236,13 @@ export async function generateReminderMessage(
   try {
     console.log(`[GPT PERSONALIZATION] Generating reminder for customer ${customer.id} (${customer.name})`);
     
-    const prompt = `You are writing a friendly SMS reminder for Clean Machine Auto Detail, a premium auto detailing business in Tulsa, Oklahoma.
+    const businessName = process.env.BUSINESS_NAME || 'this business';
+    const businessCity = process.env.BUSINESS_CITY || '';
+    const businessIndustry = process.env.BUSINESS_INDUSTRY || 'service';
+    const businessDescriptor = businessCity
+      ? `${businessName}, a ${businessIndustry} business in ${businessCity}`
+      : `${businessName}, a ${businessIndustry} business`;
+    const prompt = `You are writing a friendly SMS reminder for ${businessDescriptor}.
 
 Customer: ${customer.name}
 Loyalty Tier: ${customer.loyaltyTier}

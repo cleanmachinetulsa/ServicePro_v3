@@ -37,9 +37,26 @@ function processSheetData(sheetName: string, data: any[]): any[] {
   }).filter(item => item !== null); // Remove empty rows
 }
 
+// Tenant brand strings — sourced from env so the knowledge base is no
+// longer hard-coded to one tenant. Empty fallbacks are intentional: if a
+// deploy doesn't configure these, we omit the line rather than leak Clean
+// Machine defaults.
+const BRAND_NAME = process.env.BUSINESS_NAME || 'this business';
+const BRAND_INDUSTRY = process.env.BUSINESS_INDUSTRY || 'service';
+const BRAND_CITY = process.env.BUSINESS_CITY || '';
+const BRAND_PHONE = process.env.BUSINESS_PHONE_DISPLAY || '';
+const BRAND_EMAIL = process.env.BUSINESS_EMAIL || '';
+const BRAND_WEBSITE = process.env.BUSINESS_WEBSITE || '';
+const BRAND_SERVICE_RADIUS = process.env.BUSINESS_SERVICE_RADIUS_LABEL || '';
+const BRAND_REWARDS_URL = process.env.BUSINESS_REWARDS_URL || (BRAND_WEBSITE ? `${BRAND_WEBSITE.replace(/\/$/, '')}/rewards` : '');
+
+function brandLine(label: string, value: string): string {
+  return value ? `- ${label}: ${value}\n` : '';
+}
+
 // Format the knowledge base from all sheets
 function formatKnowledgeBase(): string {
-  let knowledgeBase = '# Clean Machine Auto Detail Information\n\n';
+  let knowledgeBase = `# ${BRAND_NAME} Information\n\n`;
 
   // Add services information
   if (sheetsData['services'] && sheetsData['services'].length > 0) {
@@ -66,14 +83,18 @@ function formatKnowledgeBase(): string {
     knowledgeBase += '\n';
   }
 
-  // Add business information
+  // Add business information (per-tenant via env)
   knowledgeBase += `## Business Information\n`;
-  knowledgeBase += `- Location: Mobile service in Tulsa, OK area (26-minute drive radius)\n`;
+  if (BRAND_CITY || BRAND_SERVICE_RADIUS) {
+    const loc = [BRAND_CITY && `Mobile service in ${BRAND_CITY} area`, BRAND_SERVICE_RADIUS && `(${BRAND_SERVICE_RADIUS})`].filter(Boolean).join(' ');
+    knowledgeBase += `- Location: ${loc}\n`;
+  }
   knowledgeBase += `- Business Hours: 9 AM - 6 PM Monday through Friday\n`;
   knowledgeBase += `- Latest Appointment Start Time: 3 PM (we need time to complete services before 6 PM)\n`;
-  knowledgeBase += `- Service Area: Within 26 minutes drive time from Tulsa\n`;
-  knowledgeBase += `- Contact: cleanmachinetulsa@gmail.com\n`;
-  knowledgeBase += `- Phone: 918-856-5711\n\n`;
+  knowledgeBase += brandLine('Service Area', BRAND_SERVICE_RADIUS);
+  knowledgeBase += brandLine('Contact', BRAND_EMAIL);
+  knowledgeBase += brandLine('Phone', BRAND_PHONE);
+  knowledgeBase += '\n';
 
   // Add loyalty program information (from old Clean Machine system)
   knowledgeBase += `## Loyalty Rewards Program\n\n`;
@@ -81,7 +102,10 @@ function formatKnowledgeBase(): string {
   knowledgeBase += `- Customers earn points for every dollar spent on services\n`;
   knowledgeBase += `- Points can be redeemed for free services and upgrades\n`;
   knowledgeBase += `- Points are valid for 2 years from the date earned\n`;
-  knowledgeBase += `- Check points balance at cleanmachinetulsa.com/rewards using phone or email\n\n`;
+  if (BRAND_REWARDS_URL) {
+    knowledgeBase += `- Check points balance at ${BRAND_REWARDS_URL} using phone or email\n`;
+  }
+  knowledgeBase += `\n`;
   
   knowledgeBase += `### Loyalty Tiers\n`;
   knowledgeBase += `- **Bronze**: 500-999 points\n`;
@@ -96,7 +120,7 @@ function formatKnowledgeBase(): string {
   knowledgeBase += `- **3,000 Points**: Free 1 Year Ceramic Coating\n\n`;
   
   knowledgeBase += `### How to Redeem\n`;
-  knowledgeBase += `1. Visit cleanmachinetulsa.com/rewards and enter your phone or email\n`;
+  knowledgeBase += `1. Visit ${BRAND_REWARDS_URL || 'the rewards portal'} and enter your phone or email\n`;
   knowledgeBase += `2. View your points balance and available rewards\n`;
   knowledgeBase += `3. Click "Redeem Offer" on any reward you qualify for\n`;
   knowledgeBase += `4. Book your appointment right away (rewards must be scheduled within 90 days)\n`;
@@ -105,14 +129,19 @@ function formatKnowledgeBase(): string {
   knowledgeBase += `### Using Points During Booking\n`;
   knowledgeBase += `- Points can be used to upgrade existing appointments\n`;
   knowledgeBase += `- For example: Use 500 points to add free Leather Protector to your detail\n`;
-  knowledgeBase += `- Call/text 918-856-5711 to use points when booking\n`;
+  if (BRAND_PHONE) {
+    knowledgeBase += `- Call/text ${BRAND_PHONE} to use points when booking\n`;
+  }
   knowledgeBase += `- Points are awarded ONLY after the service is completed\n\n`;
   
   knowledgeBase += `### Welcome Back Campaign\n`;
   knowledgeBase += `- VIP customers (Gold/Platinum) receive 500 bonus points\n`;
   knowledgeBase += `- Regular customers (Bronze/Silver) receive 200 bonus points\n`;
   knowledgeBase += `- Bonus points are added immediately when campaign is sent\n`;
-  knowledgeBase += `- Check your points at cleanmachinetulsa.com/rewards\n\n`;
+  if (BRAND_REWARDS_URL) {
+    knowledgeBase += `- Check your points at ${BRAND_REWARDS_URL}\n`;
+  }
+  knowledgeBase += `\n`;
 
   return knowledgeBase;
 }
@@ -298,7 +327,7 @@ async function loadAllSheets(forceReload: boolean = false): Promise<boolean> {
 // Generate a GPT prompt from user input and sheet data 
 export function generatePrompt(userInput: string): string {
   const promptParts = [
-    "You are Clean Machine Auto Detail in Tulsa. Answer with a friendly, professional, and knowledgeable tone. Always use proper grammar and complete sentences with correct punctuation. Do not refer to yourself by name or in the first person.",
+    `You are ${BRAND_NAME}${BRAND_CITY ? ` in ${BRAND_CITY}` : ''}. Answer with a friendly, professional, and knowledgeable tone. Always use proper grammar and complete sentences with correct punctuation. Do not refer to yourself by name or in the first person.`,
     `Customer asked: ${userInput.trim()}`
   ];
 
@@ -315,20 +344,19 @@ export function extractKnowledgeBase(): string {
     return formatKnowledgeBase();
   }
 
-  // If Google Sheets fails to load, return minimal business info only (NO pricing)
-  return `
-# Clean Machine Auto Detail Information
-
-## Business Information
-- Location: Mobile service in Tulsa, OK area (26-minute drive radius)
-- Business Hours: 9 AM - 6 PM Monday through Friday
-- Latest Appointment Start Time: 3 PM (we need time to complete services before 6 PM)
-- Service Area: Within 26 minutes drive time from Tulsa
-- Contact: cleanmachinetulsa@gmail.com
-- Phone: 918-856-5711
-
-Note: For current service pricing and details, please visit cleanmachinetulsa.com or ask for specific services.
-`;
+  // If Google Sheets fails to load, return minimal business info only (NO pricing).
+  // All identifying fields come from env so this fallback is per-tenant safe.
+  const lines: string[] = [`# ${BRAND_NAME} Information`, '', '## Business Information'];
+  if (BRAND_CITY) lines.push(`- Location: Mobile service in ${BRAND_CITY} area${BRAND_SERVICE_RADIUS ? ` (${BRAND_SERVICE_RADIUS})` : ''}`);
+  lines.push('- Business Hours: 9 AM - 6 PM Monday through Friday');
+  lines.push('- Latest Appointment Start Time: 3 PM (we need time to complete services before 6 PM)');
+  if (BRAND_SERVICE_RADIUS) lines.push(`- Service Area: ${BRAND_SERVICE_RADIUS}`);
+  if (BRAND_EMAIL) lines.push(`- Contact: ${BRAND_EMAIL}`);
+  if (BRAND_PHONE) lines.push(`- Phone: ${BRAND_PHONE}`);
+  if (BRAND_WEBSITE) {
+    lines.push('', `Note: For current service pricing and details, please visit ${BRAND_WEBSITE} or ask for specific services.`);
+  }
+  return lines.join('\n') + '\n';
 }
 
 // Load sheets data on module load

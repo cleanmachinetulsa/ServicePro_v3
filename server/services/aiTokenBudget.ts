@@ -109,7 +109,7 @@ export async function notifyOwnerBudgetExhausted(tenantId: string, used: number,
       title,
       body,
       data: { type: 'ai_budget_exhausted', tenantId, used, budget },
-    } as any);
+    });
   } catch (err) {
     console.warn('[AI BUDGET] Push notify failed:', err);
   }
