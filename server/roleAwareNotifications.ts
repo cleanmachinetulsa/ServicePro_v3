@@ -247,7 +247,7 @@ export async function sendRoleAwareNotification(
     appointment: appt,
     roles: roleContacts,
     businessName: 'Clean Machine Auto Detail',
-    businessPhone: '(918) 856-5304',
+    businessPhone: process.env.BUSINESS_PHONE_DISPLAY || '',
     metadata,
   };
 

@@ -91,18 +91,27 @@ export async function resolveBudgetDecision(
   return decision;
 }
 
-/** Notify owner that the AI budget is exhausted (Slack, fail-open). */
+/** Notify owner that the AI budget is exhausted (Slack + push, fail-open). */
 export async function notifyOwnerBudgetExhausted(tenantId: string, used: number, budget: number) {
+  const title = 'AI daily token budget exhausted';
+  const body = `Tenant ${tenantId} hit its daily AI token budget (${used}/${budget}). Web chat is now serving the canned reply and escalating new conversations.`;
+  // Slack
   try {
     const { notifySlackAudit } = await import('./slackNotifyAudit');
-    await notifySlackAudit({
-      tenantId,
-      title: 'AI daily token budget exhausted',
-      severity: 'warning',
-      details: `Tenant ${tenantId} hit its daily AI token budget (${used}/${budget}). Web chat is now serving the canned reply and escalating new conversations.`,
-    });
+    await notifySlackAudit({ tenantId, title, severity: 'warning', details: body });
   } catch (err) {
     console.warn('[AI BUDGET] Slack notify failed:', err);
+  }
+  // Push (best-effort to all subscribed owner devices). Fail-open per Audit T1.
+  try {
+    const { sendPushToAllUsers } = await import('../pushNotificationService');
+    await sendPushToAllUsers({
+      title,
+      body,
+      data: { type: 'ai_budget_exhausted', tenantId, used, budget },
+    } as any);
+  } catch (err) {
+    console.warn('[AI BUDGET] Push notify failed:', err);
   }
 }
 

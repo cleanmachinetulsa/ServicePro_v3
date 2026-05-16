@@ -254,15 +254,15 @@ export async function getPaymentDetails(req: Request, res: Response) {
       },
       venmo: {
         name: 'Venmo',
-        account: process.env.VENMO_USERNAME || '@cleanmachinetulsa',
+        account: process.env.VENMO_USERNAME || '',
       },
       cashapp: {
         name: 'CashApp',
-        account: process.env.CASHAPP_USERNAME || '$CleanMachineTulsa',
+        account: process.env.CASHAPP_USERNAME || '',
       },
       paypal: {
         name: 'PayPal',
-        account: 'CleanMachineTulsa',
+        account: process.env.PAYPAL_USERNAME || '',
       },
     };
     

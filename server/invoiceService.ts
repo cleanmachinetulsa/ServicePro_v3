@@ -386,9 +386,9 @@ export async function sendInvoiceNotification(
   const paymentOptions = `
 Payment Options:
 1. Card Payment via Stripe: ${process.env.CLIENT_BASE_URL || 'https://cleanmachine-detailer.replit.app'}/pay/${invoice.id}
-2. Venmo: ${process.env.VENMO_USERNAME || '@cleanmachinetulsa'}
-3. CashApp: ${process.env.CASHAPP_USERNAME || '$CleanMachineTulsa'}
-4. PayPal: CleanMachineTulsa
+2. Venmo: ${process.env.VENMO_USERNAME || ''}
+3. CashApp: ${process.env.CASHAPP_USERNAME || ''}
+4. PayPal: ${process.env.PAYPAL_USERNAME || ''}
 `;
 
   // Build messages based on platform
@@ -487,9 +487,9 @@ Thanks for trusting us with your vehicle!`;
             newBalance: newBalance
           },
           paymentLink: paymentLink,
-          venmoUsername: process.env.VENMO_USERNAME || '@cleanmachinetulsa',
-          cashappUsername: process.env.CASHAPP_USERNAME || '$CleanMachineTulsa',
-          paypalUsername: 'CleanMachineTulsa',
+          venmoUsername: process.env.VENMO_USERNAME || '',
+          cashappUsername: process.env.CASHAPP_USERNAME || '',
+          paypalUsername: process.env.PAYPAL_USERNAME || '',
           upsell: {
             title: 'Keep Your Vehicle Looking Fresh',
             description: 'Join our Maintenance Detail Program for regular upkeep every 3 months. Perfect for vehicles we\'ve already detailed!',

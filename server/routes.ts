@@ -1962,23 +1962,25 @@ export async function registerRoutes(app: Express) {
       const now = Date.now();
 
       // SECURITY: Generate a unique session-based identifier for web users
-      // NEVER trust client-supplied phone numbers - prevents customer impersonation
-      // Audit T1: prefer the client-supplied stable session ID (localStorage-backed)
-      // for anonymous traffic; the Express session ID is unstable when
-      // saveUninitialized=false, which would let attackers churn IDs to evade
-      // rate limits. The client value is *combined* with IP + tenant in the
-      // limiter key, so it can only narrow scope, not impersonate another user.
+      // Audit T1 W-1 (round-6 hardening): server-authoritative abuse keys.
+      // The client-supplied `sessionId` (localStorage) is convenient for the
+      // widget UX but cannot be trusted for abuse defense — an attacker can
+      // rotate it freely to evade limits. We therefore key rate-limit and
+      // captcha state on the *server-issued* express-session ID combined with
+      // the client IP and tenant. The client-supplied value is still passed
+      // back to the chat thread for grouping, but never participates in the
+      // trust boundary.
+      const tenantId = req.tenantDb?.tenantId || 'unknown';
+      const cookieSession: string = (req as any).session?.id || `noSess-${clientIp}`;
+      const trustedKey = `${clientIp}::${cookieSession}::${tenantId}`;
+      const rateLimitKey = trustedKey;
+      // For client-side display / conversation grouping we still record any
+      // client-supplied id, but it is intentionally NOT in the trust key.
+      const clientSession = typeof req.body?.sessionId === 'string' ? req.body.sessionId : undefined;
       const headerSession = typeof req.headers['x-web-chat-session'] === 'string'
         ? (req.headers['x-web-chat-session'] as string)
         : undefined;
-      const clientSession = typeof req.body?.sessionId === 'string' ? req.body.sessionId : undefined;
-      const cookieSession = (req as any).session?.id;
-      const sessionId = clientSession || headerSession || cookieSession || `web-${clientIp}-${Math.random().toString(36).substr(2, 9)}`;
-      const tenantId = req.tenantDb?.tenantId || 'unknown';
-
-      // Audit T1 W-1: rate-limit key is (ip + session + tenant) so a single
-      // session can't hop IPs to bypass and a noisy IP can't starve a real user.
-      const rateLimitKey = `${clientIp}::${sessionId}::${tenantId}`;
+      const sessionId = clientSession || headerSession || cookieSession;
 
       // Resolve per-tenant rate limit (fall back to default)
       let perTenantLimit = DEFAULT_WEB_CHAT_RATE_LIMIT;
@@ -2016,17 +2018,20 @@ export async function registerRoutes(app: Express) {
       // Audit T1 W-1: captcha gate — required for first message of a session.
       // Subsequent messages on the same session are exempt.
       const { isSessionVerified, markSessionVerified, verifyCaptchaToken, getProvider } = await import('./services/webChatCaptcha');
-      if (!isSessionVerified(sessionId)) {
+      // Captcha verification state is keyed on the *trusted* server session
+      // (cookie+ip+tenant), not the client-supplied id, so attackers cannot
+      // share or replay a verified id across rotated client sessions.
+      if (!isSessionVerified(trustedKey)) {
         const verify = await verifyCaptchaToken(captchaToken, clientIp);
         if (!verify.ok) {
-          console.warn(`[WEB CHAT] Captcha rejected (${verify.reason}) for session ${sessionId}`);
+          console.warn(`[WEB CHAT] Captcha rejected (${verify.reason}) for ${trustedKey}`);
           return res.status(403).json({
             success: false,
             error: 'captcha_required',
             captchaProvider: getProvider(),
           });
         }
-        markSessionVerified(sessionId);
+        markSessionVerified(trustedKey);
       }
 
       const webIdentifier = `web-chat-${sessionId}`;

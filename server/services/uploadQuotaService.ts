@@ -61,15 +61,12 @@ export function checkAndRecordUpload(sessionKey: string, sizeBytes: number): Quo
 
 export function getAnonymousSessionKey(req: { ip?: string; body?: any; headers?: any; session?: any }): string {
   const ip = req.ip || (req.headers && (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()) || 'unknown';
-  // Audit T1: prefer client-supplied stable session ID over the Express session
-  // (which is unstable for anonymous traffic with saveUninitialized=false).
-  // Combined with IP, this still scopes per-user without enabling rotation bypass.
-  const sessionId =
-    (typeof req.body?.sessionId === 'string' && req.body.sessionId) ||
-    (typeof req.headers?.['x-web-chat-session'] === 'string' && req.headers['x-web-chat-session']) ||
-    req.session?.id ||
-    'no-session';
-  return `${ip}::${sessionId}`;
+  // Audit T1 (round-6 hardening): the quota key MUST be server-trusted —
+  // client-supplied session IDs can be rotated freely. Use the express
+  // server-issued session id (cookie-bound) + ip. Client-supplied values
+  // are intentionally ignored here.
+  const serverSession = req.session?.id || 'no-session';
+  return `${ip}::${serverSession}`;
 }
 
 export const QUOTA_LIMITS = { MAX_PHOTOS_PER_SESSION, MAX_BYTES_PER_SESSION, WINDOW_MS };

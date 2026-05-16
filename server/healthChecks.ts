@@ -33,7 +33,7 @@ export async function checkGoogleMapsAPIHealth(): Promise<{
     const apiKey = mapsApiKey || googleApiKey;
 
     // Test geocoding API with a simple request
-    const testAddress = 'Tulsa, OK';
+    const testAddress = process.env.GEOCODE_HEALTHCHECK_ADDRESS || 'United States';
     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
       params: {
         address: testAddress,
