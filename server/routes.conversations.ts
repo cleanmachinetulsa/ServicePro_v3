@@ -2,7 +2,7 @@ import { Express, Request, Response, NextFunction } from 'express';
 import twilio from 'twilio';
 import axios from 'axios';
 import { facebookPageTokens, conversations, messageReactions, messages, customers, appointments } from '@shared/schema';
-import { eq, and, inArray, gte } from 'drizzle-orm';
+import { eq, and, inArray, gte, lte, ne } from 'drizzle-orm';
 import { requireAuth } from './authMiddleware';
 import { normalizePhone } from './phoneValidationMiddleware';
 import {
@@ -926,6 +926,92 @@ export function registerConversationRoutes(app: Express) {
         message: 'Failed to mark messages as read',
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  });
+
+  // Atomic "read up to" receipts (Audit T2): mark every message in a conversation
+  // up to and including :messageId as read by the agent. Idempotent and safe to
+  // call repeatedly with the same or higher message id.
+  app.patch('/api/messages/read-up-to/:messageId', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const messageId = parseInt(req.params.messageId);
+      if (isNaN(messageId)) {
+        return res.status(400).json({ success: false, message: 'Invalid messageId' });
+      }
+
+      // Tenant-scoped lookup: prevents cross-tenant disclosure / mutation
+      const target = await req.tenantDb!
+        .select()
+        .from(messages)
+        .where(req.tenantDb!.withTenantFilter(messages, eq(messages.id, messageId)))
+        .limit(1);
+      if (target.length === 0) {
+        return res.status(404).json({ success: false, message: 'Message not found' });
+      }
+      const conversationId = target[0].conversationId;
+      const readAt = new Date();
+
+      // Mark every customer-authored message in this conversation with id <= messageId
+      // as read, but only if it isn't already marked read. Tenant-scoped.
+      const updated = await req.tenantDb!
+        .update(messages)
+        .set({ deliveryStatus: 'read', readAt })
+        .where(
+          req.tenantDb!.withTenantFilter(
+            messages,
+            and(
+              eq(messages.conversationId, conversationId),
+              eq(messages.sender, 'customer'),
+              lte(messages.id, messageId),
+              ne(messages.deliveryStatus, 'read'),
+            ),
+          ),
+        )
+        .returning({ id: messages.id });
+
+      // Recompute remaining unread (customer messages with id > messageId that
+      // aren't yet read) instead of zeroing — preserves accuracy if a new
+      // customer message arrived between client read and this request.
+      const remaining = await req.tenantDb!
+        .select({ id: messages.id })
+        .from(messages)
+        .where(
+          req.tenantDb!.withTenantFilter(
+            messages,
+            and(
+              eq(messages.conversationId, conversationId),
+              eq(messages.sender, 'customer'),
+              gte(messages.id, messageId + 1),
+              ne(messages.deliveryStatus, 'read'),
+            ),
+          ),
+        );
+
+      await req.tenantDb!
+        .update(conversations)
+        .set({ unreadCount: remaining.length })
+        .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)));
+
+      // Broadcast over WS so other open clients pick it up
+      try {
+        const { emitToRoom } = await import('./websocketService');
+        emitToRoom(`conversation-${conversationId}`, 'messages_read', {
+          conversationId,
+          messageIds: updated.map(u => u.id),
+          reader: { role: 'agent' },
+          readAt: readAt.toISOString(),
+        });
+      } catch (wsErr) {
+        console.warn('[READ-UP-TO] WS emit failed (non-fatal):', wsErr);
+      }
+
+      res.json({
+        success: true,
+        data: { conversationId, upToMessageId: messageId, markedCount: updated.length, readAt },
+      });
+    } catch (error) {
+      console.error('Error in read-up-to:', error);
+      res.status(500).json({ success: false, message: 'Failed to mark read-up-to' });
     }
   });
 

@@ -487,6 +487,11 @@ export default function MessageBubble({
                         alt={attachment.name}
                         className="max-w-full h-auto max-h-64 object-contain"
                         loading="lazy"
+                        onLoad={() => {
+                          // Audit T2: notify ThreadView so pinned-to-bottom auto-scroll
+                          // re-anchors after image dimensions resolve.
+                          window.dispatchEvent(new CustomEvent('thread:image-loaded'));
+                        }}
                       />
                     </a>
                   );
@@ -547,9 +552,23 @@ export default function MessageBubble({
             {isSent && (
               <div className="flex items-center" data-testid={`delivery-status-${message.deliveryStatus || 'sent'}`}>
                 {message.deliveryStatus === 'failed' ? (
-                  <div title="Failed to send" className="text-red-500 dark:text-red-400">
+                  <button
+                    type="button"
+                    title="Failed to send — click to retry"
+                    className="inline-flex items-center gap-1 text-red-500 dark:text-red-400 hover:underline"
+                    onClick={() => {
+                      // Audit T2: re-populate composer with failed text so the agent can retry.
+                      window.dispatchEvent(
+                        new CustomEvent('composer:insert', {
+                          detail: { conversationId: message.conversationId, text: message.content || '' },
+                        }),
+                      );
+                    }}
+                    data-testid={`retry-failed-${message.id}`}
+                  >
                     <MessageSquare className="h-3 w-3" />
-                  </div>
+                    <span className="text-[10px] font-medium">Retry</span>
+                  </button>
                 ) : message.deliveryStatus === 'read' ? (
                   <div title="Read" className="text-blue-500 dark:text-blue-400">
                     <CheckCheck className="h-3 w-3 fill-current" />

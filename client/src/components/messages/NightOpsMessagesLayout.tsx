@@ -44,7 +44,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
 
   return (
     <div className="h-screen w-full bg-gradient-to-br from-slate-950 via-slate-950 to-black text-slate-100 flex flex-col">
-      <header className="flex-shrink-0 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl z-40">
+      <header className="flex-shrink-0 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl z-page-header">
         <div className="mx-auto flex max-w-[1800px] items-center justify-between px-3 py-2 md:px-6 md:py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-cyan-500/15 ring-1 ring-cyan-400/60 shadow-[0_0_18px_rgba(34,211,238,0.5)]">

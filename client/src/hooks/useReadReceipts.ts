@@ -21,154 +21,129 @@ interface UseReadReceiptsOptions {
 interface MessagesReadEvent {
   conversationId: number;
   messageIds: number[];
-  reader: {
-    role: string;
-  };
+  reader: { role: string };
   readAt: string;
 }
 
-export function useReadReceipts({ 
-  conversationId, 
-  messages, 
+/**
+ * Audit T2: Atomic "read up to" receipts.
+ * Tracks the highest visible customer-message id and posts a single
+ * PATCH /api/messages/read-up-to/:messageId per debounce window. The server
+ * marks every message in the conversation up to that id as read in one query.
+ */
+export function useReadReceipts({
+  conversationId,
+  messages,
   readerRole,
   socket,
-  enabled = true 
+  enabled = true,
 }: UseReadReceiptsOptions) {
   const queryClient = useQueryClient();
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const pendingMessageIds = useRef<Set<number>>(new Set());
-  const markAsReadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const highestSeenIdRef = useRef<number>(0);
+  const lastSentHighestRef = useRef<number>(0);
+  const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Mutation to mark messages as read
-  const markMessagesAsRead = useMutation({
-    mutationFn: async (messageIds: number[]) => {
-      const response = await apiRequest(
-        'POST',
-        `/api/conversations/${conversationId}/messages/read`,
-        { messageIds, readerRole }
-      );
-      return response;
+  const markUpTo = useMutation({
+    mutationFn: async (messageId: number) => {
+      return apiRequest('PATCH', `/api/messages/read-up-to/${messageId}`);
     },
     onSuccess: () => {
-      // Invalidate conversation query to refresh message list
       queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
     },
   });
 
-  // Batch mark messages as read (debounced)
-  const batchMarkAsRead = useCallback(() => {
-    if (pendingMessageIds.current.size === 0) return;
+  const flush = useCallback(() => {
+    const id = highestSeenIdRef.current;
+    if (id <= lastSentHighestRef.current) return;
+    lastSentHighestRef.current = id;
+    markUpTo.mutate(id);
+  }, [markUpTo]);
 
-    const idsToMark = Array.from(pendingMessageIds.current);
-    pendingMessageIds.current.clear();
-    
-    markMessagesAsRead.mutate(idsToMark);
-  }, [markMessagesAsRead]);
+  const queueId = useCallback(
+    (messageId: number) => {
+      if (messageId <= highestSeenIdRef.current) return;
+      highestSeenIdRef.current = messageId;
+      if (flushTimeoutRef.current) clearTimeout(flushTimeoutRef.current);
+      flushTimeoutRef.current = setTimeout(flush, 500);
+    },
+    [flush],
+  );
 
-  // Add message to pending queue
-  const queueMessageForRead = useCallback((messageId: number) => {
-    pendingMessageIds.current.add(messageId);
-
-    // Clear existing timeout
-    if (markAsReadTimeoutRef.current) {
-      clearTimeout(markAsReadTimeoutRef.current);
-    }
-
-    // Debounce: wait 500ms before marking as read
-    markAsReadTimeoutRef.current = setTimeout(() => {
-      batchMarkAsRead();
-    }, 500);
-  }, [batchMarkAsRead]);
-
-  // Observer callback when message enters viewport
-  const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const messageId = parseInt(entry.target.getAttribute('data-message-id') || '0');
-        if (messageId > 0) {
-          queueMessageForRead(messageId);
+  const handleIntersection = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const id = parseInt(entry.target.getAttribute('data-message-id') || '0');
+          if (id > 0) queueId(id);
         }
-      }
-    });
-  }, [queueMessageForRead]);
+      });
+    },
+    [queueId],
+  );
 
-  // Setup IntersectionObserver
   useEffect(() => {
     if (!enabled) return;
-
     observerRef.current = new IntersectionObserver(handleIntersection, {
       root: null,
       rootMargin: '0px',
-      threshold: 0.5, // Message must be 50% visible
+      threshold: 0.5,
     });
-
     return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-      if (markAsReadTimeoutRef.current) {
-        clearTimeout(markAsReadTimeoutRef.current);
-      }
+      observerRef.current?.disconnect();
+      if (flushTimeoutRef.current) clearTimeout(flushTimeoutRef.current);
     };
   }, [enabled, handleIntersection]);
 
-  // Listen for WebSocket read receipt events
+  // Reset state when conversation changes
+  useEffect(() => {
+    highestSeenIdRef.current = 0;
+    lastSentHighestRef.current = 0;
+  }, [conversationId]);
+
+  // Real-time read receipt updates from peers
   useEffect(() => {
     if (!socket || !enabled) return;
-
-    const handleMessagesRead = (data: MessagesReadEvent) => {
-      if (data.conversationId === conversationId) {
-        // Update query cache with read status
-        queryClient.setQueryData(
-          [`/api/conversations/${conversationId}`],
-          (oldData: any) => {
-            if (!oldData?.data?.messages) return oldData;
-
-            return {
-              ...oldData,
-              data: {
-                ...oldData.data,
-                messages: oldData.data.messages.map((msg: Message) =>
-                  data.messageIds.includes(msg.id)
-                    ? { ...msg, deliveryStatus: 'read', readAt: data.readAt }
-                    : msg
-                ),
-              },
-            };
-          }
-        );
-      }
+    const handler = (data: MessagesReadEvent) => {
+      if (data.conversationId !== conversationId) return;
+      queryClient.setQueryData([`/api/conversations/${conversationId}`], (oldData: any) => {
+        if (!oldData?.data?.messages) return oldData;
+        return {
+          ...oldData,
+          data: {
+            ...oldData.data,
+            messages: oldData.data.messages.map((msg: Message) =>
+              data.messageIds.includes(msg.id)
+                ? { ...msg, deliveryStatus: 'read', readAt: data.readAt }
+                : msg,
+            ),
+          },
+        };
+      });
     };
-
-    socket.on('messages_read', handleMessagesRead);
-
+    socket.on('messages_read', handler);
     return () => {
-      socket.off('messages_read', handleMessagesRead);
+      socket.off('messages_read', handler);
     };
   }, [socket, conversationId, queryClient, enabled]);
 
-  // Observe eligible messages (only those not authored by the reader)
-  // Note: This is used as a callback ref, so it must NOT return a function
-  const observeMessage = useCallback((element: HTMLElement | null, message: Message) => {
-    if (!element || !observerRef.current || !enabled) return;
-
-    // Only observe messages that:
-    // 1. Weren't authored by the current reader
-    // 2. Haven't been marked as read yet
-    const shouldObserve = 
-      (readerRole === 'agent' && message.sender === 'customer') ||
-      (readerRole === 'customer' && (message.sender === 'agent' || message.sender === 'ai'));
-
-    const notYetRead = message.deliveryStatus !== 'read';
-
-    if (shouldObserve && notYetRead) {
-      observerRef.current.observe(element);
-    }
-    // Cleanup is handled by the IntersectionObserver.disconnect() in the useEffect above
-  }, [readerRole, enabled]);
+  const observeMessage = useCallback(
+    (element: HTMLElement | null, message: Message) => {
+      if (!element || !observerRef.current || !enabled) return;
+      const shouldObserve =
+        (readerRole === 'agent' && message.sender === 'customer') ||
+        (readerRole === 'customer' && (message.sender === 'agent' || message.sender === 'ai'));
+      const notYetRead = message.deliveryStatus !== 'read';
+      if (shouldObserve && notYetRead) {
+        observerRef.current.observe(element);
+      }
+    },
+    [readerRole, enabled],
+  );
 
   return {
     observeMessage,
-    isMarking: markMessagesAsRead.isPending,
+    isMarking: markUpTo.isPending,
   };
 }

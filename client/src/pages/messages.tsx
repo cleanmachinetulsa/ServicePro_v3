@@ -116,6 +116,12 @@ function MessagesPageContent() {
         // Exclude webchat by default in "All" tab unless toggle is enabled
         categoryMatch = includeWebchatInAll ? true : conv.platform !== 'web';
         break;
+      case 'attention':
+        categoryMatch = conv.needsHumanAttention && conv.status !== 'resolved' && conv.status !== 'closed';
+        break;
+      case 'unread':
+        categoryMatch = (conv.unreadCount ?? 0) > 0;
+        break;
       case 'sms': categoryMatch = conv.platform === 'sms'; break;
       case 'web': categoryMatch = conv.platform === 'web'; break;
       case 'facebook': categoryMatch = conv.platform === 'facebook'; break;
@@ -228,7 +234,17 @@ function MessagesPageContent() {
       customerInfo={selectedConversation ? customerInfo : null}
       isLoading={selectedConversation ? isLoadingCustomer : false}
       hasSelectedConversation={!!selectedConversation}
-      onBookAppointment={undefined}
+      onBookAppointment={
+        selectedConv
+          ? () => {
+              const params = new URLSearchParams({
+                phone: selectedConv.customerPhone || '',
+              });
+              if (selectedConv.customerName) params.set('name', selectedConv.customerName);
+              setLocation(`/bookings/new?${params.toString()}`);
+            }
+          : undefined
+      }
     />
   );
 
@@ -322,10 +338,15 @@ function MessagesPageContent() {
           contactFirstName={selectedConv.customerName?.split(' ')[0] || undefined}
           channelType={selectedConv.platform as 'sms' | 'email' | 'facebook' | 'instagram'}
           onMessageGenerated={(messageText) => {
-            navigator.clipboard.writeText(messageText);
+            // Audit T2: insert directly into composer instead of clipboard.
+            window.dispatchEvent(
+              new CustomEvent('composer:insert', {
+                detail: { conversationId: selectedConversation, text: messageText },
+              }),
+            );
             toast({
-              title: 'Availability copied',
-              description: 'Message copied to clipboard - paste it in the message field',
+              title: 'Added to composer',
+              description: 'Availability message inserted — review and send.',
             });
             setShowShareAvailabilityModal(false);
           }}
@@ -334,7 +355,7 @@ function MessagesPageContent() {
 
       <Button
         onClick={() => setShowComposeDialog(true)}
-        className="lg:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full nightops-button-primary shadow-[0_0_20px_rgba(34,211,238,0.5)] z-50"
+        className="lg:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full nightops-button-primary shadow-[0_0_20px_rgba(34,211,238,0.5)] z-page-header"
         size="icon"
         data-testid="fab-compose-mobile"
       >

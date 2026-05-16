@@ -173,10 +173,15 @@ export function NightOpsConversationList({
     }
   }, [selectedId]);
 
-  const filterOptions = [
+  // Audit T2: pinned "Needs you" tab — count of conversations needing human attention
+  const needsYouCount = conversations.filter(
+    (c) => c.needsHumanAttention && c.status !== 'resolved' && c.status !== 'closed',
+  ).length;
+
+  const filterOptions: Array<{ value: string; label: string; badge?: number; pinned?: boolean }> = [
+    { value: 'attention', label: 'Needs you', badge: needsYouCount, pinned: true },
     { value: 'all', label: 'All' },
     { value: 'unread', label: 'Unread' },
-    { value: 'attention', label: 'Attention' },
     { value: 'sms', label: 'SMS' },
     { value: 'web', label: 'Web' },
   ];
@@ -212,14 +217,22 @@ export function NightOpsConversationList({
                 variant="ghost"
                 onClick={() => onFilterChange(f.value)}
                 className={cn(
-                  "text-xs h-7 px-2.5 rounded-full transition-all whitespace-nowrap",
+                  "text-xs h-7 px-2.5 rounded-full transition-all whitespace-nowrap inline-flex items-center gap-1.5",
                   filter === f.value
                     ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60",
+                  f.pinned && f.badge && f.badge > 0 && filter !== f.value &&
+                    "text-rose-300 ring-1 ring-rose-500/40 bg-rose-500/10"
                 )}
                 data-testid={`filter-${f.value}`}
               >
-                {f.label}
+                {f.pinned && <Pin className="h-3 w-3" />}
+                <span>{f.label}</span>
+                {typeof f.badge === 'number' && f.badge > 0 && (
+                  <span className="nightops-badge nightops-badge-danger min-w-[1.1rem] text-center px-1 py-0">
+                    {f.badge}
+                  </span>
+                )}
               </Button>
             ))}
           </div>

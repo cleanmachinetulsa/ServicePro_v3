@@ -63,7 +63,6 @@ import SmartComposeRail from './messages/SmartComposeRail';
 import { useToast } from '@/hooks/use-toast';
 import { useReadReceipts } from '@/hooks/useReadReceipts';
 import { ConversationMetaBar } from './conversations/ConversationMetaBar';
-import { SmartSchedulePanel } from './conversations/SmartSchedulePanel';
 import { HandoffControls } from './conversations/HandoffControls';
 import { HandbackAnalysisPanel } from './conversations/HandbackAnalysisPanel';
 import { ThreadViewSkeleton } from './messages/MessagesSkeletons';
@@ -162,6 +161,43 @@ export default function ThreadView({
   const lastScrollTopRef = useRef(0);         // tracks last scrollTop to detect scroll direction
   const draftRestoredRef = useRef(false); // Track if draft has been restored for current conversation
   const [isAtBottom, setIsAtBottom] = useState(true); // For UI only (Jump to latest button)
+
+  // Audit T2: external panels (ShareAvailabilityModal, retry buttons, AI tools) use
+  // window CustomEvent('composer:insert', { detail: { conversationId?, text } }) to
+  // append/replace text into this conversation's composer instead of writing to clipboard.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || typeof detail.text !== 'string') return;
+      if (detail.conversationId != null && detail.conversationId !== conversationId) return;
+      setMessageInput((prev) => {
+        if (!prev.trim()) return detail.text;
+        return prev.endsWith('\n') ? `${prev}${detail.text}` : `${prev}\n\n${detail.text}`;
+      });
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        const el = textareaRef.current;
+        if (el) el.selectionStart = el.selectionEnd = el.value.length;
+      });
+    };
+    window.addEventListener('composer:insert', handler as EventListener);
+    return () => window.removeEventListener('composer:insert', handler as EventListener);
+  }, [conversationId]);
+
+  // Audit T2: re-pin to bottom after async images finish loading so the
+  // composer rail stays anchored even when MMS images arrive late.
+  useEffect(() => {
+    const onImg = () => {
+      if (!stickToBottomRef.current) return;
+      const el = containerRef.current;
+      if (!el) return;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    };
+    window.addEventListener('thread:image-loaded', onImg);
+    return () => window.removeEventListener('thread:image-loaded', onImg);
+  }, []);
   const queryClient = useQueryClient();
   const { toast} = useToast();
 
@@ -457,6 +493,13 @@ export default function ThreadView({
     });
 
     // Typing indicator events
+    // Audit T2: Twilio delivery status updates — refresh the conversation
+    // so MessageBubble re-renders with the new deliveryStatus on failed/delivered/sent.
+    socket.on('sms_status_update', (data: { messageSid?: string; status?: string }) => {
+      console.log('[THREAD VIEW] sms_status_update:', data);
+      queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
+    });
+
     socket.on('user_typing', (data: { conversationId: number; username: string; isTyping: boolean }) => {
       if (data.conversationId === conversationId && data.username !== currentUser?.username) {
         console.log('[THREAD VIEW] Typing event:', data);
@@ -1222,12 +1265,29 @@ export default function ThreadView({
                   Tomorrow 9 AM
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => {
-                  const nextWeek = new Date();
-                  nextWeek.setDate(nextWeek.getDate() + 7);
-                  nextWeek.setHours(9, 0, 0, 0);
-                  snoozeMutation.mutate(nextWeek.toISOString());
+                  // Next Monday at 9am
+                  const nextMon = new Date();
+                  const day = nextMon.getDay(); // 0=Sun..6=Sat
+                  const daysUntilMon = ((1 + 7 - day) % 7) || 7;
+                  nextMon.setDate(nextMon.getDate() + daysUntilMon);
+                  nextMon.setHours(9, 0, 0, 0);
+                  snoozeMutation.mutate(nextMon.toISOString());
                 }}>
-                  Next week
+                  Next Monday
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  // Custom: prompt for a datetime; minimal but functional
+                  const def = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
+                  const input = window.prompt('Snooze until (YYYY-MM-DDTHH:mm)', def);
+                  if (!input) return;
+                  const d = new Date(input);
+                  if (isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+                    toast({ title: 'Invalid time', description: 'Please pick a future time', variant: 'destructive' });
+                    return;
+                  }
+                  snoozeMutation.mutate(d.toISOString());
+                }}>
+                  Custom…
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
@@ -1715,7 +1775,6 @@ export default function ThreadView({
                       conversationId={conversationId}
                       controlMode={conversation.controlMode}
                     />
-                    <SmartSchedulePanel conversationId={conversationId} />
                     <HandbackAnalysisPanel conversationId={conversationId} />
                   </div>
                 </CollapsibleContent>
@@ -1742,8 +1801,6 @@ export default function ThreadView({
                     conversationId={conversationId}
                     controlMode={conversation.controlMode}
                   />
-                  
-                  <SmartSchedulePanel conversationId={conversationId} />
                   
                   <HandbackAnalysisPanel conversationId={conversationId} />
                 </div>

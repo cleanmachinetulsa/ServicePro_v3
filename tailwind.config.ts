@@ -134,6 +134,14 @@ export default {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      // Single z-index scale for the messaging center (Audit T2)
+      // shell sits below page-header, page-header below modals, modals below toasts.
+      zIndex: {
+        shell: "30",
+        "page-header": "40",
+        modal: "50",
+        toast: "60",
+      },
     },
   },
   plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
