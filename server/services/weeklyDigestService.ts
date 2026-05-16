@@ -1,14 +1,37 @@
 /**
  * Audit T3 Task #23: Weekly owner digest.
  * Aggregates last 7 days of activity per tenant and builds an HTML digest.
+ *
+ * Business metrics included:
+ *  - Messages handled (SMS + MMS in usage rollups)
+ *  - Bookings created (appointments in window)
+ *  - Bookings completed
+ *  - Escalations (conversations flagged needsHumanAttention in window)
+ *  - Money collected (sum of completed appointments' totalPrice)
+ *  - Hours saved (estimated from messages handled at 1.5min each)
+ *  - New conversations
+ *  - Emails sent / voice minutes / AI tokens / estimated platform spend
+ *
+ * Opt-out: stored on tenantConfig.industryConfig.featureFlags.weeklyDigestOptIn
+ * (true = opted out). Also respects WEEKLY_DIGEST_OPT_OUT_TENANTS env CSV.
+ *
+ * Plan gating: requires aiSmsAgent feature (Pro/Elite/Internal). Free/starter
+ * tenants are skipped because the digest depends on AI-handled volume that
+ * those plans don't have.
  */
 
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
-import { tenants, tenantConfig, usageRollupsDaily, appointments, conversations } from '@shared/schema';
-// Audit T3 Task #23: schema uses appointments.scheduledTime and appointments.completed (boolean)
+import {
+  tenants,
+  tenantConfig,
+  usageRollupsDaily,
+  appointments,
+  conversations,
+} from '@shared/schema';
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { sendBusinessEmail } from '../emailService';
+import { hasFeature } from '@shared/features';
 
 export interface WeeklyDigestStats {
   tenantId: string;
@@ -18,7 +41,10 @@ export interface WeeklyDigestStats {
   appointmentsBooked: number;
   appointmentsCompleted: number;
   conversationsStarted: number;
-  smsTotal: number;
+  escalations: number;
+  messagesHandled: number;
+  moneyCollectedUsd: number;
+  hoursSaved: number;
   emailTotal: number;
   voiceMinutes: number;
   aiTokens: number;
@@ -46,17 +72,30 @@ export async function buildWeeklyDigestStats(
       ),
     );
 
-  const smsTotal = rollups.reduce((acc, r) => acc + (r.smsTotal ?? 0) + (r.mmsTotal ?? 0), 0);
+  const messagesHandled = rollups.reduce(
+    (acc, r) => acc + (r.smsTotal ?? 0) + (r.mmsTotal ?? 0),
+    0,
+  );
   const emailTotal = rollups.reduce((acc, r) => acc + (r.emailTotal ?? 0), 0);
-  const voiceMinutes = rollups.reduce((acc, r) => acc + (r.voiceTotalMinutes ?? 0), 0);
-  const aiTokens = rollups.reduce((acc, r) => acc + (r.aiTotalTokens ?? 0), 0);
-  const estimatedSpendUsd = rollups.reduce((acc, r) => acc + Number(r.estimatedCostUsd ?? 0), 0);
+  const voiceMinutes = rollups.reduce(
+    (acc, r) => acc + (r.voiceTotalMinutes ?? 0),
+    0,
+  );
+  const aiTokens = rollups.reduce(
+    (acc, r) => acc + (r.aiTotalTokens ?? 0),
+    0,
+  );
+  const estimatedSpendUsd = rollups.reduce(
+    (acc, r) => acc + Number(r.estimatedCostUsd ?? 0),
+    0,
+  );
+  // Hours saved = ~1.5 min per AI-handled message (avg owner reply time).
+  const hoursSaved = Math.round(((messagesHandled * 1.5) / 60) * 10) / 10;
 
-  // Appointments — booked (created_at) and completed (status='completed').
   let appointmentsBooked = 0;
   let appointmentsCompleted = 0;
+  let moneyCollectedUsd = 0;
   try {
-    // Schema has no createdAt — use scheduledTime in window as a proxy for "booked this week".
     const booked = await tenantDb
       .select({ c: sql<number>`count(*)::int` })
       .from(appointments)
@@ -70,7 +109,11 @@ export async function buildWeeklyDigestStats(
     appointmentsBooked = booked[0]?.c ?? 0;
 
     const completed = await tenantDb
-      .select({ c: sql<number>`count(*)::int` })
+      .select({
+        c: sql<number>`count(*)::int`,
+        // finalTotalCents preferred; fall back to estimatedPrice (dollars).
+        revenueCents: sql<number>`coalesce(sum(coalesce(${appointments.finalTotalCents}, (${appointments.estimatedPrice} * 100)::int, 0)), 0)::int`,
+      })
       .from(appointments)
       .where(
         and(
@@ -81,11 +124,13 @@ export async function buildWeeklyDigestStats(
         ),
       );
     appointmentsCompleted = completed[0]?.c ?? 0;
+    moneyCollectedUsd = Math.round(Number(completed[0]?.revenueCents ?? 0)) / 100;
   } catch (err) {
     console.warn('[WEEKLY DIGEST] appointments query failed:', err);
   }
 
   let conversationsStarted = 0;
+  let escalations = 0;
   try {
     const started = await tenantDb
       .select({ c: sql<number>`count(*)::int` })
@@ -98,6 +143,19 @@ export async function buildWeeklyDigestStats(
         ),
       );
     conversationsStarted = started[0]?.c ?? 0;
+
+    const esc = await tenantDb
+      .select({ c: sql<number>`count(*)::int` })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.tenantId, tenantId),
+          eq(conversations.needsHumanAttention, true),
+          gte(conversations.lastMessageTime, start),
+          lte(conversations.lastMessageTime, end),
+        ),
+      );
+    escalations = esc[0]?.c ?? 0;
   } catch (err) {
     console.warn('[WEEKLY DIGEST] conversations query failed:', err);
   }
@@ -110,7 +168,10 @@ export async function buildWeeklyDigestStats(
     appointmentsBooked,
     appointmentsCompleted,
     conversationsStarted,
-    smsTotal,
+    escalations,
+    messagesHandled,
+    moneyCollectedUsd,
+    hoursSaved,
     emailTotal,
     voiceMinutes,
     aiTokens,
@@ -118,45 +179,53 @@ export async function buildWeeklyDigestStats(
   };
 }
 
-export function renderWeeklyDigestHtml(stats: WeeklyDigestStats): { subject: string; html: string; text: string } {
+export function renderWeeklyDigestHtml(stats: WeeklyDigestStats): {
+  subject: string;
+  html: string;
+  text: string;
+} {
   const subject = `${stats.tenantName} — Your week at a glance`;
   const startStr = stats.windowStart.toLocaleDateString();
   const endStr = stats.windowEnd.toLocaleDateString();
+  const money = `$${stats.moneyCollectedUsd.toFixed(2)}`;
   const spend = `$${stats.estimatedSpendUsd.toFixed(2)}`;
+  const rows: Array<[string, string | number]> = [
+    ['Messages handled', stats.messagesHandled],
+    ['Bookings created', stats.appointmentsBooked],
+    ['Bookings completed', stats.appointmentsCompleted],
+    ['Escalations to you', stats.escalations],
+    ['Money collected', money],
+    ['Hours saved (est.)', stats.hoursSaved],
+    ['New conversations', stats.conversationsStarted],
+    ['Emails sent', stats.emailTotal],
+    ['Voice minutes', stats.voiceMinutes],
+    ['AI tokens used', stats.aiTokens.toLocaleString()],
+    ['Estimated platform spend', spend],
+  ];
   const text = [
     `${stats.tenantName} — weekly digest (${startStr} → ${endStr})`,
-    ``,
-    `Appointments booked:   ${stats.appointmentsBooked}`,
-    `Appointments done:     ${stats.appointmentsCompleted}`,
-    `New conversations:     ${stats.conversationsStarted}`,
-    `SMS sent/received:     ${stats.smsTotal}`,
-    `Emails sent:           ${stats.emailTotal}`,
-    `Voice minutes:         ${stats.voiceMinutes}`,
-    `AI tokens used:        ${stats.aiTokens.toLocaleString()}`,
-    `Estimated spend:       ${spend}`,
-    ``,
-    `— ServicePro`,
+    '',
+    ...rows.map(([k, v]) => `${k.padEnd(28)} ${v}`),
+    '',
+    `Manage digest: tenantConfig.industryConfig.featureFlags.weeklyDigestOptIn=true to opt out.`,
+    '— ServicePro',
   ].join('\n');
   const html = `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;color:#111">
     <h2 style="margin:0 0 4px">Your week at a glance</h2>
     <div style="color:#666;font-size:12px;margin-bottom:16px">${startStr} → ${endStr}</div>
     <table style="width:100%;border-collapse:collapse">
-      ${[
-        ['Appointments booked', stats.appointmentsBooked],
-        ['Appointments completed', stats.appointmentsCompleted],
-        ['New conversations', stats.conversationsStarted],
-        ['SMS messages', stats.smsTotal],
-        ['Emails sent', stats.emailTotal],
-        ['Voice minutes', stats.voiceMinutes],
-        ['AI tokens', stats.aiTokens.toLocaleString()],
-        ['Estimated spend', spend],
-      ].map(
-        ([k, v]) =>
-          `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#666">${k}</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600">${v}</td></tr>`,
-      ).join('')}
+      ${rows
+        .map(
+          ([k, v]) =>
+            `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#666">${k}</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:600">${v}</td></tr>`,
+        )
+        .join('')}
     </table>
-    <p style="color:#888;font-size:11px;margin-top:24px">You're receiving this because weekly digests are enabled for ${stats.tenantName}. Reply to opt out.</p>
+    <p style="color:#888;font-size:11px;margin-top:24px">
+      You're receiving this because weekly digests are enabled for ${stats.tenantName}.
+      Set <code>weeklyDigestOptIn=true</code> in your business settings to stop these emails.
+    </p>
   </div>`;
   return { subject, html, text };
 }
@@ -164,6 +233,8 @@ export function renderWeeklyDigestHtml(stats: WeeklyDigestStats): { subject: str
 export interface DigestOptInResolver {
   isOptedOut(tenantId: string): Promise<boolean>;
   ownerEmail(tenantId: string): Promise<string | null>;
+  tenantTimezone(tenantId: string): Promise<string>;
+  planTier(tenantId: string): Promise<string>;
 }
 
 const envOptOutSet = new Set(
@@ -175,7 +246,19 @@ const envOptOutSet = new Set(
 
 export const defaultOptInResolver: DigestOptInResolver = {
   async isOptedOut(tenantId: string) {
-    return envOptOutSet.has(tenantId);
+    if (envOptOutSet.has(tenantId)) return true;
+    try {
+      const rootDb = wrapTenantDb(db, 'root');
+      const [cfg] = await rootDb
+        .select({ industryConfig: tenantConfig.industryConfig })
+        .from(tenantConfig)
+        .where(eq(tenantConfig.tenantId, tenantId))
+        .limit(1);
+      const flag = (cfg?.industryConfig as any)?.featureFlags?.weeklyDigestOptIn;
+      return flag === true;
+    } catch {
+      return false;
+    }
   },
   async ownerEmail(tenantId: string) {
     try {
@@ -190,6 +273,32 @@ export const defaultOptInResolver: DigestOptInResolver = {
       return null;
     }
   },
+  async tenantTimezone(tenantId: string) {
+    try {
+      const tenantDb = wrapTenantDb(db, tenantId);
+      const { businessSettings } = await import('@shared/schema');
+      const [row] = await tenantDb
+        .select({ tz: businessSettings.timezone })
+        .from(businessSettings)
+        .limit(1);
+      return row?.tz || 'America/Chicago';
+    } catch {
+      return 'America/Chicago';
+    }
+  },
+  async planTier(tenantId: string) {
+    try {
+      const rootDb = wrapTenantDb(db, 'root');
+      const [t] = await rootDb
+        .select({ tier: tenants.planTier })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+      return t?.tier || 'starter';
+    } catch {
+      return 'starter';
+    }
+  },
 };
 
 export async function sendWeeklyDigestForTenant(
@@ -198,6 +307,10 @@ export async function sendWeeklyDigestForTenant(
   resolver: DigestOptInResolver = defaultOptInResolver,
   now: Date = new Date(),
 ): Promise<{ sent: boolean; reason?: string; stats?: WeeklyDigestStats }> {
+  const planTier = await resolver.planTier(tenantId);
+  if (!hasFeature({ planTier }, 'aiSmsAgent')) {
+    return { sent: false, reason: 'plan_gated' };
+  }
   if (await resolver.isOptedOut(tenantId)) {
     return { sent: false, reason: 'opted_out' };
   }
@@ -212,21 +325,62 @@ export async function sendWeeklyDigestForTenant(
   return { sent: true, stats };
 }
 
-export async function runWeeklyDigestForAllTenants(now: Date = new Date()): Promise<{
-  attempted: number;
-  sent: number;
-}> {
+/**
+ * Helper used by the cron: checks if "now" is Monday 08:xx in the tenant's
+ * business timezone. The cron iterates tenants and only fires for those whose
+ * local time matches the window.
+ */
+export function isMondayMorningInTimezone(timezone: string, now: Date = new Date()): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'short',
+      hour: 'numeric',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(now);
+    const weekday = parts.find((p) => p.type === 'weekday')?.value;
+    const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? -1);
+    return weekday === 'Mon' && hour === 8;
+  } catch {
+    return false;
+  }
+}
+
+export async function runWeeklyDigestForAllTenants(
+  now: Date = new Date(),
+  options: { respectTenantTimezone?: boolean } = {},
+): Promise<{ attempted: number; sent: number; skipped: number }> {
   const rootDb = wrapTenantDb(db, 'root');
-  const rows = await rootDb.select({ id: tenants.id, name: tenants.name }).from(tenants);
+  const rows = await rootDb
+    .select({ id: tenants.id, name: tenants.name })
+    .from(tenants);
   let sent = 0;
+  let skipped = 0;
+  let attempted = 0;
   for (const t of rows) {
     try {
-      const result = await sendWeeklyDigestForTenant(t.id, t.name, defaultOptInResolver, now);
+      if (options.respectTenantTimezone) {
+        const tz = await defaultOptInResolver.tenantTimezone(t.id);
+        if (!isMondayMorningInTimezone(tz, now)) {
+          skipped++;
+          continue;
+        }
+      }
+      attempted++;
+      const result = await sendWeeklyDigestForTenant(
+        t.id,
+        t.name,
+        defaultOptInResolver,
+        now,
+      );
       if (result.sent) sent++;
     } catch (err) {
       console.error(`[WEEKLY DIGEST] tenant=${t.id} failed:`, err);
     }
   }
-  console.log(`[WEEKLY DIGEST] attempted=${rows.length} sent=${sent}`);
-  return { attempted: rows.length, sent };
+  console.log(
+    `[WEEKLY DIGEST] attempted=${attempted} sent=${sent} skipped=${skipped}`,
+  );
+  return { attempted, sent, skipped };
 }

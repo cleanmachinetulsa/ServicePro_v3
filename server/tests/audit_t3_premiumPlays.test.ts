@@ -33,13 +33,17 @@ describe('Audit T3 Task #23 — premium product plays', () => {
   });
 
   describe('aiToolMetadata tracker', () => {
-    it('records, peeks, takes (clears) tool names per conversation', async () => {
-      const { recordToolCallForConversation, takeToolCallsForConversation, peekToolCallsForConversation } =
+    it('records, peeks, takes (clears) tool calls with args per conversation', async () => {
+      const { recordToolCallForConversation, takeToolCallsForConversation, peekToolCallsForConversation, _resetToolMetadata } =
         await import('../services/aiToolMetadata');
-      recordToolCallForConversation(424242, 'get_available_slots');
+      _resetToolMetadata();
+      recordToolCallForConversation(424242, 'get_available_slots', { date: '2026-05-16' });
       recordToolCallForConversation(424242, 'create_appointment');
-      expect(peekToolCallsForConversation(424242)).toEqual(['get_available_slots', 'create_appointment']);
-      expect(takeToolCallsForConversation(424242)).toEqual(['get_available_slots', 'create_appointment']);
+      const peeked = peekToolCallsForConversation(424242);
+      expect(peeked.map((c) => c.name)).toEqual(['get_available_slots', 'create_appointment']);
+      expect(peeked[0].args).toEqual({ date: '2026-05-16' });
+      const taken = takeToolCallsForConversation(424242);
+      expect(taken.map((c) => c.name)).toEqual(['get_available_slots', 'create_appointment']);
       expect(takeToolCallsForConversation(424242)).toEqual([]);
     });
 
@@ -62,31 +66,37 @@ describe('Audit T3 Task #23 — premium product plays', () => {
         appointmentsBooked: 12,
         appointmentsCompleted: 9,
         conversationsStarted: 25,
-        smsTotal: 110,
+        escalations: 3,
+        messagesHandled: 110,
+        moneyCollectedUsd: 875.5,
+        hoursSaved: 2.8,
         emailTotal: 4,
         voiceMinutes: 7,
         aiTokens: 33000,
         estimatedSpendUsd: 12.34,
       });
       expect(html.subject).toContain('Test Co');
-      expect(html.html).toContain('12');
+      expect(html.html).toContain('Messages handled');
+      expect(html.html).toContain('Bookings created');
+      expect(html.html).toContain('Escalations to you');
+      expect(html.html).toContain('Money collected');
+      expect(html.html).toContain('$875.50');
       expect(html.html).toContain('33,000');
       expect(html.text).toContain('$12.34');
     });
   });
 
-  describe('weeklyDigestCron.shouldRunNow', () => {
-    it('only fires on Monday 8am tenant tz and dedupes same day', async () => {
-      const mod = await import('../services/weeklyDigestCron');
-      const fn = mod._internals.shouldRunNow;
-      // Monday 2026-05-11 08:30 America/Chicago === 13:30 UTC
-      const monday8am = new Date('2026-05-11T13:30:00Z');
-      expect(fn(monday8am)).toBe(true);
-      // Second call same hour same day -> dedupes
-      expect(fn(monday8am)).toBe(false);
-      // Tuesday same hour
-      const tues = new Date('2026-05-12T13:30:00Z');
-      expect(fn(tues)).toBe(false);
+  describe('weeklyDigestService.isMondayMorningInTimezone', () => {
+    it('returns true only on Monday 8am in the given tenant timezone', async () => {
+      const { isMondayMorningInTimezone } = await import('../services/weeklyDigestService');
+      // Monday 2026-05-11 13:30 UTC === 08:30 America/Chicago (CDT, UTC-5)
+      expect(isMondayMorningInTimezone('America/Chicago', new Date('2026-05-11T13:30:00Z'))).toBe(true);
+      // Tuesday same local hour
+      expect(isMondayMorningInTimezone('America/Chicago', new Date('2026-05-12T13:30:00Z'))).toBe(false);
+      // Monday but 7am local (12:30 UTC)
+      expect(isMondayMorningInTimezone('America/Chicago', new Date('2026-05-11T12:30:00Z'))).toBe(false);
+      // Same UTC instant but a different tz where it's Monday 9am — should fail (only 8am hits)
+      expect(isMondayMorningInTimezone('America/New_York', new Date('2026-05-11T13:30:00Z'))).toBe(false);
     });
   });
 

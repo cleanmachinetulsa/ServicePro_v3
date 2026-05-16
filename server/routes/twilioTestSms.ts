@@ -193,8 +193,17 @@ async function addMessage(
   if (!finalMetadata && sender === 'ai') {
     try {
       const { takeToolCallsForConversation } = await import('../services/aiToolMetadata');
-      const tools = takeToolCallsForConversation(conversationId);
-      if (tools.length > 0) finalMetadata = { toolCalls: tools };
+      const calls = takeToolCallsForConversation(conversationId);
+      if (calls.length > 0) {
+        // Audit T3 Task #23: store both rich (with args) and simple (names-only)
+        // so the message pill and the replay page can both render.
+        finalMetadata = {
+          toolCalls: calls.map((c) => c.name),
+          toolCallDetails: calls,
+          modelOutput: content,
+          finalSentText: content,
+        };
+      }
     } catch { /* non-fatal */ }
   }
 

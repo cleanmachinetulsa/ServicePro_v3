@@ -1,14 +1,21 @@
 /**
  * Audit T3 Task #23: Public per-tenant /status endpoint.
  * Stripe-style: SMS uptime over last 24h, last delivery timestamp, average
- * booking lead time in hours, 7-day weather risk placeholder. 60s in-memory
- * cache per tenant.
+ * booking lead time in hours, real 7-day weather risk from Open-Meteo, 60s
+ * in-memory cache per tenant. Resolves tenants by id, subdomain, or
+ * customDomain (if configured via tenantConfig.websiteUrl).
  */
 
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
-import { tenants, messages, appointments } from '@shared/schema';
+import {
+  tenants,
+  tenantConfig,
+  messages,
+  appointments,
+  businessSettings,
+} from '@shared/schema';
 import { and, eq, gte, sql } from 'drizzle-orm';
 
 const router = Router();
@@ -28,12 +35,51 @@ const cache = new Map<string, { at: number; payload: StatusPayload }>();
 
 async function loadTenantBySlug(slug: string): Promise<{ id: string; name: string } | null> {
   const rootDb = wrapTenantDb(db, 'root');
-  const [byId] = await rootDb.select({ id: tenants.id, name: tenants.name })
+  const [byId] = await rootDb
+    .select({ id: tenants.id, name: tenants.name })
     .from(tenants).where(eq(tenants.id, slug)).limit(1);
   if (byId) return byId;
-  const [bySub] = await rootDb.select({ id: tenants.id, name: tenants.name })
+  const [bySub] = await rootDb
+    .select({ id: tenants.id, name: tenants.name })
     .from(tenants).where(eq(tenants.subdomain, slug)).limit(1);
-  return bySub ?? null;
+  if (bySub) return bySub;
+  // Custom domain via tenantConfig.websiteUrl
+  const [byDomain] = await rootDb
+    .select({ id: tenants.id, name: tenants.name })
+    .from(tenants)
+    .innerJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
+    .where(sql`lower(${tenantConfig.websiteUrl}) like ${'%' + slug + '%'}`)
+    .limit(1);
+  return byDomain ?? null;
+}
+
+async function computeWeatherRisk7d(tenantId: string): Promise<'unknown' | 'low' | 'medium' | 'high'> {
+  try {
+    const tenantDb = wrapTenantDb(db, tenantId);
+    const [bs] = await tenantDb
+      .select({
+        lat: businessSettings.serviceAreaCenterLat,
+        lng: businessSettings.serviceAreaCenterLng,
+      })
+      .from(businessSettings).limit(1);
+    if (!bs?.lat || !bs?.lng) return 'unknown';
+    const { getDailyWeatherSummary } = await import('./weatherService');
+    const summary = await getDailyWeatherSummary(Number(bs.lat), Number(bs.lng), 7);
+    if (!summary || !Array.isArray(summary) || summary.length === 0) return 'unknown';
+    let highRiskDays = 0;
+    let mediumRiskDays = 0;
+    for (const day of summary) {
+      const rain = Number(day.chanceOfRain ?? 0);
+      if (rain >= 70) highRiskDays++;
+      else if (rain >= 40) mediumRiskDays++;
+    }
+    if (highRiskDays >= 2) return 'high';
+    if (highRiskDays >= 1 || mediumRiskDays >= 3) return 'medium';
+    return 'low';
+  } catch (err) {
+    console.warn('[STATUS] weather risk computation failed:', err);
+    return 'unknown';
+  }
 }
 
 export async function buildStatusPayload(tenantId: string, tenantName: string): Promise<StatusPayload> {
@@ -79,13 +125,15 @@ export async function buildStatusPayload(tenantId: string, tenantName: string): 
     console.warn('[STATUS] lead time query failed:', err);
   }
 
+  const weatherRisk7d = await computeWeatherRisk7d(tenantId);
+
   return {
     tenantId,
     tenantName,
     smsUptimePct,
     lastDeliveryAt,
     bookingLeadTimeHours,
-    weatherRisk7d: 'unknown',
+    weatherRisk7d,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -93,7 +141,7 @@ export async function buildStatusPayload(tenantId: string, tenantName: string): 
 router.get('/:tenantSlug', async (req: Request, res: Response) => {
   try {
     const slug = String(req.params.tenantSlug || '').toLowerCase();
-    if (!slug || !/^[a-z0-9-]{1,100}$/.test(slug)) {
+    if (!slug || !/^[a-z0-9.-]{1,150}$/.test(slug)) {
       return res.status(400).json({ error: 'invalid tenant slug' });
     }
     const cached = cache.get(slug);

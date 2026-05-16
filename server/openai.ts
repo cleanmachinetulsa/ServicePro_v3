@@ -654,7 +654,7 @@ async function executeFunctionCall(
   // assistant message is written.
   try {
     const { recordToolCallForConversation } = await import('./services/aiToolMetadata');
-    recordToolCallForConversation(conversationIdHint, functionName);
+    recordToolCallForConversation(conversationIdHint, functionName, args as Record<string, unknown>);
   } catch { /* non-fatal */ }
   // SECURITY: Block privileged functions for web chat users
   if (isWebChat && !WEB_SAFE_FUNCTION_NAMES.includes(functionName)) {

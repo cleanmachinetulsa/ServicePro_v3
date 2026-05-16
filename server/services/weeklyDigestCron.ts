@@ -1,42 +1,53 @@
 /**
  * Audit T3 Task #23: Weekly digest cron.
- * Runs hourly; only fires once on Monday between 08:00 and 08:59 tenant time
- * (currently the platform timezone). Gated by PLATFORM_BG_JOBS_ENABLED=1.
+ * Runs hourly; per-tenant timezone aware. The platform background loop iterates
+ * every tenant and fires the digest for each tenant whose LOCAL time is
+ * Monday 08:xx. Gated by PLATFORM_BG_JOBS_ENABLED=1. De-dupes per tenant per
+ * local date so a tenant can't be re-emailed within the same Monday.
  */
 
-import { runWeeklyDigestForAllTenants } from './weeklyDigestService';
+import {
+  isMondayMorningInTimezone,
+  sendWeeklyDigestForTenant,
+  defaultOptInResolver,
+} from './weeklyDigestService';
+import { db } from '../db';
+import { wrapTenantDb } from '../tenantDb';
+import { tenants } from '@shared/schema';
 
 const HOUR_MS = 60 * 60 * 1000;
 let timer: NodeJS.Timeout | null = null;
-let lastRunDate: string | null = null;
+const lastRunByTenant: Map<string, string> = new Map();
 
-function shouldRunNow(now: Date = new Date()): boolean {
-  // Use America/Chicago as platform default (matches replit.md timezone system).
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    weekday: 'short',
-    hour: 'numeric',
-    hour12: false,
+function localDateKey(timezone: string, now: Date): string {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   });
-  const parts = fmt.formatToParts(now);
-  const weekday = parts.find((p) => p.type === 'weekday')?.value;
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? -1);
-  const dateKey = `${parts.find((p) => p.type === 'year')?.value}-${parts.find((p) => p.type === 'month')?.value}-${parts.find((p) => p.type === 'day')?.value}`;
-  if (weekday !== 'Mon') return false;
-  if (hour !== 8) return false;
-  if (lastRunDate === dateKey) return false;
-  lastRunDate = dateKey;
-  return true;
+  return fmt.format(now); // YYYY-MM-DD
 }
 
-async function tick() {
+async function tick(now: Date = new Date()): Promise<void> {
   try {
-    if (!shouldRunNow()) return;
-    console.log('[WEEKLY DIGEST CRON] firing run');
-    await runWeeklyDigestForAllTenants();
+    const rootDb = wrapTenantDb(db, 'root');
+    const rows = await rootDb
+      .select({ id: tenants.id, name: tenants.name })
+      .from(tenants);
+    for (const t of rows) {
+      try {
+        const tz = await defaultOptInResolver.tenantTimezone(t.id);
+        if (!isMondayMorningInTimezone(tz, now)) continue;
+        const key = `${t.id}|${localDateKey(tz, now)}`;
+        if (lastRunByTenant.get(t.id) === key) continue;
+        lastRunByTenant.set(t.id, key);
+        console.log(`[WEEKLY DIGEST CRON] firing tenant=${t.id} tz=${tz}`);
+        await sendWeeklyDigestForTenant(t.id, t.name, defaultOptInResolver, now);
+      } catch (err) {
+        console.error(`[WEEKLY DIGEST CRON] tenant=${t.id} error:`, err);
+      }
+    }
   } catch (err) {
     console.error('[WEEKLY DIGEST CRON] tick error:', err);
   }
@@ -48,9 +59,8 @@ export function startWeeklyDigestCron(): void {
     return;
   }
   if (timer) return;
-  console.log('[WEEKLY DIGEST CRON] starting; hourly check, fires Mondays 8am America/Chicago');
+  console.log('[WEEKLY DIGEST CRON] starting; hourly per-tenant tz check');
   timer = setInterval(() => void tick(), HOUR_MS);
-  // Kick once on boot in case we missed the window minutes ago.
   void tick();
 }
 
@@ -61,5 +71,4 @@ export function stopWeeklyDigestCron(): void {
   }
 }
 
-// Test seam
-export const _internals = { shouldRunNow };
+export const _internals = { tick, lastRunByTenant, isMondayMorningInTimezone };

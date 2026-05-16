@@ -4,12 +4,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AiToolPill } from "@/components/AiToolPill";
 
+interface ReplayToolCall {
+  name: string;
+  args?: Record<string, unknown> | null;
+  result?: unknown;
+}
 interface ReplayMessage {
   id: number;
   conversationId: number;
   content: string;
+  finalSentText: string;
+  modelOutput: string;
   timestamp: string | null;
-  toolCalls: string[];
+  toolCalls: ReplayToolCall[];
+  toolNames: string[];
 }
 
 interface ReplayPayload {
@@ -22,7 +30,8 @@ export default function AiReplayPage() {
   const params = useParams<{ threadId: string }>();
   const threadId = params.threadId;
   const { data, isLoading, error } = useQuery<ReplayPayload>({
-    queryKey: ["/api/admin/ai-replay", threadId],
+    queryKey: [`/api/admin/ai-replay/${threadId}`],
+    enabled: !!threadId,
   });
 
   return (
@@ -58,9 +67,28 @@ export default function AiReplayPage() {
                     <span>conv #{m.conversationId} · msg #{m.id}</span>
                     <span>{m.timestamp ? new Date(m.timestamp).toLocaleString() : "—"}</span>
                   </div>
-                  <div className="whitespace-pre-wrap text-sm">{m.content}</div>
+                  <div className="whitespace-pre-wrap text-sm">{m.finalSentText || m.content}</div>
+                  {m.modelOutput && m.modelOutput !== (m.finalSentText || m.content) && (
+                    <details className="mt-2 text-xs">
+                      <summary className="cursor-pointer text-muted-foreground">Raw model output</summary>
+                      <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2">{m.modelOutput}</pre>
+                    </details>
+                  )}
+                  {m.toolNames.length > 0 && (
+                    <div className="mt-2"><AiToolPill toolNames={m.toolNames} /></div>
+                  )}
                   {m.toolCalls.length > 0 && (
-                    <div className="mt-2"><AiToolPill toolNames={m.toolCalls} /></div>
+                    <details className="mt-2 text-xs">
+                      <summary className="cursor-pointer text-muted-foreground">Tool arguments</summary>
+                      <ul className="mt-1 space-y-1">
+                        {m.toolCalls.map((tc, i) => (
+                          <li key={i} className="rounded bg-muted p-2">
+                            <div className="font-mono">{tc.name}</div>
+                            {tc.args && <pre className="mt-1 whitespace-pre-wrap">{JSON.stringify(tc.args, null, 2)}</pre>}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
                   )}
                 </li>
               ))}
