@@ -5,7 +5,19 @@ import HomePage from "@/pages/home";
 function isCleanMachineDomain(): boolean {
   const host = window.location.hostname.toLowerCase();
   const cleanMachineDomain = CLEAN_MACHINE_DOMAIN.toLowerCase();
-  return host === cleanMachineDomain || host === `www.${cleanMachineDomain}`;
+  if (host === cleanMachineDomain || host === `www.${cleanMachineDomain}`) {
+    return true;
+  }
+  // Preview/dev hostnames (Replit) also render the Clean Machine HomePage
+  // so the owner can preview their actual custom homepage from the workspace
+  // preview pane instead of the ServicePro marketing LandingPage.
+  if (host.endsWith('.replit.dev') || host.endsWith('.replit.app') || host.endsWith('.repl.co')) {
+    return true;
+  }
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -25,7 +37,12 @@ function isCleanMachineDomain(): boolean {
  *    → Content is editable via /admin/homepage-editor
  *    → NEVER route this to PublicSite or /site/cleanmachine
  * 
- * 2. All other domains (servicepro.replit.app, localhost, etc.)
+ * 2. Replit preview/dev hostnames (*.replit.dev, *.replit.app, *.repl.co)
+ *    and localhost / 127.0.0.1
+ *    → Renders: HomePage so the owner can preview the real Clean Machine
+ *      homepage from the workspace preview pane.
+ *
+ * 3. All other domains
  *    → Renders: LandingPage (the ServicePro marketing page)
  * 
  * WHY THIS MATTERS:
