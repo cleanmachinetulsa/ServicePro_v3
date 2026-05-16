@@ -89,7 +89,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
           layout
           className={cn(
             "nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden",
-            "lg:w-[26%] min-w-[280px]"
+            "lg:w-[32%] min-w-[300px]"
           )}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -113,10 +113,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
 
         <motion.section
           layout
-          className={cn(
-            "nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden",
-            showContextPanel ? "lg:w-[46%]" : "lg:w-[74%]"
-          )}
+          className="nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden lg:flex-1"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: "easeOut" }}
@@ -129,53 +126,42 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
                 SMS · Voice · AI
               </span>
             </div>
-            {hasSelectedConversation && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowMobileContext(!showMobileContext)}
-                className="lg:hidden text-slate-400 hover:text-cyan-300"
-              >
-                <User2 className="h-4 w-4" />
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {hasSelectedConversation && (
+                <Sheet open={showMobileContext} onOpenChange={setShowMobileContext}>
+                  <SheetTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-400 hover:text-cyan-300"
+                      data-testid="button-show-context-desktop"
+                      title="Customer profile"
+                    >
+                      <User2 className="h-4 w-4" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent
+                    side="right"
+                    className="w-[420px] max-w-[90vw] bg-slate-950 border-slate-800 p-0 z-modal"
+                  >
+                    <SheetHeader className="px-4 py-3 border-b border-slate-700/60">
+                      <SheetTitle className="nightops-section-title text-slate-100">
+                        Customer Context
+                      </SheetTitle>
+                    </SheetHeader>
+                    <div className="nightops-scroll overflow-y-auto h-[calc(100vh-80px)] px-4 py-3">
+                      {contextPanel}
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              )}
+            </div>
           </div>
 
           <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
             {threadView}
           </div>
         </motion.section>
-
-        <AnimatePresence>
-          {showContextPanel && (
-            <motion.section
-              layout
-              className={cn(
-                "nightops-panel nightops-scroll relative flex w-full flex-col overflow-hidden",
-                "lg:w-[28%] min-w-[280px]"
-              )}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              data-testid="night-ops-context-panel-wrapper"
-            >
-              <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
-                <div>
-                  <div className="nightops-section-title">Context</div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <User2 className="h-3.5 w-3.5 text-slate-300" />
-                    <span>Customer · Vehicle · Jobs</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="nightops-scroll flex-1 overflow-y-auto px-4 py-3">
-                {contextPanel}
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
       </main>
 
       <div className="lg:hidden flex-1 flex flex-col min-h-0">
