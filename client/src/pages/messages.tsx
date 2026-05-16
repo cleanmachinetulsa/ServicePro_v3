@@ -298,7 +298,8 @@ function MessagesPageContent() {
   const siblingMap = useMemo(() => {
     const m = new Map<number, number[]>();
     for (const row of sortedConversations) {
-      m.set(row.id, (row as any).siblingConversationIds || [row.id]);
+      const sibs = (row as Conversation & { siblingConversationIds?: number[] }).siblingConversationIds;
+      m.set(row.id, sibs && sibs.length > 0 ? sibs : [row.id]);
     }
     return m;
   }, [sortedConversations]);

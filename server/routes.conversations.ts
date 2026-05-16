@@ -19,6 +19,23 @@ import {
   closeConversation,
 } from './conversationService';
 
+// Audit T3 Task #21 — Shared types for channel-switch + bulk-action payloads.
+type ChannelKey = 'sms' | 'web' | 'email' | 'facebook' | 'instagram';
+const CHANNEL_LABEL: Record<ChannelKey, string> = {
+  sms: 'text message',
+  web: 'web chat',
+  email: 'email',
+  facebook: 'Facebook Messenger',
+  instagram: 'Instagram DM',
+};
+const labelFor = (c: ChannelKey): string => CHANNEL_LABEL[c] ?? c;
+
+type BulkAction = 'mark-read' | 'snooze' | 'resolve' | 'archive' | 'assign';
+interface BulkActionPayload {
+  snoozeUntil?: string;
+  agentUsername?: string;
+}
+
 /**
  * Register conversation monitoring routes
  */
@@ -251,16 +268,6 @@ export function registerConversationRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Already on that channel' });
       }
 
-      const handoffNote = `↪️ Switched channel: continuing on ${to.toUpperCase()}.`;
-      try {
-        await addMessage(req.tenantDb!, conversationId, handoffNote, 'agent', curr.platform as any, {
-          type: 'channel_switch',
-          to,
-        });
-      } catch (e) {
-        console.warn('[SWITCH-CHANNEL] handoff note insert failed (non-blocking):', e);
-      }
-
       if (!curr.customerPhone) {
         return res.status(400).json({
           success: false,
@@ -268,11 +275,46 @@ export function registerConversationRoutes(app: Express) {
         });
       }
 
+      const sourcePlatform = curr.platform as ChannelKey;
+      const targetPlatform = to as ChannelKey;
+      const handoffText = `We're going to continue this conversation over ${labelFor(targetPlatform)}. Talk soon!`;
+
+      // 1) Record the handoff as an outbound agent message on the source
+      // conversation so the timeline reflects it on every channel.
+      try {
+        await addMessage(req.tenantDb!, conversationId, handoffText, 'agent', sourcePlatform, {
+          type: 'channel_switch',
+          to: targetPlatform,
+        });
+      } catch (e) {
+        console.warn('[SWITCH-CHANNEL] source handoff note insert failed (non-blocking):', e);
+      }
+
+      // 2) For SMS source, actually deliver the handoff to the customer via
+      // Twilio so they see a real text before we move the conversation. For
+      // other live-message channels we rely on the in-thread agent message
+      // emitted above (web chat is delivered to the open socket).
+      if (sourcePlatform === 'sms') {
+        try {
+          const { sendSMS } = await import('./notifications');
+          await sendSMS(
+            req.tenantDb!,
+            curr.customerPhone,
+            handoffText,
+            conversationId,
+            undefined,
+            curr.phoneLineId ?? undefined,
+          );
+        } catch (e) {
+          console.warn('[SWITCH-CHANNEL] outbound SMS handoff failed (non-blocking):', e);
+        }
+      }
+
       const target = await getOrCreateConversation(
         req.tenantDb!,
         curr.customerPhone,
         curr.customerName,
-        to,
+        targetPlatform,
         undefined,
         undefined,
         curr.emailAddress || undefined,
@@ -283,16 +325,35 @@ export function registerConversationRoutes(app: Express) {
         await addMessage(
           req.tenantDb!,
           targetId,
-          `↩️ Continued from ${String(curr.platform).toUpperCase()}.`,
+          `↩️ Continued from ${sourcePlatform.toUpperCase()}.`,
           'agent',
-          to as any,
-          { type: 'channel_switch', from: curr.platform },
+          targetPlatform,
+          { type: 'channel_switch', from: sourcePlatform },
         );
       } catch (e) {
         console.warn('[SWITCH-CHANNEL] target note insert failed (non-blocking):', e);
       }
 
-      res.json({ success: true, data: { targetConversationId: targetId, platform: to } });
+      // 3) Persist the preferred channel on both the source and target
+      // conversations so future agent surfaces (and downstream callers) know
+      // which channel the customer was last steered to. We piggy-back on the
+      // existing behaviorSettings JSONB column to avoid a schema migration.
+      try {
+        const existing = (curr.behaviorSettings ?? {}) as Record<string, unknown>;
+        const updatedSettings = { ...existing, preferredChannel: targetPlatform };
+        await req.tenantDb!
+          .update(conversations)
+          .set({ behaviorSettings: updatedSettings, status: 'closed' })
+          .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, conversationId)));
+        await req.tenantDb!
+          .update(conversations)
+          .set({ behaviorSettings: updatedSettings })
+          .where(req.tenantDb!.withTenantFilter(conversations, eq(conversations.id, targetId)));
+      } catch (e) {
+        console.warn('[SWITCH-CHANNEL] preferred-channel persistence failed (non-blocking):', e);
+      }
+
+      res.json({ success: true, data: { targetConversationId: targetId, platform: targetPlatform } });
     } catch (error) {
       console.error('[SWITCH-CHANNEL] Error:', error);
       res.status(500).json({ success: false, message: 'Failed to switch channel' });
@@ -305,13 +366,14 @@ export function registerConversationRoutes(app: Express) {
   // a thread row into siblingConversationIds before posting.
   app.post('/api/conversations/bulk-action', async (req: Request, res: Response) => {
     try {
-      const { action, ids, payload } = req.body as {
-        action?: string;
+      const body = (req.body ?? {}) as {
+        action?: BulkAction;
         ids?: number[];
-        payload?: any;
+        payload?: BulkActionPayload;
       };
-      const validActions = ['mark-read', 'snooze', 'resolve', 'archive', 'assign'] as const;
-      if (!action || !(validActions as readonly string[]).includes(action)) {
+      const { action, ids, payload } = body;
+      const validActions: readonly BulkAction[] = ['mark-read', 'snooze', 'resolve', 'archive', 'assign'];
+      if (!action || !validActions.includes(action)) {
         return res.status(400).json({ success: false, message: 'Invalid action' });
       }
       const cleanIds = Array.isArray(ids)
@@ -324,7 +386,7 @@ export function registerConversationRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Too many conversations (max 200)' });
       }
 
-      let updateSet: Record<string, any> | null = null;
+      let updateSet: Partial<typeof conversations.$inferInsert> | null = null;
       switch (action) {
         case 'mark-read':
           updateSet = { unreadCount: 0 };
