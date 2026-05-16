@@ -496,8 +496,10 @@ export default function ThreadView({
     // Typing indicator events
     // Audit T2: Twilio delivery status updates — refresh the conversation
     // so MessageBubble re-renders with the new deliveryStatus on failed/delivered/sent.
-    socket.on('sms_status_update', (data: { messageSid?: string; status?: string }) => {
-      console.log('[THREAD VIEW] sms_status_update:', data);
+    socket.on('sms_status_update', (data: { messageSid?: string; status?: string; conversationId?: number; messageId?: number }) => {
+      // Audit T2 follow-up: only refetch when the event matches the active
+      // conversation to avoid refetch churn under high webhook volume.
+      if (typeof data.conversationId === 'number' && data.conversationId !== conversationId) return;
       queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
     });
 

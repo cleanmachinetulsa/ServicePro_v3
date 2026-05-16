@@ -554,7 +554,7 @@ export default function MessageBubble({
                 {message.deliveryStatus === 'failed' ? (
                   <button
                     type="button"
-                    title="Failed to send — click to retry"
+                    title="Failed to send — click to reinsert into composer for resend"
                     className="inline-flex items-center gap-1 text-red-500 dark:text-red-400 hover:underline"
                     onClick={() => {
                       // Audit T2: re-populate composer with failed text so the agent can retry.
@@ -567,7 +567,7 @@ export default function MessageBubble({
                     data-testid={`retry-failed-${message.id}`}
                   >
                     <MessageSquare className="h-3 w-3" />
-                    <span className="text-[10px] font-medium">Retry</span>
+                    <span className="text-[10px] font-medium">Reinsert</span>
                   </button>
                 ) : message.deliveryStatus === 'read' ? (
                   <div title="Read" className="text-blue-500 dark:text-blue-400">
