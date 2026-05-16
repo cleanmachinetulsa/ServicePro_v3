@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "zs7nvCSR6IbTiEg8IcmB6"
+uri = "file://MESSAGING_AUDIT.md"
+type = "text"
+title = "ServicePro Messaging Stack Audit"
