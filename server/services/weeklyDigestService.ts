@@ -49,6 +49,7 @@ export interface WeeklyDigestStats {
   voiceMinutes: number;
   aiTokens: number;
   estimatedSpendUsd: number;
+  topIntents: Array<{ intent: string; count: number }>;
 }
 
 export async function buildWeeklyDigestStats(
@@ -160,6 +161,34 @@ export async function buildWeeklyDigestStats(
     console.warn('[WEEKLY DIGEST] conversations query failed:', err);
   }
 
+  // Audit T3 Task #23 (review fix): top intents over the digest window.
+  // Aggregates conversations.intent for threads with activity in the last 7
+  // days so owners can see what customers are actually asking about.
+  let topIntents: Array<{ intent: string; count: number }> = [];
+  try {
+    const rows = await tenantDb
+      .select({
+        intent: conversations.intent,
+        c: sql<number>`count(*)::int`,
+      })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.tenantId, tenantId),
+          gte(conversations.lastMessageTime, start),
+          lte(conversations.lastMessageTime, end),
+        ),
+      )
+      .groupBy(conversations.intent)
+      .orderBy(sql`count(*) desc`)
+      .limit(5);
+    topIntents = rows
+      .map((r) => ({ intent: String(r.intent || 'Unknown'), count: Number(r.c || 0) }))
+      .filter((r) => r.count > 0);
+  } catch (err) {
+    console.warn('[WEEKLY DIGEST] top-intents query failed:', err);
+  }
+
   return {
     tenantId,
     tenantName,
@@ -176,6 +205,7 @@ export async function buildWeeklyDigestStats(
     voiceMinutes,
     aiTokens,
     estimatedSpendUsd,
+    topIntents,
   };
 }
 
@@ -202,10 +232,17 @@ export function renderWeeklyDigestHtml(stats: WeeklyDigestStats): {
     ['AI tokens used', stats.aiTokens.toLocaleString()],
     ['Estimated platform spend', spend],
   ];
+  const intents = stats.topIntents || [];
+  const intentLines = intents.length
+    ? intents.map((i) => `  • ${i.intent} (${i.count})`)
+    : ['  • (no intents this week)'];
   const text = [
     `${stats.tenantName} — weekly digest (${startStr} → ${endStr})`,
     '',
     ...rows.map(([k, v]) => `${k.padEnd(28)} ${v}`),
+    '',
+    'Top intents this week:',
+    ...intentLines,
     '',
     `Manage digest: tenantConfig.industryConfig.featureFlags.weeklyDigestOptIn=true to opt out.`,
     '— ServicePro',
@@ -222,6 +259,19 @@ export function renderWeeklyDigestHtml(stats: WeeklyDigestStats): {
         )
         .join('')}
     </table>
+    <h3 style="margin:24px 0 8px;font-size:14px">Top intents this week</h3>
+    <ul style="margin:0;padding-left:18px;color:#333">
+      ${
+        intents.length
+          ? intents
+              .map(
+                (i) =>
+                  `<li style="padding:2px 0"><span>${i.intent}</span> <span style="color:#888">(${i.count})</span></li>`,
+              )
+              .join('')
+          : '<li style="padding:2px 0;color:#888">No intents recorded this week</li>'
+      }
+    </ul>
     <p style="color:#888;font-size:11px;margin-top:24px">
       You're receiving this because weekly digests are enabled for ${stats.tenantName}.
       Set <code>weeklyDigestOptIn=true</code> in your business settings to stop these emails.

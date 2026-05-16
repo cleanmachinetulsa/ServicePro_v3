@@ -74,6 +74,11 @@ describe('Audit T3 Task #23 — premium product plays', () => {
         voiceMinutes: 7,
         aiTokens: 33000,
         estimatedSpendUsd: 12.34,
+        topIntents: [
+          { intent: 'Booking', count: 14 },
+          { intent: 'Pricing', count: 8 },
+          { intent: 'Reschedule', count: 3 },
+        ],
       });
       expect(html.subject).toContain('Test Co');
       expect(html.html).toContain('Messages handled');
@@ -83,6 +88,13 @@ describe('Audit T3 Task #23 — premium product plays', () => {
       expect(html.html).toContain('$875.50');
       expect(html.html).toContain('33,000');
       expect(html.text).toContain('$12.34');
+      // Audit T3 review fix: top intents must appear in both html + text.
+      expect(html.html).toContain('Top intents this week');
+      expect(html.html).toContain('Booking');
+      expect(html.html).toContain('(14)');
+      expect(html.text).toContain('Top intents this week:');
+      expect(html.text).toContain('Booking (14)');
+      expect(html.text).toContain('Pricing (8)');
     });
   });
 
