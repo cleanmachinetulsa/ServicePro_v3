@@ -199,31 +199,23 @@ export function registerFileUploadRoutes(app: Express) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      // Audit T1 W-8 (round-8): per-session anonymous upload quota.
-      // The quota is bypassed ONLY when the supplied phone/email matches a
-      // customer row that ALREADY EXISTS in the tenant DB. We use a strictly
-      // read-only lookup (customerRepository.findByPhoneOrEmail) so the
-      // quota probe itself can never create or mutate identity rows.
-      // Untrusted free-form identity strings no longer skip the cap.
+      // Audit T1 W-8 (round-11 hardening): per-session anonymous upload quota.
+      // The quota is bypassed ONLY when the request carries a *server-verified*
+      // identity signal — an authenticated user session (req.session.userId for
+      // staff/owner uploads on behalf of a customer) or a portal-authenticated
+      // customer session (req.session.customerId, set by the portal-OTP flow).
+      // Free-form phone/email strings, even ones that happen to match an
+      // existing customer row, do NOT bypass the cap; an attacker can know
+      // someone else's contact info, so contact-string match is not proof of
+      // visitor identity ownership.
       let identityVerified = false;
       try {
-        const phone = String(req.body?.customerPhone || '').trim();
-        const email = String(req.body?.customerEmail || '').trim();
-        const reqWithTenant = req as Request & { tenantDb?: { tenantId?: string } };
-        const tenantDb = reqWithTenant.tenantDb;
-        const tenantId = tenantDb?.tenantId;
-        if (tenantDb && tenantId && (phone || email)) {
-          const { normalizePhoneE164, canonicalizeEmail } = await import('./contactUtils');
-          const { findByPhoneOrEmail } = await import('./services/customerRepository');
-          const normalizedPhone = phone ? normalizePhoneE164(phone) : null;
-          const normalizedEmail = email ? canonicalizeEmail(email) : null;
-          if (normalizedPhone || normalizedEmail) {
-            const existing = await findByPhoneOrEmail(tenantDb, tenantId, normalizedPhone, normalizedEmail);
-            if (existing && existing.id) identityVerified = true;
-          }
+        const sess = (req as Request & { session?: { userId?: number; customerId?: number } }).session;
+        if (sess && (sess.userId || sess.customerId)) {
+          identityVerified = true;
         }
       } catch (err) {
-        console.warn('[UPLOAD QUOTA] Identity probe failed (treating as anonymous):', err);
+        console.warn('[UPLOAD QUOTA] Session probe failed (treating as anonymous):', err);
       }
       try {
         if (identityVerified) {
