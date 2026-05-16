@@ -2302,13 +2302,41 @@ export async function registerRoutes(app: Express) {
       const aiIdentifier = conversation.customerPhone || webIdentifier;
       const response = await processConversation(req.tenantDb!, aiIdentifier, message, 'web');
 
-      // Save AI response to database
-      await addMessage(req.tenantDb!, conversation.id, response.response, 'ai', 'web');
+      // Audit T3 Task #23 (review fix): drain tool-call metadata for THIS
+      // conversation and persist it on the AI message + return it to the
+      // widget so the guardrail pill renders in web chat with parity to the
+      // staff inbox and AI replay page.
+      let aiTools: string[] = [];
+      let aiMessageMetadata: Record<string, unknown> | undefined;
+      try {
+        const { takeToolCallsForConversation } = await import('./services/aiToolMetadata');
+        const drained = takeToolCallsForConversation(conversation.id);
+        if (drained && drained.length) {
+          aiTools = drained.map((t) => t.name);
+          aiMessageMetadata = {
+            toolCalls: aiTools,
+            toolCallDetails: drained,
+            modelOutput: response.response,
+            finalSentText: response.response,
+          };
+        }
+      } catch (metaErr) {
+        console.warn('[WEB CHAT] tool metadata drain failed (non-fatal):', metaErr);
+      }
+      await addMessage(
+        req.tenantDb!,
+        conversation.id,
+        response.response,
+        'ai',
+        'web',
+        aiMessageMetadata,
+      );
 
       return res.json({
         success: true,
         message: response.response,
         conversationId: conversation.id, // widget uses this to subscribe via SSE
+        aiTools,
       });
     } catch (error: any) {
       console.error('[WEB CHAT] Error processing web chat message:', error);

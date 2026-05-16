@@ -5,7 +5,7 @@
  * via an env var DEMO_SCRIPT_<TENANT_ID> containing JSON.
  */
 
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
 import { tenants, tenantConfig } from '@shared/schema';
@@ -138,7 +138,20 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
 
 export const adminRouter = Router();
 
-adminRouter.get('/', requireAuth, async (req: Request, res: Response) => {
+// Audit T3 Task #23 (review fix): tighten authz beyond just `requireAuth` so
+// only owner/manager/staff users on the tenant can read or edit the demo
+// script. Any authenticated technician/customer-side principal is rejected.
+function requireStaffOrOwner(req: Request, res: Response, next: NextFunction) {
+  const session = (req as Request & { session?: { user?: { role?: string; tenantId?: string } } }).session;
+  const role = session?.user?.role;
+  const allowed = role === 'owner' || role === 'manager' || role === 'staff' || role === 'admin';
+  if (!allowed) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  next();
+}
+
+adminRouter.get('/', requireAuth, requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).tenantId as string | undefined;
     if (!tenantId) return res.status(400).json({ error: 'tenant context required' });
@@ -161,7 +174,7 @@ adminRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-adminRouter.post('/', requireAuth, async (req: Request, res: Response) => {
+adminRouter.post('/', requireAuth, requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).tenantId as string | undefined;
     if (!tenantId) return res.status(400).json({ error: 'tenant context required' });
