@@ -115,7 +115,7 @@ import { registerAuthRoutes } from './routes.auth';
 // Audit T3 Task #23: premium product plays
 import aiReplayRouter from './routes.aiReplay';
 import publicStatusRouter from './routes.publicStatus';
-import publicDemoRouter from './routes.publicDemo';
+import publicDemoRouter, { adminRouter as demoAdminRouter } from './routes.publicDemo';
 import { registerWebAuthnRoutes } from './routes.webauthn';
 import { registerBootstrapRoutes } from './routes.bootstrap';
 import { registerSearchRoutes } from './routes.search';
@@ -264,6 +264,8 @@ export async function registerRoutes(app: Express) {
   // Audit T3 Task #23: premium plays — public status + demo (no auth), admin replay (requireAuth inside router)
   app.use('/api/public/status', publicStatusRouter);
   app.use('/api/public/demo', publicDemoRouter);
+  // Audit T3 Task #23: tenant-scoped admin editor for demo script.
+  app.use('/api/admin/demo-script', demoAdminRouter);
   app.use('/api/admin/ai-replay', aiReplayRouter);
   
   // Register WebAuthn biometric authentication routes
@@ -2695,10 +2697,18 @@ export async function registerRoutes(app: Express) {
       // Save AI response
       await addMessage(req.tenantDb!, conversation.id, response, 'ai', platform);
 
+      // Audit T3 Task #23: return any tool names captured during this reply
+      // so the web chat widget can render the guardrail pill (tenant-gated).
+      let aiTools: string[] = [];
+      try {
+        const { peekToolCallsForConversation } = await import('./services/aiToolMetadata');
+        aiTools = peekToolCallsForConversation(conversation.id).map((c) => c.name);
+      } catch { /* non-fatal */ }
+
       // Return appropriate format
       if (isWebClient) {
         // For web chat, return JSON
-        res.json({ success: true, message: response });
+        res.json({ success: true, message: response, aiTools });
       } else {
         // For actual SMS, return TwiML with escaped XML
         res.set('Content-Type', 'text/xml');

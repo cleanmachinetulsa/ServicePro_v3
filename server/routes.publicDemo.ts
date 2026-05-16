@@ -8,8 +8,9 @@
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { wrapTenantDb } from './tenantDb';
-import { tenants } from '@shared/schema';
+import { tenants, tenantConfig } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { requireAuth } from './authMiddleware';
 
 const router = Router();
 
@@ -29,21 +30,42 @@ export const DEFAULT_DEMO_SCRIPT: DemoStep[] = [
   { sender: 'ai', text: 'Done — you\'re booked Saturday at 10am. Confirmation text is on the way.', toolCalls: ['create_appointment'], delayMs: 1200 },
 ];
 
+function sanitizeScript(parsed: unknown): DemoStep[] | null {
+  if (!Array.isArray(parsed)) return null;
+  const cleaned = parsed
+    .filter((s: any) => s && (s.sender === 'customer' || s.sender === 'ai') && typeof s.text === 'string')
+    .slice(0, 40)
+    .map((s: any) => ({
+      sender: s.sender as 'customer' | 'ai',
+      text: String(s.text).slice(0, 500),
+      toolCalls: Array.isArray(s.toolCalls) ? s.toolCalls.slice(0, 6).map(String) : undefined,
+      delayMs: typeof s.delayMs === 'number' ? Math.min(5000, Math.max(0, s.delayMs)) : undefined,
+    }));
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+async function loadTenantScript(tenantId: string): Promise<DemoStep[] | null> {
+  try {
+    const rootDb = wrapTenantDb(db, 'root');
+    const [cfg] = await rootDb
+      .select({ industryConfig: tenantConfig.industryConfig })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    const stored = (cfg?.industryConfig as any)?.featureFlags?.demoScript;
+    if (stored) return sanitizeScript(stored);
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 function loadOverrideScript(tenantId: string): DemoStep[] | null {
   const key = `DEMO_SCRIPT_${tenantId.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
   const raw = process.env[key];
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    return parsed
-      .filter((s) => s && (s.sender === 'customer' || s.sender === 'ai') && typeof s.text === 'string')
-      .map((s) => ({
-        sender: s.sender,
-        text: String(s.text).slice(0, 500),
-        toolCalls: Array.isArray(s.toolCalls) ? s.toolCalls.slice(0, 6).map(String) : undefined,
-        delayMs: typeof s.delayMs === 'number' ? Math.min(5000, Math.max(0, s.delayMs)) : undefined,
-      }));
+    return sanitizeScript(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -67,7 +89,11 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
     }
     const tenant = await loadTenantBySlug(slug);
     if (!tenant) return res.status(404).json({ error: 'tenant not found' });
-    const script = loadOverrideScript(tenant.id) ?? DEFAULT_DEMO_SCRIPT;
+    // Resolution order: tenant-stored (admin editor) → env override → default.
+    const script =
+      (await loadTenantScript(tenant.id)) ||
+      loadOverrideScript(tenant.id) ||
+      DEFAULT_DEMO_SCRIPT;
     res.json({
       tenantId: tenant.id,
       tenantName: tenant.name,
@@ -77,6 +103,69 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[PUBLIC DEMO] error:', err);
     res.status(500).json({ error: 'demo unavailable' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin editor endpoints — tenant-scoped, requireAuth. Stored on
+// tenantConfig.industryConfig.featureFlags.demoScript (existing JSONB column,
+// no schema migration required).
+// ---------------------------------------------------------------------------
+
+export const adminRouter = Router();
+
+adminRouter.get('/', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId as string | undefined;
+    if (!tenantId) return res.status(400).json({ error: 'tenant context required' });
+    const rootDb = wrapTenantDb(db, 'root');
+    const [cfg] = await rootDb
+      .select({ industryConfig: tenantConfig.industryConfig })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    const stored = (cfg?.industryConfig as any)?.featureFlags?.demoScript;
+    const sanitized = stored ? sanitizeScript(stored) : null;
+    return res.json({
+      script: sanitized ?? DEFAULT_DEMO_SCRIPT,
+      isCustomized: !!sanitized,
+      defaultScript: DEFAULT_DEMO_SCRIPT,
+    });
+  } catch (err) {
+    console.error('[DEMO ADMIN] load error:', err);
+    return res.status(500).json({ error: 'failed to load' });
+  }
+});
+
+adminRouter.post('/', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).tenantId as string | undefined;
+    if (!tenantId) return res.status(400).json({ error: 'tenant context required' });
+    const body = req.body as { script?: unknown; reset?: boolean };
+    const rootDb = wrapTenantDb(db, 'root');
+    const [cfg] = await rootDb
+      .select({ industryConfig: tenantConfig.industryConfig })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    const current = (cfg?.industryConfig as any) || {};
+    const featureFlags = { ...(current.featureFlags || {}) };
+    if (body.reset) {
+      delete featureFlags.demoScript;
+    } else {
+      const cleaned = sanitizeScript(body.script);
+      if (!cleaned) return res.status(400).json({ error: 'invalid script' });
+      featureFlags.demoScript = cleaned;
+    }
+    const next = { ...current, featureFlags };
+    await rootDb
+      .update(tenantConfig)
+      .set({ industryConfig: next })
+      .where(eq(tenantConfig.tenantId, tenantId));
+    return res.json({ ok: true, isCustomized: !!featureFlags.demoScript });
+  } catch (err) {
+    console.error('[DEMO ADMIN] save error:', err);
+    return res.status(500).json({ error: 'failed to save' });
   }
 });
 

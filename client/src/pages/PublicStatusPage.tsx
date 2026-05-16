@@ -20,18 +20,26 @@ function pillColor(pct: number): string {
 
 export default function PublicStatusPage() {
   const params = useParams<{ slug?: string }>();
-  const slug = params.slug || (typeof window !== "undefined" ? window.location.host.split(".")[0] : "");
+  // Audit T3 Task #23 (review fix): pass the FULL host so the backend can
+  // resolve via exact custom-domain match, not a brittle subdomain split.
+  const fullHost =
+    typeof window !== "undefined" ? window.location.host.toLowerCase() : "";
+  const slug = params.slug || fullHost;
   const [data, setData] = useState<StatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!slug) return;
     let cancelled = false;
-    fetch(`/api/public/status/${encodeURIComponent(slug)}`)
+    const url = `/api/public/status/${encodeURIComponent(slug)}${
+      fullHost && fullHost !== slug ? `?host=${encodeURIComponent(fullHost)}` : `?host=${encodeURIComponent(fullHost)}`
+    }`;
+    fetch(url)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((p) => { if (!cancelled) setData(p); })
       .catch((e) => { if (!cancelled) setError(String(e.message || e)); });
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, fullHost]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">

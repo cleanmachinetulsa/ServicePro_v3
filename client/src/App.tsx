@@ -55,6 +55,7 @@ const DemoPage = lazy(() => import("@/pages/demo"));
 const AiReplayPage = lazy(() => import("@/pages/AiReplay"));
 const PublicStatusPage = lazy(() => import("@/pages/PublicStatusPage"));
 const DemoModePage = lazy(() => import("@/pages/DemoModePage"));
+const DemoScriptAdminPage = lazy(() => import("@/pages/DemoScriptAdmin"));
 
 // Auth & Account pages
 const ForgotPasswordPage = lazy(() => import("./pages/forgot-password"));
@@ -229,6 +230,14 @@ function Router() {
       <Route path="/demo">
         <LazyPage><DemoLandingPage /></LazyPage>
       </Route>
+      {/* Existing static demo subroutes must match BEFORE the dynamic
+          /demo/:tenant route or wouter would swallow them. */}
+      <Route path="/demo/verify">
+        <LazyPage><DemoVerifyPage /></LazyPage>
+      </Route>
+      <Route path="/demo/dashboard">
+        <LazyDashboard><DemoDashboardPage /></LazyDashboard>
+      </Route>
       {/* Audit T3 Task #23: productized demo per tenant (PUBLIC - NO AUTH) */}
       <Route path="/demo/:tenant">
         {(params) => <LazyPage><DemoModePage /></LazyPage>}
@@ -246,11 +255,11 @@ function Router() {
           <LazyPage><AiReplayPage /></LazyPage>
         </AuthGuard>
       </Route>
-      <Route path="/demo/verify">
-        <LazyPage><DemoVerifyPage /></LazyPage>
-      </Route>
-      <Route path="/demo/dashboard">
-        <LazyDashboard><DemoDashboardPage /></LazyDashboard>
+      {/* Audit T3 Task #23: demo script editor (auth required) */}
+      <Route path="/admin/demo-script">
+        <AuthGuard>
+          <LazyPage><DemoScriptAdminPage /></LazyPage>
+        </AuthGuard>
       </Route>
 
       {/* 🆕 PUBLIC INDUSTRY ONBOARDING ROUTE (NO AUTHGUARD FOR NOW) */}

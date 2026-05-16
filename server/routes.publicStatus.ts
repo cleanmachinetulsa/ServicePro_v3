@@ -33,24 +33,65 @@ interface StatusPayload {
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { at: number; payload: StatusPayload }>();
 
-async function loadTenantBySlug(slug: string): Promise<{ id: string; name: string } | null> {
+function normalizeHost(input: string): string {
+  return String(input || '')
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim();
+}
+
+async function loadTenantBySlugOrHost(
+  slug: string,
+  fullHost?: string,
+): Promise<{ id: string; name: string } | null> {
   const rootDb = wrapTenantDb(db, 'root');
+
+  // 1. Exact match on tenant id.
   const [byId] = await rootDb
     .select({ id: tenants.id, name: tenants.name })
     .from(tenants).where(eq(tenants.id, slug)).limit(1);
   if (byId) return byId;
+
+  // 2. Exact match on subdomain.
   const [bySub] = await rootDb
     .select({ id: tenants.id, name: tenants.name })
     .from(tenants).where(eq(tenants.subdomain, slug)).limit(1);
   if (bySub) return bySub;
-  // Custom domain via tenantConfig.websiteUrl
-  const [byDomain] = await rootDb
-    .select({ id: tenants.id, name: tenants.name })
+
+  // 3. Exact custom-domain match. Prefer the explicitly passed full host
+  //    over the slug because the slug may have been truncated by an
+  //    upstream router. We match against the normalized host portion of
+  //    tenantConfig.websiteUrl using SQL string functions, not LIKE.
+  const candidateHosts = Array.from(
+    new Set(
+      [fullHost, slug]
+        .filter((s): s is string => typeof s === 'string' && s.length > 0)
+        .map(normalizeHost)
+        .filter(Boolean),
+    ),
+  );
+  if (candidateHosts.length === 0) return null;
+
+  const rows = await rootDb
+    .select({
+      id: tenants.id,
+      name: tenants.name,
+      websiteUrl: tenantConfig.websiteUrl,
+    })
     .from(tenants)
     .innerJoin(tenantConfig, eq(tenants.id, tenantConfig.tenantId))
-    .where(sql`lower(${tenantConfig.websiteUrl}) like ${'%' + slug + '%'}`)
-    .limit(1);
-  return byDomain ?? null;
+    .where(sql`${tenantConfig.websiteUrl} is not null and ${tenantConfig.websiteUrl} <> ''`);
+
+  for (const row of rows) {
+    const rowHost = normalizeHost(row.websiteUrl || '');
+    if (rowHost && candidateHosts.includes(rowHost)) {
+      return { id: row.id, name: row.name };
+    }
+  }
+  return null;
 }
 
 async function computeWeatherRisk7d(tenantId: string): Promise<'unknown' | 'low' | 'medium' | 'high'> {
@@ -144,14 +185,16 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
     if (!slug || !/^[a-z0-9.-]{1,150}$/.test(slug)) {
       return res.status(400).json({ error: 'invalid tenant slug' });
     }
-    const cached = cache.get(slug);
+    const hostQuery = typeof req.query.host === 'string' ? req.query.host : undefined;
+    const cacheKey = `${slug}|${hostQuery ? normalizeHost(hostQuery) : ''}`;
+    const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
       return res.json(cached.payload);
     }
-    const tenant = await loadTenantBySlug(slug);
+    const tenant = await loadTenantBySlugOrHost(slug, hostQuery);
     if (!tenant) return res.status(404).json({ error: 'tenant not found' });
     const payload = await buildStatusPayload(tenant.id, tenant.name);
-    cache.set(slug, { at: Date.now(), payload });
+    cache.set(cacheKey, { at: Date.now(), payload });
     res.json(payload);
   } catch (err) {
     console.error('[STATUS] error:', err);

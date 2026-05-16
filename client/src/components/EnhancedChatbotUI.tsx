@@ -83,6 +83,8 @@ interface Message {
     text: string;
     action: () => void;
   };
+  // Audit T3 Task #23: AI guardrail pill — tools the AI used to produce this reply.
+  aiTools?: string[];
 }
 
 const suggestionChips: string[] = [];
@@ -178,7 +180,9 @@ export default function EnhancedChatbotUI() {
     personaName: string | null;
     avatarUrl: string | null;
     captcha: { provider: 'turnstile' | 'hcaptcha' | 'none'; siteKey: string | null };
-  }>({ greeting: null, personaName: null, avatarUrl: null, captcha: { provider: 'none', siteKey: null } });
+    // Audit T3 Task #23: tenant-configurable AI guardrail pill in web chat.
+    showAiPill?: boolean;
+  }>({ greeting: null, personaName: null, avatarUrl: null, captcha: { provider: 'none', siteKey: null }, showAiPill: false });
   const [pendingCaptchaToken, setPendingCaptchaToken] = useState<string | null>(null);
   const [captchaVerified, setCaptchaVerified] = useState(false);
   const captchaContainerRef = useRef<HTMLDivElement | null>(null);
@@ -786,6 +790,9 @@ export default function EnhancedChatbotUI() {
         text: responseText,
         sender: "bot",
         timestamp: new Date(),
+        // Audit T3 Task #23: tool list returned by /api/web-chat (gated by
+        // tenant widgetConfig.showAiPill in render).
+        aiTools: Array.isArray(data?.aiTools) ? data.aiTools : undefined,
       };
 
       setMessages((prev) => [...prev, botMessage]);
@@ -1218,6 +1225,25 @@ export default function EnhancedChatbotUI() {
                             {message.actionButton.text}
                           </Button>
                         )}
+                        {/* Audit T3 Task #23: AI guardrail pill in web chat,
+                            tenant-gated via widgetConfig.showAiPill. */}
+                        {message.sender === "bot" &&
+                          widgetConfig.showAiPill &&
+                          message.aiTools && message.aiTools.length > 0 && (
+                            <div
+                              className="mt-2 flex flex-wrap gap-1 text-[10px]"
+                              data-testid={`webchat-ai-pill-${message.id}`}
+                            >
+                              {message.aiTools.map((t) => (
+                                <span
+                                  key={t}
+                                  className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200"
+                                >
+                                  ⚙ {t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                       </>
                     )}
                   </div>
