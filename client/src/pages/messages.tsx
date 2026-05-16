@@ -273,6 +273,7 @@ function MessagesPageContent() {
       customerInfo={selectedConversation ? customerInfo : null}
       isLoading={selectedConversation ? isLoadingCustomer : false}
       hasSelectedConversation={!!selectedConversation}
+      conversationId={selectedConversation}
       onBookAppointment={
         selectedConv
           ? () => {

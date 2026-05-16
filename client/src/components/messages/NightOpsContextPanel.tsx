@@ -22,8 +22,14 @@ import {
   Zap,
   Send,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Receipt,
+  Share2,
+  CloudRain,
+  UserCheck,
+  Loader2
 } from 'lucide-react';
+import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
@@ -59,6 +65,7 @@ interface NightOpsContextPanelProps {
   customerInfo: CustomerInfo | null;
   isLoading?: boolean;
   hasSelectedConversation?: boolean;
+  conversationId?: number | null;
   onBookAppointment?: () => void;
   onSaveNotes?: (notes: string) => void;
 }
@@ -120,6 +127,7 @@ export function NightOpsContextPanel({
   customerInfo,
   isLoading = false,
   hasSelectedConversation = false,
+  conversationId,
   onBookAppointment,
   onSaveNotes
 }: NightOpsContextPanelProps) {
@@ -127,6 +135,57 @@ export function NightOpsContextPanel({
   const [activeTab, setActiveTab] = useState('customer');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState(customerInfo?.notes || '');
+  // Audit T2 Task #19 (U-10 / I-2 / I-3 / I-5): staff manual action buttons.
+  // Each button invokes the same backend helper the gpt-4o tools use, so the
+  // human-in-the-loop path is identical to the AI path.
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+
+  async function runStaffAction(
+    actionId: string,
+    endpoint: string,
+    extraBody: Record<string, unknown> = {},
+    onSuccessMessage = 'Sent',
+  ) {
+    if (!conversationId) {
+      toast({ title: 'No conversation selected', variant: 'destructive' });
+      return;
+    }
+    setPendingAction(actionId);
+    try {
+      const res = await apiRequest('POST', endpoint, {
+        conversationId,
+        ...extraBody,
+      });
+      const data = await res.json();
+      if (data?.success === false) {
+        toast({
+          title: 'Action failed',
+          description: data?.error || 'Please try again.',
+          variant: 'destructive',
+        });
+      } else if (actionId === 'weather' && data?.hasAppointment === false) {
+        toast({
+          title: 'No upcoming appointment',
+          description: 'Nothing to weather-check for this customer.',
+        });
+      } else if (actionId === 'weather') {
+        toast({
+          title: `Weather risk: ${data.level || 'unknown'}`,
+          description: data.actionText || data.severityText || 'See dashboard.',
+        });
+      } else {
+        toast({ title: onSuccessMessage });
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Action failed',
+        description: err?.message || 'Network error',
+        variant: 'destructive',
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -496,6 +555,126 @@ export function NightOpsContextPanel({
               Redeem Points
             </Button>
           )}
+        </div>
+      </div>
+
+      {/* Audit T2 Task #19: Manual Actions — same backend helpers the AI uses */}
+      <div className="nightops-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Zap className="h-4 w-4 text-cyan-400" />
+          <span className="nightops-section-title">Manual Actions</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!conversationId || pendingAction !== null}
+            onClick={() =>
+              runStaffAction(
+                'invoice',
+                '/api/admin/ai-actions/send-invoice',
+                { channel: 'sms' },
+                'Invoice sent',
+              )
+            }
+            className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+            data-testid="button-action-send-invoice"
+          >
+            {pendingAction === 'invoice' ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Receipt className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Send Invoice
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!conversationId || pendingAction !== null}
+            onClick={() =>
+              runStaffAction(
+                'rewards',
+                '/api/admin/ai-actions/send-rewards-link',
+                {},
+                'Rewards link sent',
+              )
+            }
+            className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+            data-testid="button-action-send-rewards"
+          >
+            {pendingAction === 'rewards' ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Gift className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Rewards Link
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!conversationId || pendingAction !== null}
+            onClick={() =>
+              runStaffAction(
+                'referral',
+                '/api/admin/ai-actions/send-referral-link',
+                {},
+                'Referral link sent',
+              )
+            }
+            className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+            data-testid="button-action-send-referral"
+          >
+            {pendingAction === 'referral' ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <Share2 className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Referral Link
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!conversationId || pendingAction !== null}
+            onClick={() =>
+              runStaffAction(
+                'weather',
+                '/api/admin/ai-actions/weather-check',
+                {},
+                'Weather check complete',
+              )
+            }
+            className="h-9 text-xs bg-slate-800/60 border-slate-700/60 hover:bg-slate-700/60 text-slate-300"
+            data-testid="button-action-weather-check"
+          >
+            {pendingAction === 'weather' ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <CloudRain className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Weather Check
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!conversationId || pendingAction !== null}
+            onClick={() =>
+              runStaffAction(
+                'transfer',
+                '/api/admin/ai-actions/transfer-to-human',
+                { reason: 'staff_initiated', urgency: 'high' },
+                'Conversation escalated',
+              )
+            }
+            className="col-span-2 h-9 text-xs bg-amber-900/30 border-amber-700/60 hover:bg-amber-800/40 text-amber-300"
+            data-testid="button-action-transfer-human"
+          >
+            {pendingAction === 'transfer' ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            ) : (
+              <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Transfer to Human
+          </Button>
         </div>
       </div>
 

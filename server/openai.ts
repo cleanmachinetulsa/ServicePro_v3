@@ -489,6 +489,101 @@ const SCHEDULING_FUNCTIONS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
         required: ["phone", "newDateTime"]
       }
     }
+  },
+  // ---------------------------------------------------------------------
+  // Audit T2 Task #19 — staff-action tools (SMS-only; never web-safe)
+  // ---------------------------------------------------------------------
+  {
+    type: "function",
+    function: {
+      name: "send_invoice",
+      description: "Send the customer's most recent invoice via SMS, email, or both. Use when customer asks for their invoice, payment link, or how much they owe. Looks up the latest invoice on file for the customer's phone number.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Customer's phone number" },
+          channel: {
+            type: "string",
+            enum: ["sms", "email", "both"],
+            description: "Which channel(s) to deliver the invoice on. Defaults to sms."
+          }
+        },
+        required: ["phone"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_gift_card_balance",
+      description: "Look up a Square gift card balance and text it to the customer. Use only when the customer provides their gift card code or the last 4 digits.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Customer's phone number" },
+          giftCardCode: { type: "string", description: "Gift card code (full GAN or last 4)" }
+        },
+        required: ["phone", "giftCardCode"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_rewards_link",
+      description: "Text the customer a personalized link to their loyalty rewards portal. Use when customer asks about points, perks, or how to redeem rewards.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Customer's phone number" }
+        },
+        required: ["phone"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "send_referral_link",
+      description: "Issue (or reuse) a referral code for this customer and text them their share link. Use when customer asks how to refer a friend or about referral rewards.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Customer's phone number" }
+        },
+        required: ["phone"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "transfer_to_human",
+      description: "Hand the conversation off to a human teammate. Sets the human-attention flag, pauses automation, and alerts the owner. Use ONLY when the customer is upset, asks for a person, or the request is outside your tools.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Customer's phone number" },
+          reason: { type: "string", description: "Short reason for the handoff" },
+          urgency: { type: "string", enum: ["low", "high"], description: "How urgent the handoff is" }
+        },
+        required: ["phone", "reason"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "weather_check_for_appointment",
+      description: "Check weather risk for the customer's upcoming appointment and return a recommendation. Use proactively when an appointment is within 3 days and weather is uncertain.",
+      parameters: {
+        type: "object",
+        properties: {
+          phone: { type: "string", description: "Customer's phone number" }
+        },
+        required: ["phone"]
+      }
+    }
   }
 ];
 
@@ -664,7 +759,50 @@ async function executeFunctionCall(
         const result = await rescheduleAppointment(args.phone, args.newDateTime);
         return JSON.stringify(result);
       }
-      
+
+      // Audit T2 Task #19 — staff-action tools
+      case "send_invoice": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        const { sendInvoiceToCustomer } = await import('./services/aiToolHelpers');
+        const result = await sendInvoiceToCustomer(tenantId, args.phone, args.channel || 'sms');
+        return JSON.stringify(result);
+      }
+      case "send_gift_card_balance": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        const { sendGiftCardBalance } = await import('./services/aiToolHelpers');
+        const result = await sendGiftCardBalance(tenantId, args.phone, args.giftCardCode);
+        return JSON.stringify(result);
+      }
+      case "send_rewards_link": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        const { sendRewardsLinkToCustomer } = await import('./services/aiToolHelpers');
+        const result = await sendRewardsLinkToCustomer(tenantId, args.phone);
+        return JSON.stringify(result);
+      }
+      case "send_referral_link": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        const { sendReferralLinkToCustomer } = await import('./services/aiToolHelpers');
+        const result = await sendReferralLinkToCustomer(tenantId, args.phone);
+        return JSON.stringify(result);
+      }
+      case "transfer_to_human": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        const { transferConversationToHuman } = await import('./services/aiToolHelpers');
+        const result = await transferConversationToHuman(
+          tenantId,
+          args.phone,
+          args.reason || 'customer_requested',
+          args.urgency === 'high' ? 'high' : 'low',
+        );
+        return JSON.stringify(result);
+      }
+      case "weather_check_for_appointment": {
+        if (!tenantId) return JSON.stringify({ success: false, error: 'tenant context required' });
+        const { weatherCheckForAppointment } = await import('./services/aiToolHelpers');
+        const result = await weatherCheckForAppointment(tenantId, args.phone);
+        return JSON.stringify(result);
+      }
+
       default:
         return JSON.stringify({ error: `Unknown function: ${functionName}` });
     }
@@ -864,7 +1002,8 @@ export async function generateAIResponse(
             
             console.log(`[SMS AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
             
-            const functionResult = await executeFunctionCall(functionName, functionArgs);
+            // Audit T2 Task #19: thread tenantId so staff-action tools can resolve tenant context.
+            const functionResult = await executeFunctionCall(functionName, functionArgs, false, tenantId);
             
             currentMessages.push({
               role: "tool",
@@ -1382,7 +1521,8 @@ IMPORTANT WEB CHAT RESTRICTIONS:
         
         console.log(`[AI FUNCTION CALL] ${functionName}(${JSON.stringify(functionArgs)})`);
         
-        const functionResult = await executeFunctionCall(functionName, functionArgs);
+        // Audit T2 Task #19: thread tenantId so staff-action tools can resolve tenant context.
+        const functionResult = await executeFunctionCall(functionName, functionArgs, false, tenantId);
         
         currentMessages.push({
           role: "tool",
