@@ -35,7 +35,10 @@ import { requireAuth } from './authMiddleware';
 
 const router = Router();
 
-router.use(requireAuth);
+router.use('/api/tenant/billing', requireAuth);
+router.use('/api/billing', requireAuth);
+router.use('/api/admin/billing', requireAuth);
+router.use('/api/root-admin/billing', requireAuth);
 
 /**
  * Request schema for checkout session creation
