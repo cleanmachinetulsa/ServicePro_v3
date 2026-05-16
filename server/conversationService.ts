@@ -504,20 +504,11 @@ export async function getOrCreateConversation(
  * and the conversation is still anonymous).
  */
 /**
- * Audit T2 #20 (round 3): resolve the canonical web conversation for a given
- * sp_chat cookie. Once a visitor has supplied phone/email on ANY device, every
- * subsequent web POST from a cookie that maps to that same customer must write
- * to the same conversation row — otherwise per-device cookies create parallel
- * threads and history splits. Returns null if the cookie is anonymous or no
- * canonical conversation exists yet.
- */
-/**
- * Audit T2 #20 (round 4): resolve canonical web conversation by an identity
- * hint (phone/email). Used for the cross-device first-touch case: a brand-new
- * cookie that has never been mapped, but the very first POST already carries
- * the customer's phone/email. We must route that message into the customer's
- * existing canonical web conversation BEFORE creating a new one — otherwise
- * device B's first message forks history.
+ * Audit T2 #20: resolver helpers for canonical (cross-device) web
+ * conversation lookup. These are RETAINED but UNUSED in the current build —
+ * they will be re-enabled when an identity-possession verification flow
+ * (OTP / portal session / magic link) lands. Until then, calling them from
+ * any unauthenticated path is unsafe (IDOR risk) and is forbidden.
  */
 export async function resolveCanonicalWebConversationByIdentity(
   tenantDb: TenantDb,
@@ -652,23 +643,13 @@ export async function linkWebChatIdentity(
       })
       .where(eq(conversations.id, conversationId));
 
-    // Audit T2 #20 (round 2): stamp the cookie→customer mapping in
-    // web_chat_identities so a second device with a different webId but the
-    // same phone/email can resolve to this conversation on next /resolve.
-    // The webId is recoverable from customerPhone (`web-chat-<webId>`).
-    try {
-      if (conv.customerPhone && conv.customerPhone.startsWith('web-chat-')) {
-        const webId = conv.customerPhone.slice('web-chat-'.length);
-        const { upsertWebChatIdentity } = await import('./services/webChatCookie');
-        await upsertWebChatIdentity(tenantDb, tenantId, webId, {
-          customerId,
-          lastConversationId: conversationId,
-        });
-      }
-    } catch (idErr) {
-      console.warn('[WEB CHAT IDENTITY] post-link upsert failed (non-fatal):', idErr);
-    }
-
+    // SECURITY (Audit T2 #20): we intentionally do NOT upsert a
+    // web_chat_identities (cookie -> customer_id) row from this path. The
+    // identity hint is unverified (any visitor can type a known customer's
+    // phone), so persisting a trust binding here would enable IDOR via the
+    // /resolve and SSE endpoints. Customer linkage on the conversation row
+    // is scoped to THIS conversation only and is safe; the cookie itself
+    // remains the only trust anchor for stream/read authorization.
     console.log(`[WEB CHAT IDENTITY] conv=${conversationId} linked to customer=${customerId} thread=${threadId}`);
     return customerId;
   } catch (err) {

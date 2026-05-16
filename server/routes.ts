@@ -1934,15 +1934,14 @@ export async function registerRoutes(app: Express) {
       // load so cross-device identity (once phone/email is provided) and SSE
       // ownership checks have a stable, server-trusted handle that survives
       // localStorage clears and is not forgeable by the client.
-      const { ensureWebChatCookie, upsertWebChatIdentity } = await import('./services/webChatCookie');
+      const { ensureWebChatCookie } = await import('./services/webChatCookie');
       const webId = ensureWebChatCookie(req, res);
-      if (webId) {
-        // Audit T2 #20 (round 2): make the cookie identity row exist on
-        // first page load so /resolve has something to look up even before
-        // the visitor sends a message.
-        const tenantId = (req as any).tenantId || (req.tenantDb as any)?.tenantId || 'root';
-        void upsertWebChatIdentity(req.tenantDb!, tenantId, webId);
-      }
+      // NOTE: we intentionally do NOT pre-create a web_chat_identities row
+      // here. That row binds a cookie to a customer_id, and creating it
+      // before verified identity possession would enable IDOR by anyone who
+      // types a known customer's phone/email into the widget. The table
+      // exists for a future OTP/portal-session flow; do not populate it
+      // from this anonymous endpoint.
 
       const { businessSettings } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
@@ -1987,18 +1986,17 @@ export async function registerRoutes(app: Express) {
       const webId = readWebChatCookie(req);
       if (!webId) return res.status(401).end();
 
-      // Verify the cookie owns this conversation (tenant-scoped).
-      // Audit T2 #20 (round 3): authorize EITHER when customerPhone matches
-      // this cookie's webId (anonymous case) OR when the conversation's
-      // customerId matches the customerId linked to this cookie in
-      // web_chat_identities (cross-device case). Both branches stay
-      // tenant-scoped via withTenantFilter.
+      // Verify the cookie owns this conversation (tenant-scoped). Strictly
+      // per-cookie: the conversation's customerPhone must equal this cookie's
+      // signed handle. We intentionally do NOT allow web_chat_identities
+      // customer_id matching here — that would let a cookie bound (via
+      // unverified phone/email) to a customer eavesdrop on that customer's
+      // other web conversations.
       const { eq, and } = await import('drizzle-orm');
-      const { conversations, webChatIdentities } = await import('@shared/schema');
+      const { conversations } = await import('@shared/schema');
       const [conv] = await req.tenantDb!
         .select({
           id: conversations.id,
-          customerId: conversations.customerId,
           customerPhone: conversations.customerPhone,
           platform: conversations.platform,
         })
@@ -2009,19 +2007,9 @@ export async function registerRoutes(app: Express) {
           )
         )
         .limit(1);
-      if (!conv) return res.status(403).end();
-      let authorized = conv.customerPhone === webIdentifierFor(webId);
-      if (!authorized && conv.customerId) {
-        const [identity] = await req.tenantDb!
-          .select({ customerId: webChatIdentities.customerId })
-          .from(webChatIdentities)
-          .where(req.tenantDb!.withTenantFilter(webChatIdentities, eq(webChatIdentities.webId, webId)))
-          .limit(1);
-        if (identity?.customerId && identity.customerId === conv.customerId) {
-          authorized = true;
-        }
+      if (!conv || conv.customerPhone !== webIdentifierFor(webId)) {
+        return res.status(403).end();
       }
-      if (!authorized) return res.status(403).end();
 
       // Open the SSE stream.
       res.set({
@@ -2071,50 +2059,25 @@ export async function registerRoutes(app: Express) {
       const webId = readWebChatCookie(req);
       if (!webId) return res.json({ success: true, conversationId: null, messages: [], takenOverBy: null });
 
-      const { webChatIdentities, conversations, messages: messagesTable } = await import('@shared/schema');
+      const { conversations, messages: messagesTable } = await import('@shared/schema');
       const { and, eq, desc } = await import('drizzle-orm');
 
-      const [identity] = await req.tenantDb!
-        .select()
-        .from(webChatIdentities)
-        .where(req.tenantDb!.withTenantFilter(webChatIdentities, eq(webChatIdentities.webId, webId)))
-        .limit(1);
-
+      // Per-cookie only. Cross-device continuity via web_chat_identities is
+      // intentionally NOT used here: until identity possession is verified
+      // (OTP / portal session), trusting that mapping would let any cookie
+      // pull the history of any customer whose phone/email was ever typed
+      // into a widget.
       type WebConv = typeof conversations.$inferSelect;
-      let conversationId: number | null = null;
       let conv: WebConv | null = null;
-      // Prefer cross-device continuity: most recent web conv for the linked customer.
-      if (identity?.customerId) {
-        const [crossDeviceConv] = await req.tenantDb!
-          .select()
-          .from(conversations)
-          .where(req.tenantDb!.withTenantFilter(conversations,
-            and(eq(conversations.customerId, identity.customerId), eq(conversations.platform, 'web'))))
-          .orderBy(desc(conversations.lastMessageTime))
-          .limit(1);
-        if (crossDeviceConv) { conv = crossDeviceConv; conversationId = crossDeviceConv.id; }
-      }
-      // Then identity.lastConversationId (cached pointer; cheaper than scan).
-      if (!conversationId && identity?.lastConversationId) {
-        const [lastConv] = await req.tenantDb!
-          .select()
-          .from(conversations)
-          .where(req.tenantDb!.withTenantFilter(conversations,
-            and(eq(conversations.id, identity.lastConversationId), eq(conversations.platform, 'web'))))
-          .limit(1);
-        if (lastConv) { conv = lastConv; conversationId = lastConv.id; }
-      }
-      // Finally fall back to this cookie's own anonymous conversation.
-      if (!conversationId) {
-        const [ownConv] = await req.tenantDb!
-          .select()
-          .from(conversations)
-          .where(req.tenantDb!.withTenantFilter(conversations,
-            and(eq(conversations.customerPhone, webIdentifierFor(webId)), eq(conversations.platform, 'web'))))
-          .orderBy(desc(conversations.lastMessageTime))
-          .limit(1);
-        if (ownConv) { conv = ownConv; conversationId = ownConv.id; }
-      }
+      const [ownConv] = await req.tenantDb!
+        .select()
+        .from(conversations)
+        .where(req.tenantDb!.withTenantFilter(conversations,
+          and(eq(conversations.customerPhone, webIdentifierFor(webId)), eq(conversations.platform, 'web'))))
+        .orderBy(desc(conversations.lastMessageTime))
+        .limit(1);
+      if (ownConv) conv = ownConv;
+      const conversationId = conv?.id ?? null;
 
       if (!conversationId || !conv) {
         return res.json({ success: true, conversationId: null, messages: [], takenOverBy: null });
@@ -2266,66 +2229,33 @@ export async function registerRoutes(app: Express) {
         : `web-chat-fallback-${sessionId}`;
 
       // Process the web chat message (isolated from SMS customers)
-      const {
-        getOrCreateConversation, addMessage, linkWebChatIdentity,
-        resolveCanonicalWebConversation, resolveCanonicalWebConversationByIdentity,
-      } = await import('./conversationService');
+      const { getOrCreateConversation, addMessage, linkWebChatIdentity } = await import('./conversationService');
       const { processConversation } = await import('./conversationHandler');
 
       const identityPhone = typeof req.body?.identityPhone === 'string' ? req.body.identityPhone : null;
       const identityEmail = typeof req.body?.identityEmail === 'string' ? req.body.identityEmail : null;
       const identityName = typeof req.body?.identityName === 'string' ? req.body.identityName : null;
 
-      // Audit T2 #20 (round 4): canonical resolution order at the WRITE path
-      // so every device for a known customer ends up on the same conversation
-      // row, not just at read time via /resolve.
-      //   (1) cookie -> web_chat_identities.customerId -> canonical conv
-      //   (2) identityPhone/email this request carries -> existing customer
-      //       -> canonical conv (covers brand-new cookie on a new device whose
-      //       very first POST already includes the customer's phone/email)
-      //   (3) fall back to per-cookie anonymous conv (true first-touch case)
-      let conversation = cookieWebId
-        ? await resolveCanonicalWebConversation(req.tenantDb!, cookieWebId)
-        : null;
-      let canonicalCustomerId: number | null = conversation?.customerId ?? null;
+      // Audit T2 #20: write path is strictly per-cookie. Cross-device or
+      // identity-based routing requires a verified-possession step (OTP /
+      // magic link / portal session) that does not yet exist; routing by
+      // unverified identityPhone/email would be an IDOR (any visitor could
+      // type a known customer's number and land in their conversation).
+      // Until verification exists, every cookie owns its own conversation
+      // row.
+      const { conversation } = await getOrCreateConversation(
+        req.tenantDb!,
+        webIdentifier, // cookie-backed handle, NOT a real phone
+        null, 'web',
+        undefined, undefined, undefined, undefined, undefined, undefined,
+      );
 
-      if (!conversation && (identityPhone || identityEmail)) {
-        const byIdentity = await resolveCanonicalWebConversationByIdentity(req.tenantDb!, {
-          phone: identityPhone, email: identityEmail,
-        });
-        if (byIdentity) {
-          conversation = byIdentity.conversation;
-          canonicalCustomerId = byIdentity.customerId;
-          // Bind this cookie to the resolved customer so future POSTs from
-          // this device skip the identity scan and SSE auth recognizes it.
-          if (cookieWebId) {
-            try {
-              const { upsertWebChatIdentity } = await import('./services/webChatCookie');
-              await upsertWebChatIdentity(req.tenantDb!, req.tenantDb!.tenantId, cookieWebId, {
-                customerId: byIdentity.customerId,
-                lastConversationId: byIdentity.conversation.id,
-              });
-            } catch (bindErr) {
-              console.warn('[WEB CHAT] cookie<->customer rebind failed (non-fatal):', bindErr);
-            }
-          }
-        }
-      }
-
-      if (!conversation) {
-        const created = await getOrCreateConversation(
-          req.tenantDb!,
-          webIdentifier, // cookie-backed handle, NOT a real phone
-          null, 'web',
-          undefined, undefined, undefined, undefined, undefined, undefined,
-        );
-        conversation = created.conversation;
-      }
-
-      // Promote anonymous web-chat conv to a real customer + cross-channel
-      // thread the first time the widget surfaces identity. Idempotent;
-      // bails fast if the conversation is already linked.
-      if ((identityPhone || identityEmail) && !canonicalCustomerId) {
+      // Attach a real customer + cross-channel thread to THIS conversation
+      // the first time the widget supplies identity. This is bounded to the
+      // current cookie's conversation only — linkWebChatIdentity intentionally
+      // no longer creates any cookie<->customer mapping that could be reused
+      // across cookies (see web_chat_identities note in conversationService).
+      if (identityPhone || identityEmail) {
         await linkWebChatIdentity(req.tenantDb!, conversation.id, {
           phone: identityPhone, email: identityEmail, fullName: identityName,
         });
