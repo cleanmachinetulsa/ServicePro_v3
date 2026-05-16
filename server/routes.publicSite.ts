@@ -190,6 +190,9 @@ router.get('/site/:subdomain', publicSiteLimiter, async (req: Request, res: Resp
       showAbout: siteSettings.showAbout !== false,
       showGallery: siteSettings.showGallery ?? false,
       showWhyChooseUs: siteSettings.showWhyChooseUs ?? true,
+      // Custom-built homepage override
+      useCustomHomepage: siteSettings.useCustomHomepage === true,
+      customHomepageTemplateId: siteSettings.customHomepageTemplateId || 'luminous_concierge',
     };
 
     // Compose public site payload

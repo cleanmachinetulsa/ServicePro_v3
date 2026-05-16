@@ -36,7 +36,19 @@ interface PublicSiteSettings {
   showRewardsCTA: boolean;
   showBookingCTA: boolean;
   showGiftCardCTA: boolean;
+  useCustomHomepage: boolean;
+  customHomepageTemplateId: string;
 }
+
+const HOMEPAGE_TEMPLATE_OPTIONS: { id: string; name: string; description: string }[] = [
+  { id: 'luminous_concierge', name: 'Luminous Concierge', description: 'Premium glassmorphism with floating cards and AI spotlight' },
+  { id: 'dynamic_spotlight', name: 'Dynamic Spotlight', description: 'Bold split-screen with kinetic service carousel' },
+  { id: 'prestige_grid', name: 'Prestige Grid', description: 'Refined editorial grid with elegant typography' },
+  { id: 'night_drive_neon', name: 'Night Drive Neon', description: 'High-contrast neon styling, after-hours feel' },
+  { id: 'executive_minimal', name: 'Executive Minimal', description: 'Clean, restrained, executive-grade layout' },
+  { id: 'quantum_concierge', name: 'Quantum Concierge', description: 'Futuristic concierge experience with depth' },
+  { id: 'current', name: 'Current Default', description: 'The original handcrafted homepage' },
+];
 
 interface DefaultSettings {
   heroTitle: string;
@@ -61,6 +73,8 @@ export default function AdminPublicSiteSettings() {
     showRewardsCTA: true,
     showBookingCTA: true,
     showGiftCardCTA: false,
+    useCustomHomepage: false,
+    customHomepageTemplateId: 'luminous_concierge',
   });
   const [defaults, setDefaults] = useState<DefaultSettings>({
     heroTitle: 'Welcome to Your Business',
@@ -180,8 +194,12 @@ export default function AdminPublicSiteSettings() {
           </div>
         </div>
 
-        <Tabs defaultValue="content" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3" data-testid="settings-tabs">
+        <Tabs defaultValue="homepage" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4" data-testid="settings-tabs">
+            <TabsTrigger value="homepage" className="flex items-center gap-2" data-testid="tab-homepage">
+              <Sparkles className="h-4 w-4" />
+              <span className="hidden sm:inline">Homepage</span>
+            </TabsTrigger>
             <TabsTrigger value="content" className="flex items-center gap-2" data-testid="tab-content">
               <Type className="h-4 w-4" />
               <span className="hidden sm:inline">Content</span>
@@ -195,6 +213,71 @@ export default function AdminPublicSiteSettings() {
               <span className="hidden sm:inline">Features</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="homepage" className="space-y-6" data-testid="panel-homepage">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5" />
+                  Use My Custom-Built Homepage
+                </CardTitle>
+                <CardDescription>
+                  Turn this on to show your hand-designed homepage (like Luminous Concierge)
+                  instead of the auto-generated public site layout. Turn it off to fall back
+                  to the auto-built page.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                  <div className="space-y-1">
+                    <Label className="text-base">Use my custom-built homepage</Label>
+                    <p className="text-sm text-muted-foreground">
+                      When ON, visitors see the design template selected below.
+                      When OFF, visitors see the auto-generated public site.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={settings.useCustomHomepage}
+                    onCheckedChange={(checked) => handleChange('useCustomHomepage', checked)}
+                    data-testid="switch-use-custom-homepage"
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <Label className="text-base">Homepage Design</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Pick which custom-designed template to show when the toggle above is on.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {HOMEPAGE_TEMPLATE_OPTIONS.map((tpl) => {
+                      const selected = settings.customHomepageTemplateId === tpl.id;
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          disabled={!settings.useCustomHomepage}
+                          onClick={() => handleChange('customHomepageTemplateId', tpl.id)}
+                          className={`text-left p-4 rounded-lg border-2 transition-all ${
+                            selected
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border hover:border-primary/40'
+                          } ${!settings.useCustomHomepage ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          data-testid={`template-option-${tpl.id}`}
+                        >
+                          <div className="font-medium">{tpl.name}</div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {tpl.description}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="content" className="space-y-6" data-testid="panel-content">
             <Card>

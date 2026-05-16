@@ -24,6 +24,23 @@ import {
 } from 'lucide-react';
 import { Seo } from '@/components/Seo';
 import { CLEAN_MACHINE_TENANT_SLUG } from '@shared/domainConfig';
+import LuminousConcierge from '@/pages/templates/LuminousConcierge';
+import DynamicSpotlight from '@/pages/templates/DynamicSpotlight';
+import PrestigeGrid from '@/pages/templates/PrestigeGrid';
+import NightDriveNeon from '@/pages/templates/NightDriveNeon';
+import ExecutiveMinimal from '@/pages/templates/ExecutiveMinimal';
+import QuantumConcierge from '@/pages/templates/QuantumConcierge';
+import CurrentTemplate from '@/pages/templates/CurrentTemplate';
+
+const CUSTOM_HOMEPAGE_COMPONENTS: Record<string, React.ComponentType<any>> = {
+  current: CurrentTemplate,
+  luminous_concierge: LuminousConcierge,
+  dynamic_spotlight: DynamicSpotlight,
+  prestige_grid: PrestigeGrid,
+  night_drive_neon: NightDriveNeon,
+  executive_minimal: ExecutiveMinimal,
+  quantum_concierge: QuantumConcierge,
+};
 import { 
   usePublicSiteTheme, 
   getThemeGradient,
@@ -85,6 +102,8 @@ interface PublicSiteData {
     showAbout?: boolean;
     showGallery?: boolean;
     showWhyChooseUs?: boolean;
+    useCustomHomepage?: boolean;
+    customHomepageTemplateId?: string;
   };
 }
 
@@ -176,6 +195,52 @@ export default function PublicSite() {
   }
 
   const { tenant, websiteContent, services, faqs, featureFlags } = siteData;
+
+  // Custom-built homepage override: when the tenant has flipped the
+  // "Use my custom-built homepage" switch in Public Site Settings, render
+  // the chosen design template (e.g. Luminous Concierge) instead of the
+  // auto-generated PublicSite layout below.
+  if (siteData.themeConfig?.useCustomHomepage) {
+    const templateId = siteData.themeConfig.customHomepageTemplateId || 'luminous_concierge';
+    const TemplateComponent =
+      CUSTOM_HOMEPAGE_COMPONENTS[templateId] || LuminousConcierge;
+
+    // Adapter: map tenant public-site data into the HomepageContent shape
+    // the design templates expect.
+    const adaptedContent = {
+      id: 0,
+      tenantId: tenant.id,
+      templateId,
+      layoutSettings: null,
+      heroHeading: websiteContent.heroHeadline,
+      heroSubheading: websiteContent.heroSubheadline,
+      heroCtaText: websiteContent.primaryCtaLabel,
+      heroCtaLink: '/schedule',
+      heroTaglinePrimary: websiteContent.heroSubheadline,
+      heroTaglineSecondary: '',
+      aboutHeading: 'About Us',
+      aboutText: websiteContent.aboutBlurb,
+      servicesHeading: 'Our Services',
+      servicesSubheading: null,
+      primaryColor: siteData.branding.primaryColor || '#6366f1',
+      secondaryColor: siteData.branding.accentColor || '#a855f7',
+      accentColor: siteData.branding.accentColor || '#a855f7',
+      logoUrl: siteData.branding.logoUrl || null,
+      metaTitle: tenant.businessName,
+      metaDescription: websiteContent.aboutBlurb,
+      updatedAt: new Date(),
+      updatedBy: null,
+    } as any;
+
+    const adaptedServices = (services || []).map((s) => ({
+      id: s.id,
+      name: s.name,
+      priceRange: s.priceRange || '',
+      overview: s.overview || '',
+    }));
+
+    return <TemplateComponent content={adaptedContent} services={adaptedServices} />;
+  }
 
   // Get initials for avatar fallback
   const initials = tenant.businessName

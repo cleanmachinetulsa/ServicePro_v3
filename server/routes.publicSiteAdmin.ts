@@ -24,7 +24,21 @@ const publicSiteSettingsSchema = z.object({
   showRewardsCTA: z.boolean().optional(),
   showBookingCTA: z.boolean().optional(),
   showGiftCardCTA: z.boolean().optional(),
+  useCustomHomepage: z.boolean().optional(),
+  customHomepageTemplateId: z.string().max(50).optional().nullable(),
 });
+
+// Whitelist of design templates the tenant can pick for their custom homepage.
+// Must match TEMPLATE_COMPONENTS in client/src/pages/home.tsx.
+const ALLOWED_HOMEPAGE_TEMPLATE_IDS = new Set([
+  'current',
+  'luminous_concierge',
+  'dynamic_spotlight',
+  'prestige_grid',
+  'night_drive_neon',
+  'executive_minimal',
+  'quantum_concierge',
+]);
 
 /**
  * GET /api/admin/public-site-settings
@@ -65,6 +79,8 @@ router.get('/public-site-settings', async (req: Request, res: Response) => {
       showRewardsCTA: storedSettings.showRewardsCTA ?? true,
       showBookingCTA: storedSettings.showBookingCTA ?? true,
       showGiftCardCTA: storedSettings.showGiftCardCTA ?? false,
+      useCustomHomepage: storedSettings.useCustomHomepage ?? false,
+      customHomepageTemplateId: storedSettings.customHomepageTemplateId || 'luminous_concierge',
     };
     
     const defaults = {
@@ -113,22 +129,37 @@ router.put('/public-site-settings', async (req: Request, res: Response) => {
       showRewardsCTA,
       showBookingCTA,
       showGiftCardCTA,
+      useCustomHomepage,
+      customHomepageTemplateId,
     } = parseResult.data;
+
+    // Preserve any existing settings keys we don't manage in this endpoint
+    // (e.g. theme/layout fields written by routes.publicSiteTheme.ts).
+    const [existing] = await db
+      .select({ publicSiteSettings: tenantConfig.publicSiteSettings })
+      .from(tenantConfig)
+      .where(eq(tenantConfig.tenantId, tenantId))
+      .limit(1);
+    const publicSiteSettings: Record<string, any> = {
+      ...(existing?.publicSiteSettings || {}),
+    };
     
-    const publicSiteSettings: Record<string, any> = {};
-    
-    if (heroTitle && heroTitle.trim() !== '') {
-      publicSiteSettings.heroTitle = heroTitle.trim();
-    }
-    if (heroSubtitle && heroSubtitle.trim() !== '') {
-      publicSiteSettings.heroSubtitle = heroSubtitle.trim();
-    }
-    if (primaryColor && primaryColor.trim() !== '') {
-      publicSiteSettings.primaryColor = primaryColor.trim();
-    }
-    if (secondaryColor && secondaryColor.trim() !== '') {
-      publicSiteSettings.secondaryColor = secondaryColor.trim();
-    }
+    // For text/color fields: treat undefined as "leave as-is",
+    // empty string as "clear this field" (so the UI can restore defaults),
+    // and a non-empty value as "set to this".
+    const applyOptionalString = (key: string, value: string | null | undefined) => {
+      if (value === undefined) return;
+      const trimmed = (value ?? '').trim();
+      if (trimmed === '') {
+        delete publicSiteSettings[key];
+      } else {
+        publicSiteSettings[key] = trimmed;
+      }
+    };
+    applyOptionalString('heroTitle', heroTitle);
+    applyOptionalString('heroSubtitle', heroSubtitle);
+    applyOptionalString('primaryColor', primaryColor);
+    applyOptionalString('secondaryColor', secondaryColor);
     
     if (typeof showRewardsCTA === 'boolean') {
       publicSiteSettings.showRewardsCTA = showRewardsCTA;
@@ -138,6 +169,20 @@ router.put('/public-site-settings', async (req: Request, res: Response) => {
     }
     if (typeof showGiftCardCTA === 'boolean') {
       publicSiteSettings.showGiftCardCTA = showGiftCardCTA;
+    }
+
+    if (typeof useCustomHomepage === 'boolean') {
+      publicSiteSettings.useCustomHomepage = useCustomHomepage;
+    }
+    if (typeof customHomepageTemplateId === 'string' && customHomepageTemplateId.trim() !== '') {
+      const requested = customHomepageTemplateId.trim();
+      if (!ALLOWED_HOMEPAGE_TEMPLATE_IDS.has(requested)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid homepage template '${requested}'`,
+        });
+      }
+      publicSiteSettings.customHomepageTemplateId = requested;
     }
     
     await db

@@ -367,6 +367,11 @@ export const tenantConfig = pgTable("tenant_config", {
     showWhyChooseUs?: boolean;
     showAbout?: boolean;
     showRewards?: boolean;
+    // Custom-built homepage override: when true, the public site renders the
+    // chosen design template (e.g. Luminous Concierge) instead of the
+    // auto-generated PublicSite layout.
+    useCustomHomepage?: boolean;
+    customHomepageTemplateId?: string;
   }>(),
   
   createdAt: timestamp("created_at").defaultNow().notNull(),
