@@ -134,3 +134,38 @@ export function ensureWebChatCookie(req: Request, res: Response): string | null 
 export function webIdentifierFor(webId: string): string {
   return `web-chat-${webId}`;
 }
+
+/**
+ * Audit T2 Task #20 (round 2) — upsert the (tenant_id, web_id) row in
+ * web_chat_identities. Called on /api/web-chat/config (every page load) so
+ * the durable identity record exists before the visitor sends anything.
+ * Safe to call repeatedly; non-fatal on error.
+ */
+export async function upsertWebChatIdentity(
+  tenantDb: any,
+  tenantId: string,
+  webId: string,
+  patch?: { customerId?: number | null; lastConversationId?: number | null },
+): Promise<void> {
+  try {
+    const { webChatIdentities } = await import('@shared/schema');
+    const { sql } = await import('drizzle-orm');
+    const setClause: Record<string, any> = { updatedAt: new Date() };
+    if (patch?.customerId !== undefined) setClause.customerId = patch.customerId;
+    if (patch?.lastConversationId !== undefined) setClause.lastConversationId = patch.lastConversationId;
+    await tenantDb
+      .insert(webChatIdentities)
+      .values({
+        tenantId,
+        webId,
+        customerId: patch?.customerId ?? null,
+        lastConversationId: patch?.lastConversationId ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [webChatIdentities.tenantId, webChatIdentities.webId],
+        set: setClause,
+      });
+  } catch (err) {
+    console.warn('[WEB CHAT IDENTITY] upsert failed (non-fatal):', err);
+  }
+}

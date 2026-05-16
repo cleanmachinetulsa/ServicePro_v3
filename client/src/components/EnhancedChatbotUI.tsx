@@ -249,7 +249,11 @@ export default function EnhancedChatbotUI() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/web-chat/config')
+    // First fetch widget config (issues sp_chat cookie + upserts identity row),
+    // then call /resolve to hydrate any active conversation + history. This
+    // gives instant continuity on page reload mid-conversation and on a
+    // second device once identity has been linked.
+    fetch('/api/web-chat/config', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.success) return;
@@ -266,6 +270,24 @@ export default function EnhancedChatbotUI() {
             }
             return prev;
           });
+        }
+        return fetch('/api/web-chat/resolve', { credentials: 'include' });
+      })
+      .then((r) => (r && r.ok ? r.json() : null))
+      .then((resolved) => {
+        if (cancelled || !resolved?.success) return;
+        if (resolved.conversationId) {
+          setConversationId(resolved.conversationId);
+          if (resolved.takenOverBy) setTakenOverBy(resolved.takenOverBy);
+          if (Array.isArray(resolved.messages) && resolved.messages.length > 0) {
+            const hydrated = resolved.messages.map((m: any) => ({
+              id: String(m.id),
+              text: String(m.content || ''),
+              sender: m.sender === 'customer' ? 'user' : 'bot',
+              timestamp: m.timestamp ? new Date(m.timestamp) : new Date(),
+            }));
+            setMessages(hydrated);
+          }
         }
       })
       .catch(() => { /* fallback to defaults */ });

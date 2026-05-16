@@ -5554,3 +5554,34 @@ export const insertPortalInstallPromptLogSchema = createInsertSchema(portalInsta
 
 export type PortalInstallPromptLog = typeof portalInstallPromptLog.$inferSelect;
 export type InsertPortalInstallPromptLog = z.infer<typeof insertPortalInstallPromptLogSchema>;
+// Audit T2 Task #20 (code-review round 2) — explicit cookie→identity mapping
+// so the web-chat widget supports:
+//   (a) reload mid-conversation: /api/web-chat/resolve looks up the active
+//       conversation by sp_chat cookie's webId and rehydrates the widget
+//       without needing a new POST.
+//   (b) cross-device continuity: when the visitor supplies a phone/email on
+//       a second device, linkWebChatIdentity() stamps the customerId here,
+//       and /resolve on subsequent loads (any device with cookie+customerId
+//       link) returns the most recent web conversation for that customer.
+// Stored separately from `conversations` so a single customer can have many
+// device webIds bound to one identity without overloading conversations.customerPhone.
+export const webChatIdentities = pgTable("web_chat_identities", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().default("root"),
+  webId: varchar("web_id", { length: 64 }).notNull(),
+  customerId: integer("customer_id").references(() => customers.id),
+  lastConversationId: integer("last_conversation_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  tenantWebUnique: uniqueIndex("web_chat_identities_tenant_webid_unique").on(table.tenantId, table.webId),
+  tenantCustomerIdx: index("web_chat_identities_tenant_customer_idx").on(table.tenantId, table.customerId),
+}));
+
+export const insertWebChatIdentitySchema = createInsertSchema(webChatIdentities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type WebChatIdentity = typeof webChatIdentities.$inferSelect;
+export type InsertWebChatIdentity = z.infer<typeof insertWebChatIdentitySchema>;

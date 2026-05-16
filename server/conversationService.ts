@@ -560,6 +560,23 @@ export async function linkWebChatIdentity(
       })
       .where(eq(conversations.id, conversationId));
 
+    // Audit T2 #20 (round 2): stamp the cookie→customer mapping in
+    // web_chat_identities so a second device with a different webId but the
+    // same phone/email can resolve to this conversation on next /resolve.
+    // The webId is recoverable from customerPhone (`web-chat-<webId>`).
+    try {
+      if (conv.customerPhone && conv.customerPhone.startsWith('web-chat-')) {
+        const webId = conv.customerPhone.slice('web-chat-'.length);
+        const { upsertWebChatIdentity } = await import('./services/webChatCookie');
+        await upsertWebChatIdentity(tenantDb, tenantId, webId, {
+          customerId,
+          lastConversationId: conversationId,
+        });
+      }
+    } catch (idErr) {
+      console.warn('[WEB CHAT IDENTITY] post-link upsert failed (non-fatal):', idErr);
+    }
+
     console.log(`[WEB CHAT IDENTITY] conv=${conversationId} linked to customer=${customerId} thread=${threadId}`);
     return customerId;
   } catch (err) {
