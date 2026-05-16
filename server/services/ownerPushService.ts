@@ -10,7 +10,7 @@
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
 import { pushSubscriptions, users } from '@shared/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { sendPushNotification, type PushNotificationPayload } from '../pushNotificationService';
 
 export interface OwnerEscalationPushOptions {
@@ -52,9 +52,6 @@ export async function notifyOwnerEscalation(opts: OwnerEscalationPushOptions): P
       console.log(`[OWNER PUSH] No owner subscribers for tenant=${tenantId}`);
       return { attempted: 0, succeeded: 0 };
     }
-    // Suppress unused-import warning when only inArray is needed elsewhere.
-    void inArray;
-
     const payload: PushNotificationPayload = {
       title: urgency === 'high' ? '🚨 Customer needs you' : '👋 Customer needs you',
       body: customerLabel
