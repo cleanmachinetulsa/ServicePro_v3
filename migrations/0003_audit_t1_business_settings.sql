@@ -12,16 +12,17 @@ ALTER TABLE business_settings
   ADD COLUMN IF NOT EXISTS ai_daily_token_budget integer,
   ADD COLUMN IF NOT EXISTS ai_budget_exhausted_reply text;
 
--- Backfill the Clean Machine root tenant with its known service area + persona
--- so existing behavior is preserved after de-hardcoding `BUSINESS_LOCATION`.
-UPDATE business_settings bs
+-- Backfill the singleton business_settings row (id=1) with the Clean Machine
+-- service area + persona so existing behavior is preserved after de-hardcoding
+-- `BUSINESS_LOCATION`. Note: business_settings is currently a singleton (no
+-- tenant_id column); per-tenant scoping is achieved via tenantDb at the
+-- application layer.
+UPDATE business_settings
 SET
-  service_area_center_lat = COALESCE(bs.service_area_center_lat, 36.0900000),
-  service_area_center_lng = COALESCE(bs.service_area_center_lng, -95.9750000),
-  chat_persona_name       = COALESCE(bs.chat_persona_name, 'Clean Machine Assistant')
-FROM tenants t
-WHERE bs.tenant_id = t.id
-  AND (t.name ILIKE '%clean machine%' OR t.subdomain ILIKE '%clean%');
+  service_area_center_lat = COALESCE(service_area_center_lat, 36.0900000),
+  service_area_center_lng = COALESCE(service_area_center_lng, -95.9750000),
+  chat_persona_name       = COALESCE(chat_persona_name, 'Clean Machine Assistant')
+WHERE id = 1;
 
 -- Drop legacy global UNIQUE constraints on customers (phone, email).
 -- The schema's tenant-scoped uniqueness (customers_tenant_phone_unique)

@@ -718,8 +718,8 @@ function extractAddress(description: string): string {
 }
 
 /**
- * Get weather forecasts for calendar dates
- * Uses Tulsa, OK as default location
+ * Get weather forecasts for calendar dates.
+ * Service-area origin coordinates come from tenant settings — no hardcoded location.
  */
 export async function getCalendarWeather(req: Request, res: Response) {
   try {
@@ -729,7 +729,7 @@ export async function getCalendarWeather(req: Request, res: Response) {
     if (!tenantDb) {
       return res.status(400).json({ error: 'Tenant context required for weather forecast.' });
     }
-    const { lat: tulsaLat, lng: tulsaLng } = await getServiceAreaConfig(tenantDb);
+    const { lat: serviceAreaLat, lng: serviceAreaLng } = await getServiceAreaConfig(tenantDb);
 
     const days = parseInt(req.query.days as string) || 14;
     const cacheKey = CacheKeys.dashboardWeather(days);
@@ -743,7 +743,7 @@ export async function getCalendarWeather(req: Request, res: Response) {
     
     console.log(`[CACHE MISS] Fetching weather forecast (${days} days)`);
     
-    const forecasts = await getDailyWeatherSummary(tulsaLat, tulsaLng, days);
+    const forecasts = await getDailyWeatherSummary(serviceAreaLat, serviceAreaLng, days);
     
     // Convert to map for easier calendar lookup
     const weatherByDate: Record<string, any> = {};

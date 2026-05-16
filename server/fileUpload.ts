@@ -199,9 +199,19 @@ export function registerFileUploadRoutes(app: Express) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      // Audit T1 W-8: per-session anonymous upload quota
-      // Cap pre-identity uploads to prevent storage abuse from anonymous chat visitors.
+      // Audit T1 W-8: per-session anonymous upload quota.
+      // Only enforced for *anonymous* / pre-identity uploads — once a customer
+      // has supplied phone/email we trust them and let identity-bound abuse
+      // checks (e.g. blocked customers) take over. This means the quota
+      // protects the public chat widget specifically, not authenticated flows.
+      const hasIdentity = Boolean(
+        (req.body?.customerPhone && String(req.body.customerPhone).trim()) ||
+        (req.body?.customerEmail && String(req.body.customerEmail).trim())
+      );
       try {
+        if (hasIdentity) {
+          // Skip the anonymous quota — identified caller.
+        } else {
         const { checkAndRecordUpload, getAnonymousSessionKey, QUOTA_LIMITS } = await import('./services/uploadQuotaService');
         const sessionKey = getAnonymousSessionKey(req as any);
         const quota = checkAndRecordUpload(sessionKey, req.file.size);
@@ -218,6 +228,7 @@ export function registerFileUploadRoutes(app: Express) {
               : `Upload size limit reached (max ${Math.round(QUOTA_LIMITS.MAX_BYTES_PER_SESSION / (1024 * 1024))} MB per 24 hours). Please contact us directly to share more.`,
             code: 'quota_exceeded',
           });
+        }
         }
       } catch (quotaErr) {
         console.warn('[UPLOAD QUOTA] Quota check failed (allowing through):', quotaErr);
