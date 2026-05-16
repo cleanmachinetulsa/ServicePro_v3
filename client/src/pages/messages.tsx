@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import io from 'socket.io-client';
+import { shouldHandleHotkey } from '@/lib/messagesHotkeys';
 
 // Audit T3 Task #21: bulk-action contracts shared between page and API
 interface StaffUser {
@@ -372,18 +373,21 @@ function MessagesPageContent() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      const editable =
-        tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
+      const allow = shouldHandleHotkey({
+        key: e.key,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        target,
+      });
 
-      // Always allow Esc + ? even from inputs? Allow Esc always.
+      // Always allow Esc even from inputs.
       if (e.key === 'Escape') {
         if (showCheatsheet) setShowCheatsheet(false);
         if (selectedIds.size > 0) clearSelection();
         return;
       }
-      if (editable) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!allow) return;
 
       const key = e.key;
       // ? cheatsheet (Shift + /)

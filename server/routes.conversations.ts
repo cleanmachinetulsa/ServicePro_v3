@@ -270,19 +270,54 @@ export function registerConversationRoutes(app: Express) {
         return res.status(400).json({ success: false, message: 'Already on that channel' });
       }
 
-      if (!curr.customerPhone) {
+      const sourcePlatform = curr.platform as ChannelKey;
+      const targetPlatform = to as ChannelKey;
+
+      // Validate target identity prerequisites up front so we never return a
+      // sibling conversation that has no viable delivery identity on the new
+      // channel.
+      if ((targetPlatform === 'sms') && !curr.customerPhone) {
         return res.status(400).json({
           success: false,
-          message: 'Cannot switch channel: conversation has no phone number',
+          message: 'Target SMS channel requires a customer phone number',
+        });
+      }
+      if (targetPlatform === 'email' && !curr.emailAddress) {
+        return res.status(400).json({
+          success: false,
+          message: 'Target email channel requires a customer email address',
+        });
+      }
+      if ((targetPlatform === 'facebook' || targetPlatform === 'instagram') && !curr.facebookSenderId) {
+        return res.status(400).json({
+          success: false,
+          message: `Target ${targetPlatform} channel requires a linked sender ID`,
         });
       }
 
-      const sourcePlatform = curr.platform as ChannelKey;
-      const targetPlatform = to as ChannelKey;
+      // Source channel must be one we can transmit on. SMS, web (socket
+      // broadcast), and email all have working outbound paths; Facebook/
+      // Instagram outbound is not yet implemented for this action so reject
+      // explicitly rather than pretending to send.
+      if (sourcePlatform === 'facebook' || sourcePlatform === 'instagram') {
+        return res.status(400).json({
+          success: false,
+          message: `Channel switch from ${sourcePlatform} is not supported yet`,
+        });
+      }
+      if (!curr.customerPhone && sourcePlatform !== 'email' && sourcePlatform !== 'web') {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot switch channel: conversation has no contact identity',
+        });
+      }
+
       const handoffText = `We're going to continue this conversation over ${labelFor(targetPlatform)}. Talk soon!`;
 
       // 1) Record the handoff as an outbound agent message on the source
-      // conversation so the timeline reflects it on every channel.
+      // conversation so the timeline reflects it on every channel. For web
+      // chat this is also the real delivery — `broadcastNewMessage` in
+      // `conversationService.addMessage` pushes it to the open socket.
       try {
         await addMessage(req.tenantDb!, conversationId, handoffText, 'agent', sourcePlatform, {
           type: 'channel_switch',
@@ -292,11 +327,8 @@ export function registerConversationRoutes(app: Express) {
         console.warn('[SWITCH-CHANNEL] source handoff note insert failed (non-blocking):', e);
       }
 
-      // 2) For SMS source, actually deliver the handoff to the customer via
-      // Twilio so they see a real text before we move the conversation. For
-      // other live-message channels we rely on the in-thread agent message
-      // emitted above (web chat is delivered to the open socket).
-      if (sourcePlatform === 'sms') {
+      // 2) Real outbound delivery on the source channel.
+      if (sourcePlatform === 'sms' && curr.customerPhone) {
         try {
           const { sendSMS } = await import('./notifications');
           await sendSMS(
@@ -310,15 +342,29 @@ export function registerConversationRoutes(app: Express) {
         } catch (e) {
           console.warn('[SWITCH-CHANNEL] outbound SMS handoff failed (non-blocking):', e);
         }
+      } else if (sourcePlatform === 'email' && curr.emailAddress) {
+        try {
+          const { sendEmail } = await import('./notifications');
+          await sendEmail(
+            req.tenantDb!,
+            curr.emailAddress,
+            curr.emailSubject ? `Re: ${curr.emailSubject}` : 'Continuing our conversation',
+            handoffText,
+          );
+        } catch (e) {
+          console.warn('[SWITCH-CHANNEL] outbound email handoff failed (non-blocking):', e);
+        }
       }
+      // web: addMessage above already pushed via websocket — that IS the
+      // real delivery for a live web chat session.
 
       const target = await getOrCreateConversation(
         req.tenantDb!,
-        curr.customerPhone,
+        curr.customerPhone || '',
         curr.customerName,
         targetPlatform,
-        undefined,
-        undefined,
+        targetPlatform === 'facebook' || targetPlatform === 'instagram' ? curr.facebookSenderId ?? undefined : undefined,
+        targetPlatform === 'facebook' || targetPlatform === 'instagram' ? curr.facebookPageId ?? undefined : undefined,
         curr.emailAddress || undefined,
       );
       // getOrCreateConversation returns a union; coerce id to number for type
