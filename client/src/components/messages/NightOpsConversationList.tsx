@@ -53,6 +53,8 @@ interface Conversation {
   archivedAt: string | null;
   starredAt: string | null;
   phoneLineId: number | null;
+  reachableChannels?: string[];
+  siblingConversationIds?: number[];
 }
 
 interface PhoneLine {
@@ -123,20 +125,6 @@ export function NightOpsConversationList({
       default: return 'text-slate-400';
     }
   };
-
-  // Audit T2: thread-aware channel pills. Build a phone -> set<platform> map so
-  // each row can render every channel where this customer is reachable, even
-  // before a server-side customer_threads merge layer ships.
-  const channelsByPhone = (() => {
-    const map = new Map<string, Set<string>>();
-    conversations.forEach(c => {
-      if (!c.customerPhone) return;
-      const key = c.customerPhone;
-      if (!map.has(key)) map.set(key, new Set());
-      map.get(key)!.add(c.platform);
-    });
-    return map;
-  })();
 
   const getPhoneLineLabel = (phoneLineId: number | null) => {
     if (!phoneLineId || phoneLines.length === 0) return null;
@@ -358,8 +346,10 @@ export function NightOpsConversationList({
 
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {(() => {
-                            const all = channelsByPhone.get(conv.customerPhone) || new Set([conv.platform]);
-                            const ordered = [conv.platform, ...Array.from(all).filter(p => p !== conv.platform)];
+                            const all = conv.reachableChannels && conv.reachableChannels.length > 0
+                              ? conv.reachableChannels
+                              : [conv.platform];
+                            const ordered = [conv.platform, ...all.filter(p => p !== conv.platform)];
                             return ordered.map(p => (
                               <Tooltip key={p}>
                                 <TooltipTrigger asChild>

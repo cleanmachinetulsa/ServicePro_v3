@@ -156,7 +156,7 @@ function MessagesPageContent() {
     if (!threadGroups.has(key)) threadGroups.set(key, []);
     threadGroups.get(key)!.push(conv);
   });
-  const threadRows: Conversation[] = Array.from(threadGroups.values()).map(group => {
+  const threadRows = Array.from(threadGroups.values()).map(group => {
     const sorted = [...group].sort(
       (a, b) => new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime(),
     );
@@ -166,7 +166,18 @@ function MessagesPageContent() {
     const controlMode = group.some(c => c.controlMode === 'manual') ? 'manual' : rep.controlMode;
     const pinned = group.some(c => c.pinned);
     const starred = group.some(c => c.starred);
-    return { ...rep, unreadCount, needsHumanAttention, controlMode, pinned, starred };
+    const reachableChannels = Array.from(new Set(group.map(c => c.platform)));
+    const siblingConversationIds = group.map(c => c.id);
+    return {
+      ...rep,
+      unreadCount,
+      needsHumanAttention,
+      controlMode,
+      pinned,
+      starred,
+      reachableChannels,
+      siblingConversationIds,
+    } as Conversation & { reachableChannels: string[]; siblingConversationIds: number[] };
   });
   const sortedConversations = threadRows.sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
