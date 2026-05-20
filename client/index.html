@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>ServicePro Business Automation</title>
     <meta name="description" content="AI-powered business automation platform for service businesses. Manage customers, appointments, and communications with intelligent automation." />
-    
+
+    <!-- SEO: explicit positive indexing signals. Canonical URL is intentionally
+         omitted until the public domain is confirmed; robots.txt + sitemap.xml
+         are served dynamically by the server and use PUBLIC_BASE_URL env var.
+         See replit.md "Site URL Configuration" for how to change the domain. -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="googlebot" content="index, follow" />
+
     <!-- PWA Configuration -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#1e40af" />
@@ -28,9 +35,13 @@
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/icon-512.png" />
     
+    <!-- Fonts: non-blocking load to avoid render-blocking the first paint.
+         Uses preconnect + preload + print-onload-swap pattern. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
   </head>
   <body>
     <div id="root"></div>

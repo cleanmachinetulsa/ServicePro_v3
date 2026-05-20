@@ -7,6 +7,23 @@ ServicePro is a multi-tenant, white-label SaaS platform designed to transform se
 - Preferred communication style: Simple, everyday language
 - AI Agent Behavior: Keep customer conversations focused on auto detailing topics and services. Steer discussions away from irrelevant topics back to Clean Machine Auto Detail services, scheduling, and business-related inquiries.
 
+## Site URL Configuration (IMPORTANT - read before rebrand/domain change)
+The public-facing base URL is controlled by ONE environment variable so the domain can be swapped without code changes. This matters because the product is being rebranded from "ServicePro" to a new name (TBD) and will get a new domain at that time.
+
+- **Env var (server):** `PUBLIC_BASE_URL` (e.g. `https://cleanmachinetulsa.com`)
+- **Env var (client/Vite, optional fallback):** `VITE_PUBLIC_BASE_URL`
+- **Fallback behavior:** If neither env var is set, the server derives the base URL from the incoming request's `Host` / `X-Forwarded-Host` header. This means `/robots.txt` works on any domain out of the box, but `/sitemap.xml` only emits absolute URLs when a host is resolvable.
+
+**Consumers of this env var (update this list if you add more):**
+- `server/index.ts` → `getPublicBaseUrl()` feeds `/robots.txt` Sitemap line and all `<loc>` entries in `/sitemap.xml`
+- `client/index.html` → currently does NOT hardcode a canonical URL. When the domain is confirmed, add `<link rel="canonical" href="${PUBLIC_BASE_URL}/">` and OpenGraph `og:url`.
+
+**To change the domain (rebrand checklist):**
+1. Set `PUBLIC_BASE_URL` secret to the new URL (no trailing slash).
+2. Redeploy. `robots.txt` and `sitemap.xml` pick it up immediately.
+3. Add the canonical/og:url tags to `client/index.html` if not already present.
+4. Re-run Lighthouse against the new live URL (NOT the `.replit.dev` preview — Replit serves `X-Robots-Tag: noindex` on dev URLs, which will always show as "blocked from indexing").
+
 ## System Architecture
 
 ### UI/UX Decisions

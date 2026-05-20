@@ -245,6 +245,86 @@ app.get('/manifest.json', (req, res) => {
   res.sendFile(path.join(process.cwd(), 'public', 'manifest.json'));
 });
 
+// SEO: robots.txt + sitemap.xml — base URL is env-driven so we can swap domains
+// without code changes. See replit.md "Site URL Configuration" for details.
+// Allowlist of hosts we'll trust when PUBLIC_BASE_URL env var is not set.
+// This prevents Host-header injection from poisoning canonical/sitemap URLs.
+const PUBLIC_HOST_ALLOWLIST = new Set([
+  'cleanmachinetulsa.com',
+  'www.cleanmachinetulsa.com',
+  'servicepro-v-3-base-cleanmachinetul.replit.app',
+]);
+
+function getPublicBaseUrl(req: Request): string | null {
+  const envUrl = process.env.PUBLIC_BASE_URL || process.env.VITE_PUBLIC_BASE_URL;
+  if (envUrl) return envUrl.replace(/\/$/, '');
+
+  // No env var set — fall back to request host, but only if it's a known host.
+  // In production we never trust an arbitrary Host header (SEO poisoning risk).
+  const rawHost = ((req.headers['x-forwarded-host'] as string) || req.get('host') || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  if (!rawHost) return null;
+
+  const hostOnly = rawHost.split(':')[0];
+  const isAllowlisted = PUBLIC_HOST_ALLOWLIST.has(hostOnly);
+  const isLocalDev =
+    process.env.NODE_ENV !== 'production' &&
+    (hostOnly === 'localhost' || hostOnly === '127.0.0.1');
+
+  if (!isAllowlisted && !isLocalDev) return null;
+
+  const rawProto = ((req.headers['x-forwarded-proto'] as string) || req.protocol || 'https')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  const proto = rawProto === 'http' || rawProto === 'https' ? rawProto : 'https';
+  return `${proto}://${rawHost}`;
+}
+
+app.get('/robots.txt', (req, res) => {
+  const baseUrl = getPublicBaseUrl(req);
+  const lines = [
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /api/',
+    'Disallow: /admin/',
+    'Disallow: /dashboard',
+    'Disallow: /messages',
+    'Disallow: /settings/',
+    'Disallow: /login',
+    'Disallow: /forgot-password',
+    'Disallow: /reset-password',
+    'Disallow: /change-password',
+  ];
+  if (baseUrl) lines.push(`Sitemap: ${baseUrl}/sitemap.xml`);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(lines.join('\n') + '\n');
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  const baseUrl = getPublicBaseUrl(req);
+  if (!baseUrl) {
+    res.status(404).type('text/plain').send('sitemap unavailable: no public base URL configured');
+    return;
+  }
+  // Only truly public, indexable routes — no auth-gated pages.
+  const publicPaths = ['/', '/pricing', '/demo', '/status', '/showcase', '/clean-machine'];
+  const today = new Date().toISOString().split('T')[0];
+  const urls = publicPaths
+    .map(
+      (p) =>
+        `  <url>\n    <loc>${baseUrl}${p}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n  </url>`,
+    )
+    .join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(xml);
+});
+
 // Cache-busting middleware - prevent users from seeing stale code after deployments
 app.use((req, res, next) => {
   const url = req.url;
