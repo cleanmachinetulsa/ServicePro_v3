@@ -60,6 +60,10 @@ export async function notifyOwnerEscalation(opts: OwnerEscalationPushOptions): P
       tag: `escalation-${conversationId}`,
       requireInteraction: urgency === 'high',
       data: {
+        // Review fix: service-worker click handler reads `data.url`. We send
+        // both `url` (canonical) and `deepLink` (back-compat) so the push
+        // reliably opens the correct thread instead of falling back to /messages.
+        url: `/messages?conversationId=${conversationId}`,
         deepLink: `/messages?conversationId=${conversationId}`,
         conversationId,
         reason,

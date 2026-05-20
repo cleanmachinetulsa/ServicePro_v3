@@ -72,16 +72,16 @@ function preprocessAddress(rawAddress: string | undefined | null): string {
     (err as any).code = 'MISSING_ADDRESS';
     throw err;
   }
-  
+
   const trimmed = rawAddress.trim();
   if (!trimmed) {
     const err = new Error('Address is empty after trimming');
     (err as any).code = 'MISSING_ADDRESS';
     throw err;
   }
-  
+
   let address = trimmed;
-  
+
   // Normalize common street abbreviations (case-insensitive)
   const abbreviations: Record<string, string> = {
     'pl': 'Pl',
@@ -105,13 +105,13 @@ function preprocessAddress(rawAddress: string | undefined | null): string {
     'cir': 'Cir',
     'circle': 'Cir'
   };
-  
+
   // Replace street type abbreviations (match word boundaries)
   for (const [abbr, standard] of Object.entries(abbreviations)) {
     const regex = new RegExp(`\\b${abbr}\\b`, 'gi');
     address = address.replace(regex, standard);
   }
-  
+
   // Check if address already has city and state
   const hasCity = /tulsa/i.test(address);
   const hasState = /\b(ok|oklahoma)\b/i.test(address);
@@ -126,7 +126,7 @@ function preprocessAddress(rawAddress: string | undefined | null): string {
     address = `${address}, OK`;
     console.log(`[ADDRESS PREPROCESSING] Added state: "${rawAddress}" → "${address}"`);
   }
-  
+
   return address;
 }
 

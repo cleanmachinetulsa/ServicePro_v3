@@ -6,7 +6,6 @@ import { sendDirectTwilioSMS } from './smsSendGuard'; // SMS-AUDIT-T1 S-8: outbo
  * Ensures human attention is flagged and owner is notified.
  */
 
-import twilio from 'twilio';
 import { db } from '../db';
 import { wrapTenantDb } from '../tenantDb';
 import { conversations, tenantConfig } from '@shared/schema';
@@ -223,11 +222,8 @@ export async function escalateSmsToHuman(context: EscalationContext): Promise<{
   ].filter(Boolean).join('\n');
   
   try {
-    const twilioClient = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
-    
+    // Review fix: removed unused `twilioClient = twilio(...)` instantiation —
+    // sendDirectTwilioSMS owns its own Twilio client.
     await sendDirectTwilioSMS({
       to: normalizedOwner,
       from: normalizedFrom,

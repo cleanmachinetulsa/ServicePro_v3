@@ -31,7 +31,21 @@ interface StatusPayload {
 }
 
 const CACHE_TTL_MS = 60_000;
+// Review fix: bounded payload cache keyed by RESOLVED tenant.id (never by
+// attacker-controlled query input) to prevent unbounded memory growth via
+// random `?host=` values and to prevent cache-key fragmentation across
+// different hosts that resolve to the same tenant.
+const CACHE_MAX_ENTRIES = 1000;
 const cache = new Map<string, { at: number; payload: StatusPayload }>();
+
+function cacheSet(tenantId: string, payload: StatusPayload): void {
+  if (cache.size >= CACHE_MAX_ENTRIES) {
+    // Evict oldest insertion-ordered entry (Map preserves insertion order).
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(tenantId, { at: Date.now(), payload });
+}
 
 function normalizeHost(input: string): string {
   return String(input || '')
@@ -186,13 +200,15 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'invalid tenant slug' });
     }
     const hostQuery = typeof req.query.host === 'string' ? req.query.host : undefined;
-    const cacheKey = `${slug}|${hostQuery ? normalizeHost(hostQuery) : ''}`;
-    const cached = cache.get(cacheKey);
+    // Review fix: resolve the tenant FIRST, then cache by tenant.id. Caching
+    // by the raw slug+host query allowed an anonymous caller to fill the
+    // cache with arbitrary keys via `?host=…`.
+    const tenant = await loadTenantBySlugOrHost(slug, hostQuery);
+    if (!tenant) return res.status(404).json({ error: 'tenant not found' });
+    const cached = cache.get(tenant.id);
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
       return res.json(cached.payload);
     }
-    const tenant = await loadTenantBySlugOrHost(slug, hostQuery);
-    if (!tenant) return res.status(404).json({ error: 'tenant not found' });
 
     // Audit T3 Task #23 (review fix): respect tenant feature flag + plan gate.
     // Public status is a premium surface; an owner who hasn't opted in must
@@ -220,7 +236,7 @@ router.get('/:tenantSlug', async (req: Request, res: Response) => {
     }
 
     const payload = await buildStatusPayload(tenant.id, tenant.name);
-    cache.set(cacheKey, { at: Date.now(), payload });
+    cacheSet(tenant.id, payload);
     res.json(payload);
   } catch (err) {
     console.error('[STATUS] error:', err);
