@@ -45,12 +45,22 @@ export function Seo({
   title, 
   description, 
   canonicalPath,
-  siteName = 'Clean Machine Auto Detail',
+  siteName,
   ogImage 
 }: SeoProps) {
   const isCleanMachine = useMemo(() => isCleanMachineHostname(), []);
-  
-  const fullTitle = `${title} | ${siteName}`;
+
+  // Stage 1C-b: when no siteName is passed, fall back to the current
+  // document.title which useTenantMeta() has already set from the
+  // authenticated tenant's businessName. For Clean Machine this still
+  // resolves to "Clean Machine Auto Detail"; for other tenants it picks up
+  // their actual business name instead of the previous hardcoded literal.
+  const resolvedSiteName =
+    siteName ||
+    (typeof document !== 'undefined' && document.title && document.title !== 'Loading...'
+      ? document.title
+      : '');
+  const fullTitle = resolvedSiteName ? `${title} | ${resolvedSiteName}` : title;
   const canonicalUrl = useMemo(() => {
     if (!canonicalPath) return undefined;
     if (isCleanMachine) {
@@ -66,7 +76,9 @@ export function Seo({
 
     setMetaTag('og:title', fullTitle, true);
     setMetaTag('og:description', description, true);
-    setMetaTag('og:site_name', siteName, true);
+    if (resolvedSiteName) {
+      setMetaTag('og:site_name', resolvedSiteName, true);
+    }
     setMetaTag('og:type', 'website', true);
 
     if (canonicalUrl) {
@@ -84,7 +96,7 @@ export function Seo({
 
     return () => {
     };
-  }, [fullTitle, description, canonicalUrl, siteName, ogImage]);
+  }, [fullTitle, description, canonicalUrl, resolvedSiteName, ogImage]);
 
   return null;
 }

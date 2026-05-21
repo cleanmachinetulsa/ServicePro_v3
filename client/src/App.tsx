@@ -6,6 +6,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { useKeyboardDismiss } from "@/hooks/useKeyboardDismiss";
+import { useTenantMeta } from "@/hooks/useTenantMeta";
 import { PwaProvider } from "@/contexts/PwaContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { UiExperienceProvider } from "@/contexts/UiExperienceContext";
@@ -195,6 +196,13 @@ const UsageCostsPage = lazy(() => import("./pages/UsageCostsPage"));
 const RootSystemUsagePage = lazy(() => import("./pages/RootSystemUsagePage"));
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const DashboardNavButton = lazy(() => import("@/components/DashboardNavButton"));
+
+// Stage 1C-b: side-effect-only child component so useTenantMeta() runs
+// inside QueryClientProvider (where useBootstrap's useQuery is available).
+function TenantMetaEffect() {
+  useTenantMeta();
+  return null;
+}
 
 // Suspense wrapper for lazy components
 function LazyPage({ children }: { children: React.ReactNode }) {
@@ -917,6 +925,7 @@ function App() {
         <PwaProvider>
           <UiExperienceProvider>
             <DashboardPreferencesProvider>
+              <TenantMetaEffect />
               <Toaster />
               <PasswordChangeModal />
               <BannerDisplay />
