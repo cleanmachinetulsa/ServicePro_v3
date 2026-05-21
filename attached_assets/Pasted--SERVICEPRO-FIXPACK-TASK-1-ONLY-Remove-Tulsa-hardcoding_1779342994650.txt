@@ -1,0 +1,254 @@
+# SERVICEPRO — FIXPACK TASK 1 ONLY
+# Remove Tulsa hardcoding from address preprocessing
+# ONE TASK. ONE FILE PLUS ONE MIGRATION. NOTHING ELSE.
+
+IGNORE ALL PRIOR SESSION CONTEXT. READ ONLY THIS MESSAGE.
+
+---
+
+## YOUR ONLY JOB IN THIS SESSION
+
+Remove Tulsa hardcoding from `server/googleMapsApi.ts` and add three nullable columns to `business_settings` so Clean Machine keeps its geocoding behavior.
+
+Touching: `server/googleMapsApi.ts`, `shared/schema.ts` (additive only), one migration file, one SQL seed for Clean Machine.
+
+---
+
+## CLEAN MACHINE SAFETY
+
+After this change, Clean Machine's row in `business_settings` will have `business_city='Tulsa'`, `business_state='OK'`, `business_zip_prefix='74'` — confirmed by a SQL UPDATE you will run and verify. Their geocoding behavior is identical to today, just through the correct data path.
+
+---
+
+## STEP 0 — BEFORE ANY CODE, DELETE THESE ENV VARS IF THEY EXIST
+
+Check Replit's environment/secrets for these and remove them — they are stale from a prior failed attempt and must not interfere:
+- `MAPS_DEFAULT_CITY`
+- `MAPS_DEFAULT_STATE`
+- `MAPS_DEFAULT_ZIP_PREFIX`
+- `MAPS_HEALTH_CHECK_ADDRESS`
+
+---
+
+## VERIFICATION — RUN THESE BEFORE TOUCHING ANY FILE
+
+```bash
+# Confirm the hardcoded strings exist
+grep -n "tulsa\|Tulsa\|oklahoma\|OK\|74\d\{3\}\|components.*locality" server/googleMapsApi.ts
+
+# Confirm businessSettings has NO city/state columns currently
+grep -n "business_city\|business_state\|business_zip\|serviceCity\|serviceState\|businessAddress" shared/schema.ts
+
+# Confirm businessSettings DOES have serviceAreaCenterLat/Lng (these stay untouched)
+grep -n "serviceAreaCenterLat\|serviceAreaCenterLng" shared/schema.ts
+
+# Find the health check function name
+grep -n "function.*[Hh]ealth\|function.*[Tt]est\|Tulsa, OK" server/googleMapsApi.ts
+
+# Find all callers of preprocessAddress
+grep -rn "preprocessAddress(" server/
+
+# Find the Google geocode components filter
+grep -n "components.*locality\|locality.*Tulsa" server/googleMapsApi.ts
+```
+
+Confirm before writing code:
+- [ ] All six Tulsa strings confirmed found
+- [ ] `business_city`, `business_state`, `business_zip_prefix` do NOT exist yet
+- [ ] `serviceAreaCenterLat`/`Lng` DO exist — these are untouched
+- [ ] Exact function name of the Maps health check
+- [ ] Exact number of `preprocessAddress` call sites (patch ALL of them)
+
+---
+
+## CHANGE 1 — `shared/schema.ts` (additive only, three nullable columns)
+
+Find the `businessSettings` table definition. Add these three nullable columns — place them near the `serviceAreaCenterLat`/`Lng` columns since they are related:
+
+```typescript
+businessCity: text("business_city"),           // Tenant's city for geocoding bias
+businessState: text("business_state"),          // Tenant's state (2-letter, e.g. "OK")
+businessZipPrefix: text("business_zip_prefix"), // First 3 digits of ZIP (e.g. "74")
+```
+
+---
+
+## CHANGE 2 — Generate and apply the migration
+
+```bash
+npx drizzle-kit generate
+npx drizzle-kit migrate
+```
+
+Confirm the three columns now exist in the DB before continuing.
+
+---
+
+## CHANGE 3 — Seed Clean Machine's row
+
+```sql
+UPDATE business_settings 
+SET business_city = 'Tulsa', 
+    business_state = 'OK', 
+    business_zip_prefix = '74'
+WHERE tenant_id = 'root';
+```
+
+Confirm this returns `UPDATE 1`. Report the actual values read back from the row.
+
+---
+
+## CHANGE 4 — `server/googleMapsApi.ts`
+
+**4a — Add `escapeRegExp` helper at the top of the file (before any function that uses it):**
+
+```typescript
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+```
+
+**4b — Add `getTenantAddressContext` helper:**
+
+```typescript
+async function getTenantAddressContext(tenantDb: TenantDb): Promise<{
+  city?: string;
+  state?: string;
+  zipPrefix?: string;
+}> {
+  try {
+    const rows = await tenantDb.select().from(businessSettings).limit(1);
+    const row = rows[0];
+    if (!row) return {};
+    const city = (row as any).businessCity;
+    const state = (row as any).businessState;
+    const zipPrefix = (row as any).businessZipPrefix;
+    if (city && state) {
+      return { city: city.trim(), state: state.trim(), zipPrefix: zipPrefix?.trim() };
+    }
+    return {};
+  } catch (err) {
+    console.warn('[MAPS] getTenantAddressContext fail-open:', err);
+    return {};
+  }
+}
+```
+
+**4c — Change `preprocessAddress` signature:**
+
+```typescript
+function preprocessAddress(
+  address: string,
+  tenantCity?: string,
+  tenantState?: string,
+  tenantZipPrefix?: string,
+): string
+```
+
+**4d — Replace the three hardcoded detections:**
+
+```typescript
+const cityPattern = tenantCity
+  ? new RegExp(`\\b${escapeRegExp(tenantCity)}\\b`, 'i') : null;
+const hasCity = cityPattern ? cityPattern.test(address) : false;
+
+const statePattern = tenantState
+  ? new RegExp(`\\b${escapeRegExp(tenantState)}\\b`, 'i') : null;
+const hasState = statePattern ? statePattern.test(address) : false;
+
+const hasZip = tenantZipPrefix
+  ? new RegExp(`\\b${escapeRegExp(tenantZipPrefix)}\\d+\\b`).test(address)
+  : false;
+```
+
+**4e — Replace both append branches:**
+
+```typescript
+// Primary (no city, no state, no zip):
+if (tenantCity && tenantState) {
+  address = `${address}, ${tenantCity}, ${tenantState}`;
+}
+// If no tenant config: leave as-is. Google geocodes without bias.
+
+// Secondary (has city, missing state):
+} else if (hasCity && !hasState && tenantState) {
+  address = `${address}, ${tenantState}`;
+}
+```
+
+**4f — Delete the Google geocode `components` filter line entirely:**
+Find and delete: `components: 'locality:Tulsa|administrative_area:OK|country:US'`
+Delete it. Do not replace it.
+
+**4g — Update EVERY caller of `preprocessAddress` in `googleMapsApi.ts`:**
+
+For each call site found by your earlier `grep -rn "preprocessAddress("`:
+
+```typescript
+const addrCtx = await getTenantAddressContext(tenantDb);
+const processed = preprocessAddress(rawAddress, addrCtx.city, addrCtx.state, addrCtx.zipPrefix);
+```
+
+**4h — Update the health check function:**
+
+Find the health check function (confirmed name from your verification step). Change:
+```typescript
+const testAddress = 'Tulsa, OK';
+```
+to:
+```typescript
+const testAddress = process.env.MAPS_HEALTH_CHECK_ADDRESS || 'United States';
+```
+
+---
+
+## TESTS
+
+```bash
+npx vitest run server/tests/tenantCommRouter.test.ts
+npx vitest run server/tests/smsSendGuard.test.ts
+```
+
+---
+
+## COMPLETION REPORT
+
+```
+## TASK 1 COMPLETION REPORT
+
+### Verification
+All 6 Tulsa strings confirmed before edit: [Y/N]
+business_city/state/zip_prefix confirmed absent before migration: [Y/N]
+serviceAreaCenterLat/Lng confirmed present and untouched: [Y/N]
+Health check function name: [exact name]
+preprocessAddress call sites found and patched: [number]
+
+### Schema migration
+Migration file generated: [Y/N]
+Migration applied: [Y/N]
+Three columns confirmed in DB: [Y/N]
+Clean Machine UPDATE result: [UPDATE 1 / other]
+Clean Machine row values after UPDATE: [city / state / zipPrefix]
+
+### Hardcoded strings removed
+tulsa city regex: [Y/N]
+ok/oklahoma state regex: [Y/N]
+74 zip prefix: [Y/N]
+Tulsa, OK primary append: [Y/N]
+, OK secondary append → tenantState: [Y/N]
+Google components filter deleted: [Y/N]
+Health check → env var: [Y/N]
+
+### Stale env vars deleted
+MAPS_DEFAULT_CITY removed: [Y/N / was not present]
+MAPS_DEFAULT_STATE removed: [Y/N / was not present]
+MAPS_DEFAULT_ZIP_PREFIX removed: [Y/N / was not present]
+MAPS_HEALTH_CHECK_ADDRESS removed: [Y/N / was not present]
+
+### Tests
+tenantCommRouter: [pass/fail]
+smsSendGuard: [pass/fail]
+
+### Unresolved issues
+[Anything found but not fixable in scope]
+```
