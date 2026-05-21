@@ -1967,6 +1967,10 @@ export const businessSettings = pgTable("business_settings", {
   smsFallbackEnabled: boolean("sms_fallback_enabled").default(false), // Enable/disable SMS fallback system (defaults to false for safety)
   smsFallbackPhone: text("sms_fallback_phone"), // Phone number to forward messages to when main system is down
   smsFallbackAutoReply: text("sms_fallback_auto_reply").default("Thanks for your message! Our automated system is currently offline. You'll receive a personal response shortly."), // Auto-reply message sent to customers
+
+  // Emergency SMS Bypass: when true, inbound SMS skip the AI entirely and the
+  // owner gets a notification SMS instead. Customer gets no auto-reply.
+  smsForwardingEnabled: boolean("sms_forwarding_enabled").default(false),
   
   // Loyalty Points Guardrails - Prevent abuse of points redemption
   loyaltyMinCartTotal: integer("loyalty_min_cart_total").default(75), // Minimum cart total ($) to redeem points (0 = no minimum)

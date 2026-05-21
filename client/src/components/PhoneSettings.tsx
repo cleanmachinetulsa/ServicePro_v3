@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Phone, Clock, Save, CheckCircle2 } from 'lucide-react';
-import type { PhoneLine } from '@shared/schema';
+import { Phone, Clock, Save, CheckCircle2, AlertTriangle } from 'lucide-react';
+import type { PhoneLine, BusinessSettings } from '@shared/schema';
+import {
+  useTelephonySettings,
+  type TelephonyMode,
+} from '@/hooks/useTelephonySettings';
 
 type PhoneLineWithSchedules = PhoneLine & {
   schedules: Array<{
@@ -23,6 +27,225 @@ type PhoneLineWithSchedules = PhoneLine & {
     createdAt: Date | null;
   }>;
 };
+
+const CALL_ROUTING_OPTIONS: Array<{ value: TelephonyMode; label: string; description: string }> = [
+  {
+    value: 'AI_FIRST',
+    label: 'AI answers first',
+    description: 'AI greets caller, offers options, transfers to you if needed',
+  },
+  {
+    value: 'FORWARD_ALL_CALLS',
+    label: '🔴 Forward all calls to my phone',
+    description: 'Skip AI — every call rings your forwarding number directly',
+  },
+  {
+    value: 'AI_ONLY',
+    label: 'AI only',
+    description: 'AI handles everything, no live transfer',
+  },
+];
+
+function EmergencyBypassPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const {
+    settings: telephonySettings,
+    isLoading: telephonyLoading,
+    updateSettings: updateTelephony,
+    isUpdating: telephonyUpdating,
+  } = useTelephonySettings();
+
+  const { data: businessRes, isLoading: bsLoading } = useQuery<{ success: boolean; settings: BusinessSettings }>({
+    queryKey: ['/api/business-settings'],
+  });
+
+  const businessSettings = businessRes?.settings;
+
+  const [selectedMode, setSelectedMode] = useState<TelephonyMode>('AI_FIRST');
+  const [forwardingNumber, setForwardingNumber] = useState('');
+  const [modeDirty, setModeDirty] = useState(false);
+
+  useEffect(() => {
+    if (telephonySettings) {
+      setSelectedMode(telephonySettings.telephonyMode);
+      setForwardingNumber(telephonySettings.forwardingNumber || '');
+      setModeDirty(false);
+    }
+  }, [telephonySettings]);
+
+  const smsBypassActive = !!businessSettings?.smsForwardingEnabled;
+
+  const updateSmsBypassMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      return apiRequest('PUT', '/api/business-settings', {
+        smsForwardingEnabled: enabled,
+      });
+    },
+    onSuccess: (_, enabled) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/business-settings'] });
+      toast({
+        title: enabled ? 'SMS bypass enabled' : 'SMS bypass disabled',
+        description: enabled
+          ? 'Incoming texts will be forwarded to your alert phone. AI will not auto-reply.'
+          : 'AI will resume replying to incoming texts.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Failed to update SMS bypass',
+        description: error?.message || 'Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSaveMode = () => {
+    if (selectedMode === 'FORWARD_ALL_CALLS' && !forwardingNumber.trim()) {
+      toast({
+        title: 'Forwarding number required',
+        description: 'Enter your forwarding number in E.164 format (+1XXXXXXXXXX) before saving.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    updateTelephony({
+      telephonyMode: selectedMode,
+      forwardingNumber: forwardingNumber.trim() || null,
+    });
+    setModeDirty(false);
+  };
+
+  return (
+    <Card className="border-amber-300 dark:border-amber-700">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
+          <AlertTriangle className="h-5 w-5" />
+          Emergency Bypass
+        </CardTitle>
+        <CardDescription>
+          Instantly redirect inbound calls or texts to your personal phone — bypassing the AI entirely.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Call Routing Mode */}
+        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4">
+          <div className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            📞 Call Routing Mode
+          </div>
+
+          {telephonyLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                {CALL_ROUTING_OPTIONS.map((option) => (
+                  <label
+                    key={option.value}
+                    className="flex items-start gap-3 cursor-pointer"
+                    data-testid={`radio-telephony-${option.value.toLowerCase()}`}
+                  >
+                    <input
+                      type="radio"
+                      name="telephonyMode"
+                      value={option.value}
+                      checked={selectedMode === option.value}
+                      onChange={() => {
+                        setSelectedMode(option.value);
+                        setModeDirty(true);
+                      }}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium">{option.label}</div>
+                      <div className="text-xs text-muted-foreground">{option.description}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {selectedMode === 'FORWARD_ALL_CALLS' && (
+                <div className="mt-2 space-y-1">
+                  <label
+                    htmlFor="bypass-forwarding-number"
+                    className="text-xs font-medium text-amber-900 dark:text-amber-200"
+                  >
+                    Forward to phone number
+                  </label>
+                  <Input
+                    id="bypass-forwarding-number"
+                    type="tel"
+                    placeholder="+19185551234"
+                    value={forwardingNumber}
+                    onChange={(e) => {
+                      setForwardingNumber(e.target.value);
+                      setModeDirty(true);
+                    }}
+                    data-testid="input-bypass-forwarding-number"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter in E.164 format (+1XXXXXXXXXX). This is your personal cell or any number that should ring.
+                  </p>
+                  {!forwardingNumber && (
+                    <p className="text-xs text-amber-600 font-medium">
+                      ⚠ Enter a forwarding number before saving, or calls will fall back to AI mode.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {modeDirty && (
+                <div className="pt-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveMode}
+                    disabled={telephonyUpdating}
+                    data-testid="button-save-call-routing-mode"
+                  >
+                    {telephonyUpdating ? 'Saving...' : (
+                      <>
+                        <Save className="h-3.5 w-3.5 mr-2" />
+                        Save Call Routing
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* SMS Bypass Toggle */}
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4">
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              💬 SMS Bypass Mode
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Skip AI for all incoming texts — you'll get a notification SMS with each message.
+            </div>
+            {smsBypassActive && (
+              <div className="text-xs text-amber-600 font-medium mt-1">
+                🔴 ACTIVE — AI is bypassed, texts are forwarded to {businessSettings?.alertPhone || 'your alert phone'}
+              </div>
+            )}
+            {smsBypassActive && !businessSettings?.alertPhone && (
+              <div className="text-xs text-red-600 font-medium mt-1">
+                ⚠ No alert phone configured in business settings — owner won't receive notifications.
+              </div>
+            )}
+          </div>
+          <Switch
+            checked={smsBypassActive}
+            onCheckedChange={(checked) => updateSmsBypassMutation.mutate(checked)}
+            disabled={bsLoading || updateSmsBypassMutation.isPending}
+            data-testid="switch-sms-bypass"
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function PhoneSettings() {
   const { toast } = useToast();
@@ -57,26 +280,6 @@ export function PhoneSettings() {
     },
   });
 
-  const formatSchedules = (schedules: PhoneLineWithSchedules['schedules']) => {
-    if (schedules.length === 0) return 'No schedule configured';
-
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const grouped = schedules.reduce((acc, schedule) => {
-      const key = `${schedule.startTime}-${schedule.endTime}`;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
-      acc[key].push(schedule.dayOfWeek);
-      return acc;
-    }, {} as Record<string, number[]>);
-
-    return Object.entries(grouped).map(([timeRange, days]) => {
-      const [start, end] = timeRange.split('-');
-      const dayList = days.sort().map(d => dayNames[d]).join(', ');
-      return `${dayList}: ${start} - ${end}`;
-    }).join(' | ');
-  };
-
   if (isLoading) {
     return (
       <Card>
@@ -90,6 +293,8 @@ export function PhoneSettings() {
 
   return (
     <div className="space-y-6">
+      <EmergencyBypassPanel />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

@@ -359,7 +359,57 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
       res.type('text/xml').send(consentResult.twiml);
       return;
     }
-    
+
+    // EMERGENCY SMS BYPASS: If the owner has enabled SMS forwarding in
+    // business settings, skip the AI entirely. Forward the inbound text to the
+    // owner's alert phone and return empty TwiML (no customer-facing reply).
+    // We still persist the inbound message + flag the conversation for human
+    // attention so the owner has full context when they take over.
+    try {
+      const { businessSettings: businessSettingsTable } = await import('@shared/schema');
+      const [settings] = await db.select().from(businessSettingsTable).where(eq(businessSettingsTable.id, 1)).limit(1);
+      if (settings?.smsForwardingEnabled) {
+        console.log(`[SMS BYPASS] Active for tenant=${tenantId} from=${From} - skipping AI`);
+
+        // Persist customer message + escalate so owner sees it in the inbox.
+        try {
+          const bypassConversation = await getOrCreateTestConversation(tenantDb, From);
+          await addMessage(tenantDb, bypassConversation.id, Body, 'customer');
+          await tenantDb
+            .update(conversations)
+            .set({ needsHumanAttention: true })
+            .where(eq(conversations.id, bypassConversation.id));
+        } catch (persistErr) {
+          console.warn('[SMS BYPASS] Failed to persist inbound message:', persistErr);
+        }
+
+        const ownerPhone = settings?.alertPhone || process.env.BUSINESS_OWNER_PERSONAL_PHONE;
+        if (ownerPhone) {
+          try {
+            const truncatedBody = (Body || '').slice(0, 1000);
+            await sendDirectTwilioSMS({
+              to: ownerPhone,
+              from: process.env.MAIN_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined,
+              body: `[SMS BYPASS] From ${From}: ${truncatedBody}`,
+            });
+          } catch (notifyErr) {
+            console.warn('[SMS BYPASS] Owner notify failed:', notifyErr);
+          }
+        } else {
+          console.warn('[SMS BYPASS] No alertPhone or BUSINESS_OWNER_PERSONAL_PHONE configured - cannot forward');
+        }
+
+        const bypassResponse = new MessagingResponse();
+        res.type('text/xml').send(bypassResponse.toString());
+        return;
+      }
+    } catch (bypassErr) {
+      // Fail-OPEN: continue to AI processing. Bypass defaults to OFF so a
+      // failed check should preserve the existing behavior rather than block
+      // all inbound replies system-wide during a DB hiccup.
+      console.error('[SMS BYPASS] Check failed (continuing to AI):', bypassErr);
+    }
+
     // CM-Billing-Prep: Record inbound SMS usage
     try {
       const { recordSmsInbound, recordMmsInbound } = await import('../usage/usageRecorder');
