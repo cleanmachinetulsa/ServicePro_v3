@@ -1021,7 +1021,7 @@ export async function generateAIResponse(
               inputTokens + outputTokens,
               totalCost,
               {
-                model: SMS_AGENT_MODEL,
+                model: smsEffectiveModel,
                 input_tokens: inputTokens,
                 output_tokens: outputTokens,
                 platform: 'sms',
@@ -1035,7 +1035,7 @@ export async function generateAIResponse(
               // CM-Billing-Prep: Record to usage ledger for billing
               const { recordAiMessage } = await import('./usage/usageRecorder');
               void recordAiMessage(tenantId, inputTokens + outputTokens, {
-                model: SMS_AGENT_MODEL,
+                model: smsEffectiveModel,
                 inputTokens,
                 outputTokens,
                 platform: 'sms',
