@@ -988,10 +988,11 @@ export async function generateAIResponse(
           
           // AI BEHAVIOR V2: Wrap OpenAI call in try-catch for safety fallback
           let completion;
+          const smsEffectiveModel = modelOverride || SMS_AGENT_MODEL;
           try {
             // Make OpenAI call with SMS-optimized settings
             completion = await openai!.chat.completions.create({
-              model: SMS_AGENT_MODEL,
+              model: smsEffectiveModel,
               messages: currentMessages,
               tools: SCHEDULING_FUNCTIONS,
               tool_choice: "auto",
@@ -1029,7 +1030,7 @@ export async function generateAIResponse(
             );
             
             if (tenantId) {
-              await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, SMS_AGENT_MODEL, conversationId);
+              await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, smsEffectiveModel, conversationId);
               
               // CM-Billing-Prep: Record to usage ledger for billing
               const { recordAiMessage } = await import('./usage/usageRecorder');

@@ -1304,21 +1304,76 @@ Customer text: "${Body}"`,
     if (hasTimeRequest && !hasSlots && !smsBookingState.address) {
       aiReply = "I can check that for you! What is the address where you'd like the service performed?";
     } else {
-      aiReply = await generateAIResponse(
-        Body + languageContext,
-        From,
-        'sms',
-        undefined,
-        conversationHistory,
-        false,
-        tenantId,
-        conversation.controlMode || 'auto',
-        undefined,
-        // Audit T3 Task #23: thread conversationId so offer_human_handoff can
-        // arm the conversation and so per-reply tool calls can be captured for
-        // the AI guardrail pill via takeToolCallsForConversation.
-        conversation.id,
-      );
+      // FIXPACK Task 2: per-tenant AI token budget guard.
+      // Mirrors conversationHandler.ts web-chat path. Fails open on error.
+      const SMS_BASE_MODEL = process.env.SMS_AGENT_MODEL || 'gpt-4o';
+
+      try {
+        const { resolveBudgetDecision, notifyOwnerBudgetExhausted } =
+          await import('../services/aiTokenBudget');
+        const budget = await resolveBudgetDecision(tenantDb, tenantId, SMS_BASE_MODEL);
+
+        if (budget.status === 'exhausted') {
+          // Do not call OpenAI. Send canned reply and escalate to owner.
+          aiReply =
+            budget.cannedReply ||
+            "Thanks for reaching out! We'll get back to you as soon as possible.";
+
+          notifyOwnerBudgetExhausted(tenantId, budget.tokensUsedToday, budget.budget)
+            .catch(() => {});
+
+          try {
+            const { escalateSmsToHuman } = await import('../services/escalationService');
+            await escalateSmsToHuman({
+              tenantId,
+              reason: 'unknown',
+              customReasonLabel: 'ai_budget_exhausted',
+              fromPhone: From,
+              toPhone: To,
+              conversationId: conversation.id,
+              messageSid: MessageSid,
+              additionalInfo: `AI budget exhausted: ${budget.tokensUsedToday}/${budget.budget} tokens used today.`,
+            });
+          } catch (escErr) {
+            console.warn('[SMS BUDGET] Escalation failed (continuing):', escErr);
+          }
+
+        } else {
+          const smsModelOverride = budget.status === 'downgrade' ? budget.model : undefined;
+          if (budget.status === 'downgrade') {
+            console.log(`[SMS BUDGET] Downgrading to ${budget.model} for tenant ${tenantId}`);
+          }
+
+          aiReply = await generateAIResponse(
+            Body + languageContext,
+            From,
+            'sms',
+            undefined,
+            conversationHistory,
+            false,
+            tenantId,
+            conversation.controlMode || 'auto',
+            smsModelOverride,
+            conversation.id,
+          );
+        }
+
+      } catch (budgetErr) {
+        // Fail open — budget error must never silence the AI
+        console.warn('[SMS BUDGET] Budget check failed, using base model (fail-open):', budgetErr);
+        aiReply = await generateAIResponse(
+          Body + languageContext,
+          From,
+          'sms',
+          undefined,
+          conversationHistory,
+          false,
+          tenantId,
+          conversation.controlMode || 'auto',
+          undefined,
+          conversation.id,
+        );
+      }
     }
     
     // === Persist offered slots if AI just sent availability + COMPACT SUMMARIZATION ===
