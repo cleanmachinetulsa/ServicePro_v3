@@ -43,6 +43,7 @@ import { getActiveMenuForTenant, getOrCreateDefaultMenuForTenant } from './servi
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { TWILIO_TEST_SMS_NUMBER } from './twilioClient';
 import { syncVoicemailIntoConversation } from './services/voicemailConversationService';
+import { persistVoicemailComplete, persistMissedCall } from './services/callMessagePersistence';
 import { sendPushToAllUsers, sendPushNotification } from './pushNotificationService';
 import { handleConversationalScheduling } from './conversationalScheduling';
 import { sendSMS } from './notifications';
@@ -373,7 +374,18 @@ async function handleDialStatus(req: Request, res: Response) {
   // - If caller hangs up without voicemail → missed call SMS sent at voicemail-complete callback
   if (DialCallStatus === 'no-answer' || DialCallStatus === 'busy' || DialCallStatus === 'failed' || DialCallStatus === 'canceled') {
     console.log(`[DIAL STATUS] Missed call from ${From} (${DialCallStatus}) - sending push notification, SMS will be sent after voicemail flow`);
-    
+
+    // Comms Hub Stage 1: Upgrade the inbound-call message row to a missed-call
+    // marker (no-op if it has already been promoted to 'voicemail' by a faster
+    // recording-status webhook). Fail-open.
+    void persistMissedCall({
+      callSid: CallSid,
+      from: From,
+      to: To,
+      dialCallStatus: DialCallStatus,
+      tenantId,
+    });
+
     // Send push notification for missed call
     try {
       await sendPushToAllUsers({
@@ -478,6 +490,20 @@ async function handleRecordingStatus(req: Request, res: Response) {
   
   if (RecordingStatus === 'completed') {
     console.log(`[RECORDING STATUS] Recording completed: ${RecordingUrl}`);
+
+    // Comms Hub Stage 1: Upgrade the inbound-call message row to a voicemail
+    // marker so the unified inbox reflects the call outcome. Fire-and-forget;
+    // helper is fail-open and never blocks the existing voicemail sync flow.
+    void persistVoicemailComplete({
+      callSid: CallSid,
+      from: From,
+      to: To,
+      recordingUrl: RecordingUrl,
+      recordingDuration: parseInt(RecordingDuration, 10) || 0,
+      recordingSid: RecordingSid,
+      tenantId,
+    });
+
     
     // Get phone line ID for this number
     const [phoneLine] = await tenantDb

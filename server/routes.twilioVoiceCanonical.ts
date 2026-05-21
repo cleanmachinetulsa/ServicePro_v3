@@ -38,6 +38,7 @@ import {
 import { getOrCreateDefaultMenuForTenant } from './services/ivrConfigService';
 import { handleAiVoiceRequest } from './services/aiVoiceSession';
 import { sendSMS } from './notifications';
+import { persistCallArrival } from './services/callMessagePersistence';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -99,7 +100,13 @@ async function handleIncomingVoice(req: Request, res: Response) {
     const tenantId = req.tenant?.id || 'root';
     
     console.log(`[CANONICAL VOICE] Incoming call from ${fromNumber} to ${toNumber}, CallSid: ${callSid}, Tenant: ${tenantId}`);
-    
+
+    // Comms Hub Stage 1: Persist the call arrival as a message row so it shows
+    // up in the unified inbox thread alongside SMS. Fire-and-forget — the
+    // helper swallows its own errors and MUST NOT block call routing or alter
+    // the TwiML response below.
+    void persistCallArrival({ callSid, from: fromNumber, to: toNumber, tenantId });
+
     const phoneConfig = (req as any).phoneConfig;
     const telephonyMode = (phoneConfig?.telephonyMode as TelephonyMode) || 'AI_FIRST';
     const ivrMode = phoneConfig?.ivrMode || 'simple';

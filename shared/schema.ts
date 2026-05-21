@@ -989,6 +989,12 @@ export const messages = pgTable("messages", {
   deliveryStatus: varchar("delivery_status", { length: 20 }).default("sent"), // sent, delivered, read, failed
   readAt: timestamp("read_at"), // When message was read by recipient
   metadata: jsonb("metadata"), // Attachments, links, forwarded info: { attachments: [{url, type, name, size}], ... }
+
+  // Comms Hub Stage 1: Discriminator so call events (call_inbound, call_missed,
+  // voicemail) can live in the same conversation thread as SMS. Default 'sms'
+  // keeps the entire SMS path backward-compatible — no existing writer needs
+  // to set this. Added to the DB via migrations/0008_messages_type.sql.
+  messageType: text("message_type").notNull().default("sms"),
 });
 
 // SMS Inbound Deduplication - Track processed Twilio MessageSids to prevent duplicate webhook processing
