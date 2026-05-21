@@ -100,7 +100,7 @@ describe('Tenant Communication Router - Phase 3', () => {
       expect(resolution.tenantId).toBe(testTenantId);
     });
 
-    it('should fallback to root tenant when no match is found (Strategy 3)', async () => {
+    it('should return null tenant (R1-STRICT) when no match is found (Strategy 3)', async () => {
       const mockReq = {
         body: {
           To: '+19991112222', // Unknown number
@@ -110,13 +110,13 @@ describe('Tenant Communication Router - Phase 3', () => {
 
       const resolution = await resolveTenantFromInbound(mockReq, db);
 
-      expect(resolution.tenantId).toBe('root');
-      expect(resolution.resolvedBy).toBe('fallback');
+      expect(resolution.tenantId).toBeNull();
+      expect(resolution.resolvedBy).toBe('unresolved');
       expect(resolution.ivrMode).toBe('simple');
       expect(resolution.phoneConfig).toBeNull();
     });
 
-    it('should fallback to root when To and MessagingServiceSid are missing', async () => {
+    it('should return null tenant (R1-STRICT) when To and MessagingServiceSid are missing', async () => {
       const mockReq = {
         body: {
           From: '+15555551234',
@@ -125,8 +125,8 @@ describe('Tenant Communication Router - Phase 3', () => {
 
       const resolution = await resolveTenantFromInbound(mockReq, db);
 
-      expect(resolution.tenantId).toBe('root');
-      expect(resolution.resolvedBy).toBe('fallback');
+      expect(resolution.tenantId).toBeNull();
+      expect(resolution.resolvedBy).toBe('unresolved');
       expect(resolution.phoneConfig).toBeNull();
     });
 
@@ -137,8 +137,8 @@ describe('Tenant Communication Router - Phase 3', () => {
 
       const resolution = await resolveTenantFromInbound(mockReq, db);
 
-      expect(resolution.tenantId).toBe('root');
-      expect(resolution.resolvedBy).toBe('fallback');
+      expect(resolution.tenantId).toBeNull();
+      expect(resolution.resolvedBy).toBe('unresolved');
     });
 
     it('should return correct ivrMode from phone config', async () => {
@@ -263,8 +263,8 @@ describe('Tenant Communication Router - Phase 3', () => {
 
       const resolution = await resolveTenantFromInbound(mockReq, db);
 
-      expect(resolution.tenantId).toBe('root');
-      expect(resolution.resolvedBy).toBe('fallback');
+      expect(resolution.tenantId).toBeNull();
+      expect(resolution.resolvedBy).toBe('unresolved');
     });
 
     it('should handle undefined values in request body gracefully', async () => {
@@ -277,8 +277,8 @@ describe('Tenant Communication Router - Phase 3', () => {
 
       const resolution = await resolveTenantFromInbound(mockReq, db);
 
-      expect(resolution.tenantId).toBe('root');
-      expect(resolution.resolvedBy).toBe('fallback');
+      expect(resolution.tenantId).toBeNull();
+      expect(resolution.resolvedBy).toBe('unresolved');
     });
 
     it('should handle whitespace-only values', async () => {
@@ -291,9 +291,9 @@ describe('Tenant Communication Router - Phase 3', () => {
 
       const resolution = await resolveTenantFromInbound(mockReq, db);
 
-      // Whitespace values won't match anything, should fallback to root
-      expect(resolution.tenantId).toBe('root');
-      expect(resolution.resolvedBy).toBe('fallback');
+      // Whitespace values won't match anything; return null tenant (R1-STRICT)
+      expect(resolution.tenantId).toBeNull();
+      expect(resolution.resolvedBy).toBe('unresolved');
     });
   });
 });
