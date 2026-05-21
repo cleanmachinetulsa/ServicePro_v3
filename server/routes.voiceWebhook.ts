@@ -1009,6 +1009,36 @@ router.post('/click-to-call-status', verifyTwilioSignature, async (req: Request,
     console.error('[VOICE] Failed to update click-to-call event:', error);
   }
 
+  // Comms Hub Stage 4: persist outbound call to messages table for thread view.
+  // Defense-in-depth: only persist outbound legs.
+  const ctcDirection = (req.body.Direction as string | undefined) || '';
+  try {
+    if (ctcDirection && !ctcDirection.startsWith('outbound')) {
+      throw new Error(`skip: non-outbound direction=${ctcDirection}`);
+    }
+    const { callEvents } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    const [ev] = await req.tenantDb
+      .select()
+      .from(callEvents)
+      .where(req.tenantDb.withTenantFilter(callEvents, eq(callEvents.callSid, callSid)))
+      .limit(1);
+    const customerPhone = ev?.customerPhone || ev?.to;
+    if (customerPhone) {
+      const { persistOutboundCall } = await import('./services/callMessagePersistence');
+      void persistOutboundCall({
+        callSid,
+        customerPhone,
+        tenantPhone: ev?.from,
+        callStatus,
+        duration: callDuration ? parseInt(callDuration) : undefined,
+        tenantId: ev?.tenantId,
+      });
+    }
+  } catch (error) {
+    console.error('[VOICE] Click-to-call outbound persist failed (non-fatal):', error);
+  }
+
   // 🔴 REAL-TIME: Broadcast click-to-call status to connected clients
   const io = getWebSocketServer();
   if (io) {

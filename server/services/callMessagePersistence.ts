@@ -52,6 +52,17 @@ interface MissedCallInput {
   tenantId: string;
 }
 
+interface OutboundCallInput {
+  callSid: string;
+  // The customer's phone number — the party staff dialed. Required to resolve the thread.
+  customerPhone: string;
+  // The tenant's Twilio number (used to derive phoneLineId and, if needed, tenantId).
+  tenantPhone?: string;
+  callStatus: string; // 'completed' | 'no-answer' | 'busy' | 'failed' | 'canceled'
+  duration?: number;
+  tenantId?: string; // optional override; otherwise resolved from tenantPhone
+}
+
 function isUsable(value: string | undefined | null): value is string {
   return typeof value === 'string' && value.length > 0 && value !== 'Unknown';
 }
@@ -113,9 +124,12 @@ async function insertCallMessage(
   params: {
     conversationId: number;
     content: string;
-    messageType: 'call_inbound' | 'call_missed' | 'voicemail';
+    messageType: 'call_inbound' | 'call_missed' | 'voicemail' | 'call_outbound';
     metadata: Record<string, unknown>;
     phoneLineId: number;
+    // Outbound calls are staff-initiated; default behavior keeps inbound semantics.
+    fromCustomer?: boolean;
+    sender?: 'customer' | 'staff';
   },
 ) {
   const [row] = await tenantDb
@@ -123,8 +137,8 @@ async function insertCallMessage(
     .values({
       conversationId: params.conversationId,
       content: params.content,
-      sender: 'customer',
-      fromCustomer: true,
+      sender: params.sender ?? 'customer',
+      fromCustomer: params.fromCustomer ?? true,
       channel: 'voice',
       phoneLineId: params.phoneLineId,
       metadata: params.metadata,
@@ -403,5 +417,119 @@ export async function persistMissedCall(input: MissedCallInput): Promise<void> {
     );
   } catch (err) {
     console.error('[CALL PERSIST] persistMissedCall error (fail-open):', err);
+  }
+}
+
+/**
+ * WRITE POINT 4 (Comms Hub Stage 4): An outbound call placed by staff has
+ * reached terminal status. Record it as a 'call_outbound' row on the
+ * customer's thread so two-way call activity is visible in the unified inbox.
+ *
+ * Triggers from two sources:
+ *   - /twilio/voice/outbound-status (configured on the Twilio number for
+ *     Groundwire/SIP-originated calls)
+ *   - existing click-to-call status callbacks in routes.twilioVoice.ts and
+ *     routes.voiceWebhook.ts (parent-leg terminal status)
+ *
+ * Fail-open: never throws. Skips silently on bad input or duplicate.
+ */
+export async function persistOutboundCall(input: OutboundCallInput): Promise<void> {
+  try {
+    if (!isUsable(input.callSid) || !isUsable(input.customerPhone)) {
+      console.log('[CALL PERSIST] outbound skipped — missing CallSid/customerPhone', {
+        callSid: input.callSid,
+      });
+      return;
+    }
+
+    // Only persist on terminal status — ignore intermediate 'initiated' /
+    // 'ringing' / 'answered' callbacks so we write exactly one row per call.
+    const terminal = new Set(['completed', 'no-answer', 'busy', 'failed', 'canceled']);
+    if (!terminal.has(input.callStatus)) {
+      return;
+    }
+
+    const tenantId =
+      input.tenantId ||
+      (input.tenantPhone ? await resolveTenantFromTo(input.tenantPhone) : 'root');
+    const tenantDb = wrapTenantDb(db, tenantId);
+
+    // Dedup: if an outbound row already exists for this CallSid, skip.
+    const existing = await findArrivalRowByCallSid(tenantDb, input.callSid);
+    if (existing && existing.messageType === 'call_outbound') {
+      console.log(
+        `[CALL PERSIST] outbound dedup — CallSid=${input.callSid} already recorded`,
+      );
+      return;
+    }
+
+    const normalizedCustomer = normalizeE164(input.customerPhone) || input.customerPhone;
+    const phoneLineId = input.tenantPhone
+      ? await resolvePhoneLineId(tenantDb, input.tenantPhone)
+      : 1;
+
+    const { conversation } = await getOrCreateConversation(
+      tenantDb,
+      normalizedCustomer,
+      null,
+      'sms',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      phoneLineId,
+    );
+
+    const content =
+      input.callStatus === 'completed'
+        ? '📞 Outbound call'
+        : `📞 Outbound call — ${input.callStatus}`;
+
+    let row;
+    try {
+      row = await insertCallMessage(tenantDb, {
+        conversationId: conversation.id,
+        content,
+        messageType: 'call_outbound',
+        phoneLineId,
+        sender: 'staff',
+        fromCustomer: false,
+        metadata: {
+          type: 'call_outbound',
+          callSid: input.callSid,
+          direction: 'outbound',
+          from: input.tenantPhone ?? null,
+          to: normalizedCustomer,
+          status: input.callStatus,
+          duration: typeof input.duration === 'number' ? input.duration : null,
+          source: 'twilio',
+        },
+      });
+    } catch (err: any) {
+      // Twilio-retry idempotency: a duplicate call_outbound for the same
+      // (tenantId, callSid) is rejected by the unique partial index added
+      // in migration 0010. Treat that as a no-op success — the original
+      // row is already on the thread.
+      if (err?.code === '23505' || /duplicate key/i.test(String(err?.message))) {
+        console.log(
+          `[CALL PERSIST] outbound dedup (db) — Twilio retry for CallSid=${input.callSid}, original row already persisted`,
+        );
+        return;
+      }
+      throw err;
+    }
+
+    try {
+      broadcastNewMessage(conversation.id, row);
+    } catch (err) {
+      console.warn('[CALL PERSIST] broadcastNewMessage(outbound) failed:', err);
+    }
+
+    console.log(
+      `[CALL PERSIST] outbound recorded — tenant=${tenantId} conv=${conversation.id} msg=${row.id} CallSid=${input.callSid} status=${input.callStatus}`,
+    );
+  } catch (err) {
+    console.error('[CALL PERSIST] persistOutboundCall error (fail-open):', err);
   }
 }

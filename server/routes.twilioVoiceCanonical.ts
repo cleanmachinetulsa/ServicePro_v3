@@ -38,7 +38,7 @@ import {
 import { getOrCreateDefaultMenuForTenant } from './services/ivrConfigService';
 import { handleAiVoiceRequest } from './services/aiVoiceSession';
 import { sendSMS } from './notifications';
-import { persistCallArrival } from './services/callMessagePersistence';
+import { persistCallArrival, persistOutboundCall } from './services/callMessagePersistence';
 
 const VoiceResponse = twilio.twiml.VoiceResponse;
 
@@ -482,5 +482,52 @@ export function registerCanonicalVoiceRoutes(app: Express) {
     }
   );
   
-  console.log('[CANONICAL VOICE] Routes registered: POST /twilio/voice/incoming');
+  // Comms Hub Stage 4: Outbound call status callback
+  // Twilio fires this for outbound calls (including Groundwire/SIP-originated)
+  // when the Twilio phone number's "Call Status Changes" callback URL is
+  // configured to point here in the Twilio console:
+  //   https://YOUR-APP-URL/twilio/voice/outbound-status   (POST)
+  // The handler ignores inbound traffic and intermediate status events; it only
+  // persists a 'call_outbound' message row on terminal status. Always returns
+  // 200 so Twilio never retries us into a loop.
+  app.post(
+    '/twilio/voice/outbound-status',
+    verifyTwilioSignature,
+    async (req: Request, res: Response) => {
+      try {
+        const callSid = req.body.CallSid as string | undefined;
+        const callStatus = req.body.CallStatus as string | undefined;
+        const direction = (req.body.Direction as string | undefined) || '';
+        const from = req.body.From as string | undefined; // tenant Twilio number
+        const to = req.body.To as string | undefined;     // customer phone
+        const durationRaw = req.body.CallDuration || req.body.DialCallDuration;
+        const duration = durationRaw ? parseInt(durationRaw, 10) : undefined;
+
+        console.log(
+          `[OUTBOUND STATUS] CallSid=${callSid} Direction=${direction} Status=${callStatus} From=${from} To=${to} Duration=${duration ?? 'n/a'}`,
+        );
+
+        // Only process outbound legs — ignore inbound (handled by /incoming)
+        if (!direction.startsWith('outbound')) {
+          return res.sendStatus(200);
+        }
+
+        if (callSid && callStatus && to) {
+          await persistOutboundCall({
+            callSid,
+            customerPhone: to,
+            tenantPhone: from,
+            callStatus,
+            duration,
+          });
+        }
+      } catch (err) {
+        console.error('[OUTBOUND STATUS] handler error (fail-open):', err);
+      }
+      // Always 200 — never let Twilio retry storm us.
+      res.sendStatus(200);
+    },
+  );
+
+  console.log('[CANONICAL VOICE] Routes registered: POST /twilio/voice/incoming, POST /twilio/voice/outbound-status');
 }

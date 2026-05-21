@@ -1084,6 +1084,43 @@ router.post('/voice/click-to-call-status', verifyTwilioSignature, async (req: Re
     console.error('[VOICE] Failed to update click-to-call event:', error);
   }
 
+  // Comms Hub Stage 4: persist outbound call to messages table for thread view.
+  // Look up the stored callEvent to recover the actual customer phone (Twilio's
+  // payload here reports From=Twilio number, To=businessPhone for click-to-call).
+  // Defense-in-depth: only persist outbound legs.
+  const ctcDirection = (req.body.Direction as string | undefined) || '';
+  try {
+    if (ctcDirection && !ctcDirection.startsWith('outbound')) {
+      throw new Error(`skip: non-outbound direction=${ctcDirection}`);
+    }
+    const { resolveTenantFromCallSid } = await import('./callLoggingService');
+    const { callEvents } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    const { wrapTenantDb } = await import('./tenantDb');
+    const { db } = await import('./db');
+    const tenantId = await resolveTenantFromCallSid(callSid);
+    const tDb = wrapTenantDb(db, tenantId);
+    const [ev] = await tDb
+      .select()
+      .from(callEvents)
+      .where(tDb.withTenantFilter(callEvents, eq(callEvents.callSid, callSid)))
+      .limit(1);
+    const customerPhone = ev?.customerPhone || ev?.to;
+    if (customerPhone) {
+      const { persistOutboundCall } = await import('./services/callMessagePersistence');
+      void persistOutboundCall({
+        callSid,
+        customerPhone,
+        tenantPhone: ev?.from,
+        callStatus,
+        duration: callDuration ? parseInt(callDuration) : undefined,
+        tenantId,
+      });
+    }
+  } catch (error) {
+    console.error('[VOICE] Click-to-call outbound persist failed (non-fatal):', error);
+  }
+
   // 🔴 REAL-TIME: Broadcast click-to-call status to connected clients
   const io = getWebSocketServer();
   if (io) {

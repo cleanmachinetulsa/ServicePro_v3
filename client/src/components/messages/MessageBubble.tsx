@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Pause, Volume2, VolumeX, Download, Phone, PhoneIncoming, PhoneMissed, Voicemail } from 'lucide-react';
+import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Pause, Volume2, VolumeX, Download, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing, Voicemail } from 'lucide-react';
 import type { Message } from '@shared/schema';
 import { Button } from '@/components/ui/button';
 import {
@@ -298,6 +298,13 @@ function CallCard({ message }: { message: Message }) {
       text: 'text-rose-700 dark:text-rose-300',
       iconBg: 'bg-rose-100 dark:bg-rose-900/40',
     },
+    call_outbound: {
+      Icon: PhoneOutgoing,
+      label: 'Outbound call',
+      border: 'border-emerald-400',
+      text: 'text-emerald-700 dark:text-emerald-300',
+      iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
+    },
     voicemail: {
       Icon: Voicemail,
       label: 'Voicemail',
@@ -317,6 +324,7 @@ function CallCard({ message }: { message: Message }) {
   const style =
     message.messageType === 'call_inbound' ? STYLES.call_inbound
     : message.messageType === 'call_missed' ? STYLES.call_missed
+    : message.messageType === 'call_outbound' ? STYLES.call_outbound
     : message.messageType === 'voicemail' ? STYLES.voicemail
     : STYLES.default;
   const { Icon, label } = style;
@@ -402,6 +410,7 @@ export default function MessageBubble({
   const isCallEvent =
     message.messageType === 'call_inbound' ||
     message.messageType === 'call_missed' ||
+    message.messageType === 'call_outbound' ||
     message.messageType === 'voicemail';
   if (isCallEvent) {
     return <CallCard message={message} />;
