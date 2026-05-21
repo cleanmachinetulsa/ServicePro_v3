@@ -36,7 +36,6 @@ export function useUiExperienceMode() {
     queryKey: ['/api/settings/ui-mode'],
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
-    placeholderData: { success: true, mode: getInitialUiMode() },
   });
 
   const serverMode = query.isSuccess ? query.data?.mode : undefined;
@@ -48,6 +47,10 @@ export function useUiExperienceMode() {
       // ignore write failures
     }
   }, [serverMode]);
+
+  const effectiveMode: UiExperienceMode = query.isSuccess
+    ? (query.data?.mode ?? 'simple')
+    : getInitialUiMode();
 
   const mutation = useMutation({
     mutationFn: async (mode: UiExperienceMode) => {
@@ -65,7 +68,7 @@ export function useUiExperienceMode() {
   });
 
   return {
-    mode: query.data?.mode ?? 'simple',
+    mode: effectiveMode,
     isLoading: query.isLoading,
     isSaving: mutation.isPending,
     saveMode: mutation.mutateAsync,
