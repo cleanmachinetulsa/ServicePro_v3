@@ -1,0 +1,207 @@
+# SERVICEPRO — FIXPACK TASK 2 ONLY
+# Wire AI token budget to the SMS inbound path
+# ONE TASK. TWO FILES. NOTHING ELSE.
+
+IGNORE ALL PRIOR SESSION CONTEXT. READ ONLY THIS MESSAGE. DO NOT USE COMPRESSION SUMMARIES OR PRIOR SCRATCHPAD.
+
+---
+
+## YOUR ONLY JOB IN THIS SESSION
+
+Wire the existing `aiTokenBudget` service into the SMS inbound path. You are touching exactly two files:
+1. `server/routes/twilioTestSms.ts` — add budget check before LLM call
+2. `server/openai.ts` — make SMS branch honor `modelOverride`
+
+Nothing else. If you find yourself editing any other file, stop.
+
+---
+
+## CLEAN MACHINE SAFETY
+
+This change fails open. If `resolveBudgetDecision` throws any error, the catch block calls `generateAIResponse` as normal. Clean Machine SMS behavior is unchanged on error.
+
+---
+
+## VERIFICATION — RUN THESE BEFORE TOUCHING ANY FILE
+
+```bash
+# Confirm file location
+find server -name "twilioTestSms.ts"
+
+# Confirm budget service exports
+grep -n "export.*resolveBudgetDecision\|export.*notifyOwnerBudgetExhausted" server/services/aiTokenBudget.ts
+
+# Confirm escalation export
+grep -n "export.*escalateSmsToHuman" server/services/escalationService.ts
+
+# Confirm EscalationContext fields
+grep -n "interface EscalationContext\|customReasonLabel\|reason:" server/services/escalationService.ts | head -20
+
+# Confirm EscalationReason values — ai_budget_exhausted must NOT be in this list
+grep -n "EscalationReason\|type.*Reason" server/services/escalationService.ts | head -10
+
+# Find the exact generateAIResponse call in twilioTestSms.ts
+grep -n "generateAIResponse" server/routes/twilioTestSms.ts
+
+# Find SMS model constant and recordAiUsage in openai.ts
+grep -n "SMS_AGENT_MODEL\|recordAiUsage" server/openai.ts | head -10
+
+# Read the actual call site context
+sed -n '1295,1330p' server/routes/twilioTestSms.ts
+
+# Read the SMS OpenAI call and usage logging
+sed -n '985,1040p' server/openai.ts
+```
+
+Confirm before writing any code:
+- [ ] `twilioTestSms.ts` is in `server/routes/` → dynamic imports use `../services/`
+- [ ] `escalateSmsToHuman` is the exact export name
+- [ ] `EscalationReason` does NOT include `ai_budget_exhausted` → use `reason: 'unknown'`
+- [ ] `customReasonLabel` field exists on `EscalationContext`
+- [ ] `generateAIResponse` returns `string` — do not change its return type or signature
+- [ ] Exact line number of the `generateAIResponse` call in `twilioTestSms.ts`
+- [ ] Exact line number of the SMS `chat.completions.create` call in `openai.ts`
+- [ ] Exact line number of the `recordAiUsage` SMS call in `openai.ts`
+
+---
+
+## CHANGE 1 — `server/routes/twilioTestSms.ts`
+
+Find the `generateAIResponse(...)` call. Replace the entire call with:
+
+```typescript
+// FIXPACK Task 2: per-tenant AI token budget guard.
+// Mirrors conversationHandler.ts web-chat path. Fails open on error.
+const SMS_BASE_MODEL = process.env.SMS_AGENT_MODEL || 'gpt-4o';
+
+try {
+  const { resolveBudgetDecision, notifyOwnerBudgetExhausted } =
+    await import('../services/aiTokenBudget');
+  const budget = await resolveBudgetDecision(tenantDb, tenantId, SMS_BASE_MODEL);
+
+  if (budget.status === 'exhausted') {
+    // Do not call OpenAI. Send canned reply and escalate to owner.
+    aiReply =
+      budget.cannedReply ||
+      "Thanks for reaching out! We'll get back to you as soon as possible.";
+
+    notifyOwnerBudgetExhausted(tenantId, budget.tokensUsedToday, budget.budget)
+      .catch(() => {});
+
+    try {
+      const { escalateSmsToHuman } = await import('../services/escalationService');
+      await escalateSmsToHuman({
+        tenantId,
+        reason: 'unknown',
+        customReasonLabel: 'ai_budget_exhausted',
+        fromPhone: From,
+        toPhone: To,
+        conversationId: conversation.id,
+        messageSid: MessageSid,
+        additionalInfo: `AI budget exhausted: ${budget.tokensUsedToday}/${budget.budget} tokens used today.`,
+      });
+    } catch (escErr) {
+      console.warn('[SMS BUDGET] Escalation failed (continuing):', escErr);
+    }
+
+  } else {
+    const smsModelOverride = budget.status === 'downgrade' ? budget.model : undefined;
+    if (budget.status === 'downgrade') {
+      console.log(`[SMS BUDGET] Downgrading to ${budget.model} for tenant ${tenantId}`);
+    }
+
+    aiReply = await generateAIResponse(
+      Body + languageContext,
+      From,
+      'sms',
+      undefined,
+      conversationHistory,
+      false,
+      tenantId,
+      conversation.controlMode || 'auto',
+      smsModelOverride,
+      conversation.id,
+    );
+  }
+
+} catch (budgetErr) {
+  // Fail open — budget error must never silence the AI
+  console.warn('[SMS BUDGET] Budget check failed, using base model (fail-open):', budgetErr);
+  aiReply = await generateAIResponse(
+    Body + languageContext,
+    From,
+    'sms',
+    undefined,
+    conversationHistory,
+    false,
+    tenantId,
+    conversation.controlMode || 'auto',
+    undefined,
+    conversation.id,
+  );
+}
+```
+
+Do NOT add top-of-file imports. Use dynamic `await import('../services/...')` as shown.
+
+---
+
+## CHANGE 2 — `server/openai.ts` (two lines only)
+
+Find the SMS `chat.completions.create` call. Add `smsEffectiveModel` just before it:
+
+```typescript
+const smsEffectiveModel = modelOverride || SMS_AGENT_MODEL;
+// Then change the model line inside the create call:
+model: smsEffectiveModel,   // was: model: SMS_AGENT_MODEL
+```
+
+Find the `recordAiUsage` call for the SMS path:
+```typescript
+// Change the model argument from SMS_AGENT_MODEL to smsEffectiveModel:
+await recordAiUsage(tenantId, 'ai_sms', inputTokens, outputTokens, smsEffectiveModel, conversationId);
+```
+
+That is all. Do not change anything else in `openai.ts`.
+
+---
+
+## TESTS
+
+```bash
+npx vitest run server/tests/aiTokenBudgetDowngrade.test.ts
+npx vitest run server/tests/smsSendGuard.test.ts
+```
+
+Do not comment out failing tests. Fix the code.
+
+---
+
+## COMPLETION REPORT — FILL THIS OUT COMPLETELY
+
+```
+## FIXPACK TASK 2 COMPLETION REPORT
+
+### Verification
+twilioTestSms.ts confirmed at path: [exact path]
+Import prefix confirmed as: [../services/]
+escalateSmsToHuman export confirmed: [Y/N]
+EscalationContext fields used: [list each field you passed]
+EscalationReason 'unknown' valid: [Y/N]
+customReasonLabel exists: [Y/N]
+generateAIResponse return type unchanged: [Y/N]
+generateAIResponse signature unchanged: [Y/N]
+
+### Changes made
+twilioTestSms.ts — budget block inserted at line: [number]
+openai.ts — smsEffectiveModel added at line: [number]  
+openai.ts — recordAiUsage updated at line: [number]
+Any other files touched: [must be NONE]
+
+### Tests
+aiTokenBudgetDowngrade: [pass/fail]
+smsSendGuard: [pass/fail]
+
+### Unresolved issues
+[Anything found but not fixable in scope]
+```
