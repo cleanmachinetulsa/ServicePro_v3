@@ -1940,6 +1940,9 @@ export const businessSettings = pgTable("business_settings", {
   // Service area origin coordinates (Audit T1 W-5/I-7: de-hardcode)
   serviceAreaCenterLat: numeric("service_area_center_lat", { precision: 10, scale: 7 }),
   serviceAreaCenterLng: numeric("service_area_center_lng", { precision: 10, scale: 7 }),
+  businessCity: text("business_city"),           // Tenant's city for geocoding bias
+  businessState: text("business_state"),          // Tenant's state (2-letter, e.g. "OK")
+  businessZipPrefix: text("business_zip_prefix"), // First 3 digits of ZIP (e.g. "74")
   etaPadding: integer("eta_padding").notNull().default(15), // Minutes to add to ETA estimates (buffer time)
   // Web chat tenant-customizable widget (Audit T1 W-6)
   chatGreeting: text("chat_greeting"),

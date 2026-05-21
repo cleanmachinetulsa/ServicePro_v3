@@ -19,6 +19,32 @@ const DEFAULT_MAX_DRIVE_TIME_MINUTES = process.env.DEFAULT_MAX_DRIVE_MINUTES
 // We'll keep this for conversion if needed
 const METERS_PER_MILE = 1609.34;
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function getTenantAddressContext(tenantDb: TenantDb): Promise<{
+  city?: string;
+  state?: string;
+  zipPrefix?: string;
+}> {
+  try {
+    const rows = await tenantDb.select().from(businessSettings).where(eq(businessSettings.id, 1)).limit(1);
+    const row = rows[0];
+    if (!row) return {};
+    const city = (row as any).businessCity;
+    const state = (row as any).businessState;
+    const zipPrefix = (row as any).businessZipPrefix;
+    if (city && state) {
+      return { city: city.trim(), state: state.trim(), zipPrefix: zipPrefix?.trim() };
+    }
+    return {};
+  } catch (err) {
+    console.warn('[MAPS] getTenantAddressContext fail-open:', err);
+    return {};
+  }
+}
+
 /**
  * Read the tenant's service-area config (origin + max drive time) from
  * business_settings, falling back to global defaults if unset.
@@ -59,13 +85,18 @@ async function getMaxDriveTime(tenantDb: TenantDb): Promise<number> {
 
 /**
  * Smart address preprocessing to enhance incomplete addresses
- * - Adds "Tulsa, OK" if city/state missing
+ * - Adds tenant city/state if missing
  * - Normalizes common abbreviations
  * - Makes validation smoother for customers
- * 
+ *
  * HOTFIX-SMS-CM: Guards against undefined/null address to prevent TypeError on .trim()
  */
-function preprocessAddress(rawAddress: string | undefined | null): string {
+function preprocessAddress(
+  rawAddress: string | undefined | null,
+  tenantCity?: string,
+  tenantState?: string,
+  tenantZipPrefix?: string,
+): string {
   // HOTFIX-SMS-CM: Guard against missing or undefined address
   if (!rawAddress || typeof rawAddress !== 'string') {
     const err = new Error('Missing or empty address for preprocessAddress');
@@ -112,18 +143,29 @@ function preprocessAddress(rawAddress: string | undefined | null): string {
     address = address.replace(regex, standard);
   }
 
-  // Check if address already has city and state
-  const hasCity = /tulsa/i.test(address);
-  const hasState = /\b(ok|oklahoma)\b/i.test(address);
-  const hasZip = /\b74\d{3}\b/.test(address);
-  
-  // If missing city/state, append Tulsa, OK
+  // Check if address already has city and state (tenant-driven)
+  const cityPattern = tenantCity
+    ? new RegExp(`\\b${escapeRegExp(tenantCity)}\\b`, 'i') : null;
+  const hasCity = cityPattern ? cityPattern.test(address) : false;
+
+  const statePattern = tenantState
+    ? new RegExp(`\\b${escapeRegExp(tenantState)}\\b`, 'i') : null;
+  const hasState = statePattern ? statePattern.test(address) : false;
+
+  const hasZip = tenantZipPrefix
+    ? new RegExp(`\\b${escapeRegExp(tenantZipPrefix)}\\d+\\b`).test(address)
+    : false;
+
+  // If missing city/state, append tenant city/state
   if (!hasCity && !hasState && !hasZip) {
-    address = `${address}, Tulsa, OK`;
-    console.log(`[ADDRESS PREPROCESSING] Enhanced "${rawAddress}" → "${address}"`);
-  } else if (hasCity && !hasState) {
+    if (tenantCity && tenantState) {
+      address = `${address}, ${tenantCity}, ${tenantState}`;
+      console.log(`[ADDRESS PREPROCESSING] Enhanced "${rawAddress}" → "${address}"`);
+    }
+    // If no tenant config: leave as-is. Google geocodes without bias.
+  } else if (hasCity && !hasState && tenantState) {
     // Has city but no state
-    address = `${address}, OK`;
+    address = `${address}, ${tenantState}`;
     console.log(`[ADDRESS PREPROCESSING] Added state: "${rawAddress}" → "${address}"`);
   }
 
@@ -152,7 +194,8 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string | undef
     // HOTFIX-SMS-CM: This now throws with code='MISSING_ADDRESS' if address is undefined/empty
     let enhancedAddress: string;
     try {
-      enhancedAddress = preprocessAddress(address);
+      const addrCtx = await getTenantAddressContext(tenantDb);
+      enhancedAddress = preprocessAddress(address, addrCtx.city, addrCtx.state, addrCtx.zipPrefix);
     } catch (preprocessError: any) {
       if (preprocessError?.code === 'MISSING_ADDRESS') {
         console.error('MAPS_GEOCODE_ERROR', {
@@ -174,7 +217,6 @@ export async function geocodeAddress(tenantDb: TenantDb, address: string | undef
       params: {
         address: enhancedAddress,
         key: apiKey,
-        components: 'locality:Tulsa|administrative_area:OK|country:US'  // Bias results to Tulsa, OK
       }
     });
 
@@ -444,7 +486,7 @@ export async function calculateETAAndGenerateNavLink(tenantDb: TenantDb, address
 
 /**
  * Health check for Maps API - verifies API key is present and geocoding works
- * Tests with a known good address (Tulsa, OK)
+ * Tests with a known good address (tenant-neutral, configurable via MAPS_HEALTH_CHECK_ADDRESS)
  */
 export async function checkMapsHealth(): Promise<{
   success: boolean;
@@ -469,8 +511,8 @@ export async function checkMapsHealth(): Promise<{
   }
   
   try {
-    // Test with a known good address
-    const testAddress = 'Tulsa, OK';
+    // Test with a known good address (configurable for tenant-neutral health check)
+    const testAddress = process.env.MAPS_HEALTH_CHECK_ADDRESS || 'United States';
     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
       params: {
         address: testAddress,
