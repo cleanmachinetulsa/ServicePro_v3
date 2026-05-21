@@ -1,0 +1,157 @@
+# SERVICEPRO — COMMS HUB STAGE 3: Old Voicemail Row Backfill
+## Paste GUARDRAILS_PRE_PROMPT_FINAL.md first, then this entire file.
+## Migration only. No code changes. No frontend changes.
+
+---
+
+## CONTEXT
+
+Comms Hub Stage 1 added `message_type` to the `messages` table (default `'sms'`).
+Voicemail rows created BEFORE Stage 1 were written by `voicemailConversationService`
+with `messageType='sms'` and `metadata->>'type' = 'voicemail'`. They render as old
+cyan SMS bubbles instead of the new CallCard component.
+
+This stage fixes that with a single backfill migration. No code changes. The CallCard
+component already handles `messageType='voicemail'` correctly — the rows just need
+the right value.
+
+**Clean Machine is live.** Verify row counts before and after. The backfill must
+not touch any SMS rows or any rows without the voicemail metadata marker.
+
+---
+
+## FAKE DATA PATTERNS — STANDING RULE
+
+If at any point you reach for `placeholderData`, `initialData`, skeleton loaders that
+display fabricated values, or any pattern where fake/cached data is returned through
+the same channel as real server data — stop, flag it in the completion report under
+`FAKE DATA PATTERNS`, and propose an alternative before proceeding.
+
+---
+
+## STEP 1 — VERIFY BEFORE TOUCHING ANYTHING
+
+Run these queries against the database first. Report the results before writing
+the migration file.
+
+```sql
+-- How many rows will be affected?
+SELECT COUNT(*)
+FROM messages
+WHERE message_type = 'sms'
+  AND metadata->>'type' = 'voicemail';
+
+-- Spot-check: what do these rows look like?
+SELECT id, conversation_id, tenant_id, sender, content, message_type, metadata, timestamp
+FROM messages
+WHERE message_type = 'sms'
+  AND metadata->>'type' = 'voicemail'
+ORDER BY timestamp DESC
+LIMIT 10;
+
+-- Confirm no rows already have messageType='voicemail' from Stage 1
+-- (so we know the two populations are distinct)
+SELECT COUNT(*)
+FROM messages
+WHERE message_type = 'voicemail';
+
+-- Total messages table size for sanity check
+SELECT COUNT(*) FROM messages;
+```
+
+**Do not proceed to Step 2 until you have confirmed:**
+1. The affected row count is reasonable (not 0, not unexpectedly huge)
+2. The spot-check rows look like voicemails (not SMS)
+3. You understand exactly which rows will change
+
+---
+
+## STEP 2 — WRITE AND APPLY THE MIGRATION
+
+**Do NOT use drizzle-kit push or drizzle-kit generate.**
+
+Create `migrations/0009_backfill_voicemail_message_type.sql`:
+
+```sql
+-- Comms Hub Stage 3: backfill pre-Stage-1 voicemail rows to correct message_type
+-- Safe: only touches rows where message_type='sms' AND metadata marks them as voicemail
+-- All other rows (real SMS, call_inbound, call_missed) are unaffected
+
+UPDATE messages
+SET message_type = 'voicemail'
+WHERE message_type = 'sms'
+  AND metadata->>'type' = 'voicemail';
+```
+
+Apply it:
+```bash
+psql "$DATABASE_URL" -f migrations/0009_backfill_voicemail_message_type.sql
+```
+
+---
+
+## STEP 3 — VERIFY AFTER
+
+```sql
+-- Affected rows should now be 0
+SELECT COUNT(*)
+FROM messages
+WHERE message_type = 'sms'
+  AND metadata->>'type' = 'voicemail';
+-- Expected: 0
+
+-- Voicemail count should have increased by the before-count
+SELECT COUNT(*)
+FROM messages
+WHERE message_type = 'voicemail';
+-- Expected: before-count from Step 1 (second query)
+
+-- Total row count should be identical (UPDATE, not INSERT)
+SELECT COUNT(*) FROM messages;
+-- Expected: same as Step 1 total
+
+-- Spot-check the updated rows
+SELECT id, conversation_id, message_type, metadata->>'type' as meta_type, timestamp
+FROM messages
+WHERE message_type = 'voicemail'
+ORDER BY timestamp DESC
+LIMIT 10;
+-- Expected: message_type = 'voicemail', meta_type = 'voicemail'
+```
+
+---
+
+## WHAT NOT TO TOUCH
+
+- No TypeScript or frontend files
+- No schema.ts changes — `message_type` column already exists
+- Do not alter any SMS rows
+- Do not alter `call_inbound`, `call_missed` rows
+- Do not run any drizzle-kit commands
+
+---
+
+## ALSO APPLY TO PRODUCTION
+
+This migration must run on production too — same as 0008.
+
+```bash
+psql "YOUR_PRODUCTION_DATABASE_URL" -f migrations/0009_backfill_voicemail_message_type.sql
+```
+
+Use the DATABASE_URL from Replit Secrets. Run the Step 3 verification queries
+against production after applying.
+
+---
+
+## COMPLETION REPORT
+
+Reply with:
+
+1. **Before counts** — rows matching the backfill condition, existing voicemail rows, total messages
+2. **Spot-check** — paste 2-3 rows from the before spot-check so we can confirm they were voicemails
+3. **Migration file name** — confirm `migrations/0009_backfill_voicemail_message_type.sql`
+4. **After counts** — all three verification queries from Step 3
+5. **Production applied?** Yes/No — if yes, paste the production after-counts too
+6. **FAKE DATA PATTERNS** — any reached for (should be none — this is pure SQL)
+7. **git diff --name-only** — should be exactly 1 file (the migration SQL)
