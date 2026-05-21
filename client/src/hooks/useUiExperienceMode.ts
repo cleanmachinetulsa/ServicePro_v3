@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import type { SimpleModeConfig } from '@/config/navigationItems';
@@ -14,6 +15,20 @@ interface SimpleModeConfigResponse {
   config: SimpleModeConfig | null;
 }
 
+const UI_MODE_STORAGE_KEY = 'sp:uiExperienceMode';
+
+const getInitialUiMode = (): UiExperienceMode => {
+  try {
+    const stored = localStorage.getItem(UI_MODE_STORAGE_KEY);
+    if (stored === 'simple' || stored === 'advanced') {
+      return stored;
+    }
+  } catch {
+    // localStorage unavailable (SSR / private browsing edge case)
+  }
+  return 'simple';
+};
+
 export function useUiExperienceMode() {
   const queryClient = useQueryClient();
 
@@ -21,7 +36,18 @@ export function useUiExperienceMode() {
     queryKey: ['/api/settings/ui-mode'],
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 5,
+    placeholderData: { success: true, mode: getInitialUiMode() },
   });
+
+  const serverMode = query.isSuccess ? query.data?.mode : undefined;
+  useEffect(() => {
+    if (!serverMode) return;
+    try {
+      localStorage.setItem(UI_MODE_STORAGE_KEY, serverMode);
+    } catch {
+      // ignore write failures
+    }
+  }, [serverMode]);
 
   const mutation = useMutation({
     mutationFn: async (mode: UiExperienceMode) => {
@@ -29,6 +55,11 @@ export function useUiExperienceMode() {
       return { success: true, mode } as UiModeResponse;
     },
     onSuccess: (data) => {
+      try {
+        localStorage.setItem(UI_MODE_STORAGE_KEY, data.mode);
+      } catch {
+        // ignore write failures
+      }
       queryClient.setQueryData(['/api/settings/ui-mode'], data);
     },
   });
