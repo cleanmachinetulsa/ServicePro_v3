@@ -1,0 +1,112 @@
+# SERVICEPRO — FIX STALE tenantCommRouter TESTS
+# Update tests to match correct R1-STRICT behavior
+# ONE TASK. ONE FILE. NOTHING ELSE.
+
+IGNORE ALL PRIOR SESSION CONTEXT. READ ONLY THIS MESSAGE.
+
+---
+
+## WHAT IS BROKEN AND WHY
+
+`server/tests/tenantCommRouter.test.ts` has failing tests that assert `resolveTenantFromInbound()` returns `tenantId: 'root'` and `resolvedBy: 'fallback'` for unresolved inputs.
+
+The **code is correct**. The **tests are stale**. The function was deliberately updated with this comment in the source: `// R1-STRICT: NO fallback to 'root' - return null tenant for caller to handle`. The old root fallback was a single-tenant hack. The correct multi-tenant behavior is to return `tenantId: null` and `resolvedBy: 'unresolved'` when no phone config matches.
+
+**Do not change `server/services/tenantCommRouter.ts`.** Only update the tests.
+
+---
+
+## VERIFICATION — RUN BEFORE TOUCHING ANYTHING
+
+```bash
+# Confirm the R1-STRICT comment and null return in the function
+grep -n "R1-STRICT\|tenantId: null\|resolvedBy: 'unresolved'" server/services/tenantCommRouter.ts
+
+# Run the failing tests to see the exact assertion errors
+npx vitest run server/tests/tenantCommRouter.test.ts 2>&1 | grep -A 5 "FAIL\|Expected\|Received"
+
+# Confirm the TenantResolution type shape
+grep -n "TenantResolution\|interface.*Resolution\|type.*Resolution" server/services/tenantCommRouter.ts | head -10
+```
+
+Confirm before writing any code:
+- [ ] `tenantCommRouter.ts` returns `tenantId: null` and `resolvedBy: 'unresolved'` for no-match cases
+- [ ] The `R1-STRICT` comment confirms this is intentional
+- [ ] The exact number of failing tests
+
+---
+
+## THE FIX — `server/tests/tenantCommRouter.test.ts` only
+
+Find every test that asserts `toBe('root')` or `toBe('fallback')` for unresolved inputs. There are approximately 5–6 of these. Update each one to assert the correct R1-STRICT behavior:
+
+```typescript
+// BEFORE (stale — asserts old fallback behavior):
+expect(resolution.tenantId).toBe('root');
+expect(resolution.resolvedBy).toBe('fallback');
+
+// AFTER (correct — asserts R1-STRICT null behavior):
+expect(resolution.tenantId).toBeNull();
+expect(resolution.resolvedBy).toBe('unresolved');
+```
+
+Also update any test description strings that say "fallback to root tenant" to say "return null tenant (R1-STRICT)" so future readers understand the intent.
+
+**Do not change any test that correctly resolves to a real tenant** — only the unresolved/fallback cases.
+
+---
+
+## ALSO CHECK — smsSendGuard pre-existing failure
+
+While in this session, run:
+
+```bash
+npx vitest run server/tests/smsSendGuard.test.ts 2>&1 | grep -A 10 "FAIL\|Expected\|Received"
+```
+
+Report the exact failing test name and assertion. If it is also a stale assertion (not caused by our recent changes to `twilioTestSms.ts`), fix it the same way. If it appears related to our budget/dedup changes, report it without fixing and I will handle it separately.
+
+---
+
+## TESTS
+
+```bash
+npx vitest run server/tests/tenantCommRouter.test.ts
+npx vitest run server/tests/smsSendGuard.test.ts
+```
+
+Both should be fully green after this fix.
+
+---
+
+## COMPLETION REPORT
+
+```
+## TENANTCOMMROUTER TEST FIX COMPLETION REPORT
+
+### Verification
+R1-STRICT comment confirmed in tenantCommRouter.ts: [Y/N]
+Function returns tenantId: null for unresolved: [Y/N]
+Number of failing tests before fix: [number]
+Test descriptions updated: [Y/N]
+
+### Changes made
+File changed: server/tests/tenantCommRouter.test.ts
+Tests updated (list each by description):
+  - [test name]: toBe('root') → toBeNull()
+  - [test name]: toBe('fallback') → toBe('unresolved')
+  [etc.]
+
+### smsSendGuard failure
+Failing test name: [name]
+Assertion: [expected vs received]
+Cause: [stale test / related to our changes / other]
+Fixed: [Y/N — if N, describe]
+
+### Final test results
+tenantCommRouter: [X/X pass]
+smsSendGuard: [X/X pass]
+
+### Unresolved issues
+[Anything found but not fixable in scope]
+```
