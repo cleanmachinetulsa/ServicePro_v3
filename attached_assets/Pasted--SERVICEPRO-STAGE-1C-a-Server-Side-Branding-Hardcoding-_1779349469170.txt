@@ -1,0 +1,211 @@
+# SERVICEPRO — STAGE 1C-a: Server-Side Branding Hardcoding Sweep
+## Paste GUARDRAILS_PRE_PROMPT_FINAL.md first, then this entire file.
+## No frontend changes. No tab title. No favicon. That is Stage 1C-b.
+
+---
+
+## CONTEXT
+
+Customer-facing server output — SMS messages, invoices, email copy — contains hardcoded
+Clean Machine strings. Every future tenant gets Clean Machine's name, review URL, and
+payment handles in their communications. This task replaces all of it with
+tenant-config-driven values.
+
+**Clean Machine is live.** Every change must produce identical output for Clean Machine
+after the fix. The values come from their existing `businessSettings` / branding row —
+nothing changes for them, it just stops being hardcoded.
+
+---
+
+## FAKE DATA PATTERNS — STANDING RULE
+
+If at any point you reach for `placeholderData`, `initialData`, skeleton loaders that
+display fabricated values, or any pattern where fake/cached data is returned through the
+same channel as real server data — **stop, flag it in the completion report under
+`FAKE DATA PATTERNS`, and propose an alternative.** Do not ship fake data patterns
+without explicit approval.
+
+---
+
+## VERIFICATION BLOCK — RUN ALL OF THESE BEFORE WRITING ANY CODE
+
+```bash
+# Full hardcoded brand string audit — these are your source of truth
+grep -rn "Clean Machine\|cleanmachinetulsa\|g\.page\/r\/CQo\|venmo\.com\/cleanmachine\|cash\.app\/\$cleanmachine" \
+  server/ --include="*.ts" --include="*.js"
+
+# Confirm getTenantBranding exists and its return shape
+grep -rn "getTenantBranding\|tenantBrandingService" server/ --include="*.ts" -l
+cat server/services/tenantBrandingService.ts
+
+# Confirm businessSettings schema — what columns exist today
+grep -n "businessSettings\|googleReview\|facebookReview\|venmo\|cashApp\|paymentHandle" \
+  shared/schema.ts | head -40
+
+# Confirm invoiceService imports and function signatures
+head -30 server/invoiceService.ts
+grep -n "Clean Machine\|businessName\|branding\|tenantId\|tenantDb" server/invoiceService.ts | head -30
+
+# Confirm dashboardApi — ETA SMS and payment handles
+grep -n "Clean Machine\|ETA\|On.*way\|venmo\|cash\|payment\|branding\|tenantId" \
+  server/dashboardApi.ts | head -40
+
+# Confirm what parameters invoiceService functions accept
+# (need to know if tenantId/tenantDb is already threaded through)
+grep -n "^export\|^async function\|^function" server/invoiceService.ts | head -20
+
+# Confirm navigateAndSendETA signature in dashboardApi
+grep -n "navigateAndSendETA\|export.*ETA\|async.*ETA" server/dashboardApi.ts | head -10
+
+# Check for any other server files with hardcoded brand strings not in the grep above
+grep -rn "Clean Machine\|cleanmachinetulsa\|g\.page\/r\/CQo" \
+  server/ --include="*.ts" | grep -v "node_modules\|\.test\."
+```
+
+**Before writing code, answer all of these from actual file contents:**
+
+1. What does `getTenantBranding(tenantId)` return? List all fields.
+2. Does `businessSettings` already have `googleReviewUrl` and `facebookReviewUrl` columns?
+   If not, you will add them (manual SQL — see migration section below).
+3. Do the affected functions in `invoiceService.ts` already accept `tenantId` or `tenantDb`
+   as a parameter? If not, note which ones need it added.
+4. Does `navigateAndSendETA` in `dashboardApi.ts` already accept `tenantId`? 
+5. Are there hardcoded Venmo/CashApp handles? If yes, what column will they come from?
+   Check if `businessSettings` has a payment handles field — if not, flag it (do NOT add
+   a new column without approval; use a fallback of empty string / omit the section).
+6. Full list of every file containing hardcoded brand strings from the grep above.
+
+---
+
+## MIGRATION — ONLY IF COLUMNS DON'T EXIST
+
+If `googleReviewUrl` and `facebookReviewUrl` are NOT already in `businessSettings`:
+
+**Do NOT use drizzle-kit push or drizzle-kit generate.**
+Write a manual SQL migration file and apply it directly.
+
+```sql
+-- migrations/0007_add_review_urls.sql
+ALTER TABLE business_settings
+  ADD COLUMN IF NOT EXISTS google_review_url TEXT,
+  ADD COLUMN IF NOT EXISTS facebook_review_url TEXT;
+```
+
+After applying, update `shared/schema.ts` to add the two columns to the
+`businessSettings` table definition:
+
+```typescript
+googleReviewUrl: text('google_review_url'),
+facebookReviewUrl: text('facebook_review_url'),
+```
+
+Then seed Clean Machine's existing Google review URL into their row:
+
+```sql
+UPDATE business_settings
+SET google_review_url = 'https://g.page/r/CQo53O2yXrN8EBM/review'
+WHERE tenant_id = 'root';
+```
+
+Confirm the column exists and the seed is present before proceeding to code changes.
+
+**If Venmo/CashApp handles need a column:** Do NOT add it in this task. Flag it in the
+completion report under `DEFERRED ITEMS`. For now, omit the payment section from
+tenant output if no handle is configured, rather than hardcoding.
+
+---
+
+## THE FIXES
+
+### Fix 1 — invoiceService.ts
+
+For every hardcoded "Clean Machine Auto Detail", Google review URL, or brand string:
+
+1. Confirm the function has `tenantId` in scope. If not, add it as a parameter.
+2. Call `await getTenantBranding(tenantId)` once at the top of the function (or pass
+   the already-fetched branding object in if the caller has it).
+3. Replace hardcoded strings with branding fields:
+   - Business name → `branding.businessName`
+   - Google review URL → `branding.googleReviewUrl` (from businessSettings after migration)
+   - If review URL is null/empty: omit the review section entirely, do not render a broken link
+
+Check every call site of the modified functions — if callers don't pass `tenantId` yet,
+add it at the call site too. Follow the chain up until tenantId is in scope.
+
+### Fix 2 — dashboardApi.ts (ETA SMS)
+
+Find the ETA SMS template that hardcodes the business name:
+
+1. Confirm `tenantId` is available in `navigateAndSendETA` (or its caller).
+2. Fetch branding: `const branding = await getTenantBranding(tenantId)`
+3. Replace hardcoded name with `branding.businessName`
+
+### Fix 3 — dashboardApi.ts (Payment handles)
+
+If Venmo/CashApp handles are hardcoded:
+- Check `businessSettings` for an existing payment handle column.
+- If a column exists: use it, with empty-string fallback (omit section if blank).
+- If no column exists: **do not add one in this task**. Remove the hardcoded handles
+  and omit the payment section. Flag in completion report under `DEFERRED ITEMS` with
+  the exact column name you'd recommend adding (e.g. `venmo_handle`, `cashapp_handle`).
+
+### Fix 4 — Any other files from the grep
+
+Apply the same pattern to every additional file the grep surfaces:
+- Get `tenantId` in scope
+- Fetch branding once
+- Replace hardcoded strings
+- Omit sections where the replacement value is null/empty rather than showing broken output
+
+---
+
+## WHAT NOT TO TOUCH
+
+- No frontend files
+- No tab title, no favicon — that is Stage 1C-b
+- No drizzle-kit commands of any kind
+- Do not add payment handle columns without approval
+- Do not change `getTenantBranding` internals — only call it
+- Do not add new branding fields beyond `googleReviewUrl` and `facebookReviewUrl`
+  without flagging first
+
+---
+
+## VERIFICATION AFTER THE FIX
+
+```bash
+# Confirm no hardcoded brand strings remain in server/
+grep -rn "Clean Machine\|cleanmachinetulsa\|g\.page\/r\/CQo\|venmo\.com\/cleanmachine\|cash\.app\/\$cleanmachine" \
+  server/ --include="*.ts" | grep -v "\.test\."
+
+# Expected: zero results (or only in test fixtures — flag any that remain)
+
+# Confirm migration applied
+# (run against your DB or check that the SQL file exists and was applied)
+ls migrations/0007_*.sql
+
+# Confirm schema.ts updated if migration ran
+grep -n "googleReviewUrl\|facebookReviewUrl" shared/schema.ts
+
+# Confirm Clean Machine seed value present
+# Run: SELECT google_review_url FROM business_settings WHERE tenant_id = 'root';
+# Expected: https://g.page/r/CQo53O2yXrN8EBM/review
+
+# Confirm files changed
+git diff --name-only
+```
+
+---
+
+## COMPLETION REPORT
+
+Reply with:
+
+1. **Full grep output** — every file+line that had a hardcoded brand string (before the fix)
+2. **Migration ran?** Yes/No. If yes: SQL file name, columns added, CM seed confirmed.
+3. **Functions modified** — for each: function name, file, what parameter was added (if any), what was replaced
+4. **Call sites updated** — list any callers that needed `tenantId` added
+5. **DEFERRED ITEMS** — payment handles situation: existing column found, or deferred with recommended column names
+6. **FAKE DATA PATTERNS** — any reached for during this task (should be none)
+7. **Remaining hardcoded strings** — paste the post-fix grep output (should be empty)
+8. **git diff --name-only** — full list of changed files
