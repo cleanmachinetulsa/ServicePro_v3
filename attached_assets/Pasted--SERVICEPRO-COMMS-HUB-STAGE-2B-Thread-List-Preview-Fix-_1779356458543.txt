@@ -1,0 +1,158 @@
+# SERVICEPRO — COMMS HUB STAGE 2B: Thread List Preview Fix
+## Paste GUARDRAILS_PRE_PROMPT_FINAL.md first, then this entire file.
+## Small targeted fix. Backend query + frontend type + preview logic. 3-4 files max.
+
+---
+
+## CONTEXT
+
+Stage 2 left one known gap: the conversation thread list preview for call rows relies on
+the body text written at persistence time ("📞 Missed call" etc.) rather than branching
+on `messageType`. If that copy ever changes, the preview silently drifts. The fix is
+proper: include `messageType` in the `latestMessage` projection from the backend, extend
+the frontend Conversation type, and switch on `messageType` in the preview renderer.
+
+**Clean Machine is live.** SMS thread previews must be byte-identical after this change.
+
+---
+
+## FAKE DATA PATTERNS — STANDING RULE
+
+If at any point you reach for `placeholderData`, `initialData`, skeleton loaders that
+display fabricated values, or any pattern where fake/cached data is returned through
+the same channel as real server data — stop, flag it in the completion report under
+`FAKE DATA PATTERNS`, and propose an alternative before proceeding.
+
+---
+
+## VERIFICATION BLOCK — RUN ALL OF THESE BEFORE WRITING ANY CODE
+
+```bash
+# Find where conversations with latestMessage are queried on the backend
+grep -rn "latestMessage\|latest_message\|lastMessage\|last_message" \
+  server/ --include="*.ts" | grep -v "node_modules" | head -30
+
+# Find the exact query that builds the conversation list with preview data
+grep -rn "conversations.*select\|select.*conversations\|getConversations\|fetchConversations" \
+  server/ --include="*.ts" | grep -v "node_modules\|test" | head -20
+
+# Read that query file in full once found — confirm what columns are returned
+# on the latestMessage subquery/join
+
+# Find the Conversation type/interface on the frontend
+grep -rn "interface Conversation\|type Conversation\s*=" \
+  client/src/ shared/ --include="*.ts" --include="*.tsx" | head -10
+
+# Read NightOpsConversationList — find the preview render
+grep -n "latestMessage\|preview\|snippet\|body\|content\|messageType\|message_type" \
+  client/src/components/NightOpsConversationList.tsx | head -30
+
+# Confirm the API route that serves the conversation list
+grep -rn "GET.*conversations\|router.get.*conversation\|app.get.*conversation" \
+  server/ --include="*.ts" | grep -v "node_modules\|test" | head -10
+```
+
+**Before writing code, answer all of these:**
+
+1. What does the `latestMessage` object currently include? List every field returned.
+2. Does it already include `messageType` or `message_type`? If yes — this is a
+   frontend-only fix. If no — backend projection needs one line added.
+3. What is the exact field name used in `NightOpsConversationList` for the preview
+   text — `latestMessage.body`, `latestMessage.content`, or something else?
+4. Is the `Conversation` frontend type auto-inferred from the schema, or hand-written?
+
+---
+
+## THE FIX — UP TO THREE CHANGES
+
+### Change 1 — Backend: add `messageType` to latestMessage projection (if missing)
+
+Find the query that builds the conversation list. In the `latestMessage` subquery
+or JOIN, add `message_type` to the SELECT alongside `body`/`content`.
+
+This is one line in a SQL fragment or Drizzle select object. Do not restructure the
+query — surgical addition only.
+
+If `messageType` is already returned, skip this change and note it in the report.
+
+### Change 2 — Frontend type: add `messageType` to latestMessage shape
+
+Find the `Conversation` interface (or wherever `latestMessage` is typed).
+Add `messageType` as an optional field:
+
+```typescript
+latestMessage?: {
+  body: string;        // existing
+  messageType?: 'sms' | 'call_inbound' | 'call_missed' | 'voicemail'; // add
+  // ... other existing fields
+} | null;
+```
+
+If the type is auto-inferred from the schema, confirm `messageType` flows through
+automatically from Change 1 and skip this change.
+
+### Change 3 — Frontend: switch on `messageType` in preview renderer
+
+In `NightOpsConversationList.tsx`, find where the preview text is rendered.
+Replace the raw body/content read with a function that branches on `messageType`:
+
+```typescript
+const getPreviewText = (latestMessage?: { body?: string; messageType?: string } | null): string => {
+  switch (latestMessage?.messageType) {
+    case 'call_inbound': return '📞 Inbound call';
+    case 'call_missed':  return '📞 Missed call';
+    case 'voicemail':    return '📞 Voicemail';
+    default:             return latestMessage?.body ?? '';
+  }
+};
+```
+
+Use the actual field names found in the verification step — `body`, `content`, or
+whatever the real field is. The SMS default path (`return latestMessage?.body ?? ''`)
+must produce identical output to the current code for all existing SMS threads.
+
+---
+
+## WHAT NOT TO TOUCH
+
+- Do not change `MessageBubble.tsx` — Stage 2 is complete
+- Do not change any message persistence logic
+- Do not change the conversation query structure — only add `message_type` to the
+  SELECT if it's missing
+- Do not change how SMS previews render — the default branch must match current behavior
+
+---
+
+## VERIFICATION AFTER THE FIX
+
+```bash
+# Confirm messageType flows through the API response
+# (check the network tab in browser DevTools — conversations endpoint response
+#  should now include messageType on latestMessage)
+
+# Confirm NightOpsConversationList uses the switch
+grep -n "getPreviewText\|messageType\|call_inbound\|call_missed\|voicemail" \
+  client/src/components/NightOpsConversationList.tsx
+
+# Confirm SMS preview is unchanged (default branch returns body)
+# Manual: open a thread with only SMS history — preview must look identical
+
+# Confirm files changed
+git diff --name-only
+# Expected: 2-4 files (backend query, Conversation type if hand-written,
+#           NightOpsConversationList, possibly a shared types file)
+```
+
+---
+
+## COMPLETION REPORT
+
+Reply with:
+
+1. **latestMessage fields before fix** — full list of what was returned
+2. **messageType already present?** Yes/No — backend change needed or skipped
+3. **Type change** — auto-inferred or hand-written? What changed?
+4. **Preview renderer** — paste the `getPreviewText` function as written
+5. **FAKE DATA PATTERNS** — any reached for (should be none)
+6. **git diff --name-only** — full list of changed files
+7. **Any surprises**
