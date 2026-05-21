@@ -9,6 +9,7 @@ import { checkDistanceToBusinessLocation } from './googleMapsApi';
 import { getActiveUpsellOffers } from './upsellService';
 import { handleGetAvailable, handleBook } from './calendarApi';
 import { sheetsData } from './knowledge';
+import type { TenantDb } from './tenantDb';
 
 interface CustomerDatabaseResult {
   found: boolean;
@@ -156,7 +157,7 @@ export async function checkCustomerDatabase(phone: string): Promise<CustomerData
  * 
  * HOTFIX-SMS-CM: Guards against undefined/null address with early validation
  */
-export async function validateAddress(phone: string, address: string | undefined | null): Promise<AddressValidationResult> {
+export async function validateAddress(phone: string, address: string | undefined | null, tenantDb?: TenantDb): Promise<AddressValidationResult> {
   // HOTFIX-SMS-CM: Guard against missing address before calling Maps API
   if (!address || typeof address !== 'string' || !address.trim()) {
     console.warn('[VALIDATE ADDRESS] Missing or empty address provided', { phone, address });
@@ -168,7 +169,9 @@ export async function validateAddress(phone: string, address: string | undefined
   }
   
   try {
-    const result = await checkDistanceToBusinessLocation(address);
+    const result = tenantDb
+      ? await checkDistanceToBusinessLocation(tenantDb, address)
+      : await checkDistanceToBusinessLocation(address); // HOTFIX-SMS-CM fallback preserved
     
     if (!result.success) {
       // SMART CORRECTION: Instead of hard-rejecting, try to help them fix it

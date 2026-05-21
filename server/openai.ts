@@ -674,7 +674,13 @@ async function executeFunctionCall(
       }
       
       case "validate_address": {
-        const result = await validateAddress(args.phone, args.address);
+        let tenantDbForValidation: import('./tenantDb').TenantDb | undefined;
+        if (tenantId) {
+          const { db } = await import('./db');
+          const { wrapTenantDb } = await import('./tenantDb');
+          tenantDbForValidation = wrapTenantDb(db, tenantId);
+        }
+        const result = await validateAddress(args.phone, args.address, tenantDbForValidation);
         return JSON.stringify(result);
       }
       
