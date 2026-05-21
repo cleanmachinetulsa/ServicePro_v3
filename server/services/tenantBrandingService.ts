@@ -28,6 +28,9 @@ export interface TenantBranding {
   logoUrl: string | null;
   city: string | null;
   industry: string | null;
+  // Stage 1C-a: Per-tenant public review URLs (null when not configured — callers must omit the review block rather than render a broken link)
+  googleReviewUrl: string | null;
+  facebookReviewUrl: string | null;
 }
 
 const DEFAULT_SYSTEM_EMAIL = process.env.DEFAULT_SYSTEM_EMAIL || 'no-reply@servicepro.app';
@@ -47,6 +50,10 @@ function getCleanMachineBranding(): TenantBranding {
     logoUrl: process.env.CM_LOGO_URL || null,
     city: 'Tulsa, OK',
     industry: 'auto_detailing',
+    // Root-tenant defaults — real values live in tenant_config; these are the
+    // hard fallback if the row is missing during boot.
+    googleReviewUrl: 'https://g.page/r/CQo53O2yXrN8EBM/review',
+    facebookReviewUrl: 'https://www.facebook.com/CLEANMACHINETULSA',
   };
 }
 
@@ -60,6 +67,8 @@ const NEUTRAL_BRANDING: TenantBranding = {
   logoUrl: null,
   city: null,
   industry: null,
+  googleReviewUrl: null,
+  facebookReviewUrl: null,
 };
 
 /**
@@ -74,18 +83,18 @@ const NEUTRAL_BRANDING: TenantBranding = {
 export async function getTenantBranding(
   tenantId: string | null | undefined
 ): Promise<TenantBranding> {
-  // ONLY explicit 'root' gets Clean Machine branding
-  // null/undefined returns NEUTRAL branding to prevent data leakage
-  if (tenantId === 'root') {
-    return getCleanMachineBranding();
-  }
-  
-  // If tenantId is null/undefined, return neutral branding immediately
+  // If tenantId is null/undefined, return neutral branding immediately to
+  // prevent any cross-tenant data leakage.
   if (!tenantId) {
     return { ...NEUTRAL_BRANDING };
   }
 
-  // Non-root tenant: Fetch from tenantConfig and tenantPhoneConfig tables
+  // Stage 1C-a: ALL tenants (including 'root') now read from tenant_config so
+  // the seeded google_review_url / facebook_review_url actually drive output
+  // instead of the hardcoded constants in getCleanMachineBranding(). For root
+  // specifically, getCleanMachineBranding() remains the hard fallback if the
+  // DB row is missing or the query fails (e.g. during boot before migrations).
+  const isRoot = tenantId === 'root';
   try {
     const [tenant] = await db
       .select()
@@ -101,25 +110,33 @@ export async function getTenantBranding(
       .limit(1);
 
     if (tenant) {
-      // Build branding from tenant config, NEVER falling back to Clean Machine data
-      const publicPhone = phoneConfigRow?.phoneNumber || null;
+      // For root, use Clean Machine constants as field-level fallback when a
+      // tenant_config column is null. For non-root, NEVER fall back to Clean
+      // Machine — emit null and let callers omit the line.
+      const cm = isRoot ? getCleanMachineBranding() : null;
+      const publicPhone = phoneConfigRow?.phoneNumber || (cm?.publicPhone ?? null);
       return {
-        businessName: tenant.businessName || DEFAULT_BUSINESS_NAME,
+        businessName: tenant.businessName || (cm?.businessName ?? DEFAULT_BUSINESS_NAME),
         publicPhone,
         publicPhoneDisplay: formatPhoneForDisplay(publicPhone),
-        supportEmail: tenant.primaryContactEmail || null,
-        websiteUrl: tenant.websiteUrl || null,
-        logoUrl: tenant.logoUrl || null,
-        city: tenant.primaryCity || null,
-        industry: tenant.industryPackId || tenant.industry || null,
+        supportEmail: tenant.primaryContactEmail || (cm?.supportEmail ?? null),
+        websiteUrl: tenant.websiteUrl || (cm?.websiteUrl ?? null),
+        logoUrl: tenant.logoUrl || (cm?.logoUrl ?? null),
+        city: tenant.primaryCity || (cm?.city ?? null),
+        industry: tenant.industryPackId || tenant.industry || (cm?.industry ?? null),
+        // Stage 1C-a: tenant_config.google_review_url / facebook_review_url
+        googleReviewUrl: tenant.googleReviewUrl || (cm?.googleReviewUrl ?? null),
+        facebookReviewUrl: tenant.facebookReviewUrl || (cm?.facebookReviewUrl ?? null),
       };
     }
   } catch (err) {
     console.error(`[BRANDING] Failed to fetch tenant config for '${tenantId}':`, err);
   }
 
-  // Fallback to neutral branding (NOT Clean Machine)
-  return { ...NEUTRAL_BRANDING };
+  // No tenant_config row found. For root, fall back to hardcoded Clean Machine
+  // defaults so live production output never breaks during boot or migration
+  // edge cases. For other tenants, fall back to neutral (NOT Clean Machine).
+  return isRoot ? getCleanMachineBranding() : { ...NEUTRAL_BRANDING };
 }
 
 /**

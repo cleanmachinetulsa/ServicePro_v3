@@ -319,6 +319,9 @@ export const tenantConfig = pgTable("tenant_config", {
   primaryContactEmail: varchar("primary_contact_email", { length: 255 }),
   primaryCity: varchar("primary_city", { length: 100 }),
   websiteUrl: varchar("website_url", { length: 500 }), // Phase 5: Tenant's website
+  // Stage 1C-a: Per-tenant public review URLs (replaces hardcoded Clean Machine URLs in SMS/invoices)
+  googleReviewUrl: text("google_review_url"),
+  facebookReviewUrl: text("facebook_review_url"),
   internalNotes: text("internal_notes"), // Owner-only notes about this tenant
   
   // Route optimization fields - home base location for travel time calculations

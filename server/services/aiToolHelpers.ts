@@ -153,7 +153,7 @@ export async function sendInvoiceToCustomer(
       console.warn(`${LOG} sendInvoiceToCustomer: line_items received but ad-hoc invoice creation is not implemented; sending existing invoice ${invoiceId} instead.`);
     }
 
-    const ok = await sendInvoiceNotification(tenantDb, invoiceId, channel);
+    const ok = await sendInvoiceNotification(tenantId, tenantDb, invoiceId, channel);
     return { success: ok, invoiceId, appointmentId: resolvedAppointmentId, channel };
   } catch (err: any) {
     console.error(`${LOG} sendInvoiceToCustomer failed:`, err);

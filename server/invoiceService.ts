@@ -7,6 +7,7 @@ import { sendSMS } from './notifications';
 import { renderInvoiceEmail, renderInvoiceEmailPlainText, type InvoiceEmailData } from './emailTemplates/invoice';
 import { signPayToken } from './security/paylink';
 import { applyRefereeReward, calculateInvoiceWithReferralDiscount, markReferralDiscountApplied } from './referralService';
+import { getTenantBranding } from './services/tenantBrandingService';
 
 const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
 
@@ -345,10 +346,15 @@ export async function completeAppointmentAndGenerateInvoice(
  * Send invoice notification to customer
  */
 export async function sendInvoiceNotification(
+  tenantId: string,
   tenantDb: TenantDb,
   invoiceId: number,
   platform: 'sms' | 'email' | 'both'
 ): Promise<boolean> {
+  // Stage 1C-a: fetch tenant branding so the SMS/email use the correct business
+  // name and review URLs instead of hardcoded Clean Machine values.
+  const branding = await getTenantBranding(tenantId);
+
   // Get invoice with customer and appointment details
   const [invoiceDetails] = await tenantDb
     .select({
@@ -382,14 +388,28 @@ export async function sendInvoiceNotification(
   
   const currentPoints = loyaltyRecord?.points || 0;
   
-  // Construct payment options message
-  const paymentOptions = `
-Payment Options:
-1. Card Payment via Stripe: ${process.env.CLIENT_BASE_URL || 'https://cleanmachine-detailer.replit.app'}/pay/${invoice.id}
-2. Venmo: ${process.env.VENMO_USERNAME || ''}
-3. CashApp: ${process.env.CASHAPP_USERNAME || ''}
-4. PayPal: ${process.env.PAYPAL_USERNAME || ''}
-`;
+  // Construct payment options message — only include lines for handles that are
+  // actually configured. Stage 1C-a: hardcoded fallback strings removed; if an
+  // env var is empty the line is dropped entirely rather than rendering a broken
+  // "Venmo: " line.
+  const cardLink = `${process.env.CLIENT_BASE_URL || 'https://cleanmachine-detailer.replit.app'}/pay/${invoice.id}`;
+  const venmo = (process.env.VENMO_USERNAME || '').trim();
+  const cashapp = (process.env.CASHAPP_USERNAME || '').trim();
+  const paypal = (process.env.PAYPAL_USERNAME || '').trim();
+  const paymentLines: string[] = [`Card Payment: ${cardLink}`];
+  if (venmo) paymentLines.push(`Venmo: ${venmo}`);
+  if (cashapp) paymentLines.push(`CashApp: ${cashapp}`);
+  if (paypal) paymentLines.push(`PayPal: ${paypal}`);
+  const paymentOptions = `\nPayment Options:\n${paymentLines.map((l, i) => `${i + 1}. ${l}`).join('\n')}\n`;
+
+  // Build review block conditionally — drop the whole block if neither URL is
+  // configured for this tenant.
+  const reviewLines: string[] = [];
+  if (branding.googleReviewUrl) reviewLines.push(`Google: ${branding.googleReviewUrl}`);
+  if (branding.facebookReviewUrl) reviewLines.push(`Facebook: ${branding.facebookReviewUrl}`);
+  const reviewBlock = reviewLines.length > 0
+    ? `\n\nWe'd love to hear your feedback! Please leave a review:\n${reviewLines.join('\n')}`
+    : '';
 
   // Build messages based on platform
   let success = true;
@@ -398,15 +418,11 @@ Payment Options:
     // Only send SMS if customer has a phone number
     if (customer.phone) {
       // SMS version - concise but warm
-      const smsMessage = `Thank you for choosing Clean Machine Auto Detail! 
+      const smsMessage = `Thank you for choosing ${branding.businessName}! 
 Your ${service.name} service is complete.
 Amount due: $${invoice.amount}
 
-${paymentOptions}
-
-We'd love to hear your feedback! Please leave a review:
-Google: https://g.page/r/CQo53O2yXrN8EBM/review
-Facebook: https://www.facebook.com/CLEANMACHINETULSA
+${paymentOptions}${reviewBlock}
 
 Thanks for trusting us with your vehicle!`;
 
@@ -490,6 +506,11 @@ Thanks for trusting us with your vehicle!`;
           venmoUsername: process.env.VENMO_USERNAME || '',
           cashappUsername: process.env.CASHAPP_USERNAME || '',
           paypalUsername: process.env.PAYPAL_USERNAME || '',
+          branding: {
+            businessName: branding.businessName,
+            publicPhone: branding.publicPhone,
+            supportEmail: branding.supportEmail,
+          },
           upsell: {
             title: 'Keep Your Vehicle Looking Fresh',
             description: 'Join our Maintenance Detail Program for regular upkeep every 3 months. Perfect for vehicles we\'ve already detailed!',
@@ -505,7 +526,7 @@ Thanks for trusting us with your vehicle!`;
         
         await sendBusinessEmail(
           customer.email,
-          `Invoice ${invoiceEmailData.invoiceNumber} - Clean Machine Auto Detail`,
+          `Invoice ${invoiceEmailData.invoiceNumber} - ${branding.businessName}`,
           emailText, // plain text first
           emailHtml  // HTML second
         );
@@ -524,7 +545,10 @@ Thanks for trusting us with your vehicle!`;
 /**
  * Send a review request 2 days after the service
  */
-export async function sendReviewRequest(tenantDb: TenantDb, invoiceId: number): Promise<boolean> {
+export async function sendReviewRequest(tenantId: string, tenantDb: TenantDb, invoiceId: number): Promise<boolean> {
+  // Stage 1C-a: pull per-tenant business name + review URLs.
+  const branding = await getTenantBranding(tenantId);
+
   const [invoiceDetails] = await tenantDb
     .select({
       invoice: invoices,
@@ -553,14 +577,26 @@ export async function sendReviewRequest(tenantDb: TenantDb, invoiceId: number): 
     return false;
   }
 
+  // Build review URL block from per-tenant config. If neither URL is configured,
+  // skip the review request entirely (sending an SMS with no review link defeats
+  // the purpose and looks broken to the customer).
+  const reviewLines: string[] = [];
+  if (branding.googleReviewUrl) reviewLines.push(`Google: ${branding.googleReviewUrl}`);
+  if (branding.facebookReviewUrl) reviewLines.push(`Facebook: ${branding.facebookReviewUrl}`);
+  if (reviewLines.length === 0) {
+    console.warn(`[REVIEW] Tenant ${tenantId} has no review URLs configured; skipping review request for invoice ${invoiceId}`);
+    return false;
+  }
+
   // SMS review request - warm and conversational
+  // (Wording matches the original Clean Machine SMS verbatim so root-tenant
+  // customer output is unchanged after Stage 1C-a.)
   const smsMessage = `Hi ${customer.name || 'there'}! It's been a couple days since we detailed your vehicle. How is everything looking? We'd love to hear your feedback!
 
 If you're happy with our service, please consider leaving a review:
-Google: https://g.page/r/CQo53O2yXrN8EBM/review
-Facebook: https://www.facebook.com/CLEANMACHINETULSA
+${reviewLines.join('\n')}
 
-Thank you for choosing Clean Machine Auto Detail!`;
+Thank you for choosing ${branding.businessName}!`;
 
   try {
     // Use Main Line (ID 1) for automated review requests

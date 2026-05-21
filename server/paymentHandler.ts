@@ -205,7 +205,7 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
     
     // Trigger post-payment automations (review request, receipt email, loyalty points)
     try {
-      await sendReviewRequest(updatedInvoice.id);
+      await sendReviewRequest(tenantDb.tenant.id, tenantDb, updatedInvoice.id);
       console.log(`[PAYMENT] Review request sent for invoice ${updatedInvoice.id}`);
     } catch (error) {
       console.error('[PAYMENT] Error sending review request:', error);
@@ -294,7 +294,7 @@ export async function sendPaymentReminder(req: Request, res: Response) {
     }
     
     // Send notification
-    const success = await sendInvoiceNotification(invoice.id, 'both');
+    const success = await sendInvoiceNotification(tenantDb.tenant.id, tenantDb, invoice.id, 'both');
     
     if (success) {
       res.status(200).json({ success: true, message: 'Payment reminder sent' });

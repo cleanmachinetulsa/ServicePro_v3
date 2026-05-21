@@ -61,9 +61,17 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
   const currency = (n: number) => `$${n.toFixed(2)}`;
   const currentYear = new Date().getFullYear();
 
-  // Use tenant branding if provided, otherwise default to Clean Machine (root tenant)
-  const businessName = data.branding?.businessName || 'Clean Machine Auto Detail';
-  const businessPhone = data.branding?.publicPhone || phoneConfig.twilioMain || '';
+  // Stage 1C-a: branding must be supplied by the caller. We no longer fall back
+  // to the literal "Clean Machine Auto Detail" string — that caused other
+  // tenants to silently render Clean Machine's brand on their invoices when a
+  // caller forgot to pass branding. If branding is missing we render the
+  // neutral "Your Business" placeholder, which is visibly wrong and surfaces
+  // the bug instead of hiding it.
+  const businessName = data.branding?.businessName || 'Your Business';
+  // Stage 1C-a: do NOT fall back to phoneConfig.twilioMain — that env var holds
+  // Clean Machine's main line and would leak the root tenant's phone number
+  // onto other tenants' invoices if a caller forgot to pass branding.publicPhone.
+  const businessPhone = data.branding?.publicPhone || '';
   const businessPhoneDisplay = formatPhoneForDisplay(businessPhone);
 
   // Preheader text (shows in inbox preview)
@@ -310,9 +318,9 @@ export function renderInvoiceEmail(data: InvoiceEmailData): string {
 export function renderInvoiceEmailPlainText(data: InvoiceEmailData): string {
   const currency = (n: number) => `$${n.toFixed(2)}`;
   
-  // Use tenant branding if provided, otherwise default to Clean Machine (root tenant)
-  const businessName = data.branding?.businessName || 'Clean Machine Auto Detail';
-  const businessPhone = data.branding?.publicPhone || phoneConfig.twilioMain || '';
+  // Stage 1C-a: see note in renderInvoiceEmail() — no Clean Machine fallback.
+  const businessName = data.branding?.businessName || 'Your Business';
+  const businessPhone = data.branding?.publicPhone || '';
   const businessPhoneDisplay = formatPhoneForDisplay(businessPhone);
   
   return `${businessName.toUpperCase()}

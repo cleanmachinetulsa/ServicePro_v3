@@ -9,6 +9,7 @@ import { getDailyWeatherSummary } from './weatherService';
 import { calculateETAAndGenerateNavLink } from './googleMapsApi';
 import { sendSMS } from './notifications';
 import { renderInvoiceEmail, renderInvoiceEmailPlainText, type InvoiceEmailData } from './emailTemplates/invoice';
+import { getTenantBranding } from './services/tenantBrandingService';
 import { signPayToken } from './security/paylink';
 import { z } from 'zod';
 import { cacheService, CacheKeys, CacheTTL } from './cacheService';
@@ -859,8 +860,11 @@ export async function navigateAndSendETA(req: Request, res: Response) {
     
     console.log(`Navigate & Send ETA: Base ${baseDuration} min + Padding ${padding} min = ${paddedDuration} min (rounded up)`);
     
+    // Stage 1C-a: per-tenant business name instead of hardcoded "Clean Machine Auto Detail"
+    const etaTenantId = (req.session as any).tenantId || 'root';
+    const etaBranding = await getTenantBranding(etaTenantId);
     // Send SMS to customer with padded ETA
-    const smsMessage = `Hi ${customerName}! This is Clean Machine Auto Detail. We're on our way! 🚗\n\nEstimated arrival: ${paddedDuration} minutes\n\nSee you soon!`;
+    const smsMessage = `Hi ${customerName}! This is ${etaBranding.businessName}. We're on our way! 🚗\n\nEstimated arrival: ${paddedDuration} minutes\n\nSee you soon!`;
     
     try {
       // Use Main Line (ID 1) for automated ETA notifications
@@ -910,6 +914,12 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
         message: 'Customer phone and amount are required'
       });
     }
+
+    // Stage 1C-a: resolve tenant branding once so all output (SMS body, email
+    // subject, email template) uses the tenant's real business name and review
+    // URLs instead of hardcoded Clean Machine literals.
+    const tenantId = (req.session as any).tenantId || 'root';
+    const branding = await getTenantBranding(tenantId);
 
     const { createManualInvoice } = await import('./invoiceService');
     const invoice = await createManualInvoice({
@@ -980,8 +990,31 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
       paymentLink = `${baseUrl}/pay`;
     }
     
-    // Build SMS message with real payment link
-    const smsMessage = `Thank you ${customerName || 'for choosing Clean Machine Auto Detail'}!\n\nYour ${service} service is complete.\nAmount: $${amount.toFixed(2)}\n\n${notes || ''}\n\nPayment Options:\n1. Card: ${paymentLink}\n2. Venmo: @cleanmachinetulsa\n3. CashApp: $CleanMachineTulsa\n4. PayPal: CleanMachineTulsa\n\nWe'd love a review:\nGoogle: https://g.page/r/CQo53O2yXrN8EBM/review`;
+    // Build SMS message with real payment link. Stage 1C-a: payment handles
+    // come from env vars only — if a handle isn't configured, drop that line
+    // entirely instead of rendering a hardcoded Clean Machine fallback. Same
+    // for the review URL: omit the review block if the tenant hasn't set one.
+    const venmo = (process.env.VENMO_USERNAME || '').trim();
+    const cashapp = (process.env.CASHAPP_USERNAME || '').trim();
+    const paypal = (process.env.PAYPAL_USERNAME || '').trim();
+    const paymentLines: string[] = [`Card: ${paymentLink}`];
+    if (venmo) paymentLines.push(`Venmo: ${venmo}`);
+    if (cashapp) paymentLines.push(`CashApp: ${cashapp}`);
+    if (paypal) paymentLines.push(`PayPal: ${paypal}`);
+    const paymentBlock = `Payment Options:\n${paymentLines.map((l, i) => `${i + 1}. ${l}`).join('\n')}`;
+
+    const reviewLines: string[] = [];
+    if (branding.googleReviewUrl) reviewLines.push(`Google: ${branding.googleReviewUrl}`);
+    if (branding.facebookReviewUrl) reviewLines.push(`Facebook: ${branding.facebookReviewUrl}`);
+    const reviewBlock = reviewLines.length > 0
+      ? `\n\nWe'd love a review:\n${reviewLines.join('\n')}`
+      : '';
+
+    const thankYou = customerName
+      ? `Thank you ${customerName}!`
+      : `Thank you for choosing ${branding.businessName}!`;
+
+    const smsMessage = `${thankYou}\n\nYour ${service} service is complete.\nAmount: $${amount.toFixed(2)}\n\n${notes || ''}\n\n${paymentBlock}${reviewBlock}`;
     
     // Send SMS using Main Line (ID 1) for automated invoice notifications
     const smsResult = await sendSMS(customerPhone, smsMessage, undefined, undefined, 1);
@@ -1019,9 +1052,15 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
             newBalance: 0 // Unknown for dashboard sends (no customer lookup)
           },
           paymentLink: paymentLink,
-          venmoUsername: process.env.VENMO_USERNAME || '@cleanmachinetulsa',
-          cashappUsername: process.env.CASHAPP_USERNAME || '$CleanMachineTulsa',
-          paypalUsername: 'CleanMachineTulsa',
+          // Stage 1C-a: env vars only, no Clean Machine literal fallbacks.
+          venmoUsername: (process.env.VENMO_USERNAME || '').trim(),
+          cashappUsername: (process.env.CASHAPP_USERNAME || '').trim(),
+          paypalUsername: (process.env.PAYPAL_USERNAME || '').trim(),
+          branding: {
+            businessName: branding.businessName,
+            publicPhone: branding.publicPhone,
+            supportEmail: branding.supportEmail,
+          },
           upsell: {
             title: 'Keep Your Vehicle Looking Fresh',
             description: 'Join our Maintenance Detail Program for regular upkeep every 3 months. Perfect for vehicles we\'ve already detailed!',
@@ -1038,7 +1077,7 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
         const { sendBusinessEmail } = await import('./emailService');
         const emailResult = await sendBusinessEmail(
           customerEmail,
-          `Invoice ${invoiceEmailData.invoiceNumber} - Clean Machine Auto Detail`,
+          `Invoice ${invoiceEmailData.invoiceNumber} - ${branding.businessName}`,
           emailText, // plain text first (correct order)
           emailHtml  // HTML second (correct order)
         );
