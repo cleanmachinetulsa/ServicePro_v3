@@ -1,0 +1,237 @@
+# SERVICEPRO — COMMS HUB STAGE 2: Voice Call Cards in Inbox UI
+## Paste GUARDRAILS_PRE_PROMPT_FINAL.md first, then this entire file.
+## Frontend only. No backend changes. No new API endpoints. No new message persistence.
+
+---
+
+## CONTEXT
+
+Comms Hub Stage 1 (complete) wires every inbound call into the `messages` table with
+`message_type` values of `'call_inbound'` | `'call_missed'` | `'voicemail'`. Those rows
+already flow through the existing Socket.IO `broadcastNewMessage` channel.
+
+Right now, `MessageBubble.tsx` (or equivalent) doesn't know what to do with a non-SMS
+message type — it will either crash, render blank, or show raw text. This stage makes
+call rows render as distinct, readable call cards in the NightOps inbox thread view.
+
+**Goal:** Staff open a customer thread and see the full communication history — SMS
+bubbles AND call events — in one chronological timeline. No new data fetching needed;
+the rows are already there.
+
+**Clean Machine is live.** SMS rendering must be byte-identical after this change.
+Call cards are additive — they only render for rows where `messageType` is a call type.
+
+---
+
+## FAKE DATA PATTERNS — STANDING RULE
+
+If at any point you reach for `placeholderData`, `initialData`, skeleton loaders that
+display fabricated values, or any pattern where fake/cached data is returned through
+the same channel as real server data — stop, flag it in the completion report under
+`FAKE DATA PATTERNS`, and propose an alternative before proceeding.
+
+---
+
+## VERIFICATION BLOCK — RUN ALL OF THESE BEFORE WRITING ANY CODE
+
+```bash
+# Find where messages are rendered in the thread view
+grep -rn "MessageBubble\|message_type\|messageType\|sender.*customer\|sender.*ai" \
+  client/src/components/ --include="*.tsx" | head -30
+
+# Read MessageBubble in full
+find client/src/components -name "MessageBubble.tsx" -o -name "MessageBubble*"
+cat client/src/components/messages/MessageBubble.tsx 2>/dev/null || \
+cat client/src/components/MessageBubble.tsx 2>/dev/null
+
+# Find ThreadView — where the message list renders
+find client/src/components -name "ThreadView.tsx"
+# Read the message rendering section — find where MessageBubble is called
+grep -n "MessageBubble\|messages\.map\|message\.map\|renderMessage" \
+  client/src/components/ThreadView.tsx | head -20
+
+# Confirm what shape a message object has on the frontend
+# (look for the Message type/interface)
+grep -rn "interface Message\|type Message\s*=\|MessageType\|message_type" \
+  client/src/ shared/ --include="*.ts" --include="*.tsx" | head -20
+
+# Check if messageType is already in the frontend Message type
+grep -n "messageType\|message_type" client/src/ shared/ -r --include="*.ts" \
+  --include="*.tsx" | grep -i "type\|interface\|schema" | head -10
+
+# Find the NightOps conversation list — where thread previews show
+find client/src/components -name "NightOps*"
+grep -n "lastMessage\|preview\|snippet\|message_type\|messageType" \
+  client/src/components/NightOpsConversationList.tsx 2>/dev/null | head -20
+
+# Check if recording URL is included in message metadata on frontend queries
+grep -rn "recordingUrl\|recording_url\|metadata" \
+  client/src/components/ThreadView.tsx \
+  client/src/components/messages/MessageBubble.tsx 2>/dev/null | head -20
+
+# Confirm what icons are available (already imported packages)
+grep -rn "from 'lucide-react'" client/src/components/messages/MessageBubble.tsx \
+  client/src/components/ThreadView.tsx 2>/dev/null | head -5
+```
+
+**Before writing code, answer all of these:**
+
+1. Does `MessageBubble` currently branch on `messageType` or `type` at all?
+   What does it do with an unknown type — crash, render blank, or show raw body?
+2. Is `messageType` already present on the frontend `Message` interface/type?
+   If not, it needs to be added (additive — won't break existing SMS rows which default to `'sms'`).
+3. Where exactly in `ThreadView.tsx` is `MessageBubble` called — what props does it receive?
+4. What does the thread list preview show for the last message?
+   Will it need a fallback for call types (e.g. "📞 Missed call" instead of raw body)?
+5. Is `metadata` (which contains `recordingUrl`) passed through to the frontend message
+   object, or is it stripped before the API response?
+
+---
+
+## THE FIX — THREE TARGETED CHANGES
+
+### Change 1 — Add `messageType` to the frontend Message type (if missing)
+
+Find the `Message` interface or type used by the frontend. Add `messageType` as an
+optional field with a default of `'sms'`:
+
+```typescript
+messageType?: 'sms' | 'call_inbound' | 'call_missed' | 'voicemail';
+```
+
+This is additive. Existing SMS message objects that don't include this field will
+behave identically — the component will treat `undefined` as `'sms'`.
+
+### Change 2 — Call card variant in MessageBubble
+
+In `MessageBubble.tsx`, add a branch at the top of the render:
+
+```typescript
+const isCallEvent = message.messageType === 'call_inbound'
+  || message.messageType === 'call_missed'
+  || message.messageType === 'voicemail';
+
+if (isCallEvent) {
+  return <CallCard message={message} />;
+}
+// existing SMS render logic unchanged below
+```
+
+**`CallCard` component** — define it in the same file or as a sibling file
+`client/src/components/messages/CallCard.tsx`:
+
+The card should show:
+- **Icon:** Phone icon for calls, Voicemail icon for voicemail (use lucide-react —
+  `Phone`, `PhoneMissed`, `Voicemail` — confirm which are available)
+- **Label:**
+  - `call_inbound` → "Inbound call"
+  - `call_missed` → "Missed call"
+  - `voicemail` → "Voicemail"
+- **Timestamp:** formatted time (same format as SMS bubbles — match exactly)
+- **Duration:** if available in `message.metadata.recordingDuration` — show as "0:42"
+  formatted. If not present, omit.
+- **Recording playback:** if `message.metadata.recordingUrl` is present, show a
+  simple inline audio player (`<audio controls src={recordingUrl} />`). Style it
+  to fit the card width. Only show for `messageType === 'voicemail'`.
+- **Visual style:** distinct from SMS bubbles — use a neutral card style
+  (not the customer blue / AI gray bubble colors). A light gray background with a
+  left border accent works well. Match the existing design system — use CSS variables
+  and existing Tailwind tokens, not raw hex values.
+
+**Do not** add click-to-call, do not add "Call back" buttons — that is a future stage.
+**Do not** change anything in the existing SMS bubble render path.
+
+### Change 3 — Thread list preview fallback
+
+In `NightOpsConversationList.tsx` (or wherever the last-message preview text is
+rendered), add a fallback for call message types so the preview doesn't show raw
+"📞 Inbound call" body text but instead shows a clean label:
+
+```typescript
+const getMessagePreview = (message: Message): string => {
+  switch (message.messageType) {
+    case 'call_inbound': return '📞 Inbound call';
+    case 'call_missed':  return '📞 Missed call';
+    case 'voicemail':    return '📞 Voicemail';
+    default:             return message.body ?? '';
+  }
+};
+```
+
+If the preview is already computed this way, or the body already contains the right
+text from Stage 1, confirm it and skip this change. Do not add it twice.
+
+---
+
+## WHAT NOT TO TOUCH
+
+- Do not change the SMS bubble render path in any way
+- Do not add new API endpoints or backend routes
+- Do not add call-back buttons, click-to-call, or outbound call initiation
+- Do not change `callMessagePersistence.ts` or any Stage 1 code
+- Do not change `ThreadView.tsx` message fetching logic — only the render output
+- Do not add new socket listeners
+- Do not add loading skeletons for call cards — they load with the thread, same as SMS
+
+---
+
+## EDGE CASES
+
+| Scenario | Expected behavior |
+|---|---|
+| `messageType` is `undefined` / missing | Treated as `'sms'` — existing bubble renders |
+| `metadata` is null or missing `recordingUrl` | Audio player omitted silently |
+| `recordingDuration` is missing | Duration omitted silently |
+| `recordingUrl` is present but audio fails to load | Browser native audio error handling |
+| Call card in a thread with only SMS history | SMS bubbles render identically — call cards only appear for call rows |
+| Voicemail row with no recording yet | Shows "Voicemail" label without audio player |
+
+---
+
+## VERIFICATION AFTER THE FIX
+
+```bash
+# Confirm MessageBubble now branches on messageType
+grep -n "call_inbound\|call_missed\|voicemail\|CallCard\|isCallEvent" \
+  client/src/components/messages/MessageBubble.tsx
+
+# Confirm SMS render path is unchanged (no new logic in the SMS branch)
+# Read the full file and confirm the SMS section is identical to before
+
+# Confirm messageType added to Message type if it was missing
+grep -n "messageType\|message_type" \
+  client/src/ shared/ -r --include="*.ts" --include="*.tsx" | \
+  grep "interface\|type " | head -10
+
+# Confirm no placeholderData or initialData added
+grep -rn "placeholderData\|initialData" client/src/components/messages/ \
+  client/src/components/ThreadView.tsx
+
+# Confirm files changed
+git diff --name-only
+# Expected: MessageBubble.tsx (or + CallCard.tsx), NightOpsConversationList.tsx,
+#           and optionally the Message type file — 2-4 files total
+```
+
+**Manual browser test:**
+1. Open the NightOps inbox
+2. Find a thread for a customer who has called (or trigger a test call to your Twilio number)
+3. Confirm the call row renders as a card — not a blank bubble, not raw text
+4. Confirm SMS bubbles in the same thread are visually identical to before
+5. If a voicemail recording exists: confirm audio player appears and plays
+6. Confirm the thread list preview shows "📞 Missed call" (or equivalent) not raw body text
+
+---
+
+## COMPLETION REPORT
+
+Reply with:
+
+1. **messageType on frontend type** — was it already there, or added? Which file?
+2. **MessageBubble structure** — how did it handle unknown types before? What changed?
+3. **CallCard** — same file or separate? Paste the component (it should be short)
+4. **Recording playback** — did `recordingUrl` come through in `metadata`? Audio player wired?
+5. **Thread list preview** — was a fallback needed? What was already there?
+6. **FAKE DATA PATTERNS** — any reached for (should be none)
+7. **git diff --name-only** — full list of changed files (expect 2–4)
+8. **Any surprises** — unexpected structure, missing fields, design system constraints

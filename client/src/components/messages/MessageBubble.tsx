@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Pause, Volume2, VolumeX, Download } from 'lucide-react';
+import { Bot, User, MessageSquare, Check, CheckCheck, FileText, ExternalLink, CheckCircle2, Smile, Edit2, Trash2, Copy, Forward, Star, Mic, Play, Pause, Volume2, VolumeX, Download, Phone, PhoneIncoming, PhoneMissed, Voicemail } from 'lucide-react';
 import type { Message } from '@shared/schema';
 import { Button } from '@/components/ui/button';
 import {
@@ -256,6 +256,124 @@ function VoicemailPlayer({ audioUrl, isCustomer }: { audioUrl: string; isCustome
   );
 }
 
+/**
+ * CallCard Component — Comms Hub Stage 2
+ *
+ * Renders inbound call events (call_inbound, call_missed, voicemail) that were
+ * persisted into the messages table by Stage 1. Distinct from SMS bubbles:
+ * a centered, neutral timeline card so phone activity reads as a system event
+ * in the conversation thread, not as a customer/agent message bubble.
+ *
+ * Voicemail variant reuses the existing <VoicemailPlayer/> for playback.
+ * Old-style voicemail rows (messageType='sms' + metadata.type='voicemail') are
+ * NOT routed here — they keep their existing pretty cyan-bubble rendering.
+ */
+function CallCard({ message }: { message: Message }) {
+  const metadata = (message.metadata ?? {}) as Record<string, any>;
+  const recordingUrl = getProxiedAudioUrl(metadata.recordingUrl);
+  const recordingDuration: number | undefined =
+    typeof metadata.recordingDuration === 'number' ? metadata.recordingDuration : undefined;
+  const callerFrom: string | undefined =
+    typeof metadata.from === 'string' ? metadata.from : undefined;
+
+  const formatDuration = (seconds: number) => {
+    if (!seconds || !isFinite(seconds)) return null;
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const STYLES = {
+    call_inbound: {
+      Icon: PhoneIncoming,
+      label: 'Inbound call',
+      border: 'border-blue-400',
+      text: 'text-blue-700 dark:text-blue-300',
+      iconBg: 'bg-blue-100 dark:bg-blue-900/40',
+    },
+    call_missed: {
+      Icon: PhoneMissed,
+      label: 'Missed call',
+      border: 'border-rose-400',
+      text: 'text-rose-700 dark:text-rose-300',
+      iconBg: 'bg-rose-100 dark:bg-rose-900/40',
+    },
+    voicemail: {
+      Icon: Voicemail,
+      label: 'Voicemail',
+      border: 'border-cyan-400',
+      text: 'text-cyan-700 dark:text-cyan-300',
+      iconBg: 'bg-cyan-100 dark:bg-cyan-900/40',
+    },
+    default: {
+      Icon: Phone,
+      label: 'Call',
+      border: 'border-slate-400',
+      text: 'text-slate-600 dark:text-slate-300',
+      iconBg: 'bg-slate-200 dark:bg-slate-700',
+    },
+  } as const;
+
+  const style =
+    message.messageType === 'call_inbound' ? STYLES.call_inbound
+    : message.messageType === 'call_missed' ? STYLES.call_missed
+    : message.messageType === 'voicemail' ? STYLES.voicemail
+    : STYLES.default;
+  const { Icon, label } = style;
+
+  const durationText = recordingDuration ? formatDuration(recordingDuration) : null;
+  const timestamp = message.timestamp ? new Date(message.timestamp as any) : null;
+  const ariaTimestamp = timestamp ? format(timestamp, 'h:mm a') : '';
+  const ariaFrom = callerFrom ? ` from ${callerFrom}` : '';
+  const ariaLabel = `${label}${ariaTimestamp ? ` at ${ariaTimestamp}` : ''}${ariaFrom}`;
+
+  return (
+    <div
+      className="flex justify-center my-2 px-2"
+      data-testid={`call-card-${message.id}`}
+      data-message-type={message.messageType}
+    >
+      <div
+        role="note"
+        aria-label={ariaLabel}
+        className={`w-full max-w-[85%] sm:max-w-[70%] rounded-lg border-l-4 ${style.border} ${style.text}
+                    bg-slate-100/80 dark:bg-slate-800/60 shadow-sm`}
+      >
+        <div className="flex items-center gap-2.5 px-3 py-2">
+          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${style.iconBg}`}>
+            <Icon className={`h-4 w-4 ${style.text}`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={`text-sm font-semibold ${style.text}`}>
+                {label}
+              </span>
+              {timestamp && (
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums flex-shrink-0">
+                  {format(timestamp, 'h:mm a')}
+                </span>
+              )}
+            </div>
+            {(callerFrom || durationText) && (
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                {callerFrom && <span className="truncate">{callerFrom}</span>}
+                {callerFrom && durationText && <span aria-hidden>•</span>}
+                {durationText && <span className="tabular-nums">{durationText}</span>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {message.messageType === 'voicemail' && recordingUrl && (
+          <div className="px-3 pb-3">
+            <VoicemailPlayer audioUrl={recordingUrl} isCustomer={true} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MessageBubble({
   message,
   conversationCustomerName,
@@ -276,6 +394,19 @@ export default function MessageBubble({
 }: MessageBubbleProps) {
   
   const { toast } = useToast();
+
+  // Comms Hub Stage 2: inbound call events (call_inbound, call_missed, voicemail)
+  // persisted by Stage 1 render as a distinct centered call card instead of an
+  // SMS bubble. SMS rows (messageType undefined or 'sms') fall through to the
+  // existing render path below — byte-identical to before this change.
+  const isCallEvent =
+    message.messageType === 'call_inbound' ||
+    message.messageType === 'call_missed' ||
+    message.messageType === 'voicemail';
+  if (isCallEvent) {
+    return <CallCard message={message} />;
+  }
+
   const isCustomer = message.sender === 'customer';
   const isSent = message.sender === 'agent' || message.sender === 'ai';
   
