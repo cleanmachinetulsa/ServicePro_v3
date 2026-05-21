@@ -1,0 +1,248 @@
+# SERVICEPRO — DESIGN PASS: Phone & SMS Bypass UI
+# Elevate the emergency bypass panel to premium quality
+# ONE TASK. PhoneSettings.tsx ONLY.
+
+IGNORE ALL PRIOR SESSION CONTEXT. READ ONLY THIS MESSAGE.
+
+---
+
+## WHAT THIS DOES
+
+The call routing mode selector and SMS bypass toggle were added in a previous task and are functionally correct. This task replaces the basic styling with a premium, professional implementation that matches the quality of a high-end SaaS product.
+
+---
+
+## VERIFICATION FIRST
+
+```bash
+# Read the current EmergencyBypassPanel or equivalent section
+grep -n "EmergencyBypass\|CallRouting\|FORWARD_ALL\|SMS Bypass\|smsForwarding\|telephonyMode" \
+  client/src/components/PhoneSettings.tsx | head -30
+
+# Read the full current implementation of the new sections
+cat client/src/components/PhoneSettings.tsx
+```
+
+Read the full file before touching anything. Understand the existing save patterns.
+
+---
+
+## THE REDESIGN
+
+Replace the current emergency bypass section with this structure. Keep all existing functionality and save logic — only change the visual presentation.
+
+### Design principles
+- Status-first: the owner sees their current routing state instantly at a glance
+- Two-state cards: inactive = subtle, active = prominent colored indicator
+- No amber/warning colors for the inactive state — that creates false urgency
+- Active state uses a clear, distinct color (red for bypass modes, green for normal)
+- Mode cards use radio-card pattern (full card is clickable, not just a radio button)
+- Mobile-first: works at 375px without horizontal scroll
+
+### Implementation
+
+```tsx
+{/* ═══════════════════════════════════════════
+    CALL ROUTING — Replace existing section
+═══════════════════════════════════════════ */}
+
+{/* Status banner — shown only when bypass is active */}
+{localLine.telephonyMode === 'FORWARD_ALL_CALLS' && (
+  <div className="flex items-center gap-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3">
+    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+    <div className="min-w-0">
+      <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+        Call bypass active — forwarding to {localLine.forwardingNumber || 'unconfigured'}
+      </p>
+      <p className="text-xs text-red-600/70 dark:text-red-400/70">
+        AI is bypassed. All inbound calls ring your forwarding number directly.
+      </p>
+    </div>
+  </div>
+)}
+
+{/* Mode selector */}
+<div className="space-y-2">
+  <label className="text-sm font-medium text-foreground">Call routing mode</label>
+  <div className="grid gap-2">
+    {[
+      {
+        value: 'AI_FIRST' as TelephonyMode,
+        icon: '🤖',
+        label: 'AI answers first',
+        description: 'AI greets the caller and handles common questions. Transfers to you when needed.',
+        recommended: true,
+      },
+      {
+        value: 'FORWARD_ALL_CALLS' as TelephonyMode,
+        icon: '📲',
+        label: 'Forward all calls to my phone',
+        description: 'Skip the AI entirely. Every inbound call rings your number directly.',
+        recommended: false,
+      },
+      {
+        value: 'AI_ONLY' as TelephonyMode,
+        icon: '🔇',
+        label: 'AI only — no live transfer',
+        description: 'AI handles everything. You will not receive live call transfers.',
+        recommended: false,
+      },
+    ].map((option) => {
+      const isSelected = localLine.telephonyMode === option.value;
+      return (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => handleChange('telephonyMode', option.value)}
+          className={cn(
+            'relative w-full rounded-lg border px-4 py-3 text-left transition-all',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            isSelected
+              ? option.value === 'FORWARD_ALL_CALLS'
+                ? 'border-red-400 bg-red-50 dark:bg-red-950/20 dark:border-red-700'
+                : 'border-primary bg-primary/5 dark:bg-primary/10'
+              : 'border-border bg-card hover:border-muted-foreground/40 hover:bg-muted/40'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 text-base leading-none">{option.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={cn(
+                  'text-sm font-medium',
+                  isSelected ? 'text-foreground' : 'text-foreground/80'
+                )}>
+                  {option.label}
+                </span>
+                {option.recommended && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wide
+                    px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                    Recommended
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                {option.description}
+              </p>
+            </div>
+            {isSelected && (
+              <div className={cn(
+                'flex-shrink-0 h-4 w-4 rounded-full border-2 mt-0.5',
+                option.value === 'FORWARD_ALL_CALLS'
+                  ? 'border-red-500 bg-red-500'
+                  : 'border-primary bg-primary'
+              )}>
+                <svg viewBox="0 0 16 16" fill="white" className="h-full w-full p-0.5">
+                  <path d="M13.5 4.5l-7 7L3 8" stroke="white" strokeWidth="2"
+                    strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              </div>
+            )}
+          </div>
+        </button>
+      );
+    })}
+  </div>
+</div>
+
+{/* Forwarding number — only visible when FORWARD_ALL_CALLS selected */}
+{localLine.telephonyMode === 'FORWARD_ALL_CALLS' && (
+  <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium">Forwarding number</label>
+      <p className="text-xs text-muted-foreground">
+        Enter the phone number that should ring when customers call.
+        Use E.164 format: +1 followed by 10 digits.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="tel"
+          placeholder="+19185551234"
+          className={cn(
+            'flex-1 rounded-md border bg-background px-3 py-2 text-sm',
+            'focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent',
+            !localLine.forwardingNumber && 'border-destructive/50'
+          )}
+          value={localLine.forwardingNumber || ''}
+          onChange={(e) => handleChange('forwardingNumber', e.target.value)}
+        />
+      </div>
+      {!localLine.forwardingNumber && (
+        <p className="text-xs text-destructive flex items-center gap-1">
+          <span>⚠</span>
+          Required — calls will fall back to AI mode without a forwarding number.
+        </p>
+      )}
+    </div>
+  </div>
+)}
+
+{/* ═══════════════════════════════════════════
+    SMS BYPASS — Replace existing section
+═══════════════════════════════════════════ */}
+
+{/* SMS bypass status banner */}
+{smsForwardingEnabled && (
+  <div className="flex items-center gap-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3">
+    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+    <div className="min-w-0">
+      <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+        SMS bypass active — AI is off
+      </p>
+      <p className="text-xs text-red-600/70 dark:text-red-400/70">
+        You'll receive a notification for each inbound text. No auto-replies.
+      </p>
+    </div>
+  </div>
+)}
+
+{/* SMS toggle row */}
+<div className={cn(
+  'flex items-start justify-between rounded-lg border p-4 transition-colors',
+  smsForwardingEnabled
+    ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/10'
+    : 'border-border bg-card'
+)}>
+  <div className="flex-1 min-w-0 pr-4">
+    <p className="text-sm font-medium">SMS bypass mode</p>
+    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+      Disables AI auto-replies for incoming texts. You receive a notification
+      SMS for each message and handle responses manually.
+    </p>
+  </div>
+  <Switch
+    checked={smsForwardingEnabled}
+    onCheckedChange={handleSmsBypassToggle}
+  />
+</div>
+```
+
+### Required imports
+Add `cn` if not already imported: `import { cn } from '@/lib/utils';`
+Add `TelephonyMode` if not imported from the hook.
+
+---
+
+## GUARDRAILS
+
+- Do not change any save logic, mutation calls, or API endpoints — only the visual markup and classes
+- Do not change the `Switch` component's `checked`/`onCheckedChange` props — only its container styling
+- TypeScript must compile clean for changed code
+- Test at 375px width — the radio-card grid must not overflow
+
+---
+
+## COMPLETION REPORT
+
+```
+## DESIGN PASS COMPLETION REPORT
+
+Status banner for call bypass: [Y/N]
+Status banner for SMS bypass: [Y/N]  
+Radio-card mode selector (full card clickable): [Y/N]
+Forwarding number shows only when FORWARD_ALL_CALLS selected: [Y/N]
+Active state visually distinct from inactive: [Y/N]
+Renders correctly at 375px: [Y/N confirmed]
+All save logic unchanged: [Y/N]
+TypeScript clean: [Y/N]
+```

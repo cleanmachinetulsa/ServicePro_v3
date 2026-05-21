@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { Phone, Clock, Save, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Phone, Clock, Save, CheckCircle2 } from 'lucide-react';
 import type { PhoneLine, BusinessSettings } from '@shared/schema';
 import {
   useTelephonySettings,
@@ -28,21 +29,31 @@ type PhoneLineWithSchedules = PhoneLine & {
   }>;
 };
 
-const CALL_ROUTING_OPTIONS: Array<{ value: TelephonyMode; label: string; description: string }> = [
+const CALL_ROUTING_OPTIONS: Array<{
+  value: TelephonyMode;
+  icon: string;
+  label: string;
+  description: string;
+  recommended?: boolean;
+}> = [
   {
     value: 'AI_FIRST',
+    icon: '🤖',
     label: 'AI answers first',
-    description: 'AI greets caller, offers options, transfers to you if needed',
+    description: 'AI greets the caller and handles common questions. Transfers to you when needed.',
+    recommended: true,
   },
   {
     value: 'FORWARD_ALL_CALLS',
-    label: '🔴 Forward all calls to my phone',
-    description: 'Skip AI — every call rings your forwarding number directly',
+    icon: '📲',
+    label: 'Forward all calls to my phone',
+    description: 'Skip the AI entirely. Every inbound call rings your number directly.',
   },
   {
     value: 'AI_ONLY',
-    label: 'AI only',
-    description: 'AI handles everything, no live transfer',
+    icon: '🔇',
+    label: 'AI only — no live transfer',
+    description: 'AI handles everything. You will not receive live call transfers.',
   },
 ];
 
@@ -116,11 +127,14 @@ function EmergencyBypassPanel() {
     setModeDirty(false);
   };
 
+  const callBypassActive = selectedMode === 'FORWARD_ALL_CALLS';
+  const smsForwardingEnabled = smsBypassActive;
+
   return (
-    <Card className="border-amber-300 dark:border-amber-700">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
-          <AlertTriangle className="h-5 w-5" />
+        <CardTitle className="flex items-center gap-2">
+          <Phone className="h-5 w-5" />
           Emergency Bypass
         </CardTitle>
         <CardDescription>
@@ -128,119 +142,217 @@ function EmergencyBypassPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Call Routing Mode */}
-        <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4">
-          <div className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-            📞 Call Routing Mode
-          </div>
+        {telephonyLoading ? (
+          <p className="text-sm text-muted-foreground">Loading call routing…</p>
+        ) : (
+          <div className="space-y-4">
+            {/* Call bypass status banner */}
+            {callBypassActive && (
+              <div
+                className="flex items-center gap-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3"
+                data-testid="banner-call-bypass-active"
+              >
+                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                    Call bypass active — forwarding to {forwardingNumber || 'unconfigured'}
+                  </p>
+                  <p className="text-xs text-red-600/70 dark:text-red-400/70">
+                    AI is bypassed. All inbound calls ring your forwarding number directly.
+                  </p>
+                </div>
+              </div>
+            )}
 
-          {telephonyLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          ) : (
-            <>
-              <div className="flex flex-col gap-2">
-                {CALL_ROUTING_OPTIONS.map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex items-start gap-3 cursor-pointer"
-                    data-testid={`radio-telephony-${option.value.toLowerCase()}`}
-                  >
-                    <input
-                      type="radio"
-                      name="telephonyMode"
-                      value={option.value}
-                      checked={selectedMode === option.value}
-                      onChange={() => {
+            {/* Mode selector */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Call routing mode</label>
+              <div className="grid gap-2">
+                {CALL_ROUTING_OPTIONS.map((option) => {
+                  const isSelected = selectedMode === option.value;
+                  const isForward = option.value === 'FORWARD_ALL_CALLS';
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
                         setSelectedMode(option.value);
                         setModeDirty(true);
                       }}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <div className="text-sm font-medium">{option.label}</div>
-                      <div className="text-xs text-muted-foreground">{option.description}</div>
-                    </div>
-                  </label>
-                ))}
+                      className={cn(
+                        'relative w-full rounded-lg border px-4 py-3 text-left transition-all',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        isSelected
+                          ? isForward
+                            ? 'border-red-400 bg-red-50 dark:bg-red-950/20 dark:border-red-700'
+                            : 'border-primary bg-primary/5 dark:bg-primary/10'
+                          : 'border-border bg-card hover:border-muted-foreground/40 hover:bg-muted/40',
+                      )}
+                      data-testid={`radio-telephony-${option.value.toLowerCase()}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="mt-0.5 text-base leading-none">{option.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={cn(
+                                'text-sm font-medium',
+                                isSelected ? 'text-foreground' : 'text-foreground/80',
+                              )}
+                            >
+                              {option.label}
+                            </span>
+                            {option.recommended && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                                Recommended
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                            {option.description}
+                          </p>
+                        </div>
+                        {isSelected && (
+                          <div
+                            className={cn(
+                              'flex-shrink-0 h-4 w-4 rounded-full border-2 mt-0.5 flex items-center justify-center',
+                              isForward ? 'border-red-500 bg-red-500' : 'border-primary bg-primary',
+                            )}
+                          >
+                            <svg
+                              viewBox="0 0 16 16"
+                              className="h-full w-full p-0.5"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M13.5 4.5l-7 7L3 8"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                fill="none"
+                              />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
 
-              {selectedMode === 'FORWARD_ALL_CALLS' && (
-                <div className="mt-2 space-y-1">
+            {/* Forwarding number — only visible when FORWARD_ALL_CALLS selected */}
+            {selectedMode === 'FORWARD_ALL_CALLS' && (
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                <div className="space-y-1.5">
                   <label
                     htmlFor="bypass-forwarding-number"
-                    className="text-xs font-medium text-amber-900 dark:text-amber-200"
+                    className="text-sm font-medium"
                   >
-                    Forward to phone number
+                    Forwarding number
                   </label>
-                  <Input
-                    id="bypass-forwarding-number"
-                    type="tel"
-                    placeholder="+19185551234"
-                    value={forwardingNumber}
-                    onChange={(e) => {
-                      setForwardingNumber(e.target.value);
-                      setModeDirty(true);
-                    }}
-                    data-testid="input-bypass-forwarding-number"
-                  />
                   <p className="text-xs text-muted-foreground">
-                    Enter in E.164 format (+1XXXXXXXXXX). This is your personal cell or any number that should ring.
+                    Enter the phone number that should ring when customers call.
+                    Use E.164 format: +1 followed by 10 digits.
                   </p>
+                  <div className="flex gap-2">
+                    <input
+                      id="bypass-forwarding-number"
+                      type="tel"
+                      placeholder="+19185551234"
+                      className={cn(
+                        'flex-1 rounded-md border bg-background px-3 py-2 text-sm',
+                        'focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent',
+                        !forwardingNumber && 'border-destructive/50',
+                      )}
+                      value={forwardingNumber}
+                      onChange={(e) => {
+                        setForwardingNumber(e.target.value);
+                        setModeDirty(true);
+                      }}
+                      data-testid="input-bypass-forwarding-number"
+                    />
+                  </div>
                   {!forwardingNumber && (
-                    <p className="text-xs text-amber-600 font-medium">
-                      ⚠ Enter a forwarding number before saving, or calls will fall back to AI mode.
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <span>⚠</span>
+                      Required — calls will fall back to AI mode without a forwarding number.
                     </p>
                   )}
                 </div>
-              )}
-
-              {modeDirty && (
-                <div className="pt-2">
-                  <Button
-                    size="sm"
-                    onClick={handleSaveMode}
-                    disabled={telephonyUpdating}
-                    data-testid="button-save-call-routing-mode"
-                  >
-                    {telephonyUpdating ? 'Saving...' : (
-                      <>
-                        <Save className="h-3.5 w-3.5 mr-2" />
-                        Save Call Routing
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* SMS Bypass Toggle */}
-        <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4">
-          <div className="flex-1">
-            <div className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-              💬 SMS Bypass Mode
-            </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              Skip AI for all incoming texts — you'll get a notification SMS with each message.
-            </div>
-            {smsBypassActive && (
-              <div className="text-xs text-amber-600 font-medium mt-1">
-                🔴 ACTIVE — AI is bypassed, texts are forwarded to {businessSettings?.alertPhone || 'your alert phone'}
               </div>
             )}
-            {smsBypassActive && !businessSettings?.alertPhone && (
-              <div className="text-xs text-red-600 font-medium mt-1">
-                ⚠ No alert phone configured in business settings — owner won't receive notifications.
+
+            {modeDirty && (
+              <div>
+                <Button
+                  size="sm"
+                  onClick={handleSaveMode}
+                  disabled={telephonyUpdating}
+                  data-testid="button-save-call-routing-mode"
+                >
+                  {telephonyUpdating ? (
+                    'Saving...'
+                  ) : (
+                    <>
+                      <Save className="h-3.5 w-3.5 mr-2" />
+                      Save Call Routing
+                    </>
+                  )}
+                </Button>
               </div>
             )}
           </div>
-          <Switch
-            checked={smsBypassActive}
-            onCheckedChange={(checked) => updateSmsBypassMutation.mutate(checked)}
-            disabled={bsLoading || updateSmsBypassMutation.isPending}
-            data-testid="switch-sms-bypass"
-          />
+        )}
+
+        {/* SMS BYPASS */}
+        <div className="space-y-3 pt-2 border-t border-border">
+          {smsForwardingEnabled && (
+            <div
+              className="flex items-center gap-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3"
+              data-testid="banner-sms-bypass-active"
+            >
+              <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                  SMS bypass active — AI is off
+                </p>
+                <p className="text-xs text-red-600/70 dark:text-red-400/70">
+                  You'll receive a notification for each inbound text. No auto-replies.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div
+            className={cn(
+              'flex items-start justify-between rounded-lg border p-4 transition-colors',
+              smsForwardingEnabled
+                ? 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/10'
+                : 'border-border bg-card',
+            )}
+          >
+            <div className="flex-1 min-w-0 pr-4">
+              <p className="text-sm font-medium">SMS bypass mode</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Disables AI auto-replies for incoming texts. You receive a notification
+                SMS for each message and handle responses manually.
+              </p>
+              {smsForwardingEnabled && !businessSettings?.alertPhone && (
+                <p className="text-xs text-destructive mt-2 flex items-center gap-1">
+                  <span>⚠</span>
+                  No alert phone configured in business settings — you won't receive notifications.
+                </p>
+              )}
+            </div>
+            <Switch
+              checked={smsForwardingEnabled}
+              onCheckedChange={(checked) => updateSmsBypassMutation.mutate(checked)}
+              disabled={bsLoading || updateSmsBypassMutation.isPending}
+              data-testid="switch-sms-bypass"
+            />
+          </div>
         </div>
       </CardContent>
     </Card>
