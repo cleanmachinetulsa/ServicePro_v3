@@ -45,6 +45,7 @@ interface Conversation {
     content: string;
     sender: string;
     timestamp: string;
+    messageType?: string;
   } | null;
   status: string;
   unreadCount: number;
@@ -82,6 +83,23 @@ interface NightOpsConversationListProps {
   selectedIds?: Set<number>;
   onToggleSelected?: (id: number) => void;
   searchInputRef?: React.RefObject<HTMLInputElement>;
+}
+
+// Comms Hub Stage 2B: derive thread-list preview text from the message
+// discriminator instead of pattern-matching the body. SMS rows (default)
+// preserve the legacy voicemail-prefix handling so existing threads render
+// byte-identically.
+function getPreviewText(latestMessage?: Conversation['latestMessage']): string {
+  if (!latestMessage) return 'No messages yet';
+  switch (latestMessage.messageType) {
+    case 'call_inbound': return '📞 Inbound call';
+    case 'call_missed':  return '📞 Missed call';
+    case 'voicemail':    return '📞 Voicemail';
+    default:
+      return latestMessage.content?.startsWith('🎙️ Voicemail:')
+        ? latestMessage.content.replace('🎙️ Voicemail:\n\n', '🎙️ ')
+        : latestMessage.content || 'No messages yet';
+  }
 }
 
 export function NightOpsConversationList({
@@ -376,9 +394,7 @@ export function NightOpsConversationList({
                         )}>
                           {conv.latestMessage?.sender === 'customer' ? '' : 
                             conv.latestMessage?.sender === 'ai' ? '🤖 ' : 'You: '}
-                          {conv.latestMessage?.content?.startsWith('🎙️ Voicemail:') 
-                            ? conv.latestMessage.content.replace('🎙️ Voicemail:\n\n', '🎙️ ')
-                            : conv.latestMessage?.content || 'No messages yet'}
+                          {getPreviewText(conv.latestMessage)}
                         </p>
 
                         <div className="flex items-center gap-1.5 flex-wrap">
