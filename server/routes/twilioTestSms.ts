@@ -8,7 +8,7 @@ import { conversations, messages as messagesTable } from '@shared/schema';
 import { eq, asc, and } from 'drizzle-orm';
 import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
 import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
-import { isDuplicateInboundSms, recordProcessedInboundSms } from '../services/smsInboundDedup';
+import { recordProcessedInboundSms } from '../services/smsInboundDedup';
 import { 
   detectSlotSelection, 
   getSmsBookingState,
@@ -1484,19 +1484,15 @@ twilioTestSmsRouter.post('/inbound', async (req: Request, res: Response) => {
   // Diagnostic log at start
   console.log(`[SMS INBOUND] sid=${messageSid} from=${from} to=${to} body=${body}`);
   
-  // === IDEMPOTENCY CHECK: Prevent duplicate processing for same MessageSid ===
+  // Atomic dedup BEFORE branching to legacy forwarding or V2 handler.
+  // Uses INSERT ... ON CONFLICT DO NOTHING so concurrent Twilio retries
+  // cannot both pass. The V2 handler also gates internally as defense-in-depth.
   if (messageSid) {
-    try {
-      const isDuplicate = await isDuplicateInboundSms(messageSid);
-      if (isDuplicate) {
-        console.log(`[SMS DEDUPE] Duplicate inbound ignored sid=${messageSid}`);
-        // Return 200 to stop Twilio retries, but don't process again
-        res.type('text/xml').status(200).send(new MessagingResponse().toString());
-        return;
-      }
-    } catch (dedupeError) {
-      // If dedupe check fails (e.g., table missing), log and continue (fail-open)
-      console.warn(`[SMS DEDUPE] Check failed, continuing anyway:`, dedupeError instanceof Error ? dedupeError.message.substring(0, 60) : 'unknown error');
+    const isNew = await recordProcessedInboundSms(messageSid, from, to, 'root');
+    if (!isNew) {
+      console.log(`[SMS DEDUPE] Duplicate inbound ignored sid=${messageSid}`);
+      res.type('text/xml').status(200).send(new MessagingResponse().toString());
+      return;
     }
   }
 
