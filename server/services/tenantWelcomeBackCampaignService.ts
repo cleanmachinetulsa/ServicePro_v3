@@ -1,9 +1,8 @@
 import { db } from '../db';
 import type { TenantDb } from '../tenantDb';
-import { campaignConfigs, campaignSends, customers, loyaltyPoints, pointsTransactions, tenants, tenantDomains } from '@shared/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { campaignConfigs, campaignSends, customers, tenants, tenantDomains } from '@shared/schema';
+import { eq, and } from 'drizzle-orm';
 import { sendSMS, sendEmail } from '../notifications';
-import { addMonths } from 'date-fns';
 import { hasFeature } from '@shared/features';
 import { awardPromoPoints } from './promoEngine'; // Phase 14: Unified promo engine
 import { generateRewardsToken } from '../routes.loyalty'; // CM-REWARDS-WELCOME-LANDING: Token generation
@@ -334,94 +333,6 @@ function templateHasRewardsLink(template: string): boolean {
   return /\{\{rewardsLink\}\}|\{rewards_link\}/i.test(template);
 }
 
-/**
- * Check if customer has already received this campaign
- * Uses pointsTransactions with source='campaign' and sourceId=campaignKey+audience
- */
-async function hasReceivedCampaign(
-  tenantDb: TenantDb,
-  customerId: number,
-  campaignKey: string,
-  audience: CampaignAudience
-): Promise<boolean> {
-  const sourceId = `${campaignKey}_${audience}`;
-
-  // Check if there's already a points transaction for this campaign
-  const [existing] = await tenantDb
-    .select({ id: loyaltyPoints.id })
-    .from(loyaltyPoints)
-    .innerJoin(pointsTransactions, eq(pointsTransactions.loyaltyPointsId, loyaltyPoints.id))
-    .where(
-      and(
-        eq(loyaltyPoints.customerId, customerId),
-        eq(pointsTransactions.source, 'campaign'),
-        eq(pointsTransactions.sourceId, sourceId)
-      )
-    )
-    .limit(1);
-
-  return !!existing;
-}
-
-/**
- * Grant campaign points to a customer (idempotent)
- */
-async function grantCampaignPoints(
-  tenantDb: TenantDb,
-  customerId: number,
-  points: number,
-  campaignKey: string,
-  audience: CampaignAudience
-): Promise<void> {
-  // Check if already granted
-  if (await hasReceivedCampaign(tenantDb, customerId, campaignKey, audience)) {
-    console.log(`[Campaign] Customer ${customerId} already received ${campaignKey}_${audience}, skipping points`);
-    return;
-  }
-
-  // Get or create loyalty points record
-  let [pointsRecord] = await tenantDb
-    .select()
-    .from(loyaltyPoints)
-    .where(eq(loyaltyPoints.customerId, customerId));
-
-  if (!pointsRecord) {
-    // Create new loyalty points record
-    [pointsRecord] = await tenantDb
-      .insert(loyaltyPoints)
-      .values({
-        customerId,
-        points: 0,
-        expiryDate: addMonths(new Date(), 12),
-      })
-      .returning();
-  }
-
-  // Add transaction record
-  const sourceId = `${campaignKey}_${audience}`;
-  const expiryDate = addMonths(new Date(), 12);
-
-  await tenantDb.insert(pointsTransactions).values({
-    loyaltyPointsId: pointsRecord.id,
-    amount: points,
-    description: `Welcome Back Campaign - ${audience === 'vip' ? 'VIP' : 'Regular'} Bonus`,
-    transactionType: 'earn',
-    source: 'campaign',
-    sourceId,
-    expiryDate,
-  });
-
-  // Update points balance
-  await tenantDb
-    .update(loyaltyPoints)
-    .set({
-      points: pointsRecord.points + points,
-      lastUpdated: new Date(),
-    })
-    .where(eq(loyaltyPoints.id, pointsRecord.id));
-
-  console.log(`[Campaign] Granted ${points} points to customer ${customerId} for ${sourceId}`);
-}
 
 /**
  * Send Welcome Back Campaign to target audience
