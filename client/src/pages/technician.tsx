@@ -476,8 +476,6 @@ export default function TechnicianPage() {
     const saved = localStorage.getItem('technicianDemoMode');
     return saved === 'true';
   });
-  const [hasAutoEnabled, setHasAutoEnabled] = useState(false);
-  const [userPreferenceSet, setUserPreferenceSet] = useState(false);
 
   const toggleDemoMode = () => {
     setDemoMode(prev => {
@@ -485,7 +483,6 @@ export default function TechnicianPage() {
       localStorage.setItem('technicianDemoMode', String(newValue));
       return newValue;
     });
-    setUserPreferenceSet(true);
   };
 
   return (
@@ -494,10 +491,6 @@ export default function TechnicianPage() {
         demoMode={demoMode} 
         setDemoMode={setDemoMode}
         toggleDemoMode={toggleDemoMode}
-        hasAutoEnabled={hasAutoEnabled}
-        setHasAutoEnabled={setHasAutoEnabled}
-        userPreferenceSet={userPreferenceSet}
-        setUserPreferenceSet={setUserPreferenceSet}
       />
     </TechnicianProvider>
   );
@@ -507,43 +500,12 @@ function TechnicianContentWrapper({
   demoMode, 
   setDemoMode,
   toggleDemoMode,
-  hasAutoEnabled,
-  setHasAutoEnabled,
-  userPreferenceSet,
-  setUserPreferenceSet,
 }: { 
   demoMode: boolean; 
   setDemoMode: (val: boolean) => void;
   toggleDemoMode: () => void;
-  hasAutoEnabled: boolean;
-  setHasAutoEnabled: (val: boolean) => void;
-  userPreferenceSet: boolean;
-  setUserPreferenceSet: (val: boolean) => void;
 }) {
-  const { jobs, isLoadingJobs } = useTechnician();
   const { toast } = useToast();
-
-  // Auto-enable demo mode ONCE when:
-  // 1. Data has finished loading (not isLoading)
-  // 2. No real jobs exist (jobs.length === 0)
-  // 3. User hasn't set a preference yet (manual toggle)
-  // 4. We haven't already auto-enabled
-  useEffect(() => {
-    if (!isLoadingJobs && !userPreferenceSet && !hasAutoEnabled && jobs.length === 0) {
-      console.log('[TECH PAGE] No real jobs found - auto-enabling demo mode');
-      toggleDemoMode();
-      setHasAutoEnabled(true);
-      toast({
-        title: 'Demo Mode Activated',
-        description: 'No scheduled jobs found. Showing 3 sample jobs for preview.',
-      });
-    }
-    
-    // If real jobs arrive, reset the auto-enable flag so demo can auto-enable again if jobs disappear
-    if (jobs.length > 0 && hasAutoEnabled) {
-      setHasAutoEnabled(false);
-    }
-  }, [isLoadingJobs, jobs.length, userPreferenceSet, hasAutoEnabled, toggleDemoMode, setHasAutoEnabled, toast]);
 
   const handleToggleDemo = (enabled: boolean) => {
     setDemoMode(enabled);
