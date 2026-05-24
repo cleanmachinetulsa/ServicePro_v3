@@ -1,269 +1,0 @@
-MASTER PLAN v4.1 — same spine as your Dec 6 v4.0, but:
-* Better “what this is and why it’s special” 
-* Includes CRM, onboarding wizard, A2P automation, industry packs, SMS parser, tech hub, etc. 
-* Keeps your phase numbering so we don’t lose continuity 
-You can literally paste this into the new GPT as the canonical doc.
-
-🧠 MASTER PLAN v4.1 — SERVICEPRO + CLEAN MACHINE ROOT TENANT
-The Canonical Product + Technical Blueprint
-
-0. What ServicePro Actually Is (Non-boring Version)
-ServicePro is a “do-it-for-you” automation OS for service businesses, with Clean Machine Auto Detail (Tulsa) as the flagship root tenant.
-Instead of “yet another CRM / booking app”, it’s built around:
-* Fast, low-friction onboarding
-    * Setup Wizard that feels like a guided assistant, not 40 random settings pages 
-    * A2P 10DLC registration handled for the user (no “what’s a campaign use case?” forms) 
-    * Phone number provisioning, porting wizard, and passthrough billing baked in 
-    * Weather-aware rescheduling logic out of the box for outdoor services 
-* A living, auto-updating CRM
-    * SMS Parser + File Upload onboarding flow parses your old work phone’s SMS + calls 
-    * It auto-learns your:
-        * Services 
-        * Pricing patterns 
-        * Tone and phrases 
-        * Edge-case handling 
-        * Customer history 
-    * It builds a proper live customer database: names, phones, emails, vehicles, history 
-    * That database powers mass campaigns, interval reminders, loyalty, and agent context 
-* AI-augmented communications that feel human and helpful
-    * SMS agent that knows your services, service area, policies, tone, pricing logic 
-    * Web chat agent for your site with smart booking links & availability 
-    * Phone agents (IVR + voicemail capture + SMS followups) 
-    * All of it tuned to your real patterns, not generic “How can I assist you today?” nonsense 
-* CRM + Scheduling + Tech Hub in one place
-    * Full customer history: conversations, appointments, notes, loyalty points, referrals 
-    * Booking wizard with Maps-based service area and dynamic travel logic 
-    * Technician Hub: “one page for the whole day”
-        * Today’s jobs 
-        * One-tap “On My Way” 
-        * One-click invoicing 
-        * Next-job routing 
-    * PWA / mobile experience so the tech can actually live in it all day 
-* Automations that normal humans can configure
-    * Simple vs Advanced Mode for the dashboard 
-    * Library of prebuilt flows:
-        * Missed call → SMS 
-        * Bad weather → reschedule 
-        * Interval reminders (maintenance details, seasonal services) 
-        * Win-back sequences, review requests, gift-card pushes 
-    * Industry packs that ship with:
-        * Preconfigured services + pricing schemes 
-        * Realistic upsell flows 
-        * Polished SMS/email copy 
-        * Industry-aware agents 
-        * Pre-loaded campaigns 
-    * All editable, but they start good even if the user touches nothing. 
-* Tiered SaaS with gamified upsell & high transparency
-    * Free tier with serious value and “wow that’s included?!” energy 
-    * Pro / Elite tiers with telephony, advanced automations, multi-location, etc. 
-    * Usage engine tracks SMS, calls, AI tokens, email — with clean transparent dashboards 
-    * Add-on marketplace for extras (gift cards, advanced analytics, extra numbers, etc.) 
-That’s the product story the new GPT should understand, not just “multi-tenant SaaS sandbox”.
-
-1. Architecture Snapshot (Just Enough for Orientation)
-* Backend: Node + Express + TypeScript, Drizzle + Postgres, Twilio, Google APIs 
-* Frontend: React + TS, TanStack Query, PWA 
-* Tenant isolation: wrapTenantDb pattern, tenant-scoped tables, tenant_domains 
-* Core modules:
-    * CRM & Customers 
-    * Scheduling & Booking 
-    * Telephony & Messaging 
-    * Rewards & Referrals 
-    * Campaigns (Port Recovery, etc.) 
-    * Setup Wizard & Industry Packs 
-    * Usage/Billing 
-    * Technician Hub 
-    * Employee portal 
-
-2. Phase Index — Your Existing MASTER PLAN v4.0 (Respected & Kept)
-This is your Dec 6 list — I’m not changing IDs, just adding a tiny bit of flavor.
-📞 PHASE 1 — TELEPHONY & COMMUNICATION (1.x)
-1.1 – Telephony Modes v1 AI-first, Human-first, Hybrid, Text-only ✔ COMPLETE
-1.2 – A2P Assistant & Campaign Builder Regulatory helper, campaign templates, copy helper ✔ COMPLETE
-1.3 – A2P Auto-Submission + TrustHub Integration Automatic campaign registration flows ✔ COMPLETE
-1.4 – Trial Telephony Sandbox Test calls/SMS before connecting Twilio ⚠ PLANNED (SP-9)
-1.5 – Phone Inbox v2 Improved layout, filtering, shortcuts, multi-channel view ⚠ PLANNED (SP-11)
-
-💸 PHASE 2 — BILLING & USAGE (2.x)
-2.1 – Usage Engine v1 Track SMS / MMS / Voice / Email / AI Tokens ✔ COMPLETE (SP-3)
-2.2 – Tenant Usage Dashboard + System Usage (admin) Per-tenant and platform-wide usage transparency ✔ COMPLETE
-2.3 – Billing Automation v1 (Stripe) Recurring billing, overdue logic, dunning emails ⚠ THIS IS SP-6 (next after SP-5)
-2.4 – Add-On Marketplace Toggleable feature flags and upsells per tenant ⚠ PLANNED (SP-4)
-2.5 – Usage Transparency v2 Drill-down costs by channel/vendor (Twilio, SendGrid, GPT) ⚠ PLANNED (SP-7)
-
-🎁 PHASE 3 — LOYALTY & CUSTOMER ENGAGEMENT (3.x)
-3.1 – Loyalty v2 Rewards portal, achievements, guardrails, booking integration ✔ COMPLETE
-3.2 – Referral Program v1 QR codes, share links, track conversions, link to points ⚠ PLANNED (LL-3)
-3.3 – Gift Cards v1 Holiday campaigns, Square integration, redemption flow ✔ PARTIAL — CM-3 delivered campaign infra; redemption UX still needed
-3.4 – Identity Hardening v2 OTP login for loyalty portal / secure claims ⚠ REVISIT LIST
-3.5 – Loyalty v3+ Badges, streaks, timelines, leaderboards 🌙 FUTURE
-
-🌐 PHASE 4 — PUBLIC SITE & MULTI-LANGUAGE (4.x)
-4.1 – Public Site v2 Tenant-editable hero, colors, CTA, services, FAQ, etc. ✔ COMPLETE (CM-4)
-4.2 – Public Site v3 Template library, theme presets, industry packs ⚠ PLANNED (SITE-2)
-4.3 – Full i18n System English/Spanish + hooks for others ⚠ PLANNED (SP-8 + LANG-1)
-4.4 – AI Site Generator Generate full website from tenant’s business profile 🌙 FUTURE
-
-🧩 PHASE 5 — DASHBOARD UX, SIMPLE MODE, ADMIN (5.x)
-5.1 – Simple Mode vs Advanced Mode Beginner Mode (minimal settings) vs full-power view ⚠ PLANNED (SP-4)
-5.2 – Industry Pack Editor + Clone-a-Tenant Factory Turn Clean Machine + other setups into clonable presets ⚠ PLANNED (SP-10)
-5.3 – Support Center + AI Assistant v2 Contextual help in every panel, integration with setup wizard ✔ SUPPORT v1 COMPLETE ⚠ AI Setup v2 PLANNED
-
-⚙️ PHASE 6 — PERFORMANCE, OPS, SYSTEM HEALTH (6.x)
-6.1 – Bootstrap + Skeletons + Page Load Optimization First load UX, skeletons, initial responsiveness ✔ COMPLETE
-6.2 – Performance Pass v2 Real profiling, SSR, caching, further DB query tuning ⚠ PLANNED (SP-12)
-6.3 – System Health Dashboard Errors, dropped calls, slow queries, job failures, Twilio issues 🌙 FUTURE
-
-3. Functional Domains (What Exists + What’s Left)
-This is the bridge between the product feel and the phase list.
-
-3.1 Onboarding & Setup Wizard
-What it does conceptually:
-* Guides a new tenant from zero → fully functional system:
-    * Business info, branding, hours 
-    * Service area base address & radius 
-    * Services + pricing (or choose an industry pack) 
-    * Telephony connection (or sandbox mode) 
-    * A2P registration 
-    * SMS Parser / history import (for Clean Machine, later tenants too) 
-* Tries hard to make this “one and done” for non-technical owners. 
-What’s already implemented:
-* Setup pages and flows 
-* A2P helper & campaign builder 
-* Telephony connection flows (Twilio creds, numbers, etc.) 
-* Initial service area and scheduling settings 
-* Industry pack foundations (Clean Machine acts as first full pack) 
-Still needed / to emphasize in new chat:
-* Finish the Square Setup Wizard (like Twilio wizard but for gift cards/payments) 
-* Fully wire the SMS Parser onboarding so future tenants:
-    * Connect their existing phone logs 
-    * Get auto-built:
-        * Service list 
-        * Common replies 
-        * Policy answers 
-        * FAQ 
-    * With almost no manual configuration 
-* Document & solidify the “one-and-done” Setup Wizard as a crown jewel, not an afterthought. 
-
-3.2 CRM + Customer Database
-Concept:
-* A single customer profile:
-    * Contact info (names, phones, emails) 
-    * Vehicles/properties 
-    * Conversation history (SMS, calls, web chat) 
-    * Bookings, cancellations, reschedules 
-    * Loyalty points and reward redemptions 
-    * Referral relationships 
-    * Gift card usage 
-* Auto-updated by:
-    * SMS agent 
-    * Port recovery campaign 
-    * Parser imports 
-    * Booking flow 
-    * Technician actions 
-Current state:
-* Customers table exists and is used 
-* Port Recovery now creates customer records where missing 
-* Points awarded and tracked 
-* Conversations linked 
-* Some records missing full data historically but we now have good forward behavior 
-Key future tasks:
-* Customer merge tool (avoid dupes) 
-* Better email & phone enrichment from parser 
-* CRM UI: filters, tags, notes, intervals, VIP flagging 
-
-3.3 Scheduling, Maps & Service Area
-What makes it special:
-* Uses Google Maps travel time (not just radius) to:
-    * Classify addresses 
-    * Optimize scheduling windows 
-    * Trigger extended-area workflows 
-* Designed to support weather-aware rescheduling later. 
-Already present / recently fixed:
-* /api/geocode, /api/distance-check fixed 
-* IN_AREA, EXTENDED, OUT_OF_AREA, UNKNOWN classifications 
-* Timezone bug fixed in reminders 
-* Smart availability from Google Calendar integrated with:
-    * Web chat (“here’s times + booking link”) 
-    * Booking deep links (slotStart, focusDate) 
-Still to complete:
-* Restore and fully wire:
-    * AddressAutocomplete.tsx 
-    * AddressMapConfirmation.tsx 
-    * ServiceAreaCheck.tsx 
-    * travelTimeService.ts 
-* Extended-area map-pinning step and admin escalation panel. 
-
-3.4 Messaging, Telephony, & AI Agents
-For owners:
-* “Phone system + AI receptionist + SMS machine” in one place:
-    * Handles:
-        * Missed calls 
-        * After-hours 
-        * Quick scheduling 
-* Maintains personal feel (“Clean Machine voice”, or tenant’s voice) 
-Pieces in place:
-* Twilio IVR, voicemail, transcription 
-* SMS AI agent with:
-    * Real booking logic 
-    * Service area awareness 
-    * Pricing knowledge 
-* Web chat agent with:
-    * Live times pulled from Google Calendar 
-    * Deep links into booking page 
-Fixes recently done:
-* STOP compliance fixed 
-* Booking links now use tenant domain & correct route 
-* Messages page performance tuned (N+1 query fix, pagination defaults) 
-Still needed:
-* Solid STOP/START logging & DNC panel 
-* Better agent instructions for:
-    * Tone 
-    * When to show availability vs direct booking links 
-    * When to ask follow-up questions 
-* Telephony Setup Wizard drop-in for future tenants:
-    * Softphone or direct-to-mobile options 
-    * Options A / B / C we discussed 
-
-3.5 Rewards, Referrals, Gift Cards
-Big idea:
-* Turn your whole base into a “we like coming back here” engine:
-    * Points for campaigns, referrals, etc. 
-    * Gift cards as revenue now/booking later 
-    * Referral codes that feel easy to share and track 
-Clean Machine reality right now:
-* Port Recovery campaign sent to 1900+ numbers 
-* 500 points granted where SMS delivered and backfill completed 
-* Personalized rewards landing page tokens 
-* Rewards landing page works; “Browse services & pricing” CTA added 
-* Square integration partially wired for gift cards (needs full UX) 
-Still required:
-* Ensure all recipients truly have 500 points & working links (should now be true, but new GPT should re-verify) 
-* Finish in-checkout gift card and points redemption flows (correct math, display clarity) 
-* Add Square Setup Wizard + multi-tenant mapping 
-* Global referral program v1 (Phase 3.2) 
-
-3.6 Technician Hub, Employee Portal, and Jobs Portal
-Vision:
-* Technician open app in morning → sees:
-    * Today’s jobs 
-    * Distances 
-    * “On My Way” buttons 
-    * One-tap call or text customer 
-    * Quick notes 
-    * One-tap invoice / payment link 
-* Employee portal handles:
-    * Onboarding new hires 
-    * Schedules (with request PTO, shift swaps) 
-    * Training resources 
-    * Access control 
-Current status:
-* Tech pages exist (Schedule, Open Shifts, PTO, Shift Trades) 
-* They now share the AppShell & navigation correctly 
-* Under-the-hood employee scheduling logic exists 
-* Some components not fully integrated into the “One Page for the Day” ideal 
-Future actions:
-* Consolidate into a true Technician Hub page 
-* Integrate route optimization 
-* Integrate daily metrics + checklists 
-* Link to loyalty/gift card redemptions when relevant (e.g., free upgrades) 
