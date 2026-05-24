@@ -1,5 +1,6 @@
 import { Express, Request, Response } from 'express';
 import crypto from 'crypto';
+import { requireAuth } from './authMiddleware';
 import {
   getLoyaltyPointsByPhone,
   getLoyaltyPointsByEmail,
@@ -22,7 +23,10 @@ import { getLoyaltyGuardrailSettings } from './gamificationService';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
 
-const REWARDS_TOKEN_SECRET = process.env.REWARDS_TOKEN_SECRET || process.env.SESSION_SECRET || 'rewards-fallback-secret';
+const REWARDS_TOKEN_SECRET = process.env.REWARDS_TOKEN_SECRET || process.env.SESSION_SECRET;
+if (!REWARDS_TOKEN_SECRET) {
+  throw new Error('REWARDS_TOKEN_SECRET or SESSION_SECRET must be set in environment variables');
+}
 const DEFAULT_TOKEN_EXPIRY_DAYS = 30;
 
 export function generateRewardsToken(phone: string, tenantId: string = 'root', expiryDays: number = DEFAULT_TOKEN_EXPIRY_DAYS): string {
@@ -213,7 +217,7 @@ export function registerLoyaltyRoutes(app: Express) {
   
   // Redeem loyalty points for an offer
   // Now includes guardrail checks for cart total and core service requirements
-  app.post('/api/loyalty/redeem', async (req: Request, res: Response) => {
+  app.post('/api/loyalty/redeem', requireAuth, async (req: Request, res: Response) => {
     try {
       const { customerId, rewardServiceId, quantity, cartTotal, lineItems, skipGuardrails } = req.body;
       
@@ -223,9 +227,19 @@ export function registerLoyaltyRoutes(app: Express) {
           message: 'Customer ID and Reward Service ID are required'
         });
       }
+
+      // RLOY-3: verify caller is authorized for this customer
+      const sessionCustomerId = (req.session as any)?.customerId;
+      const userRole = (req as any).user?.role;
+      if (!['owner', 'manager'].includes(userRole) && sessionCustomerId !== customerId) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
       
       // Get tenant context
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) {
+        return res.status(401).json({ error: 'Tenant context required' });
+      }
       const tenantDb = wrapTenantDb(db, tenantId);
       
       // Check if user is admin (for skip guardrails permission)
@@ -394,9 +408,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all loyalty points (for dashboard)
-  app.get('/api/loyalty/points', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/points', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const points = await getAllLoyaltyPoints(tenantDb);
       res.json({ success: true, loyaltyPoints: points });
@@ -411,9 +426,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all customers (for dashboard)
-  app.get('/api/loyalty/customers', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/customers', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const customerList = await getAllCustomers(tenantDb);
       res.json({ success: true, customers: customerList });
@@ -428,9 +444,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all transactions (for dashboard)
-  app.get('/api/loyalty/transactions', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/transactions', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const transactionList = await getAllTransactions(tenantDb);
       res.json({ success: true, transactions: transactionList });
@@ -445,9 +462,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all loyalty tiers (for dashboard)
-  app.get('/api/loyalty/tiers', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/tiers', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const tierList = await getAllLoyaltyTiers(tenantDb);
       res.json({ success: true, tiers: tierList });
@@ -462,9 +480,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all achievements (for dashboard)
-  app.get('/api/loyalty/achievements', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/achievements', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const achievementList = await getAllAchievements(tenantDb);
       res.json({ success: true, achievements: achievementList });
@@ -479,9 +498,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all customer achievements (for dashboard)
-  app.get('/api/loyalty/customer-achievements', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/customer-achievements', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const customerAchievementList = await getAllCustomerAchievements(tenantDb);
       res.json({ success: true, customerAchievements: customerAchievementList });
@@ -496,9 +516,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all redeemed rewards (for dashboard)
-  app.get('/api/loyalty/redeemed-rewards', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/redeemed-rewards', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const redeemed = await getAllRedeemedRewards(tenantDb);
       res.json({ success: true, redeemedRewards: redeemed });
@@ -513,9 +534,10 @@ export function registerLoyaltyRoutes(app: Express) {
   });
 
   // Get all reward services (for dashboard)
-  app.get('/api/loyalty/reward-services', async (req: Request, res: Response) => {
+  app.get('/api/loyalty/reward-services', requireAuth, async (req: Request, res: Response) => {
     try {
-      const tenantId = (req.session as any)?.tenantId || 'root';
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) return res.status(401).json({ error: 'Tenant context required' });
       const tenantDb = wrapTenantDb(db, tenantId);
       const services = await getRewardServicesForDashboard(tenantDb);
       res.json({ success: true, rewardServices: services });
