@@ -858,7 +858,7 @@ export async function handleBook(req: any, res: any) {
 
       // Send booking confirmation notifications
       const notificationResults =
-        await sendBookingConfirmation(appointmentDetails);
+        await sendBookingConfirmation(req.tenantDb!, appointmentDetails);
       console.log("Booking notifications sent:", notificationResults);
 
       // Schedule day-before reminder

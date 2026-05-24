@@ -270,12 +270,12 @@ async function applyRewardByType(
 
         // Award points immediately
         const pointsResult = await awardPoints(
+          executor,
           customerId,
           amount,
           "referral",
           referralId,
-          `Earned ${amount} points as ${role} reward`,
-          executor
+          `Earned ${amount} points as ${role} reward`
         );
 
         if (!pointsResult.success) {
