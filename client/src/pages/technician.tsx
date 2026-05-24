@@ -275,7 +275,7 @@ function TechnicianContent({ demoMode, onToggleDemo }: TechnicianContentProps) {
       formData.append('photo', file);
       formData.append('jobId', selectedJob.id.toString());
 
-      const response = await fetch('/api/upload-photo', {
+      const response = await fetch(`/api/tech/jobs/${selectedJob.id}/photos`, {
         method: 'POST',
         body: formData,
       });
