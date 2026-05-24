@@ -588,7 +588,7 @@ export async function createSMSCampaign(tenantDb: TenantDb, data: {
     
     // If scheduled, populate recipients
     if (data.scheduledDate) {
-      await populateCampaignRecipients(tenantDb, (campaign as any).id, data.targetAudience);
+      await populateCampaignRecipients(tenantDb, (campaign as any).id, data.targetAudience, (campaign as any).tenant_id);
     }
     
     return campaign;
@@ -628,7 +628,7 @@ export async function sendSMSCampaignNow(tenantDb: TenantDb, id: number) {
     
     // Populate recipients if not already done
     if (campaignData.recipient_count === 0) {
-      await populateCampaignRecipients(tenantDb, id, campaignData.target_audience || 'all');
+      await populateCampaignRecipients(tenantDb, id, campaignData.target_audience || 'all', campaignData.tenant_id);
     }
     
     // Trigger campaign processing immediately (respects all limits and quotas)
