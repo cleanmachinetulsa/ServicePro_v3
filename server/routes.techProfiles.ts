@@ -39,6 +39,33 @@ async function ensureUploadDirs() {
 }
 ensureUploadDirs();
 
+// FIX-7 (TPROF-2): Strict whitelist of fields a manager/owner may update via
+// the profile form. NEVER include: tenantId, userId, publicId, profileReviewed,
+// profileReviewedAt, profileReviewedBy, profileRejectionReason, hourlyRate, role,
+// generatedEmail, phoneExtension, provisioningStatus, provisioningError,
+// provisionedAt, provisionedBy, bioAiLastRevision, createdAt, updatedAt, id.
+const techProfileUpdateSchema = z.object({
+  preferredName: z.string().min(1).max(100).optional(),
+  fullName: z.string().min(1).max(200).optional(),
+  email: z.string().email().max(255).optional().or(z.literal('')),
+  phone: z.string().max(30).optional().or(z.literal('')),
+  city: z.string().max(120).optional().or(z.literal('')),
+  photoUrl: z.string().max(500).optional().or(z.literal('')),
+  photoThumb96: z.string().max(500).optional().or(z.literal('')),
+  photoCard320: z.string().max(500).optional().or(z.literal('')),
+  photoMms640: z.string().max(500).optional().or(z.literal('')),
+  bioAbout: z.string().max(500).optional().or(z.literal('')),
+  bioTags: z.array(z.string().max(50)).max(10).optional(),
+  bioRaw: z.string().max(2000).optional().or(z.literal('')),
+  consentPublicProfile: z.boolean().optional(),
+  employmentStatus: z.enum(['active', 'inactive', 'on_leave', 'terminated']).optional(),
+  hireDate: z.string().optional().or(z.literal('')),
+  terminationDate: z.string().optional().or(z.literal('')),
+  skillLevel: z.number().int().min(1).max(5).optional(),
+  specialties: z.array(z.string().max(100)).max(50).optional(),
+  maxJobsPerDay: z.number().int().min(0).max(50).optional(),
+}).strict();
+
 // Photo upload endpoint - processes and generates multiple sizes (Admin only)
 router.post('/api/tech/profile/photo', requireRole('manager', 'owner'), upload.single('photo'), async (req: Request, res: Response) => {
   try {
@@ -231,7 +258,16 @@ router.post('/api/tech/profile', requireRole('manager', 'owner'), async (req: Re
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const data = req.body;
+    // FIX-7 (TPROF-2): Validate body against strict whitelist to prevent
+    // mass-assignment of admin/pay/approval fields.
+    const parseResult = techProfileUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid profile data',
+        details: parseResult.error.flatten(),
+      });
+    }
+    const data = parseResult.data;
 
     // Find existing technician by user ID
     const existingTech = await req.tenantDb!.query.technicians.findFirst({
