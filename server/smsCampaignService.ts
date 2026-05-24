@@ -198,7 +198,7 @@ async function incrementSmsCounterAtomic(tenantDb: TenantDb): Promise<boolean> {
 /**
  * Get recipients based on target audience
  */
-async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: string): Promise<Array<{ phone: string; customerId?: number; timezone?: string }>> {
+async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: string, tenantId: string): Promise<Array<{ phone: string; customerId?: number; timezone?: string }>> {
   if (targetAudience === 'all') {
     const result = await tenantDb.execute(sql`
       SELECT 
@@ -209,6 +209,7 @@ async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: strin
       WHERE c.phone_number IS NOT NULL 
         AND c.phone_number != ''
         AND c.sms_consent = true
+        AND c.tenant_id = ${tenantId}
     `);
     
     return result.rows.map((row: any) => ({
@@ -227,6 +228,7 @@ async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: strin
         AND c.phone_number != ''
         AND c.sms_consent = true
         AND c.is_vip = true
+        AND c.tenant_id = ${tenantId}
     `);
     
     return result.rows.map((row: any) => ({
@@ -245,6 +247,7 @@ async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: strin
         AND c.phone_number != ''
         AND c.sms_consent = true
         AND c.loyalty_points > 0
+        AND c.tenant_id = ${tenantId}
     `);
     
     return result.rows.map((row: any) => ({
@@ -260,8 +263,8 @@ async function getRecipientsByAudience(tenantDb: TenantDb, targetAudience: strin
 /**
  * Create campaign recipients in database
  */
-async function populateCampaignRecipients(tenantDb: TenantDb, campaignId: number, targetAudience: string): Promise<number> {
-  const recipients = await getRecipientsByAudience(tenantDb, targetAudience);
+async function populateCampaignRecipients(tenantDb: TenantDb, campaignId: number, targetAudience: string, tenantId: string): Promise<number> {
+  const recipients = await getRecipientsByAudience(tenantDb, targetAudience, tenantId);
   
   if (recipients.length === 0) {
     throw new Error('No recipients found for target audience');
