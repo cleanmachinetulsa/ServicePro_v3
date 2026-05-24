@@ -81,7 +81,7 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 - **Open-Meteo API**: Free weather forecasting.
 
 **AI & ML**:
-- **OpenAI API**: GPT-4o for chatbot intelligence, conversational AI, intent detection, email content generation, service recommendations, and the Support AI Assistant.
+- **Anthropic Claude — Haiku 4.5 for L1 tasks, Sonnet 4.6 for L2 escalation**
 
 ---
 
@@ -97,10 +97,11 @@ You are the Replit AI agent working on **ServicePro v3** — a live, multi-tenan
 
 ### Plan Namespace — Read Before Touching Anything
 
-There are two active build plans. Know which one you are executing before writing a single line:
+There are three active build plans. Know which one you are executing before writing a single line:
 
 - **FIXPACK** — P0 production safety + inbox hardening. Surgical fixes only.
 - **COMMS HUB** — Unified communications timeline expansion. Runs after Fixpack is complete.
+- **REBUILD TRACK** — Multi-stage platform rebuilds per SERVICEPRO_MASTER_BUILD_PLAN_v4.md. Loyalty L0–L5, moat system, onboarding wizard, app store, tier/pricing. Runs after Fixpack is complete.
 
 The prompt you are reading will identify its namespace in the header. Do not mix tasks between plans.
 
@@ -292,9 +293,11 @@ You are building something that would be at home inside the product teams of **S
 Before beginning any task, confirm you have read:
 - [ ] This intro prompt
 - [ ] `GUARDRAILS_PRE_PROMPT_FINAL.md`
-- [ ] `SERVICEPRO_MASTER_BUILD_PLAN_v3.md`
-- [ ] `TECHNICAL_DEBT_LEDGER.md`
-- [ ] `SERVICEPRO_PLATFORM_CONTEXT_DUMP.md`
+- [ ] `SERVICEPRO_MASTER_BUILD_PLAN_v4.md`
+- [ ] `TECHNICAL_DEBT_LEDGER_v3.md`
+- [ ] For loyalty sessions: `LOYALTY_SYSTEM_REBUILD_BLUEPRINT.md`
+- [ ] For moat/parser sessions: `MOAT_SYSTEM_AUDIT_AND_DESIGN.md`
+- [ ] Relevant `AUDIT_PART*.md` for the current session topic
 - [ ] Code zip (if the session involves code or auditing)
 
 If any of these are missing, request them before proceeding.
