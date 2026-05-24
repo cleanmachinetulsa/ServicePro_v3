@@ -1048,7 +1048,7 @@ export async function sendInvoiceNotification(req: Request, res: Response) {
           taxRate: 0,
           total: amount,
           loyaltyPoints: {
-            earned: Math.floor(amount * 0.1), // 10% of amount
+            earned: Math.floor(Number(amount)), // $1 = 1 point (100%)
             newBalance: 0 // Unknown for dashboard sends (no customer lookup)
           },
           paymentLink: paymentLink,

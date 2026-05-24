@@ -12,7 +12,7 @@ import path from 'path';
 import fs from 'fs';
 import { customerPortalAuthMiddleware } from './customerPortalAuthMiddleware';
 import { tenantMiddleware } from './tenantMiddleware';
-import { appointments, loyaltyTransactions, customers, portalSettings, portalInstallPromptLog } from '@shared/schema';
+import { appointments, loyaltyTransactions, loyaltyPoints, customers, portalSettings, portalInstallPromptLog } from '@shared/schema';
 import { eq, and, desc, gte, or, sql } from 'drizzle-orm';
 import type { TenantDb } from './tenantDb';
 
@@ -99,11 +99,13 @@ router.get('/me', async (req, res) => {
       .orderBy(desc(loyaltyTransactions.createdAt))
       .limit(10);
 
-    // Calculate total points from loyaltyTransactions
-    let totalPoints = 0;
-    for (const tx of recentLoyaltyTx) {
-      totalPoints += Number(tx.points || 0);
-    }
+    // Read authoritative balance from loyalty_points (loyalty_transactions has no 'points' column)
+    const loyaltyRecord = await tenantDb
+      .select()
+      .from(loyaltyPoints)
+      .where(eq(loyaltyPoints.customerId, customer.id))
+      .limit(1);
+    const totalPoints = loyaltyRecord[0]?.points ?? 0;
 
     // Build response
     const response = {
@@ -147,8 +149,8 @@ router.get('/me', async (req, res) => {
         tier: customer.loyaltyTier,
         recentTransactions: recentLoyaltyTx.map(tx => ({
           id: tx.id,
-          points: tx.points,
-          description: tx.description,
+          points: tx.deltaPoints,
+          description: tx.promoKey ?? tx.source,
           source: tx.source,
           createdAt: tx.createdAt,
         })),
@@ -210,11 +212,13 @@ router.get('/loyalty', async (req, res) => {
       .orderBy(desc(loyaltyTransactions.createdAt))
       .limit(100);
 
-    // Calculate total points
-    let totalPoints = 0;
-    for (const tx of transactions) {
-      totalPoints += Number(tx.points || 0);
-    }
+    // Read authoritative balance from loyalty_points (loyalty_transactions has no 'points' column)
+    const loyaltyRecord = await tenantDb
+      .select()
+      .from(loyaltyPoints)
+      .where(eq(loyaltyPoints.customerId, customer.id))
+      .limit(1);
+    const totalPoints = loyaltyRecord[0]?.points ?? 0;
 
     return res.json({
       totalPoints,
