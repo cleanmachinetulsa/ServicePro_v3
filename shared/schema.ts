@@ -1608,6 +1608,25 @@ export const dailySendCounters = pgTable("daily_send_counters", {
   dateIdx: uniqueIndex("daily_send_counters_date_idx").on(table.date),
 }));
 
+// SMS Suppression List - Opt-outs, bounces, and manual suppressions per tenant
+export const smsSuppressionList = pgTable('sms_suppression_list', {
+  id: serial('id').primaryKey(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  phoneNumber: varchar('phone_number', { length: 20 }).notNull(),
+  reason: varchar('reason', { length: 50 }).notNull().default('opt_out'), // 'opt_out' | 'bounce' | 'manual'
+  suppressedAt: timestamp('suppressed_at').defaultNow().notNull(),
+  suppressedBy: integer('suppressed_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  tenantPhoneUnique: uniqueIndex('sms_suppression_tenant_phone_idx').on(table.tenantId, table.phoneNumber),
+  tenantIdx: index('sms_suppression_tenant_idx').on(table.tenantId),
+}));
+
+export const insertSmsSuppressionSchema = createInsertSchema(smsSuppressionList).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const emailTemplates = pgTable("email_templates", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),

@@ -172,26 +172,26 @@ function estimateSmsSegments(message: string): number {
 async function incrementSmsCounterAtomic(tenantDb: TenantDb): Promise<boolean> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+  const todayStr = today.toISOString().split('T')[0];
+
   const result = await tenantDb.execute(sql`
-    UPDATE daily_send_counters
-    SET 
-      sms_count = sms_count + 1,
-      updated_at = NOW()
-    WHERE 
-      counter_date = ${today.toISOString().split('T')[0]}::date
-      AND sms_count < sms_limit
+    INSERT INTO daily_send_counters (date, sms_count, sms_limit, created_at, updated_at)
+    VALUES (${todayStr}::date, 1, 200, NOW(), NOW())
+    ON CONFLICT (date) DO UPDATE
+      SET
+        sms_count = daily_send_counters.sms_count + 1,
+        updated_at = NOW()
+      WHERE daily_send_counters.sms_count < daily_send_counters.sms_limit
     RETURNING sms_count, sms_limit
   `);
-  
+
   if (result.rows.length === 0) {
-    console.log('[SMS CAMPAIGN] Daily SMS limit reached');
+    console.log('[SMS CAMPAIGN] Daily SMS limit reached or counter conflict');
     return false;
   }
-  
+
   const { sms_count, sms_limit } = result.rows[0] as { sms_count: number; sms_limit: number };
   console.log(`[SMS CAMPAIGN] Daily SMS counter: ${sms_count}/${sms_limit}`);
-  
   return true;
 }
 
