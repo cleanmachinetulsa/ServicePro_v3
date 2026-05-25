@@ -8,6 +8,7 @@ import { sendRewardNotificationEmail } from "./emailService.rewards";
 import { addDays, addMonths } from "date-fns";
 import type { TenantDb } from './tenantDb';
 import { checkLoyaltyGuardrails, type LineItem, type LoyaltyGuardrailResult } from './gamificationService';
+import { earn as ledgerEarn } from './services/loyaltyLedger';
 
 /**
  * Custom error class for loyalty guardrail blocks
@@ -621,14 +622,18 @@ export async function getRewardServicesForDashboard(tenantDb: TenantDb) {
  * $1 = 1 point
  */
 export async function addLoyaltyPointsFromInvoice(tenantDb: TenantDb, customerId: number, invoiceId: number, amount: number) {
-  // Get or create loyalty points record
-  let [pointsRecord] = await tenantDb
+  // L3 Part 2A: delegate to loyaltyLedger.earn(). The ledger owns transaction
+  // atomicity, idempotency, and balance increment. This facade preserves the
+  // opt-in guard and the reward-eligibility email side-effect.
+
+  // Preserve opt-in guard: if no loyalty_points row AND customer not opted in,
+  // return null (existing contract — callers rely on this to skip awarding).
+  const [existingPoints] = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
 
-  if (!pointsRecord) {
-    // Check if customer has opted into the loyalty program
+  if (!existingPoints) {
     const [customer] = await tenantDb
       .select()
       .from(customers)
@@ -637,52 +642,45 @@ export async function addLoyaltyPointsFromInvoice(tenantDb: TenantDb, customerId
     if (!customer?.loyaltyProgramOptIn) {
       return null; // Customer hasn't opted in
     }
-
-    // Create new loyalty points record
-    [pointsRecord] = await tenantDb
-      .insert(loyaltyPoints)
-      .values({
-        customerId,
-        points: 0,
-        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
-      })
-      .returning();
   }
 
-  // Calculate points to add (1 point per $1)
+  // Calculate points to add (1 point per $1). Preserve previous early-return
+  // for non-positive amounts (returns current points record, not null).
   const pointsToAdd = Math.floor(Number(amount));
   if (pointsToAdd <= 0) {
-    return pointsRecord;
+    return existingPoints ?? null;
   }
 
-  // Set expiry date for these points (12 months from now)
-  const expiryDate = addMonths(new Date(), 12);
-
-  // Add transaction record
-  await tenantDb.insert(pointsTransactions).values({
-    loyaltyPointsId: pointsRecord.id,
+  // Delegate to canonical ledger. Idempotency key is stable per (invoice,customer)
+  // so a retry of the same invoice award never double-credits.
+  const result = await ledgerEarn(tenantDb, {
+    tenantId: tenantDb.tenantId,
+    customerId,
     amount: pointsToAdd,
-    description: `Points earned from invoice #${invoiceId}`,
-    transactionType: 'earn',
     source: 'invoice',
-    sourceId: invoiceId,
-    expiryDate,
+    idempotencyKey: `invoice:${invoiceId}:${customerId}`,
+    description: `Points earned from invoice #${invoiceId}`,
+    metadata: { invoiceId },
   });
 
-  // Update points balance
+  if (!result.success) {
+    return null;
+  }
+
+  // Re-read the loyalty_points row to preserve the legacy return shape (callers
+  // currently just JSON-stringify dbResult; no caller inspects specific fields).
   const [updatedPoints] = await tenantDb
-    .update(loyaltyPoints)
-    .set({ 
-      points: pointsRecord.points + pointsToAdd,
-      lastUpdated: new Date(),
-    })
-    .where(eq(loyaltyPoints.id, pointsRecord.id))
-    .returning();
+    .select()
+    .from(loyaltyPoints)
+    .where(eq(loyaltyPoints.customerId, customerId));
 
-  // Check if customer has reached loyalty offer thresholds and send notification
-  checkAndNotifyRewardEligibility(tenantDb, customerId, updatedPoints.points);
+  // Email side-effect stays in the facade (NOT in the ledger). Only fire on a
+  // first-time award — duplicate idempotent calls should not re-notify.
+  if (!result.alreadyApplied && updatedPoints) {
+    checkAndNotifyRewardEligibility(tenantDb, customerId, updatedPoints.points);
+  }
 
-  return updatedPoints;
+  return updatedPoints ?? null;
 }
 
 /**
@@ -919,66 +917,7 @@ export async function getRedeemedRewards(tenantDb: TenantDb, customerId: number)
   }
 }
 
-/**
- * Process expired loyalty points
- * This should be run on a schedule (e.g., daily)
- */
-export async function processExpiredPoints(tenantDb: TenantDb) {
-  const now = new Date();
-  
-  // Find all loyalty points records with expired points
-  const pointsRecords = await tenantDb
-    .select()
-    .from(loyaltyPoints)
-    .where(and(
-      sql`${loyaltyPoints.expiryDate} IS NOT NULL`,
-      sql`${loyaltyPoints.expiryDate} < ${now}`
-    ));
-
-  // For each record, find transactions that have expired
-  for (const record of pointsRecords) {
-    const expiredTransactions = await tenantDb
-      .select()
-      .from(pointsTransactions)
-      .where(and(
-        eq(pointsTransactions.loyaltyPointsId, record.id),
-        eq(pointsTransactions.transactionType, 'earn'),
-        sql`${pointsTransactions.expiryDate} IS NOT NULL`,
-        sql`${pointsTransactions.expiryDate} < ${now}`
-      ));
-    
-    // Calculate total expired points
-    let expiredPoints = 0;
-    for (const tx of expiredTransactions) {
-      expiredPoints += tx.amount;
-    }
-    
-    if (expiredPoints > 0) {
-      // Add a transaction record for the expired points
-      await tenantDb.insert(pointsTransactions).values({
-        loyaltyPointsId: record.id,
-        amount: -expiredPoints,
-        description: 'Points expired',
-        transactionType: 'expire',
-        source: 'system',
-      });
-      
-      // Update points balance
-      await tenantDb
-        .update(loyaltyPoints)
-        .set({ 
-          points: Math.max(0, record.points - expiredPoints),
-          lastUpdated: now,
-        })
-        .where(eq(loyaltyPoints.id, record.id));
-    }
-  }
-}
-
-/**
- * Clean up expired points 
- * Alias for processExpiredPoints for backward compatibility
- */
-export async function cleanupExpiredPoints(tenantDb: TenantDb) {
-  return processExpiredPoints(tenantDb);
-}
+// L3 Part 2A: processExpiredPoints and cleanupExpiredPoints DELETED.
+// Re-grep confirmed zero callers across server/ and client/ before deletion.
+// Expiry handling (if/when re-introduced) belongs in loyaltyLedger as a
+// dedicated expire() entry point — see TECHNICAL_DEBT_LEDGER_v3 LOY-8.
