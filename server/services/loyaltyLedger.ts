@@ -840,27 +840,17 @@ export async function releaseReservation(
     return { success: false, alreadyApplied: false, pointsReturned: 0, newBalance: refund.newBalance, error: 'REFUND_FAILED' };
   }
 
+  // alreadyApplied is true only when this call was a complete no-op: the
+  // reservation was already cancelled AND the refund had already been posted on
+  // a prior call. If the reservation was cancelled but the prior refund failed
+  // and this retry actually moved points, alreadyApplied stays false so the
+  // caller knows real work happened.
   return {
     success: true,
-    alreadyApplied: alreadyCancelled,
+    alreadyApplied: alreadyCancelled && refund.alreadyApplied,
     pointsReturned: refund.alreadyApplied ? 0 : pointsToReturn,
     newBalance: refund.newBalance,
   };
-}
-
-// Helper: tenant-scoped balance read (outside a transaction)
-async function readBalance(tenantDb: TenantDb, tenantId: string, customerId: number): Promise<number> {
-  const [row] = await tenantDb
-    .select({ p: loyaltyPoints.points })
-    .from(loyaltyPoints)
-    .where(
-      and(
-        eq(loyaltyPoints.tenantId, tenantId),
-        eq(loyaltyPoints.customerId, customerId),
-      ),
-    )
-    .limit(1);
-  return row?.p ?? 0;
 }
 
 // ---------------------------------------------------------------------------
