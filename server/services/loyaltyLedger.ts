@@ -657,13 +657,14 @@ export async function applyReservation(
 
       const now = new Date();
 
-      // 3. Flip reservation → completed; link the appointment if provided as proxy for invoice
+      // 3. Flip reservation → completed.
+      // Invoice linkage is recorded in loyalty_transactions.metadata (below),
+      // NOT in redeemed_rewards.appointment_id — that column is a FK into
+      // appointments() and would fail on a bare invoice id. Preserve whatever
+      // appointmentId was set at reserve() time.
       await tx
         .update(redeemedRewards)
-        .set({
-          status: 'completed',
-          appointmentId: invoiceId ?? reservation.appointmentId,
-        })
+        .set({ status: 'completed' })
         .where(
           and(
             eq(redeemedRewards.tenantId, tenantId),
