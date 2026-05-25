@@ -55,11 +55,10 @@ export async function earn(
 ): Promise<EarnResult> {
   const { tenantId, customerId, amount, source, idempotencyKey, description, metadata = {} } = args;
 
-  // 1. Validate amount
+  // 1. Validate amount — return safe defaults immediately; no DB read so this path never throws
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
-    const current = await getCurrentBalance(tenantDb, tenantId, customerId);
-    const tier = await getCustomerLoyaltyTier(tenantDb, customerId);
-    return { success: false, alreadyApplied: false, newBalance: current, tierName: tier?.name ?? null };
+    console.error(`[loyaltyLedger.earn] Invalid amount (${amount}) for customer ${customerId}`);
+    return { success: false, alreadyApplied: false, newBalance: 0, tierName: null };
   }
 
   let txResult: EarnResult;
@@ -190,27 +189,9 @@ export async function earn(
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getCurrentBalance(
-  tenantDb: TenantDb,
-  tenantId: string,
-  customerId: number,
-): Promise<number> {
-  const [row] = await tenantDb
-    .select({ points: loyaltyPoints.points })
-    .from(loyaltyPoints)
-    .where(
-      and(
-        eq(loyaltyPoints.tenantId, tenantId),
-        eq(loyaltyPoints.customerId, customerId),
-      ),
-    )
-    .limit(1);
-  return row?.points ?? 0;
-}
-
-// Same helper but usable inside a transaction executor
+// Helper usable inside a transaction executor
 async function getCurrentBalanceTx(
-  tx: any,
+  tx: Parameters<Parameters<TenantDb['transaction']>[0]>[0],
   tenantId: string,
   customerId: number,
 ): Promise<number> {
