@@ -6,3 +6,15 @@ id = "zs7nvCSR6IbTiEg8IcmB6"
 uri = "file://MESSAGING_AUDIT.md"
 type = "text"
 title = "ServicePro Messaging Stack Audit"
+
+[[outputs]]
+id = "ZJexcYz0or-ldVvUyTvOU"
+uri = "file://.local/tasks/admin-login-auth-audit.md"
+type = "text"
+title = "Admin Login Auth Audit (for Claude)"
+
+[[outputs]]
+id = "W4Kj-ISjGRsSnZyekLJ1s"
+uri = "file://.local/tasks/login-audit-v2.md"
+type = "text"
+title = "Admin Login Auth Audit - DOWNLOAD"
