@@ -1329,6 +1329,31 @@ export const loyaltyTransactions = pgTable("loyalty_transactions", {
   tenantStatusIdx: index("loyalty_transactions_tenant_status_idx").on(table.tenantId, table.status),
 }));
 
+// Stage L1-1: Per-tenant loyalty settings — replaces global business_settings guardrail columns (GAM-1)
+// One row per tenant. Root tenant seeded by migration 0012 with Clean Machine's current values.
+// min_cart_total_cents stores dollars * 100 (e.g. $75 = 7500). Divide by 100 when enforcing guardrails.
+export const tenantLoyaltySettings = pgTable("tenant_loyalty_settings", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id", { length: 50 }).notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  pointsPerDollar: integer("points_per_dollar").notNull().default(1),
+  minCartTotalCents: integer("min_cart_total_cents").notNull().default(0),
+  requiresCoreService: boolean("requires_core_service").notNull().default(false),
+  guardrailMessage: text("guardrail_message"),
+  tierThresholds: jsonb("tier_thresholds").notNull().default({ bronze: 0, silver: 1000, gold: 2000, platinum: 5000 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  tenantIdUnique: uniqueIndex("tenant_loyalty_settings_tenant_id_unique").on(table.tenantId),
+}));
+
+export const insertTenantLoyaltySettingsSchema = createInsertSchema(tenantLoyaltySettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type TenantLoyaltySettings = typeof tenantLoyaltySettings.$inferSelect;
+export type InsertTenantLoyaltySettings = z.infer<typeof insertTenantLoyaltySettingsSchema>;
+
 export const customerAchievements = pgTable("customer_achievements", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
