@@ -25,6 +25,7 @@ const CONSOLIDATED_DESC =
 interface CustomerLedger {
   loyaltyPointsId: number;
   customerId: number;
+  tenantId: string;
   trustedBalance: number;
   prCount: number;
   prSum: number;
@@ -46,6 +47,7 @@ async function main() {
     SELECT
       lp.id AS loyalty_points_id,
       lp.customer_id,
+      lp.tenant_id,
       lp.points AS trusted_balance,
       COUNT(pt.id) FILTER (WHERE pt.source = 'port_recovery') AS pr_count,
       COALESCE(SUM(pt.amount) FILTER (WHERE pt.source = 'port_recovery'), 0) AS pr_sum,
@@ -57,7 +59,7 @@ async function main() {
       SELECT 1 FROM points_transactions pt2
       WHERE pt2.loyalty_points_id = lp.id AND pt2.source = 'port_recovery'
     )
-    GROUP BY lp.id, lp.customer_id, lp.points
+    GROUP BY lp.id, lp.customer_id, lp.tenant_id, lp.points
     ORDER BY lp.id
   `);
 
@@ -77,6 +79,7 @@ async function main() {
   for (const row of rows) {
     const lpId = Number(row.loyalty_points_id);
     const customerId = Number(row.customer_id);
+    const tenantId = String(row.tenant_id);
     const trustedBalance = Number(row.trusted_balance);
     const prCount = Number(row.pr_count);
     const prSum = Number(row.pr_sum);
@@ -90,6 +93,7 @@ async function main() {
     customers.push({
       loyaltyPointsId: lpId,
       customerId,
+      tenantId,
       trustedBalance,
       prCount,
       prSum,
@@ -190,6 +194,7 @@ async function main() {
 
       // Insert canonical replacement row
       await tx.insert(pointsTransactions).values({
+        tenantId: c.tenantId,
         loyaltyPointsId: c.loyaltyPointsId,
         amount: c.canonicalAmount,
         description: CONSOLIDATED_DESC,
