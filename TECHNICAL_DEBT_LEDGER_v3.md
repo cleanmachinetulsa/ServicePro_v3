@@ -318,6 +318,13 @@ by the loyalty rebuild (Stages L0–L5).
 
 ---
 
+## TYPECHECK / BUILD HEALTH
+
+### TYPECHK-1 🟡 — Codebase typecheck health
+Two related problems: (a) `npm run check` (full-project tsc) cannot complete — it exhausts the Node heap ("Ineffective mark-compacts near heap limit"). The project currently has no working whole-codebase typecheck. Scoped per-file checks (`tsc --noEmit` on individual files, or with `--max-old-space-size=4096`) work as a stopgap. (b) `server/gamificationService.ts` has 10 pre-existing TypeScript errors (confirmed via git blame: all Nov-Dec 2025, predating the loyalty rebuild by 5-6 months). All 10 are confirmed benign at runtime: error type breakdown — TS2305/TS2724 broken/renamed type imports (lines 1,13,14,15; `import type` so erased at runtime), TS2802 Set iteration target mismatch (lines 389,451), TS7006 implicit-any on .map callbacks (lines 389,402,451,464,558,562). None affect the loyalty earn() path. Fix (a) and (b) together in a dedicated typecheck-health pass AFTER the loyalty rebuild closes — a clean tsc is the thing that would catch this class of error going forward. Do NOT fix mid-rebuild (scope creep into a shared file). Verified harmless during L2 Part 1, 2026-05.
+
+---
+
 ## WEATHER DEBT (Audit 1C)
 
 ### WX-1 🔴 — Daily weather check never scheduled; `weatherScheduler.ts` is an orphan
