@@ -20,6 +20,7 @@ import {
   validateLoyaltyRedemption
 } from './loyaltyService';
 import { getLoyaltyGuardrailSettings } from './gamificationService';
+import { adjust as ledgerAdjust } from './services/loyaltyLedger';
 import { wrapTenantDb } from './tenantDb';
 import { db } from './db';
 
@@ -245,6 +246,12 @@ export function registerLoyaltyRoutes(app: Express) {
       // Check if user is admin (for skip guardrails permission)
       const isAdmin = (req.session as any)?.role === 'owner' || (req.session as any)?.role === 'admin';
       
+      // One token per HTTP request → retries of the SAME request dedupe at the
+      // ledger; separate requests get fresh tokens, so a customer can legitimately
+      // redeem the same reward again later. Combined with per-unit suffix in the
+      // facade (`${token}:${i}`), each unit gets a unique stable ledger key.
+      const idempotencyToken = crypto.randomUUID();
+
       const result = await redeemPointsForReward(
         tenantDb,
         Number(customerId), 
@@ -255,6 +262,7 @@ export function registerLoyaltyRoutes(app: Express) {
           lineItems: Array.isArray(lineItems) ? lineItems : undefined,
           skipGuardrails: isAdmin && skipGuardrails === true,
           tenantId,
+          idempotencyToken,
         }
       );
       
@@ -284,13 +292,30 @@ export function registerLoyaltyRoutes(app: Express) {
   });
   
   // Get loyalty guardrail settings (for frontend to show requirements)
+  // L3-FACADE-1 fix: server returns {minCartTotal, requireCoreService, guardrailMessage}
+  // but client rewards.tsx expects {minCartTotalEnabled, requireCoreServiceEnabled,
+  // coreServiceCategories, loyaltyGuardrailMessage}. Transform at the route boundary
+  // so neither the underlying service nor the client need to change.
   app.get('/api/loyalty/guardrails', async (req: Request, res: Response) => {
     try {
       const tenantId = (req.session as any)?.tenantId || 'root';
       const settings = await getLoyaltyGuardrailSettings(tenantId);
-      res.json({ 
-        success: true, 
-        data: settings
+
+      const minCartTotalEnabled =
+        typeof settings.minCartTotal === 'number' && settings.minCartTotal > 0;
+
+      res.json({
+        success: true,
+        data: {
+          minCartTotalEnabled,
+          minCartTotal: settings.minCartTotal ?? 0,
+          requireCoreServiceEnabled: settings.requireCoreService === true,
+          // coreServiceCategories is not modeled on the server yet — return an
+          // empty array so the client's typed shape is satisfied. When category
+          // selectivity ships, surface real values here.
+          coreServiceCategories: [] as string[],
+          loyaltyGuardrailMessage: settings.guardrailMessage ?? '',
+        },
       });
     } catch (error) {
       console.error('Error fetching guardrail settings:', error);
@@ -298,6 +323,77 @@ export function registerLoyaltyRoutes(app: Express) {
         success: false, 
         message: 'Failed to retrieve guardrail settings',
         error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // LOY-20: Staff manual points adjustment. Backs the "Add Points" dialog in
+  // LoyaltyPointsSystem.tsx — which was POSTing to a 404 until now.
+  // Delegates to loyaltyLedger.adjust() so audit trail, idempotency, and
+  // negative-balance clamping all live in one place.
+  app.post('/api/loyalty/add-points', requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { customerId, points, source, description } = req.body ?? {};
+
+      if (typeof customerId !== 'number' || !Number.isFinite(customerId) || customerId <= 0) {
+        return res.status(400).json({ success: false, message: 'customerId (positive number) is required' });
+      }
+      if (typeof points !== 'number' || !Number.isFinite(points) || points === 0) {
+        return res.status(400).json({ success: false, message: 'points (non-zero number) is required' });
+      }
+      if (typeof source !== 'string' || source.trim().length === 0) {
+        return res.status(400).json({ success: false, message: 'source is required' });
+      }
+
+      // Tenant from session ONLY — never trust the request body, no fallback.
+      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
+      if (!tenantId) {
+        return res.status(401).json({ success: false, message: 'Tenant context required' });
+      }
+
+      const actorId = (req as any).user?.id ?? null;
+      const tenantDb = wrapTenantDb(db, tenantId);
+
+      // Each HTTP request gets a fresh UUID — staff manual adjustments are NOT
+      // expected to retry-dedupe across requests; the goal is that ONE click
+      // produces ONE adjustment even if the network retries the same request.
+      const idempotencyKey = `staff-adjust:${actorId ?? 'sys'}:${crypto.randomUUID()}`;
+      const reason =
+        typeof description === 'string' && description.trim().length > 0
+          ? description.trim()
+          : `Staff adjustment (${source})`;
+
+      const result = await ledgerAdjust(tenantDb, {
+        tenantId,
+        customerId,
+        delta: points,
+        reason,
+        actorId,
+        idempotencyKey,
+        metadata: { source, addedVia: 'staff-ui' },
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ success: false, message: 'Failed to adjust points' });
+      }
+
+      // Client (LoyaltyPointsSystem.tsx:316) only reads response.ok on success
+      // and toasts a fixed string — no specific fields are consumed. Returning
+      // the ledger's adjust-shape here is forward-compatible.
+      res.json({
+        success: true,
+        data: {
+          newBalance: result.newBalance,
+          clamped: result.clamped,
+          alreadyApplied: result.alreadyApplied,
+        },
+      });
+    } catch (error) {
+      console.error('Error adding points:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to add points',
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   });

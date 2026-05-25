@@ -8,7 +8,8 @@ import { sendRewardNotificationEmail } from "./emailService.rewards";
 import { addDays, addMonths } from "date-fns";
 import type { TenantDb } from './tenantDb';
 import { checkLoyaltyGuardrails, type LineItem, type LoyaltyGuardrailResult } from './gamificationService';
-import { earn as ledgerEarn } from './services/loyaltyLedger';
+import { earn as ledgerEarn, reserve as ledgerReserve } from './services/loyaltyLedger';
+import crypto from 'crypto';
 
 /**
  * Custom error class for loyalty guardrail blocks
@@ -741,23 +742,34 @@ export async function redeemPointsForReward(
     lineItems?: LineItem[];
     skipGuardrails?: boolean;
     tenantId?: string;
+    /**
+     * Caller-supplied stable token for retry-deduplication. Per-unit ledger key
+     * becomes `${idempotencyToken}:${i}`. The route layer generates one UUID per
+     * HTTP request → retries dedupe; separate requests get distinct tokens.
+     * If omitted, one is generated and a warning is logged (retry-unsafe).
+     */
+    idempotencyToken?: string;
   }
 ) {
+  // Quantity validation kept in the facade — preserves existing route contract.
   if (quantity < 1 || quantity > 3) {
     throw new Error("You can redeem between 1 and 3 rewards at once");
   }
 
-  // Check loyalty guardrails (unless explicitly skipped for admin operations)
+  const tenantId = options?.tenantId || tenantDb.tenantId;
+
+  // Guardrails kept in the facade. The ledger is not responsible for cart-shape
+  // policy — that's a business-rule layer, intentionally above the ledger.
   if (!options?.skipGuardrails) {
     const guardrailResult = await checkLoyaltyGuardrails({
-      tenantId: options?.tenantId || 'root',
+      tenantId,
       cartTotal: options?.cartTotal ?? 0,
       lineItems: options?.lineItems ?? [],
     });
     
     if (!guardrailResult.ok) {
       console.warn('[LOYALTY] Guardrail blocked redemption:', {
-        tenantId: options?.tenantId || 'root',
+        tenantId,
         code: guardrailResult.code,
         cartTotal: options?.cartTotal,
         customerId,
@@ -766,7 +778,10 @@ export async function redeemPointsForReward(
     }
   }
 
-  // Get the reward service
+  // Lookup reward — needed for the user-facing message string and the
+  // totalPointsNeeded value surfaced in INSUFFICIENT_POINTS errors. reserve()
+  // also re-loads this inside its transaction (single source of truth for the
+  // actual debit), so this read is purely cosmetic / for error messages.
   const [rewardService] = await tenantDb
     .select()
     .from(rewardServices)
@@ -781,66 +796,88 @@ export async function redeemPointsForReward(
     throw new Error("Loyalty offer not found or inactive");
   }
 
-  // Get customer's points
-  const [pointsRecord] = await tenantDb
+  const totalPointsNeeded = rewardService.pointCost * quantity;
+
+  // All-or-nothing pre-check for multi-unit redemptions. Without this, looped
+  // per-unit reserves can partially commit (e.g. quantity=3, balance covers 2):
+  // unit 0 succeeds, unit 1 succeeds, unit 2 fails with INSUFFICIENT_POINTS,
+  // and the caller sees an error while two reservations have already debited
+  // points. Pre-check matches legacy behavior. Residual TOCTOU window vs. a
+  // concurrent debit between this read and the first reserve() is the same
+  // narrow race the legacy code had — acceptable for now; a future hardening
+  // could wrap the whole sequence in a tx with release on later-unit failure.
+  const [preCheckPoints] = await tenantDb
     .select()
     .from(loyaltyPoints)
     .where(eq(loyaltyPoints.customerId, customerId));
 
-  if (!pointsRecord) {
-    throw new Error("No loyalty points record found for this customer");
+  const preBalance = preCheckPoints?.points ?? 0;
+  if (preBalance < totalPointsNeeded) {
+    throw new Error(`Not enough points. You need ${totalPointsNeeded} points but have ${preBalance}`);
   }
 
-  // Calculate total points needed
-  const totalPointsNeeded = rewardService.pointCost * quantity;
-
-  // Check if customer has enough points
-  if (pointsRecord.points < totalPointsNeeded) {
-    throw new Error(`Not enough points. You need ${totalPointsNeeded} points but have ${pointsRecord.points}`);
+  // Idempotency token — required for safe retry behavior.
+  let idempotencyToken = options?.idempotencyToken;
+  if (!idempotencyToken) {
+    idempotencyToken = crypto.randomUUID();
+    console.warn(
+      `[LOYALTY] redeemPointsForReward called WITHOUT options.idempotencyToken ` +
+      `(customer=${customerId}, rewardServiceId=${rewardServiceId}, quantity=${quantity}). ` +
+      `Generated fallback ${idempotencyToken}. Retries of this exact HTTP request ` +
+      `CANNOT be deduplicated — caller should pass a stable per-request token.`
+    );
   }
 
-  // Create redeemed rewards records
-  const redeemedRewardsRecords = [];
-  const expiryDate = addDays(new Date(), 90); // Rewards expire in 90 days if not used
+  // Per-unit reserve via the ledger. The ledger owns: atomic conditional
+  // decrement (no double-spend across concurrent calls), redeemed_rewards
+  // insert, loyalty_transactions row, mirror points_transactions row.
+  const records: Array<{
+    id: number | null;
+    customerId: number;
+    rewardServiceId: number;
+    pointsSpent: number;
+    status: string;
+  }> = [];
 
   for (let i = 0; i < quantity; i++) {
-    const [redeemedReward] = await tenantDb
-      .insert(redeemedRewards)
-      .values({
-        customerId,
-        rewardServiceId,
-        pointsSpent: rewardService.pointCost,
-        status: 'pending',
-        expiryDate,
-      })
-      .returning();
+    const r = await ledgerReserve(tenantDb, {
+      tenantId,
+      customerId,
+      rewardServiceId,
+      idempotencyKey: `${idempotencyToken}:${i}`,
+    });
 
-    redeemedRewardsRecords.push(redeemedReward);
+    if (!r.success) {
+      if (r.error === 'INSUFFICIENT_POINTS') {
+        // Preserve the legacy error string the route surfaces to clients.
+        throw new Error(`Not enough points. You need ${totalPointsNeeded} points but have ${r.newBalance}`);
+      }
+      if (r.error === 'REWARD_NOT_FOUND_OR_INACTIVE') {
+        throw new Error('Loyalty offer not found or inactive');
+      }
+      throw new Error(`Failed to redeem reward: ${r.error ?? 'unknown error'}`);
+    }
+
+    records.push({
+      id: r.reservationId,
+      customerId,
+      rewardServiceId,
+      pointsSpent: r.pointsReserved,
+      status: 'pending',
+    });
   }
 
-  // Add transaction record for the redemption
-  await tenantDb.insert(pointsTransactions).values({
-    loyaltyPointsId: pointsRecord.id,
-    amount: -totalPointsNeeded,
-    description: `Redeemed ${quantity} ${rewardService.name} loyalty offer(s)`,
-    transactionType: 'redeem',
-    source: 'reward',
-    sourceId: rewardServiceId,
-  });
-
-  // Update points balance
+  // Re-read the final loyalty_points row so the caller still gets the same
+  // shape it received before delegation. Callers JSON-stringify this — no
+  // field-level dependencies (verified at routes.loyalty.ts:248).
   const [updatedPoints] = await tenantDb
-    .update(loyaltyPoints)
-    .set({ 
-      points: pointsRecord.points - totalPointsNeeded,
-      lastUpdated: new Date(),
-    })
-    .where(eq(loyaltyPoints.id, pointsRecord.id))
-    .returning();
+    .select()
+    .from(loyaltyPoints)
+    .where(eq(loyaltyPoints.customerId, customerId));
 
   return {
-    updatedPoints,
-    redeemedRewards: redeemedRewardsRecords,
+    updatedPoints: updatedPoints ?? null,
+    redeemedRewards: records,
     message: `Successfully redeemed ${quantity} ${rewardService.name} loyalty offer(s)`,
   };
 }

@@ -1,6 +1,8 @@
 import { Express, Request, Response } from 'express';
 import { addLoyaltyPointsFromInvoice } from './loyaltyService';
 import { updateLoyaltyPointsInSheets } from './googleLoyaltyIntegration';
+import { wrapTenantDb } from './tenantDb';
+import { db } from './db';
 
 /**
  * Register invoice-related loyalty routes
@@ -22,9 +24,18 @@ export function registerInvoiceLoyaltyRoutes(app: Express) {
       const pointsToAdd = Math.floor(Number(amount));
       let dbResult = null;
       
-      // If we have a database customerId, update points in PostgreSQL
+      // If we have a database customerId, update points in PostgreSQL.
+      // LOY-1 fix: addLoyaltyPointsFromInvoice requires tenantDb as the FIRST
+      // arg. Prior to this fix the call passed customerId in the tenantDb slot,
+      // which caused a runtime throw on the first table access. This route is
+      // unauthenticated (server-to-server / automation), so we resolve tenant
+      // from session if present, otherwise fall back to 'root' (Clean Machine)
+      // — matching the implicit pre-multitenancy assumption this route ran on.
       if (customerId) {
+        const tenantId = (req.session as any)?.tenantId || 'root';
+        const tenantDb = wrapTenantDb(db, tenantId);
         dbResult = await addLoyaltyPointsFromInvoice(
+          tenantDb,
           Number(customerId), 
           Number(invoiceId), 
           Number(amount)

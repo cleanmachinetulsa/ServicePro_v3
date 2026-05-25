@@ -3355,7 +3355,15 @@ Follow up with this lead to set up their 14-day trial!
       let dbResult = null;
 
       if (customerId) {
+        // LOY-1 fix: addLoyaltyPointsFromInvoice signature is (tenantDb, customerId,
+        // invoiceId, amount). Previous call missed tenantDb → runtime throw.
+        // Dynamic import mirrors the existing pattern used elsewhere in this file
+        // (see lines 1972, 2381) to avoid touching the top-level import block.
+        const { wrapTenantDb } = await import('./tenantDb');
+        const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId || 'root';
+        const tenantDb = wrapTenantDb(db, tenantId);
         dbResult = await addLoyaltyPointsFromInvoice(
+          tenantDb,
           Number(customerId),
           Number(invoiceId),
           Number(amount)
