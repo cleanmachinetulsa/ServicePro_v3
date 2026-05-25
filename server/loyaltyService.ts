@@ -12,10 +12,16 @@ import { checkLoyaltyGuardrails, type LineItem, type LoyaltyGuardrailResult } fr
 /**
  * Custom error class for loyalty guardrail blocks
  */
+export type LoyaltyGuardrailErrorCode =
+  | 'MIN_CART_TOTAL'
+  | 'CORE_SERVICE_REQUIRED'
+  | 'LOYALTY_NOT_CONFIGURED'
+  | 'GUARDRAIL_CHECK_FAILED';
+
 export class LoyaltyGuardrailError extends Error {
-  code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED';
-  
-  constructor(code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED', message: string) {
+  code: LoyaltyGuardrailErrorCode;
+
+  constructor(code: LoyaltyGuardrailErrorCode, message: string) {
     super(message);
     this.code = code;
     this.name = 'LoyaltyGuardrailError';

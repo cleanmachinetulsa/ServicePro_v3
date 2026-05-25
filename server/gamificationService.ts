@@ -24,7 +24,11 @@ export type LoyaltyGuardrailResult =
   | { ok: true }
   | {
       ok: false;
-      code: 'MIN_CART_TOTAL' | 'CORE_SERVICE_REQUIRED';
+      code:
+        | 'MIN_CART_TOTAL'
+        | 'CORE_SERVICE_REQUIRED'
+        | 'LOYALTY_NOT_CONFIGURED'
+        | 'GUARDRAIL_CHECK_FAILED';
       message: string;
     };
 
@@ -71,7 +75,7 @@ export async function checkLoyaltyGuardrails(args: {
       );
       return {
         ok: false,
-        code: 'MIN_CART_TOTAL',
+        code: 'LOYALTY_NOT_CONFIGURED',
         message: 'Loyalty rewards are not configured for this business yet. Please contact us to redeem.',
       };
     }
@@ -127,7 +131,7 @@ export async function checkLoyaltyGuardrails(args: {
     // FAIL-CLOSED on error (GAM-4 fix): deny rather than silently allow on a financial control.
     return {
       ok: false,
-      code: 'MIN_CART_TOTAL',
+      code: 'GUARDRAIL_CHECK_FAILED',
       message: 'Unable to verify loyalty eligibility right now. Please try again shortly.',
     };
   }
