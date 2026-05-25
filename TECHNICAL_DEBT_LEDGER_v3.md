@@ -60,6 +60,39 @@ points silently never award. Stage L0.
 `loyaltyApi.ts` + `googleLoyaltyIntegration.ts`. L1 migration must reconcile
 Sheets→Postgres, then delete (B2).
 
+### L1-3 ✅ RESOLVED — Sheets reconciliation no-op
+Investigation confirmed: `Customer Database` tab in
+`Complete_CleanMachine_AgentKnowledgeBase` has no loyalty columns.
+The Sheets write path (`loyaltyApi.ts` + `googleLoyaltyIntegration.ts`) has
+been returning 404/false on every invocation due to
+`loyaltyPointsColIndex === -1`. No Sheet-based balances exist. All 2,572
+loyalty balances are in Postgres, source: port_recovery, all backed by
+`points_transactions` rows. No import needed.
+
+### LAPI-6 🟡 — Sheets loyalty write path fails silently
+`loyaltyApi.ts` and `googleLoyaltyIntegration.ts` return HTTP 404 / boolean
+false when loyalty columns are not found in the Sheet tab, with no error
+surfaced to the caller or logged to monitoring. This has masked the fact that
+invoice accrual has never written a single row anywhere. The route and
+integration are retired in Stage L4 (B2 dead-code deletion). Before L4: ensure
+no caller expects a success response from this path.
+
+### L1-4 🔴 — port_recovery duplicate transactions: 735 balance/ledger mismatches
+`points_transactions` contains duplicate rows from multiple runs of the
+port_recovery import script. Every individual transaction is 500 pts but the
+script ran 2–11 times per customer without idempotency, creating 2–11 rows per
+loyalty_points record while the `loyalty_points.points` balance was only
+updated on the first run.
+Pattern: 695 customers have 2 txns (balance=500, ledger_sum=1000); 39 have 11
+txns (balance=500, ledger_sum=5500); 1 has 4 txns (balance=1500,
+ledger_sum=2000). The `loyalty_points.points` column reflects the INTENDED
+balance (set intentionally at first import). The extra transaction rows are
+duplicates. Condition for L1 close (mismatched_rows=0) is NOT met.
+Resolution options: (A) deduplicate points_transactions to 1 row per customer
+per campaign run, restoring ledger integrity; (B) treat loyalty_points.points
+as authoritative and accept that points_transactions is not a strict ledger.
+Must resolve before L1 can close.
+
 ### LAPI-2 🔴 — `/award-loyalty-points` registered 2–3×
 Live backend decided by Express mount order. Resolve in L0; questionnaire AA-Q1.
 
