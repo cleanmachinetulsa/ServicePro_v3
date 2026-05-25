@@ -1,9 +1,9 @@
 import { db } from "./db";
 import { 
   customers, loyaltyPoints, pointsTransactions, rewardServices, redeemedRewards,
-  loyaltyTiers, achievements, customerAchievements
+  loyaltyTiers, achievements, customerAchievements, loyaltyTransactions
 } from "@shared/schema";
-import { eq, gt, and, sql } from "drizzle-orm";
+import { eq, gt, and, sql, like } from "drizzle-orm";
 import { sendRewardNotificationEmail } from "./emailService.rewards";
 import { addDays, addMonths } from "date-fns";
 import type { TenantDb } from './tenantDb';
@@ -798,24 +798,6 @@ export async function redeemPointsForReward(
 
   const totalPointsNeeded = rewardService.pointCost * quantity;
 
-  // All-or-nothing pre-check for multi-unit redemptions. Without this, looped
-  // per-unit reserves can partially commit (e.g. quantity=3, balance covers 2):
-  // unit 0 succeeds, unit 1 succeeds, unit 2 fails with INSUFFICIENT_POINTS,
-  // and the caller sees an error while two reservations have already debited
-  // points. Pre-check matches legacy behavior. Residual TOCTOU window vs. a
-  // concurrent debit between this read and the first reserve() is the same
-  // narrow race the legacy code had — acceptable for now; a future hardening
-  // could wrap the whole sequence in a tx with release on later-unit failure.
-  const [preCheckPoints] = await tenantDb
-    .select()
-    .from(loyaltyPoints)
-    .where(eq(loyaltyPoints.customerId, customerId));
-
-  const preBalance = preCheckPoints?.points ?? 0;
-  if (preBalance < totalPointsNeeded) {
-    throw new Error(`Not enough points. You need ${totalPointsNeeded} points but have ${preBalance}`);
-  }
-
   // Idempotency token — required for safe retry behavior.
   let idempotencyToken = options?.idempotencyToken;
   if (!idempotencyToken) {
@@ -826,6 +808,47 @@ export async function redeemPointsForReward(
       `Generated fallback ${idempotencyToken}. Retries of this exact HTTP request ` +
       `CANNOT be deduplicated — caller should pass a stable per-request token.`
     );
+  }
+
+  // Retry detection — if ANY ledger row exists with a per-unit key prefixed by
+  // this idempotencyToken, this is a retry of an already-processed request.
+  // Skip the pre-check (balance was already debited by the original call;
+  // checking it again would falsely throw INSUFFICIENT_POINTS). reserve() will
+  // short-circuit each unit via alreadyApplied and we surface the original
+  // reservations. Without this guard, idempotent retries break.
+  const tokenPrefix = `${idempotencyToken}:`;
+  const priorRows = await tenantDb
+    .select({ id: loyaltyTransactions.id })
+    .from(loyaltyTransactions)
+    .where(
+      and(
+        eq(loyaltyTransactions.tenantId, tenantId),
+        eq(loyaltyTransactions.customerId, customerId),
+        like(loyaltyTransactions.promoKey, `${tokenPrefix}%`),
+      ),
+    )
+    .limit(1);
+  const isRetry = priorRows.length > 0;
+
+  // All-or-nothing pre-check for FRESH multi-unit redemptions. Without this,
+  // looped per-unit reserves can partially commit (e.g. quantity=3, balance
+  // covers 2): unit 0 succeeds, unit 1 succeeds, unit 2 fails with
+  // INSUFFICIENT_POINTS, leaving two reservations already committed while the
+  // caller sees an error. Pre-check matches legacy behavior. Residual TOCTOU
+  // window vs. a concurrent debit between this read and the first reserve()
+  // is the same narrow race the legacy code had — acceptable; a future
+  // hardening could wrap the whole sequence in a tx with release on
+  // later-unit failure.
+  if (!isRetry) {
+    const [preCheckPoints] = await tenantDb
+      .select()
+      .from(loyaltyPoints)
+      .where(eq(loyaltyPoints.customerId, customerId));
+
+    const preBalance = preCheckPoints?.points ?? 0;
+    if (preBalance < totalPointsNeeded) {
+      throw new Error(`Not enough points. You need ${totalPointsNeeded} points but have ${preBalance}`);
+    }
   }
 
   // Per-unit reserve via the ledger. The ledger owns: atomic conditional
