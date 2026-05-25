@@ -7,6 +7,7 @@ import {
   customerAchievements,
   loyaltyTiers,
   businessSettings,
+  tenantLoyaltySettings,
   type InsertLoyaltyPoints,
   type InsertPointsTransaction,
   type InsertAchievement,
@@ -51,35 +52,47 @@ export async function checkLoyaltyGuardrails(args: {
   cartTotal: number;
   lineItems: LineItem[];
 }): Promise<LoyaltyGuardrailResult> {
+  // L1-2: Read tenant_loyalty_settings (per-tenant) instead of business_settings singleton.
+  // FAIL-CLOSED on missing row or DB error: this is a financial control, so the safer
+  // behavior is to deny questionable redemptions rather than silently allow them.
+  // (Previous behavior returned { ok: true } on both missing settings and errors — GAM-4.)
   try {
-    // Load business settings (global singleton table - applies to all tenants)
-    // All tenants use root settings until tenant-specific businessSettings are implemented
+    // Tenant-scoped read: explicit tenantId filter on the per-tenant settings table.
     const [settings] = await db
       .select()
-      .from(businessSettings)
+      .from(tenantLoyaltySettings)
+      .where(eq(tenantLoyaltySettings.tenantId, args.tenantId))
       .limit(1);
-    
+
     if (!settings) {
-      // No settings found, allow redemption by default
-      return { ok: true };
+      // No per-tenant settings row exists. Fail closed: deny redemption.
+      console.warn(
+        `[LOYALTY GUARDRAILS] No tenant_loyalty_settings row for tenant=${args.tenantId} — denying redemption (fail-closed).`
+      );
+      return {
+        ok: false,
+        code: 'MIN_CART_TOTAL',
+        message: 'Loyalty rewards are not configured for this business yet. Please contact us to redeem.',
+      };
     }
-    
-    // 1) Check minimum cart total
-    const minTotal = settings.loyaltyMinCartTotal;
-    if (typeof minTotal === 'number' && minTotal > 0) {
-      if (args.cartTotal < minTotal) {
-        return {
-          ok: false,
-          code: 'MIN_CART_TOTAL',
-          message:
-            settings.loyaltyGuardrailMessage ??
-            `Points can only be used on orders of at least $${minTotal}.`,
-        };
-      }
+
+    // 1) Check minimum cart total.
+    // min_cart_total_cents is integer cents (e.g. $75 = 7500). cartTotal arrives in dollars
+    // from callers (req.body.cartTotal / validateLoyaltyRedemption). Convert cents -> dollars
+    // so the comparison stays in dollars and the existing $75 threshold for root is preserved.
+    const minTotalDollars = settings.minCartTotalCents / 100;
+    if (minTotalDollars > 0 && args.cartTotal < minTotalDollars) {
+      return {
+        ok: false,
+        code: 'MIN_CART_TOTAL',
+        message:
+          settings.guardrailMessage ??
+          `Points can only be used on orders of at least $${minTotalDollars}.`,
+      };
     }
-    
+
     // 2) Check core service requirement
-    if (settings.loyaltyRequireCoreService) {
+    if (settings.requiresCoreService) {
       // Check if at least one line item is a core service (not an add-on)
       const hasCore = args.lineItems.some((item) => {
         // Check for core_service tag
@@ -96,23 +109,27 @@ export async function checkLoyaltyGuardrails(args: {
         }
         return false;
       });
-      
+
       if (!hasCore) {
         return {
           ok: false,
           code: 'CORE_SERVICE_REQUIRED',
           message:
-            settings.loyaltyGuardrailMessage ??
+            settings.guardrailMessage ??
             'Points can only be redeemed when booking a main/core service (not add-ons alone).',
         };
       }
     }
-    
+
     return { ok: true };
   } catch (error) {
     console.error('[LOYALTY GUARDRAILS] Error checking guardrails:', error);
-    // On error, allow redemption to avoid blocking legitimate transactions
-    return { ok: true };
+    // FAIL-CLOSED on error (GAM-4 fix): deny rather than silently allow on a financial control.
+    return {
+      ok: false,
+      code: 'MIN_CART_TOTAL',
+      message: 'Unable to verify loyalty eligibility right now. Please try again shortly.',
+    };
   }
 }
 
@@ -125,26 +142,33 @@ export async function checkLoyaltyGuardrails(args: {
  * 
  * @param tenantId - Tenant ID (currently unused - all tenants use global settings)
  */
-export async function getLoyaltyGuardrailSettings(_tenantId: string = 'root'): Promise<{
+export async function getLoyaltyGuardrailSettings(tenantId: string = 'root'): Promise<{
   minCartTotal: number | null;
   requireCoreService: boolean;
   guardrailMessage: string | null;
 }> {
   try {
-    // Load business settings (global singleton table - applies to all tenants)
-    // tenantId is accepted for future multi-tenant support but currently uses global settings
+    // L1-2: Read per-tenant loyalty settings instead of the global business_settings singleton.
+    // Tenant-scoped via explicit tenantId filter on tenant_loyalty_settings.
     const [settings] = await db
       .select({
-        minCartTotal: businessSettings.loyaltyMinCartTotal,
-        requireCoreService: businessSettings.loyaltyRequireCoreService,
-        guardrailMessage: businessSettings.loyaltyGuardrailMessage,
+        minCartTotalCents: tenantLoyaltySettings.minCartTotalCents,
+        requiresCoreService: tenantLoyaltySettings.requiresCoreService,
+        guardrailMessage: tenantLoyaltySettings.guardrailMessage,
       })
-      .from(businessSettings)
+      .from(tenantLoyaltySettings)
+      .where(eq(tenantLoyaltySettings.tenantId, tenantId))
       .limit(1);
-    
+
+    // Convert cents -> dollars for UI display (matches the unit the existing UI expects).
+    const minCartTotal =
+      typeof settings?.minCartTotalCents === 'number'
+        ? settings.minCartTotalCents / 100
+        : null;
+
     return {
-      minCartTotal: settings?.minCartTotal ?? null,
-      requireCoreService: settings?.requireCoreService ?? false,
+      minCartTotal,
+      requireCoreService: settings?.requiresCoreService ?? false,
       guardrailMessage: settings?.guardrailMessage ?? null,
     };
   } catch (error) {
