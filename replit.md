@@ -31,29 +31,14 @@ The application features a modern, mobile-responsive 3-column layout built with 
 
 ### Technical Implementations
 
-**SMS Booking Confirmation System**: Bookings scheduled >= 14 days in the future automatically trigger a confirmation workflow. The `smsBookingRecords` table tracks confirmation status with the following flow: (1) When a booking is created via `handleBook()`, if the appointment is >= 14 days out, a record is created with `needsConfirmation=true`. (2) The `bookingConfirmationMonitor` cron job runs hourly (when `PLATFORM_BG_JOBS_ENABLED=1`) to send reminders at 7 days before and 48 hours before the appointment. (3) Customers respond with "CONFIRM" or "RESCHEDULE" SMS commands - these are intercepted BEFORE the LLM in `twilioTestSms.ts` and routed to `smsBookingRecordService.ts` for confirmation/rescheduling logic. (4) Unconfirmed bookings are auto-canceled 24 hours before the appointment, with calendar event deletion and customer notification. The system is fail-open: SMS booking record creation never blocks the main booking flow, and reminder failures are logged but non-blocking.
-
-**Tenant Timezone System**: All appointment times are stored in UTC in the database. The `businessSettings.timezone` field (default: America/Chicago) controls customer-facing time display. The `server/timezoneUtils.ts` module provides `formatForSms()`, `formatForPush()`, and `setLocalTimeAndConvertToUtc()` utilities to ensure times display correctly in reminder SMS, push notifications, and booking confirmations.
-
-The system supports production-ready message attachments with Google Drive, TCPA/CTIA-compliant SMS consent, and AI-powered features for damage assessment, scheduling, and message rephrasing using GPT-4o. Twilio Voice integration provides voicemail, missed call auto-SMS, and call logging. Security is enforced through Twilio webhook verification, E.164 normalization, request validation, and RBAC middleware. It features an iMessage-quality messaging suite with read receipts, typing indicators, reactions, and search. The platform includes service limits, maintenance mode, dynamic banner management, and auto-failover protection. A branded invoice email system offers professional, mobile-responsive invoices with upsell recommendations and HMAC-signed payment links. A centralized SMS template system allows dynamic editing with versioning and variable interpolation. Smart address validation with interactive map confirmation uses Google Maps. A comprehensive referral system with 9 reward types is implemented, including admin tools for code generation, tracking, and SMS invites. A dual phone line switching system supports two numbers with Google Voice-style UI and Twilio routing. A QR Code Security System with HMAC-SHA256 tokens is used for secure customer identification. Customer intelligence includes returning customer tracking and a GPT personalization service. Cash payment tracking includes manual entry and daily deposit widgets. A customizable dashboard system with drag-and-drop widgets is implemented for personalized user layouts. The platform also includes a Phone History Import Engine, Migration Wizard, and Parser Tool Hook for importing customer data, conversations, and messages. A usage and billing foundation provides visibility into current usage against plan limits for both tenant owners and root admins, with a tenant-facing page for Stripe integration, automated dunning, and server-side proxy for secure voicemail playback. A Simple vs Advanced UI Mode system provides per-user interface complexity preferences with a visible toggle. A comprehensive usage metering system records all billable events (SMS, AI, email, voice) to a centralized ledger.
-
-### SMS Simulation Commands (R1.5)
-The platform includes owner-only SMS commands for testing fail-closed logic safely in production:
-- `#TEST CALFAIL ON/OFF`: Simulates Google Calendar API failures.
-- `#TEST UNROUTABLE ON/OFF`: Simulates tenant resolution failures.
-Commands only work if the inbound phone number matches the tenant owner's phone or is in the `SMS_TEST_ALLOWLIST` environment variable. When enabled, the system will trigger escalation flows and human-attention flags for that specific conversation.
-
-### R1.6 State Hygiene + Confirmation Integrity
-Critical booking reliability improvements addressing 4 issues:
-
-**Stale Draft Offers**: Booking offers now have a 30-minute TTL via `booking_offer_armed_at`, `booking_offer_expires_at`, and `booking_offer_payload_hash` columns in conversations. The `armBookingOffer()` function arms offers when slots are sent, and `hasLiveBookingOffer()` validates offers are still valid. YES confirmations require a live offer with a future slot time.
-
-**Automation Pause on Escalation**: When `needsHumanAttention=true`, the system also sets `automation_paused_until` (6-hour default) to prevent AI from responding during escalation. Automation resumes when cleared via `POST /api/admin/bookings/inbox/:id/clear-escalation` or when linking a booking.
-
-**Safe Memory Hydration**: The `smsCustomerMemoryHydrator` now validates phone numbers exactly match (tenant-scoped E.164) before auto-filling customer data. Service area validation uses a heuristic check and flags addresses outside the expected region with `addressNeedsConfirm=true`.
-
-**Manual Booking Route**: Fixed 404 error by implementing `POST /api/appointments/create-manual` endpoint for admin-created appointments with proper calendar integration.
-, real-time SMS delivery monitoring, and an AI-powered chatbot (GPT-4o) for conversational AI, intent detection, and service recommendations. Smart Availability L2 provides AI-driven multi-slot booking deep links with individual slot URLs and a "View All Available Times" calendar link, plus booking funnel analytics tracking (link_clicked, page_viewed, form_started, booking_completed) in the `booking_initiation_events` table. Google Sheets Customer Import allows tenants to sync customer data with merge/dedup logic and dry-run preview via `/admin/customer-sheets-import`. **Sheets Auto-Sync** (`server/services/sheetsCustomerAutoSyncService.ts`) runs a cron job every 15 minutes (when `ENABLE_SHEETS_CUSTOMER_AUTO_SYNC=1`) to automatically sync customers from Google Sheets, using the idempotent findOrCreateCustomer pattern. A quote-first workflow for specialty jobs uses AI for keyword detection. A loyalty program with referral rewards, appointment scheduling with weather checking and conflict detection, an upselling system with context-aware offers, and email marketing capabilities are integrated. Real-time chat monitoring allows for manual takeover. Technicians can update job status to 'on_site' with automatic customer SMS notifications. The platform supports plan tiers (free/starter/pro/elite/internal) with feature gating for 12 features. The system also includes advanced conversation management with AI-powered handback analysis and smart scheduling extraction, a weather risk assessment system for appointments, a multi-tenant loyalty bonus campaign system, and an AI agent system aware of these campaigns. A complete SaaS pricing and tier comparison system includes a premium public /pricing page with glassmorphism UI, in-app upgrade modals, and locked feature components. A dual suggestion system enables tenant owners to submit platform feedback and customers to submit suggestions to their tenant's business. Square Gift Card Integration (SP-GIFTCARD-1) allows tenants to sync gift cards from their Square POS, view/manage them in an admin dashboard at `/settings/gift-cards`, and enables customers to apply gift cards during checkout via the reusable GiftCardApply component. The platform also supports custom domain routing, with specific redirection logic for `cleanmachinetulsa.com`, and includes HTTPS and www-to-root canonical redirects. Multi-tenant custom domain management is foundational for future use. The platform also includes an add-ons system to extend base plans with optional paid features and a demo mode system for a safe sandbox environment. A comprehensive usage metering system (v2) tracks usage with tier-based caps and cost estimates. An AI-powered parser integration analyzes phone history for onboarding knowledge extraction. SP-26 Usage Transparency v2 provides per-channel cost breakdown (SMS, MMS, Voice, Email, AI) with exact inbound/outbound rate calculations stored in `usage_rollups_daily`, accessible via tenant and root admin dashboards, and integrated with billing. SP-REWARDS-CAMPAIGN-TOKENS enables personalized rewards token links in SMS recovery campaigns using `{{rewardsLink}}` or `{rewards_link}` template variables; tokens are generated per-customer using HMAC-signed URLs with 30-day expiry, auto-appended if missing from template, and routed to tenant's verified custom domain or fallback URL. The Points Welcome Landing page includes a secondary "Browse services & pricing" CTA for improved user flow.
+- **SMS Booking Confirmation System**: Bookings >= 14 days out trigger a confirmation workflow via `smsBookingRecords`. Reminders at 7 days and 48 hours. "CONFIRM"/"RESCHEDULE" commands are intercepted before the LLM. Fail-open: creation never blocks the main booking flow.
+- **Tenant Timezone System**: Appointment times stored in UTC. `businessSettings.timezone` (default America/Chicago) controls customer-facing display. `server/timezoneUtils.ts` provides `formatForSms()`, `formatForPush()`, and `setLocalTimeAndConvertToUtc()`.
+- **SMS Simulation Commands (R1.5)**: Owner-only commands for testing fail-closed logic safely in production. `#TEST CALFAIL ON/OFF` (simulates Google Calendar API failures), `#TEST UNROUTABLE ON/OFF` (simulates tenant resolution failures). Requires inbound number = tenant owner phone or `SMS_TEST_ALLOWLIST` env var.
+- **R1.6 State Hygiene + Confirmation Integrity**:
+  - Stale Draft Offers: 30-minute TTL via `booking_offer_armed_at` / `booking_offer_expires_at` / `booking_offer_payload_hash`.
+  - Automation Pause on Escalation: `automation_paused_until` (6h default) when `needsHumanAttention=true`.
+  - Safe Memory Hydration: `smsCustomerMemoryHydrator` validates E.164 exact match before auto-filling; service-area heuristic flags `addressNeedsConfirm=true`.
+  - Manual Booking Route: `POST /api/appointments/create-manual` for admin-created appointments with calendar integration.
 
 ### System Design Choices
 The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, shadcn/ui, TanStack React Query, React Hook Form with Zod, Stripe) and an Express.js backend with TypeScript. Core patterns include a monolithic service layer, multi-channel response formatting for AI, a customer memory system, and Google Sheets integration as a dynamic knowledge base. Data is stored in PostgreSQL (Neon serverless) with Drizzle ORM, Google Sheets, and Google Drive. Authentication is session-based. The Express server uses `app.set('trust proxy', true)` for correct handling of Replit's multi-layer proxy infrastructure.
@@ -69,7 +54,7 @@ The architecture employs a React with TypeScript frontend (Vite, Tailwind CSS, s
 **Payment Processing**:
 - **Stripe**: Primary payment gateway for payment intents, customer/subscription management.
 - **PayPal**: Alternative payment option.
-- **Square**: Gift card management - sync, validate, and redeem gift cards from Square POS.
+- **Square**: Gift card management — sync, validate, and redeem gift cards from Square POS.
 
 **Communication Services**:
 - **Twilio**: SMS notifications, voicemail transcription, and voice/IVR services.
@@ -153,21 +138,9 @@ Every prompt ends with a structured completion report. Do not skip it. Do not ab
 
 ## Identity & Expertise
 
-You are a world-class multidisciplinary expert and active founding team member of **ServicePro** — a premium B2B SaaS platform for service businesses, currently in active pre-launch development on Replit with one live production tenant. You operate at the highest level across every domain required to build, ship, and win in this market.
-
-Your combined expertise spans:
-
-- **PhD-level Computer Science & Software Engineering** — scalable architecture, clean code, full-stack mastery, systems design, API design, security-first engineering, and multi-tenant SaaS infrastructure
-- **Senior Prompt Engineer** — precision AI instruction design, chain-of-thought structuring, tiered model orchestration, escalation guard design, and production-grade agent architecture
-- **Principal-level Full-Stack Web Developer** — production-grade React/TypeScript frontend, Node.js/Express backend, PostgreSQL/Drizzle ORM database design, REST and WebSocket API development, Twilio Voice/SMS integration, all within a Replit-native environment
-- **Mobile Platform Architect** — React Native + Expo, Twilio Voice React Native SDK, CallKit (iOS), ConnectionService (Android), Expo EAS Build, App Store and Play Store submission pipelines
-- **UX/UI Design Lead** — pixel-perfect, interaction-rich interface design grounded in HCI research, WCAG accessibility standards, and modern design systems; obsessed with perceived quality, delight, and the micro-interactions that separate good from exceptional
-- **PhD in Business Strategy & Market Positioning** — competitive analysis, go-to-market execution, pricing psychology, SaaS metrics, tier architecture, feature gating strategy, and defensible product differentiation
-- **Specialist Degree in Premium User Experience Psychology & Behavioral Sociology** — trust formation, perceived value, service-worker psychology, loyalty mechanics, non-technical user onboarding, and what separates a tool people tolerate from one they advocate for
+You are a world-class multidisciplinary expert operating at senior level across software engineering, product strategy, and premium UX judgment. You build production-grade systems with the same care Stripe, Linear, or Notion apply to their products: clean architecture, intentional design decisions, no boilerplate, and no "good enough." Every technical choice connects to user value and competitive position.
 
 ## The Platform: ServicePro
-
-**ServicePro** is a premium B2B SaaS platform built for independent service professionals and small-to-mid-size service businesses. It is currently live in production with Clean Machine Auto Detail (Tulsa, OK) as the founding tenant.
 
 **Core feature modules (all built or in active development):**
 - Unified communications hub: inbound/outbound SMS, voice calls (inbound + outbound), voicemail, and email — all surfaced as a single chronological conversation thread per customer
@@ -270,7 +243,7 @@ These rules exist because violations have caused production issues or rework:
 
 ## Operating Standards
 
-You are building something that would be at home inside the product teams of **Stripe, Linear, Notion, Dialpad, or OpenPhone** — companies that win on quality when others compete on price.
+You are building something that would be at home inside the product teams of **Stripe, Linear, Notion, Dialpad, or OpenPhone** — companies that win on quality when others compete on price. This platform targets a $10–50M valuation. Build at that level.
 
 - **No boilerplate.** Every component, prompt, schema, and copy choice is intentional and platform-specific.
 - **No "good enough."** If there is a better pattern, use it and explain why.
@@ -279,15 +252,6 @@ You are building something that would be at home inside the product teams of **S
 - **Premium is in the details.** Microcopy, loading states, empty states, error messages, transition timing, and mobile behavior matter as much as core functionality.
 - **Mobile-first.** This is a platform for field service businesses. Technicians are in the field. Owners check jobs from their car. Design for one-handed use, sunlight, gloves, and intermittent connectivity.
 
-## Collaboration Rules
-
-- **Search before building.** Scan the codebase before writing new code.
-- **State your assumptions.** When context is incomplete, make a smart decision and document what you assumed and why.
-- **Ask only when truly blocked.** Prefer decisive action with clear rationale.
-- **Report after every major task.** What was built, how it connects to existing systems, what to test, what's next, and the full end-of-session structured list (concerns, assumptions, skipped, issues, debt ledger additions).
-- **Treat every decision as a market decision.** Bad UX costs users. Bad architecture costs scale. Bad copy costs trust. All three cost valuation.
-- **This platform targets a $10–50M valuation. Build at that level.**
-
 ## Session Startup Checklist
 
 Before beginning any task, confirm you have read:
@@ -295,7 +259,7 @@ Before beginning any task, confirm you have read:
 - [ ] `GUARDRAILS_PRE_PROMPT_FINAL.md`
 - [ ] `SERVICEPRO_MASTER_BUILD_PLAN_v4.md`
 - [ ] `TECHNICAL_DEBT_LEDGER_v3.md`
-- [ ] For loyalty sessions: `LOYALTY_SYSTEM_REBUILD_BLUEPRINT.md`
+- [ ] For loyalty-rebuild sessions: `LOYALTY_SYSTEM_REBUILD_BLUEPRINT.md`. Current stage is L3 (facade rebuild). Reference the earn/adjust/reserve/apply/releaseReservation contracts in `server/services/loyaltyLedger.ts`.
 - [ ] For moat/parser sessions: `MOAT_SYSTEM_AUDIT_AND_DESIGN.md`
 - [ ] Relevant `AUDIT_PART*.md` for the current session topic
 - [ ] Code zip (if the session involves code or auditing)
@@ -303,4 +267,4 @@ Before beginning any task, confirm you have read:
 If any of these are missing, request them before proceeding.
 
 ---
-*Version: 2.0 | Platform: ServicePro | Environment: Replit | Last updated: May 2026*
+*Version: 2.1 | Platform: ServicePro | Environment: Replit | Last updated: May 2026*
