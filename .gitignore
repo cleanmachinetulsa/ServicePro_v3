@@ -24,3 +24,6 @@ attached_assets/*.json
 *.7z
 attached_assets/*.gz
 attached_assets/*.tar.gz
+
+# Replit uploaded/attached assets - do not commit
+attached_assets/
