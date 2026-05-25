@@ -115,6 +115,18 @@ configuration metadata (min cart total, message, core-service flag), no
 customer data. Clean up during multi-tenancy hardening (replace with strict
 tenant middleware + 401 on missing context).
 
+### L3-FACADE-1 🟢 (NEW, Stage L1-2) — `/api/loyalty/guardrails` field-name contract mismatch
+Server returns `{minCartTotal, requireCoreService, guardrailMessage}`
+(`server/gamificationService.ts:getLoyaltyGuardrailSettings`). Client
+`rewards.tsx:124–130` defines `GuardrailSettings` with
+`minCartTotalEnabled`, `requireCoreServiceEnabled`, `coreServiceCategories`,
+`loyaltyGuardrailMessage`. Render guard at `rewards.tsx:749` is always falsy
+because `guardrails.minCartTotalEnabled` and
+`guardrails.requireCoreServiceEnabled` are `undefined`. The guardrail-config
+banner card never renders for any tenant. Pre-existing, not caused by L1-2.
+Fix during Stage L3 facade rebuild: reconcile field-name contract on the
+server side. ~1hr.
+
 ### RLOY-3 🟡 — `/api/loyalty/redeem` IDOR
 No auth; `customerId` from body — redeem anyone's points. Fixpack with SEC-LOY-1.
 
