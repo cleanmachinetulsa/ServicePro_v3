@@ -544,7 +544,7 @@ export async function getCustomerAchievements(tenantDb: TenantDb, customerId: nu
 /**
  * Check if a customer has earned any new achievements
  */
-async function checkForNewAchievements(tenantDb: TenantDb, customerId: number, currentPoints: number) {
+export async function checkForNewAchievements(tenantDb: TenantDb, customerId: number, currentPoints: number) {
   try {
     // Get all achievements
     const allAchievements = await tenantDb.select().from(achievements);
