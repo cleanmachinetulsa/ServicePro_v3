@@ -289,8 +289,11 @@ async function handleCheckoutSessionCompleted(req: Request, session: Stripe.Chec
 
     console.log(`[STRIPE WEBHOOK] Deposit paid for appointment ${appointmentId}`);
   } else if (type === 'balance') {
-    // Mark invoice as paid
-    await markInvoicePaid(req, parseInt(appointmentId), session.payment_intent as string);
+    // Mark invoice as paid. Pass req.tenantDb! (not req) — markInvoicePaid expects
+    // TenantDb as its first arg. req.tenantDb is always populated here because
+    // tenantMiddleware runs before this router; for webhook requests without a
+    // session it falls back to the root tenant.
+    await markInvoicePaid(req.tenantDb!, parseInt(appointmentId), session.payment_intent as string);
 
     console.log(`[STRIPE WEBHOOK] Balance paid for appointment ${appointmentId}`);
   }
