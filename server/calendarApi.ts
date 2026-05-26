@@ -13,6 +13,75 @@ import {
 import { trackReferralSignup } from "./referralService";
 import { recordAppointmentCreated } from "./customerBookingStats";
 import { invalidateAppointmentCaches } from "./cacheService";
+import { getServiceData, getAddonServices } from "./pricing";
+
+/**
+ * L6-A: Resolve booking pricing for server-side loyalty guardrail validation.
+ *
+ * Mirrors the client-side logic in MultiVehicleAppointmentScheduler.tsx (~line 510):
+ * parse the first numeric run from priceRange (e.g. "$225-300" -> 225).
+ * Returns resolved=false if the core service name cannot be found in pricing,
+ * so the caller can fail loud (skip reservation) instead of silently passing 0.
+ */
+async function resolveBookingCartContext(
+  serviceName: string,
+  addOnNames: string[],
+): Promise<{
+  resolved: boolean;
+  cartTotal: number;
+  lineItems: Array<{ id: string; name: string; price: number; isAddOn: boolean }>;
+  missing: string[];
+}> {
+  const parsePrice = (priceRange: string | undefined | null): number => {
+    if (!priceRange) return 0;
+    const m = String(priceRange).match(/\$?([\d,]+)/);
+    if (!m) return 0;
+    const n = parseInt(m[1].replace(/,/g, ''), 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const [services, addons] = await Promise.all([getServiceData(), getAddonServices()]);
+  const svc = services.find(s => s.name === serviceName) || null;
+  const missing: string[] = [];
+  const lineItems: Array<{ id: string; name: string; price: number; isAddOn: boolean }> = [];
+
+  if (!svc) {
+    missing.push(`service:${serviceName}`);
+    return { resolved: false, cartTotal: 0, lineItems: [], missing };
+  }
+
+  const svcPrice = parsePrice(svc.priceRange);
+  if (svcPrice <= 0) {
+    // Core service was found but its priceRange is empty/unparseable. Treat as a
+    // resolution failure so we fail LOUD instead of passing $0 to the guardrail.
+    missing.push(`service-price:${serviceName}:"${svc.priceRange ?? ''}"`);
+    return { resolved: false, cartTotal: 0, lineItems: [], missing };
+  }
+  lineItems.push({
+    id: svc.name.toLowerCase().replace(/\s+/g, '-'),
+    name: svc.name,
+    price: svcPrice,
+    isAddOn: false,
+  });
+
+  for (const addOnName of addOnNames || []) {
+    const addon = addons.find(a => a.name === addOnName);
+    if (!addon) {
+      missing.push(`addon:${addOnName}`);
+      // Missing add-on is non-fatal — exclude from cart but don't fail resolution.
+      continue;
+    }
+    lineItems.push({
+      id: addOnName.toLowerCase().replace(/\s+/g, '-'),
+      name: addOnName,
+      price: parsePrice(addon.priceRange),
+      isAddOn: true,
+    });
+  }
+
+  const cartTotal = lineItems.reduce((sum, item) => sum + item.price, 0);
+  return { resolved: true, cartTotal, lineItems, missing };
+}
 
 // COMMIT
 // Configuration for booking appointments
@@ -720,19 +789,38 @@ export async function handleBook(req: any, res: any) {
                 const tenantDbForLoyalty = req.tenantDb ?? wrapTenantDb(dbInstance, 'root');
                 const tenantIdForLoyalty = (tenantDbForLoyalty as any)?.tenant?.id ?? 'root';
 
-                const validation = await validateLoyaltyRedemption({
+                const cartCtx = await resolveBookingCartContext(service, addOns);
+                if (!cartCtx.resolved) {
+                  // Fail loud, not silent: log and skip reservation — but DO NOT
+                  // `return` from handleBook (that would suppress the booking success response).
+                  console.warn(
+                    `[LOYALTY L6-A] Pricing lookup miss — skipping redemption (booking still succeeds). ` +
+                    `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve} ` +
+                    `service="${service}" missing=${JSON.stringify(cartCtx.missing)}`
+                  );
+                } else {
+                  if (cartCtx.missing.length > 0) {
+                    console.warn(
+                      `[LOYALTY L6-A] Pricing lookup partial — proceeding with resolved items. ` +
+                      `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve} ` +
+                      `missing=${JSON.stringify(cartCtx.missing)}`
+                    );
+                  }
+
+                  const validation = await validateLoyaltyRedemption({
                   tenantDb: tenantDbForLoyalty,
                   tenantId: tenantIdForLoyalty,
                   customerId: custIdForReserve,
                   rewardId: rewardIdNum,
-                  cartTotal: 0,
-                  selectedServices: [],
+                  cartTotal: cartCtx.cartTotal,
+                  selectedServices: cartCtx.lineItems,
                 });
 
                 if (!validation.canRedeem) {
                   console.warn(
                     `[LOYALTY L6-A] Booking-bound redemption skipped (validation failed) ` +
-                    `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${validation.reason}`
+                    `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve} ` +
+                    `cartTotal=$${cartCtx.cartTotal}: ${validation.reason}`
                   );
                 } else {
                   const reserveResult = await ledgerReserve(tenantDbForLoyalty, {
@@ -751,6 +839,7 @@ export async function handleBook(req: any, res: any) {
                     console.warn(
                       `[LOYALTY L6-A] reserve() failed for customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${reserveResult.error}`
                     );
+                  }
                   }
                 }
               }
@@ -884,19 +973,38 @@ export async function handleBook(req: any, res: any) {
             const tenantDbForLoyalty = req.tenantDb ?? wrapTenantDb(dbInst, 'root');
             const tenantIdForLoyalty = (tenantDbForLoyalty as any)?.tenant?.id ?? 'root';
 
-            const validation = await validateLoyaltyRedemption({
+            const cartCtx = await resolveBookingCartContext(service, addOns);
+            if (!cartCtx.resolved) {
+              // Fail loud, not silent: log and skip reservation — but DO NOT
+              // `return` from handleBook (that would suppress the booking success response).
+              console.warn(
+                `[LOYALTY L6-A FALLBACK] Pricing lookup miss — skipping redemption (booking still succeeds). ` +
+                `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve} ` +
+                `service="${service}" missing=${JSON.stringify(cartCtx.missing)}`
+              );
+            } else {
+              if (cartCtx.missing.length > 0) {
+                console.warn(
+                  `[LOYALTY L6-A FALLBACK] Pricing lookup partial — proceeding with resolved items. ` +
+                  `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve} ` +
+                  `missing=${JSON.stringify(cartCtx.missing)}`
+                );
+              }
+
+              const validation = await validateLoyaltyRedemption({
               tenantDb: tenantDbForLoyalty,
               tenantId: tenantIdForLoyalty,
               customerId: custIdForReserve,
               rewardId: rewardIdNum,
-              cartTotal: 0,
-              selectedServices: [],
+              cartTotal: cartCtx.cartTotal,
+              selectedServices: cartCtx.lineItems,
             });
 
             if (!validation.canRedeem) {
               console.warn(
                 `[LOYALTY L6-A FALLBACK] Booking-bound redemption skipped (validation failed) ` +
-                `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${validation.reason}`
+                `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve} ` +
+                `cartTotal=$${cartCtx.cartTotal}: ${validation.reason}`
               );
             } else {
               const reserveResult = await ledgerReserve(tenantDbForLoyalty, {
@@ -915,6 +1023,7 @@ export async function handleBook(req: any, res: any) {
                 console.warn(
                   `[LOYALTY L6-A FALLBACK] reserve() failed for customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${reserveResult.error}`
                 );
+              }
               }
             }
           }
