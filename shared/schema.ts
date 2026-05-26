@@ -1373,6 +1373,9 @@ export const redeemedRewards = pgTable("redeemed_rewards", {
   status: varchar("status", { length: 20 }).default("pending"), // 'pending', 'scheduled', 'completed', 'expired'
   appointmentId: integer("appointment_id").references(() => appointments.id),
   expiryDate: timestamp("expiry_date"), // When the redeemed loyalty offer expires if not used
+  // DEF-8 (L4 Step 2): structured link to the invoice that consumed this reservation.
+  // Nullable — pending reservations have no invoice yet.
+  invoiceId: integer("invoice_id").references(() => invoices.id),
   // Note: Table name remains redeemed_rewards for database compatibility, but UI shows "Redeemed Loyalty Offers"
 });
 
