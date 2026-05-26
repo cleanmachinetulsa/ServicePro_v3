@@ -14,7 +14,7 @@ import Stripe from 'stripe';
 import { appointments, paymentLinks, auditLog, invoices, tenants, stripeWebhookEvents } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { markDepositPaid } from './depositManager';
-import { finalizeInvoicePaid } from './paymentHandler';
+import { finalizeInvoicePaid, clawbackInvoiceLoyalty } from './paymentHandler';
 import { getTierForPriceId } from './services/stripeService';
 import { createTenantDb, type TenantDb } from './tenantDb';
 import { db } from './db';
@@ -386,26 +386,139 @@ async function handlePaymentIntentFailed(req: Request, paymentIntent: Stripe.Pay
 async function handleChargeRefunded(req: Request, charge: Stripe.Charge) {
   console.log('[STRIPE WEBHOOK] Charge refunded:', charge.id);
 
-  const appointmentId = charge.metadata?.appointmentId;
+  const tenantDb = req.tenantDb!;
+  const appointmentIdRaw = charge.metadata?.appointmentId;
+  const invoiceIdRaw = charge.metadata?.invoiceId;
+  const paymentIntentId = typeof charge.payment_intent === 'string'
+    ? charge.payment_intent
+    : charge.payment_intent?.id ?? null;
 
-  if (!appointmentId) {
-    console.warn('[STRIPE WEBHOOK] No appointmentId in metadata');
-    return;
+  // Resolve the invoice via a fall-through chain ordered from most-precise to
+  // least-precise to avoid mis-resolving when multiple invoices share an
+  // appointment (no uniqueness constraint on invoices.appointmentId):
+  //   1. invoiceId in metadata — exact match (createStripePaymentIntent flow,
+  //      manual-invoice path that does NOT include appointmentId)
+  //   2. payment_intent — exact match against invoices.stripePaymentIntentId
+  //      (written by both markInvoicePaid and createStripePaymentIntent)
+  //   3. appointmentId in metadata — last resort (depositManager / payerApproval
+  //      / checkout-session paths). Ambiguous if multiple invoices exist per
+  //      appointment; we log a warning when that happens.
+  let invoice: { id: number; customerId: number | null; appointmentId: number | null } | null = null;
+  let resolutionPath: 'invoiceId' | 'paymentIntentId' | 'appointmentId' | null = null;
+
+  try {
+    if (invoiceIdRaw) {
+      const parsedInvoiceId = parseInt(invoiceIdRaw);
+      if (!Number.isNaN(parsedInvoiceId)) {
+        const [byId] = await tenantDb
+          .select({ id: invoices.id, customerId: invoices.customerId, appointmentId: invoices.appointmentId })
+          .from(invoices)
+          .where(tenantDb.withTenantFilter(invoices, eq(invoices.id, parsedInvoiceId)))
+          .limit(1);
+        if (byId) { invoice = byId; resolutionPath = 'invoiceId'; }
+      }
+    }
+
+    if (!invoice && paymentIntentId) {
+      const [byPi] = await tenantDb
+        .select({ id: invoices.id, customerId: invoices.customerId, appointmentId: invoices.appointmentId })
+        .from(invoices)
+        .where(tenantDb.withTenantFilter(invoices, eq(invoices.stripePaymentIntentId, paymentIntentId)))
+        .limit(1);
+      if (byPi) { invoice = byPi; resolutionPath = 'paymentIntentId'; }
+    }
+
+    if (!invoice && appointmentIdRaw) {
+      const parsedAppointmentId = parseInt(appointmentIdRaw);
+      if (!Number.isNaN(parsedAppointmentId)) {
+        const apptMatches = await tenantDb
+          .select({ id: invoices.id, customerId: invoices.customerId, appointmentId: invoices.appointmentId })
+          .from(invoices)
+          .where(tenantDb.withTenantFilter(invoices, eq(invoices.appointmentId, parsedAppointmentId)))
+          .limit(2);
+        if (apptMatches.length > 1) {
+          // Ambiguous — multiple invoices on this appointment and no precise key
+          // resolved it. Refuse to guess; clawback skipped.
+          console.warn(
+            `[STRIPE WEBHOOK] Refund ${charge.id} matches ${apptMatches.length}+ invoices on appointment ${parsedAppointmentId} ` +
+              `with no invoiceId/paymentIntentId to disambiguate; skipping loyalty clawback to avoid mis-clawback.`,
+          );
+        } else if (apptMatches[0]) {
+          invoice = apptMatches[0];
+          resolutionPath = 'appointmentId';
+        }
+      }
+    }
+  } catch (lookupErr) {
+    console.error('[STRIPE WEBHOOK] Refund invoice lookup failed (non-fatal):', lookupErr);
   }
 
-  // Log refund
-  await req.tenantDb!.insert(auditLog).values({
-    actionType: 'payment_refunded',
-    entityType: 'appointment',
-    entityId: parseInt(appointmentId),
-    details: {
-      chargeId: charge.id,
-      amountRefunded: charge.amount_refunded / 100, // Convert from cents
-      refundReason: charge.refund?.reason,
-    },
-  });
+  if (invoice) {
+    console.log(
+      `[STRIPE WEBHOOK] Refund ${charge.id} resolved to invoice ${invoice.id} via ${resolutionPath}`,
+    );
+  }
 
-  console.log(`[STRIPE WEBHOOK] Refund processed for appointment ${appointmentId}`);
+  // Audit log — preserve the prior behavior shape, but include richer fields.
+  // If we resolved an invoice, key the audit row to 'invoice'; otherwise fall
+  // back to 'appointment' (legacy shape) or 'charge' when nothing resolves.
+  try {
+    if (invoice) {
+      await tenantDb.insert(auditLog).values({
+        actionType: 'payment_refunded',
+        entityType: 'invoice',
+        entityId: invoice.id,
+        details: {
+          chargeId: charge.id,
+          paymentIntentId,
+          appointmentId: invoice.appointmentId ?? (appointmentIdRaw ? parseInt(appointmentIdRaw) : null),
+          amountRefunded: charge.amount_refunded / 100, // dollars
+          refundReason: charge.refund?.reason,
+        },
+      });
+    } else if (appointmentIdRaw) {
+      // Legacy behavior — invoice lookup failed but we have an appointmentId.
+      await tenantDb.insert(auditLog).values({
+        actionType: 'payment_refunded',
+        entityType: 'appointment',
+        entityId: parseInt(appointmentIdRaw),
+        details: {
+          chargeId: charge.id,
+          paymentIntentId,
+          amountRefunded: charge.amount_refunded / 100,
+          refundReason: charge.refund?.reason,
+        },
+      });
+    } else {
+      console.warn(
+        `[STRIPE WEBHOOK] Refund ${charge.id} could not be resolved to an invoice or appointment ` +
+          `(no invoiceId/appointmentId in metadata, no matching stripePaymentIntentId). ` +
+          `Logging as orphan audit row; loyalty clawback skipped.`,
+      );
+    }
+  } catch (auditErr) {
+    console.error('[STRIPE WEBHOOK] Refund audit-log write failed (non-fatal):', auditErr);
+  }
+
+  // L5-A: loyalty clawback. clawbackInvoiceLoyalty is never-throws (same
+  // isolation contract as finalizeInvoicePaid) — a loyalty failure cannot
+  // break refund webhook processing.
+  if (invoice && invoice.customerId) {
+    await clawbackInvoiceLoyalty(tenantDb, {
+      invoiceId: invoice.id,
+      customerId: invoice.customerId,
+    });
+  } else if (!invoice) {
+    // Cannot resolve → no-op (do NOT guess). Already warned above.
+  } else {
+    console.log(
+      `[STRIPE WEBHOOK] Refund for invoice ${invoice.id} has no customerId; skipping loyalty clawback`,
+    );
+  }
+
+  console.log(
+    `[STRIPE WEBHOOK] Refund processed: charge=${charge.id} invoice=${invoice?.id ?? 'unresolved'} appointment=${appointmentIdRaw ?? 'n/a'}`,
+  );
 }
 
 /**

@@ -1,12 +1,12 @@
 import Stripe from 'stripe';
 import { Request, Response } from 'express';
 import type { TenantDb } from './tenantDb';
-import { invoices, redeemedRewards } from '@shared/schema';
+import { invoices, redeemedRewards, loyaltyTransactions } from '@shared/schema';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { sendInvoiceNotification, sendReviewRequest } from './invoiceService';
 import { checkAndRewardReferral } from './referralService';
 import { addLoyaltyPointsFromInvoice } from './loyaltyService';
-import { applyReservation } from './services/loyaltyLedger';
+import { applyReservation, adjust as ledgerAdjust } from './services/loyaltyLedger';
 
 const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
 
@@ -154,6 +154,116 @@ export async function finalizeInvoicePaid(
     console.error(
       `[PAYMENT] finalizeInvoicePaid: redemption failure for invoice ${invoice.id} (non-fatal):`,
       redemptionError,
+    );
+  }
+}
+
+/**
+ * L5-A — Refund clawback chokepoint.
+ *
+ * Reverses loyalty points originally awarded by an invoice when that invoice is
+ * refunded (full or partial — see partial-refund note below). Mirrors the
+ * isolation contract of finalizeInvoicePaid: NEVER throws. A clawback failure
+ * must not break the Stripe refund webhook.
+ *
+ * Lookup: the original earn row in loyalty_transactions is keyed by
+ *   promoKey = `invoice:${invoiceId}:${customerId}`
+ *   source  = 'invoice'
+ *   status  = 'fulfilled'
+ * (set by ledger.earn() via loyaltyService.addLoyaltyPointsFromInvoice).
+ *
+ * No earn row → clean no-op (customer wasn't enrolled, not eligible, or the
+ * earn never happened). Not an error.
+ *
+ * Reversal: delegate to ledger.adjust() with a negative delta equal to the
+ * original pointsAwarded (fall back to deltaPoints if pointsAwarded is null).
+ * adjust() already clamps so the balance never goes below 0 — if the customer
+ * already spent some/all of the awarded points, the clawback simply removes
+ * whatever they still have. We rely on that clamp; no separate logic here.
+ *
+ * Idempotency: key is `clawback:invoice:${invoiceId}:${customerId}`. Stripe
+ * can replay charge.refunded; adjust()'s promoKey dedupe makes that safe.
+ *
+ * Partial refunds: this function does a FULL clawback regardless of refund
+ * amount — a refunded service didn't earn its points. Proportional clawback
+ * (e.g. refund 30% → claw back 30% of points) is flagged as a follow-up but
+ * intentionally not built here.
+ */
+export async function clawbackInvoiceLoyalty(
+  tenantDb: TenantDb,
+  args: { invoiceId: number; customerId: number },
+): Promise<void> {
+  const { invoiceId, customerId } = args;
+  try {
+    const tenantId = tenantDb.tenant.id;
+    const promoKey = `invoice:${invoiceId}:${customerId}`;
+
+    // Locate the original earn row (indexed on tenantId+customerId+promoKey).
+    const [earnRow] = await tenantDb
+      .select({
+        id: loyaltyTransactions.id,
+        deltaPoints: loyaltyTransactions.deltaPoints,
+        pointsAwarded: loyaltyTransactions.pointsAwarded,
+      })
+      .from(loyaltyTransactions)
+      .where(
+        and(
+          eq(loyaltyTransactions.tenantId, tenantId),
+          eq(loyaltyTransactions.customerId, customerId),
+          eq(loyaltyTransactions.promoKey, promoKey),
+          eq(loyaltyTransactions.source, 'invoice'),
+          eq(loyaltyTransactions.status, 'fulfilled'),
+        ),
+      )
+      .limit(1);
+
+    if (!earnRow) {
+      console.log(
+        `[PAYMENT] clawbackInvoiceLoyalty: no earn row for invoice ${invoiceId} customer ${customerId} (no-op — customer may not have earned points on this invoice)`,
+      );
+      return;
+    }
+
+    const originalAwarded = earnRow.pointsAwarded ?? earnRow.deltaPoints;
+    if (!originalAwarded || originalAwarded <= 0) {
+      console.warn(
+        `[PAYMENT] clawbackInvoiceLoyalty: earn row ${earnRow.id} for invoice ${invoiceId} has non-positive pointsAwarded (${originalAwarded}); skipping clawback`,
+      );
+      return;
+    }
+
+    const result = await ledgerAdjust(tenantDb, {
+      tenantId,
+      customerId,
+      delta: -originalAwarded,
+      reason: `Clawback: invoice #${invoiceId} refunded`,
+      actorId: null,
+      idempotencyKey: `clawback:invoice:${invoiceId}:${customerId}`,
+      metadata: { invoiceId, originalEarnTransactionId: earnRow.id, originalAwarded },
+    });
+
+    if (!result.success) {
+      console.warn(
+        `[PAYMENT] clawbackInvoiceLoyalty: ledger.adjust failed for invoice ${invoiceId} customer ${customerId} (non-fatal)`,
+      );
+      return;
+    }
+
+    if (result.alreadyApplied) {
+      console.log(
+        `[PAYMENT] clawbackInvoiceLoyalty: invoice ${invoiceId} customer ${customerId} already clawed back (idempotent replay) — new balance ${result.newBalance}`,
+      );
+    } else {
+      console.log(
+        `[PAYMENT] clawbackInvoiceLoyalty: clawed back ${originalAwarded} points for invoice ${invoiceId} customer ${customerId}` +
+          (result.clamped ? ' (CLAMPED — customer balance was insufficient, clawback reduced to land balance at 0)' : '') +
+          ` — new balance ${result.newBalance}`,
+      );
+    }
+  } catch (clawbackError) {
+    console.error(
+      `[PAYMENT] clawbackInvoiceLoyalty: failure for invoice ${invoiceId} customer ${customerId} (non-fatal):`,
+      clawbackError,
     );
   }
 }
