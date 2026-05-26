@@ -18,6 +18,56 @@ const stripe = STRIPE_ENABLED ? new Stripe(process.env.STRIPE_SECRET_KEY!, {
 }) : null;
 
 /**
+ * L4 Step 3A-continued — shared invoice-finalization chokepoint.
+ *
+ * All four invoice-finalization paths (markInvoiceAsPaid, handleStripeWebhook,
+ * routes.stripeWebhooks.markInvoicePaid, tech job-completion) call this AFTER
+ * the invoice row has been UPDATE'd to paid.
+ *
+ * Responsibilities (today): award loyalty points on the pre-tax subtotal
+ * (falling back to amount for legacy invoices). 3B will add redemption
+ * applyReservation here too.
+ *
+ * Contract: NEVER throws. Loyalty must NOT roll back or fail payment
+ * finalization. The ledger dedupes on idempotency key
+ * `invoice:${invoiceId}:${customerId}` so concurrent paths can't double-award.
+ *
+ * IMPORTANT: addLoyaltyPointsFromInvoice -> ledger.earn() opens its OWN
+ * transaction via tenantDb.transaction(). Callers that are themselves inside a
+ * db.transaction() MUST call this AFTER their transaction commits — otherwise
+ * the inner transaction acquires a separate pool connection and can deadlock
+ * against row locks held by the outer transaction.
+ */
+export async function finalizeInvoicePaid(
+  tenantDb: TenantDb,
+  invoice: {
+    id: number;
+    customerId: number | null;
+    subtotal?: string | number | null;
+    amount?: string | number | null;
+  },
+): Promise<void> {
+  try {
+    if (!invoice.customerId) return;
+    const earnBasis = Number(invoice.subtotal ?? invoice.amount ?? 0);
+    await addLoyaltyPointsFromInvoice(
+      tenantDb,
+      invoice.customerId,
+      invoice.id,
+      earnBasis,
+    );
+    console.log(
+      `[PAYMENT] finalizeInvoicePaid: loyalty award attempted for invoice ${invoice.id} (basis: $${earnBasis})`,
+    );
+  } catch (loyaltyError) {
+    console.error(
+      `[PAYMENT] finalizeInvoicePaid: loyalty failure for invoice ${invoice.id} (non-fatal):`,
+      loyaltyError,
+    );
+  }
+}
+
+/**
  * Create a Stripe payment intent for an invoice
  */
 export async function createStripePaymentIntent(req: Request, res: Response) {
@@ -140,6 +190,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
             console.error('Error processing referral reward (Stripe):', referralError);
           }
         }
+
+        // L4 Step 3A-continued: shared loyalty chokepoint.
+        if (paidInvoice) {
+          await finalizeInvoicePaid(tenantDb, paidInvoice);
+        }
         break;
         
       case 'payment_intent.payment_failed':
@@ -213,27 +268,9 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
       // Don't fail the payment if review request fails
     }
 
-    // L4 Step 3A: award loyalty points through the ledger. Earn on pre-tax
-    // subtotal when present; fall back to amount for legacy invoices that
-    // don't break out tax. The opt-in guard lives inside
-    // addLoyaltyPointsFromInvoice (returns null for non-enrolled customers),
-    // and the ledger dedupes on idempotency key `invoice:${id}:${customerId}`
-    // so a retry cannot double-credit. Failure-isolated: a loyalty error must
-    // NOT roll back or fail the payment.
-    if (updatedInvoice.customerId) {
-      try {
-        const earnBasis = Number(updatedInvoice.subtotal ?? updatedInvoice.amount);
-        await addLoyaltyPointsFromInvoice(
-          tenantDb,
-          updatedInvoice.customerId,
-          updatedInvoice.id,
-          earnBasis
-        );
-        console.log(`[PAYMENT] Loyalty award attempted for invoice ${updatedInvoice.id} (basis: $${earnBasis})`);
-      } catch (loyaltyError) {
-        console.error('[PAYMENT] Error awarding loyalty points (non-fatal):', loyaltyError);
-      }
-    }
+    // L4 Step 3A-continued: route through the shared finalizeInvoicePaid
+    // chokepoint so every payment-method path awards loyalty consistently.
+    await finalizeInvoicePaid(tenantDb, updatedInvoice);
 
     res.status(200).json({ success: true, invoice: updatedInvoice });
   } catch (error) {

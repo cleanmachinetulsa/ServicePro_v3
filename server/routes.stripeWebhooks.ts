@@ -14,6 +14,7 @@ import Stripe from 'stripe';
 import { appointments, paymentLinks, auditLog, invoices, tenants, stripeWebhookEvents } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { markDepositPaid } from './depositManager';
+import { finalizeInvoicePaid } from './paymentHandler';
 import { getTierForPriceId } from './services/stripeService';
 import { createTenantDb, type TenantDb } from './tenantDb';
 import { db } from './db';
@@ -449,6 +450,10 @@ async function markInvoicePaid(
     });
 
     console.log(`[STRIPE WEBHOOK] Invoice ${invoice.id} marked as paid via Stripe`);
+
+    // L4 Step 3A-continued: shared loyalty chokepoint. finalizeInvoicePaid is
+    // never-throws, so even a loyalty failure cannot break webhook processing.
+    await finalizeInvoicePaid(tenantDb, invoice);
   } catch (error) {
     console.error('[STRIPE WEBHOOK] Error marking invoice paid:', error);
   }

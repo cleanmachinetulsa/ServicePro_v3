@@ -11,6 +11,7 @@ import * as os from 'os';
 import { getDriveClient, getAuthClient } from './googleIntegration';
 import { google } from 'googleapis';
 import { createInvoice } from './invoiceService';
+import { finalizeInvoicePaid } from './paymentHandler';
 import { sendSMS } from './notifications';
 import { sendPushNotification } from './pushNotificationService';
 import { recordAppointmentCompleted } from './customerBookingStats';
@@ -956,6 +957,17 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
         deposit: depositRecord,
       };
     });
+
+    // L4 Step 3A-continued: route through shared loyalty chokepoint AFTER the
+    // raw.transaction commits. ledger.earn() opens its own tenantDb.transaction()
+    // on a separate pool client, so calling it inside the outer tx risks
+    // deadlock against the row locks the outer tx still holds. Only fire when
+    // the invoice was actually marked paid in this completion (currently only
+    // the 'free' branch); other payment methods finalize via Stripe/manual
+    // paths which have their own finalizeInvoicePaid calls.
+    if (result.invoice && result.invoice.paymentStatus === 'paid') {
+      await finalizeInvoicePaid(req.tenantDb!, result.invoice);
+    }
 
     const techName = technician.fullName || technician.username || 'Technician';
     const customerName = appointment.customerName || 'Customer';
