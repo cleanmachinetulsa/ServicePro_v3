@@ -1048,6 +1048,7 @@ export default function MultiVehicleAppointmentScheduler({
           referralCode: referralStatus?.isValid ? referralCode : undefined,
           needsTimeConfirmation: !selectedTime && selectedDate ? true : false,
           preferredTimeWindow: preferredTimeWindow || undefined,
+          rewardId: pendingReward?.id,
         }),
       });
 

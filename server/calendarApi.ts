@@ -307,6 +307,7 @@ export async function handleBook(req: any, res: any) {
       email = "",
       smsConsent = false,
       referralCode = "",
+      rewardId,
     } = req.body;
 
     if (!name || !phone || !service || !time) {
@@ -680,8 +681,9 @@ export async function handleBook(req: any, res: any) {
           console.log(`[SCHEDULING] Booking created eventId=${eventId} (stats_write=attempting)`);
           
           let statsRecorded = false;
+          let newAppointmentId: number | null = null;
           await dbInstance.transaction(async (tx) => {
-            await tx.insert(appointments).values({
+            const [insertedAppt] = await tx.insert(appointments).values({
               customerId: customer.id,
               serviceId: serviceId,
               scheduledTime: startTime,
@@ -692,7 +694,8 @@ export async function handleBook(req: any, res: any) {
               addressNeedsReview: addressNeedsReview || false,
               addOns: addOns.length > 0 ? addOns : null,
               additionalRequests: notes ? [notes] : null,
-            });
+            }).returning({ id: appointments.id });
+            newAppointmentId = insertedAppt?.id ?? null;
 
             // Track booking stats for customer - in same transaction (fail-open)
             statsRecorded = await recordAppointmentCreated(customer.id, startTime, tx, {
@@ -702,6 +705,63 @@ export async function handleBook(req: any, res: any) {
               eventId: eventId
             });
           });
+
+          // L6-A: Booking-bound loyalty redemption (failure-isolated, OUTSIDE appointment tx).
+          // A loyalty failure must NEVER break the booking.
+          if (rewardId != null && newAppointmentId != null && customer?.id) {
+            try {
+              const rewardIdNum = Number(rewardId);
+              const apptIdForReserve = newAppointmentId;
+              const custIdForReserve = customer.id;
+              if (Number.isInteger(rewardIdNum) && rewardIdNum > 0) {
+                const { validateLoyaltyRedemption } = await import('./loyaltyService');
+                const { reserve: ledgerReserve } = await import('./services/loyaltyLedger');
+                const { wrapTenantDb } = await import('./tenantDb');
+                const tenantDbForLoyalty = req.tenantDb ?? wrapTenantDb(dbInstance, 'root');
+                const tenantIdForLoyalty = (tenantDbForLoyalty as any)?.tenant?.id ?? 'root';
+
+                const validation = await validateLoyaltyRedemption({
+                  tenantDb: tenantDbForLoyalty,
+                  tenantId: tenantIdForLoyalty,
+                  customerId: custIdForReserve,
+                  rewardId: rewardIdNum,
+                  cartTotal: 0,
+                  selectedServices: [],
+                });
+
+                if (!validation.canRedeem) {
+                  console.warn(
+                    `[LOYALTY L6-A] Booking-bound redemption skipped (validation failed) ` +
+                    `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${validation.reason}`
+                  );
+                } else {
+                  const reserveResult = await ledgerReserve(tenantDbForLoyalty, {
+                    tenantId: tenantIdForLoyalty,
+                    customerId: custIdForReserve,
+                    rewardServiceId: rewardIdNum,
+                    appointmentId: apptIdForReserve,
+                    idempotencyKey: `redeem:appointment:${apptIdForReserve}:reward:${rewardIdNum}`,
+                  });
+                  if (reserveResult.success) {
+                    console.log(
+                      `[LOYALTY L6-A] Reserved reward ${rewardIdNum} against appointment ${apptIdForReserve} ` +
+                      `for customer ${custIdForReserve} (alreadyApplied=${reserveResult.alreadyApplied}, reservation=${reserveResult.reservationId})`
+                    );
+                  } else {
+                    console.warn(
+                      `[LOYALTY L6-A] reserve() failed for customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${reserveResult.error}`
+                    );
+                  }
+                }
+              }
+            } catch (loyaltyError) {
+              console.error(
+                `[LOYALTY L6-A] Non-fatal error during booking-bound redemption ` +
+                `(customer=${customer?.id} reward=${rewardId} appointment=${newAppointmentId}):`,
+                loyaltyError
+              );
+            }
+          }
 
           const statsMsg = statsRecorded ? 'recorded=true' : 'recorded=false reason=transaction-failed';
           console.log(`[BOOKING STATS] ${statsMsg} eventId=${eventId}`);
@@ -788,8 +848,9 @@ export async function handleBook(req: any, res: any) {
 
       // Create appointment record with lat/lng - wrap in transaction with stats update
       const fallbackStartTime = new Date(time);
+      let fallbackAppointmentId: number | null = null;
       await dbInst.transaction(async (tx) => {
-        await tx.insert(appointments).values({
+        const [insertedAppt] = await tx.insert(appointments).values({
           customerId: customer.id,
           serviceId: fallbackServiceId,
           scheduledTime: fallbackStartTime,
@@ -800,13 +861,71 @@ export async function handleBook(req: any, res: any) {
           addressNeedsReview: addressNeedsReview || false,
           addOns: addOns.length > 0 ? addOns : null,
           additionalRequests: notes ? [notes] : null,
-        });
+        }).returning({ id: appointments.id });
+        fallbackAppointmentId = insertedAppt?.id ?? null;
 
         // Track booking stats for customer - in same transaction
         await recordAppointmentCreated(customer.id, fallbackStartTime, tx);
       });
 
       console.log('[FALLBACK DB] Appointment saved to database with lat/lng:', { latitude, longitude, addressNeedsReview });
+
+      // L6-A: Booking-bound loyalty redemption on the fallback path (failure-isolated, OUTSIDE appointment tx).
+      // A loyalty failure must NEVER break the booking.
+      if (rewardId != null && fallbackAppointmentId != null && customer?.id) {
+        try {
+          const rewardIdNum = Number(rewardId);
+          const apptIdForReserve = fallbackAppointmentId;
+          const custIdForReserve = customer.id;
+          if (Number.isInteger(rewardIdNum) && rewardIdNum > 0) {
+            const { validateLoyaltyRedemption } = await import('./loyaltyService');
+            const { reserve: ledgerReserve } = await import('./services/loyaltyLedger');
+            const { wrapTenantDb } = await import('./tenantDb');
+            const tenantDbForLoyalty = req.tenantDb ?? wrapTenantDb(dbInst, 'root');
+            const tenantIdForLoyalty = (tenantDbForLoyalty as any)?.tenant?.id ?? 'root';
+
+            const validation = await validateLoyaltyRedemption({
+              tenantDb: tenantDbForLoyalty,
+              tenantId: tenantIdForLoyalty,
+              customerId: custIdForReserve,
+              rewardId: rewardIdNum,
+              cartTotal: 0,
+              selectedServices: [],
+            });
+
+            if (!validation.canRedeem) {
+              console.warn(
+                `[LOYALTY L6-A FALLBACK] Booking-bound redemption skipped (validation failed) ` +
+                `customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${validation.reason}`
+              );
+            } else {
+              const reserveResult = await ledgerReserve(tenantDbForLoyalty, {
+                tenantId: tenantIdForLoyalty,
+                customerId: custIdForReserve,
+                rewardServiceId: rewardIdNum,
+                appointmentId: apptIdForReserve,
+                idempotencyKey: `redeem:appointment:${apptIdForReserve}:reward:${rewardIdNum}`,
+              });
+              if (reserveResult.success) {
+                console.log(
+                  `[LOYALTY L6-A FALLBACK] Reserved reward ${rewardIdNum} against appointment ${apptIdForReserve} ` +
+                  `for customer ${custIdForReserve} (alreadyApplied=${reserveResult.alreadyApplied}, reservation=${reserveResult.reservationId})`
+                );
+              } else {
+                console.warn(
+                  `[LOYALTY L6-A FALLBACK] reserve() failed for customer=${custIdForReserve} reward=${rewardIdNum} appointment=${apptIdForReserve}: ${reserveResult.error}`
+                );
+              }
+            }
+          }
+        } catch (loyaltyError) {
+          console.error(
+            `[LOYALTY L6-A FALLBACK] Non-fatal error during booking-bound redemption ` +
+            `(customer=${customer?.id} reward=${rewardId} appointment=${fallbackAppointmentId}):`,
+            loyaltyError
+          );
+        }
+      }
 
       // Create SMS booking confirmation record for fallback bookings >= 14 days out (fail-open)
       try {
