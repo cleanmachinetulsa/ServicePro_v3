@@ -5,6 +5,7 @@ import { invoices } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { sendInvoiceNotification, sendReviewRequest } from './invoiceService';
 import { checkAndRewardReferral } from './referralService';
+import { addLoyaltyPointsFromInvoice } from './loyaltyService';
 
 const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
 
@@ -211,7 +212,29 @@ export async function markInvoiceAsPaid(req: Request, res: Response) {
       console.error('[PAYMENT] Error sending review request:', error);
       // Don't fail the payment if review request fails
     }
-    
+
+    // L4 Step 3A: award loyalty points through the ledger. Earn on pre-tax
+    // subtotal when present; fall back to amount for legacy invoices that
+    // don't break out tax. The opt-in guard lives inside
+    // addLoyaltyPointsFromInvoice (returns null for non-enrolled customers),
+    // and the ledger dedupes on idempotency key `invoice:${id}:${customerId}`
+    // so a retry cannot double-credit. Failure-isolated: a loyalty error must
+    // NOT roll back or fail the payment.
+    if (updatedInvoice.customerId) {
+      try {
+        const earnBasis = Number(updatedInvoice.subtotal ?? updatedInvoice.amount);
+        await addLoyaltyPointsFromInvoice(
+          tenantDb,
+          updatedInvoice.customerId,
+          updatedInvoice.id,
+          earnBasis
+        );
+        console.log(`[PAYMENT] Loyalty award attempted for invoice ${updatedInvoice.id} (basis: $${earnBasis})`);
+      } catch (loyaltyError) {
+        console.error('[PAYMENT] Error awarding loyalty points (non-fatal):', loyaltyError);
+      }
+    }
+
     res.status(200).json({ success: true, invoice: updatedInvoice });
   } catch (error) {
     console.error('Error marking invoice as paid:', error);
