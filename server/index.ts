@@ -779,6 +779,13 @@ async function startDeferredInitialization() {
       // Audit T3 Task #23: weekly owner digest (Mondays 8am America/Chicago)
       const { startWeeklyDigestCron } = await import('./services/weeklyDigestCron');
       startWeeklyDigestCron();
+
+      // L4 Step 2: daily loyalty reconciliation (verifies balance == SUM(ledger)
+      // per customer per tenant; logs DRIFT DETECTED with [LOYALTY RECONCILIATION]
+      // prefix so monitoring picks it up). Does NOT auto-correct.
+      const { startLoyaltyReconciliationCron } = await import('./services/loyaltyReconciliation');
+      startLoyaltyReconciliationCron();
+      console.log('[SERVER] Loyalty reconciliation cron started - daily balance vs ledger sum verification');
       console.log('[SERVER] Booking confirmation monitor started - checks hourly for reminders');
     } else {
       console.log('[SERVER] Background jobs DISABLED (PLATFORM_BG_JOBS_ENABLED=0). SMS inbound is still active.');

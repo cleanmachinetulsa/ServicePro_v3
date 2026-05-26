@@ -977,7 +977,3 @@ export async function getRedeemedRewards(tenantDb: TenantDb, customerId: number)
   }
 }
 
-// L3 Part 2A: processExpiredPoints and cleanupExpiredPoints DELETED.
-// Re-grep confirmed zero callers across server/ and client/ before deletion.
-// Expiry handling (if/when re-introduced) belongs in loyaltyLedger as a
-// dedicated expire() entry point — see TECHNICAL_DEBT_LEDGER_v3 LOY-8.

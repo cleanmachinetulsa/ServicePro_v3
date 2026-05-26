@@ -10,9 +10,7 @@ import {
   tenantLoyaltySettings,
   type InsertLoyaltyPoints,
   type InsertPointsTransaction,
-  type InsertAchievement,
   type InsertCustomerAchievement,
-  type InsertLoyaltyTier
 } from "@shared/schema";
 import { eq, and, gte, sql, ilike } from "drizzle-orm";
 
@@ -349,65 +347,8 @@ export async function awardCampaignPointsOnce(
   }
 }
 
-/**
- * Get campaign transactions by source and sourceId
- * Used for normalization/correction of over-awarded points
- * 
- * @param tenantDb - Tenant database instance  
- * @param sourceId - Campaign ID to find transactions for
- * @param source - Source category (default: 'port_recovery')
- */
-export async function getCampaignTransactionsBySourceId(
-  tenantDb: TenantDb,
-  sourceId: number,
-  source: string = 'port_recovery'
-): Promise<Array<{
-  id: number;
-  customerId: number;
-  amount: number;
-  description: string;
-  loyaltyPointsId: number;
-  sourceId: number | null;
-}>> {
-  const transactions = await tenantDb
-    .select({
-      id: pointsTransactions.id,
-      amount: pointsTransactions.amount,
-      description: pointsTransactions.description,
-      loyaltyPointsId: pointsTransactions.loyaltyPointsId,
-      sourceId: pointsTransactions.sourceId,
-    })
-    .from(pointsTransactions)
-    .where(
-      and(
-        eq(pointsTransactions.source, source),
-        eq(pointsTransactions.sourceId, sourceId)
-      )
-    );
-  
-  const lpToCustomer = new Map<number, number>();
-  const loyaltyPointsIds = [...new Set(transactions.map(t => t.loyaltyPointsId))];
-  
-  if (loyaltyPointsIds.length > 0) {
-    const lpRecords = await tenantDb
-      .select({ id: loyaltyPoints.id, customerId: loyaltyPoints.customerId })
-      .from(loyaltyPoints)
-      .where(sql`${loyaltyPoints.id} IN (${sql.join(loyaltyPointsIds.map(id => sql`${id}`), sql`, `)})`);
-    
-    for (const lp of lpRecords) {
-      lpToCustomer.set(lp.id, lp.customerId);
-    }
-  }
-  
-  return transactions.map(t => ({
-    id: t.id,
-    customerId: lpToCustomer.get(t.loyaltyPointsId) ?? 0,
-    amount: t.amount,
-    description: t.description ?? '',
-    loyaltyPointsId: t.loyaltyPointsId,
-    sourceId: t.sourceId,
-  }));
-}
+// L4 Step 4: getCampaignTransactionsBySourceId DELETED — zero callers
+// confirmed by re-grep across server/, client/, scripts/ before deletion.
 
 /**
  * Get port_recovery transactions for specific campaign IDs
@@ -505,41 +446,8 @@ export async function getCustomerLoyaltyTier(tenantDb: TenantDb, customerId: num
   return tier;
 }
 
-/**
- * Get a customer's transaction history
- */
-export async function getCustomerTransactionHistory(tenantDb: TenantDb, customerId: number) {
-  const customerPoints = await getCustomerLoyaltyPoints(tenantDb, customerId);
-  
-  if (!customerPoints) {
-    return [];
-  }
-  
-  return tenantDb
-    .select()
-    .from(pointsTransactions)
-    .where(eq(pointsTransactions.loyaltyPointsId, customerPoints.id))
-    .orderBy(sql`${pointsTransactions.transactionDate} DESC`);
-}
-
-/**
- * Get a customer's achievements
- */
-export async function getCustomerAchievements(tenantDb: TenantDb, customerId: number) {
-  return tenantDb
-    .select({
-      id: achievements.id,
-      name: achievements.name,
-      description: achievements.description,
-      pointValue: achievements.pointValue,
-      icon: achievements.icon,
-      level: achievements.level,
-      dateEarned: customerAchievements.dateEarned
-    })
-    .from(customerAchievements)
-    .innerJoin(achievements, eq(customerAchievements.achievementId, achievements.id))
-    .where(eq(customerAchievements.customerId, customerId));
-}
+// L4 Step 4: getCustomerTransactionHistory and getCustomerAchievements DELETED
+// — zero callers confirmed by re-grep across server/, client/, scripts/.
 
 /**
  * Check if a customer has earned any new achievements
@@ -590,139 +498,6 @@ export async function checkForNewAchievements(tenantDb: TenantDb, customerId: nu
   }
 }
 
-/**
- * Create default achievements if not exists
- */
-export async function createDefaultAchievements(tenantDb: TenantDb) {
-  try {
-    const count = await tenantDb.select({ count: sql<number>`count(*)` }).from(achievements);
-    
-    if (count[0].count === 0) {
-      // No achievements exist, let's create defaults
-      const defaultAchievements: InsertAchievement[] = [
-        {
-          name: "First Detail",
-          description: "Completed your first detailing service",
-          pointValue: 100,
-          criteria: "appointments:1",
-          icon: "award",
-          level: 1
-        },
-        {
-          name: "Detail Enthusiast",
-          description: "Completed 5 detailing services",
-          pointValue: 250,
-          criteria: "appointments:5",
-          icon: "car",
-          level: 2
-        },
-        {
-          name: "Loyal Customer",
-          description: "Completed 10 detailing services",
-          pointValue: 500,
-          criteria: "appointments:10",
-          icon: "heart",
-          level: 3
-        },
-        {
-          name: "Detail Aficionado",
-          description: "Reached 1,000 loyalty points",
-          pointValue: 200,
-          criteria: "points:1000",
-          icon: "star",
-          level: 2
-        },
-        {
-          name: "Premium Member",
-          description: "Reached 2,500 loyalty points",
-          pointValue: 500,
-          criteria: "points:2500",
-          icon: "crown",
-          level: 3
-        },
-        {
-          name: "Detail Legend",
-          description: "Reached 5,000 loyalty points",
-          pointValue: 1000,
-          criteria: "points:5000",
-          icon: "trophy",
-          level: 4
-        },
-        {
-          name: "First Referral",
-          description: "Referred your first friend",
-          pointValue: 200,
-          criteria: "referrals:1",
-          icon: "users",
-          level: 1
-        },
-        {
-          name: "Top Referrer",
-          description: "Referred 5 friends",
-          pointValue: 500,
-          criteria: "referrals:5",
-          icon: "network",
-          level: 3
-        }
-      ];
-      
-      await tenantDb.insert(achievements).values(defaultAchievements);
-    }
-  } catch (error) {
-    console.error("Error creating default achievements:", error);
-  }
-}
-
-/**
- * Create default loyalty tiers if not exists
- */
-export async function createDefaultLoyaltyTiers(tenantDb: TenantDb) {
-  try {
-    const count = await tenantDb.select({ count: sql<number>`count(*)` }).from(loyaltyTiers);
-    
-    if (count[0].count === 0) {
-      // No tiers exist, let's create defaults
-      const defaultTiers: InsertLoyaltyTier[] = [
-        {
-          name: "Bronze",
-          description: "Welcome to our loyalty program",
-          pointThreshold: 0,
-          benefits: ["5% off add-on services"],
-          icon: "medal-bronze"
-        },
-        {
-          name: "Silver",
-          description: "Silver tier member",
-          pointThreshold: 1000,
-          benefits: ["10% off add-on services", "Priority booking"],
-          icon: "medal-silver"
-        },
-        {
-          name: "Gold",
-          description: "Gold tier member",
-          pointThreshold: 2500,
-          benefits: ["15% off add-on services", "Priority booking", "Free minor touch-ups"],
-          icon: "medal-gold"
-        },
-        {
-          name: "Platinum",
-          description: "Our most loyal customers",
-          pointThreshold: 3000,
-          benefits: [
-            "20% off add-on services", 
-            "Priority booking", 
-            "Free minor touch-ups", 
-            "Annual free interior detail"
-          ],
-          icon: "medal-platinum"
-        }
-      ];
-      
-      await tenantDb.insert(loyaltyTiers).values(defaultTiers);
-    }
-  } catch (error) {
-    console.error("Error creating default loyalty tiers:", error);
-  }
-}
-
-
+// L4 Step 4: createDefaultAchievements and createDefaultLoyaltyTiers DELETED
+// — zero callers confirmed by re-grep across server/, client/, scripts/.
+// Seed data (if needed) belongs in a SQL migration, not runtime code.
