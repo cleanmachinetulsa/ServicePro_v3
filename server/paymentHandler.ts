@@ -69,68 +69,45 @@ export async function finalizeInvoicePaid(
     );
   }
 
-  // ── Block B: redemption application (L4 Step 3B) ─────────────────────────
+  // ── Block B: redemption application (L4 Step 3B; L6-B strict appointment match) ──
   // Independent try/catch from Block A — a redemption failure must not affect
   // the point award (or vice versa) and must NEVER throw out of this function.
   //
-  // Matching strategy (HYBRID, decided in Step 1 investigation):
-  //   1. If invoice.appointmentId is set AND a pending/scheduled reservation
-  //      exists with the same appointmentId → use it (deterministic; the
-  //      forward path once reserve() begins binding to appointments).
-  //   2. Otherwise fall back to customerId + status in ('pending','scheduled').
-  //      If multiple rows match (customer claimed two rewards, one invoice),
-  //      pick the OLDEST by redeemedDate (FIFO, closer to expiry) and log a
-  //      warning so the ambiguity is observable.
+  // Matching strategy (L6-B): match the reservation STRICTLY by appointment.
+  //   - invoice.appointmentId + customerId + status in ('pending','scheduled')
+  //   - If the invoice has no appointmentId, or no reservation matches that
+  //     appointment, Block B does nothing — no redemption applies.
+  //
+  // Rationale: after L6-A, every reservation is appointment-bound (reserve() is
+  // called from handleBook with the new appointmentId). The prior customer-FIFO
+  // fallback existed only for the legacy standalone redemption path (where
+  // reservations had no appointmentId). That path is being retired in L6-B, so
+  // a customer-scoped FIFO can only mis-bind an unrelated reward to the wrong
+  // invoice. An invoice with no matching appointment-bound reservation simply
+  // has no redemption to apply.
   //
   // applyReservation is idempotent (its own state-machine + idempotencyKey),
   // so concurrent paths finalizing the same invoice cannot double-apply.
   try {
     if (!invoice.customerId) return;
+    if (typeof invoice.appointmentId !== 'number') return;
     const tenantId = tenantDb.tenant.id;
 
-    // Step 1: try appointment-scoped match first.
-    let reservation: { id: number; redeemedDate: Date | null } | null = null;
-    if (typeof invoice.appointmentId === 'number') {
-      const [byAppt] = await tenantDb
-        .select({ id: redeemedRewards.id, redeemedDate: redeemedRewards.redeemedDate })
-        .from(redeemedRewards)
-        .where(
-          and(
-            eq(redeemedRewards.tenantId, tenantId),
-            eq(redeemedRewards.customerId, invoice.customerId),
-            eq(redeemedRewards.appointmentId, invoice.appointmentId),
-            inArray(redeemedRewards.status, ['pending', 'scheduled']),
-          ),
-        )
-        .orderBy(asc(redeemedRewards.redeemedDate))
-        .limit(1);
-      if (byAppt) reservation = byAppt;
-    }
+    const [reservation] = await tenantDb
+      .select({ id: redeemedRewards.id, redeemedDate: redeemedRewards.redeemedDate })
+      .from(redeemedRewards)
+      .where(
+        and(
+          eq(redeemedRewards.tenantId, tenantId),
+          eq(redeemedRewards.customerId, invoice.customerId),
+          eq(redeemedRewards.appointmentId, invoice.appointmentId),
+          inArray(redeemedRewards.status, ['pending', 'scheduled']),
+        ),
+      )
+      .orderBy(asc(redeemedRewards.redeemedDate))
+      .limit(1);
 
-    // Step 2: fall back to customer-scoped FIFO match.
-    if (!reservation) {
-      const matches = await tenantDb
-        .select({ id: redeemedRewards.id, redeemedDate: redeemedRewards.redeemedDate })
-        .from(redeemedRewards)
-        .where(
-          and(
-            eq(redeemedRewards.tenantId, tenantId),
-            eq(redeemedRewards.customerId, invoice.customerId),
-            inArray(redeemedRewards.status, ['pending', 'scheduled']),
-          ),
-        )
-        .orderBy(asc(redeemedRewards.redeemedDate))
-        .limit(2);
-      if (matches.length > 1) {
-        console.warn(
-          `[PAYMENT] finalizeInvoicePaid: invoice ${invoice.id} customer ${invoice.customerId} has ${matches.length}+ pending reservations; consuming oldest (FIFO) reservation ${matches[0]!.id}. ` +
-            `If this isn't the intended reservation, support can cancel and re-apply.`,
-        );
-      }
-      reservation = matches[0] ?? null;
-    }
-
-    // No pending reservation → most invoices have none. Not an error.
+    // No appointment-bound reservation → nothing to apply. Not an error.
     if (!reservation) return;
 
     const result = await applyReservation(tenantDb, {

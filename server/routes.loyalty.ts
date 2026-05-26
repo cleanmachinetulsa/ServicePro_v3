@@ -5,7 +5,6 @@ import {
   getLoyaltyPointsByPhone,
   getLoyaltyPointsByEmail,
   getAvailableRewardServices,
-  redeemPointsForReward,
   optInToLoyaltyProgram,
   getRedeemedRewards,
   getAllLoyaltyPoints,
@@ -16,7 +15,6 @@ import {
   getAllCustomerAchievements,
   getAllRedeemedRewards,
   getRewardServicesForDashboard,
-  LoyaltyGuardrailError,
   validateLoyaltyRedemption
 } from './loyaltyService';
 import { getLoyaltyGuardrailSettings } from './gamificationService';
@@ -70,7 +68,7 @@ export function validateRewardsToken(token: string): { phone: string; tenantId: 
  * 
  * Loyalty Redemption Journey v2 - Validation and redemption:
  * - POST /api/loyalty/validate-redemption - Validate before booking (public)
- * - POST /api/loyalty/redeem - Finalize redemption (requires customer context)
+ * - (REMOVED in L6-B) POST /api/loyalty/redeem — standalone redemption deleted; redemption is now booking-bound only
  */
 export function registerLoyaltyRoutes(app: Express) {
   // CM-REWARDS-WELCOME-LANDING: Get loyalty points by token (PUBLIC)
@@ -216,80 +214,13 @@ export function registerLoyaltyRoutes(app: Express) {
     }
   });
   
-  // Redeem loyalty points for an offer
-  // Now includes guardrail checks for cart total and core service requirements
-  app.post('/api/loyalty/redeem', requireAuth, async (req: Request, res: Response) => {
-    try {
-      const { customerId, rewardServiceId, quantity, cartTotal, lineItems, skipGuardrails } = req.body;
-      
-      if (!customerId || !rewardServiceId) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Customer ID and Reward Service ID are required'
-        });
-      }
+  // L6-B Step 2: standalone POST /api/loyalty/redeem REMOVED.
+  // Redemption is now booking-bound only: customers redeem by booking a service
+  // (handleBook → L6-A reserve → finalizeInvoicePaid → Block B applies on invoice
+  // paid). The old standalone "redeem into account" path created reservations
+  // without an appointmentId, which Block B can no longer match after L6-A.
+  // Frontend now drives reward selection through /schedule?rewardId=... only.
 
-      // RLOY-3: verify caller is authorized for this customer
-      const sessionCustomerId = (req.session as any)?.customerId;
-      const userRole = (req as any).user?.role;
-      if (!['owner', 'manager'].includes(userRole) && sessionCustomerId !== customerId) {
-        return res.status(403).json({ success: false, message: 'Not authorized' });
-      }
-      
-      // Get tenant context
-      const tenantId = (req as any).user?.tenantId || (req.session as any)?.tenantId;
-      if (!tenantId) {
-        return res.status(401).json({ error: 'Tenant context required' });
-      }
-      const tenantDb = wrapTenantDb(db, tenantId);
-      
-      // Check if user is admin (for skip guardrails permission)
-      const isAdmin = (req.session as any)?.role === 'owner' || (req.session as any)?.role === 'admin';
-      
-      // One token per HTTP request → retries of the SAME request dedupe at the
-      // ledger; separate requests get fresh tokens, so a customer can legitimately
-      // redeem the same reward again later. Combined with per-unit suffix in the
-      // facade (`${token}:${i}`), each unit gets a unique stable ledger key.
-      const idempotencyToken = crypto.randomUUID();
-
-      const result = await redeemPointsForReward(
-        tenantDb,
-        Number(customerId), 
-        Number(rewardServiceId),
-        quantity ? Number(quantity) : 1,
-        {
-          cartTotal: typeof cartTotal === 'number' ? cartTotal : undefined,
-          lineItems: Array.isArray(lineItems) ? lineItems : undefined,
-          skipGuardrails: isAdmin && skipGuardrails === true,
-          tenantId,
-          idempotencyToken,
-        }
-      );
-      
-      res.json({ 
-        success: true, 
-        data: result
-      });
-    } catch (error) {
-      console.error('Error redeeming points:', error);
-      
-      // Handle guardrail blocks with specific error response
-      if (error instanceof LoyaltyGuardrailError) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'LOYALTY_GUARDRAIL_BLOCKED',
-          code: error.code,
-          message: error.message,
-        });
-      }
-      
-      res.status(400).json({ 
-        success: false, 
-        message: error instanceof Error ? error.message : 'Failed to redeem points',
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  });
   
   // Get loyalty guardrail settings (for frontend to show requirements)
   // L3-FACADE-1 fix: server returns {minCartTotal, requireCoreService, guardrailMessage}

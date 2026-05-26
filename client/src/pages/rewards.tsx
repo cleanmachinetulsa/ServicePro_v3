@@ -6,8 +6,11 @@
  * - GET /api/loyalty/points/phone/:phone - Phone lookup
  * - GET /api/loyalty/rewards - Available rewards catalog
  * - GET /api/loyalty/guardrails - Redemption requirements
- * - POST /api/loyalty/redeem - Redeem points
  * - POST /api/loyalty/opt-in - Enroll in program
+ *
+ * L6-B: standalone redemption removed. The only redemption action is
+ * "Redeem on a booking" → navigates to /schedule?rewardId=...; the reservation
+ * is created in handleBook (L6-A) and applied when the invoice is paid.
  * 
  * Designed as a premium, mobile-first experience (393px primary viewport).
  * Three states: Phone Lookup, Customer Found, No Customer Found
@@ -151,13 +154,11 @@ const CustomerRewardsPortal = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [loyaltyData, setLoyaltyData] = useState<LoyaltyPointsResponse['data'] | null>(null);
-  const [selectedReward, setSelectedReward] = useState<RewardService | null>(null);
-  const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [optInDialogOpen, setOptInDialogOpen] = useState(false);
   
   /**
    * Navigate to booking with reward context
-   * Loyalty Redemption Journey v2: "Use on my next booking" CTA
+   * L6-B: "Redeem on a booking" CTA — the only redemption path.
    */
   const navigateToBookingWithReward = (reward: RewardService) => {
     const phone = phoneInput.replace(/\D/g, '');
@@ -241,24 +242,10 @@ const CustomerRewardsPortal = () => {
     }
   });
   
-  const redeemMutation = useMutation<any, Error, { rewardId: number }>({
-    mutationFn: async ({ rewardId }) => {
-      if (!loyaltyData?.customer?.id) throw new Error('Customer not found');
-      return apiRequest('POST', '/api/loyalty/redeem', { customerId: loyaltyData.customer.id, rewardServiceId: rewardId, quantity: 1 });
-    },
-    onSuccess: (data) => {
-      toast({ title: "Reward redeemed!", description: data.data.message || "We'll apply this to your next visit." });
-      setRedeemDialogOpen(false);
-      triggerCelebration();
-      if (loyaltyData && data.data.updatedPoints) {
-        setLoyaltyData({ ...loyaltyData, loyaltyPoints: { ...loyaltyData.loyaltyPoints!, points: data.data.updatedPoints.points } });
-      }
-    },
-    onError: (error) => {
-      toast({ title: "Couldn't redeem", description: error.message, variant: "destructive" });
-    }
-  });
-  
+  // L6-B: redeemMutation removed. Standalone /api/loyalty/redeem no longer
+  // exists; redemption happens via navigateToBookingWithReward → /schedule
+  // → handleBook → L6-A reserve.
+
   const currentPoints = loyaltyData?.loyaltyPoints?.points || 0;
   
   const getNextMilestone = () => {
@@ -664,15 +651,9 @@ const CustomerRewardsPortal = () => {
                                   data-testid={`card-reward-${reward.id}`}
                                   className={`overflow-hidden transition-all ${
                                     isAvailable 
-                                      ? 'bg-white/15 backdrop-blur-xl border-green-400/50 hover:border-green-400 cursor-pointer' 
+                                      ? 'bg-white/15 backdrop-blur-xl border-green-400/50 hover:border-green-400' 
                                       : 'bg-white/5 backdrop-blur-xl border-white/10 opacity-70'
                                   }`}
-                                  onClick={() => {
-                                    if (isAvailable) {
-                                      setSelectedReward(reward);
-                                      setRedeemDialogOpen(true);
-                                    }
-                                  }}
                                 >
                                   <CardContent className="p-4">
                                     <div className="flex items-start gap-4">
@@ -717,14 +698,11 @@ const CustomerRewardsPortal = () => {
                                             <Button
                                               data-testid={`button-use-reward-${reward.id}`}
                                               size="sm"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigateToBookingWithReward(reward);
-                                              }}
+                                              onClick={() => navigateToBookingWithReward(reward)}
                                               className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium"
                                             >
                                               <Calendar className="w-4 h-4 mr-2" />
-                                              Use on my next booking
+                                              Redeem on a booking
                                             </Button>
                                           </div>
                                         ) : (
@@ -773,15 +751,15 @@ const CustomerRewardsPortal = () => {
                       <div className="space-y-3 text-sm text-purple-300/70">
                         <div className="flex items-start gap-2">
                           <span className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-xs text-purple-200 shrink-0">1</span>
-                          <span>Tap "Use on my next booking" on any available reward above</span>
+                          <span>Tap "Redeem on a booking" on any available reward above</span>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-xs text-purple-200 shrink-0">2</span>
-                          <span>Book your service – we'll show your reward is being applied</span>
+                          <span>Book your service – your points are reserved the moment your booking is confirmed</span>
                         </div>
                         <div className="flex items-start gap-2">
                           <span className="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center text-xs text-purple-200 shrink-0">3</span>
-                          <span>At checkout, your points are deducted and the reward is applied!</span>
+                          <span>We apply the reward to your invoice when you pay – done!</span>
                         </div>
                       </div>
                     </CardContent>
@@ -900,62 +878,9 @@ const CustomerRewardsPortal = () => {
         </AnimatePresence>
       </div>
       
-      <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
-        <DialogContent className="bg-slate-900 border-purple-500/30 text-white max-w-sm mx-4">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2">
-              <Gift className="w-5 h-5 text-pink-400" />
-              Redeem Reward
-            </DialogTitle>
-            <DialogDescription className="text-purple-200/70">
-              Are you sure you want to redeem this reward?
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedReward && (
-            <div className="py-4 space-y-4">
-              <Card className="bg-white/10 border-white/20">
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-white">{selectedReward.name}</h3>
-                  <p className="text-sm text-purple-200/70 mt-1">{selectedReward.description}</p>
-                  <div className="flex items-center gap-2 mt-3">
-                    <Badge className="bg-purple-500/20 text-purple-200 border-purple-500/30">
-                      {selectedReward.pointCost.toLocaleString()} points
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <div className="text-center text-sm text-purple-200/60">
-                After redemption, you'll have{' '}
-                <span className="text-white font-semibold">
-                  {(currentPoints - selectedReward.pointCost).toLocaleString()}
-                </span>{' '}
-                points remaining.
-              </div>
-            </div>
-          )}
-          
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setRedeemDialogOpen(false)}
-              className="border-purple-400/50 text-purple-200 hover:bg-purple-500/20"
-            >
-              Cancel
-            </Button>
-            <Button
-              data-testid="button-confirm-redeem"
-              onClick={() => selectedReward && redeemMutation.mutate({ rewardId: selectedReward.id })}
-              disabled={redeemMutation.isPending}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500"
-            >
-              {redeemMutation.isPending ? 'Redeeming...' : 'Confirm Redemption'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
+      {/* L6-B: standalone "Confirm Redemption" dialog removed — the only
+          redemption path is booking-bound via "Redeem on a booking". */}
+
       <Dialog open={optInDialogOpen} onOpenChange={setOptInDialogOpen}>
         <DialogContent className="bg-slate-900 border-purple-500/30 text-white max-w-sm mx-4">
           <DialogHeader>
