@@ -1,11 +1,12 @@
 import Stripe from 'stripe';
 import { Request, Response } from 'express';
 import type { TenantDb } from './tenantDb';
-import { invoices } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { invoices, redeemedRewards } from '@shared/schema';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { sendInvoiceNotification, sendReviewRequest } from './invoiceService';
 import { checkAndRewardReferral } from './referralService';
 import { addLoyaltyPointsFromInvoice } from './loyaltyService';
+import { applyReservation } from './services/loyaltyLedger';
 
 const STRIPE_ENABLED = !!process.env.STRIPE_SECRET_KEY;
 
@@ -45,8 +46,10 @@ export async function finalizeInvoicePaid(
     customerId: number | null;
     subtotal?: string | number | null;
     amount?: string | number | null;
+    appointmentId?: number | null;
   },
 ): Promise<void> {
+  // ── Block A: loyalty point award (L4 Step 3A) ────────────────────────────
   try {
     if (!invoice.customerId) return;
     const earnBasis = Number(invoice.subtotal ?? invoice.amount ?? 0);
@@ -63,6 +66,94 @@ export async function finalizeInvoicePaid(
     console.error(
       `[PAYMENT] finalizeInvoicePaid: loyalty failure for invoice ${invoice.id} (non-fatal):`,
       loyaltyError,
+    );
+  }
+
+  // ── Block B: redemption application (L4 Step 3B) ─────────────────────────
+  // Independent try/catch from Block A — a redemption failure must not affect
+  // the point award (or vice versa) and must NEVER throw out of this function.
+  //
+  // Matching strategy (HYBRID, decided in Step 1 investigation):
+  //   1. If invoice.appointmentId is set AND a pending/scheduled reservation
+  //      exists with the same appointmentId → use it (deterministic; the
+  //      forward path once reserve() begins binding to appointments).
+  //   2. Otherwise fall back to customerId + status in ('pending','scheduled').
+  //      If multiple rows match (customer claimed two rewards, one invoice),
+  //      pick the OLDEST by redeemedDate (FIFO, closer to expiry) and log a
+  //      warning so the ambiguity is observable.
+  //
+  // applyReservation is idempotent (its own state-machine + idempotencyKey),
+  // so concurrent paths finalizing the same invoice cannot double-apply.
+  try {
+    if (!invoice.customerId) return;
+    const tenantId = tenantDb.tenant.id;
+
+    // Step 1: try appointment-scoped match first.
+    let reservation: { id: number; redeemedDate: Date | null } | null = null;
+    if (typeof invoice.appointmentId === 'number') {
+      const [byAppt] = await tenantDb
+        .select({ id: redeemedRewards.id, redeemedDate: redeemedRewards.redeemedDate })
+        .from(redeemedRewards)
+        .where(
+          and(
+            eq(redeemedRewards.tenantId, tenantId),
+            eq(redeemedRewards.customerId, invoice.customerId),
+            eq(redeemedRewards.appointmentId, invoice.appointmentId),
+            inArray(redeemedRewards.status, ['pending', 'scheduled']),
+          ),
+        )
+        .orderBy(asc(redeemedRewards.redeemedDate))
+        .limit(1);
+      if (byAppt) reservation = byAppt;
+    }
+
+    // Step 2: fall back to customer-scoped FIFO match.
+    if (!reservation) {
+      const matches = await tenantDb
+        .select({ id: redeemedRewards.id, redeemedDate: redeemedRewards.redeemedDate })
+        .from(redeemedRewards)
+        .where(
+          and(
+            eq(redeemedRewards.tenantId, tenantId),
+            eq(redeemedRewards.customerId, invoice.customerId),
+            inArray(redeemedRewards.status, ['pending', 'scheduled']),
+          ),
+        )
+        .orderBy(asc(redeemedRewards.redeemedDate))
+        .limit(2);
+      if (matches.length > 1) {
+        console.warn(
+          `[PAYMENT] finalizeInvoicePaid: invoice ${invoice.id} customer ${invoice.customerId} has ${matches.length}+ pending reservations; consuming oldest (FIFO) reservation ${matches[0]!.id}. ` +
+            `If this isn't the intended reservation, support can cancel and re-apply.`,
+        );
+      }
+      reservation = matches[0] ?? null;
+    }
+
+    // No pending reservation → most invoices have none. Not an error.
+    if (!reservation) return;
+
+    const result = await applyReservation(tenantDb, {
+      tenantId,
+      reservationId: reservation.id,
+      invoiceId: invoice.id,
+      idempotencyKey: `apply:invoice:${invoice.id}:reservation:${reservation.id}`,
+    });
+
+    if (result.success) {
+      console.log(
+        `[PAYMENT] finalizeInvoicePaid: redemption applied for invoice ${invoice.id} (reservation ${reservation.id}, alreadyApplied=${result.alreadyApplied})`,
+      );
+    } else {
+      // applyReservation returned a structured error — log but do not throw.
+      console.warn(
+        `[PAYMENT] finalizeInvoicePaid: redemption apply failed for invoice ${invoice.id} (reservation ${reservation.id}): ${result.error ?? 'unknown'}`,
+      );
+    }
+  } catch (redemptionError) {
+    console.error(
+      `[PAYMENT] finalizeInvoicePaid: redemption failure for invoice ${invoice.id} (non-fatal):`,
+      redemptionError,
     );
   }
 }

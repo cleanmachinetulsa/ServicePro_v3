@@ -657,14 +657,21 @@ export async function applyReservation(
 
       const now = new Date();
 
-      // 3. Flip reservation → completed.
-      // Invoice linkage is recorded in loyalty_transactions.metadata (below),
-      // NOT in redeemed_rewards.appointment_id — that column is a FK into
-      // appointments() and would fail on a bare invoice id. Preserve whatever
-      // appointmentId was set at reserve() time.
+      // 3. Flip reservation → completed and stamp the consuming invoice.
+      // L4 Step 3B: also write redeemed_rewards.invoice_id when provided so the
+      // structured FK into invoices is populated everywhere applyReservation is
+      // called. invoice_id stays NULL when caller passes null (legacy/unknown
+      // contexts). Invoice linkage also remains in loyalty_transactions.metadata
+      // (below) for ledger-level auditability. We do NOT touch
+      // redeemed_rewards.appointment_id here — that column is a FK into
+      // appointments() and is set at reserve() time.
+      const reservationUpdate: { status: string; invoiceId?: number } = { status: 'completed' };
+      if (typeof invoiceId === 'number' && Number.isFinite(invoiceId)) {
+        reservationUpdate.invoiceId = invoiceId;
+      }
       await tx
         .update(redeemedRewards)
-        .set({ status: 'completed' })
+        .set(reservationUpdate)
         .where(
           and(
             eq(redeemedRewards.tenantId, tenantId),
