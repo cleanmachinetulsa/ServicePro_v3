@@ -13,7 +13,7 @@
  *   The key is stored in the promoKey column so it is queryable and indexed.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   loyaltyPoints,
   loyaltyTransactions,
@@ -669,15 +669,63 @@ export async function applyReservation(
       if (typeof invoiceId === 'number' && Number.isFinite(invoiceId)) {
         reservationUpdate.invoiceId = invoiceId;
       }
-      await tx
+      // L4 Step 3B concurrency fix: gate the UPDATE on the same pending/scheduled
+      // status we read in step 1. If a concurrent applyReservation already flipped
+      // the row to 'completed' between our SELECT and our UPDATE, this WHERE
+      // clause matches zero rows and we re-read to decide the outcome (mirrors
+      // a compare-and-swap). This prevents two finalizers for different invoices
+      // from both overwriting invoice_id.
+      const updated = await tx
         .update(redeemedRewards)
         .set(reservationUpdate)
         .where(
           and(
             eq(redeemedRewards.tenantId, tenantId),
             eq(redeemedRewards.id, reservationId),
+            inArray(redeemedRewards.status, ['pending', 'scheduled']),
           ),
-        );
+        )
+        .returning({ id: redeemedRewards.id });
+
+      if (updated.length === 0) {
+        // Another transaction beat us. Re-read to classify.
+        const [post] = await tx
+          .select()
+          .from(redeemedRewards)
+          .where(
+            and(
+              eq(redeemedRewards.tenantId, tenantId),
+              eq(redeemedRewards.id, reservationId),
+            ),
+          )
+          .limit(1);
+        if (!post) {
+          return { success: false, alreadyApplied: false, error: 'RESERVATION_DISAPPEARED' };
+        }
+        if (post.status === 'completed') {
+          if (
+            typeof invoiceId === 'number' &&
+            Number.isFinite(invoiceId) &&
+            typeof post.invoiceId === 'number' &&
+            post.invoiceId !== invoiceId
+          ) {
+            // Already consumed by a DIFFERENT invoice. Caller should NOT proceed
+            // as if their invoice consumed it.
+            return {
+              success: false,
+              alreadyApplied: true,
+              error: `RESERVATION_BOUND_TO_OTHER_INVOICE:${post.invoiceId}`,
+            };
+          }
+          // Same invoice (or null/legacy invoice) — true idempotent retry.
+          return { success: true, alreadyApplied: true };
+        }
+        return {
+          success: false,
+          alreadyApplied: false,
+          error: `RESERVATION_RACED_TO_${(post.status ?? 'UNKNOWN').toUpperCase()}`,
+        };
+      }
 
       // 4. Flip canonical ledger row pending → fulfilled, by reservationId in metadata
       //    (we update all matching pending redemption rows for this customer+reservation)
