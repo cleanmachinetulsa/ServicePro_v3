@@ -1,0 +1,43 @@
+-- 0014_widen_promo_key.sql
+-- Stage L6-C follow-up: widen loyalty_transactions.promo_key from varchar(50)
+-- to varchar(255).
+--
+-- Why:
+--   releaseReservation() in server/services/loyaltyLedger.ts stores the
+--   refund row's promo_key as:
+--     `release:${reservationId}:${callerIdempotencyKey}`
+--   The L6-C cancellation wiring in server/routes.techJobs.ts builds the
+--   caller key as:
+--     `release:appointment:${appointmentId}:reservation:${reservationId}`
+--   Combined stored length once both IDs reach 3 digits is 51+ characters
+--   (e.g. apptId=999, resvId=999 → 51 chars; both 4-digit → 53 chars),
+--   which overflows the existing varchar(50) cap. The failure mode is
+--   silent in user-visible terms: the appointment cancels and the
+--   reservation flips to cancelled (Phase A), but the Phase-B refund
+--   insert errors out and points are never returned to the customer.
+--
+--   Today's max stored LENGTH(promo_key) on production is 0 (no rows yet
+--   in this table), so this widening is purely defensive and forward-
+--   compatible. No existing data is truncated, rewritten, or altered.
+--
+-- Safety:
+--   - Non-destructive: widening varchar(n) is metadata-only in PostgreSQL
+--     when the new length >= old length. No table rewrite, no row scan,
+--     no lock escalation beyond a brief ACCESS EXCLUSIVE on the catalog
+--     entry.
+--   - Indexes touching promo_key
+--     (loyalty_transactions_tenant_promo_idx,
+--      loyalty_transactions_tenant_customer_promo_idx)
+--     do NOT need to be rebuilt — Postgres treats varchar(n) widening
+--     as a no-op for the on-disk representation.
+--   - Idempotent re-runs are safe: re-applying ALTER COLUMN ... TYPE
+--     varchar(255) when it is already varchar(255) is a no-op.
+--
+-- Rollback (only if absolutely required, and only after confirming no
+-- value exceeds 50 chars):
+--   ALTER TABLE loyalty_transactions
+--     ALTER COLUMN promo_key TYPE varchar(50);
+--   (Will fail if any stored value is longer than 50 chars.)
+
+ALTER TABLE loyalty_transactions
+  ALTER COLUMN promo_key TYPE varchar(255);

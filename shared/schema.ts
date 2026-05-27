@@ -1314,7 +1314,7 @@ export const loyaltyTransactions = pgTable("loyalty_transactions", {
   tenantId: varchar("tenant_id", { length: 50 }).notNull(),
   customerId: integer("customer_id").notNull().references(() => customers.id),
   deltaPoints: integer("delta_points").notNull(), // positive = earn, negative = redeem
-  promoKey: varchar("promo_key", { length: 50 }), // e.g. 'welcome_back_v1', 'referral_v1'
+  promoKey: varchar("promo_key", { length: 255 }), // e.g. 'welcome_back_v1', 'referral_v1' — widened from 50→255 by migration 0014 to fit release-reservation idempotency keys (release:${resId}:release:appointment:${apptId}:reservation:${resId}) once IDs reach 3 digits
   source: varchar("source", { length: 50 }).notNull(), // 'campaign', 'manual', 'invoice', 'promo_pending_fulfilled', etc.
   metadata: jsonb("metadata"), // Flexible storage for promo-specific data
   status: varchar("status", { length: 50 }).default('pending'), // 'pending', 'fulfilled', 'cancelled'
