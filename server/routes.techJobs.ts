@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { TenantDb } from './tenantDb';
-import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users, customerServiceHistory, services } from '@shared/schema';
-import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
+import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users, customerServiceHistory, services, redeemedRewards } from '@shared/schema';
+import { eq, and, gte, lte, desc, sql, inArray } from 'drizzle-orm';
 import { requireTechnician } from './technicianMiddleware';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import multer from 'multer';
@@ -320,13 +320,114 @@ router.post('/jobs/:id/status', requireTechnician, async (req: Request, res: Res
       updateData.jobNotes = notes;
     }
 
-    const [updatedAppointment] = await req.tenantDb!
-      .update(appointments)
-      .set(updateData)
-      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
-      .returning();
+    // L6-C: For cancellation, do a compare-and-swap so only the first concurrent
+    // caller that actually flips status to 'cancelled' enters the loyalty release
+    // path. Two parallel cancel requests both read the pre-update snapshot
+    // (appointment.status !== 'cancelled'), so guarding off the snapshot alone
+    // is racy. The CAS is `WHERE id=? AND status <> 'cancelled'`; if rowCount
+    // is 0 the appointment was already cancelled and we skip the release entirely.
+    // For all other status transitions we keep the original unconditional update.
+    let updatedAppointment: typeof appointments.$inferSelect | undefined;
+    let didTransitionToCancelled = false;
+    if (status === 'cancelled') {
+      const [row] = await req.tenantDb!
+        .update(appointments)
+        .set(updateData)
+        .where(
+          req.tenantDb!.withTenantFilter(
+            appointments,
+            and(
+              eq(appointments.id, appointmentId),
+              sql`${appointments.status} IS DISTINCT FROM 'cancelled'`,
+            )!,
+          ),
+        )
+        .returning();
+      if (row) {
+        updatedAppointment = row;
+        didTransitionToCancelled = true;
+      } else {
+        // Already cancelled by a prior/concurrent caller. Re-read so we still
+        // return the current appointment to the client.
+        const [existing] = await req.tenantDb!
+          .select()
+          .from(appointments)
+          .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
+          .limit(1);
+        updatedAppointment = existing;
+      }
+    } else {
+      const [row] = await req.tenantDb!
+        .update(appointments)
+        .set(updateData)
+        .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, appointmentId)))
+        .returning();
+      updatedAppointment = row;
+    }
 
     console.log(`[TECH JOBS] Job ${appointmentId} status updated to: ${status}`);
+
+    // L6-C: Release any pending loyalty reservation bound to this appointment
+    // when it transitions to 'cancelled'. Only the CAS winner enters this block,
+    // so concurrent cancellations cannot race into duplicate refunds. Failure-
+    // isolated: a loyalty error must NEVER break the cancellation. Idempotent:
+    // releaseReservation() refuses a 'completed' reservation (that would be a
+    // refund, L5-A territory) and is a no-op on an already-cancelled one. The
+    // idempotency key is stable per appointment+reservation.
+    if (didTransitionToCancelled) {
+      try {
+        const tenantId = req.tenant!.id;
+        const pendingReservations = await req.tenantDb!
+          .select({
+            id: redeemedRewards.id,
+            status: redeemedRewards.status,
+          })
+          .from(redeemedRewards)
+          .where(
+            req.tenantDb!.withTenantFilter(
+              redeemedRewards,
+              and(
+                eq(redeemedRewards.appointmentId, appointmentId),
+                inArray(redeemedRewards.status, ['pending', 'scheduled']),
+              )!,
+            ),
+          );
+
+        if (pendingReservations.length === 0) {
+          // Most cancellations have no reward — not an error, no log noise.
+        } else {
+          const { releaseReservation } = await import('./services/loyaltyLedger');
+          for (const resv of pendingReservations) {
+            const idempotencyKey = `release:appointment:${appointmentId}:reservation:${resv.id}`;
+            const result = await releaseReservation(req.tenantDb!, {
+              tenantId,
+              reservationId: resv.id,
+              reason: 'appointment cancelled',
+              idempotencyKey,
+            });
+            if (result.success) {
+              console.log(
+                `[LOYALTY L6-C] Released reservation ${resv.id} for cancelled appointment ${appointmentId}: pointsReturned=${result.pointsReturned}, alreadyApplied=${result.alreadyApplied}, newBalance=${result.newBalance}`,
+              );
+            } else {
+              // RESERVATION_ALREADY_COMPLETED is the documented "do not reverse"
+              // case (service was performed, then somehow cancelled). Refund is
+              // L5-A territory, not handled here. Other errors are logged but
+              // never thrown.
+              console.error(
+                `[LOYALTY L6-C] releaseReservation refused for reservation ${resv.id} on cancelled appointment ${appointmentId}: ${result.error}`,
+              );
+            }
+          }
+        }
+      } catch (loyaltyError) {
+        // Failure isolation: cancellation MUST succeed even if loyalty errors.
+        console.error(
+          `[LOYALTY L6-C] Loyalty release failed for cancelled appointment ${appointmentId} (cancellation itself succeeded):`,
+          loyaltyError,
+        );
+      }
+    }
 
     // ✅ CUSTOMER NOTIFICATION: Send SMS when technician arrives on-site
     if (status === 'on_site') {
