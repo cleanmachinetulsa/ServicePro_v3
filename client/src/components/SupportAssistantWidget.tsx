@@ -77,8 +77,14 @@ export function SupportAssistantWidget() {
     localStorage.setItem(FAB_POSITION_KEY, JSON.stringify(newOffset));
   };
 
+  // Compute this BEFORE the useQuery so we can gate the query on it.
+  // /api/auth/context is a requireAuth endpoint — firing it on public routes
+  // (login, booking, portal…) produces a 401 that can surface as a toast.
+  const isPublicRoute = PUBLIC_ROUTE_PREFIXES.some(prefix => location.startsWith(prefix));
+
   const { data: authContext, isLoading: authLoading } = useQuery<AuthContext>({
     queryKey: ['/api/auth/context'],
+    enabled: !isPublicRoute,
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
     staleTime: 1000,
@@ -116,7 +122,6 @@ export function SupportAssistantWidget() {
     }
   }, [messages, isOpen]);
 
-  const isPublicRoute = PUBLIC_ROUTE_PREFIXES.some(prefix => location.startsWith(prefix));
   const isHiddenRoute = HIDDEN_ROUTES.some(route => location.startsWith(route));
   
   if (authLoading) return null;

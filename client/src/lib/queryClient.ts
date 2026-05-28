@@ -112,16 +112,19 @@ export const getQueryFn: <T>(options: {
     });
 
     if (res.status === 401) {
-      // The session-verify endpoint must NOT trigger a redirect — it's the
-      // very check AuthGuard uses to decide whether to redirect itself.
-      // Same for any caller that explicitly opts into "returnNull" handling.
-      if (
-        unauthorizedBehavior !== "returnNull" &&
-        url !== "/api/auth/verify"
-      ) {
+      // On a public page (login, booking, etc.) a 401 must never throw — it
+      // would surface as a component-level error toast ("Authentication
+      // required") before the user has even entered credentials.  Return null
+      // silently so the shell query sits in a no-data state until the user
+      // authenticates and navigates to a protected route.
+      const onPublicPath =
+        typeof window !== "undefined" &&
+        isPublicPath(window.location.pathname);
+
+      if (!onPublicPath && unauthorizedBehavior !== "returnNull" && url !== "/api/auth/verify") {
         redirectToLoginOnce();
       }
-      if (unauthorizedBehavior === "returnNull") {
+      if (unauthorizedBehavior === "returnNull" || onPublicPath) {
         return null;
       }
     }
