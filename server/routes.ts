@@ -245,16 +245,6 @@ export async function registerRoutes(app: Express) {
   // SP-23: Register performance monitoring routes (no auth required for logging)
   registerPerfRoutes(app);
 
-  // Export download endpoint (no auth required for file downloads)
-  app.get('/download/cleanmachine-export.zip', (req: Request, res: Response) => {
-    const filePath = path.join(process.cwd(), 'cleanmachine-export.zip');
-    if (fs.existsSync(filePath)) {
-      res.download(filePath, 'cleanmachine-export.zip');
-    } else {
-      res.status(404).json({ success: false, message: 'File not found' });
-    }
-  });
-
   // SECURITY NOTE: Removed client-side error reporting endpoints to prevent abuse
   // All chatbot errors are now logged server-side in /api/web-chat endpoint
 
