@@ -149,20 +149,34 @@ export function setupGoogleOAuth(app: Express) {
             });
           });
 
-          // Clear the session cookie
-          res.clearCookie('connect.sid');
+          // Clear the session cookie (cookie is named 'sessionId', see sessionMiddleware)
+          res.clearCookie('sessionId');
           // Redirect to login with error message
           return res.redirect('/login?error=account_inactive');
         } catch (error) {
           // If session cleanup fails, still redirect but log the error
           console.error('[GOOGLE OAUTH] Failed to clean up session for inactive user:', error);
-          res.clearCookie('connect.sid');
+          res.clearCookie('sessionId');
           return res.redirect('/login?error=account_inactive');
         }
       }
       
-      // Successful authentication - redirect to dashboard
-      res.redirect('/messages');
+      // Successful authentication - mirror the username/password login handler:
+      // explicitly populate the session fields that authMiddleware/tenant middleware
+      // read (Passport only sets req.session.passport.user, which is not enough).
+      req.session.userId = user.id;
+      req.session.tenantId = user.tenantId;
+      req.session.role = user.role;
+      req.session.twoFactorVerified = false; // OAuth login does not go through TOTP
+
+      // Persist the session before redirecting so the cookie round-trips correctly.
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error('[GOOGLE OAUTH] Session save error after login:', saveErr);
+          return res.redirect('/login?error=session_error');
+        }
+        res.redirect('/messages');
+      });
     }
   );
 
