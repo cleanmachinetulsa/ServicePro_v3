@@ -31,7 +31,14 @@ const LOG = '[AI-ACTIONS]';
 // Audit T2 Task #19 — apply standard auth middleware to every staff action
 // route. These endpoints sit alongside other admin endpoints and must reject
 // unauthenticated callers BEFORE any tenant/conversation lookup runs.
-router.use(requireAuth);
+//
+// IMPORTANT: this router is mounted at the broad '/api' prefix (see
+// registerAiActionRoutes below) and is registered before the public auth
+// routes (e.g. /api/auth/login). An unscoped `router.use(requireAuth)` here
+// would gate the ENTIRE /api namespace and 401 the login endpoint. Scope the
+// guard to this router's actual route prefix so it only protects the staff
+// action endpoints.
+router.use('/admin/ai-actions', requireAuth);
 
 async function resolveConversation(
   tenantId: string,

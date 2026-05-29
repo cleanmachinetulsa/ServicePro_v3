@@ -145,23 +145,26 @@ export function registerAuthRoutes(app: Express) {
             });
           }
 
-          // [TEMP DIAG — Bug 2: cookie round-trip] remove after fix verified.
+          // [TEMP DIAG — Bug 2: cookie round-trip] gated behind AUTH_DIAG=1;
+          // remove after fix verified in production.
           // The signed cookie VALUE is redacted (it is a session secret); we keep
           // the attributes (Secure/SameSite/Domain/Path) which are what actually
           // tell us why express-session may be dropping the cookie.
-          const rawSetCookie = res.getHeader('set-cookie');
-          const setCookieAttrs = (Array.isArray(rawSetCookie) ? rawSetCookie : [rawSetCookie])
-            .filter(Boolean)
-            .map((c) => String(c).replace(/^(sessionId=)[^;]+/, '$1<redacted>'));
-          console.log('[AUTH DIAG][login]', JSON.stringify({
-            sessionID: req.sessionID,
-            secure: req.secure,
-            protocol: req.protocol,
-            xForwardedProto: req.headers['x-forwarded-proto'],
-            host: req.headers.host,
-            hasCookieHeader: Boolean(req.headers.cookie),
-            setCookieAttrs,
-          }));
+          if (process.env.AUTH_DIAG === '1') {
+            const rawSetCookie = res.getHeader('set-cookie');
+            const setCookieAttrs = (Array.isArray(rawSetCookie) ? rawSetCookie : [rawSetCookie])
+              .filter(Boolean)
+              .map((c) => String(c).replace(/^(sessionId=)[^;]+/, '$1<redacted>'));
+            console.log('[AUTH DIAG][login]', JSON.stringify({
+              sessionID: req.sessionID,
+              secure: req.secure,
+              protocol: req.protocol,
+              xForwardedProto: req.headers['x-forwarded-proto'],
+              host: req.headers.host,
+              hasCookieHeader: Boolean(req.headers.cookie),
+              setCookieAttrs,
+            }));
+          }
 
           res.json({
             success: true,
@@ -355,16 +358,19 @@ export function registerAuthRoutes(app: Express) {
 
   // Verify session endpoint
   app.get('/api/auth/verify', (req: Request, res: Response) => {
-    // [TEMP DIAG — Bug 2: cookie round-trip] remove after fix verified
-    console.log('[AUTH DIAG][verify]', JSON.stringify({
-      sessionID: req.sessionID,
-      hasUserId: Boolean(req.session && req.session.userId),
-      secure: req.secure,
-      protocol: req.protocol,
-      xForwardedProto: req.headers['x-forwarded-proto'],
-      host: req.headers.host,
-      hasCookieHeader: Boolean(req.headers.cookie),
-    }));
+    // [TEMP DIAG — Bug 2: cookie round-trip] gated behind AUTH_DIAG=1;
+    // remove after fix verified in production.
+    if (process.env.AUTH_DIAG === '1') {
+      console.log('[AUTH DIAG][verify]', JSON.stringify({
+        sessionID: req.sessionID,
+        hasUserId: Boolean(req.session && req.session.userId),
+        secure: req.secure,
+        protocol: req.protocol,
+        xForwardedProto: req.headers['x-forwarded-proto'],
+        host: req.headers.host,
+        hasCookieHeader: Boolean(req.headers.cookie),
+      }));
+    }
 
     if (!req.session || !req.session.userId) {
       return res.status(401).json({ 
