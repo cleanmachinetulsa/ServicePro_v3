@@ -29,7 +29,7 @@ import {
 } from '@shared/schema';
 import { eq, and, sql, ne, isNotNull, desc, or } from 'drizzle-orm';
 import { twilioClient } from '../twilioClient';
-import { awardPoints, awardCampaignPointsOnce } from '../gamificationService';
+import { earn } from './loyaltyLedger';
 import { generateRewardsToken } from '../routes.loyalty';
 import { tenantDomains } from '@shared/schema';
 import { formatInTimeZone } from 'date-fns-tz';
@@ -580,11 +580,28 @@ export async function getCampaignTargets(
 }
 
 /**
- * Grant points to a customer for port recovery
- * Uses idempotent awardCampaignPointsOnce to prevent duplicate awards
- * FAIL-OPEN: Never throws - returns gracefully if points config is missing
+ * Grant port-recovery apology points to a customer.
+ *
+ * CM-1 (DEF-13, gamification slice): this award now routes through the canonical
+ * transactional ledger (loyaltyLedger.earn()) instead of the legacy
+ * non-transactional gamificationService.awardPoints / awardCampaignPointsOnce.
+ * earn() does get-or-create + atomic SQL increment + idempotency + the
+ * loyalty_transactions canonical row + the points_transactions mirror, all inside
+ * one db.transaction(), and never throws.
+ *
+ * IDEMPOTENCY: the key is STABLE and PER-CUSTOMER — `port_recovery_apology:${customerId}`
+ * — deliberately NOT scoped to the campaign ID. The apology award therefore lands
+ * exactly once per customer, ever, even if the campaign is deleted and rebuilt
+ * under a new ID. This is the structural fix for the L1-4 duplication bug, where
+ * port_recovery ran 18× under regenerating campaign IDs and the old
+ * source+sourceId(campaignId) dedup missed every time, re-awarding points.
+ *
+ * FAIL-OPEN: never throws - returns gracefully so a single bad award can't abort
+ * the batch loop.
+ *
+ * Exported for the CM-1 functional test (scripts/testCM1PortRecoveryPoints.ts).
  */
-async function grantPortRecoveryPoints(
+export async function grantPortRecoveryPoints(
   tenantDb: TenantDb,
   customerId: number,
   points: number,
@@ -597,23 +614,26 @@ async function grantPortRecoveryPoints(
       return { success: false, currentPoints: 0, wasSkipped: true };
     }
 
-    // Use dynamic campaign key based on the actual campaign ID (not hardcoded)
-    const campaignKey = `port-recovery-campaign-${campaignId}`;
+    // Stable, per-customer idempotency key — campaign-agnostic on purpose (see header).
+    const idempotencyKey = `port_recovery_apology:${customerId}`;
 
-    const result = await awardCampaignPointsOnce(
-      tenantDb,
+    const result = await earn(tenantDb, {
+      tenantId: tenantDb.tenantId,
       customerId,
-      points,
-      campaignKey,
-      'port_recovery',
-      campaignId,
-      `Port recovery apology - ${points} loyalty points`
-    );
-    
+      amount: points,
+      source: 'port_recovery',
+      idempotencyKey,
+      description: `Port recovery apology - ${points} loyalty points`,
+      metadata: { campaignId, awardType: 'port_recovery_apology' },
+    });
+
     return {
+      // earn() returns success:true on an idempotent replay (alreadyApplied),
+      // matching the prior awardCampaignPointsOnce contract: a customer who already
+      // got their apology points is treated as a successful no-op, not a failure.
       success: result.success,
-      currentPoints: result.currentPoints,
-      wasSkipped: result.wasSkipped,
+      currentPoints: result.newBalance,
+      wasSkipped: result.alreadyApplied,
     };
   } catch (error: any) {
     // FAIL-OPEN: Never let points errors abort the loop
