@@ -1655,6 +1655,30 @@ export const insertSmsSuppressionSchema = createInsertSchema(smsSuppressionList)
   createdAt: true,
 });
 
+// Import-run ledger: one row per data-import run so re-runs are detectable and
+// scripts can refuse to silently double-import. Backed by
+// migrations/0015_import_runs.sql. Written only by standalone import scripts
+// (e.g. scripts/importTwilioAudit.ts), never by request paths.
+export const importRuns = pgTable('import_runs', {
+  id: serial('id').primaryKey(),
+  runKey: varchar('run_key', { length: 255 }).notNull(),
+  tenantId: varchar('tenant_id', { length: 50 }).notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  endedAt: timestamp('ended_at'),
+  summaryJson: jsonb('summary_json'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+  runKeyUnique: uniqueIndex('import_runs_run_key_idx').on(table.runKey),
+  tenantIdx: index('import_runs_tenant_idx').on(table.tenantId),
+}));
+
+export const insertImportRunSchema = createInsertSchema(importRuns).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertImportRun = z.infer<typeof insertImportRunSchema>;
+export type ImportRun = typeof importRuns.$inferSelect;
+
 export const emailTemplates = pgTable("email_templates", {
   id: serial("id").primaryKey(),
   tenantId: varchar("tenant_id", { length: 50 }).notNull().default('root'),
