@@ -273,6 +273,9 @@ interface Preload {
   dedupSids: Set<string>;
   customerPhones: Set<string>;
   activeSmsConvByPhone: Map<string, number>;
+  // phone -> customers.id for contacts created during this run, so repeat
+  // messages from a freshly-created lead can return its id without a re-lookup.
+  customerIdByPhone: Map<string, number>;
   // `${phone}|${content}` -> sorted-ish list of inbound message epoch-ms. Used by
   // the secondary dup guard to match within a true ±DUP_WINDOW_MS window
   // (legacy `messages` rows carry no Twilio SID, so SID dedup can't catch them).
@@ -343,6 +346,7 @@ async function preload(): Promise<Preload> {
     dedupSids: new Set(dedupRows.map((r) => r.sid)),
     customerPhones: new Set(custRows.map((r) => r.phone!).filter(Boolean)),
     activeSmsConvByPhone: new Map(),
+    customerIdByPhone: new Map(),
     inboundMsgTimes: new Map(),
     callSids: new Set(callRows.map((r) => r.sid)),
     phoneLineByNumber: new Map(),
@@ -368,7 +372,17 @@ async function ensureConvThread(
   name: string | null,
   to: string | null,
   pre: Preload,
-): Promise<{ conversationId: number; createdCustomer: boolean }> {
+): Promise<{ conversationId: number; createdCustomer: boolean; customerId: number }> {
+  // Cache-first: if the active SMS conversation for this phone is already known
+  // (from preload, or created earlier in this run), the contact already exists,
+  // so skip the expensive shared findOrCreateCustomer/findOrCreateThread
+  // round-trips (and their verbose logging) entirely. This is the hot path —
+  // chatty existing customers otherwise re-run those lookups once per message.
+  const cached = pre.activeSmsConvByPhone.get(phone);
+  if (cached !== undefined) {
+    return { conversationId: cached, createdCustomer: false, customerId: pre.customerIdByPhone.get(phone) ?? 0 };
+  }
+
   const fc = await findOrCreateCustomer(tenantDb, {
     tenantId: TENANT_ID,
     phone,
@@ -379,11 +393,9 @@ async function ensureConvThread(
   const customerId = fc.customer.id;
   const createdCustomer = !!fc.createdNew;
   pre.customerPhones.add(phone);
+  pre.customerIdByPhone.set(phone, customerId);
 
   const thread = await findOrCreateThread(tenantDb, TENANT_ID, customerId);
-
-  const cached = pre.activeSmsConvByPhone.get(phone);
-  if (cached) return { conversationId: cached, createdCustomer };
 
   const inserted = await tenantDb
     .insert(conversations)
@@ -404,7 +416,24 @@ async function ensureConvThread(
     .returning({ id: conversations.id });
   const conversationId = inserted[0].id;
   pre.activeSmsConvByPhone.set(phone, conversationId);
-  return { conversationId, createdCustomer };
+  return { conversationId, createdCustomer, customerId };
+}
+
+// Mark a freshly-created imported contact (missed caller / texter) as an audit
+// lead: import_source='twilio_audit', sms_consent=true (they never opted out and
+// are reachable for transactional follow-up), and a needs_followup flag + note so
+// the owner can pull a follow-up list. STOP opt-outs are handled in Phase 1 with
+// consent=false and are NOT routed here, so this never overrides an opt-out.
+async function flagImportedLead(customerId: number, note: string): Promise<void> {
+  await tenantDb
+    .update(customers)
+    .set({
+      importSource: IMPORT_SOURCE,
+      smsConsent: true,
+      needsFollowup: true,
+      importNote: note,
+    })
+    .where(eq(customers.id, customerId));
 }
 
 // Lazily resolve (or create, once) the single bucket conversation that holds all
@@ -765,7 +794,7 @@ async function importSms(inbound: InboundSms[], pre: Preload, nc: NoiseClassifie
           const ded = await tx
             .insert(smsInboundDedup)
             .values({ tenantId: TENANT_ID, messageSid: m.sid, fromNumber: m.from, toNumber: m.to, receivedAt: m.dateSent })
-            .onConflictDoNothing({ target: smsInboundDedup.messageSid })
+            .onConflictDoNothing({ target: [smsInboundDedup.tenantId, smsInboundDedup.messageSid] })
             .returning({ id: smsInboundDedup.id });
           if (ded.length === 0) return 'dedup_skip';
           await tx.insert(messages).values({
@@ -830,8 +859,9 @@ async function importSms(inbound: InboundSms[], pre: Preload, nc: NoiseClassifie
 
       // Real run: resolve conversation/thread quietly, then atomic dedup+message.
       const before = totals.customersCreated;
-      const { conversationId, createdCustomer } = await ensureConvThread(m.from, null, m.to, pre);
+      const { conversationId, createdCustomer, customerId } = await ensureConvThread(m.from, null, m.to, pre);
       if (createdCustomer && totals.customersCreated === before) {
+        await flagImportedLead(customerId, 'missed_text_during_outage');
         totals.customersCreated++;
         totals.customersFromSms++;
         sample('customersCreated', `${m.from} (new SMS sender)`);
@@ -841,7 +871,7 @@ async function importSms(inbound: InboundSms[], pre: Preload, nc: NoiseClassifie
         const ded = await tx
           .insert(smsInboundDedup)
           .values({ tenantId: TENANT_ID, messageSid: m.sid, fromNumber: m.from, toNumber: m.to, receivedAt: m.dateSent })
-          .onConflictDoNothing({ target: smsInboundDedup.messageSid })
+          .onConflictDoNothing({ target: [smsInboundDedup.tenantId, smsInboundDedup.messageSid] })
           .returning({ id: smsInboundDedup.id });
         if (ded.length === 0) return 'dedup_skip';
 
@@ -971,8 +1001,9 @@ async function importCalls(
       }
 
       const before = totals.customersCreated;
-      const { conversationId, createdCustomer } = await ensureConvThread(c.from, null, c.to, pre);
+      const { conversationId, createdCustomer, customerId } = await ensureConvThread(c.from, null, c.to, pre);
       if (createdCustomer && totals.customersCreated === before) {
+        await flagImportedLead(customerId, 'missed_call_during_outage');
         totals.customersCreated++;
         totals.customersFromCall++;
         sample('customersCreated', `${c.from} (new caller)`);

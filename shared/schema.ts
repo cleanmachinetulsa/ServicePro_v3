@@ -498,6 +498,8 @@ export const customers = pgTable("customers", {
   
   // Phase 16 - Customer Backfill fields
   importSource: varchar("import_source", { length: 255 }), // Track where customer data came from (e.g., 'sheet,db', 'sms,db')
+  needsFollowup: boolean("needs_followup").default(false), // Imported leads (e.g. twilio_audit missed calls/texts) the owner must follow up on
+  importNote: text("import_note"), // Free-text provenance note for imported rows (e.g. 'missed_call_during_outage')
   householdId: integer("household_id"), // Reference to households table for grouping customers by address
   
   // Phase 15 - Customer Portal Profile Customization
