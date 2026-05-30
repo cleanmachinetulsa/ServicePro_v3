@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from './db';
 import type { TenantDb } from './tenantDb';
 import { smsDeliveryStatus } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { verifyTwilioSignature } from './twilioSignatureMiddleware';
 import { getWebSocketServer } from './websocketService';
 
@@ -102,6 +102,39 @@ router.post('/status-callback', verifyTwilioSignature, async (req: Request, res:
       });
 
       console.log('[TWILIO STATUS] Created new record for:', MessageSid);
+    }
+
+    // CM-2: Update port_recovery_sms_sends if this SID belongs to a campaign send.
+    // Uses raw db (not tenantDb) because Twilio callbacks carry no tenant context —
+    // the lookup is by the globally-unique twilio_sid, which is safe cross-tenant.
+    // Only UPDATEs existing rows — never inserts from the callback.
+    if (MessageSid) {
+      try {
+        if (MessageStatus === 'delivered') {
+          await db.execute(sql`
+            UPDATE port_recovery_sms_sends
+               SET status = 'delivered',
+                   delivered_at = NOW()
+             WHERE twilio_sid = ${MessageSid}
+               AND status NOT IN ('delivered')
+          `);
+        } else if (
+          MessageStatus === 'failed' ||
+          MessageStatus === 'undelivered' ||
+          MessageStatus === 'undeliverable'
+        ) {
+          await db.execute(sql`
+            UPDATE port_recovery_sms_sends
+               SET status = 'failed',
+                   error_code = ${ErrorCode ?? null}
+             WHERE twilio_sid = ${MessageSid}
+               AND status NOT IN ('delivered', 'failed')
+          `);
+        }
+      } catch (campaignErr: any) {
+        // Fail-open: campaign tracking must never block the Twilio 200 acknowledgement.
+        console.warn('[TWILIO STATUS] Failed to update port_recovery_sms_sends:', campaignErr.message);
+      }
     }
 
     // Log errors to help with troubleshooting

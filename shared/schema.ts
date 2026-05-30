@@ -5435,6 +5435,8 @@ export const portRecoverySmsRemoteSends = pgTable("port_recovery_sms_sends", {
   errorCode: text("error_code"),
   errorMessage: text("error_message"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
+  // CM-2: added to support Twilio status callback delivery tracking
+  deliveredAt: timestamp("delivered_at"),
 }, (table) => ({
   uniqueKey: uniqueIndex("port_recovery_sms_sends_unique").on(table.tenantId, table.campaignKey, table.phone),
   tenantIdx: index("port_recovery_sms_sends_lookup").on(table.tenantId, table.campaignKey, table.phone, table.sentAt),
