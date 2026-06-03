@@ -12,7 +12,7 @@ import { sendDirectTwilioSMS } from './smsSendGuard'; // SMS-AUDIT-T1 S-8: outbo
 import { twilioClient } from '../twilioClient';
 import { db } from '../db';
 import type { TenantDb } from '../tenantDb';
-import { portRecoverySmsRemoteSends, customers } from '@shared/schema';
+import { portRecoverySmsRemoteSends, customers, smsSuppressionList } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { PHONE_TWILIO_MAIN } from '../config/phoneConfig';
 
@@ -215,20 +215,61 @@ export async function sendPortRecoverySms(params: PortRecoverySendParams): Promi
     return { ok: false, errorMessage: 'campaignKey is required (cannot be null)' };
   }
   
+  // CM-3 Step C-1: E.164 format + minimum length check.
+  // normalizeE164 handles the basic +/digit conversion; we then enforce the
+  // 7-digit minimum (after the leading country-code digit) to reject obviously
+  // short or malformed numbers before hitting Twilio or the suppression list.
   const normalizedTo = normalizeE164(to);
-  if (!normalizedTo) {
-    console.log(`[PORT RECOVERY SMS SEND] Invalid phone: ${to}`);
-    return { ok: false, errorMessage: 'Invalid phone number', skipped: true, skipReason: 'invalid_phone' };
+  if (!normalizedTo || !/^\+[1-9]\d{7,14}$/.test(normalizedTo)) {
+    console.log(`[VALIDATION] Invalid E.164 phone rejected: ${to}`);
+    return { ok: false, errorMessage: 'Invalid phone number (E.164 required, min 9 digits)', skipped: true, skipReason: 'invalid_phone' };
   }
-  
+
   // Determine FROM number - STRICT single sender
   const fromUsed = fromNumber || getTenantPrimarySmsNumber(tenantId);
-  
-  // Prevent to=from
+
+  // CM-3 Step C-2: to == from guard (pre-existing, kept in place)
   if (normalizedTo === fromUsed) {
+    console.log(`[SAFETY] Skipping to==from number phone=${normalizedTo} campaign=${campaignKey}`);
     return { ok: false, errorMessage: 'to_equals_from', skipped: true, skipReason: 'to_equals_from' };
   }
-  
+
+  // CM-3 Step C-3: Block fake, reserved, and Twilio magic test numbers.
+  // +1555... = reserved/fake in NANP; +1900/+1976 = premium-rate, not real customers.
+  // +15005550006 = Twilio's own magic test-invalid FROM number; never a real recipient.
+  const FAKE_RESERVED_PATTERN = /^\+1(555|900|976)/;
+  const TWILIO_MAGIC_INVALID = '+15005550006';
+  if (FAKE_RESERVED_PATTERN.test(normalizedTo) || normalizedTo === TWILIO_MAGIC_INVALID) {
+    console.log(`[VALIDATION] Skipping fake/reserved number phone=${normalizedTo} campaign=${campaignKey}`);
+    return { ok: false, errorMessage: 'Fake or reserved number blocked', skipped: true, skipReason: 'fake_number' };
+  }
+
+  // CM-3 Step B: Suppression list check — must happen BEFORE claim-lock so that
+  // suppressed numbers never get a tracking row in port_recovery_sms_sends.
+  try {
+    const [suppressed] = await tenantDb
+      .select({ id: smsSuppressionList.id })
+      .from(smsSuppressionList)
+      .where(
+        and(
+          eq(smsSuppressionList.tenantId, tenantId),
+          eq(smsSuppressionList.phoneNumber, normalizedTo),
+        ),
+      )
+      .limit(1);
+
+    if (suppressed) {
+      console.log(`[SUPPRESSION] Skipping suppressed number phone=${normalizedTo} campaign=${campaignKey}`);
+      return { ok: false, skipped: true, skipReason: 'suppressed' };
+    }
+  } catch (err: any) {
+    // Fail-open: log prominently but do not block the send if the suppression
+    // table is temporarily unreachable. A missed suppression is recoverable via
+    // Twilio's 21610 opt-out handler below; a blanket send-block on DB error
+    // would silently kill the whole campaign batch.
+    console.error(`[SUPPRESSION] Suppression check failed for phone=${normalizedTo}, proceeding: ${err.message}`);
+  }
+
   // Step 1: Atomic claim-lock
   const lockResult = await attemptClaimLock(tenantDb, tenantId, campaignKey, normalizedTo);
   

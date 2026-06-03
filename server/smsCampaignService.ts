@@ -68,11 +68,14 @@ const dailySendCounters = {
   updatedAt: 'updated_at'
 };
 
+// CM-3: corrected to match live DB schema (migration 0011).
+// Previous mapping had 'addedAt: added_at' — that column does not exist.
 const smsSuppressionList = {
   id: 'id',
+  tenantId: 'tenant_id',
   phoneNumber: 'phone_number',
   reason: 'reason',
-  addedAt: 'added_at'
+  suppressedAt: 'suppressed_at',
 };
 
 // Twilio rate limiter - 600 requests/min
@@ -400,10 +403,11 @@ async function processSingleCampaign(tenantDb: TenantDb, campaign: any) {
  */
 async function sendSingleCampaignSMS(tenantDb: TenantDb, campaign: any, recipient: any) {
   try {
-    // Check suppression list
+    // CM-3: suppression check with correct column name and tenant filter.
     const suppressed = await tenantDb.execute(sql`
-      SELECT * FROM sms_suppression_list
-      WHERE phone_number = ${recipient.phone_number}
+      SELECT id FROM sms_suppression_list
+      WHERE tenant_id   = ${tenantDb.tenantId}
+        AND phone_number = ${recipient.phone_number}
     `);
     
     if (suppressed.rows.length > 0) {
@@ -712,10 +716,12 @@ export async function cancelSMSCampaign(tenantDb: TenantDb, id: number) {
  * Add phone number to suppression list
  */
 export async function addToSMSSuppressionList(tenantDb: TenantDb, phoneNumber: string, reason: string = 'user_request') {
+  // CM-3: use correct column names (suppressed_at not added_at), include tenant_id,
+  // and match the real unique index ON (tenant_id, phone_number).
   await tenantDb.execute(sql`
-    INSERT INTO sms_suppression_list (phone_number, reason, added_at)
-    VALUES (${phoneNumber}, ${reason}, NOW())
-    ON CONFLICT (phone_number) DO NOTHING
+    INSERT INTO sms_suppression_list (tenant_id, phone_number, reason, suppressed_at)
+    VALUES (${tenantDb.tenantId}, ${phoneNumber}, ${reason}, NOW())
+    ON CONFLICT (tenant_id, phone_number) DO NOTHING
   `);
   
   console.log(`[SMS CAMPAIGN] Added ${phoneNumber} to suppression list (reason: ${reason})`);
@@ -725,9 +731,11 @@ export async function addToSMSSuppressionList(tenantDb: TenantDb, phoneNumber: s
  * Check if phone number is on suppression list
  */
 export async function isPhoneSuppressed(tenantDb: TenantDb, phoneNumber: string): Promise<boolean> {
+  // CM-3: add tenant filter (was unscoped — cross-tenant suppression leak risk).
   const result = await tenantDb.execute(sql`
     SELECT COUNT(*) as count FROM sms_suppression_list
-    WHERE phone_number = ${phoneNumber}
+    WHERE tenant_id   = ${tenantDb.tenantId}
+      AND phone_number = ${phoneNumber}
   `);
   
   return (result.rows[0] as any).count > 0;

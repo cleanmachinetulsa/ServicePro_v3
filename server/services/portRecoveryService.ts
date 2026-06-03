@@ -1006,6 +1006,9 @@ export async function runPortRecoveryBatch(
   let emailSent = 0;
   let totalPointsGranted = 0;
   let errors = 0;
+  // CM-3 Step D: per-batch visibility counters
+  let skippedSuppressed = 0;
+  let skippedInvalid = 0;
   
   const fromNumber = process.env.MAIN_PHONE_NUMBER || process.env.TWILIO_TEST_SMS_NUMBER || '';
   const ctaUrl = campaign.ctaUrl || DEFAULT_CTA_URL;
@@ -1148,6 +1151,16 @@ export async function runPortRecoveryBatch(
             smsSkipReason = smsResult.skipReason || 'already_sent';
             // Don't count as attempt since it was skipped
             smsAttempted = false;
+            // CM-3 Step D: bucket the skip reason for the summary log
+            if (smsResult.skipReason === 'suppressed') {
+              skippedSuppressed++;
+            } else if (
+              smsResult.skipReason === 'invalid_phone' ||
+              smsResult.skipReason === 'fake_number' ||
+              smsResult.skipReason === 'to_equals_from'
+            ) {
+              skippedInvalid++;
+            }
           } else {
             updates.smsStatus = 'failed';
             updates.smsErrorMessage = smsResult.errorMessage;
@@ -1274,6 +1287,9 @@ export async function runPortRecoveryBatch(
       .where(eq(portRecoveryTargets.id, target.id));
   }
   
+  // CM-3 Step D: one summary line per batch for observability
+  console.log(`[CAMPAIGN SUMMARY] sent=${smsSent} skipped_suppressed=${skippedSuppressed} skipped_invalid=${skippedInvalid} failed=${smsFailed} total=${targets.length}`);
+
   // Update campaign stats including failed counts
   await tenantDb
     .update(portRecoveryCampaigns)
