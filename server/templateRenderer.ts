@@ -65,7 +65,15 @@ function interpolateTemplate(
       console.log(`[TEMPLATE RENDERER] Optional variable '${variable.name}' not provided for ${templateKey}, using empty string`);
       result = result.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), '');
     }
+    // required + missing: caught by validatePayload earlier; no replacement needed here
   });
+
+  // CM-4: residual sweep — strip any {token} or {{token}} placeholders that were
+  // not in the declared variables list (typos in template content, unknown future
+  // tokens). Prevents bracket-artifacts reaching the customer.
+  result = result
+    .replace(/\{\{[a-zA-Z][a-zA-Z_]*\}\}/g, '')
+    .replace(/\{[a-zA-Z][a-zA-Z_]*\}/g, '');
 
   return result;
 }

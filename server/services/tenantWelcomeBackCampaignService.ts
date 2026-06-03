@@ -280,8 +280,17 @@ export async function updateTenantWelcomeBackCampaignConfig(
 }
 
 /**
- * Interpolate template variables
- * Supports both {{var}} and {var} syntax for flexibility
+ * Interpolate template variables.
+ * Supports both {{var}} and {var} syntax for flexibility.
+ *
+ * CM-4 fixes:
+ * 1. Null-safe value derivation — null/undefined values must never reach
+ *    String.prototype.replace, which would coerce them to the literal strings
+ *    "null" or "undefined" (e.g. "Hey null!" instead of "Hey Valued Customer!").
+ * 2. pointsBonus always replaced regardless of type — '' when not a number,
+ *    so {{pointsBonus}} never stays as a literal bracket-token.
+ * 3. Residual sweep strips any remaining {{token}} / {token} patterns not handled
+ *    by the explicit replacements above.
  */
 function interpolateTemplate(
   template: string,
@@ -295,34 +304,40 @@ function interpolateTemplate(
   }
 ): string {
   let result = template;
-  
-  // Support both {{var}} (double curly) and {var} (single curly) syntax
-  // Customer name
-  result = result.replace(/\{\{customerName\}\}/gi, vars.customerName);
-  result = result.replace(/\{name\}/gi, vars.customerName);
-  
-  // Business name
-  result = result.replace(/\{\{businessName\}\}/gi, vars.businessName);
-  result = result.replace(/\{business_name\}/gi, vars.businessName);
-  
-  // Booking link
-  result = result.replace(/\{\{bookingLink\}\}/gi, vars.bookingLink);
-  result = result.replace(/\{booking_link\}/gi, vars.bookingLink);
-  
-  // Rewards link (personalized with token)
-  result = result.replace(/\{\{rewardsLink\}\}/gi, vars.rewardsLink);
-  result = result.replace(/\{rewards_link\}/gi, vars.rewardsLink);
-  
-  // QR link
+
+  // CM-4: null-safe derivation — use meaningful fallbacks when values are
+  // missing so rendered text stays readable and no JS coercion artifact appears.
+  const customerName = (vars.customerName && vars.customerName.trim())
+    ? vars.customerName.trim()
+    : 'Valued Customer';
+  const businessName = (vars.businessName && vars.businessName.trim())
+    ? vars.businessName.trim()
+    : 'our team';
+  const bookingLink  = vars.bookingLink  ?? '';
+  const rewardsLink  = vars.rewardsLink  ?? '';
+  const pointsBonusStr = typeof vars.pointsBonus === 'number'
+    ? String(vars.pointsBonus)
+    : '';
+
+  // Support both {{var}} (double curly) and {var} (single curly) syntax.
+  result = result.replace(/\{\{customerName\}\}/gi, customerName);
+  result = result.replace(/\{name\}/gi, customerName);
+  result = result.replace(/\{\{businessName\}\}/gi, businessName);
+  result = result.replace(/\{business_name\}/gi, businessName);
+  result = result.replace(/\{\{bookingLink\}\}/gi, bookingLink);
+  result = result.replace(/\{booking_link\}/gi, bookingLink);
+  result = result.replace(/\{\{rewardsLink\}\}/gi, rewardsLink);
+  result = result.replace(/\{rewards_link\}/gi, rewardsLink);
   result = result.replace(/\{\{qrLink\}\}/g, vars.qrLink ?? '');
   result = result.replace(/\{qr_link\}/gi, vars.qrLink ?? '');
-  
-  // Points bonus
-  if (typeof vars.pointsBonus === 'number') {
-    result = result.replace(/\{\{pointsBonus\}\}/gi, String(vars.pointsBonus));
-    result = result.replace(/\{points_bonus\}/gi, String(vars.pointsBonus));
-  }
-  
+  result = result.replace(/\{\{pointsBonus\}\}/gi, pointsBonusStr);
+  result = result.replace(/\{points_bonus\}/gi, pointsBonusStr);
+
+  // CM-4: residual sweep — strip remaining {{token}} / {token} placeholders.
+  result = result
+    .replace(/\{\{[a-zA-Z][a-zA-Z_]*\}\}/g, '')
+    .replace(/\{[a-zA-Z][a-zA-Z_]*\}/g, '');
+
   return result;
 }
 

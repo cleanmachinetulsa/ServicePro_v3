@@ -705,8 +705,15 @@ function templateHasRewardsLink(template: string): boolean {
 }
 
 /**
- * Interpolate template variables
- * SP-REWARDS-CAMPAIGN-TOKENS: Now supports {{rewardsLink}} and {{rewards_link}} for personalized token URLs
+ * Interpolate template variables.
+ * SP-REWARDS-CAMPAIGN-TOKENS: Supports {{rewardsLink}} and {{rewards_link}}.
+ *
+ * CM-4 fixes:
+ * 1. {{rewardsLink}} / {rewards_link} are always replaced — with '' when the
+ *    link is not available — so no literal bracket-token ever reaches a customer.
+ * 2. Residual sweep at the end strips any remaining {{token}} or {token} patterns
+ *    not covered by the explicit replacements (custom templates, typos, future tokens
+ *    added to a template before the renderer catches up).
  */
 function interpolateTemplate(
   template: string,
@@ -716,23 +723,30 @@ function interpolateTemplate(
   rewardsLink?: string
 ): string {
   const firstName = getFirstName(target.customerName);
+  // 'there' fallback when name is missing, null, or the literal string 'unknown'
   const firstNameOrFallback = (firstName && firstName !== 'unknown') ? firstName : 'there';
   const customerNameGreeting = target.customerName ? ` ${target.customerName}` : '';
-  
+
   let result = template
     .replace(/\{\{firstNameOrFallback\}\}/g, firstNameOrFallback)
     .replace(/\{\{customerName\}\}/g, target.customerName || 'Valued Customer')
     .replace(/\{\{customerNameGreeting\}\}/g, customerNameGreeting)
     .replace(/\{\{ctaUrl\}\}/g, ctaUrl)
     .replace(/\{\{bookingUrl\}\}/g, ctaUrl)
-    .replace(/\{\{points\}\}/g, points.toString());
-  
-  if (rewardsLink) {
-    result = result
-      .replace(/\{\{rewardsLink\}\}/gi, rewardsLink)
-      .replace(/\{rewards_link\}/gi, rewardsLink);
-  }
-  
+    .replace(/\{\{points\}\}/g, points.toString())
+    // CM-4: always replace — use '' when link is undefined so the token is never
+    // left in the rendered output as a visible bracket-artifact.
+    .replace(/\{\{rewardsLink\}\}/gi, rewardsLink ?? '')
+    .replace(/\{rewards_link\}/gi, rewardsLink ?? '');
+
+  // CM-4: residual sweep — strip any remaining {{token}} or {token} placeholders
+  // that were not matched by the explicit replacements above.  This catches
+  // unknown variables in custom templates and future tokens that aren't yet
+  // handled, so no bracket-artifact ever reaches a customer.
+  result = result
+    .replace(/\{\{[a-zA-Z][a-zA-Z_]*\}\}/g, '')
+    .replace(/\{[a-zA-Z][a-zA-Z_]*\}/g, '');
+
   return result;
 }
 
