@@ -44,11 +44,11 @@ export const AUTO_DETAILING_SMS_TEMPLATES: SmsTemplateConfig[] = [
     body: "Thanks {firstName}! Your {serviceName} appointment is confirmed for {date} at {time}. We'll send you a reminder 24 hours before.\n\nReply STOP to opt out.",
     variables: [
       { name: "firstName", description: "Customer's first name", sample: "John", required: true },
-      { name: "serviceName", description: "Service booked", sample: "Full Detail", required: true },
+      { name: "serviceName", description: "Service booked", sample: "Showroom", required: true },
       { name: "date", description: "Appointment date", sample: "Dec 15", required: true },
       { name: "time", description: "Appointment time", sample: "2:00 PM", required: true }
     ],
-    defaultPayload: { firstName: "John", serviceName: "Full Detail", date: "Dec 15", time: "2:00 PM" },
+    defaultPayload: { firstName: "John", serviceName: "Showroom", date: "Dec 15", time: "2:00 PM" },
     enabled: true
   },
   {
@@ -71,10 +71,10 @@ export const AUTO_DETAILING_SMS_TEMPLATES: SmsTemplateConfig[] = [
     body: "Hi {firstName}! This is a reminder that your {serviceName} appointment is tomorrow at {time}. Looking forward to making your vehicle shine! ✨",
     variables: [
       { name: "firstName", description: "Customer's first name", sample: "Mike", required: true },
-      { name: "serviceName", description: "Service booked", sample: "Interior Detail", required: true },
+      { name: "serviceName", description: "Service booked", sample: "The Deep Clean", required: true },
       { name: "time", description: "Appointment time", sample: "10:00 AM", required: true }
     ],
-    defaultPayload: { firstName: "Mike", serviceName: "Interior Detail", time: "10:00 AM" },
+    defaultPayload: { firstName: "Mike", serviceName: "The Deep Clean", time: "10:00 AM" },
     enabled: true
   }
 ];
@@ -91,7 +91,7 @@ export const AUTO_DETAILING_FAQ: FaqEntryTemplate[] = [
   {
     category: "pricing",
     question: "How much does a basic detail cost?",
-    answer: "Our basic detail packages start at $150-$250 depending on vehicle size and condition. Final pricing is determined after inspecting your vehicle. We offer free quotes!",
+    answer: "Our packages start at $179 (Pit Stop maintenance refresh) up to $549 (Showstopper full detail + paint enhancement). Final pricing depends on package choice, vehicle size, and condition. We offer free quotes!",
     keywords: ["price", "cost", "how much", "pricing"],
     displayOrder: 2,
     enabled: true

@@ -238,6 +238,15 @@ export default function MultiVehicleAppointmentScheduler({
   const [addOnServices, setAddOnServices] = useState<AddOnService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState<boolean>(true);
   const [isLoadingAddOns, setIsLoadingAddOns] = useState<boolean>(false);
+  // CM-6 Step 3C: Pit Stop redirect modal state.
+  // showPitStopModal fires once when Pit Stop + a heavy-condition checkbox is combined.
+  // pitStopRedirectDismissed resets when all heavy conditions are unchecked, allowing
+  // the modal to re-fire if the customer re-checks.
+  // pitStopKeepWithNote shows a persistent advisory note when dismissed without switching.
+  const [showPitStopModal, setShowPitStopModal] = useState<boolean>(false);
+  const [pitStopRedirectDismissed, setPitStopRedirectDismissed] = useState<boolean>(false);
+  const [pitStopKeepWithNote, setPitStopKeepWithNote] = useState<boolean>(false);
+
   const [showWeatherAlert, setShowWeatherAlert] = useState<boolean>(false);
   const [weatherData, setWeatherData] = useState<{
     weatherRiskLevel: 'none' | 'low' | 'moderate' | 'high' | 'very-high' | 'severe';
@@ -672,6 +681,9 @@ export default function MultiVehicleAppointmentScheduler({
 
   const handleServiceSelect = (service: Service) => {
     setSelectedService(service);
+    // CM-6 Step 3C: reset Pit Stop redirect modal state when switching services.
+    setPitStopRedirectDismissed(false);
+    setPitStopKeepWithNote(false);
     // Fetch add-on services that are relevant to the selected service
     fetchAddOnServices(service.name);
     // Move to add-ons step instead of directly to date selection
@@ -778,6 +790,13 @@ export default function MultiVehicleAppointmentScheduler({
     setStep("date");
   };
 
+  // Heavy conditions that trigger the Pit Stop → Deep Clean redirect modal (CM-6 Step 3C).
+  const HEAVY_CONDITIONS = [
+    "Heavy pet hair or excessive sand",
+    "Major stains, grease, or mold",
+    "Biological soiling — urine, vomit, or blood",
+  ];
+
   // Handler for toggling a vehicle condition
   const toggleVehicleCondition = (condition: string) => {
     const currentConditions = currentVehicle.conditions;
@@ -794,6 +813,20 @@ export default function MultiVehicleAppointmentScheduler({
         newConditions = newConditions.filter(c => c !== condition);
       } else {
         newConditions = [...newConditions, condition];
+      }
+
+      // CM-6 Step 3C: After updating conditions, check if we should fire the redirect modal.
+      const hasHeavyCondition = newConditions.some(c => HEAVY_CONDITIONS.includes(c));
+      const isPitStop = selectedService?.name === 'Pit Stop';
+
+      if (isPitStop && hasHeavyCondition && !pitStopRedirectDismissed) {
+        setShowPitStopModal(true);
+      }
+
+      // Reset dismissed flag when all heavy conditions are unchecked so modal can re-fire.
+      if (!hasHeavyCondition) {
+        setPitStopRedirectDismissed(false);
+        setPitStopKeepWithNote(false);
       }
     }
 
@@ -1222,13 +1255,15 @@ export default function MultiVehicleAppointmentScheduler({
   };
 
   const calculateConditionPrices = (): Record<string, number> => {
-    // This is a placeholder. You'd need to define prices for conditions.
-    // For now, let's assume a flat fee for specific conditions.
+    // CM-6 Step 3A: condition surcharges are disclosed to the customer but NOT
+    // auto-added to the price estimate. The price calculator shows a disclosure note
+    // instead. This map is kept for reference but conditionPrices passed to
+    // BookingPriceCalculator will be empty so no amount is auto-added.
     const conditionPriceMap: Record<string, number> = {
-      "Excessive pet hair, sand (additional cost for interior cleaning)": 50,
-      "Major Stains / Grease / Mold etc.": 75,
-      "Urine / Vomit / Blood etc.": 100,
-      "Other": 25, // Default for 'Other' if not specified
+      "Heavy pet hair or excessive sand": 0,
+      "Major stains, grease, or mold": 0,
+      "Biological soiling — urine, vomit, or blood": 0,
+      "Other condition concern": 0,
     };
     const prices: Record<string, number> = {};
     vehicles.forEach((vehicle, vIndex) => {
@@ -1370,6 +1405,84 @@ export default function MultiVehicleAppointmentScheduler({
         </div>
       </div>
 
+      {/* CM-6 Step 3C: Pit Stop → The Deep Clean redirect modal */}
+      {showPitStopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-amber-500/10 p-6"
+          >
+            <h2 className="text-lg font-bold text-white mb-2">A Different Service Might Be a Better Fit</h2>
+            <p className="text-sm text-slate-300 leading-relaxed mb-5">
+              Based on your vehicle's condition, <span className="text-amber-300 font-semibold">The Deep Clean</span> is
+              the right starting point — and worth every penny.
+            </p>
+            <p className="text-sm text-slate-400 leading-relaxed mb-5">
+              The Pit Stop is designed for vehicles that are already in good shape and just need a professional refresh.
+              For vehicles with heavy soil, pet hair, or staining, The Deep Clean delivers a thorough restoration that
+              gets the real results you're looking for.
+            </p>
+
+            {/* Side-by-side comparison */}
+            <div className="rounded-xl border border-slate-700/60 overflow-hidden mb-5">
+              <div className="px-4 py-3 bg-slate-800/60 border-b border-slate-700/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-200">Pit Stop</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Light maintenance refresh</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Best for: already clean vehicles</p>
+                  </div>
+                  <span className="text-sm font-bold text-slate-300">$179</span>
+                </div>
+              </div>
+              <div className="px-4 py-3 bg-amber-500/10 border-l-2 border-amber-400">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-amber-200">The Deep Clean</p>
+                      <span className="text-[0.6rem] font-medium bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-full border border-amber-400/30">Recommended</span>
+                    </div>
+                    <p className="text-xs text-amber-300/70 mt-0.5">Full interior restoration</p>
+                    <p className="text-xs text-amber-300/60 mt-0.5">Best for: your situation</p>
+                  </div>
+                  <span className="text-sm font-bold text-amber-300">from $249</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CTAs */}
+            <button
+              onClick={() => {
+                const deepClean = services.find(s => s.name === 'The Deep Clean');
+                if (deepClean) {
+                  setSelectedService(deepClean);
+                  fetchAddOnServices(deepClean.name);
+                }
+                setPitStopRedirectDismissed(true);
+                setPitStopKeepWithNote(false);
+                setShowPitStopModal(false);
+              }}
+              className="w-full mb-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-900 font-semibold py-3 text-sm transition-all duration-200 shadow-md shadow-amber-500/30"
+            >
+              Switch to The Deep Clean
+            </button>
+            <button
+              onClick={() => {
+                setPitStopRedirectDismissed(true);
+                setPitStopKeepWithNote(true);
+                setShowPitStopModal(false);
+              }}
+              className="w-full text-xs text-slate-400 hover:text-slate-300 transition-colors py-1"
+            >
+              Keep Pit Stop anyway
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       {/* Weather Alert Dialog */}
       <WeatherAlertDialog
         open={showWeatherAlert}
@@ -1448,6 +1561,17 @@ export default function MultiVehicleAppointmentScheduler({
             transition={stepTransition}
             className="space-y-4"
           >
+            {/* CM-6 Step 3B: Travel fee disclosure for extended service area */}
+            {isExtendedAreaRequest && (
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+                <span className="mt-0.5 text-amber-300 text-base">📍</span>
+                <p className="text-sm text-amber-200 leading-snug">
+                  <span className="font-semibold">A $35 travel fee applies to your location.</span>{" "}
+                  We'll confirm this before your appointment.
+                </p>
+              </div>
+            )}
+
             {/* Loyalty Redemption Journey v2 - Inline reward status during service selection */}
             {pendingReward && (
               <motion.div
@@ -1886,40 +2010,40 @@ export default function MultiVehicleAppointmentScheduler({
               <div className="mt-4">
                 <Label className="mb-2 block text-blue-100">Vehicle Condition (select all that apply)</Label>
                 <div className="grid gap-2 mt-2">
-                  {/* Pet hair, sand */}
+                  {/* Pet hair, sand — CM-6 Step 3A: disclosure copy, no auto-add */}
                   <div className="flex items-center">
                     <Checkbox
                       id={`condition-pet-hair-sand-${currentVehicleIndex}`}
-                      checked={currentVehicle.conditions.includes("Pet hair, sand")}
-                      onCheckedChange={() => toggleVehicleCondition("Pet hair, sand")}
+                      checked={currentVehicle.conditions.includes("Heavy pet hair or excessive sand")}
+                      onCheckedChange={() => toggleVehicleCondition("Heavy pet hair or excessive sand")}
                       className="border-blue-400/40"
                     />
                     <label
                       htmlFor={`condition-pet-hair-sand-${currentVehicleIndex}`}
                       className="ml-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-blue-100"
                     >
-                      Excessive pet hair, sand (additional cost for interior cleaning)
+                      Heavy pet hair or excessive sand <span className="text-blue-300/70 font-normal">(+$50 — we'll confirm before starting)</span>
                     </label>
                   </div>
 
-                  {/* Major Stains / Grease / Mold etc. */}
+                  {/* Major Stains / Grease / Mold — CM-6 Step 3A */}
                   <div className="flex items-center">
                     <Checkbox
                       id={`condition-major-stains-${currentVehicleIndex}`}
-                      checked={currentVehicle.conditions.includes("Major Stains / Grease / Mold etc.")}
-                      onCheckedChange={() => toggleVehicleCondition("Major Stains / Grease / Mold etc.")}
+                      checked={currentVehicle.conditions.includes("Major stains, grease, or mold")}
+                      onCheckedChange={() => toggleVehicleCondition("Major stains, grease, or mold")}
                       className="border-blue-400/40"
                     />
                     <label
                       htmlFor={`condition-major-stains-${currentVehicleIndex}`}
                       className="ml-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-blue-100"
                     >
-                      Major Stains / Grease / Mold etc.
+                      Major stains, grease, or mold <span className="text-blue-300/70 font-normal">(+$75 — we'll confirm before starting)</span>
                     </label>
                   </div>
 
                   {/* Description field for Major Stains */}
-                  {currentVehicle.conditions.includes("Major Stains / Grease / Mold etc.") && (
+                  {currentVehicle.conditions.includes("Major stains, grease, or mold") && (
                     <div className="ml-6 mt-1">
                       <Label className="text-xs text-blue-200/60">Please describe the specific issue in detail</Label>
                       <Input
@@ -1931,24 +2055,24 @@ export default function MultiVehicleAppointmentScheduler({
                     </div>
                   )}
 
-                  {/* Urine / Vomit / Blood etc. */}
+                  {/* Biological soiling — CM-6 Step 3A */}
                   <div className="flex items-center">
                     <Checkbox
                       id={`condition-urine-vomit-${currentVehicleIndex}`}
-                      checked={currentVehicle.conditions.includes("Urine / Vomit / Blood etc.")}
-                      onCheckedChange={() => toggleVehicleCondition("Urine / Vomit / Blood etc.")}
+                      checked={currentVehicle.conditions.includes("Biological soiling — urine, vomit, or blood")}
+                      onCheckedChange={() => toggleVehicleCondition("Biological soiling — urine, vomit, or blood")}
                       className="border-blue-400/40"
                     />
                     <label
                       htmlFor={`condition-urine-vomit-${currentVehicleIndex}`}
                       className="ml-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-blue-100"
                     >
-                      Urine / Vomit / Blood etc.
+                      Biological soiling — urine, vomit, or blood <span className="text-blue-300/70 font-normal">(additional cost quoted after inspection — we always confirm first)</span>
                     </label>
                   </div>
 
                   {/* Description field for Urine/Vomit/Blood */}
-                  {currentVehicle.conditions.includes("Urine / Vomit / Blood etc.") && (
+                  {currentVehicle.conditions.includes("Biological soiling — urine, vomit, or blood") && (
                     <div className="ml-6 mt-1">
                       <Label className="text-xs text-blue-200/60">Please describe the specific issue in detail</Label>
                       <Input
@@ -1976,24 +2100,24 @@ export default function MultiVehicleAppointmentScheduler({
                     </label>
                   </div>
 
-                  {/* Other */}
+                  {/* Other — CM-6 Step 3A */}
                   <div className="flex items-center">
                     <Checkbox
                       id={`condition-other-${currentVehicleIndex}`}
-                      checked={currentVehicle.conditions.includes("Other")}
-                      onCheckedChange={() => toggleVehicleCondition("Other")}
+                      checked={currentVehicle.conditions.includes("Other condition concern")}
+                      onCheckedChange={() => toggleVehicleCondition("Other condition concern")}
                       className="border-blue-400/40"
                     />
                     <label
                       htmlFor={`condition-other-${currentVehicleIndex}`}
                       className="ml-2 text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-blue-100"
                     >
-                      Other:
+                      Other condition concern <span className="text-blue-300/70 font-normal">(we'll assess and confirm any additional cost)</span>
                     </label>
                   </div>
 
                   {/* Description field for Other */}
-                  {currentVehicle.conditions.includes("Other") && (
+                  {currentVehicle.conditions.includes("Other condition concern") && (
                     <div className="ml-6 mt-1">
                       <Input
                         placeholder="Please specify"
@@ -2004,6 +2128,25 @@ export default function MultiVehicleAppointmentScheduler({
                     </div>
                   )}
                 </div>
+
+                {/* CM-6 Step 3A: Surcharge disclosure note (replaces auto-add in calculator) */}
+                {vehicles.some(v => v.conditions.some(c =>
+                  ["Heavy pet hair or excessive sand", "Major stains, grease, or mold",
+                   "Biological soiling — urine, vomit, or blood", "Other condition concern"].includes(c)
+                )) && (
+                  <div className="mt-3 flex items-start gap-2 text-xs text-blue-300/70 bg-blue-500/5 border border-blue-500/20 rounded-lg px-3 py-2">
+                    <span>ℹ️</span>
+                    <span>Condition surcharges may apply — we'll always confirm pricing before your appointment.</span>
+                  </div>
+                )}
+
+                {/* CM-6 Step 3C: Pit Stop advisory note after "keep anyway" dismissal */}
+                {pitStopKeepWithNote && selectedService?.name === 'Pit Stop' && (
+                  <div className="mt-3 flex items-start gap-2 text-xs text-amber-300/80 bg-amber-500/5 border border-amber-500/30 rounded-lg px-3 py-2">
+                    <span>⚠️</span>
+                    <span>Note: Pit Stop pricing applies to regularly maintained vehicles. If additional work is needed, we'll discuss with you before your appointment.</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2592,7 +2735,7 @@ export default function MultiVehicleAppointmentScheduler({
               )}
             </div>
 
-            {/* Live Pricing Calculator */}
+            {/* Live Pricing Calculator (CM-6: conditionPrices zeroed — surcharges disclosed only) */}
             <BookingPriceCalculator
               selectedService={selectedService?.name || ""}
               selectedAddOns={selectedAddOns}
@@ -2601,6 +2744,24 @@ export default function MultiVehicleAppointmentScheduler({
               addOnPrices={calculateAddOnPrices()}
               conditionPrices={calculateConditionPrices()}
             />
+
+            {/* CM-6 Step 3A: Surcharge disclosure — shown when any heavy condition is selected */}
+            {vehicles.some(v => v.conditions.some(c =>
+              ["Heavy pet hair or excessive sand", "Major stains, grease, or mold",
+               "Biological soiling — urine, vomit, or blood", "Other condition concern"].includes(c)
+            )) && (
+              <p className="text-xs text-blue-300/60 -mt-2 px-1">
+                ⚠️ Condition surcharges may apply — we'll always confirm pricing before your appointment.
+              </p>
+            )}
+
+            {/* CM-6 Step 3B: Travel fee reminder on confirm page when extended area */}
+            {isExtendedAreaRequest && (
+              <div className="flex items-start gap-2 text-xs text-amber-300/80 bg-amber-500/5 border border-amber-500/30 rounded-lg px-3 py-2">
+                <span>📍</span>
+                <span>A $35 travel fee applies to your location. We'll confirm before your appointment.</span>
+              </div>
+            )}
 
             {/* Loyalty Points Display */}
             <BookingLoyaltyDisplay

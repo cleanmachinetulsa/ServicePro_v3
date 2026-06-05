@@ -93,10 +93,10 @@ function checkForMaintenanceKeywords(message: string): boolean {
  */
 export function getMaintenanceDetailRecommendation(isRepeatCustomer: boolean = false): string {
   if (isRepeatCustomer) {
-    return "Based on your previous service with us, you might be interested in our Maintenance Detail Program. It's perfect for keeping your vehicle in top condition with regular quick wipe-downs, window cleaning, and wash/wax services. Ideal for vehicles that are already in good condition and just need regular upkeep.";
+    return "Based on your previous service with us, you might be interested in our Pit Stop. It's perfect for keeping your vehicle in top condition with regular quick wipe-downs, window cleaning, and wash/wax services. Ideal for vehicles that are already in good condition and just need regular upkeep.";
   }
   
-  return "Since you keep your vehicle well-maintained, you might be interested in our Maintenance Detail Program. This service includes a quick wipe-down, window cleaning, and wash/wax to maintain your vehicle's appearance. It's perfect for vehicles that are already in good condition and just need regular upkeep. Note that if your vehicle has stains or heavy soil, it may require a deeper cleaning service instead.";
+  return "Since you keep your vehicle well-maintained, you might be interested in our Pit Stop. This service includes a quick wipe-down, window cleaning, and wash/wax to maintain your vehicle's appearance. It's perfect for vehicles that are already in good condition and just need regular upkeep. Note that if your vehicle has stains or heavy soil, it may require a deeper cleaning service instead.";
 }
 
 /**
