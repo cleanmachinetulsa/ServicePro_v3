@@ -1,5 +1,6 @@
 import type { TenantDb } from './tenantDb';
 import { MailService } from '@sendgrid/mail';
+import { stripHtmlToText } from './services/tenantEmailService'; // CM-5 Fix 3: plain-text fallback
 import { 
   customers,
   emailCampaigns,
@@ -421,11 +422,15 @@ async function sendSingleCampaignEmail(tenantDb: TenantDb, campaign: any, recipi
     
     // Send with rate limiting (slot already claimed above, so we're guaranteed within limit)
     await sendGridLimiter.schedule(async () => {
+      // CM-5 Fix 3: include plain-text version so the payload is never html-only.
+      // A null/empty html field alone can trigger a SendGrid 400; the text field
+      // also satisfies email clients that prefer plain text.
       const msg = {
         to: recipient.email,
         from: fromEmail,
         subject: campaign.subject,
         html: contentWithFooter,
+        text: stripHtmlToText(contentWithFooter),
         trackingSettings: {
           clickTracking: { enable: true },
           openTracking: { enable: true }
@@ -458,8 +463,14 @@ async function sendSingleCampaignEmail(tenantDb: TenantDb, campaign: any, recipi
       console.log(`[EMAIL CAMPAIGN] Sent email to ${recipient.email}`);
     });
   } catch (error: any) {
-    console.error(`[EMAIL CAMPAIGN] Error sending to ${recipient.email}:`, error);
-    
+    // CM-5 Fix 2: log the real SendGrid error body alongside the HTTP status text
+    const sgDetail = error?.response?.body?.errors?.[0]?.message;
+    console.error(
+      `[EMAIL CAMPAIGN] Error sending to ${recipient.email}:`,
+      error?.message || error,
+      sgDetail ? `| SendGrid: ${sgDetail}` : '',
+    );
+
     const shouldRetry = recipient.attemptCount < 2;
     
     await tenantDb

@@ -28,7 +28,8 @@ function initializeSendGrid(): boolean {
   return true;
 }
 
-function stripHtmlToText(html: string): string {
+// CM-5 Fix 3: exported so emailCampaignService can import it for the text fallback.
+export function stripHtmlToText(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')

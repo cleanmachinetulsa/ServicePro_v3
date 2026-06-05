@@ -918,7 +918,13 @@ async function sendPortRecoveryEmail(
     
     return { success: true };
   } catch (error: any) {
-    console.error(`[PORT RECOVERY] Email failed for ${target.email}:`, error.message);
+    // CM-5 Fix 2: surface the real SendGrid error body alongside the HTTP status text
+    const sgDetail = error?.response?.body?.errors?.[0]?.message;
+    console.error(
+      `[PORT RECOVERY] Email failed for ${target.email}:`,
+      error.message,
+      sgDetail ? `| SendGrid: ${sgDetail}` : '',
+    );
     return { success: false, error: error.message };
   }
 }

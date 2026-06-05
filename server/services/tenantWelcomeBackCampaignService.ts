@@ -2,7 +2,8 @@ import { db } from '../db';
 import type { TenantDb } from '../tenantDb';
 import { campaignConfigs, campaignSends, customers, tenants, tenantDomains } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
-import { sendSMS, sendEmail } from '../notifications';
+import { sendSMS } from '../notifications';
+import { sendTenantEmail } from './tenantEmailService'; // CM-5 Fix 1: correct tenant-aware sender
 import { hasFeature } from '@shared/features';
 import { awardPromoPoints } from './promoEngine'; // Phase 14: Unified promo engine
 import { generateRewardsToken } from '../routes.loyalty'; // CM-REWARDS-WELCOME-LANDING: Token generation
@@ -537,15 +538,33 @@ export async function sendTenantWelcomeBackCampaign(
           emailBody = emailBody.replace('</body>', `<p><a href="${personalizedRewardsLink}">View Your Personalized Rewards</a></p></body>`);
         }
         
+        // CM-5 Fix 1: sendTenantEmail takes { to, subject, html } options (same shape the
+        // old broken call intended) and is the correct tenant-aware path — it resolves
+        // fromName/replyTo from tenant_email_profiles and handles SendGrid errors internally.
+        // sendEmail from notifications.ts expects 4 positional args and was receiving one
+        // options object, throwing a TypeError before any network call was ever made.
         try {
-          await sendEmail({
+          const emailResult = await sendTenantEmail(tenantDb, tenantId, {
             to: customer.email,
             subject: `Welcome Back! ${pointsBonus} Bonus Points Added 🎉`,
             html: emailBody,
+            category: 'campaign_welcome_back',
           });
-          emailSent = true;
-        } catch (emailError) {
-          console.error(`[Campaign] Email failed for customer ${customer.id}:`, emailError);
+          if (emailResult.ok) {
+            emailSent = true;
+          } else {
+            // CM-5 Fix 2: surface the real SendGrid error reason
+            const sgDetail = emailResult.errorMessage || 'unknown';
+            console.error(`[Campaign] Email not sent for customer ${customer.id}: ${sgDetail}`);
+          }
+        } catch (emailError: any) {
+          // CM-5 Fix 2: log both the JS error message AND the SendGrid body error if present
+          const sgDetail = emailError?.response?.body?.errors?.[0]?.message;
+          console.error(
+            `[Campaign] Email exception for customer ${customer.id}:`,
+            emailError?.message,
+            sgDetail ? `| SendGrid: ${sgDetail}` : '',
+          );
           // Don't fail the whole operation if email fails
         }
       }
