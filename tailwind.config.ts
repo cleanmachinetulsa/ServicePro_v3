@@ -134,6 +134,10 @@ export default {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      // Dynamic viewport height — resolves iOS Safari keyboard-overlap on h-screen
+      height: {
+        dvh: '100dvh',
+      },
       // Single z-index scale for the messaging center (Audit T2)
       // shell sits below page-header, page-header below modals, modals below toasts.
       zIndex: {

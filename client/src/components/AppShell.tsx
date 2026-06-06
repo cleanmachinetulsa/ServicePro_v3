@@ -20,6 +20,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useUiExperience } from '@/contexts/UiExperienceContext';
 import { useDashboardPreferencesContext, shouldShowNavItem } from '@/contexts/DashboardPreferencesContext';
 import { useBillingStatus } from '@/hooks/useBillingStatus';
+import { useUnreadCount } from '@/hooks/useUnreadCount';
 import TenantSuggestionModal from '@/components/TenantSuggestionModal';
 import { setLanguage } from '@/i18n';
 
@@ -72,6 +73,8 @@ export function AppShell({
   const { config: simpleModeConfig } = useSimpleModeConfig();
   const { isPastDue } = useBillingStatus();
   const { t } = useTranslation('common');
+  // HUB-1c: unread message counter — feeds the Messages nav badge and PWA icon
+  const unreadMessageCount = useUnreadCount();
 
   const { data: authContext } = useQuery<AuthContext>({
     queryKey: ['/api/auth/context'],
@@ -163,6 +166,13 @@ export function AppShell({
           const active = isActive(effectivePath);
           const Icon = item.icon;
 
+          // HUB-1c: inject dynamic unread count badge on the Messages nav item
+          const isMessagesItem = item.id === 'messages';
+          const dynamicBadge =
+            isMessagesItem && unreadMessageCount > 0
+              ? String(unreadMessageCount > 99 ? '99+' : unreadMessageCount)
+              : null;
+
           return (
             <Button
               key={item.id}
@@ -178,7 +188,12 @@ export function AppShell({
             >
               <Icon className="h-4 w-4 mr-2" />
               <span className="truncate">{item.label}</span>
-              {item.badge && (
+              {dynamicBadge && (
+                <Badge className="ml-auto text-xs bg-red-500 hover:bg-red-600 text-white">
+                  {dynamicBadge}
+                </Badge>
+              )}
+              {!dynamicBadge && item.badge && (
                 <Badge variant="secondary" className="ml-auto text-xs">
                   {item.badge}
                 </Badge>

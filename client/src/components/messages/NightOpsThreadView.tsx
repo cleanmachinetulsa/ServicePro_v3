@@ -54,6 +54,24 @@ export function NightOpsThreadView({
   controlMode = 'auto',
   onConversationSelected,
 }: NightOpsThreadViewProps) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Return-to-AI mutation — wires the "Hand back to AI" button in AutopilotBanner
+  const returnToAIMutation = useMutation({
+    mutationFn: async () => {
+      if (!conversationId) return;
+      const res = await apiRequest('POST', `/api/conversations/${conversationId}/return-to-ai`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
+      toast({ title: 'AI resumed', description: 'Conversation handed back to AI autopilot' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to hand back', variant: 'destructive' });
+    },
+  });
 
   if (!conversationId) {
     return (
@@ -126,6 +144,7 @@ export function NightOpsThreadView({
         <AutopilotBanner
           controlMode={controlMode}
           onTakeOver={onTakeOver || (() => {})}
+          onReturnToAI={() => returnToAIMutation.mutate()}
         />
       </div>
 

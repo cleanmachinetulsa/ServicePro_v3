@@ -1588,7 +1588,8 @@ export default function ThreadView({
           )}
 
           {/* Message Input - Always Visible */}
-          <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-3">
+          {/* pb uses max() so the composer lifts above the iOS soft keyboard */}
+          <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
               {/* Phone line indicator - only show warning if mismatched */}
               {conversation?.platform === 'sms' && activeLine && 
                 conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId && (
