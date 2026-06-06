@@ -183,16 +183,16 @@ async function runDbTests() {
       syntheticServiceId = (svcResult.rows[0] as any).id;
     } else {
       const newSvc = await db.execute(sql`
-        INSERT INTO services (tenant_id, name, price_range, overview)
-        VALUES (${TENANT_ID}, 'S4S2 Test Service', '$249-349', 'Test')
+        INSERT INTO services (tenant_id, name, price_range, overview, detailed_description, duration, duration_hours)
+        VALUES (${TENANT_ID}, 'S4S2 Test Service', '$249-349', 'Test', 'Test detail', '2-3 hours', '2.5')
         RETURNING id
       `);
       syntheticServiceId = (newSvc.rows[0] as any).id;
     }
 
     const apptResult = await db.execute(sql`
-      INSERT INTO appointments (tenant_id, customer_id, service_id, scheduled_time, status)
-      VALUES (${TENANT_ID}, ${syntheticCustomerId}, ${syntheticServiceId}, NOW(), 'in_progress')
+      INSERT INTO appointments (tenant_id, customer_id, service_id, scheduled_time, status, address)
+      VALUES (${TENANT_ID}, ${syntheticCustomerId}, ${syntheticServiceId}, NOW(), 'in_progress', '4644 S Troost Ave, Tulsa, OK 74105')
       RETURNING id
     `);
     syntheticAppointmentId = (apptResult.rows[0] as any).id;
